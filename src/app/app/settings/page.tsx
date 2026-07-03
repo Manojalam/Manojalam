@@ -15,7 +15,6 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useUIStore } from "@/store/ui-store";
 import { useTheme } from "next-themes";
-import { isDemoMode } from "@/lib/storage/board-store";
 import { isSupabaseConfigured } from "@/lib/config";
 
 export default function SettingsPage() {
@@ -30,7 +29,7 @@ export default function SettingsPage() {
     <AppShell>
       <div className="mx-auto max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="mt-1 text-muted-foreground">Customize your Manashchitram experience</p>
+        <p className="mt-1 text-muted-foreground">Customize your Manojalam experience</p>
 
         <div className="mt-8 space-y-6">
           <section>
@@ -116,9 +115,9 @@ export default function SettingsPage() {
                   {isSupabaseConfigured() ? "Connected" : "Not configured"}
                 </Badge>
               </div>
-              {isDemoMode() && (
+              {!isSupabaseConfigured() && (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Running in local demo mode. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable cloud sync.
+                  Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local to enable authentication and cloud sync.
                 </p>
               )}
             </div>

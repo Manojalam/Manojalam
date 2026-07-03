@@ -2,7 +2,6 @@
 
 import { useUIStore, TOOL_LABELS } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
-import { isDemoMode } from "@/lib/storage/board-store";
 
 export function CanvasStatusBar() {
   const activeTool = useUIStore((s) => s.activeTool);
@@ -14,12 +13,6 @@ export function CanvasStatusBar() {
       <span className="font-semibold text-gray-700">{TOOL_LABELS[activeTool]}</span>
       <span className="h-3 w-px bg-gray-200" />
       <span>{nodes.length} nodes · {edges.length} edges</span>
-      {isDemoMode() && (
-        <>
-          <span className="h-3 w-px bg-gray-200" />
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700 font-medium">Local demo</span>
-        </>
-      )}
       <span className="h-3 w-px bg-gray-200" />
       <span className="hidden sm:inline text-gray-400">Tab = child · Enter = sibling · ⌘K = commands</span>
     </div>

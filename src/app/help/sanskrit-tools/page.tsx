@@ -8,7 +8,7 @@ export default function SanskritToolsHelpPage() {
       <div className="mx-auto max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Sanskrit Tools Guide</h1>
         <p className="mt-1 text-muted-foreground">
-          Manashchitram supports Sanskrit study alongside general note-taking
+          Manojalam supports Sanskrit study alongside general note-taking
         </p>
 
         <div className="prose prose-sm mt-8 max-w-none dark:prose-invert space-y-6">

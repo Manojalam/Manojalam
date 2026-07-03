@@ -1,8 +1,30 @@
-# Manashchitram
+# Manojalam · मनोजालम्
 
 **A visual knowledge canvas for study, Sanskrit, and structured thinking.**
 
-Manashchitram is a mind-map and infinite-canvas whiteboard app built with Next.js, React Flow, and optional Supabase backend. It works fully offline in local demo mode — no backend setup required to get started.
+Manojalam is a mind-map and infinite-canvas whiteboard app built with Next.js, React Flow, and a Supabase backend. Each user signs in and owns their own boards, protected by row-level security.
+
+## Local Supabase Setup
+
+1. Create a Supabase project.
+2. Run `database/migrations/001_supabase_auth_boards.sql` in the Supabase SQL Editor.
+3. In Supabase Authentication → URL Configuration:
+   - Site URL: `http://localhost:3005`
+   - Redirect URL: `http://localhost:3005/auth/callback`
+   - Redirect URL: `http://localhost:3005/auth/update-password`
+4. In Supabase Authentication → Providers:
+   - Enable the Email provider.
+   - Enable "Confirm email" if email verification is desired.
+5. Create `.env.local` with:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=
+   NEXT_PUBLIC_APP_URL=http://localhost:3005
+   ```
+6. Do not commit `.env.local`.
+7. Start the app on `localhost:3005`.
+
+Vercel deployment will be configured later.
 
 ## Features
 

@@ -9,16 +9,14 @@ import { Label } from "@/components/ui/label";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { SupabaseSetupNotice } from "@/components/layout/SupabaseSetupNotice";
 import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured, APP_URL } from "@/lib/config";
+import { isSupabaseConfigured } from "@/lib/config";
 
-export default function SignUpPage() {
+export default function UpdatePasswordPage() {
   const router = useRouter();
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const configured = isSupabaseConfigured();
@@ -26,7 +24,6 @@ export default function SignUpPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setNotice(null);
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
@@ -40,45 +37,27 @@ export default function SignUpPage() {
     const supabase = createClient();
     if (!supabase) return;
     setLoading(true);
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName },
-        emailRedirectTo: `${APP_URL}/auth/callback`,
-      },
-    });
-
+    const { error } = await supabase.auth.updateUser({ password });
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
-
-    // If confirm-email is enabled, no session is returned yet.
-    if (!data.session) {
-      setNotice("Check your email to verify your account.");
-      setLoading(false);
-      return;
-    }
-
-    router.push("/app");
-    router.refresh();
+    setDone(true);
+    setLoading(false);
+    setTimeout(() => {
+      router.push("/app");
+      router.refresh();
+    }, 1200);
   };
 
   return (
-    <AuthCard title="Create account" subtitle="Start building your boards">
+    <AuthCard title="Set a new password">
       {!configured ? (
         <SupabaseSetupNotice />
-      ) : notice ? (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-            {notice}
-          </div>
-          <Button variant="outline" className="w-full" asChild>
-            <Link href="/auth/sign-in">Back to sign in</Link>
-          </Button>
+      ) : done ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+          Password updated. Redirecting…
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -88,32 +67,21 @@ export default function SignUpPage() {
             </div>
           )}
           <div>
-            <Label htmlFor="displayName">Display name</Label>
-            <Input id="displayName" value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)} className="mt-1" autoComplete="name" />
-          </div>
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required value={email}
-              onChange={(e) => setEmail(e.target.value)} className="mt-1" autoComplete="email" />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">New password</Label>
             <Input id="password" type="password" required value={password}
               onChange={(e) => setPassword(e.target.value)} className="mt-1" autoComplete="new-password"
               placeholder="At least 8 characters" />
           </div>
           <div>
-            <Label htmlFor="confirm">Confirm password</Label>
+            <Label htmlFor="confirm">Confirm new password</Label>
             <Input id="confirm" type="password" required value={confirm}
               onChange={(e) => setConfirm(e.target.value)} className="mt-1" autoComplete="new-password" />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account…" : "Create account"}
+            {loading ? "Updating…" : "Update password"}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link href="/auth/sign-in" className="text-primary hover:underline">Sign in</Link>
+            <Link href="/auth/sign-in" className="text-primary hover:underline">Back to sign in</Link>
           </p>
         </form>
       )}

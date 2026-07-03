@@ -5,8 +5,7 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Layout, BookTemplate, Settings, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/config";
-import { isDemoMode } from "@/lib/storage/board-store";
-import { Badge } from "@/components/ui/badge";
+import { UserMenu } from "@/components/layout/UserMenu";
 
 const NAV = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard },
@@ -26,10 +25,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       <aside className="hidden w-56 flex-col border-r bg-card md:flex">
         <div className="flex h-14 items-center gap-2 border-b px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
-            V
+          <div className="logo-font flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-base">
+            म
           </div>
-          <span className="font-semibold">{APP_NAME}</span>
+          <span className="logo-font text-lg">{APP_NAME}</span>
         </div>
         <nav className="flex-1 space-y-0.5 p-2">
           {NAV.map(({ href, label, icon: Icon }) => (
@@ -48,13 +47,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
-        {isDemoMode() && (
-          <div className="border-t p-3">
-            <Badge variant="outline" className="w-full justify-center text-[10px]">
-              Demo Mode: local save only
-            </Badge>
-          </div>
-        )}
+        <div className="border-t p-2">
+          <UserMenu />
+        </div>
       </aside>
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
