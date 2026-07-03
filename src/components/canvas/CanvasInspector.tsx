@@ -1,0 +1,593 @@
+"use client";
+
+import { useState, useMemo, useCallback } from "react";
+import {
+  Trash2, ChevronDown, ChevronRight, Lock, Unlock,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Bold, Italic, Plus, Minus, Pencil, StopCircle,
+} from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
+import { SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
+import type { BorderLayer, InternalFillRegion } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { ColorSwatchPicker } from "./ColorSwatchPicker";
+import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
+import { generateId } from "@/lib/utils";
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+const SHAPE_TYPES = [
+  { label: "Rounded",    value: "rounded"   },
+  { label: "Rectangle",  value: "rectangle" },
+  { label: "Circle",     value: "circle"    },
+  { label: "Diamond",    value: "diamond"   },
+  { label: "Capsule",    value: "capsule"   },
+  { label: "Triangle",   value: "triangle"  },
+  { label: "Hexagon",    value: "hexagon"   },
+  { label: "Star",       value: "star"      },
+  { label: "Arrow",      value: "arrow"     },
+  { label: "Callout",    value: "callout"   },
+];
+
+const CONVERT_TYPES = [
+  { label: "Mind-map",  value: "mindmap" },
+  { label: "Text box",  value: "text"    },
+  { label: "Sticky",    value: "sticky"  },
+  { label: "Shape",     value: "shape"   },
+];
+
+// ── Section wrapper ────────────────────────────────────────────────────────
+
+function Section({ label, children, defaultOpen = true }: {
+  label: string; children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
+        {label}
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+      {open && <div className="space-y-2.5 px-3 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-1">{children}</div>
+    </div>
+  );
+}
+
+function IconBtn({ active, onClick, title, children }: {
+  active?: boolean; onClick: () => void; title: string; children: React.ReactNode;
+}) {
+  return (
+    <button title={title} onClick={onClick}
+      className={cn("flex h-7 w-7 items-center justify-center rounded-md border text-xs transition-colors",
+        active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:bg-muted text-foreground")}>
+      {children}
+    </button>
+  );
+}
+
+/** Thickness control: slider + −/+ buttons */
+function ThicknessControl({ value, onChange, max = 20 }: {
+  value: number; onChange: (v: number) => void; max?: number;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <button onClick={() => onChange(Math.max(0, value - 1))}
+        className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Minus className="h-3 w-3" /></button>
+      <input type="range" min={0} max={max} step={1} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1 h-1.5 accent-primary" />
+      <button onClick={() => onChange(Math.min(max, value + 1))}
+        className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
+      <span className="w-7 text-center text-[10px] text-muted-foreground">{value}px</span>
+    </div>
+  );
+}
+
+/** Border style selector: Solid | Dashed | Dotted */
+function BorderStylePicker({ value, onChange }: {
+  value?: string; onChange: (v: "solid" | "dashed" | "dotted") => void;
+}) {
+  return (
+    <div className="flex gap-1">
+      {(["solid", "dashed", "dotted"] as const).map((s) => (
+        <button key={s} onClick={() => onChange(s)}
+          className={cn("rounded border px-2 py-0.5 text-[10px] capitalize flex-1 hover:bg-muted",
+            (value ?? "solid") === s ? "border-primary bg-primary/10 text-primary" : "border-border")}>
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Main inspector ─────────────────────────────────────────────────────────
+
+export function CanvasInspector() {
+  const nodes           = useCanvasStore((s) => s.nodes);
+  const edges           = useCanvasStore((s) => s.edges);
+  const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
+  const settings        = useCanvasStore((s) => s.settings);
+  const setSettings     = useCanvasStore((s) => s.setSettings);
+  const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
+  const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
+  const pushHistory     = useCanvasStore((s) => s.pushHistory);
+  const convertNode     = useCanvasStore((s) => s.convertNode);
+
+  const drawingModeNodeId  = useUIStore((s) => s.drawingModeNodeId);
+  const setDrawingModeNodeId = useUIStore((s) => s.setDrawingModeNodeId);
+  const drawingRegionColor = useUIStore((s) => s.drawingRegionColor);
+  const setDrawingRegionColor = useUIStore((s) => s.setDrawingRegionColor);
+  const drawingRegionOpacity = useUIStore((s) => s.drawingRegionOpacity);
+  const setDrawingRegionOpacity = useUIStore((s) => s.setDrawingRegionOpacity);
+
+  const selectedNode = selectedNodeIds.length === 1
+    ? nodes.find((n) => n.id === selectedNodeIds[0])
+    : null;
+
+  // ALL hooks before any early return
+  const d = (selectedNode?.data ?? {}) as Record<string, unknown>;
+  useMemo(() => {}, [d.richText, d.text]); // warm useMemo after hooks are stable
+
+  const setField = useCallback((key: string, value: unknown) => {
+    if (!selectedNode) return;
+    pushHistory();
+    updateNodeData(selectedNode.id, { [key]: value });
+  }, [selectedNode, pushHistory, updateNodeData]);
+
+  // ── No selection ──────────────────────────────────────────────────────────
+  if (!selectedNode) {
+    return (
+      <aside className="vidya-float-panel flex w-64 flex-col">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-foreground">Canvas</h3>
+          <p className="text-xs text-muted-foreground">{nodes.length} nodes · {edges.length} edges</p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <Section label="Background">
+            <Select value={settings.background} onValueChange={(v) => setSettings({ background: v as "dots" | "grid" | "plain" })}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dots">Dots</SelectItem>
+                <SelectItem value="grid">Grid</SelectItem>
+                <SelectItem value="plain">Plain</SelectItem>
+              </SelectContent>
+            </Select>
+          </Section>
+          <Separator />
+          <Section label="Behavior">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Snap to grid</Label>
+              <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setSettings({ snapToGrid: v })} />
+            </div>
+          </Section>
+          <Separator />
+          <Section label="Script">
+            <Select value={settings.defaultScriptMode} onValueChange={(v) => setSettings({ defaultScriptMode: v as typeof settings.defaultScriptMode })}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="plain">Plain</SelectItem>
+                <SelectItem value="devanagari">Devanāgarī</SelectItem>
+                <SelectItem value="iast">IAST</SelectItem>
+                <SelectItem value="mixed">Mixed</SelectItem>
+              </SelectContent>
+            </Select>
+          </Section>
+        </div>
+      </aside>
+    );
+  }
+
+  // ── Node selected ──────────────────────────────────────────────────────────
+  const nodeType      = selectedNode.type ?? "";
+  const isTextNode    = ["mindmap", "sticky", "text"].includes(nodeType);
+  const isShapeNode   = nodeType === "shape";
+  const isContentNode = isTextNode || isShapeNode;
+  const isSanskrit    = ["sanskrit", "shloka", "grammar"].includes(nodeType);
+
+  const borderWidth   = typeof d.borderWidth   === "number" ? d.borderWidth   : 2;
+  const borderRadius  = typeof d.borderRadius  === "number" ? d.borderRadius  : 16;
+  // Corner-radius only makes sense for rectangular-ish shapes.
+  const shapeType     = (d.shapeType as string) ?? "";
+  const supportsRadius = isTextNode || (isShapeNode && ["rounded", "rectangle"].includes(shapeType));
+  const borderLayers  = (d.borderLayers as BorderLayer[]) ?? [];
+  const fillRegions   = (d.internalFillRegions as InternalFillRegion[]) ?? [];
+  const isDrawing     = drawingModeNodeId === selectedNode.id;
+  const fontGroups    = groupFontsByCategory(FONT_OPTIONS);
+
+  return (
+    <aside className="vidya-float-panel flex w-64 flex-col">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between border-b px-3 py-2.5">
+        <div>
+          <h3 className="text-sm font-semibold capitalize">{nodeType}</h3>
+          <p className="text-[10px] text-muted-foreground">{selectedNode.id.slice(0, 8)}…</p>
+        </div>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7" title={d.locked ? "Unlock" : "Lock"}
+            onClick={() => setField("locked", !d.locked)}>
+            {d.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={deleteSelected}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 divide-y overflow-y-auto">
+
+        {/* ── Text ── */}
+        {isContentNode && (
+          <Section label="Text">
+            {/* Alignment */}
+            <Row label="Align">
+              {([
+                ["left",    <AlignLeft    key="l" className="h-3.5 w-3.5" />, "Left"],
+                ["center",  <AlignCenter  key="c" className="h-3.5 w-3.5" />, "Center"],
+                ["right",   <AlignRight   key="r" className="h-3.5 w-3.5" />, "Right"],
+                ["justify", <AlignJustify key="j" className="h-3.5 w-3.5" />, "Justify"],
+              ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
+                <IconBtn key={val} active={d.textAlign === val} onClick={() => setField("textAlign", val)} title={title}>{icon}</IconBtn>
+              ))}
+            </Row>
+
+            {/* Bold / Italic */}
+            <Row label="Style">
+              <IconBtn active={d.fontWeight === "bold"}
+                onClick={() => setField("fontWeight", d.fontWeight === "bold" ? "normal" : "bold")} title="Bold (whole object)">
+                <Bold className="h-3.5 w-3.5" />
+              </IconBtn>
+              <IconBtn active={d.fontStyle === "italic"}
+                onClick={() => setField("fontStyle", d.fontStyle === "italic" ? "normal" : "italic")} title="Italic (whole object)">
+                <Italic className="h-3.5 w-3.5" />
+              </IconBtn>
+              <span className="ml-1 text-[9px] text-muted-foreground">whole box</span>
+            </Row>
+
+            {/* Font size */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
+              <ThicknessControl
+                value={(d.fontSize as number) ?? 14}
+                onChange={(v) => setField("fontSize", v)}
+                max={96}
+              />
+            </div>
+
+            {/* Font family */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
+              <Select value={(d.fontFamily as string) ?? ""} onValueChange={(v) => setField("fontFamily", v || undefined)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Default" /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="">Default</SelectItem>
+                  {[...fontGroups.entries()].map(([cat, fonts]) => (
+                    <div key={cat}>
+                      <div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted">{cat}</div>
+                      {fonts.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          <span style={{ fontFamily: f.value }}>{f.label}</span>
+                        </SelectItem>
+                      ))}
+                    </div>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Text color */}
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
+              <ColorSwatchPicker value={(d.textColor as string) ?? ""} onChange={(v) => setField("textColor", v || undefined)} size="sm" />
+            </div>
+          </Section>
+        )}
+
+        {/* ── Fill ── */}
+        {isContentNode && (
+          <Section label="Fill">
+            <ColorSwatchPicker
+              value={(d.fillColor as string) ?? ""}
+              onChange={(v) => setField("fillColor", v || undefined)}
+            />
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
+                <span className="text-[10px] text-muted-foreground">
+                  {Math.round((typeof d.fillOpacity === "number" ? d.fillOpacity : 0.18) * 100)}%
+                </span>
+              </div>
+              <input type="range" min={0} max={100} step={1}
+                value={Math.round((typeof d.fillOpacity === "number" ? d.fillOpacity : 0.18) * 100)}
+                onChange={(e) => setField("fillOpacity", Number(e.target.value) / 100)}
+                className="w-full accent-primary" />
+            </div>
+          </Section>
+        )}
+
+        {/* ── Shape type (only for shape nodes) ── */}
+        {isShapeNode && (
+          <Section label="Shape type">
+            <div className="grid grid-cols-3 gap-1">
+              {SHAPE_TYPES.map(({ label, value }) => (
+                <button key={value}
+                  onClick={() => {
+                    // Reset borderRadius so DEFAULT_RADIUS kicks in for the new shape
+                    updateNodeData(selectedNode.id, { shapeType: value, borderRadius: undefined });
+                    pushHistory();
+                  }}
+                  className={cn("rounded-lg border px-1 py-1.5 text-[10px] text-center hover:bg-muted",
+                    d.shapeType === value ? "border-primary bg-primary/10 text-primary font-medium" : "border-border")}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* ── Border ── */}
+        {isContentNode && (
+          <Section label="Border">
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
+              <ColorSwatchPicker value={(d.borderColor as string) ?? ""} onChange={(v) => setField("borderColor", v || undefined)} />
+            </div>
+
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
+              <ThicknessControl value={borderWidth} onChange={(v) => setField("borderWidth", v)} />
+            </div>
+
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Style</p>
+              <BorderStylePicker value={(d.borderStyle as string)} onChange={(v) => setField("borderStyle", v)} />
+            </div>
+
+            {supportsRadius && (
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Corner radius</p>
+                  <span className="text-[10px] text-muted-foreground">{borderRadius}px</span>
+                </div>
+                <input type="range" min={0} max={100} step={1} value={borderRadius}
+                  onChange={(e) => setField("borderRadius", Number(e.target.value))}
+                  className="w-full accent-primary" />
+                <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
+                  <span>Sharp</span><span>Pill</span>
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* ── Extra border layers ── */}
+        {isContentNode && (
+          <Section label="Extra borders" defaultOpen={false}>
+            {borderLayers.map((layer, i) => (
+              <div key={layer.id} className="rounded-lg border border-border p-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground">Layer {i + 1}</span>
+                  <button onClick={() => setField("borderLayers", borderLayers.filter((_, idx) => idx !== i))}
+                    className="text-[10px] text-destructive hover:underline">Remove</button>
+                </div>
+                <ColorSwatchPicker value={layer.color} onChange={(c) => setField("borderLayers", borderLayers.map((l, idx) => idx === i ? { ...l, color: c } : l))} size="sm" />
+                <div>
+                  <p className="mb-1 text-[10px] text-muted-foreground">Thickness</p>
+                  <ThicknessControl value={layer.width}
+                    onChange={(v) => setField("borderLayers", borderLayers.map((l, idx) => idx === i ? { ...l, width: v } : l))} />
+                </div>
+                <div>
+                  <p className="mb-1 text-[10px] text-muted-foreground">Style</p>
+                  <BorderStylePicker value={layer.style}
+                    onChange={(s) => setField("borderLayers", borderLayers.map((l, idx) => idx === i ? { ...l, style: s } : l))} />
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" className="w-full h-7 text-xs"
+              onClick={() => setField("borderLayers", [...borderLayers, { id: generateId(), color: "#6366f1", width: 2, style: "solid" } as BorderLayer])}>
+              <Plus className="h-3 w-3 mr-1" /> Add border layer
+            </Button>
+          </Section>
+        )}
+
+        {/* ── Internal fill regions ── */}
+        {isContentNode && (
+          <Section label="Fill regions" defaultOpen={false}>
+            {/* Region color */}
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region color</p>
+              <ColorSwatchPicker value={drawingRegionColor} onChange={setDrawingRegionColor} size="sm" />
+            </div>
+
+            {/* Region opacity */}
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region opacity</p>
+                <span className="text-[10px] text-muted-foreground">{Math.round(drawingRegionOpacity * 100)}%</span>
+              </div>
+              <input type="range" min={0} max={100} step={1}
+                value={Math.round(drawingRegionOpacity * 100)}
+                onChange={(e) => setDrawingRegionOpacity(Number(e.target.value) / 100)}
+                className="w-full accent-primary" />
+            </div>
+
+            {/* Draw / Stop freeform button */}
+            <Button
+              variant={isDrawing ? "destructive" : "default"}
+              size="sm"
+              className="w-full h-8 text-xs gap-1.5"
+              onClick={() => setDrawingModeNodeId(isDrawing ? null : selectedNode.id)}
+            >
+              {isDrawing
+                ? <><StopCircle className="h-3.5 w-3.5" />Stop drawing</>
+                : <><Pencil className="h-3.5 w-3.5" />Free-draw region</>}
+            </Button>
+            {isDrawing && (
+              <p className="text-[10px] text-muted-foreground text-center">
+                Click &amp; drag inside the node to draw a region
+              </p>
+            )}
+
+            {/* Add predefined shape regions */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Add shape fill</p>
+              <div className="grid grid-cols-3 gap-1">
+                {([
+                  ["rect", "Rect"], ["circle", "Circle"], ["ellipse", "Ellipse"],
+                  ["diamond", "Diamond"], ["triangle", "Triangle"],
+                ] as [string, string][]).map(([kind, label]) => (
+                  <button key={kind}
+                    onClick={() => {
+                      pushHistory();
+                      updateNodeData(selectedNode.id, {
+                        internalFillRegions: [...fillRegions, {
+                          id: generateId(),
+                          kind,
+                          rect: { x: 30, y: 30, w: 40, h: 40 },
+                          fillColor: drawingRegionColor,
+                          opacity: drawingRegionOpacity,
+                          createdAt: new Date().toISOString(),
+                        } as InternalFillRegion],
+                      });
+                    }}
+                    className="rounded-lg border border-border px-1 py-1.5 text-[10px] hover:bg-muted text-center">
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[9px] text-muted-foreground text-center">Select the node, then drag to move / resize</p>
+            </div>
+
+            {/* Existing regions */}
+            {fillRegions.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {fillRegions.map((r, i) => (
+                  <div key={r.id} className="rounded-lg border border-border p-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-5 flex-none rounded-full border border-border" style={{ backgroundColor: r.fillColor }} />
+                      <span className="flex-1 text-[10px] text-muted-foreground capitalize">{r.kind ?? "free"} {i + 1}</span>
+                      <button onClick={() => setField("internalFillRegions", fillRegions.filter((_, idx) => idx !== i))}
+                        className="text-[10px] text-destructive hover:underline">Del</button>
+                    </div>
+                    <ColorSwatchPicker value={r.fillColor}
+                      onChange={(c) => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, fillColor: c } : x))}
+                      size="sm" />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] text-muted-foreground w-8">Opac</span>
+                      <input type="range" min={0} max={100} step={1}
+                        value={Math.round((r.opacity ?? 0.18) * 100)}
+                        onChange={(e) => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, opacity: Number(e.target.value) / 100 } : x))}
+                        className="flex-1 accent-primary" />
+                      <span className="text-[9px] text-muted-foreground w-7 text-right">{Math.round((r.opacity ?? 0.18) * 100)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* ── Convert to ── */}
+        {isContentNode && (
+          <Section label="Convert to" defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-1">
+              {CONVERT_TYPES.filter((t) => t.value !== nodeType).map(({ label, value }) => (
+                <button key={value}
+                  onClick={() => {
+                    const extra: Record<string, unknown> = {};
+                    if (value === "shape")   extra.shapeType = "rounded";
+                    if (value === "mindmap") extra.color ??= "#818cf8";
+                    if (value === "sticky")  extra.color ??= "yellow";
+                    convertNode(selectedNode.id, value, extra);
+                  }}
+                  className="rounded-lg border border-border px-2 py-1.5 text-[10px] hover:bg-muted text-center">
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* ── Sanskrit ── */}
+        {isSanskrit && (
+          <Section label="Sanskrit">
+            {"devanagari" in d && <div><Label className="text-xs">Devanāgarī</Label>
+              <Textarea value={(d.devanagari as string) ?? ""} onChange={(e) => setField("devanagari", e.target.value)} className="mt-1 font-devanagari text-base" rows={2} /></div>}
+            {"iast" in d && <div><Label className="text-xs">IAST</Label>
+              <Textarea value={(d.iast as string) ?? ""} onChange={(e) => setField("iast", e.target.value)} className="mt-1 italic text-sm" rows={2} /></div>}
+            {"translation" in d && <div><Label className="text-xs">Translation</Label>
+              <Textarea value={(d.translation as string) ?? ""} onChange={(e) => setField("translation", e.target.value)} className="mt-1 text-sm" rows={2} /></div>}
+            {"title" in d && <div><Label className="text-xs">Title</Label>
+              <Input value={(d.title as string) ?? ""} onChange={(e) => setField("title", e.target.value)} className="mt-1 h-8 text-sm" /></div>}
+            {"displayMode" in d && <div><Label className="text-xs">Display mode</Label>
+              <Select value={(d.displayMode as string) ?? "both-stacked"} onValueChange={(v) => setField("displayMode", v)}>
+                <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="devanagari">Devanāgarī only</SelectItem>
+                  <SelectItem value="iast">IAST only</SelectItem>
+                  <SelectItem value="both-stacked">Both stacked</SelectItem>
+                  <SelectItem value="both-side">Side-by-side</SelectItem>
+                </SelectContent>
+              </Select></div>}
+          </Section>
+        )}
+
+        {/* ── Script ── */}
+        {"scriptMode" in d && (
+          <Section label="Script" defaultOpen={false}>
+            <Select value={(d.scriptMode as string) ?? "plain"} onValueChange={(v) => setField("scriptMode", v)}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="plain">Plain</SelectItem>
+                <SelectItem value="devanagari">Devanāgarī</SelectItem>
+                <SelectItem value="iast">IAST</SelectItem>
+                <SelectItem value="mixed">Mixed</SelectItem>
+              </SelectContent>
+            </Select>
+          </Section>
+        )}
+
+        {/* ── Tags ── */}
+        <Section label="Tags" defaultOpen={false}>
+          <Input value={((d.tags as string[]) ?? []).join(", ")}
+            onChange={(e) => setField("tags", e.target.value.split(",").map((t) => t.trim()).filter(Boolean))}
+            placeholder="comma separated…" className="h-8 text-xs" />
+          <div className="flex flex-wrap gap-1 pt-1">
+            {SANSKRIT_TAG_SUGGESTIONS.slice(0, 8).map((tag) => (
+              <button key={tag} className="rounded-full bg-muted px-2 py-0.5 text-[10px] hover:bg-accent font-devanagari"
+                onClick={() => {
+                  const tags = (d.tags as string[]) ?? [];
+                  if (!tags.includes(tag)) setField("tags", [...tags, tag]);
+                }}>{tag}</button>
+            ))}
+          </div>
+        </Section>
+
+        {/* ── Notes ── */}
+        <Section label="Notes" defaultOpen={false}>
+          <Textarea value={(d.notes as string) ?? ""} onChange={(e) => setField("notes", e.target.value)}
+            rows={3} className="text-sm" placeholder="Private notes…" />
+        </Section>
+      </div>
+    </aside>
+  );
+}

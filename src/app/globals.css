@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-devanagari: var(--font-noto-devanagari);
+  --font-iast: var(--font-noto-serif);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+/* ─── Light theme (default) ─── */
+:root {
+  --radius: 0.625rem;
+
+  --background:        #f0eeea;
+  --foreground:        #1a1a2e;
+  --card:              #ffffff;
+  --card-foreground:   #1a1a2e;
+  --popover:           #ffffff;
+  --popover-foreground:#1a1a2e;
+
+  /* Miro-ish blue primary */
+  --primary:           #4262ff;
+  --primary-foreground:#ffffff;
+
+  --secondary:         #f4f3f0;
+  --secondary-foreground: #444;
+
+  --muted:             #f4f3f0;
+  --muted-foreground:  #888;
+
+  --accent:            #eceeff;
+  --accent-foreground: #4262ff;
+
+  --destructive:       #e5484d;
+  --destructive-foreground: #fff;
+
+  --border:            #e4e2dc;
+  --input:             #e4e2dc;
+  --ring:              #4262ff;
+
+  --canvas-bg:         #f0eeea;
+  --canvas-dot:        #d5d2cb;
+
+  /* UI shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* ─── Dark theme ─── */
+.dark {
+  --background:        #1c1c22;
+  --foreground:        #f0eff0;
+  --card:              #252529;
+  --card-foreground:   #f0eff0;
+  --popover:           #252529;
+  --popover-foreground:#f0eff0;
+  --primary:           #6385ff;
+  --primary-foreground:#ffffff;
+  --secondary:         #2e2e34;
+  --secondary-foreground: #ccc;
+  --muted:             #2e2e34;
+  --muted-foreground:  #888;
+  --accent:            #2a2e50;
+  --accent-foreground: #6385ff;
+  --destructive:       #f04;
+  --destructive-foreground: #fff;
+  --border:            #38383e;
+  --input:             #38383e;
+  --ring:              #6385ff;
+  --canvas-bg:         #18181d;
+  --canvas-dot:        #303038;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.2);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* Allow the browser to synthesize italic/bold for fonts (e.g. Geist, Inter)
+     that ship without a real italic/bold face — otherwise font-style:italic
+     produces no visible slant. */
+  font-synthesis: style weight;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Fonts ─── */
+.font-devanagari {
+  font-family: var(--font-noto-devanagari), "Noto Sans Devanagari", sans-serif;
+}
+.font-iast {
+  font-family: var(--font-noto-serif), Georgia, "Times New Roman", serif;
+}
+
+/* ─── Canvas background ─── */
+.vidya-canvas-bg {
+  background-color: var(--canvas-bg) !important;
+}
+
+/* ─── React Flow overrides ─── */
+.react-flow__renderer { border-radius: 0; }
+
+/* Miro-style resize handles */
+.react-flow__resize-control.handle {
+  width: 10px !important;
+  height: 10px !important;
+  background: white !important;
+  border: 2px solid var(--primary) !important;
+  border-radius: 3px !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2) !important;
+  transition: transform 0.1s !important;
+}
+.react-flow__resize-control.handle:hover {
+  transform: scale(1.3) !important;
+  background: var(--primary) !important;
+}
+.react-flow__resize-control.line {
+  border-color: var(--primary) !important;
+  border-width: 1.5px !important;
+  opacity: 0.6;
+}
+
+.react-flow__minimap {
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.react-flow__controls {
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-md) !important;
+  overflow: hidden;
+}
+.react-flow__controls button {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+.react-flow__controls button:last-child { border-bottom: none !important; }
+.react-flow__controls button:hover { background: var(--accent) !important; }
+.react-flow__controls button svg { fill: var(--foreground) !important; }
+
+.react-flow__edge-path { stroke-width: 2; }
+.react-flow__handle { transition: opacity 0.15s, transform 0.15s; }
+.react-flow__node.selected .react-flow__handle { opacity: 1 !important; }
+
+/* ─── TipTap ─── */
+.ProseMirror {
+  outline: none;
+  word-break: break-word;
+  min-height: 1em;
+  /* Inherit all typographic properties from the containing node */
+  font-size:   inherit;
+  font-family: inherit;
+  font-style:  inherit;
+  font-weight: inherit;
+  color:       inherit;
+  text-align:  inherit;
+  font-synthesis: style weight;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: normal; /* placeholder should not be italic */
+}
+.ProseMirror p { margin: 0; }
+.ProseMirror ul, .ProseMirror ol { padding-left: 1.25em; margin: 0.25em 0; }
+.ProseMirror h1 { font-size: 1.5em; font-weight: 700; }
+.ProseMirror h2 { font-size: 1.25em; font-weight: 600; }
+.ProseMirror h3 { font-size: 1.1em; font-weight: 600; }
+/* Force correct rendering for inline marks — browser synthesizes italic/bold if face is missing */
+.ProseMirror strong, .ProseMirror b { font-weight: 700 !important; }
+.ProseMirror em, .ProseMirror i     { font-style:  italic !important; }
+.ProseMirror u                      { text-decoration: underline; }
+.ProseMirror s                      { text-decoration: line-through; }
+/* Inline span styles from TextStyle extension must override inherited values */
+.ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
+mark { border-radius: 2px; padding: 0 2px; }
+
+/* ─── Floating panel glass effect ─── */
+.vidya-float-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+}

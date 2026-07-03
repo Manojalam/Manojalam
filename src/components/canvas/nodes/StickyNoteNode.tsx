@@ -1,0 +1,111 @@
+"use client";
+
+import { memo, useState, useRef, useEffect } from "react";
+import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
+import { cn } from "@/lib/utils";
+import { getTextStyle, resolveBorderWidth, resolveFillOpacity } from "@/lib/style-utils";
+import type { StickyNoteNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
+import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
+import { RichTextEditor } from "../RichTextEditor";
+import { InternalFillLayer } from "../InternalFillLayer";
+import { BorderLayers } from "../BorderLayers";
+
+const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
+  yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
+  pink:   { bg: "#fce7f3", border: "#f9a8d4", shadow: "#fbcfe8" },
+  blue:   { bg: "#dbeafe", border: "#93c5fd", shadow: "#bfdbfe" },
+  green:  { bg: "#dcfce7", border: "#86efac", shadow: "#bbf7d0" },
+  orange: { bg: "#ffedd5", border: "#fdba74", shadow: "#fed7aa" },
+  purple: { bg: "#f3e8ff", border: "#d8b4fe", shadow: "#e9d5ff" },
+};
+
+function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
+  const d  = data as StickyNoteNodeData;
+  const dd = d as Record<string, unknown>;
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const pushHistory    = useCanvasStore((s) => s.pushHistory);
+
+  const drawingModeNodeId   = useUIStore((s) => s.drawingModeNodeId);
+  const drawingRegionColor  = useUIStore((s) => s.drawingRegionColor);
+  const drawingRegionOpacity = useUIStore((s) => s.drawingRegionOpacity);
+  const isDrawing           = drawingModeNodeId === id;
+
+  const palette  = STICKY_PALETTES[d.color ?? "yellow"] ?? STICKY_PALETTES.yellow;
+  const bg       = (dd.fillColor as string) ?? palette.bg;
+  const border   = (dd.borderColor as string) ?? palette.border;
+  const bWidth   = resolveBorderWidth(dd);
+  const bStyle   = (dd.borderStyle as string) ?? "solid";
+  const bRadius  = typeof dd.borderRadius === "number" ? dd.borderRadius : 8;
+  const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
+  const fillOpacity  = resolveFillOpacity(dd);
+  const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
+
+  const [editing, setEditing] = useState(false);
+  const initialContent = useRef<string>(dd.richText as string || d.text || "");
+
+  useEffect(() => {
+    if (!selected && editing) { pushHistory(); setEditing(false); }
+  }, [selected, editing, pushHistory]);
+
+  return (
+    <>
+      <NodeResizer minWidth={140} minHeight={80} isVisible={selected && !editing && !isDrawing}
+        lineStyle={{ borderColor: border }} handleStyle={{ borderColor: border, backgroundColor: "white" }} />
+      <div
+        className={cn("relative w-full p-3 transition-shadow", selected ? "shadow-lg" : "shadow-md")}
+        style={{ backgroundColor: bg, border: `${bWidth}px ${bStyle} ${border}`, borderRadius: bRadius }}
+        onDoubleClick={() => {
+          if (isDrawing) return;
+          useCanvasStore.setState((s) => ({
+            nodes: s.nodes.map((n) => n.id === id ? { ...n, style: { ...(n.style ?? {}), height: undefined } } : n),
+          }));
+          setEditing(true);
+        }}
+      >
+        {/* Extra border layers */}
+        <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />
+
+        <Handle type="target" position={Position.Top}    className="!opacity-0 hover:!opacity-60" />
+        <Handle type="source" position={Position.Bottom} className="!opacity-0 hover:!opacity-60" />
+
+        {/* Internal fill regions (clipped to node bounds) */}
+        <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
+          <InternalFillLayer
+            regions={fillRegions}
+            isDrawingMode={isDrawing}
+            drawingColor={drawingRegionColor}
+            drawingOpacity={drawingRegionOpacity}
+            fillOpacity={fillOpacity}
+            interactive={selected && !isDrawing}
+            onRegionAdded={(r) => updateNodeData(id, { internalFillRegions: [...fillRegions, r] })}
+            onRegionUpdated={(rid, patch) => updateNodeData(id, {
+              internalFillRegions: fillRegions.map((x) => x.id === rid ? { ...x, ...patch } : x),
+            })}
+          />
+        </div>
+
+        {/* Folded-corner decoration */}
+        <div className="pointer-events-none absolute bottom-0 right-0 h-5 w-5"
+          style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${palette.shadow} 45%, transparent 45%)` }} />
+
+        <div className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
+          style={{ color: "#374151", ...getTextStyle(dd) }}>
+          <RichTextEditor
+            initialContent={initialContent.current}
+            editable={editing}
+            placeholder="Double-click to write…"
+            blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
+            onChange={(html) => {
+              const plain = html.replace(/<[^>]+>/g, "").trim();
+              updateNodeData(id, { richText: html, text: plain });
+            }}
+            onBlur={() => { pushHistory(); setEditing(false); }}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+export const StickyNoteNode = memo(StickyNoteNodeComponent);
