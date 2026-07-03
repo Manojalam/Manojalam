@@ -5,16 +5,20 @@ import Link from "next/link";
 import { Plus, LayoutTemplate, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { listBoards, isDemoMode } from "@/lib/storage/board-store";
+import { listBoards } from "@/lib/storage/board-store";
 import { formatRelativeDate } from "@/lib/utils";
 import type { VidyaBoard } from "@/lib/types";
+import { SupabaseSetupNotice } from "@/components/layout/SupabaseSetupNotice";
 
 export function DashboardContent() {
   const [boards, setBoards] = useState<VidyaBoard[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listBoards().then(setBoards).finally(() => setLoading(false));
+    listBoards()
+      .then(setBoards)
+      .catch(() => setBoards([]))
+      .finally(() => setLoading(false));
   }, []);
 
   const recent = boards.slice(0, 6);
@@ -26,13 +30,7 @@ export function DashboardContent() {
         <p className="text-muted-foreground">Your visual knowledge workspace</p>
       </div>
 
-      {isDemoMode() && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-          <p className="text-sm">
-            <strong>Demo Mode:</strong> Boards are saved locally in your browser. Add Supabase env vars to enable cloud sync.
-          </p>
-        </div>
-      )}
+      <SupabaseSetupNotice className="mb-6" />
 
       <div className="mb-8 flex flex-wrap gap-3">
         <Button asChild>

@@ -17,25 +17,46 @@ export default function BoardEditorPage() {
   const params = useParams();
   const boardId = params.boardId as string;
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const setBoard = useCanvasStore((s) => s.setBoard);
   const pushHistory = useCanvasStore((s) => s.pushHistory);
 
   useEffect(() => {
-    getBoard(boardId).then((board) => {
-      if (board) {
-        setBoard(board);
-        pushHistory();
-      }
-      setLoading(false);
-    });
+    getBoard(boardId)
+      .then((board) => {
+        if (board) {
+          setBoard(board);
+          pushHistory();
+        } else {
+          setNotFound(true);
+        }
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false));
   }, [boardId, setBoard, pushHistory]);
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">V</div>
+          <div className="logo-font h-8 w-8 rounded-xl bg-primary flex items-center justify-center text-primary-foreground text-base">म</div>
           <p className="text-sm text-muted-foreground animate-pulse">Loading board…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background p-6">
+        <div className="max-w-sm rounded-2xl border bg-card p-8 text-center shadow-sm">
+          <h1 className="text-lg font-semibold">Board not found</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Board not found or you do not have access.
+          </p>
+          <a href="/app/boards" className="mt-4 inline-block text-sm text-primary hover:underline">
+            Back to your boards
+          </a>
         </div>
       </div>
     );

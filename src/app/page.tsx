@@ -10,7 +10,7 @@ import {
   Cloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APP_NAME, APP_TAGLINE } from "@/lib/config";
+import { APP_NAME, APP_NAME_DEVANAGARI, APP_TAGLINE } from "@/lib/config";
 
 const FEATURES = [
   { icon: Infinity, title: "Infinite canvas", desc: "Pan, zoom, and organize ideas without limits." },
@@ -28,10 +28,10 @@ export default function LandingPage() {
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-accent/20">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold">
-            V
+          <div className="logo-font flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground text-lg">
+            म
           </div>
-          <span className="text-lg font-semibold">{APP_NAME}</span>
+          <span className="logo-font text-xl">{APP_NAME}</span>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" asChild>
@@ -45,7 +45,8 @@ export default function LandingPage() {
 
       <main className="mx-auto max-w-6xl px-6 pb-20">
         <section className="py-20 text-center">
-          <h1 className="text-5xl font-bold tracking-tight sm:text-6xl">{APP_NAME}</h1>
+          <h1 className="logo-font text-6xl tracking-tight sm:text-7xl">{APP_NAME}</h1>
+          <p className="logo-font mt-2 text-2xl text-muted-foreground/80">{APP_NAME_DEVANAGARI}</p>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">{APP_TAGLINE}</p>
           <div className="mt-8 flex justify-center gap-3">
             <Button size="lg" asChild>

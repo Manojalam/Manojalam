@@ -122,6 +122,11 @@ body {
 .font-iast {
   font-family: var(--font-noto-serif), Georgia, "Times New Roman", serif;
 }
+/* Sanskrit-inspired display font — ONLY for the Manojalam logo/branding text. */
+.logo-font {
+  font-family: var(--font-yatra-one), serif;
+  letter-spacing: 0.01em;
+}
 
 /* ─── Canvas background ─── */
 .vidya-canvas-bg {

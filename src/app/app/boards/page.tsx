@@ -14,7 +14,7 @@ export default function BoardsPage() {
   const [boards, setBoards] = useState<VidyaBoard[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = () => listBoards().then(setBoards);
+  const refresh = () => listBoards().then(setBoards).catch(() => setBoards([]));
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));

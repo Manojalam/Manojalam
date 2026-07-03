@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
-import { isDemoMode } from "@/lib/storage/board-store";
 import { downloadJson, downloadMarkdown } from "@/lib/export";
 import { importBoard } from "@/lib/storage/board-store";
 import { toast } from "sonner";
@@ -44,7 +43,7 @@ function SaveStatus({ status }: { status: string }) {
           status === "error"   && "bg-red-500",
         )}
       />
-      {isDemoMode() ? "Local" : { saved: "Saved", saving: "Saving…", unsaved: "Unsaved", error: "Error" }[status]}
+      {{ saved: "Saved", saving: "Saving…", unsaved: "Unsaved", error: "Error" }[status]}
     </span>
   );
 }
@@ -123,10 +122,10 @@ export function CanvasTopbar() {
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 shadow-sm">
       {/* Logo */}
       <Link href="/app" className="mr-1 flex shrink-0 items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground text-sm font-bold shadow-sm">
-          M
+        <div className="logo-font flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground text-base shadow-sm">
+          म
         </div>
-        <span className="hidden text-[13px] font-semibold text-foreground sm:inline tracking-tight">{APP_NAME}</span>
+        <span className="logo-font hidden text-[15px] text-foreground sm:inline tracking-tight">{APP_NAME}</span>
       </Link>
 
       {/* Divider */}
