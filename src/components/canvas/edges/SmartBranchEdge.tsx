@@ -9,7 +9,18 @@ import {
 } from "@xyflow/react";
 import type { VidyaEdgeData } from "@/lib/types";
 import { getNodeRect, type NodeRect } from "@/lib/layout";
-import { routeRectilinearEdge } from "@/lib/layout/edge-routing";
+import { routeLayoutEdge } from "@/lib/layout/edge-routing";
+
+const ROUTING_CORRIDOR_PAD = 360;
+const MAX_ROUTING_OBSTACLES = 80;
+
+function nearRouteCorridor(rect: NodeRect, source: NodeRect, target: NodeRect): boolean {
+  const minX = Math.min(source.x, target.x) - ROUTING_CORRIDOR_PAD;
+  const minY = Math.min(source.y, target.y) - ROUTING_CORRIDOR_PAD;
+  const maxX = Math.max(source.x + source.width, target.x + target.width) + ROUTING_CORRIDOR_PAD;
+  const maxY = Math.max(source.y + source.height, target.y + target.height) + ROUTING_CORRIDOR_PAD;
+  return rect.x < maxX && rect.x + rect.width > minX && rect.y < maxY && rect.y + rect.height > minY;
+}
 
 function SmartBranchEdgeComponent({
   id,
@@ -40,10 +51,15 @@ function SmartBranchEdgeComponent({
     const obstacles: NodeRect[] = [];
     for (const n of nodes) {
       if (n.id === source || n.id === target) continue;
-      obstacles.push(getNodeRect(n));
+      if (n.hidden || n.type === "frame") continue;
+      const rect = getNodeRect(n);
+      if (!nearRouteCorridor(rect, sourceRect, targetRect)) continue;
+      obstacles.push(rect);
+      if (obstacles.length >= MAX_ROUTING_OBSTACLES) break;
     }
 
-    const routed = routeRectilinearEdge(sourceRect, targetRect, obstacles);
+    const routed = routeLayoutEdge(sourceRect, targetRect, d.layoutMode, obstacles);
+    if (!routed.path) return null;
     path = routed.path;
     labelX = routed.labelX;
     labelY = routed.labelY;

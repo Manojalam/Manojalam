@@ -198,6 +198,7 @@ export interface FrameNodeData extends BaseNodeData {
   title: string;
   background?: string;
   presentationOrder?: number;
+  matrixFrameFor?: string;
 }
 
 export interface VidyaEdgeData extends Record<string, unknown> {
@@ -206,6 +207,7 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   width?: number;
   dashed?: boolean;
   hiddenInMatrix?: boolean;
+  layoutMode?: LayoutMode;
   arrowStart?: boolean;
   arrowEnd?: boolean;
   curveStyle?: EdgeCurveStyle;
