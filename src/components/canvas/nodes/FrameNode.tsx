@@ -13,24 +13,27 @@ function FrameNodeComponent({ data, selected }: NodeProps) {
       <NodeResizer minWidth={200} minHeight={150} isVisible={selected} />
       <div
         className={cn(
-          "h-full w-full rounded-xl border-2 border-dashed",
+          "h-full w-full rounded-xl border-2",
           selected && "ring-2 ring-primary ring-offset-1",
           d.locked && "pointer-events-none"
         )}
         style={{
           borderColor: d.color ?? "#6366f1",
+          borderStyle: d.borderStyle ?? "dashed",
           backgroundColor: d.background ?? `${d.color ?? "#6366f1"}08`,
         }}
       >
-        <div
-          className="absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm"
-          style={{
-            backgroundColor: d.color ?? "#6366f1",
-            color: "white",
-          }}
-        >
-          {d.title || "Frame"}
-        </div>
+        {d.title !== "" && (
+          <div
+            className="absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm"
+            style={{
+              backgroundColor: d.color ?? "#6366f1",
+              color: "white",
+            }}
+          >
+            {d.title || "Frame"}
+          </div>
+        )}
       </div>
     </>
   );

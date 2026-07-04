@@ -1,4 +1,5 @@
 import type { NodeRect } from "./index";
+import type { LayoutMode } from "@/lib/types";
 
 export type Side = "top" | "right" | "bottom" | "left";
 type Pt = { x: number; y: number };
@@ -170,6 +171,12 @@ function toRoundedPath(points: Pt[], radius = 8): string {
 
 export interface RouteResult { path: string; labelX: number; labelY: number }
 
+function makeRoute(points: Pt[]): RouteResult {
+  if (!points.length) return { path: "", labelX: 0, labelY: 0 };
+  const mid = points[Math.floor(points.length / 2)];
+  return { path: toRoundedPath(points), labelX: mid.x, labelY: mid.y };
+}
+
 /**
  * Route an orthogonal edge from source to target, avoiding obstacle rects.
  * Picks the candidate path with the fewest obstacle intersections, then the
@@ -267,6 +274,70 @@ export function routeRectilinearEdge(
   }
 
   const points = best ?? [sidePoint(sourceRect, "right", 0.5), sidePoint(targetRect, "left", 0.5)];
-  const mid = points[Math.floor(points.length / 2)];
-  return { path: toRoundedPath(points), labelX: mid.x, labelY: mid.y };
+  return makeRoute(points);
+}
+
+function routeListEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
+  const source = sidePoint(sourceRect, "left", 0.5);
+  const target = sidePoint(targetRect, "left", 0.5);
+  const minY = Math.min(source.y, target.y);
+  const maxY = Math.max(source.y, target.y);
+  let laneX = Math.min(sourceRect.x, targetRect.x) - 36;
+  for (const obstacle of obstacles) {
+    const intersectsVerticalRange = obstacle.y < maxY + EDGE_OBSTACLE_PADDING &&
+      obstacle.y + obstacle.height > minY - EDGE_OBSTACLE_PADDING;
+    if (intersectsVerticalRange && obstacle.x <= laneX + EDGE_OBSTACLE_PADDING) {
+      laneX = obstacle.x - EDGE_OBSTACLE_PADDING;
+    }
+  }
+  return makeRoute([source, { x: laneX, y: source.y }, { x: laneX, y: target.y }, target]);
+}
+
+function routeHorizontalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
+  const sourceSide: Side = targetRect.x >= sourceRect.x ? "right" : "left";
+  const targetSide: Side = sourceSide === "right" ? "left" : "right";
+  const source = sidePoint(sourceRect, sourceSide, 0.5);
+  const target = sidePoint(targetRect, targetSide, 0.5);
+  const midX = (source.x + target.x) / 2;
+  const points = [source, { x: midX, y: source.y }, { x: midX, y: target.y }, target];
+  return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
+    ? routeRectilinearEdge(sourceRect, targetRect, obstacles)
+    : makeRoute(points);
+}
+
+function routeVerticalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
+  const sourceSide: Side = targetRect.y >= sourceRect.y ? "bottom" : "top";
+  const targetSide: Side = sourceSide === "bottom" ? "top" : "bottom";
+  const source = sidePoint(sourceRect, sourceSide, 0.5);
+  const target = sidePoint(targetRect, targetSide, 0.5);
+  const midY = (source.y + target.y) / 2;
+  const points = [source, { x: source.x, y: midY }, { x: target.x, y: midY }, target];
+  return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
+    ? routeRectilinearEdge(sourceRect, targetRect, obstacles)
+    : makeRoute(points);
+}
+
+export function routeLayoutEdge(
+  sourceRect: NodeRect,
+  targetRect: NodeRect,
+  layoutMode: LayoutMode | undefined,
+  obstacles: NodeRect[]
+): RouteResult {
+  switch (layoutMode) {
+    case "list":
+      return routeListEdge(sourceRect, targetRect, obstacles);
+    case "horizontal":
+    case "linear":
+      return routeHorizontalEdge(sourceRect, targetRect, obstacles);
+    case "vertical":
+    case "topDown":
+      return routeVerticalEdge(sourceRect, targetRect, obstacles);
+    case "matrix":
+      return makeRoute([]);
+    case "radial":
+    case "fromParentFreeForm":
+    case "freeForm":
+    default:
+      return routeRectilinearEdge(sourceRect, targetRect, obstacles);
+  }
 }

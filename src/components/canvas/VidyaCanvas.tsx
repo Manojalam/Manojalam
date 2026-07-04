@@ -228,7 +228,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         hidden: hiddenInMatrix,
         reconnectable: true,
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: { edgeType: "branch", curveStyle: route?.curveStyle ?? "smooth", hiddenInMatrix },
+        data: { edgeType: "branch", curveStyle: route?.curveStyle ?? "smooth", hiddenInMatrix, layoutMode: mode },
       };
       // Record parent→child relationship if the target has no parent yet.
       const hasParent = targetNode && (targetNode.data as { parentId?: string | null }).parentId;
@@ -262,7 +262,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         hidden: hiddenInMatrix,
         reconnectable: true,
         markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: { ...(edge.data ?? {}), edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix },
+        data: { ...(edge.data ?? {}), edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix, layoutMode: mode },
       };
     });
 

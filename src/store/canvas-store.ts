@@ -12,6 +12,7 @@ import {
   routeForMode,
   assignDefaultHandles,
   resolveInsertedNodeCollisions,
+  getNodeRect,
   type LayoutPlacement,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
@@ -92,6 +93,61 @@ function findLayoutRoot(nodeId: string, nodes: Node[], hierarchy: ReturnType<typ
     cur = hierarchy.get(cur)?.parentId ?? null;
   }
   return { id: fallback };
+}
+
+const BOARD_MATRIX_FRAME_KEY = "__board__";
+
+function matrixFrameKey(rootId?: string): string {
+  return rootId ?? BOARD_MATRIX_FRAME_KEY;
+}
+
+function autoMatrixFrameKey(node: Node): string | null {
+  const data = node.data as { matrixFrameFor?: unknown } | undefined;
+  return node.type === "frame" && typeof data?.matrixFrameFor === "string" ? data.matrixFrameFor : null;
+}
+
+function isAutoMatrixFrame(node: Node): boolean {
+  return autoMatrixFrameKey(node) !== null;
+}
+
+function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enabled: boolean): Node[] {
+  const withoutCurrentFrame = nodes.filter((n) => {
+    const frameKey = autoMatrixFrameKey(n);
+    if (!frameKey) return true;
+    return key !== BOARD_MATRIX_FRAME_KEY && frameKey !== key;
+  });
+
+  if (!enabled) return withoutCurrentFrame;
+
+  const scopedNodes = withoutCurrentFrame.filter((n) => scopeIds.has(n.id));
+  if (!scopedNodes.length) return withoutCurrentFrame;
+
+  const rects = scopedNodes.map(getNodeRect);
+  const minX = Math.min(...rects.map((r) => r.x));
+  const minY = Math.min(...rects.map((r) => r.y));
+  const maxX = Math.max(...rects.map((r) => r.x + r.width));
+  const maxY = Math.max(...rects.map((r) => r.y + r.height));
+  const pad = 12;
+  const frame: Node = {
+    id: `matrix-frame-${key}`,
+    type: "frame",
+    position: { x: minX - pad, y: minY - pad },
+    data: {
+      title: "",
+      color: "#334155",
+      background: "rgba(15, 23, 42, 0.015)",
+      borderStyle: "solid",
+      locked: true,
+      matrixFrameFor: key,
+      tags: [],
+    },
+    style: { width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 },
+    zIndex: -10,
+    selectable: false,
+    draggable: false,
+  };
+
+  return [...withoutCurrentFrame, frame];
 }
 
 /**
@@ -330,7 +386,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       sourceHandle: route.sourceHandle,
       targetHandle: route.targetHandle,
       markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-      data: { edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix },
+      data: { edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix, layoutMode: mode },
     };
     // Record child in the parent's sibling order.
     const prevOrder = (parentData.childOrder as string[]) ?? [];
@@ -348,9 +404,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const placements = layoutRoot.mode
       ? computeLayout(nextNodes, nextEdges, layoutRoot.mode, { rootId: layoutRoot.id })
       : resolveInsertedNodeCollisions(nextNodes, childId);
+    const placedNodes = applyPlacements(nextNodes, placements);
+    const finalNodes = layoutRoot.mode === "matrix"
+      ? withMatrixFrame(placedNodes, new Set(getSubtree(layoutRoot.id, nextHierarchy)), matrixFrameKey(layoutRoot.id), true)
+      : placedNodes;
 
     set({
-      nodes: applyPlacements(nextNodes, placements),
+      nodes: finalNodes,
       edges: nextEdges,
       selectedNodeIds: [childId],
       saveStatus: "unsaved",
@@ -395,7 +455,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         sourceHandle: route.sourceHandle,
         targetHandle: route.targetHandle,
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: { edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix },
+        data: { edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix, layoutMode: edgeMode },
       });
     }
     const nextNodes = [...nodes, newNode];
@@ -404,9 +464,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const placements = layoutRoot.mode
       ? computeLayout(nextNodes, newEdges, layoutRoot.mode, { rootId: layoutRoot.id })
       : resolveInsertedNodeCollisions(nextNodes, siblingId);
+    const placedNodes = applyPlacements(nextNodes, placements);
+    const finalNodes = layoutRoot.mode === "matrix"
+      ? withMatrixFrame(placedNodes, new Set(getSubtree(layoutRoot.id, nextHierarchy)), matrixFrameKey(layoutRoot.id), true)
+      : placedNodes;
 
     set({
-      nodes: applyPlacements(nextNodes, placements),
+      nodes: finalNodes,
       edges: newEdges,
       selectedNodeIds: [siblingId],
       saveStatus: "unsaved",
@@ -453,19 +517,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   applyLayout: (mode) => {
     const { nodes, edges, selectedNodeIds } = get();
     if (!nodes.length) return;
-    const rootId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined;
+    const layoutNodes = nodes.filter((n) => !isAutoMatrixFrame(n));
+    const selectedRootId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined;
+    const rootId = selectedRootId && layoutNodes.some((n) => n.id === selectedRootId) ? selectedRootId : undefined;
 
-    const hierarchy = buildHierarchy(nodes, edges);
-    const positions = computeLayout(nodes, edges, mode, { rootId });
+    const hierarchy = buildHierarchy(layoutNodes, edges);
+    const positions = computeLayout(layoutNodes, edges, mode, { rootId });
 
     // Nodes in scope: the selected subtree, or the whole board when nothing selected.
     const scopeIds = rootId
       ? new Set(getSubtree(rootId, hierarchy))
-      : new Set(nodes.map((n) => n.id));
+      : new Set(layoutNodes.map((n) => n.id));
 
     get().pushHistory();
 
-    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const byId = new Map(layoutNodes.map((n) => [n.id, n]));
 
     // Reroute parent→child edges within scope, using post-layout geometry.
     const newEdges = edges.map((e) => {
@@ -477,7 +543,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         return {
           ...e,
           hidden: hiddenInMatrix,
-          data: { ...(e.data ?? {}), hiddenInMatrix },
+          data: { ...(e.data ?? {}), hiddenInMatrix, layoutMode: mode },
         };
       }
       const parent = byId.get(e.source);
@@ -493,12 +559,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         sourceHandle: route.sourceHandle,
         targetHandle: route.targetHandle,
         markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: { ...(e.data ?? {}), edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix },
+        data: { ...(e.data ?? {}), edgeType: "branch", curveStyle: route.curveStyle, hiddenInMatrix, layoutMode: mode },
       };
     });
 
     // Apply positions + persist hierarchy metadata for in-scope nodes.
-    const newNodes = nodes.map((n) => {
+    const laidOutNodes = layoutNodes.map((n) => {
       const inScope = scopeIds.has(n.id);
       const pos = positions[n.id];
       let data = n.data as Record<string, unknown>;
@@ -512,6 +578,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         : n.style;
       return { ...n, ...(pos ? { position: { x: pos.x, y: pos.y } } : {}), style, data };
     });
+    const existingMatrixFrames = nodes.filter(isAutoMatrixFrame);
+    const frameKey = matrixFrameKey(rootId);
+    const newNodes = withMatrixFrame(
+      [...laidOutNodes, ...existingMatrixFrames],
+      scopeIds,
+      frameKey,
+      mode === "matrix"
+    );
 
     set({ nodes: newNodes, edges: newEdges, saveStatus: "unsaved" });
   },
