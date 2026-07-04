@@ -204,16 +204,28 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   );
 
   const onConnect = useCallback(
-    (connection: { source: string; target: string }) => {
-      useCanvasStore.getState().pushHistory();
+    (connection: {
+      source: string; target: string;
+      sourceHandle?: string | null; targetHandle?: string | null;
+    }) => {
+      const cs = useCanvasStore.getState();
+      cs.pushHistory();
       const newEdge: Edge = {
         id: generateId(),
         source: connection.source,
         target: connection.target,
+        sourceHandle: connection.sourceHandle ?? undefined,
+        targetHandle: connection.targetHandle ?? undefined,
         type: "branch",
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: { edgeType: "branch", curveStyle: "smooth" },
       };
+      // Record parent→child relationship if the target has no parent yet.
+      const target = cs.nodes.find((n) => n.id === connection.target);
+      const hasParent = target && (target.data as { parentId?: string | null }).parentId;
+      if (target && !hasParent) {
+        cs.updateNodeData(connection.target, { parentId: connection.source });
+      }
       setEdges((eds) => [...eds, newEdge]);
     },
     [setEdges]

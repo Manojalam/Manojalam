@@ -1,9 +1,10 @@
 "use client";
 
 import { memo, useState, useRef, useEffect } from "react";
-import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
+import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
@@ -65,10 +66,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
         {/* Extra border layers */}
         <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />
 
-        <Handle type="target" position={Position.Top}    className="!opacity-0 group-hover:!opacity-50" />
-        <Handle type="source" position={Position.Bottom} className="!opacity-0 group-hover:!opacity-50" />
-        <Handle type="target" position={Position.Left}   id="l" className="!opacity-0 group-hover:!opacity-50" />
-        <Handle type="source" position={Position.Right}  id="r" className="!opacity-0 group-hover:!opacity-50" />
+        <NodeHandles color={borderColor ?? "#6366f1"} />
 
         {/* Add connected child */}
         {!isDrawing && (
