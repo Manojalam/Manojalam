@@ -7,7 +7,9 @@ import type { BoardSettings, SaveStatus, VidyaBoard } from "@/lib/types";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import { HISTORY_LIMIT } from "@/lib/config";
 import { generateId } from "@/lib/utils";
-import { computeLayout, type LayoutMode } from "@/lib/layout";
+import { computeLayout, routeForMode, assignDefaultHandles } from "@/lib/layout";
+import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import type { LayoutMode } from "@/lib/types";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -113,17 +115,28 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   searchQuery: "",
   searchResults: [],
 
-  setBoard: (board) =>
+  setBoard: (board) => {
+    const migrated = migrateNodes(board.content.nodes);
+    // Infer + persist parentId from directed edges (for old boards).
+    const hierarchy = buildHierarchy(migrated, board.content.edges);
+    const nodes = migrated.map((n) => {
+      const h = hierarchy.get(n.id);
+      const existing = (n.data as { parentId?: string | null }).parentId;
+      return { ...n, data: { ...n.data, parentId: existing ?? h?.parentId ?? null } };
+    });
+    // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
+    const edges = assignDefaultHandles(nodes, board.content.edges);
     set({
       board,
-      nodes: migrateNodes(board.content.nodes),
-      edges: board.content.edges,
+      nodes,
+      edges,
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings: board.content.settings ?? DEFAULT_BOARD_SETTINGS,
       saveStatus: "saved",
       history: [],
       historyIndex: -1,
-    }),
+    });
+  },
 
   setNodes: (nodesOrFn) =>
     set((state) => ({
@@ -253,6 +266,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const childCount = edges.filter((e) => e.source === parentId).length;
     const parentData = parent.data as Record<string, unknown>;
     const childType = childTypeFor(parent.type);
+    const mode = (parentData.layoutMode as LayoutMode) ?? "horizontal";
     const newNode: Node = {
       id: childId,
       type: childType,
@@ -264,20 +278,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...inheritStyle(parentData),
         text: "New Idea",
         tags: [],
+        parentId,
         ...(childType === "shape" && { shapeType: (parentData.shapeType as string) ?? "rounded" }),
       },
       style: parent.style ? { ...parent.style, height: undefined } : undefined,
     };
+    const route = routeForMode(mode, parent, newNode);
     const newEdge: Edge = {
       id: generateId(),
       source: parentId,
       target: childId,
       type: "branch",
+      sourceHandle: route.sourceHandle,
+      targetHandle: route.targetHandle,
       markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-      data: { edgeType: "branch", curveStyle: "smooth" },
+      data: { edgeType: "branch", curveStyle: route.curveStyle },
     };
+    // Record child in the parent's sibling order.
+    const prevOrder = (parentData.childOrder as string[]) ?? [];
     set({
-      nodes: [...nodes, newNode],
+      nodes: [
+        ...nodes.map((n) =>
+          n.id === parentId
+            ? { ...n, data: { ...n.data, childOrder: [...prevOrder, childId] } }
+            : n
+        ),
+        newNode,
+      ],
       edges: [...edges, newEdge],
       selectedNodeIds: [childId],
       saveStatus: "unsaved",
@@ -293,6 +320,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const siblingId = generateId();
     const nodeData = node.data as Record<string, unknown>;
     const sibType = childTypeFor(node.type);
+    const parentNode = parentEdge ? nodes.find((n) => n.id === parentEdge.source) : undefined;
+    const mode = (parentNode?.data as Record<string, unknown> | undefined)?.layoutMode as LayoutMode | undefined;
     const newNode: Node = {
       id: siblingId,
       type: sibType,
@@ -301,19 +330,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...inheritStyle(nodeData),
         text: "New Idea",
         tags: [],
+        parentId: parentEdge?.source ?? null,
         ...(sibType === "shape" && { shapeType: (nodeData.shapeType as string) ?? "rounded" }),
       },
       style: node.style ? { ...node.style, height: undefined } : undefined,
     };
     const newEdges = [...edges];
-    if (parentEdge) {
+    if (parentEdge && parentNode) {
+      const route = routeForMode(mode ?? "horizontal", parentNode, newNode);
       newEdges.push({
         id: generateId(),
         source: parentEdge.source,
         target: siblingId,
         type: "branch",
+        sourceHandle: route.sourceHandle,
+        targetHandle: route.targetHandle,
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: { edgeType: "branch", curveStyle: "smooth" },
+        data: { edgeType: "branch", curveStyle: route.curveStyle },
       });
     }
     set({
@@ -365,15 +398,51 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const { nodes, edges, selectedNodeIds } = get();
     if (!nodes.length) return;
     const rootId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined;
+
+    const hierarchy = buildHierarchy(nodes, edges);
     const positions = computeLayout(nodes, edges, mode, { rootId });
-    if (!Object.keys(positions).length) return;
+
+    // Nodes in scope: the selected subtree, or the whole board when nothing selected.
+    const scopeIds = rootId
+      ? new Set(getSubtree(rootId, hierarchy))
+      : new Set(nodes.map((n) => n.id));
+
     get().pushHistory();
-    set({
-      nodes: nodes.map((n) =>
-        positions[n.id] ? { ...n, position: positions[n.id] } : n
-      ),
-      saveStatus: "unsaved",
+
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+
+    // Reroute parent→child edges within scope, using post-layout geometry.
+    const newEdges = edges.map((e) => {
+      if (!scopeIds.has(e.source) || !scopeIds.has(e.target)) return e;
+      const parent = byId.get(e.source);
+      const child = byId.get(e.target);
+      if (!parent || !child) return e;
+      const pParent = positions[e.source] ? { ...parent, position: positions[e.source] } : parent;
+      const pChild = positions[e.target] ? { ...child, position: positions[e.target] } : child;
+      const route = routeForMode(mode, pParent, pChild);
+      return {
+        ...e,
+        sourceHandle: route.sourceHandle,
+        targetHandle: route.targetHandle,
+        markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
+        data: { ...(e.data ?? {}), edgeType: "branch", curveStyle: route.curveStyle },
+      };
     });
+
+    // Apply positions + persist hierarchy metadata for in-scope nodes.
+    const newNodes = nodes.map((n) => {
+      const inScope = scopeIds.has(n.id);
+      const pos = positions[n.id];
+      let data = n.data as Record<string, unknown>;
+      if (inScope) {
+        const h = hierarchy.get(n.id);
+        data = { ...data, parentId: h?.parentId ?? null, childOrder: h?.childIds ?? [] };
+        if (n.id === rootId) data.layoutMode = mode;
+      }
+      return { ...n, ...(pos ? { position: pos } : {}), data };
+    });
+
+    set({ nodes: newNodes, edges: newEdges, saveStatus: "unsaved" });
   },
 
   updateBoardTitle: (title) =>

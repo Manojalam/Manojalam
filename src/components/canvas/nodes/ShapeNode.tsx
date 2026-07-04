@@ -1,9 +1,10 @@
 "use client";
 
 import { memo, useState, useRef, useEffect } from "react";
-import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
+import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity,
@@ -81,15 +82,12 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
       <NodeResizer minWidth={60} minHeight={60} isVisible={selected && !editing && !isDrawing}
         keepAspectRatio={shapeType === "circle" || shapeType === "star"} />
 
-      <Handle type="target" position={Position.Top}    className="!opacity-0 hover:!opacity-70" />
-      <Handle type="source" position={Position.Bottom} className="!opacity-0 hover:!opacity-70" />
-      <Handle type="target" position={Position.Left}   className="!opacity-0 hover:!opacity-70" />
-      <Handle type="source" position={Position.Right}  className="!opacity-0 hover:!opacity-70" />
-
       <div
         className={cn("group relative flex h-full w-full items-center justify-center", isDiamond && "rotate-45")}
         onDoubleClick={() => { if (!isDrawing) setEditing(true); }}
       >
+        <NodeHandles color={borderColor} />
+
         {/* Add connected child */}
         {!isDrawing && (
           <button

@@ -43,6 +43,17 @@ export type CanvasTool =
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
 
+export type LayoutMode =
+  | "freeForm"
+  | "fromParentFreeForm"
+  | "horizontal"
+  | "vertical"
+  | "list"
+  | "topDown"
+  | "linear"
+  | "radial"
+  | "matrix";
+
 export interface BoardSettings {
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
@@ -118,6 +129,13 @@ export interface BaseNodeData extends Record<string, unknown> {
   tags?: string[];
   notes?: string;
   locked?: boolean;
+  // ── Hierarchy / layout metadata ──
+  /** Structural parent (source of the parent→child edge). null/undefined = root. */
+  parentId?: string | null;
+  /** Explicit sibling order (child node ids) for stable layouts. */
+  childOrder?: string[];
+  /** Layout mode last applied to this node's branch (set on the branch root). */
+  layoutMode?: LayoutMode;
 }
 
 export interface MindMapNodeData extends BaseNodeData {
