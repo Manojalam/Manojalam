@@ -13,6 +13,7 @@ import {
   type Connection,
   type Node,
   type Edge,
+  type Viewport,
   type OnNodesChange,
   type OnEdgesChange,
   applyNodeChanges,
@@ -41,6 +42,8 @@ interface Guides { h: number[]; v: number[] }
 const GUIDE_THRESHOLD = 6; // px in flow coords
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
+const LONG_PRESS_PAN_MS = 180;
+const LONG_PRESS_CANCEL_DISTANCE = 7;
 
 function calcGuides(
   dragged: { x: number; y: number; w: number; h: number },
@@ -82,6 +85,20 @@ function touchPair(touches: React.TouchList) {
   };
   const distance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
   return { center, distance };
+}
+
+function shouldSkipLongPressPan(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return true;
+  return Boolean(target.closest([
+    "button",
+    "input",
+    "textarea",
+    "select",
+    "[contenteditable='true']",
+    ".react-flow__handle",
+    ".react-flow__resize-control",
+    ".react-flow__edgeupdater",
+  ].join(",")));
 }
 
 /** Renders guide lines in SCREEN coordinates using the live ReactFlow viewport */
@@ -127,6 +144,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     flowCenter: { x: number; y: number };
     startZoom: number;
   } | null>(null);
+  const longPressPanRef = useRef<{
+    pointerId: number;
+    start: { x: number; y: number };
+    startViewport: Viewport;
+    lastViewport: Viewport;
+    active: boolean;
+    timeout: number;
+  } | null>(null);
+  const suppressNextContextMenuRef = useRef(false);
 
   // Debounced autosave — reads state directly, no subscriptions
   const debouncedSave = useMemo(
@@ -460,8 +486,75 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     settings.background === "grid"  ? BackgroundVariant.Lines :
     settings.background === "dots"  ? BackgroundVariant.Dots  : undefined;
 
+  const clearLongPressPan = useCallback(() => {
+    if (longPressPanRef.current) window.clearTimeout(longPressPanRef.current.timeout);
+    longPressPanRef.current = null;
+  }, []);
+
+  const onPointerDownCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isTouchDevice || (event.pointerType !== "touch" && event.pointerType !== "pen")) return;
+    if (!event.isPrimary || activeTool === "connector" || useUIStore.getState().drawingModeNodeId) return;
+    if (shouldSkipLongPressPan(event.target)) return;
+
+    clearLongPressPan();
+    const start = { x: event.clientX, y: event.clientY };
+    const viewport = getViewport();
+    const pointerId = event.pointerId;
+    const timeout = window.setTimeout(() => {
+      const current = longPressPanRef.current;
+      if (current?.pointerId === pointerId) current.active = true;
+    }, LONG_PRESS_PAN_MS);
+
+    longPressPanRef.current = {
+      pointerId,
+      start,
+      startViewport: viewport,
+      lastViewport: viewport,
+      active: false,
+      timeout,
+    };
+  }, [activeTool, clearLongPressPan, getViewport, isTouchDevice]);
+
+  const onPointerMoveCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const pan = longPressPanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - pan.start.x;
+    const dy = event.clientY - pan.start.y;
+    if (!pan.active) {
+      if (Math.hypot(dx, dy) > LONG_PRESS_CANCEL_DISTANCE) clearLongPressPan();
+      return;
+    }
+
+    const nextViewport = {
+      x: pan.startViewport.x + dx,
+      y: pan.startViewport.y + dy,
+      zoom: pan.startViewport.zoom,
+    };
+    pan.lastViewport = nextViewport;
+    suppressNextContextMenuRef.current = true;
+    void setFlowViewport(nextViewport, { duration: 0 });
+    event.preventDefault();
+    event.stopPropagation();
+  }, [clearLongPressPan, setFlowViewport]);
+
+  const onPointerEndCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const pan = longPressPanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    if (pan.active) setStoredViewport(pan.lastViewport);
+    clearLongPressPan();
+  }, [clearLongPressPan, setStoredViewport]);
+
+  const onContextMenuCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressNextContextMenuRef.current) return;
+    suppressNextContextMenuRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
   const onTouchStartCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (!isTouchDevice || event.touches.length !== 2) return;
+    clearLongPressPan();
     const pair = touchPair(event.touches);
     if (!pair || pair.distance <= 0) return;
     const viewport = getViewport();
@@ -472,7 +565,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     };
     event.preventDefault();
     event.stopPropagation();
-  }, [getViewport, isTouchDevice, screenToFlowPosition]);
+  }, [clearLongPressPan, getViewport, isTouchDevice, screenToFlowPosition]);
 
   const onTouchMoveCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     const pinch = pinchRef.current;
@@ -537,6 +630,11 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       nodeDragThreshold={isTouchDevice ? 6 : 1}
       connectionRadius={isTouchDevice ? 42 : 20}
       deleteKeyCode={null}
+      onPointerDownCapture={onPointerDownCapture}
+      onPointerMoveCapture={onPointerMoveCapture}
+      onPointerUpCapture={onPointerEndCapture}
+      onPointerCancelCapture={onPointerEndCapture}
+      onContextMenuCapture={onContextMenuCapture}
       onTouchStartCapture={onTouchStartCapture}
       onTouchMoveCapture={onTouchMoveCapture}
       onTouchEndCapture={onTouchEndCapture}

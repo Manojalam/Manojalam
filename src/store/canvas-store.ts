@@ -199,6 +199,182 @@ function getNodeText(data: Record<string, unknown>): string {
   return fields.map((f) => data[f]).filter(Boolean).join(" ");
 }
 
+const AUTOFIT_NODE_TYPES = new Set(["shape", "sticky", "text", "mindmap"]);
+const AUTOFIT_FIELDS = new Set([
+  "text", "richText", "label", "title", "topic", "devanagari", "iast", "translation",
+  "rule", "fontSize", "fontFamily", "fontStyle", "fontWeight", "textAlign",
+]);
+
+function clampValue(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function stripHtmlToLines(value: string): string[] {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function nodeTextLines(data: Record<string, unknown>): string[] {
+  const richText = typeof data.richText === "string" ? stripHtmlToLines(data.richText) : [];
+  if (richText.length) return richText;
+  const text = getNodeText(data);
+  return text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function maxInlineFontSize(data: Record<string, unknown>): number | null {
+  if (typeof data.richText !== "string") return null;
+  const matches = [...data.richText.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/gi)];
+  const sizes = matches.map((match) => Number(match[1])).filter(Number.isFinite);
+  return sizes.length ? Math.max(...sizes) : null;
+}
+
+function wrappedLineCount(lines: string[], maxChars: number): number {
+  let count = 0;
+  for (const line of lines) {
+    const words = line.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      count += 1;
+      continue;
+    }
+    let current = 0;
+    for (const word of words) {
+      const wordLength = word.length;
+      if (wordLength >= maxChars) {
+        if (current > 0) {
+          count += 1;
+          current = 0;
+        }
+        count += Math.ceil(wordLength / maxChars);
+        continue;
+      }
+      const nextLength = current === 0 ? wordLength : current + 1 + wordLength;
+      if (nextLength > maxChars) {
+        count += 1;
+        current = wordLength;
+      } else {
+        current = nextLength;
+      }
+    }
+    if (current > 0) count += 1;
+  }
+  return Math.max(1, count);
+}
+
+function contentFitSize(node: Node): { width: number; height: number } | null {
+  if (!node.type || !AUTOFIT_NODE_TYPES.has(node.type)) return null;
+  const data = node.data as Record<string, unknown>;
+  const lines = nodeTextLines(data);
+  if (!lines.length) return null;
+
+  const { w: currentWidth, h: currentHeight } = sizeOf(node);
+  const baseFontSize = typeof data.fontSize === "number" ? data.fontSize : 14;
+  const fontSize = clampValue(Math.max(baseFontSize, maxInlineFontSize(data) ?? 0), 10, 96);
+  const charWidth = Math.max(6, fontSize * 0.58);
+  const lineHeight = fontSize * 1.38;
+  const text = lines.join(" ");
+  const words = text.split(/\s+/).filter(Boolean);
+  const longestWord = words.reduce((max, word) => Math.max(max, word.length), 0);
+
+  const minWidth = node.type === "text" ? 160 : node.type === "sticky" ? 180 : 140;
+  const minHeight = node.type === "sticky" ? 90 : node.type === "shape" ? 70 : 48;
+  const maxWidth = node.type === "text" ? 680 : 560;
+  const padX = node.type === "sticky" ? 36 : 44;
+  const padY = node.type === "sticky" ? 34 : 30;
+  const preferredChars = clampValue(
+    Math.ceil(Math.max(longestWord + 3, Math.sqrt(Math.max(text.length, 1)) * 4.2)),
+    18,
+    64
+  );
+  const width = clampValue(Math.ceil(preferredChars * charWidth + padX), minWidth, maxWidth);
+  const charsPerLine = Math.max(8, Math.floor((width - padX) / charWidth));
+  const height = Math.ceil(wrappedLineCount(lines, charsPerLine) * lineHeight + padY);
+
+  let targetWidth = Math.max(currentWidth, width);
+  let targetHeight = Math.max(currentHeight, Math.max(minHeight, height));
+  const shapeType = (data.shapeType as string | undefined) ?? "";
+  if (shapeType === "circle" || shapeType === "star") {
+    const size = Math.max(targetWidth, targetHeight);
+    targetWidth = size;
+    targetHeight = size;
+  }
+  if (shapeType === "diamond") {
+    targetWidth = Math.max(targetWidth, Math.ceil(width * 1.2));
+    targetHeight = Math.max(targetHeight, Math.ceil(height * 1.2));
+  }
+
+  if (targetWidth <= currentWidth && targetHeight <= currentHeight) return null;
+  return { width: Math.ceil(targetWidth), height: Math.ceil(targetHeight) };
+}
+
+function nodeRectWithSize(node: Node, position = node.position) {
+  const { w, h } = sizeOf(node);
+  return { id: node.id, x: position.x, y: position.y, width: w, height: h };
+}
+
+function findFreeResizedPosition(node: Node, nodes: Node[]) {
+  const obstacles = nodes
+    .filter((candidate) => candidate.id !== node.id && candidate.type !== "frame" && !isAutoMatrixFrame(candidate))
+    .map(getNodeRect);
+  const padding = 32;
+  const rectAt = (position: { x: number; y: number }) => nodeRectWithSize(node, position);
+  const isFree = (position: { x: number; y: number }) =>
+    obstacles.every((obstacle) => !rectsOverlap(rectAt(position), obstacle, padding));
+
+  if (isFree(node.position)) return node.position;
+
+  const { w, h } = sizeOf(node);
+  const stepX = Math.max(w + padding * 2, 140);
+  const stepY = Math.max(h + padding * 2, 120);
+  const base = node.position;
+  const candidates: Array<{ x: number; y: number }> = [
+    { x: base.x + stepX, y: base.y },
+    { x: base.x, y: base.y + stepY },
+    { x: base.x + stepX, y: base.y + stepY },
+    { x: base.x - stepX, y: base.y },
+    { x: base.x, y: base.y - stepY },
+    { x: base.x + stepX, y: base.y - stepY },
+    { x: base.x - stepX, y: base.y + stepY },
+  ];
+
+  for (let ring = 2; ring <= 7; ring++) {
+    candidates.push(
+      { x: base.x + stepX * ring, y: base.y },
+      { x: base.x, y: base.y + stepY * ring },
+      { x: base.x + stepX * ring, y: base.y + stepY },
+      { x: base.x - stepX * ring, y: base.y },
+      { x: base.x, y: base.y - stepY * ring }
+    );
+  }
+
+  return candidates.find(isFree) ?? node.position;
+}
+
+function patchNeedsContentFit(patch: Record<string, unknown>): boolean {
+  return Object.keys(patch).some((key) => AUTOFIT_FIELDS.has(key));
+}
+
+function fitNodeAfterContentChange(node: Node, nodes: Node[]): Node {
+  const fit = contentFitSize(node);
+  if (!fit) return node;
+  const resized = {
+    ...node,
+    style: { ...(node.style ?? {}), width: fit.width, height: fit.height },
+  };
+  return { ...resized, position: findFreeResizedPosition(resized, nodes) };
+}
+
 function nodeRectAt(node: Node, offset: { x: number; y: number } = { x: 0, y: 0 }) {
   const { w, h } = sizeOf(node);
   return {
@@ -664,12 +840,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   updateNodeData: (nodeId, data) => {
-    set((state) => ({
-      nodes: state.nodes.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
-      ),
-      saveStatus: "unsaved",
-    }));
+    set((state) => {
+      let updatedNode: Node | null = null;
+      let nodes = state.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        updatedNode = { ...n, data: { ...n.data, ...data } };
+        return updatedNode;
+      });
+
+      if (updatedNode && patchNeedsContentFit(data)) {
+        const fitted = fitNodeAfterContentChange(updatedNode, nodes);
+        nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
+      }
+
+      return { nodes, saveStatus: "unsaved" };
+    });
   },
 
   convertNode: (nodeId, newType, extraData = {}) => {
