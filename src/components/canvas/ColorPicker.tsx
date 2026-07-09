@@ -90,6 +90,8 @@ export function ColorPicker({ value, onChange, label, className }: ColorPickerPr
             <input
               ref={inputRef}
               type="color"
+              aria-label="Choose custom color"
+              name="custom-color"
               value={value ?? "#6366f1"}
               onChange={handleNative}
               onBlur={() => setOpen(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
 
 const PRESET_COLORS = [
@@ -34,7 +34,6 @@ export function ColorSwatchPicker({
   size = "md",
 }: ColorSwatchPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [showCustom, setShowCustom] = useState(false);
   const swatchSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const ringOffset = size === "sm" ? "ring-offset-[1px]" : "ring-offset-2";
 
@@ -42,7 +41,6 @@ export function ColorSwatchPicker({
 
   const handleSwatch = (hex: string) => {
     onChange(hex);
-    setShowCustom(false);
   };
 
   return (
@@ -67,7 +65,6 @@ export function ColorSwatchPicker({
       <button
         title="Custom color…"
         onClick={() => {
-          setShowCustom(true);
           requestAnimationFrame(() => inputRef.current?.click());
         }}
         className={cn(
@@ -81,6 +78,8 @@ export function ColorSwatchPicker({
       <input
         ref={inputRef}
         type="color"
+        aria-label="Choose custom color"
+        name="custom-swatch-color"
         value={value ?? "#6366f1"}
         onChange={(e) => onChange(e.target.value)}
         className="sr-only"

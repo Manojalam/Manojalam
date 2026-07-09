@@ -16,6 +16,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   triangle: "polygon(50% 0%, 0% 100%, 100% 100%)",
@@ -72,6 +73,10 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const [initialContent] = useState(() => dd.richText as string || (d.text as string) || "");
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
 
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
@@ -107,6 +112,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
         keepAspectRatio={shapeType === "circle" || shapeType === "star"} />
 
       <div
+        ref={boxRef}
         className={cn("group relative flex h-full w-full items-center justify-center", isDiamond && "rotate-45")}
         onDoubleClick={() => {
           if (isDrawing) return;
@@ -198,6 +204,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
           isDiamond && "-rotate-45",
           editing && "cursor-text"
         )}
+          ref={contentRef}
           style={getTextStyle(dd)}>
           <RichTextEditor
             initialContent={initialContent}

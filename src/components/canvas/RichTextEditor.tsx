@@ -400,6 +400,8 @@ export function RichTextEditor({
                   <label className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-red-400 via-green-400 to-blue-400 text-[9px] font-bold text-white hover:scale-125 transition-transform" title="Custom color">
                     +
                     <input ref={customColorRef} type="color" className="sr-only"
+                      aria-label="Choose custom text color"
+                      name="custom-text-color"
                       onChange={(e) => { editor.chain().focus().setColor(e.target.value).run(); }} />
                   </label>
                 </div>

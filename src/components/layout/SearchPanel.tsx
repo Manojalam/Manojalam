@@ -22,6 +22,8 @@ export function SearchPanel() {
         </DialogHeader>
         <Input
           placeholder="Search nodes, tags, Sanskrit text…"
+          aria-label="Search board"
+          name="board-search"
           value={searchQuery}
           onChange={(e) => performSearch(e.target.value)}
           autoFocus
