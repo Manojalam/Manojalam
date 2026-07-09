@@ -19,6 +19,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
 import type { BorderLayer, InternalFillRegion } from "@/lib/types";
+import type { Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { ColorSwatchPicker } from "./ColorSwatchPicker";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
@@ -85,6 +86,46 @@ function IconBtn({ active, onClick, title, children }: {
   );
 }
 
+function clampControlValue(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function SliderControl({
+  value,
+  onChange,
+  min = 0,
+  max = 100,
+  step = 1,
+  suffix = "",
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  suffix?: string;
+}) {
+  const apply = (next: number) => onChange(clampControlValue(next, min, max));
+  return (
+    <div className="flex items-center gap-1.5">
+      <button onClick={() => apply(value - step)}
+        className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Minus className="h-3 w-3" /></button>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => apply(Number(e.target.value))}
+        className="flex-1 h-1.5 accent-primary"
+      />
+      <button onClick={() => apply(value + step)}
+        className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
+      <span className="w-9 text-center text-[10px] text-muted-foreground">{value}{suffix}</span>
+    </div>
+  );
+}
+
 /** Thickness control: slider + −/+ buttons */
 function ThicknessControl({ value, onChange, max = 20 }: {
   value: number; onChange: (v: number) => void; max?: number;
@@ -101,6 +142,14 @@ function ThicknessControl({ value, onChange, max = 20 }: {
       <span className="w-7 text-center text-[10px] text-muted-foreground">{value}px</span>
     </div>
   );
+}
+
+function supportsCornerRadius(node: Node): boolean {
+  const nodeType = node.type ?? "";
+  if (["mindmap", "sticky", "text"].includes(nodeType)) return true;
+  if (nodeType !== "shape") return false;
+  const shapeType = ((node.data as Record<string, unknown>).shapeType as string | undefined) ?? "";
+  return ["rounded", "rectangle", "callout"].includes(shapeType);
 }
 
 /** Border style selector: Solid | Dashed | Dotted */
@@ -176,6 +225,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const commonFillOpacity = typeof commonValue("fillOpacity") === "number" ? commonValue("fillOpacity") as number : 0.18;
     const commonBorderWidth = typeof commonValue("borderWidth") === "number" ? commonValue("borderWidth") as number : 2;
     const commonBorderStyle = typeof commonValue("borderStyle") === "string" ? commonValue("borderStyle") as string : "solid";
+    const radiusNodes = selectedNodes.filter(supportsCornerRadius);
+    const firstRadius = radiusNodes.length
+      ? (radiusNodes[0].data as Record<string, unknown>).borderRadius
+      : undefined;
+    const commonBorderRadius = typeof firstRadius === "number" && radiusNodes.every((node) =>
+      (node.data as Record<string, unknown>).borderRadius === firstRadius
+    ) ? firstRadius : 16;
+    const setSelectedRadius = (value: number) => {
+      if (!radiusNodes.length) return;
+      pushHistory();
+      for (const node of radiusNodes) updateNodeData(node.id, { borderRadius: value });
+    };
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-64 flex-col">
@@ -240,16 +301,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
-                <span className="text-[10px] text-muted-foreground">{Math.round(commonFillOpacity * 100)}%</span>
               </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
+              <SliderControl
                 value={Math.round(commonFillOpacity * 100)}
-                onChange={(e) => setSelectedField("fillOpacity", Number(e.target.value) / 100)}
-                className="w-full accent-primary"
+                onChange={(value) => setSelectedField("fillOpacity", value / 100)}
+                suffix="%"
               />
             </div>
           </Section>
@@ -267,6 +323,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Style</p>
               <BorderStylePicker value={commonBorderStyle} onChange={(v) => setSelectedField("borderStyle", v)} />
             </div>
+            {radiusNodes.length > 0 && (
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Corner radius</p>
+                <SliderControl value={commonBorderRadius} onChange={setSelectedRadius} suffix="px" />
+              </div>
+            )}
           </Section>
         </div>
       </aside>
@@ -456,14 +518,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
-                <span className="text-[10px] text-muted-foreground">
-                  {Math.round((typeof d.fillOpacity === "number" ? d.fillOpacity : 0.18) * 100)}%
-                </span>
               </div>
-              <input type="range" min={0} max={100} step={1}
+              <SliderControl
                 value={Math.round((typeof d.fillOpacity === "number" ? d.fillOpacity : 0.18) * 100)}
-                onChange={(e) => setField("fillOpacity", Number(e.target.value) / 100)}
-                className="w-full accent-primary" />
+                onChange={(value) => setField("fillOpacity", value / 100)}
+                suffix="%"
+              />
             </div>
           </Section>
         )}
@@ -508,13 +568,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             {supportsRadius && (
               <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Corner radius</p>
-                  <span className="text-[10px] text-muted-foreground">{borderRadius}px</span>
-                </div>
-                <input type="range" min={0} max={100} step={1} value={borderRadius}
-                  onChange={(e) => setField("borderRadius", Number(e.target.value))}
-                  className="w-full accent-primary" />
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Corner radius</p>
+                <SliderControl value={borderRadius} onChange={(value) => setField("borderRadius", value)} suffix="px" />
                 <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
                   <span>Sharp</span><span>Pill</span>
                 </div>
@@ -566,12 +621,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region opacity</p>
-                <span className="text-[10px] text-muted-foreground">{Math.round(drawingRegionOpacity * 100)}%</span>
               </div>
-              <input type="range" min={0} max={100} step={1}
+              <SliderControl
                 value={Math.round(drawingRegionOpacity * 100)}
-                onChange={(e) => setDrawingRegionOpacity(Number(e.target.value) / 100)}
-                className="w-full accent-primary" />
+                onChange={(value) => setDrawingRegionOpacity(value / 100)}
+                suffix="%"
+              />
             </div>
 
             {/* Draw / Stop freeform button */}
@@ -635,13 +690,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     <ColorSwatchPicker value={r.fillColor}
                       onChange={(c) => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, fillColor: c } : x))}
                       size="sm" />
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[9px] text-muted-foreground w-8">Opac</span>
-                      <input type="range" min={0} max={100} step={1}
+                    <div>
+                      <p className="mb-1 text-[9px] text-muted-foreground">Opacity</p>
+                      <SliderControl
                         value={Math.round((r.opacity ?? 0.18) * 100)}
-                        onChange={(e) => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, opacity: Number(e.target.value) / 100 } : x))}
-                        className="flex-1 accent-primary" />
-                      <span className="text-[9px] text-muted-foreground w-7 text-right">{Math.round((r.opacity ?? 0.18) * 100)}%</span>
+                        onChange={(value) => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, opacity: value / 100 } : x))}
+                        suffix="%"
+                      />
                     </div>
                   </div>
                 ))}
