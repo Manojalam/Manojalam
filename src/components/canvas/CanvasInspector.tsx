@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Plus, Minus, Pencil, StopCircle,
+  Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -131,6 +131,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setSettings     = useCanvasStore((s) => s.setSettings);
   const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
+  const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
 
@@ -141,9 +142,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const drawingRegionOpacity = useUIStore((s) => s.drawingRegionOpacity);
   const setDrawingRegionOpacity = useUIStore((s) => s.setDrawingRegionOpacity);
 
-  const selectedNode = selectedNodeIds.length === 1
-    ? nodes.find((n) => n.id === selectedNodeIds[0])
-    : null;
+  const selectedNodes = selectedNodeIds.length
+    ? nodes.filter((n) => selectedNodeIds.includes(n.id))
+    : [];
+  const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
   const selectedEdges = edges.filter((edge) => selectedEdgeIds.includes(edge.id));
 
   // ALL hooks before any early return
@@ -154,6 +156,122 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     pushHistory();
     updateNodeData(selectedNode.id, { [key]: value });
   };
+
+  const commonValue = (key: string) => {
+    if (!selectedNodes.length) return undefined;
+    const first = (selectedNodes[0].data as Record<string, unknown>)[key];
+    return selectedNodes.every((node) => (node.data as Record<string, unknown>)[key] === first)
+      ? first
+      : undefined;
+  };
+
+  const setSelectedField = (key: string, value: unknown) => {
+    if (!selectedNodes.length) return;
+    pushHistory();
+    for (const node of selectedNodes) updateNodeData(node.id, { [key]: value });
+  };
+
+  if (selectedNodes.length > 1) {
+    const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
+    const commonFillOpacity = typeof commonValue("fillOpacity") === "number" ? commonValue("fillOpacity") as number : 0.18;
+    const commonBorderWidth = typeof commonValue("borderWidth") === "number" ? commonValue("borderWidth") as number : 2;
+    const commonBorderStyle = typeof commonValue("borderStyle") === "string" ? commonValue("borderStyle") as string : "solid";
+
+    return (
+      <aside className="vidya-float-panel canvas-inspector-panel flex w-64 flex-col">
+        <div className="flex items-center justify-between border-b px-3 py-2.5">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Selection</h3>
+            <p className="text-[10px] text-muted-foreground">{selectedNodes.length} objects</p>
+          </div>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 divide-y overflow-y-auto">
+          <Section label="Text">
+            <Row label="Align">
+              {([
+                ["left",    <AlignLeft    key="l" className="h-3.5 w-3.5" />, "Left"],
+                ["center",  <AlignCenter  key="c" className="h-3.5 w-3.5" />, "Center"],
+                ["right",   <AlignRight   key="r" className="h-3.5 w-3.5" />, "Right"],
+                ["justify", <AlignJustify key="j" className="h-3.5 w-3.5" />, "Justify"],
+              ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
+                <IconBtn key={val} active={commonValue("textAlign") === val} onClick={() => setSelectedField("textAlign", val)} title={title}>{icon}</IconBtn>
+              ))}
+            </Row>
+            <Row label="Style">
+              <IconBtn
+                active={commonValue("fontWeight") === "bold"}
+                onClick={() => setSelectedField("fontWeight", commonValue("fontWeight") === "bold" ? "normal" : "bold")}
+                title="Bold"
+              >
+                <Bold className="h-3.5 w-3.5" />
+              </IconBtn>
+              <IconBtn
+                active={commonValue("fontStyle") === "italic"}
+                onClick={() => setSelectedField("fontStyle", commonValue("fontStyle") === "italic" ? "normal" : "italic")}
+                title="Italic"
+              >
+                <Italic className="h-3.5 w-3.5" />
+              </IconBtn>
+            </Row>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
+              <ThicknessControl value={commonFontSize} onChange={(v) => setSelectedField("fontSize", v)} max={96} />
+            </div>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
+              <ColorSwatchPicker value={(commonValue("textColor") as string) ?? ""} onChange={(v) => setSelectedField("textColor", v || undefined)} size="sm" />
+            </div>
+          </Section>
+
+          <Section label="Fill">
+            <ColorSwatchPicker
+              value={(commonValue("fillColor") as string) ?? ""}
+              onChange={(v) => setSelectedField("fillColor", v || undefined)}
+            />
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
+                <span className="text-[10px] text-muted-foreground">{Math.round(commonFillOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(commonFillOpacity * 100)}
+                onChange={(e) => setSelectedField("fillOpacity", Number(e.target.value) / 100)}
+                className="w-full accent-primary"
+              />
+            </div>
+          </Section>
+
+          <Section label="Border">
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
+              <ColorSwatchPicker value={(commonValue("borderColor") as string) ?? ""} onChange={(v) => setSelectedField("borderColor", v || undefined)} />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
+              <ThicknessControl value={commonBorderWidth} onChange={(v) => setSelectedField("borderWidth", v)} />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Style</p>
+              <BorderStylePicker value={commonBorderStyle} onChange={(v) => setSelectedField("borderStyle", v)} />
+            </div>
+          </Section>
+        </div>
+      </aside>
+    );
+  }
 
   // ── No selection ──────────────────────────────────────────────────────────
   if (!selectedNode) {

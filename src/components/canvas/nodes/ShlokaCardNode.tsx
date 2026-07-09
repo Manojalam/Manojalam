@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ShlokaCardNodeData } from "@/lib/types";
+import { NodeQuickActions } from "./NodeQuickActions";
 
 const SECTIONS = [
   { key: "verse", label: "Verse" },
@@ -23,7 +24,7 @@ const STATUS_COLORS = {
   memorized: "bg-emerald-200 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
 };
 
-function ShlokaCardNodeComponent({ data, selected }: NodeProps) {
+function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as ShlokaCardNodeData;
   const [collapsed, setCollapsed] = useState<Set<string>>(
     new Set(d.collapsedSections ?? [])
@@ -41,10 +42,11 @@ function ShlokaCardNodeComponent({ data, selected }: NodeProps) {
       <NodeResizer minWidth={300} minHeight={200} isVisible={selected} />
       <div
         className={cn(
-          "w-[360px] rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
+          "relative w-[360px] rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
       >
+        <NodeQuickActions nodeId={id} color="#d97706" selected={selected} />
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
 

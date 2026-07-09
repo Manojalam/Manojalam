@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { SanskritCardNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { toast } from "sonner";
+import { NodeQuickActions } from "./NodeQuickActions";
 
 function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
@@ -31,10 +32,11 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
       <NodeResizer minWidth={280} minHeight={180} isVisible={selected} />
       <div
         className={cn(
-          "w-[320px] rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
+          "relative w-[320px] rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
       >
+        <NodeQuickActions nodeId={id} color="#d97706" selected={selected} />
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
 

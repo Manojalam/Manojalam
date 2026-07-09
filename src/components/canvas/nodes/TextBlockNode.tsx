@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
+import { NodeQuickActions } from "./NodeQuickActions";
 
 function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -38,10 +39,14 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
-  const initialContent = useRef<string>(dd.richText as string || d.text || "");
+  const [initialContent] = useState(() => dd.richText as string || d.text || "");
 
   useEffect(() => {
-    if (!selected && editing) { pushHistory(); setEditing(false); }
+    if (!selected && editing) {
+      pushHistory();
+      const frame = requestAnimationFrame(() => setEditing(false));
+      return () => cancelAnimationFrame(frame);
+    }
   }, [selected, editing, pushHistory]);
 
   return (
@@ -67,6 +72,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
         <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />
 
         <NodeHandles color={borderColor ?? "#6366f1"} />
+        <NodeQuickActions nodeId={id} color={borderColor ?? "#6366f1"} selected={selected} />
 
         {/* Add connected child */}
         {!isDrawing && (
@@ -99,7 +105,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
         <div className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
-            initialContent={initialContent.current}
+            initialContent={initialContent}
             editable={editing}
             placeholder="Double-click to type…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
