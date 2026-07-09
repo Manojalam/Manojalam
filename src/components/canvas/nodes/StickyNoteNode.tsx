@@ -13,6 +13,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -50,6 +51,10 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
   const [initialContent] = useState(() => dd.richText as string || d.text || "");
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
 
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
@@ -80,6 +85,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
       <NodeResizer minWidth={140} minHeight={80} isVisible={selected && !editing && !isDrawing}
         lineStyle={{ borderColor: border }} handleStyle={{ borderColor: border, backgroundColor: "white" }} />
       <div
+        ref={boxRef}
         className={cn("group relative h-full w-full p-3 transition-shadow", selected ? "shadow-lg" : "shadow-md")}
         style={{ backgroundColor: bg, border: `${bWidth}px ${bStyle} ${border}`, borderRadius: bRadius }}
         onDoubleClick={() => {
@@ -130,7 +136,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
         <div className="pointer-events-none absolute bottom-0 right-0 h-5 w-5"
           style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${palette.shadow} 45%, transparent 45%)` }} />
 
-        <div className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
+        <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
           style={{ color: "#374151", ...getTextStyle(dd) }}>
           <RichTextEditor
             initialContent={initialContent}

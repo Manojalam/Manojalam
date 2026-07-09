@@ -111,6 +111,8 @@ function SliderControl({
       <button onClick={() => apply(value - step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Minus className="h-3 w-3" /></button>
       <input
+        aria-label="Adjust value"
+        name="slider-control"
         type="range"
         min={min}
         max={max}
@@ -135,6 +137,8 @@ function ThicknessControl({ value, onChange, max = 20 }: {
       <button onClick={() => onChange(Math.max(0, value - 1))}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Minus className="h-3 w-3" /></button>
       <input type="range" min={0} max={max} step={1} value={value}
+        aria-label="Adjust thickness"
+        name="thickness-control"
         onChange={(e) => onChange(Number(e.target.value))}
         className="flex-1 h-1.5 accent-primary" />
       <button onClick={() => onChange(Math.min(max, value + 1))}
@@ -730,13 +734,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {isSanskrit && (
           <Section label="Sanskrit">
             {"devanagari" in d && <div><Label className="text-xs">Devanāgarī</Label>
-              <Textarea value={(d.devanagari as string) ?? ""} onChange={(e) => setField("devanagari", e.target.value)} className="mt-1 font-devanagari text-base" rows={2} /></div>}
+              <Textarea aria-label="Devanagari text" name="devanagari" value={(d.devanagari as string) ?? ""} onChange={(e) => setField("devanagari", e.target.value)} className="mt-1 font-devanagari text-base" rows={2} /></div>}
             {"iast" in d && <div><Label className="text-xs">IAST</Label>
-              <Textarea value={(d.iast as string) ?? ""} onChange={(e) => setField("iast", e.target.value)} className="mt-1 italic text-sm" rows={2} /></div>}
+              <Textarea aria-label="IAST text" name="iast" value={(d.iast as string) ?? ""} onChange={(e) => setField("iast", e.target.value)} className="mt-1 italic text-sm" rows={2} /></div>}
             {"translation" in d && <div><Label className="text-xs">Translation</Label>
-              <Textarea value={(d.translation as string) ?? ""} onChange={(e) => setField("translation", e.target.value)} className="mt-1 text-sm" rows={2} /></div>}
+              <Textarea aria-label="Translation text" name="translation" value={(d.translation as string) ?? ""} onChange={(e) => setField("translation", e.target.value)} className="mt-1 text-sm" rows={2} /></div>}
             {"title" in d && <div><Label className="text-xs">Title</Label>
-              <Input value={(d.title as string) ?? ""} onChange={(e) => setField("title", e.target.value)} className="mt-1 h-8 text-sm" /></div>}
+              <Input aria-label="Node title" name="node-title" value={(d.title as string) ?? ""} onChange={(e) => setField("title", e.target.value)} className="mt-1 h-8 text-sm" /></div>}
             {"displayMode" in d && <div><Label className="text-xs">Display mode</Label>
               <Select value={(d.displayMode as string) ?? "both-stacked"} onValueChange={(v) => setField("displayMode", v)}>
                 <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
@@ -768,6 +772,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {/* ── Tags ── */}
         <Section label="Tags" defaultOpen={false}>
           <Input value={((d.tags as string[]) ?? []).join(", ")}
+            aria-label="Tags"
+            name="tags"
             onChange={(e) => setField("tags", e.target.value.split(",").map((t) => t.trim()).filter(Boolean))}
             placeholder="comma separated…" className="h-8 text-xs" />
           <div className="flex flex-wrap gap-1 pt-1">
@@ -784,7 +790,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {/* ── Notes ── */}
         <Section label="Notes" defaultOpen={false}>
           <Textarea value={(d.notes as string) ?? ""} onChange={(e) => setField("notes", e.target.value)}
-            rows={3} className="text-sm" placeholder="Private notes…" />
+            aria-label="Private notes" name="notes" rows={3} className="text-sm" placeholder="Private notes…" />
         </Section>
       </div>
     </aside>

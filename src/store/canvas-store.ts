@@ -64,6 +64,7 @@ interface CanvasState {
   createSiblingNode: (nodeId: string) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   fitNodeToContent: (nodeId: string, contentSize: ContentSize) => void;
+  resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
   updateBoardTitle: (title: string) => void;
   performSearch: (query: string) => void;
@@ -963,6 +964,36 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         prevStyle.height !== nextStyle.height;
 
       if (!geometryChanged) return {};
+
+      return {
+        nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),
+        saveStatus: "unsaved" as SaveStatus,
+      };
+    });
+  },
+
+  resizeNodeToFitBounds: (nodeId, bounds) => {
+    set((state) => {
+      const node = state.nodes.find((n) => n.id === nodeId);
+      if (!node) return {};
+
+      const current = styleSizeOf(node);
+      let width = Math.max(current.w, Math.ceil(bounds.width));
+      let height = Math.max(current.h, Math.ceil(bounds.height));
+      const shapeType = ((node.data ?? {}) as Record<string, unknown>).shapeType as string | undefined;
+      if (shapeType === "circle" || shapeType === "star") {
+        const size = Math.max(width, height);
+        width = size;
+        height = size;
+      }
+
+      if (width <= current.w + 1 && height <= current.h + 1) return {};
+
+      const resized = {
+        ...node,
+        style: { ...(node.style ?? {}), width, height },
+      };
+      const fitted = { ...resized, position: findFreeResizedPosition(resized, state.nodes) };
 
       return {
         nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),

@@ -15,6 +15,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
 
 function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const d  = data as MindMapNodeData;
@@ -43,6 +44,10 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const [initialContent] = useState(() => dd.richText as string || d.text || "");
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
 
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
@@ -82,6 +87,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
     <>
       <NodeResizer minWidth={120} minHeight={40} isVisible={selected && !editing && !isDrawing} />
       <div
+        ref={boxRef}
         className={cn(
           "group relative h-full w-full px-4 py-3 shadow-md transition-shadow",
           selected && "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg",
@@ -123,7 +129,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
 
-        <div className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
+        <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
             initialContent={initialContent}

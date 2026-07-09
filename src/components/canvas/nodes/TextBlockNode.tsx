@@ -16,6 +16,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
 
 function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -43,6 +44,10 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const [initialContent] = useState(() => dd.richText as string || d.text || "");
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
 
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
@@ -72,6 +77,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
     <>
       <NodeResizer minWidth={160} minHeight={40} isVisible={selected && !editing && !isDrawing} />
       <div
+        ref={boxRef}
         className={cn("group relative h-full w-full px-4 py-3")}
         style={{
           backgroundColor: fillColor ?? "transparent",
@@ -123,7 +129,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
           />
         </div>
 
-        <div className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
+        <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
             initialContent={initialContent}

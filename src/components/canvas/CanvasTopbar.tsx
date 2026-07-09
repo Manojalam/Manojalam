@@ -147,6 +147,7 @@ export function CanvasTopbar() {
           onChange={(e) => updateBoardTitle(e.target.value)}
           className="h-8 max-w-[220px] min-w-0 border-transparent bg-transparent text-center text-sm font-semibold text-foreground shadow-none focus-visible:border-primary/40 focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-primary/30 max-sm:max-w-[34vw]"
           aria-label="Board title"
+          name="board-title"
         />
         <SaveStatus status={saveStatus} />
       </div>
