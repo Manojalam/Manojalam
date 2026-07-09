@@ -13,6 +13,8 @@ import {
   assignDefaultHandles,
   resolveInsertedNodeCollisions,
   getNodeRect,
+  rectsOverlap,
+  sizeOf,
   type LayoutPlacement,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
@@ -52,6 +54,7 @@ interface CanvasState {
   redo: () => void;
   copySelected: () => void;
   paste: () => void;
+  duplicateNode: (nodeId: string) => void;
   duplicateSelected: () => void;
   deleteSelected: () => void;
   deleteEdges: (ids: string[]) => void;
@@ -196,6 +199,141 @@ function getNodeText(data: Record<string, unknown>): string {
   return fields.map((f) => data[f]).filter(Boolean).join(" ");
 }
 
+function nodeRectAt(node: Node, offset: { x: number; y: number } = { x: 0, y: 0 }) {
+  const { w, h } = sizeOf(node);
+  return {
+    id: node.id,
+    x: node.position.x + offset.x,
+    y: node.position.y + offset.y,
+    width: w,
+    height: h,
+  };
+}
+
+function groupBounds(nodes: Node[]) {
+  const rects = nodes.map((node) => nodeRectAt(node));
+  const minX = Math.min(...rects.map((rect) => rect.x));
+  const minY = Math.min(...rects.map((rect) => rect.y));
+  const maxX = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const maxY = Math.max(...rects.map((rect) => rect.y + rect.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function clearDuplicatedContent(data: Record<string, unknown>, originalId: string, idMap: Map<string, string>) {
+  const next = structuredClone(data);
+  const textFields = [
+    "text", "richText", "label", "title", "topic", "devanagari", "iast", "translation",
+    "rule", "source", "sourceText", "padaccheda", "anvaya", "padartha", "chandas",
+    "grammarNotes", "exceptions", "notes",
+  ];
+  for (const field of textFields) {
+    if (field in next) next[field] = "";
+  }
+  if (Array.isArray(next.examples)) next.examples = [];
+  if (Array.isArray(next.tags)) next.tags = [];
+  if (Array.isArray(next.collapsedSections)) next.collapsedSections = [];
+
+  const parentId = typeof next.parentId === "string" ? next.parentId : null;
+  next.parentId = parentId && idMap.has(parentId) ? idMap.get(parentId)! : null;
+  const childOrder = Array.isArray(next.childOrder) ? next.childOrder : [];
+  const mappedChildOrder = childOrder
+    .filter((childId): childId is string => typeof childId === "string" && idMap.has(childId))
+    .map((childId) => idMap.get(childId)!);
+  next.childOrder = mappedChildOrder;
+  if (originalId === parentId || mappedChildOrder.length === 0) delete next.layoutMode;
+
+  return next;
+}
+
+function duplicateNodeStyle(node: Node) {
+  const { w, h } = sizeOf(node);
+  return { ...(node.style ?? {}), width: w, height: h };
+}
+
+function findFreeDuplicateOffset(selectedNodes: Node[], allNodes: Node[]) {
+  if (!selectedNodes.length) return { x: 40, y: 40 };
+  const selectedIds = new Set(selectedNodes.map((node) => node.id));
+  const obstacles = allNodes
+    .filter((node) => !selectedIds.has(node.id) && !isAutoMatrixFrame(node))
+    .map(getNodeRect);
+  const bounds = groupBounds(selectedNodes);
+  const padding = 28;
+  const stepX = Math.max(bounds.width + padding * 2, 120);
+  const stepY = Math.max(bounds.height + padding * 2, 100);
+
+  const isFree = (offset: { x: number; y: number }) => {
+    const duplicatedRects = selectedNodes.map((node) => nodeRectAt(node, offset));
+    return duplicatedRects.every((rect, index) => {
+      const clearOfExisting = obstacles.every((obstacle) => !rectsOverlap(rect, obstacle, padding));
+      if (!clearOfExisting) return false;
+      return duplicatedRects.every((other, otherIndex) =>
+        index === otherIndex || !rectsOverlap(rect, other, padding)
+      );
+    });
+  };
+
+  const candidates: Array<{ x: number; y: number }> = [
+    { x: stepX, y: 0 },
+    { x: 0, y: stepY },
+    { x: stepX, y: stepY },
+    { x: stepX, y: -stepY },
+    { x: -stepX, y: 0 },
+    { x: 0, y: -stepY },
+    { x: -stepX, y: stepY },
+    { x: -stepX, y: -stepY },
+  ];
+
+  for (let ring = 1; ring <= 8; ring++) {
+    for (let gy = -ring; gy <= ring; gy++) {
+      for (let gx = -ring; gx <= ring; gx++) {
+        if (Math.max(Math.abs(gx), Math.abs(gy)) !== ring) continue;
+        if (gx === 0 && gy === 0) continue;
+        candidates.push({ x: gx * stepX, y: gy * stepY });
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = `${candidate.x}:${candidate.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (isFree(candidate)) return candidate;
+  }
+
+  return { x: stepX, y: stepY };
+}
+
+function buildDuplicateSelection(selectedNodes: Node[], selectedEdges: Edge[], allNodes: Node[]) {
+  const offset = findFreeDuplicateOffset(selectedNodes, allNodes);
+  const idMap = new Map(selectedNodes.map((node) => [node.id, generateId()]));
+
+  const nodes = selectedNodes.map((node) => {
+    const newId = idMap.get(node.id)!;
+    const data = clearDuplicatedContent(node.data as Record<string, unknown>, node.id, idMap);
+    return {
+      ...structuredClone(node),
+      id: newId,
+      position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
+      data,
+      style: duplicateNodeStyle(node),
+      selected: true,
+    };
+  });
+
+  const edges = selectedEdges
+    .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+    .map((edge) => ({
+      ...structuredClone(edge),
+      id: generateId(),
+      source: idMap.get(edge.source)!,
+      target: idMap.get(edge.target)!,
+      selected: false,
+    }));
+
+  return { nodes, edges };
+}
+
 export const useCanvasStore = create<CanvasState>((set, get) => ({
   board: null,
   nodes: [],
@@ -335,9 +473,36 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
+  duplicateNode: (nodeId) => {
+    const { nodes, edges } = get();
+    const source = nodes.find((node) => node.id === nodeId);
+    if (!source) return;
+    get().pushHistory();
+    const { nodes: newNodes } = buildDuplicateSelection([source], [], nodes);
+    set({
+      nodes: [...nodes.map((node) => ({ ...node, selected: false })), ...newNodes],
+      edges: edges.map((edge) => ({ ...edge, selected: false })),
+      selectedNodeIds: newNodes.map((node) => node.id),
+      selectedEdgeIds: [],
+      saveStatus: "unsaved",
+    });
+  },
+
   duplicateSelected: () => {
-    get().copySelected();
-    get().paste();
+    const { nodes, edges, selectedNodeIds } = get();
+    if (!selectedNodeIds.length) return;
+    get().pushHistory();
+    const selectedSet = new Set(selectedNodeIds);
+    const selectedNodes = nodes.filter((node) => selectedSet.has(node.id));
+    const selectedEdges = edges.filter((edge) => selectedSet.has(edge.source) && selectedSet.has(edge.target));
+    const { nodes: newNodes, edges: newEdges } = buildDuplicateSelection(selectedNodes, selectedEdges, nodes);
+    set({
+      nodes: [...nodes.map((node) => ({ ...node, selected: false })), ...newNodes],
+      edges: [...edges.map((edge) => ({ ...edge, selected: false })), ...newEdges],
+      selectedNodeIds: newNodes.map((node) => node.id),
+      selectedEdgeIds: [],
+      saveStatus: "unsaved",
+    });
   },
 
   deleteSelected: () => {

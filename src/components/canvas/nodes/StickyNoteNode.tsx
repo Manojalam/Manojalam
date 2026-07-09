@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
+import { NodeQuickActions } from "./NodeQuickActions";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -45,10 +46,14 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
-  const initialContent = useRef<string>(dd.richText as string || d.text || "");
+  const [initialContent] = useState(() => dd.richText as string || d.text || "");
 
   useEffect(() => {
-    if (!selected && editing) { pushHistory(); setEditing(false); }
+    if (!selected && editing) {
+      pushHistory();
+      const frame = requestAnimationFrame(() => setEditing(false));
+      return () => cancelAnimationFrame(frame);
+    }
   }, [selected, editing, pushHistory]);
 
   return (
@@ -70,6 +75,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
         <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />
 
         <NodeHandles color={border} />
+        <NodeQuickActions nodeId={id} color={border} selected={selected} />
 
         {/* Add connected child */}
         {!isDrawing && (
@@ -106,7 +112,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
         <div className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
           style={{ color: "#374151", ...getTextStyle(dd) }}>
           <RichTextEditor
-            initialContent={initialContent.current}
+            initialContent={initialContent}
             editable={editing}
             placeholder="Double-click to write…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}

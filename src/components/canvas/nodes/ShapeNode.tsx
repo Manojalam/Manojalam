@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
+import { NodeQuickActions } from "./NodeQuickActions";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   triangle: "polygon(50% 0%, 0% 100%, 100% 100%)",
@@ -67,10 +68,14 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
-  const initialContent = useRef<string>(dd.richText as string || (d.text as string) || "");
+  const [initialContent] = useState(() => dd.richText as string || (d.text as string) || "");
 
   useEffect(() => {
-    if (!selected && editing) { pushHistory(); setEditing(false); }
+    if (!selected && editing) {
+      pushHistory();
+      const frame = requestAnimationFrame(() => setEditing(false));
+      return () => cancelAnimationFrame(frame);
+    }
   }, [selected, editing, pushHistory]);
 
   const shapeStyle: React.CSSProperties = hasClip
@@ -87,6 +92,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
         onDoubleClick={() => { if (!isDrawing) setEditing(true); }}
       >
         <NodeHandles color={borderColor} />
+        <NodeQuickActions nodeId={id} color={borderColor} selected={selected} counterRotate={isDiamond} />
 
         {/* Add connected child */}
         {!isDrawing && (
@@ -170,7 +176,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
         )}
           style={getTextStyle(dd)}>
           <RichTextEditor
-            initialContent={initialContent.current}
+            initialContent={initialContent}
             editable={editing}
             placeholder="Double-click…"
             className="[&_.ProseMirror]:text-center"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -19,6 +19,7 @@ import {
   applyEdgeChanges,
   ConnectionMode,
   MarkerType,
+  SelectionMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -38,6 +39,8 @@ import { useDeviceProfile } from "@/lib/use-device-profile";
 interface Guides { h: number[]; v: number[] }
 
 const GUIDE_THRESHOLD = 6; // px in flow coords
+const MIN_CANVAS_ZOOM = 0.02;
+const MAX_CANVAS_ZOOM = 6;
 
 function calcGuides(
   dragged: { x: number; y: number; w: number; h: number },
@@ -69,6 +72,18 @@ function calcGuides(
   return { h, v };
 }
 
+function touchPair(touches: React.TouchList) {
+  const first = touches.item(0);
+  const second = touches.item(1);
+  if (!first || !second) return null;
+  const center = {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  };
+  const distance = Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+  return { center, distance };
+}
+
 /** Renders guide lines in SCREEN coordinates using the live ReactFlow viewport */
 function AlignmentGuides({ guides }: { guides: Guides }) {
   const vp = useViewport();
@@ -97,16 +112,21 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const saveStatus  = useCanvasStore((s) => s.saveStatus);
   const setNodes    = useCanvasStore((s) => s.setNodes);
   const setEdges    = useCanvasStore((s) => s.setEdges);
-  const setViewport = useCanvasStore((s) => s.setViewport);
+  const setStoredViewport = useCanvasStore((s) => s.setViewport);
   const setSelectedNodeIds = useCanvasStore((s) => s.setSelectedNodeIds);
   const setSelectedEdgeIds = useCanvasStore((s) => s.setSelectedEdgeIds);
   const activeTool  = useUIStore((s) => s.activeTool);
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
 
-  const { screenToFlowPosition, fitView, zoomIn, zoomOut } = useReactFlow();
+  const { screenToFlowPosition, fitView, zoomIn, zoomOut, getViewport, setViewport: setFlowViewport } = useReactFlow();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
+  const pinchRef = useRef<{
+    distance: number;
+    flowCenter: { x: number; y: number };
+    startZoom: number;
+  } | null>(null);
 
   // Debounced autosave — reads state directly, no subscriptions
   const debouncedSave = useMemo(
@@ -440,6 +460,46 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     settings.background === "grid"  ? BackgroundVariant.Lines :
     settings.background === "dots"  ? BackgroundVariant.Dots  : undefined;
 
+  const onTouchStartCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isTouchDevice || event.touches.length !== 2) return;
+    const pair = touchPair(event.touches);
+    if (!pair || pair.distance <= 0) return;
+    const viewport = getViewport();
+    pinchRef.current = {
+      distance: pair.distance,
+      flowCenter: screenToFlowPosition(pair.center),
+      startZoom: viewport.zoom,
+    };
+    event.preventDefault();
+    event.stopPropagation();
+  }, [getViewport, isTouchDevice, screenToFlowPosition]);
+
+  const onTouchMoveCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const pinch = pinchRef.current;
+    if (!isTouchDevice || !pinch || event.touches.length !== 2) return;
+    const pair = touchPair(event.touches);
+    if (!pair || pair.distance <= 0) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const localCenter = {
+      x: pair.center.x - bounds.left,
+      y: pair.center.y - bounds.top,
+    };
+    const zoom = Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, pinch.startZoom * (pair.distance / pinch.distance)));
+    void setFlowViewport({
+      x: localCenter.x - pinch.flowCenter.x * zoom,
+      y: localCenter.y - pinch.flowCenter.y * zoom,
+      zoom,
+    }, { duration: 0 });
+    event.preventDefault();
+    event.stopPropagation();
+  }, [isTouchDevice, setFlowViewport]);
+
+  const onTouchEndCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (!pinchRef.current || event.touches.length >= 2) return;
+    pinchRef.current = null;
+    setStoredViewport(getViewport());
+  }, [getViewport, setStoredViewport]);
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -457,28 +517,35 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       connectionMode={ConnectionMode.Loose}
       edgesReconnectable
       reconnectRadius={isTouchDevice ? 28 : 14}
-      minZoom={0.05}
-      maxZoom={4}
+      minZoom={MIN_CANVAS_ZOOM}
+      maxZoom={MAX_CANVAS_ZOOM}
       fitView
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
       snapToGrid={settings.snapToGrid}
       snapGrid={[settings.gridSize ?? 20, settings.gridSize ?? 20]}
       panOnDrag={isTouchDevice ? true : activeTool === "pan" || spacePressed ? [0, 1, 2] : [1, 2]}
       selectionOnDrag={!isTouchDevice && activeTool === "select"}
+      selectionMode={SelectionMode.Partial}
+      multiSelectionKeyCode={["Meta", "Control", "Shift"]}
       panOnScroll
       zoomOnScroll
       zoomOnPinch
+      noPanClassName={isTouchDevice ? "rf-no-pan" : "nopan"}
       preventScrolling
       nodeClickDistance={isTouchDevice ? 8 : 0}
       paneClickDistance={isTouchDevice ? 8 : 0}
       nodeDragThreshold={isTouchDevice ? 6 : 1}
       connectionRadius={isTouchDevice ? 42 : 20}
       deleteKeyCode={null}
+      onTouchStartCapture={onTouchStartCapture}
+      onTouchMoveCapture={onTouchMoveCapture}
+      onTouchEndCapture={onTouchEndCapture}
+      onTouchCancelCapture={onTouchEndCapture}
       defaultEdgeOptions={{
         type: "branch",
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
       }}
-      onMoveEnd={(_, viewport) => setViewport(viewport)}
+      onMoveEnd={(_, viewport) => setStoredViewport(viewport)}
       className="vidya-canvas-bg"
     >
       {bgVariant !== undefined && (

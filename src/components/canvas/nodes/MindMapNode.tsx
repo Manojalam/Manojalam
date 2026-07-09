@@ -1,8 +1,8 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState, useEffect, useCallback } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
-import { Plus, ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { Plus, ChevronDown, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
@@ -14,6 +14,7 @@ import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
+import { NodeQuickActions } from "./NodeQuickActions";
 
 function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const d  = data as MindMapNodeData;
@@ -38,7 +39,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
-  const initialContent = useRef<string>(dd.richText as string || d.text || "");
+  const [initialContent] = useState(() => dd.richText as string || d.text || "");
 
   const startEditing = () => {
     if (d.locked || isDrawing) return;
@@ -50,7 +51,12 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
   const commitEdit = useCallback(() => { pushHistory(); setEditing(false); }, [pushHistory]);
 
-  useEffect(() => { if (!selected && editing) commitEdit(); }, [selected, editing, commitEdit]);
+  useEffect(() => {
+    if (!selected && editing) {
+      const frame = requestAnimationFrame(commitEdit);
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [selected, editing, commitEdit]);
 
   return (
     <>
@@ -70,6 +76,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
       >
         {/* Extra border layers — expand outward, not clipped */}
         <BorderLayers layers={borderLayers} primaryWidth={borderWidth} baseRadius={borderRadius} />
+        <NodeQuickActions nodeId={id} color={borderColor ?? nodeColor} selected={selected} />
 
         <Handle type="target" position={Position.Left}
           className="!h-3 !w-3 !rounded-full !border-2 !border-background !opacity-0 group-hover:!opacity-100 transition-opacity"
@@ -99,7 +106,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
         <div className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
-            initialContent={initialContent.current}
+            initialContent={initialContent}
             editable={editing}
             placeholder="Double-click to edit…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}

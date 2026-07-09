@@ -6,8 +6,9 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { GrammarCardNodeData } from "@/lib/types";
 import { GRAMMAR_CATEGORY_LABELS } from "@/lib/sanskrit/transliterate";
+import { NodeQuickActions } from "./NodeQuickActions";
 
-function GrammarCardNodeComponent({ data, selected }: NodeProps) {
+function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
 
   return (
@@ -15,10 +16,11 @@ function GrammarCardNodeComponent({ data, selected }: NodeProps) {
       <NodeResizer minWidth={280} minHeight={160} isVisible={selected} />
       <div
         className={cn(
-          "w-[300px] rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
+          "relative w-[300px] rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
       >
+        <NodeQuickActions nodeId={id} color="#4f46e5" selected={selected} />
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
 
