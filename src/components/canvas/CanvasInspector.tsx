@@ -138,10 +138,11 @@ const CONVERT_TYPES = [
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
-function Section({ label, children, defaultOpen = true }: {
-  label: string; children: React.ReactNode; defaultOpen?: boolean;
+function Section({ label, children, defaultOpen = true, visible = true }: {
+  label: string; children: React.ReactNode; defaultOpen?: boolean; visible?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  if (!visible) return null;
   return (
     <div>
       <button onClick={() => setOpen((o) => !o)}
@@ -260,6 +261,40 @@ function inspectorLayoutLabel(value: unknown): string {
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 
+function normalizeWholeBoxFontSize(data: Record<string, unknown>, value: unknown): Record<string, unknown> {
+  const patch: Record<string, unknown> = { fontSize: value };
+  if (typeof data.richText !== "string") return patch;
+
+  const fallback = data.richText.replace(/font-size\s*:\s*[^;"']+;?/gi, "");
+  if (typeof document === "undefined") {
+    patch.richText = fallback;
+    return patch;
+  }
+
+  const container = document.createElement("div");
+  container.innerHTML = data.richText;
+  container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
+    element.style.removeProperty("font-size");
+    if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
+  });
+  patch.richText = container.innerHTML || fallback;
+  return patch;
+}
+
+function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+  if (key === "fontSize") return normalizeWholeBoxFontSize(data, value);
+  return { [key]: value };
+}
+
+type InspectorTab = "style" | "shape" | "structure" | "more";
+
+const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
+  { id: "style", label: "Style" },
+  { id: "shape", label: "Shape" },
+  { id: "structure", label: "Structure" },
+  { id: "more", label: "More" },
+];
+
 /** Border style selector: Solid | Dashed | Dotted */
 function BorderStylePicker({ value, onChange }: {
   value?: string; onChange: (v: "solid" | "dashed" | "dotted") => void;
@@ -280,6 +315,7 @@ function BorderStylePicker({ value, onChange }: {
 // ── Main inspector ─────────────────────────────────────────────────────────
 
 export function CanvasInspector({ compact = false }: { compact?: boolean }) {
+  const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>("style");
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
@@ -290,6 +326,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const resizeNodeToFitBounds = useCanvasStore((s) => s.resizeNodeToFitBounds);
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
+  const createChildNode = useCanvasStore((s) => s.createChildNode);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
 
@@ -320,7 +357,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setField = (key: string, value: unknown) => {
     if (!selectedNode) return;
     pushHistory();
-    updateNodeData(selectedNode.id, { [key]: value });
+    updateNodeData(selectedNode.id, fieldPatch(d, key, value));
   };
 
   const commonValue = (key: string) => {
@@ -334,7 +371,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setSelectedField = (key: string, value: unknown) => {
     if (!selectedNodes.length) return;
     pushHistory();
-    for (const node of selectedNodes) updateNodeData(node.id, { [key]: value });
+    for (const node of selectedNodes) {
+      updateNodeData(node.id, fieldPatch((node.data ?? {}) as Record<string, unknown>, key, value));
+    }
   };
 
   const selectNodesById = (ids: string[]) => {
@@ -427,7 +466,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     };
 
     return (
-      <aside className="vidya-float-panel canvas-inspector-panel flex w-64 flex-col">
+      <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Selection</h3>
@@ -527,7 +566,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   if (!selectedNode) {
     if (selectedEdges.length) {
       return (
-        <aside className="vidya-float-panel canvas-inspector-panel flex w-64 flex-col">
+        <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
           <div className="flex items-center justify-between border-b px-3 py-2.5">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Connection</h3>
@@ -551,7 +590,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (compact) return null;
 
     return (
-      <aside className="vidya-float-panel canvas-inspector-panel flex w-64 flex-col">
+      <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-foreground">Canvas</h3>
           <p className="text-xs text-muted-foreground">{nodes.length} nodes · {edges.length} edges</p>
@@ -670,7 +709,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <aside className="vidya-float-panel canvas-inspector-panel flex w-64 flex-col">
+    <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
       {/* ── Header ── */}
       <div className="flex items-center justify-between border-b px-3 py-2.5">
         <div>
@@ -688,9 +727,57 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
 
+      <div className="grid grid-cols-4 gap-1 border-b bg-background/95 p-2">
+        {INSPECTOR_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setSingleNodeTab(tab.id)}
+            className={cn(
+              "rounded-md px-1.5 py-1.5 text-[10px] font-medium transition-colors",
+              singleNodeTab === tab.id
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-1 text-[10px]"
+          onClick={() => createChildNode(selectedNode.id)}
+        >
+          <Plus className="mr-1 h-3 w-3" /> Child
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-1 text-[10px]"
+          onClick={duplicateSelected}
+        >
+          <Copy className="mr-1 h-3 w-3" /> Copy
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-1 text-[10px]"
+          onClick={() => {
+            selectNodesById([selectedNode.id]);
+            setSingleNodeTab("structure");
+            setLayoutPanelOpen(true);
+          }}
+        >
+          Layout
+        </Button>
+      </div>
+
       <div className="flex-1 divide-y overflow-y-auto">
 
-        <Section label="Hierarchy">
+        <Section label="Hierarchy" visible={singleNodeTab === "structure"}>
           <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-2 text-[10px]">
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Parent</span>
@@ -767,7 +854,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Text ── */}
         {isContentNode && (
-          <Section label="Text">
+          <Section label="Text" visible={singleNodeTab === "style"}>
             {/* Alignment */}
             <Row label="Align">
               {([
@@ -834,7 +921,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Fill ── */}
         {isContentNode && (
-          <Section label="Fill">
+          <Section label="Fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
               value={(d.fillColor as string) ?? ""}
               onChange={(v) => setField("fillColor", v || undefined)}
@@ -854,7 +941,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Shape type (only for shape nodes) ── */}
         {isShapeNode && (
-          <Section label="Shape type">
+          <Section label="Shape type" visible={singleNodeTab === "shape"}>
             <div className="grid grid-cols-3 gap-1">
               {SHAPE_TYPES.map(({ label, value }) => (
                 <button key={value}
@@ -889,7 +976,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isShapeNode && (
-          <Section label="Transform" defaultOpen={false}>
+          <Section label="Transform" defaultOpen={false} visible={singleNodeTab === "shape"}>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
               <SliderControl
@@ -905,7 +992,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isShapeNode && (
-          <Section label="Concentric" defaultOpen={false}>
+          <Section label="Concentric" defaultOpen={false} visible={singleNodeTab === "shape"}>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <span className="text-[10px] text-muted-foreground">{concentricLayers.length} inner shapes</span>
               <Button
@@ -1018,7 +1105,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isShapeNode && (
-          <Section label="Split chart" defaultOpen={false}>
+          <Section label="Split chart" defaultOpen={false} visible={singleNodeTab === "shape"}>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <Label className="text-xs">Radial split</Label>
               <Switch
@@ -1236,7 +1323,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Border ── */}
         {isContentNode && (
-          <Section label="Border">
+          <Section label="Border" visible={singleNodeTab === "style"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
               <ColorSwatchPicker value={(d.borderColor as string) ?? ""} onChange={(v) => setField("borderColor", v || undefined)} />
@@ -1266,7 +1353,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Extra border layers ── */}
         {isContentNode && (
-          <Section label="Extra borders" defaultOpen={false}>
+          <Section label="Extra borders" defaultOpen={false} visible={singleNodeTab === "style"}>
             {borderLayers.map((layer, i) => (
               <div key={layer.id} className="rounded-lg border border-border p-2 space-y-2">
                 <div className="flex items-center justify-between">
@@ -1296,7 +1383,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Internal fill regions ── */}
         {isContentNode && (
-          <Section label="Fill regions" defaultOpen={false}>
+          <Section label="Fill regions" defaultOpen={false} visible={singleNodeTab === "shape"}>
             {/* Region color */}
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region color</p>
@@ -1393,7 +1480,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Convert to ── */}
         {isContentNode && (
-          <Section label="Convert to" defaultOpen={false}>
+          <Section label="Convert to" defaultOpen={false} visible={singleNodeTab === "more"}>
             <div className="grid grid-cols-2 gap-1">
               {CONVERT_TYPES.filter((t) => t.value !== nodeType).map(({ label, value }) => (
                 <button key={value}
@@ -1414,7 +1501,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Sanskrit ── */}
         {isSanskrit && (
-          <Section label="Sanskrit">
+          <Section label="Sanskrit" visible={singleNodeTab === "more"}>
             {"devanagari" in d && <div><Label className="text-xs">Devanāgarī</Label>
               <Textarea aria-label="Devanagari text" name="devanagari" value={(d.devanagari as string) ?? ""} onChange={(e) => setField("devanagari", e.target.value)} className="mt-1 font-devanagari text-base" rows={2} /></div>}
             {"iast" in d && <div><Label className="text-xs">IAST</Label>
@@ -1438,7 +1525,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Script ── */}
         {"scriptMode" in d && (
-          <Section label="Script" defaultOpen={false}>
+          <Section label="Script" defaultOpen={false} visible={singleNodeTab === "more"}>
             <Select value={(d.scriptMode as string) ?? "plain"} onValueChange={(v) => setField("scriptMode", v)}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1452,7 +1539,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Tags ── */}
-        <Section label="Tags" defaultOpen={false}>
+        <Section label="Tags" defaultOpen={false} visible={singleNodeTab === "more"}>
           <Input value={((d.tags as string[]) ?? []).join(", ")}
             aria-label="Tags"
             name="tags"
@@ -1470,7 +1557,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </Section>
 
         {/* ── Notes ── */}
-        <Section label="Notes" defaultOpen={false}>
+        <Section label="Notes" defaultOpen={false} visible={singleNodeTab === "more"}>
           <Textarea value={(d.notes as string) ?? ""} onChange={(e) => setField("notes", e.target.value)}
             aria-label="Private notes" name="notes" rows={3} className="text-sm" placeholder="Private notes…" />
         </Section>

@@ -167,9 +167,9 @@ function sunburstTreeStats(rootId: string, hierarchy: ReturnType<typeof buildHie
 function sunburstChartSize(rootId: string, hierarchy: ReturnType<typeof buildHierarchy>): number {
   const { maxDepth, leaves } = sunburstTreeStats(rootId, hierarchy);
   const ringDepth = Math.max(1, maxDepth);
-  const byDepth = 120 + ringDepth * 112 + 44;
-  const byLeaves = (Math.max(1, leaves) * 44) / Math.PI + 64;
-  return Math.ceil(Math.max(680, byDepth * 2, byLeaves));
+  const byDepth = 148 + ringDepth * 132 + 64;
+  const byLeaves = (Math.max(1, leaves) * 72) / Math.PI + 96;
+  return Math.ceil(Math.max(760, byDepth * 2, byLeaves));
 }
 
 function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enabled: boolean): Node[] {

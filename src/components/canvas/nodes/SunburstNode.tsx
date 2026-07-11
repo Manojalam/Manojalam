@@ -177,7 +177,9 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy): SunburstTreeNo
     const children = childIds.map((childId, index) =>
       build(childId, depth + 1, index, depth === 0 ? index : branchIndex)
     );
-    const weight = children.length ? children.reduce((sum, child) => sum + child.weight, 0) : 1;
+    const childWeight = children.reduce((sum, child) => sum + child.weight, 0);
+    const branchComplexity = Math.max(0, childIds.length - 1) * 0.35;
+    const weight = children.length ? Math.max(1, childWeight + branchComplexity) : 1;
     return {
       id,
       depth,
@@ -262,8 +264,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
     const maxDepth = Math.max(1, maxDepthOf(tree));
     const size = dimension(d.chartSize, 720);
     const outerRadius = size / 2 - CHART_PADDING;
-    const centerRadius = Math.max(82, Math.min(140, outerRadius * 0.28));
-    const ringWidth = maxDepth > 0 ? Math.max(72, (outerRadius - centerRadius) / maxDepth) : 0;
+    const centerRadius = Math.max(96, Math.min(170, outerRadius * 0.26));
+    const ringWidth = maxDepth > 0 ? Math.max(92, (outerRadius - centerRadius) / maxDepth) : 0;
     tree.startAngle = ROOT_START_ANGLE;
     tree.endAngle = ROOT_END_ANGLE;
     assignGeometry(tree, centerRadius, ringWidth);
