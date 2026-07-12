@@ -79,7 +79,7 @@ function hexInputColor(value: unknown, fallback: string): string {
 }
 
 function normalizeRadialSegments(ring: RadialChartRing, count = ring.segmentCount): RadialChartSegment[] {
-  const safeCount = Math.max(1, Math.min(360, Math.round(count || 1)));
+  const safeCount = Math.max(0, Math.min(360, Math.round(count ?? 1)));
   const existing = ring.segments ?? [];
   return Array.from({ length: safeCount }, (_, index) => existing[index] ?? {
     id: generateId(),
@@ -106,7 +106,7 @@ function ChildCountInput({
 
   const commit = () => {
     const parsed = Number.parseInt(draft, 10);
-    const nextValue = Number.isFinite(parsed) ? Math.max(1, Math.min(360, parsed)) : value;
+    const nextValue = Number.isFinite(parsed) ? Math.max(0, Math.min(360, parsed)) : value;
     setDraft(String(nextValue));
     if (nextValue !== value) onCommit(nextValue);
   };
@@ -116,7 +116,7 @@ function ChildCountInput({
       aria-label={ariaLabel}
       name={name}
       type="number"
-      min={1}
+      min={0}
       max={360}
       step={1}
       value={draft}
@@ -165,7 +165,7 @@ function normalizeRadialChart(chart: RadialChartData | undefined, centerText = "
     centerFontSize: chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined,
     rings: chart.rings.map((ring) => ({
       ...ring,
-      segmentCount: Math.max(1, Math.min(360, Math.round(ring.segmentCount || 1))),
+      segmentCount: Math.max(0, Math.min(360, Math.round(ring.segmentCount ?? 1))),
       segments: normalizeRadialSegments(ring),
     })),
   };
@@ -756,9 +756,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (!ring || !nextRing) return;
 
     const segments = normalizeRadialSegments(ring).map((segment, index) =>
-      index === segmentIndex ? { ...segment, childCount: Math.max(1, Math.min(360, Math.round(value || 1))) } : segment
+      index === segmentIndex ? { ...segment, childCount: Math.max(0, Math.min(360, Math.round(value))) } : segment
     );
-    const childTotal = segments.reduce((sum, segment) => sum + Math.max(1, Math.round(segment.childCount ?? 1)), 0);
+    const childTotal = segments.reduce((sum, segment) => sum + Math.max(0, Math.round(segment.childCount ?? 1)), 0);
     rings[ringIndex] = { ...ring, segments };
     rings[ringIndex + 1] = {
       ...nextRing,
@@ -771,7 +771,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       const parentSegments = normalizeRadialSegments(parent);
       if (!parentSegments.some((segment) => segment.childCount != null)) break;
       const descendantTotal = parentSegments.reduce(
-        (sum, segment) => sum + Math.max(1, Math.round(segment.childCount ?? 1)),
+        (sum, segment) => sum + Math.max(0, Math.round(segment.childCount ?? 1)),
         0
       );
       rings[parentIndex + 1] = {
@@ -1384,6 +1384,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                     value={segment.childCount ?? 1}
                                     onCommit={(value) => updateRadialChildCount(ringIndex, segmentIndex, value)}
                                   />
+                                  <p className="mt-1 text-[9px] text-muted-foreground">
+                                    Set to 0 to merge through ring {ringIndex + 2}
+                                  </p>
                                 </div>
                               )}
                               <div>
