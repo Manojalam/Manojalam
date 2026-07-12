@@ -247,6 +247,26 @@ function labelBoxFitsSector(
   });
 }
 
+function sectorLineLayouts(label: string, maxChars: number): string[][] {
+  const layouts: string[][] = [];
+  const seen = new Set<string>();
+
+  for (let charsPerLine = maxChars; charsPerLine >= 1; charsPerLine -= 1) {
+    const lines = wrapTextLines(label, charsPerLine);
+    const key = lines.join("\u0000");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    layouts.push(lines);
+  }
+
+  return layouts.sort((left, right) => {
+    if (left.length !== right.length) return left.length - right.length;
+    const leftWidth = Math.max(0, ...left.map(textMeasureUnits));
+    const rightWidth = Math.max(0, ...right.map(textMeasureUnits));
+    return leftWidth - rightWidth;
+  });
+}
+
 function fitSectorLabel(
   text: string | undefined,
   innerRadius: number,
@@ -270,25 +290,31 @@ function fitSectorLabel(
   const halfSpan = Math.min(Math.PI / 2, Math.abs(endAngle - startAngle) * Math.PI / 360);
   const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, band * 0.42));
   const maxChars = Math.min(240, Math.max(1, Math.ceil(textMeasureUnits(label))));
+  const lineLayouts = sectorLineLayouts(label, maxChars);
+  const minimumLineCount = lineLayouts[0]?.length ?? 1;
   const radiusCandidates = Array.from({ length: 25 }, (_, index) => inner + (band * index) / 24);
 
-  for (let fontSize = preferred; fontSize >= 0.55; fontSize -= 0.15) {
-    let best: SectorLabelFit | null = null;
-    let bestScore = Number.POSITIVE_INFINITY;
+  for (const lines of lineLayouts) {
+    // Prefer an unwrapped label whenever it remains reasonably readable. Only
+    // introduce whitespace wrapping when the unwrapped form cannot fit.
+    const minimumFontSize = lines.length === minimumLineCount
+      ? Math.max(0.55, preferred * 0.72)
+      : 0.55;
 
-    for (const radius of radiusCandidates) {
-      const radialSpace = Math.max(0, 2 * Math.min(radius - inner, outer - radius));
-      const tangentialSpace = Math.max(0, 2 * radius * Math.sin(halfSpan));
-      if (radialSpace <= 0 || tangentialSpace <= 0) continue;
+    for (let fontSize = preferred; fontSize >= minimumFontSize; fontSize -= 0.15) {
+      let best: SectorLabelFit | null = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+      const { width, height, lineAdvance } = textLayoutMetrics(lines, fontSize);
 
-      for (let charsPerLine = 1; charsPerLine <= maxChars; charsPerLine += 1) {
-        const lines = wrapTextLines(label, charsPerLine);
-        const { width, height, lineAdvance } = textLayoutMetrics(lines, fontSize);
+      for (const radius of radiusCandidates) {
+        const radialSpace = Math.max(0, 2 * Math.min(radius - inner, outer - radius));
+        const tangentialSpace = Math.max(0, 2 * radius * Math.sin(halfSpan));
+        if (radialSpace <= 0 || tangentialSpace <= 0) continue;
         const point = polarPoint(50, 50, radius, midAngle);
         if (!labelBoxFitsSector(point, width, height, rotation, inner, outer, startAngle, endAngle)) continue;
 
         const centerPenalty = Math.abs(radius - fallbackRadius) / Math.max(1, band);
-        const score = lines.length * 10 + centerPenalty;
+        const score = centerPenalty;
         if (score < bestScore) {
           bestScore = score;
           best = {
@@ -301,9 +327,9 @@ function fitSectorLabel(
           };
         }
       }
-    }
 
-    if (best) return best;
+      if (best) return best;
+    }
   }
 
   const fallbackLines = wrapTextLines(label, maxChars);
