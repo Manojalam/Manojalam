@@ -94,6 +94,27 @@ function radialSegmentAllocationCount(segment: RadialChartSegment): number {
   return Math.max(1, Math.round(count));
 }
 
+type RadialParentAssignment = {
+  parentIndex: number;
+  parent: RadialChartSegment;
+  childIndex: number;
+  childCount: number;
+};
+
+function radialParentAssignments(rings: RadialChartRing[], ringIndex: number): RadialParentAssignment[] {
+  if (ringIndex <= 0) return [];
+  const parents = normalizeRadialSegments(rings[ringIndex - 1]);
+  return parents.flatMap((parent, parentIndex) => {
+    const childCount = radialSegmentAllocationCount(parent);
+    return Array.from({ length: childCount }, (_, childIndex) => ({
+      parentIndex,
+      parent,
+      childIndex,
+      childCount,
+    }));
+  });
+}
+
 function normalizeRadialRelationships(rings: RadialChartRing[]): RadialChartRing[] {
   const normalized = rings.map((ring) => ({ ...ring, segments: normalizeRadialSegments(ring) }));
   for (let ringIndex = 0; ringIndex < normalized.length - 1; ringIndex += 1) {
@@ -1342,6 +1363,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div className="space-y-2">
                   {(activeRadialChart.rings ?? []).map((ring, ringIndex) => {
                     const segments = normalizeRadialSegments(ring);
+                    const parentAssignments = radialParentAssignments(activeRadialChart.rings ?? [], ringIndex);
                     return (
                       <details key={ring.id} className="group rounded-lg border border-border">
                         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2 py-2 marker:content-none">
@@ -1388,8 +1410,33 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           />
                         </div>
                         <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                          {segments.map((segment, segmentIndex) => (
-                            <div key={segment.id} className="space-y-1.5 rounded-md border border-border/70 p-1.5">
+                          {segments.map((segment, segmentIndex) => {
+                            const assignment = parentAssignments[segmentIndex];
+                            const startsParentGroup = !!assignment && (
+                              segmentIndex === 0 || parentAssignments[segmentIndex - 1]?.parentIndex !== assignment.parentIndex
+                            );
+                            return (
+                            <div key={segment.id} className="space-y-1">
+                              {startsParentGroup && (
+                                <div className="sticky top-0 z-10 flex items-center gap-1.5 rounded bg-muted px-1.5 py-1 text-[9px] font-medium shadow-sm">
+                                  <span
+                                    className="h-2.5 w-2.5 shrink-0 rounded-sm border border-border"
+                                    style={{ backgroundColor: assignment.parent.fillColor ?? "transparent" }}
+                                  />
+                                  <span className="min-w-0 flex-1 truncate">
+                                    Ring {ringIndex} section {assignment.parentIndex + 1}: {assignment.parent.text?.trim() || "Untitled"}
+                                  </span>
+                                  <span className="shrink-0 text-muted-foreground">
+                                    {assignment.childCount} {assignment.childCount === 1 ? "child" : "children"}
+                                  </span>
+                                </div>
+                              )}
+                            <div className="space-y-1.5 rounded-md border border-border/70 p-1.5">
+                              {assignment && (
+                                <p className="text-[9px] text-muted-foreground">
+                                  Child {assignment.childIndex + 1} of {assignment.childCount}
+                                </p>
+                              )}
                               <div className="grid grid-cols-[1fr_28px_28px] items-center gap-1.5">
                                 <Input
                                   aria-label={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} text`}
@@ -1468,7 +1515,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                 />
                               </div>
                             </div>
-                          ))}
+                            </div>
+                          );})}
                         </div>
                         </div>
                       </details>
