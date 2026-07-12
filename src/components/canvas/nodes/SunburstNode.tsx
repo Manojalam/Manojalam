@@ -6,6 +6,11 @@ import type { Node, NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import type { SunburstNodeData } from "@/lib/types";
 import { buildHierarchy, type Hierarchy } from "@/lib/layout/hierarchy";
+import {
+  radialColorScheme,
+  radialSectorColors,
+  type RadialColorSchemeDefinition,
+} from "@/lib/radial-layout";
 import { useCanvasStore } from "@/store/canvas-store";
 import { RichTextEditor } from "../RichTextEditor";
 
@@ -64,11 +69,17 @@ type BoundaryDrag = {
   nextWeight: number;
 };
 
+type CenterDrag = {
+  pointerId: number;
+  rootId: string;
+};
+
 const ROOT_START_ANGLE = -90;
 const ROOT_END_ANGLE = 270;
 const CHART_PADDING = 22;
 const MIN_SECTOR_ANGLE = 2.5;
-const BRANCH_HUES = [348, 42, 62, 164, 198, 246, 286, 18, 122, 322, 94, 214];
+const MIN_CENTER_RATIO = 14;
+const MAX_CENTER_RATIO = 58;
 
 function dimension(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -247,17 +258,6 @@ function circleLabelGeometry(label: string, radius: number, center: number, pref
   return { ...fitLabel(label, width, height, preferred), x: center, y: center, rotation: 0 };
 }
 
-function textColorForDepth(depth: number): string {
-  return depth <= 1 ? "#f8fafc" : "#0f172a";
-}
-
-function segmentFill(branchIndex: number, depth: number, siblingIndex: number): string {
-  const hue = (BRANCH_HUES[branchIndex % BRANCH_HUES.length] + siblingIndex * 3) % 360;
-  const saturation = Math.max(48, 76 - depth * 4);
-  const lightness = Math.min(84, 48 + depth * 8);
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-}
-
 function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<string, Node>): SunburstTreeNode {
   const build = (
     id: string,
@@ -322,20 +322,25 @@ function extendTerminalSectors(node: SunburstTreeNode, outerRadius: number): voi
   node.children.forEach((child) => extendTerminalSectors(child, outerRadius));
 }
 
-function collectSegments(node: SunburstTreeNode, byId: Map<string, Node>): SunburstSegment[] {
+function collectSegments(
+  node: SunburstTreeNode,
+  byId: Map<string, Node>,
+  scheme: RadialColorSchemeDefinition
+): SunburstSegment[] {
   const segments: SunburstSegment[] = [];
   const walk = (candidate: SunburstTreeNode) => {
     if (candidate.depth > 0) {
       const source = byId.get(candidate.id);
       const data = (source?.data ?? {}) as Record<string, unknown>;
       const label = nodeLabel(source);
+      const paletteColors = radialSectorColors(scheme, candidate.branchIndex, candidate.depth, candidate.siblingIndex);
       segments.push({
         ...candidate,
         label,
         richText: nodeRichText(source, label),
-        fill: (data.radialFillColor as string | undefined) ?? segmentFill(candidate.branchIndex, candidate.depth, candidate.siblingIndex),
-        textColor: (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? textColorForDepth(candidate.depth),
-        borderColor: (data.radialBorderColor as string | undefined) ?? "rgba(255,255,255,0.92)",
+        fill: (data.radialFillColor as string | undefined) ?? paletteColors.fill,
+        textColor: (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
+        borderColor: (data.radialBorderColor as string | undefined) ?? paletteColors.border,
         borderWidth: clamp(dimension(data.radialBorderWidth, 1.4), 0, 16),
         borderStyle: (data.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid",
         fontFamily: data.fontFamily as string | undefined,
@@ -402,6 +407,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
   const clipPrefix = `sunburst-clip-${useId().replace(/:/g, "")}`;
   const svgRef = useRef<SVGSVGElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
+  const centerDragRef = useRef<CenterDrag | null>(null);
   const editHistoryCaptured = useRef(false);
 
   const model = useMemo(() => {
@@ -415,8 +421,15 @@ function SunburstNodeComponent({ data }: NodeProps) {
     const maxDepth = Math.max(1, maxDepthOf(tree));
     const size = dimension(d.chartSize, 720);
     const outerRadius = size / 2 - CHART_PADDING;
+    const rootData = (root.data ?? {}) as Record<string, unknown>;
+    const scheme = radialColorScheme(rootData.radialColorScheme);
+    const centerRatio = clamp(
+      dimension(rootData.radialCenterRatio, 28),
+      MIN_CENTER_RATIO,
+      MAX_CENTER_RATIO
+    );
     const centerRadius = tree.children.length
-      ? Math.max(96, Math.min(170, outerRadius * 0.26))
+      ? outerRadius * (centerRatio / 100)
       : outerRadius;
     const ringWidth = Math.max(1, (outerRadius - centerRadius) / maxDepth);
     tree.startAngle = ROOT_START_ANGLE;
@@ -432,7 +445,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
       center: size / 2,
       centerRadius,
       outerRadius,
-      segments: collectSegments(tree, byId),
+      scheme,
+      segments: collectSegments(tree, byId, scheme),
     };
   }, [d.chartSize, d.rootId, edges, nodes]);
 
@@ -484,7 +498,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
       : null;
   const selectedTextStyle = selectedId === d.rootId
     ? {
-        color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? "#f8fafc",
+        color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
         fontFamily: rootData.fontFamily as string | undefined,
         fontWeight: rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
         fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
@@ -512,11 +526,18 @@ function SunburstNodeComponent({ data }: NodeProps) {
         candidate.siblingIndex === selectedSegment.siblingIndex - 1
       ) ?? null
     : null;
-  const boundaryFirst = selectedSegment && nextSibling ? selectedSegment : previousSibling;
-  const boundarySecond = selectedSegment && nextSibling ? nextSibling : selectedSegment;
+  const boundaryPairs = selectedSegment
+    ? [
+        previousSibling ? { first: previousSibling, second: selectedSegment, key: `start-${selectedSegment.id}` } : null,
+        nextSibling ? { first: selectedSegment, second: nextSibling, key: `end-${selectedSegment.id}` } : null,
+      ].filter((pair): pair is { first: SunburstSegment; second: SunburstSegment; key: string } => !!pair)
+    : [];
 
-  const beginBoundaryDrag = (event: ReactPointerEvent<SVGElement>) => {
-    if (!boundaryFirst || !boundarySecond) return;
+  const beginBoundaryDrag = (
+    event: ReactPointerEvent<SVGElement>,
+    boundaryFirst: SunburstSegment,
+    boundarySecond: SunburstSegment
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     pushHistory();
@@ -535,15 +556,36 @@ function SunburstNodeComponent({ data }: NodeProps) {
     svgRef.current?.setPointerCapture(event.pointerId);
   };
 
-  const moveBoundary = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const beginCenterDrag = (event: ReactPointerEvent<SVGElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    pushHistory();
+    centerDragRef.current = { pointerId: event.pointerId, rootId: d.rootId };
+    svgRef.current?.setPointerCapture(event.pointerId);
+  };
+
+  const moveDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const centerDrag = centerDragRef.current;
     const drag = boundaryDragRef.current;
     const svg = svgRef.current;
-    if (!drag || !svg || drag.pointerId !== event.pointerId) return;
+    if (!svg) return;
+    if ((!drag || drag.pointerId !== event.pointerId) && (!centerDrag || centerDrag.pointerId !== event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
     const bounds = svg.getBoundingClientRect();
     const x = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * model.size;
     const y = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * model.size;
+    if (centerDrag && centerDrag.pointerId === event.pointerId) {
+      const radius = Math.hypot(x - model.center, y - model.center);
+      const ratio = clamp((radius / Math.max(1, model.outerRadius)) * 100, MIN_CENTER_RATIO, MAX_CENTER_RATIO);
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => node.id === centerDrag.rootId
+          ? { ...node, data: { ...(node.data ?? {}), radialCenterRatio: ratio } }
+          : node),
+      }));
+      return;
+    }
+    if (!drag) return;
     const rawAngle = (Math.atan2(y - model.center, x - model.center) * 180) / Math.PI;
     const angle = unwrapAngle(rawAngle, drag.currentAngle);
     const pairSpan = drag.endAngle - drag.startAngle;
@@ -562,10 +604,13 @@ function SunburstNodeComponent({ data }: NodeProps) {
     }));
   };
 
-  const endBoundaryDrag = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const endDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const centerDrag = centerDragRef.current;
     const drag = boundaryDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    boundaryDragRef.current = null;
+    const activePointerId = drag?.pointerId ?? centerDrag?.pointerId;
+    if (activePointerId !== event.pointerId) return;
+    if (drag?.pointerId === event.pointerId) boundaryDragRef.current = null;
+    if (centerDrag?.pointerId === event.pointerId) centerDragRef.current = null;
     try { svgRef.current?.releasePointerCapture(event.pointerId); } catch {}
     useCanvasStore.getState().setSaveStatus("unsaved");
   };
@@ -589,9 +634,9 @@ function SunburstNodeComponent({ data }: NodeProps) {
         className="h-full w-full overflow-visible"
         role="img"
         aria-label={`Sunburst chart for ${rootLabel}`}
-        onPointerMove={moveBoundary}
-        onPointerUp={endBoundaryDrag}
-        onPointerCancel={endBoundaryDrag}
+        onPointerMove={moveDirectManipulation}
+        onPointerUp={endDirectManipulation}
+        onPointerCancel={endDirectManipulation}
       >
         <defs>
           <clipPath id={rootClipId}>
@@ -679,8 +724,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
           cx={model.center}
           cy={model.center}
           r={model.centerRadius}
-          fill={(rootData.radialFillColor as string | undefined) ?? "hsl(28, 52%, 24%)"}
-          stroke={selectedId === d.rootId ? "#2563eb" : (rootData.radialBorderColor as string | undefined) ?? "#a16207"}
+          fill={(rootData.radialFillColor as string | undefined) ?? model.scheme.rootFill}
+          stroke={selectedId === d.rootId ? "#2563eb" : (rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
           strokeWidth={selectedId === d.rootId ? Math.max(4, dimension(rootData.radialBorderWidth, 4)) : dimension(rootData.radialBorderWidth, 4)}
           strokeDasharray={selectedId === d.rootId ? undefined : dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
           className="cursor-text"
@@ -712,7 +757,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 alignItems: "center",
                 justifyContent: "center",
                 overflow: "hidden",
-                color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? "#f8fafc",
+                color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
                 fontSize: rootFit.fontSize,
                 lineHeight: 1.12,
                 fontFamily: rootData.fontFamily as string | undefined,
@@ -767,37 +812,71 @@ function SunburstNodeComponent({ data }: NodeProps) {
           </foreignObject>
         )}
 
-        {boundaryFirst && boundarySecond && (
+        {boundaryPairs.map(({ first, second, key }) => {
+          const boundaryAngle = first.endAngle;
+          const innerRadius = Math.min(first.innerRadius, second.innerRadius);
+          const outerRadius = Math.max(first.outerRadius, second.outerRadius);
+          const handleRadius = (innerRadius + outerRadius) / 2;
+          return (
+            <g key={key}>
+              <line
+                x1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).x}
+                y1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).y}
+                x2={pointOnCircle(model.center, model.center, outerRadius, boundaryAngle).x}
+                y2={pointOnCircle(model.center, model.center, outerRadius, boundaryAngle).y}
+                stroke="transparent"
+                strokeWidth="20"
+                className="cursor-grab"
+                onPointerDown={(event) => beginBoundaryDrag(event, first, second)}
+              />
+              <line
+                x1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).x}
+                y1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).y}
+                x2={pointOnCircle(model.center, model.center, outerRadius, boundaryAngle).x}
+                y2={pointOnCircle(model.center, model.center, outerRadius, boundaryAngle).y}
+                stroke="#2563eb"
+                strokeWidth="2.5"
+                pointerEvents="none"
+              />
+              <circle
+                cx={pointOnCircle(model.center, model.center, handleRadius, boundaryAngle).x}
+                cy={pointOnCircle(model.center, model.center, handleRadius, boundaryAngle).y}
+                r="7"
+                fill="#ffffff"
+                stroke="#2563eb"
+                strokeWidth="3"
+                className="cursor-grab"
+                onPointerDown={(event) => beginBoundaryDrag(event, first, second)}
+              >
+                <title>Drag to resize adjacent sectors</title>
+              </circle>
+            </g>
+          );
+        })}
+
+        {selectedId === d.rootId && model.tree.children.length > 0 && (
           <g>
-            <line
-              x1={pointOnCircle(model.center, model.center, Math.min(boundaryFirst.innerRadius, boundarySecond.innerRadius), boundaryFirst.endAngle).x}
-              y1={pointOnCircle(model.center, model.center, Math.min(boundaryFirst.innerRadius, boundarySecond.innerRadius), boundaryFirst.endAngle).y}
-              x2={pointOnCircle(model.center, model.center, Math.max(boundaryFirst.outerRadius, boundarySecond.outerRadius), boundaryFirst.endAngle).x}
-              y2={pointOnCircle(model.center, model.center, Math.max(boundaryFirst.outerRadius, boundarySecond.outerRadius), boundaryFirst.endAngle).y}
-              stroke="transparent"
-              strokeWidth="18"
-              className="cursor-grab"
-              onPointerDown={beginBoundaryDrag}
-            />
-            <line
-              x1={pointOnCircle(model.center, model.center, Math.min(boundaryFirst.innerRadius, boundarySecond.innerRadius), boundaryFirst.endAngle).x}
-              y1={pointOnCircle(model.center, model.center, Math.min(boundaryFirst.innerRadius, boundarySecond.innerRadius), boundaryFirst.endAngle).y}
-              x2={pointOnCircle(model.center, model.center, Math.max(boundaryFirst.outerRadius, boundarySecond.outerRadius), boundaryFirst.endAngle).x}
-              y2={pointOnCircle(model.center, model.center, Math.max(boundaryFirst.outerRadius, boundarySecond.outerRadius), boundaryFirst.endAngle).y}
+            <circle
+              cx={model.center}
+              cy={model.center}
+              r={model.centerRadius}
+              fill="none"
               stroke="#2563eb"
               strokeWidth="2.5"
               pointerEvents="none"
             />
             <circle
-              cx={pointOnCircle(model.center, model.center, (Math.min(boundaryFirst.innerRadius, boundarySecond.innerRadius) + Math.max(boundaryFirst.outerRadius, boundarySecond.outerRadius)) / 2, boundaryFirst.endAngle).x}
-              cy={pointOnCircle(model.center, model.center, (Math.min(boundaryFirst.innerRadius, boundarySecond.innerRadius) + Math.max(boundaryFirst.outerRadius, boundarySecond.outerRadius)) / 2, boundaryFirst.endAngle).y}
-              r="7"
+              cx={model.center + model.centerRadius}
+              cy={model.center}
+              r="8"
               fill="#ffffff"
               stroke="#2563eb"
               strokeWidth="3"
-              className="cursor-grab"
-              onPointerDown={beginBoundaryDrag}
-            />
+              className="cursor-ew-resize"
+              onPointerDown={beginCenterDrag}
+            >
+              <title>Drag to resize the center</title>
+            </circle>
           </g>
         )}
       </svg>
