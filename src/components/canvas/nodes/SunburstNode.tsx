@@ -167,8 +167,40 @@ function arcSegmentPath(
   ].join(" ");
 }
 
-function wrapLabel(label: string, maxChars: number): string[] {
-  const safeChars = Math.max(1, Math.floor(maxChars));
+const graphemeSegmenter = typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter("sa", { granularity: "grapheme" })
+  : null;
+
+function textMeasureUnits(text: string): number {
+  return graphemeSegmenter
+    ? Array.from(graphemeSegmenter.segment(text)).length
+    : Array.from(text).length;
+}
+
+function isDevanagariText(text: string): boolean {
+  return /[\u0900-\u097f]/.test(text);
+}
+
+function textMetrics(lines: string[], fontSize: number): { width: number; height: number } {
+  const devanagari = lines.some(isDevanagariText);
+  const widthFactor = devanagari ? 0.62 : 0.54;
+  const lineHeight = devanagari ? 1.36 : 1.12;
+  return {
+    width: Math.max(0, ...lines.map((line) => textMeasureUnits(line) * fontSize * widthFactor)),
+    height: Math.max(1, lines.length) * fontSize * lineHeight,
+  };
+}
+
+function explicitLabelLines(label: string): string[] {
+  return label
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+function wrapLabel(label: string, maxUnits: number): string[] {
+  const safeUnits = Math.max(1, Math.floor(maxUnits));
   const lines: string[] = [];
 
   for (const explicitLine of label.replace(/\r\n/g, "\n").split("\n")) {
@@ -180,20 +212,11 @@ function wrapLabel(label: string, maxChars: number): string[] {
     let current = "";
     for (const word of words) {
       const next = current ? `${current} ${word}` : word;
-      if (next.length > safeChars && current) {
+      if (textMeasureUnits(next) > safeUnits && current) {
         lines.push(current);
-        current = "";
-      }
-      if (word.length > safeChars) {
-        if (current) {
-          lines.push(current);
-          current = "";
-        }
-        for (let offset = 0; offset < word.length; offset += safeChars) {
-          lines.push(word.slice(offset, offset + safeChars));
-        }
+        current = word;
       } else {
-        current = current ? `${current} ${word}` : word;
+        current = next;
       }
     }
     if (current) lines.push(current);
@@ -208,30 +231,32 @@ function fitLabel(
   availableHeight: number,
   preferredFontSize: number
 ): LabelFit {
-  const width = Math.max(8, availableWidth);
-  const height = Math.max(8, availableHeight);
+  const width = Math.max(0.5, availableWidth);
+  const height = Math.max(0.5, availableHeight);
   if (!label.trim()) return { lines: [], fontSize: preferredFontSize, width, height };
 
   const maxFont = Math.max(3, preferredFontSize);
-  for (let fontSize = maxFont; fontSize >= 0.5; fontSize -= Math.max(0.08, fontSize * 0.06)) {
-    const maxChars = Math.max(1, Math.floor(width / Math.max(0.8, fontSize * 0.54)));
+  const minimumReadableFont = 4;
+  const unwrapped = explicitLabelLines(label);
+  for (let fontSize = maxFont; fontSize >= minimumReadableFont; fontSize -= Math.max(0.25, fontSize * 0.06)) {
+    const unwrappedMetrics = textMetrics(unwrapped, fontSize);
+    if (unwrappedMetrics.width <= width && unwrappedMetrics.height <= height) {
+      return { lines: unwrapped, fontSize, width, height };
+    }
+  }
+
+  for (let fontSize = maxFont; fontSize >= minimumReadableFont; fontSize -= Math.max(0.25, fontSize * 0.06)) {
+    const widthFactor = isDevanagariText(label) ? 0.62 : 0.54;
+    const maxChars = Math.max(1, Math.floor(width / Math.max(0.8, fontSize * widthFactor)));
     const lines = wrapLabel(label, maxChars);
-    const longest = Math.max(1, ...lines.map((line) => line.length));
-    if (longest * fontSize * 0.54 <= width && lines.length * fontSize * 1.12 <= height) {
+    const metrics = textMetrics(lines, fontSize);
+    const wordsFit = lines.every((line) => textMeasureUnits(line) * fontSize * widthFactor <= width);
+    if (wordsFit && metrics.height <= height) {
       return { lines, fontSize, width, height };
     }
   }
 
-  const fallbackFont = 0.5;
-  const maxChars = Math.max(1, Math.floor(width / (fallbackFont * 0.54)));
-  const lines = wrapLabel(label, maxChars);
-  const longest = Math.max(1, ...lines.map((line) => line.length));
-  const guaranteedFont = Math.max(0.05, Math.min(
-    fallbackFont,
-    width / (longest * 0.54),
-    height / (Math.max(1, lines.length) * 1.12)
-  ));
-  return { lines, fontSize: guaranteedFont, width, height };
+  return { lines: [], fontSize: minimumReadableFont, width, height };
 }
 
 function sectorLabelGeometry(segment: SunburstSegment, center: number): LabelGeometry {
@@ -239,15 +264,17 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number): LabelGeo
   const textRadius = (segment.innerRadius + segment.outerRadius) / 2;
   const point = pointOnCircle(center, center, textRadius, midAngle);
   const angleSpan = segment.endAngle - segment.startAngle;
-  const arcLength = Math.max(8, (angleSpan * Math.PI * textRadius) / 180);
-  const radialBand = Math.max(8, segment.outerRadius - segment.innerRadius);
-  const width = Math.min(arcLength * 0.8, Math.max(72, radialBand * 3.1));
-  const height = radialBand * 0.76;
+  const arcLength = Math.max(0.5, (angleSpan * Math.PI * textRadius) / 180);
+  const radialBand = Math.max(0.5, segment.outerRadius - segment.innerRadius);
+  const useRadialAxis = radialBand > arcLength;
+  const width = useRadialAxis ? radialBand : arcLength;
+  const height = useRadialAxis ? arcLength : radialBand;
   const defaultMax = segment.depth <= 1 ? 28 : 20;
   const preferred = clamp(segment.preferredFontSize ?? defaultMax, 4, 96);
   const fit = fitLabel(segment.label, width, height, preferred);
-  const normalized = ((midAngle % 360) + 360) % 360;
-  const rotation = normalized > 90 && normalized < 270 ? midAngle + 180 : midAngle;
+  const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
+  const normalized = ((baseRotation % 360) + 360) % 360;
+  const rotation = normalized > 90 && normalized < 270 ? baseRotation + 180 : baseRotation;
   return { ...fit, x: point.x, y: point.y, rotation };
 }
 
@@ -706,7 +733,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                       overflow: "hidden",
                       color: segment.textColor,
                       fontSize: labelGeometry.fontSize,
-                      lineHeight: 1.12,
+                      lineHeight: isDevanagariText(segment.label) ? 1.36 : 1.12,
                       fontFamily: segment.fontFamily,
                       fontWeight: segment.fontWeight,
                       fontStyle: segment.fontStyle,
@@ -759,7 +786,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 overflow: "hidden",
                 color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
                 fontSize: rootFit.fontSize,
-                lineHeight: 1.12,
+                lineHeight: isDevanagariText(rootLabel) ? 1.36 : 1.12,
                 fontFamily: rootData.fontFamily as string | undefined,
                 fontWeight: rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
                 fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
@@ -791,7 +818,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 overflow: "hidden",
                 color: selectedTextStyle.color,
                 fontSize: selectedGeometry.fontSize,
-                lineHeight: 1.12,
+                lineHeight: isDevanagariText(selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "") ? 1.36 : 1.12,
                 fontFamily: selectedTextStyle.fontFamily,
                 fontWeight: selectedTextStyle.fontWeight,
                 fontStyle: selectedTextStyle.fontStyle,

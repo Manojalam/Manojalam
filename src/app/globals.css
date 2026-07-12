@@ -274,7 +274,12 @@ mark { border-radius: 2px; padding: 0 2px; }
 /* Radial-layout labels use one fitted font size so inline formatting can never
    push text outside its clipped sector. Color, weight, style and highlights
    remain per-range. */
-.sunburst-rich-label,
+.sunburst-rich-label {
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: none;
+}
 .sunburst-inline-editor .ProseMirror {
   word-break: break-word;
   overflow-wrap: anywhere;
