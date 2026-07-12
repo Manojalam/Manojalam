@@ -176,6 +176,10 @@ function sunburstChartSize(
 ): number {
   const { maxDepth, leaves } = sunburstTreeStats(rootId, hierarchy);
   const ringDepth = Math.max(1, maxDepth);
+  const explicitDiameter = typeof rootData?.radialChartDiameter === "number"
+    ? clampValue(rootData.radialChartDiameter, 520, 8000)
+    : null;
+  if (explicitDiameter !== null) return Math.ceil(explicitDiameter);
   const ringWidth = clampValue(
     typeof rootData?.radialRingWidth === "number" ? rootData.radialRingWidth : 132,
     64,
@@ -1179,7 +1183,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
       }
 
-      if (updatedNode && Object.prototype.hasOwnProperty.call(data, "radialRingWidth")) {
+      const radialSizeChanged = ["radialRingWidth", "radialChartDiameter", "radialCenterRatio"]
+        .some((key) => Object.prototype.hasOwnProperty.call(data, key));
+      if (updatedNode && radialSizeChanged) {
         const hierarchy = buildHierarchy(nodes, state.edges);
         const nextSize = sunburstChartSize(
           nodeId,

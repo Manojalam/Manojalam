@@ -281,9 +281,11 @@ mark { border-radius: 2px; padding: 0 2px; }
   hyphens: none;
 }
 .sunburst-inline-editor .ProseMirror {
-  word-break: keep-all;
-  overflow-wrap: normal;
-  hyphens: none;
+  white-space: pre-wrap;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
+  line-height: inherit !important;
 }
 .sunburst-rich-label > *,
 .sunburst-inline-editor .ProseMirror > * {
@@ -294,6 +296,10 @@ mark { border-radius: 2px; padding: 0 2px; }
 .sunburst-inline-editor .ProseMirror * {
   font-size: inherit !important;
   line-height: inherit !important;
+}
+.sunburst-rich-label[lang="sa"] *,
+.sunburst-editor-label[lang="sa"] .ProseMirror * {
+  font-family: inherit !important;
 }
 .sunburst-rich-label mark,
 .sunburst-inline-editor mark {
