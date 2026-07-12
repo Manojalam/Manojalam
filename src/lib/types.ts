@@ -140,7 +140,7 @@ export interface RadialChartSegment {
   textColor?: string;
   fontSize?: number;
   textRotation?: number;
-  /** Number of sections allocated to this segment in the next ring. */
+  /** Number of sections in the next ring. Zero merges this section through that ring. */
   childCount?: number;
 }
 

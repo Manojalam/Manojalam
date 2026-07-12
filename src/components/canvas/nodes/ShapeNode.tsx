@@ -251,7 +251,7 @@ function fitCenterText(text: string | undefined, radius: number, preferredFontSi
 }
 
 function chartRingSegments(ring: RadialChartRing): RadialChartSegment[] {
-  const count = Math.max(1, Math.min(360, Math.round(ring.segmentCount || 1)));
+  const count = Math.max(0, Math.min(360, Math.round(ring.segmentCount ?? 1)));
   const segments = ring.segments ?? [];
   return Array.from({ length: count }, (_, index) => segments[index] ?? { id: `segment-${index + 1}` });
 }
@@ -261,7 +261,7 @@ type SegmentAngle = { start: number; end: number };
 function radialRingAngles(rings: RadialChartRing[], chartRotation: number): SegmentAngle[][] {
   const segmentRings = rings.map(chartRingSegments);
   const childRanges = segmentRings.slice(0, -1).map((segments, ringIndex) => {
-    const counts = segments.map((segment) => Math.max(1, Math.round(segment.childCount ?? 1)));
+    const counts = segments.map((segment) => Math.max(0, Math.round(segment.childCount ?? 1)));
     const linked = segments.some((segment) => segment.childCount != null) &&
       counts.reduce((sum, count) => sum + count, 0) === segmentRings[ringIndex + 1].length;
     let cursor = 0;
@@ -277,7 +277,7 @@ function radialRingAngles(rings: RadialChartRing[], chartRotation: number): Segm
     const ranges = childRanges[ringIndex];
     if (!ranges) continue;
     weights[ringIndex] = ranges.map((range) =>
-      weights[ringIndex + 1].slice(range.start, range.start + range.count).reduce((sum, weight) => sum + weight, 0)
+      Math.max(1, weights[ringIndex + 1].slice(range.start, range.start + range.count).reduce((sum, weight) => sum + weight, 0))
     );
   }
 
@@ -339,10 +339,14 @@ function radialChartMinimumPixelSize(chart: RadialChartData): number {
   let requiredSize = 420;
 
   rings.forEach((ring, ringIndex) => {
-    const { innerRadius, outerRadius: segmentOuterRadius, width: ringThickness } = bands[ringIndex];
-    const textRadius = (innerRadius + segmentOuterRadius) / 2;
+    const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
     chartRingSegments(ring).forEach((segment, segmentIndex) => {
       if (!segment.text?.trim()) return;
+      const labelOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]
+        ? bands[ringIndex + 1].outerRadius
+        : segmentOuterRadius;
+      const ringThickness = labelOuterRadius - innerRadius;
+      const textRadius = (innerRadius + labelOuterRadius) / 2;
       const angleWidth = angles[ringIndex][segmentIndex].end - angles[ringIndex][segmentIndex].start;
       const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
       const fit = fitRadialSegmentLabel(
@@ -429,12 +433,16 @@ function RadialChartLayer({
       </defs>
       <g clipPath={`url(#${clipId})`}>
         {rings.map((ring, ringIndex) => {
-          const { innerRadius, outerRadius: segmentOuterRadius, width: ringThickness } = bands[ringIndex];
+          const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
           const segments = chartRingSegments(ring);
           return segments.map((segment, segmentIndex) => {
             const { start, end } = ringAngles[ringIndex][segmentIndex];
             const mid = (start + end) / 2;
-            const textRadius = (innerRadius + segmentOuterRadius) / 2;
+            const renderedOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]
+              ? bands[ringIndex + 1].outerRadius
+              : segmentOuterRadius;
+            const ringThickness = renderedOuterRadius - innerRadius;
+            const textRadius = (innerRadius + renderedOuterRadius) / 2;
             const textPoint = polarPoint(50, 50, textRadius, mid);
             const angleWidth = end - start;
             const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
@@ -455,7 +463,7 @@ function RadialChartLayer({
               editingText?.kind === "segment" &&
               editingText.ringIndex === ringIndex &&
               editingText.segmentIndex === segmentIndex;
-            const segmentPath = annularSectorPath(innerRadius, segmentOuterRadius, start, end);
+            const segmentPath = annularSectorPath(innerRadius, renderedOuterRadius, start, end);
             const segmentClipId = `${clipId}-segment-${ringIndex}-${segmentIndex}`;
             return (
               <g key={`${ring.id}-${segment.id}-${segmentIndex}`}>
