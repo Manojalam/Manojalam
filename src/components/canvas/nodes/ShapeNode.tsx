@@ -239,36 +239,52 @@ function chartRingSegments(ring: RadialChartRing): RadialChartSegment[] {
 type SegmentAngle = { start: number; end: number };
 
 function radialRingAngles(rings: RadialChartRing[], chartRotation: number): SegmentAngle[][] {
+  const segmentRings = rings.map(chartRingSegments);
+  const childRanges = segmentRings.slice(0, -1).map((segments, ringIndex) => {
+    const counts = segments.map((segment) => Math.max(1, Math.round(segment.childCount ?? 1)));
+    const linked = segments.some((segment) => segment.childCount != null) &&
+      counts.reduce((sum, count) => sum + count, 0) === segmentRings[ringIndex + 1].length;
+    let cursor = 0;
+    return linked ? counts.map((count) => {
+      const range = { start: cursor, count };
+      cursor += count;
+      return range;
+    }) : null;
+  });
+
+  const weights = segmentRings.map((segments) => segments.map(() => 1));
+  for (let ringIndex = segmentRings.length - 2; ringIndex >= 0; ringIndex -= 1) {
+    const ranges = childRanges[ringIndex];
+    if (!ranges) continue;
+    weights[ringIndex] = ranges.map((range) =>
+      weights[ringIndex + 1].slice(range.start, range.start + range.count).reduce((sum, weight) => sum + weight, 0)
+    );
+  }
+
   const result: SegmentAngle[][] = [];
-
-  rings.forEach((ring, ringIndex) => {
-    const segments = chartRingSegments(ring);
-    const previousRing = rings[ringIndex - 1];
-    const previousAngles = result[ringIndex - 1];
-    const previousSegments = previousRing ? chartRingSegments(previousRing) : [];
-    const allocations = previousSegments.map((segment) => Math.max(1, Math.round(segment.childCount ?? 1)));
-    const isLinked = !!previousAngles && previousSegments.some((segment) => segment.childCount != null) &&
-      allocations.reduce((sum, count) => sum + count, 0) === segments.length;
-
-    if (isLinked) {
+  segmentRings.forEach((segments, ringIndex) => {
+    const parentRanges = childRanges[ringIndex - 1];
+    if (ringIndex > 0 && parentRanges) {
       const angles: SegmentAngle[] = [];
-      previousAngles.forEach((parent, parentIndex) => {
-        const count = allocations[parentIndex];
-        const step = (parent.end - parent.start) / count;
-        for (let childIndex = 0; childIndex < count; childIndex += 1) {
-          angles.push({ start: parent.start + step * childIndex, end: parent.start + step * (childIndex + 1) });
-        }
+      parentRanges.forEach((range, parentIndex) => {
+        const parentAngle = result[ringIndex - 1][parentIndex];
+        const childWeights = weights[ringIndex].slice(range.start, range.start + range.count);
+        const totalWeight = childWeights.reduce((sum, weight) => sum + weight, 0);
+        let cursor = parentAngle.start;
+        childWeights.forEach((weight) => {
+          const span = (parentAngle.end - parentAngle.start) * (weight / totalWeight);
+          angles.push({ start: cursor, end: cursor + span });
+          cursor += span;
+        });
       });
       result.push(angles);
       return;
     }
 
-    const ownAllocations = segments.map((segment) => Math.max(1, Math.round(segment.childCount ?? 1)));
-    const useWeightedWidth = ringIndex < rings.length - 1 && segments.some((segment) => segment.childCount != null);
-    const total = useWeightedWidth ? ownAllocations.reduce((sum, count) => sum + count, 0) : segments.length;
-    let cursor = chartRotation + (ring.rotation ?? 0);
+    const totalWeight = weights[ringIndex].reduce((sum, weight) => sum + weight, 0);
+    let cursor = chartRotation + (rings[ringIndex].rotation ?? 0);
     result.push(segments.map((_, segmentIndex) => {
-      const span = 360 * (useWeightedWidth ? ownAllocations[segmentIndex] / total : 1 / total);
+      const span = 360 * (weights[ringIndex][segmentIndex] / totalWeight);
       const angle = { start: cursor, end: cursor + span };
       cursor += span;
       return angle;
