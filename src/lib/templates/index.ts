@@ -51,6 +51,33 @@ function edge(source: string, target: string, label?: string) {
   };
 }
 
+function groupedTreeContent(
+  rootLabel: string,
+  groups: Array<{ label: string; children: string[]; color?: string }>
+): BoardContent {
+  const rootId = generateId();
+  const rootNode = center(rootId, rootLabel, 420, 80);
+  const nodes: BoardContent["nodes"] = [{
+    ...rootNode,
+    data: { ...rootNode.data, layoutMode: "vertical" as const },
+  }];
+  const edges: BoardContent["edges"] = [];
+
+  groups.forEach((group, groupIndex) => {
+    const groupId = generateId();
+    const x = 80 + groupIndex * 300;
+    nodes.push(branch(groupId, group.label, x, 260, group.color ?? "#6366f1"));
+    edges.push(edge(rootId, groupId));
+    group.children.forEach((label, childIndex) => {
+      const childId = generateId();
+      nodes.push(branch(childId, label, x, 440 + childIndex * 110, group.color ?? "#818cf8"));
+      edges.push(edge(groupId, childId));
+    });
+  });
+
+  return makeContent(nodes, edges);
+}
+
 const templates: TemplateDefinition[] = [
   {
     id: "blank",
@@ -537,6 +564,72 @@ const templates: TemplateDefinition[] = [
         [edge(c, stem), edge(stem, sg), edge(stem, du), edge(stem, pl), edge(stem, ex)]
       );
     })(),
+  },
+  {
+    id: "sanskrit-grammar-chart",
+    name: "Sanskrit Grammar Chart",
+    description: "A hierarchy-ready chart for grammar topics, rules, and examples.",
+    category: "sanskrit",
+    content: groupedTreeContent("संस्कृतव्याकरणम्", [
+      { label: "सन्धिः", children: ["स्वरसन्धिः", "व्यञ्जनसन्धिः", "विसर्गसन्धिः"], color: "#b45309" },
+      { label: "समासः", children: ["तत्पुरुषः", "बहुव्रीहिः", "द्वन्द्वः"], color: "#0f766e" },
+      { label: "प्रत्ययः", children: ["कृत्", "तद्धितः", "स्त्रीप्रत्ययः"], color: "#7c3aed" },
+    ]),
+  },
+  {
+    id: "nyaya-categories",
+    name: "Nyāya Categories",
+    description: "Organize padārthas, definitions, examples, and relationships.",
+    category: "sanskrit",
+    content: groupedTreeContent("न्यायशास्त्रम्", [
+      { label: "प्रमाणम्", children: ["प्रत्यक्षम्", "अनुमानम्", "उपमानम्", "शब्दः"], color: "#0369a1" },
+      { label: "प्रमेयम्", children: ["आत्मा", "शरीरम्", "इन्द्रियम्", "अर्थः"], color: "#047857" },
+      { label: "तर्कः", children: ["संशयः", "दृष्टान्तः", "सिद्धान्तः"], color: "#a21caf" },
+    ]),
+  },
+  {
+    id: "sandhi-map",
+    name: "Sandhi Map",
+    description: "A ready-made map for Sandhi types, rules, and examples.",
+    category: "sanskrit",
+    content: groupedTreeContent("सन्धिः", [
+      { label: "स्वरसन्धिः", children: ["सवर्णदीर्घः", "गुणः", "वृद्धिः", "यण्"], color: "#be123c" },
+      { label: "व्यञ्जनसन्धिः", children: ["श्चुत्वम्", "ष्टुत्वम्", "जश्त्वम्"], color: "#1d4ed8" },
+      { label: "विसर्गसन्धिः", children: ["सत्वम्", "रुत्वम्", "लोपः"], color: "#15803d" },
+    ]),
+  },
+  {
+    id: "study-plan",
+    name: "Study Plan",
+    description: "Plan goals, weekly topics, practice, and review milestones.",
+    category: "study",
+    content: groupedTreeContent("Study Plan", [
+      { label: "Learn", children: ["Topic 1", "Topic 2", "Topic 3"], color: "#2563eb" },
+      { label: "Practice", children: ["Exercises", "Recall", "Teach back"], color: "#7c3aed" },
+      { label: "Review", children: ["Weekly check", "Mock test", "Reflection"], color: "#059669" },
+    ]),
+  },
+  {
+    id: "flowchart-starter",
+    name: "Flowchart",
+    description: "Start with a clear process, decision, and outcome structure.",
+    category: "general",
+    content: groupedTreeContent("Start", [
+      { label: "Process", children: ["Action", "Decision"], color: "#2563eb" },
+      { label: "Yes", children: ["Complete"], color: "#059669" },
+      { label: "No", children: ["Revise", "Try again"], color: "#dc2626" },
+    ]),
+  },
+  {
+    id: "concept-map-starter",
+    name: "Concept Map",
+    description: "Connect a central concept to definitions, evidence, and examples.",
+    category: "study",
+    content: groupedTreeContent("Central Concept", [
+      { label: "Definition", children: ["Key term", "Essential idea"], color: "#4f46e5" },
+      { label: "Evidence", children: ["Source", "Observation"], color: "#0284c7" },
+      { label: "Examples", children: ["Example 1", "Example 2"], color: "#d97706" },
+    ]),
   },
 ];
 

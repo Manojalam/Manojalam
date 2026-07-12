@@ -4,6 +4,9 @@ import { memo } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
+  getBezierPath,
+  getSmoothStepPath,
+  getStraightPath,
   useNodes,
   type EdgeProps,
 } from "@xyflow/react";
@@ -12,6 +15,7 @@ import type { VidyaEdgeData } from "@/lib/types";
 import { getNodeRect, type NodeRect } from "@/lib/layout";
 import { routeLayoutEdge } from "@/lib/layout/edge-routing";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
 
 const ROUTING_CORRIDOR_PAD = 360;
 const MAX_ROUTING_OBSTACLES = 80;
@@ -32,6 +36,8 @@ function SmartBranchEdgeComponent({
   sourceY,
   targetX,
   targetY,
+  sourcePosition,
+  targetPosition,
   data,
   selected,
   markerEnd,
@@ -39,16 +45,25 @@ function SmartBranchEdgeComponent({
   const d = (data ?? {}) as VidyaEdgeData;
   const nodes = useNodes();
   const deleteEdges = useCanvasStore((s) => s.deleteEdges);
+  const canvasDragging = useUIStore((s) => s.canvasDragging);
   if (d.hiddenInMatrix || d.hiddenInSunburst) return null;
 
   let path: string;
   let labelX: number;
   let labelY: number;
 
+  const curveStyle = d.curveStyle ?? "step";
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
 
-  if (sourceNode && targetNode) {
+  if (canvasDragging || curveStyle !== "step") {
+    const routed = curveStyle === "straight"
+      ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+      : curveStyle === "smooth"
+        ? getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
+        : getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 8 });
+    [path, labelX, labelY] = routed;
+  } else if (sourceNode && targetNode) {
     const sourceRect = getNodeRect(sourceNode);
     const targetRect = getNodeRect(targetNode);
     const obstacles: NodeRect[] = [];

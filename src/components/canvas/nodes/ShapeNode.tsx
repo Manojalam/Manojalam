@@ -807,9 +807,13 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
 
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
-  const bWidth       = resolveBorderWidth(dd);
+  const matrixCell   = dd.matrixCell === true;
+  const matrixRole   = dd.matrixCellRole as string | undefined;
+  const bWidth       = matrixCell ? 1 : resolveBorderWidth(dd);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
-  const bRadius      = typeof dd.borderRadius === "number" ? dd.borderRadius : DEFAULT_RADIUS[shapeType] ?? 16;
+  const bRadius      = matrixCell
+    ? (matrixRole === "header" ? 6 : 2)
+    : typeof dd.borderRadius === "number" ? dd.borderRadius : DEFAULT_RADIUS[shapeType] ?? 16;
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
@@ -823,7 +827,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
 
   const [editing, setEditing] = useState(false);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
-  const [initialContent] = useState(() => dd.richText as string || (d.text as string) || "");
+  const initialContent = (dd.richText as string) || (d.text as string) || "";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const boxRef = useRef<HTMLDivElement>(null);

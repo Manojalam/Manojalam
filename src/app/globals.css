@@ -159,12 +159,12 @@ body {
 
 /* Miro-style resize handles */
 .react-flow__resize-control.handle {
-  width: 10px !important;
-  height: 10px !important;
+  width: 9px !important;
+  height: 9px !important;
   background: white !important;
-  border: 2px solid var(--primary) !important;
-  border-radius: 3px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2) !important;
+  border: 1.5px solid var(--primary) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18) !important;
   transition: transform 0.1s !important;
 }
 .react-flow__resize-control.handle:hover {
@@ -175,6 +175,28 @@ body {
   border-color: var(--primary) !important;
   border-width: 1.5px !important;
   opacity: 0.6;
+}
+
+.react-flow__node.selected {
+  outline: 1.5px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.react-flow__node.dragging {
+  cursor: grabbing !important;
+  filter: drop-shadow(0 8px 12px rgba(31, 41, 55, 0.16));
+}
+
+.react-flow__nodesselection-rect {
+  border: 1.5px solid var(--primary) !important;
+  background: color-mix(in srgb, var(--primary) 5%, transparent) !important;
+  border-radius: 3px;
+}
+
+.react-flow__selection {
+  border: 1px solid color-mix(in srgb, var(--primary) 75%, transparent) !important;
+  background: color-mix(in srgb, var(--primary) 7%, transparent) !important;
 }
 
 .react-flow__minimap {
@@ -209,8 +231,9 @@ body {
 [data-input="hybrid"] .react-flow__edge-interaction {
   stroke-width: 28px;
 }
-.react-flow__handle { transition: opacity 0.15s, transform 0.15s; }
+.react-flow__handle { transition: opacity 0.15s, transform 0.15s, width 0.15s, height 0.15s; }
 .react-flow__node.selected .react-flow__handle { opacity: 1 !important; }
+.react-flow__node:hover .react-flow__handle { opacity: 0.72 !important; }
 
 /* ─── TipTap ─── */
 .ProseMirror {
@@ -276,6 +299,19 @@ mark { border-radius: 2px; padding: 0 2px; }
   margin: 0 0.25rem;
   height: 1.5rem;
   width: 1px;
+}
+
+[data-device-kind="phone"] .selection-toolbar,
+[data-device-kind="tablet"] .selection-toolbar {
+  max-width: min(88vw, 34rem);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+[data-device-kind="phone"] .selection-toolbar::-webkit-scrollbar,
+[data-device-kind="tablet"] .selection-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 [data-device-kind="phone"] .layout-panel,

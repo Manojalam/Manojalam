@@ -14,7 +14,6 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { createBoard } from "@/lib/storage/board-store";
 import { downloadJson } from "@/lib/export";
-import { toast } from "sonner";
 
 export function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen, setSanskritPanelOpen, setActiveTool } = useUIStore();

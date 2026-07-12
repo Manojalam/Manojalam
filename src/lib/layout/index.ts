@@ -1,5 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
-import type { LayoutMode } from "@/lib/types";
+import type { LayoutMode, MatrixDensity } from "@/lib/types";
 import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarchy";
 
 export type { LayoutMode };
@@ -37,12 +37,8 @@ const MATRIX_ITEM_COL_WIDTH = 230;
 const MATRIX_DETAIL_MIN_WIDTH = 320;
 const MATRIX_MAX_DETAIL_WIDTH = 680;
 const MATRIX_MIN_ROW_HEIGHT = 46;
-const MATRIX_HEADER_GAP = 4;
 const MATRIX_CELL_PAD_X = 18;
 const MATRIX_CELL_PAD_Y = 10;
-const MATRIX_CELL_GAP_X = 2;
-const MATRIX_CELL_GAP_Y = 2;
-const MATRIX_HEADER_HEIGHT = 58;
 const MATRIX_MAX_NATURAL_CELL_HEIGHT = 180;
 
 const DEFAULT_W = 180;
@@ -395,13 +391,19 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
   const rootNode = byId.get(rootId)!;
   const rootCenter = centerOf(rootNode);
   const startY = rootNode.position.y;
+  const density = (((rootNode.data ?? {}) as Record<string, unknown>).matrixDensity ?? "compact") as MatrixDensity;
+  const densitySettings = density === "presentation"
+    ? { gapX: 16, gapY: 14, headerGap: 12, headerHeight: 80, minRowHeight: 72 }
+    : density === "comfortable"
+      ? { gapX: 8, gapY: 7, headerGap: 7, headerHeight: 66, minRowHeight: 56 }
+      : { gapX: 1, gapY: 1, headerGap: 1, headerHeight: 54, minRowHeight: 44 };
 
   const rootChildren = hierarchy.get(rootId)?.childIds ?? [];
-  const tableTop = startY + MATRIX_HEADER_HEIGHT + MATRIX_HEADER_GAP;
+  const tableTop = startY + densitySettings.headerHeight + densitySettings.headerGap;
 
   if (!rootChildren.length) {
     const width = matrixNaturalWidth(rootNode, 0, 1);
-    out[rootId] = { x: rootCenter.x - width / 2, y: startY, width, height: MATRIX_HEADER_HEIGHT };
+    out[rootId] = { x: rootCenter.x - width / 2, y: startY, width, height: densitySettings.headerHeight };
     return out;
   }
 
@@ -409,8 +411,8 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
   if (rootChildrenAreLeaves && rootChildren.length > 3) {
     const columns = clamp(Math.ceil(Math.sqrt(rootChildren.length * 1.4)), 3, 8);
     const cellWidth = Math.max(...rootChildren.map((id) => matrixNaturalWidth(byId.get(id)!, 0, 2)), MATRIX_MIN_COL_WIDTH);
-    const cellHeight = Math.max(...rootChildren.map((id) => matrixNaturalHeight(byId.get(id)!, cellWidth)), MATRIX_MIN_ROW_HEIGHT);
-    const gridWidth = columns * cellWidth + (columns - 1) * MATRIX_CELL_GAP_X;
+    const cellHeight = Math.max(...rootChildren.map((id) => matrixNaturalHeight(byId.get(id)!, cellWidth)), densitySettings.minRowHeight);
+    const gridWidth = columns * cellWidth + (columns - 1) * densitySettings.gapX;
     const tableWidth = Math.max(gridWidth, matrixNaturalWidth(rootNode, 0, 1));
     const tableStartX = rootCenter.x - tableWidth / 2;
     const gridStartX = tableStartX + (tableWidth - gridWidth) / 2;
@@ -418,15 +420,15 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
       x: tableStartX,
       y: startY,
       width: tableWidth,
-      height: MATRIX_HEADER_HEIGHT,
+      height: densitySettings.headerHeight,
     };
     for (let index = 0; index < rootChildren.length; index++) {
       const id = rootChildren[index];
       const col = index % columns;
       const row = Math.floor(index / columns);
       out[id] = {
-        x: gridStartX + col * (cellWidth + MATRIX_CELL_GAP_X),
-        y: tableTop + row * (cellHeight + MATRIX_CELL_GAP_Y),
+        x: gridStartX + col * (cellWidth + densitySettings.gapX),
+        y: tableTop + row * (cellHeight + densitySettings.gapY),
         width: cellWidth,
         height: cellHeight,
       };
@@ -456,7 +458,7 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
     if (col === maxCols - 1) return Math.max(widest, MATRIX_DETAIL_MIN_WIDTH);
     return Math.max(widest, MATRIX_MIN_COL_WIDTH);
   });
-  const bodyWidth = colWidth.reduce((sum, width) => sum + width, 0) + (maxCols - 1) * MATRIX_CELL_GAP_X;
+  const bodyWidth = colWidth.reduce((sum, width) => sum + width, 0) + (maxCols - 1) * densitySettings.gapX;
   const tableWidth = Math.max(bodyWidth, matrixNaturalWidth(rootNode, 0, 1));
   const extraWidth = tableWidth - bodyWidth;
   if (extraWidth > 0) colWidth[colWidth.length - 1] += extraWidth;
@@ -465,12 +467,12 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
   let x = tableStartX;
   for (const width of colWidth) {
     colX.push(x);
-    x += width + MATRIX_CELL_GAP_X;
+    x += width + densitySettings.gapX;
   }
 
   const naturalCellHeight = (id: string, col: number) => matrixNaturalHeight(byId.get(id)!, colWidth[col]);
   const rowHeight = rows.map((row) =>
-    Math.max(...row.map((id, col) => naturalCellHeight(id, col)), MATRIX_MIN_ROW_HEIGHT)
+    Math.max(...row.map((id, col) => naturalCellHeight(id, col)), densitySettings.minRowHeight)
   );
   const spans = new Map<string, { col: number; start: number; end: number }>();
   rows.forEach((row, rowIndex) => {
@@ -487,7 +489,7 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
   for (const [id, span] of spans) {
     const naturalH = naturalCellHeight(id, span.col);
     const currentH = rowHeight.slice(span.start, span.end + 1).reduce((sum, h) => sum + h, 0) +
-      (span.end - span.start) * MATRIX_CELL_GAP_Y;
+      (span.end - span.start) * densitySettings.gapY;
     if (naturalH <= currentH) continue;
     const extraPerRow = (naturalH - currentH) / (span.end - span.start + 1);
     for (let row = span.start; row <= span.end; row++) rowHeight[row] += extraPerRow;
@@ -497,10 +499,10 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
   let y = tableTop;
   for (const height of rowHeight) {
     rowY.push(y);
-    y += height + MATRIX_CELL_GAP_Y;
+    y += height + densitySettings.gapY;
   }
 
-  out[rootId] = { x: tableStartX, y: startY, width: tableWidth, height: MATRIX_HEADER_HEIGHT };
+  out[rootId] = { x: tableStartX, y: startY, width: tableWidth, height: densitySettings.headerHeight };
 
   const leafIds = new Set(rows.map((row) => row[row.length - 1]));
   for (const [id, span] of spans) {
@@ -509,7 +511,7 @@ function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, No
     const y = rowY[span.start];
     const height = rowY[span.end] + rowHeight[span.end] - y;
     const width = isLeaf && span.col < maxCols - 1
-      ? colWidth.slice(span.col).reduce((sum, w) => sum + w, 0) + (maxCols - 1 - span.col) * MATRIX_CELL_GAP_X
+      ? colWidth.slice(span.col).reduce((sum, w) => sum + w, 0) + (maxCols - 1 - span.col) * densitySettings.gapX
       : colWidth[span.col];
 
     out[id] = {

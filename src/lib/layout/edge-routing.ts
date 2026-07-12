@@ -296,8 +296,12 @@ function routeListEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: No
 function routeHorizontalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
   const sourceSide: Side = targetRect.x >= sourceRect.x ? "right" : "left";
   const targetSide: Side = sourceSide === "right" ? "left" : "right";
-  const source = sidePoint(sourceRect, sourceSide, 0.5);
-  const target = sidePoint(targetRect, targetSide, 0.5);
+  const targetCenterY = targetRect.y + targetRect.height / 2;
+  const sourceCenterY = sourceRect.y + sourceRect.height / 2;
+  const sourceFraction = Math.max(0.2, Math.min(0.8, (targetCenterY - sourceRect.y) / Math.max(1, sourceRect.height)));
+  const targetFraction = Math.max(0.2, Math.min(0.8, (sourceCenterY - targetRect.y) / Math.max(1, targetRect.height)));
+  const source = sidePoint(sourceRect, sourceSide, sourceFraction);
+  const target = sidePoint(targetRect, targetSide, targetFraction);
   const midX = (source.x + target.x) / 2;
   const points = [source, { x: midX, y: source.y }, { x: midX, y: target.y }, target];
   return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
@@ -308,8 +312,12 @@ function routeHorizontalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacl
 function routeVerticalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
   const sourceSide: Side = targetRect.y >= sourceRect.y ? "bottom" : "top";
   const targetSide: Side = sourceSide === "bottom" ? "top" : "bottom";
-  const source = sidePoint(sourceRect, sourceSide, 0.5);
-  const target = sidePoint(targetRect, targetSide, 0.5);
+  const targetCenterX = targetRect.x + targetRect.width / 2;
+  const sourceCenterX = sourceRect.x + sourceRect.width / 2;
+  const sourceFraction = Math.max(0.2, Math.min(0.8, (targetCenterX - sourceRect.x) / Math.max(1, sourceRect.width)));
+  const targetFraction = Math.max(0.2, Math.min(0.8, (sourceCenterX - targetRect.x) / Math.max(1, targetRect.width)));
+  const source = sidePoint(sourceRect, sourceSide, sourceFraction);
+  const target = sidePoint(targetRect, targetSide, targetFraction);
   const midY = (source.y + target.y) / 2;
   const points = [source, { x: source.x, y: midY }, { x: target.x, y: midY }, target];
   return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))

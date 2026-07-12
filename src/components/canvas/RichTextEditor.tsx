@@ -78,7 +78,6 @@ export function RichTextEditor({
   onContentSizeChange,
   onBlur,
 }: RichTextEditorProps) {
-  const [frozenContent] = useState(() => initialContent);
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
   const alignFirstRun = useRef(true);
   // Anchor = topmost point of the current selection (used to place the bar above it).
@@ -112,14 +111,13 @@ export function RichTextEditor({
   const reportContentSize = useCallback((activeEditor: Editor | null | undefined) => {
     const element = activeEditor?.view.dom as HTMLElement | undefined;
     if (!element) return;
-    const rect = element.getBoundingClientRect();
     const computed = window.getComputedStyle(element);
     const fontSize = Number.parseFloat(computed.fontSize) || 14;
     const lineHeight = Number.parseFloat(computed.lineHeight) || fontSize * 1.35;
     const text = element.innerText || element.textContent || "";
     const explicitLines = Math.max(1, text.replace(/\r\n/g, "\n").split("\n").length);
     const width = element.scrollWidth > element.clientWidth + 2 ? Math.ceil(element.scrollWidth) : 0;
-    const height = Math.ceil(Math.max(element.scrollHeight, rect.height));
+    const height = Math.ceil(Math.max(element.scrollHeight, element.offsetHeight));
     const lineCount = Math.max(explicitLines, Math.ceil(height / Math.max(1, lineHeight)));
     if (height > 0) onContentSizeChangeRef.current?.({ width, height, lineCount, lineHeight });
   }, []);
@@ -133,7 +131,7 @@ export function RichTextEditor({
 
   const editor = useEditor({
     extensions: EXTENSIONS,
-    content: frozenContent || "",
+    content: initialContent || "",
     editable,
     immediatelyRender: false,
     onUpdate({ editor }) {
@@ -146,6 +144,14 @@ export function RichTextEditor({
       onBlur?.();
     },
   });
+
+  useEffect(() => {
+    if (!editor || editable) return;
+    const nextContent = initialContent || "";
+    if (editor.getHTML() === nextContent) return;
+    editor.commands.setContent(nextContent, { emitUpdate: false });
+    scheduleContentReport(editor);
+  }, [editor, editable, initialContent, scheduleContentReport]);
 
   useEffect(() => {
     const element = editor?.view.dom as HTMLElement | undefined;

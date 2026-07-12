@@ -75,7 +75,7 @@ export function InternalFillLayer({
     const p = [toLocal(e)];
     pointsRef.current = p;
     setLivePoints(p);
-  }, [isDrawingMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDrawingMode]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDrawingMode || !drawing.current) return;
@@ -85,7 +85,7 @@ export function InternalFillLayer({
     if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 0.5) return;
     pointsRef.current = [...pointsRef.current, pt];
     setLivePoints(pointsRef.current);
-  }, [isDrawingMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDrawingMode]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     if (!isDrawingMode || !drawing.current) return;

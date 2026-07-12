@@ -16,7 +16,8 @@ export function NodeQuickActions({
   counterRotate?: boolean;
 }) {
   const duplicateNode = useCanvasStore((state) => state.duplicateNode);
-  if (!selected) return null;
+  const selectedCount = useCanvasStore((state) => state.selectedNodeIds.length);
+  if (!selected || selectedCount > 1) return null;
 
   return (
     <button
