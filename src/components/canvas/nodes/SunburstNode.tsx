@@ -195,7 +195,7 @@ function isDevanagariText(text: string): boolean {
 
 function labelFontFamily(label: string, configured?: string): string | undefined {
   if (!isDevanagariText(label)) return configured;
-  return configured ? `${DEVANAGARI_FONT}, ${configured}` : DEVANAGARI_FONT;
+  return configured ? `${configured}, ${DEVANAGARI_FONT}` : DEVANAGARI_FONT;
 }
 
 function labelFontWeight(label: string, configured: CSSProperties["fontWeight"]): CSSProperties["fontWeight"] {
@@ -393,8 +393,8 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowse
   const preferred = clamp(segment.preferredFontSize ?? defaultMax, 4, 96);
   const fit = fitLabel(segment.label, width, height, preferred, {
     fontFamily: segment.fontFamily,
-    fontWeight: segment.fontWeight,
-    fontStyle: segment.fontStyle,
+    fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
+    fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
   }, useBrowserMetrics);
   const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
   const normalized = ((baseRotation % 360) + 360) % 360;
@@ -595,7 +595,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [fontMetricsReady, setFontMetricsReady] = useState(false);
+  const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
   const clipPrefix = `sunburst-clip-${useId().replace(/:/g, "")}`;
   const svgRef = useRef<SVGSVGElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
@@ -605,13 +605,18 @@ function SunburstNodeComponent({ data }: NodeProps) {
   useEffect(() => {
     let active = true;
     if (typeof document === "undefined" || !document.fonts) return;
-    void document.fonts.ready.then(() => {
-      if (active) setFontMetricsReady(true);
-    });
+    const refreshMetrics = () => {
+      if (active) setFontMetricsRevision((revision) => revision + 1);
+    };
+    void document.fonts.ready.then(refreshMetrics);
+    document.fonts.addEventListener("loadingdone", refreshMetrics);
     return () => {
       active = false;
+      document.fonts.removeEventListener("loadingdone", refreshMetrics);
     };
   }, []);
+
+  const fontMetricsReady = fontMetricsRevision > 0;
 
   const model = useMemo(() => {
     const chartNodes = nodes.filter((node) => node.type !== "sunburst" && node.type !== "frame");
@@ -692,8 +697,10 @@ function SunburstNodeComponent({ data }: NodeProps) {
     typeof rootData.fontSize === "number" ? rootData.fontSize : undefined,
     {
       fontFamily: rootData.fontFamily as string | undefined,
-      fontWeight: rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
-      fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
+      fontWeight: /<(strong|b)\b/i.test(rootRichText)
+        ? 700
+        : rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
+      fontStyle: /<(em|i)\b/i.test(rootRichText) || rootData.fontStyle === "italic" ? "italic" : "normal",
     },
     fontMetricsReady
   );
@@ -825,7 +832,12 @@ function SunburstNodeComponent({ data }: NodeProps) {
     const activePointerId = drag?.pointerId ?? centerDrag?.pointerId;
     if (activePointerId !== event.pointerId) return;
     if (drag?.pointerId === event.pointerId) boundaryDragRef.current = null;
-    if (centerDrag?.pointerId === event.pointerId) centerDragRef.current = null;
+    if (centerDrag?.pointerId === event.pointerId) {
+      centerDragRef.current = null;
+      const root = useCanvasStore.getState().nodes.find((node) => node.id === centerDrag.rootId);
+      const ratio = dimension((root?.data as Record<string, unknown> | undefined)?.radialCenterRatio, 28);
+      updateNodeData(centerDrag.rootId, { radialCenterRatio: ratio });
+    }
     try { svgRef.current?.releasePointerCapture(event.pointerId); } catch {}
     useCanvasStore.getState().setSaveStatus("unsaved");
   };
@@ -899,41 +911,55 @@ function SunburstNodeComponent({ data }: NodeProps) {
               >
                 <title>{segment.label}</title>
               </path>
-              {!selected && labelGeometry.lines.length > 0 && (
-                <foreignObject
+              {!!rootData.radialDebugLabelBoxes && (
+                <rect
                   x={labelGeometry.x - labelGeometry.width / 2}
                   y={labelGeometry.y - labelGeometry.height / 2}
                   width={labelGeometry.width}
                   height={labelGeometry.height}
                   transform={`rotate(${labelGeometry.rotation} ${labelGeometry.x} ${labelGeometry.y})`}
-                  clipPath={`url(#${segmentClipId})`}
+                  fill="rgba(236,72,153,0.08)"
+                  stroke="#db2777"
+                  strokeWidth="2"
+                  strokeDasharray="8 5"
                   pointerEvents="none"
-                  overflow="visible"
-                >
-                  <div
-                    lang={isDevanagariText(segment.label) ? "sa" : undefined}
-                    className="sunburst-rich-label"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "visible",
-                      boxSizing: "border-box",
-                      padding: isDevanagariText(segment.label) ? "0.08em 0.08em 0.1em" : undefined,
-                      color: segment.textColor,
-                      fontSize: labelGeometry.fontSize,
-                      lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
-                      fontFamily: labelFontFamily(segment.label, segment.fontFamily),
-                      fontWeight: labelFontWeight(segment.label, segment.fontWeight),
-                      fontStyle: segment.fontStyle,
-                      textAlign: segment.textAlign,
-                    }}
-                    dangerouslySetInnerHTML={{ __html: segment.richText }}
-                  />
-                </foreignObject>
+                />
+              )}
+              {(!selected || editingId !== segment.id) && labelGeometry.lines.length > 0 && (
+                <g clipPath={`url(#${segmentClipId})`} pointerEvents="none">
+                  <foreignObject
+                    x={labelGeometry.x - labelGeometry.width / 2}
+                    y={labelGeometry.y - labelGeometry.height / 2}
+                    width={labelGeometry.width}
+                    height={labelGeometry.height}
+                    transform={`rotate(${labelGeometry.rotation} ${labelGeometry.x} ${labelGeometry.y})`}
+                    overflow="visible"
+                  >
+                    <div
+                      lang={isDevanagariText(segment.label) ? "sa" : undefined}
+                      className="sunburst-rich-label"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "visible",
+                        boxSizing: "border-box",
+                        padding: isDevanagariText(segment.label) ? "0.08em 0.08em 0.1em" : undefined,
+                        color: segment.textColor,
+                        fontSize: labelGeometry.fontSize,
+                        lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+                        fontFamily: labelFontFamily(segment.label, segment.fontFamily),
+                        fontWeight: labelFontWeight(segment.label, segment.fontWeight),
+                        fontStyle: segment.fontStyle,
+                        textAlign: segment.textAlign,
+                      }}
+                      dangerouslySetInnerHTML={{ __html: segment.richText }}
+                    />
+                  </foreignObject>
+                </g>
               )}
             </g>
           );
@@ -957,7 +983,20 @@ function SunburstNodeComponent({ data }: NodeProps) {
         >
           <title>{rootLabel}</title>
         </circle>
-        {selectedId !== d.rootId && rootFit.lines.length > 0 && (
+        {!!rootData.radialDebugLabelBoxes && (
+          <rect
+            x={rootFit.x - rootFit.width / 2}
+            y={rootFit.y - rootFit.height / 2}
+            width={rootFit.width}
+            height={rootFit.height}
+            fill="rgba(236,72,153,0.08)"
+            stroke="#db2777"
+            strokeWidth="2"
+            strokeDasharray="8 5"
+            pointerEvents="none"
+          />
+        )}
+        {(selectedId !== d.rootId || editingId !== d.rootId) && rootFit.lines.length > 0 && (
           <foreignObject
             x={rootFit.x - rootFit.width / 2}
             y={rootFit.y - rootFit.height / 2}
@@ -993,20 +1032,20 @@ function SunburstNodeComponent({ data }: NodeProps) {
           </foreignObject>
         )}
 
-        {selectedId && selectedNode && selectedGeometry && selectedTextStyle && selectedClipId && (
+        {selectedId && editingId === selectedId && selectedNode && selectedGeometry && selectedTextStyle && selectedClipId && (
           <foreignObject
             x={selectedGeometry.x - selectedGeometry.width / 2}
             y={selectedGeometry.y - selectedGeometry.height / 2}
             width={selectedGeometry.width}
             height={selectedGeometry.height}
             transform={`rotate(${selectedGeometry.rotation} ${selectedGeometry.x} ${selectedGeometry.y})`}
-            clipPath={`url(#${selectedClipId})`}
             className="sunburst-inline-editor nodrag nopan overflow-visible"
             overflow="visible"
-            style={{ pointerEvents: editingId === selectedId ? "all" : "none", overflow: "visible" }}
+            style={{ pointerEvents: "all", overflow: "visible" }}
           >
             <div
               lang={isDevanagariText(selectedLabel) ? "sa" : undefined}
+              className="sunburst-editor-label"
               style={{
                 width: "100%",
                 height: "100%",
@@ -1026,9 +1065,10 @@ function SunburstNodeComponent({ data }: NodeProps) {
               }}
             >
               <RichTextEditor
+                key={selectedId}
                 nodeId={selectedId}
                 initialContent={selectedRichText}
-                editable={editingId === selectedId}
+                editable
                 placeholder="Type here"
                 className="h-full w-full [&_.ProseMirror]:flex [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:flex-col [&_.ProseMirror]:items-center [&_.ProseMirror]:justify-center [&_.ProseMirror]:overflow-visible"
                 blockAlign={(selectedNode.data as Record<string, unknown>).textAlign as "left" | "center" | "right" | "justify" | undefined}

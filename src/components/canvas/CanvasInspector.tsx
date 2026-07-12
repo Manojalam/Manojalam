@@ -535,6 +535,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     : null;
   const radialRootNode = radialRootId ? nodes.find((node) => node.id === radialRootId) ?? null : null;
   const radialRootData = (radialRootNode?.data ?? {}) as Record<string, unknown>;
+  const radialChartData = (radialChartNode?.data ?? {}) as Record<string, unknown>;
   const selectedIsRadialRoot = !!radialRootId && selectedNode?.id === radialRootId;
   const selectedRadialDepth = (() => {
     if (!radialRootId || !selectedNode) return 0;
@@ -1509,19 +1510,49 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ring diameter</p>
-                <span className="text-[9px] text-muted-foreground">Resizes whole chart</span>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Chart diameter</p>
+                <span className="text-[9px] text-muted-foreground">Exact overall size</span>
               </div>
               <SliderControl
-                value={typeof radialRootData.radialRingWidth === "number" ? radialRootData.radialRingWidth : 132}
-                min={64}
-                max={260}
-                step={4}
+                value={typeof radialRootData.radialChartDiameter === "number"
+                  ? radialRootData.radialChartDiameter
+                  : typeof radialChartData.chartSize === "number" ? radialChartData.chartSize : 820}
+                min={520}
+                max={8000}
+                step={20}
                 suffix="px"
                 onChangeStart={pushHistory}
                 onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
                 onChange={(value) => {
-                  if (radialRootId) updateNodeData(radialRootId, { radialRingWidth: value });
+                  if (radialRootId) updateNodeData(radialRootId, { radialChartDiameter: value });
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-1.5 h-7 w-full text-[10px]"
+                onClick={() => {
+                  if (!radialRootId) return;
+                  pushHistory();
+                  updateNodeData(radialRootId, { radialChartDiameter: undefined });
+                }}
+              >
+                Use automatic diameter
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
+              <div>
+                <p className="text-[10px] font-medium">Debug label boxes</p>
+                <p className="text-[9px] text-muted-foreground">Show the actual fitted rectangles</p>
+              </div>
+              <Switch
+                checked={!!radialRootData.radialDebugLabelBoxes}
+                onCheckedChange={(checked) => {
+                  if (!radialRootId) return;
+                  pushHistory();
+                  updateNodeData(radialRootId, { radialDebugLabelBoxes: checked });
                 }}
               />
             </div>

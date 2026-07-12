@@ -251,6 +251,10 @@ export interface BaseNodeData extends Record<string, unknown> {
   radialRingWidth?: number;
   /** Relative radial thickness for each hierarchy depth, stored on the root. */
   radialRingWidths?: number[];
+  /** Explicit diameter of the generated hierarchy chart in canvas pixels. */
+  radialChartDiameter?: number;
+  /** Draw the computed long-axis label rectangles for visual verification. */
+  radialDebugLabelBoxes?: boolean;
   /** Root-level palette inherited by every radial sector without a color override. */
   radialColorScheme?: RadialColorScheme;
 }
