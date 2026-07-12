@@ -121,7 +121,11 @@ function ChildCountInput({
       step={1}
       value={draft}
       className="h-7 text-xs"
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        const nextDraft = event.target.value;
+        setDraft(nextDraft);
+        if (nextDraft === "0" && value !== 0) onCommit(0);
+      }}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
@@ -1378,12 +1382,25 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   <p className="mb-1 text-[9px] text-muted-foreground">
                                     Sections in ring {ringIndex + 2}
                                   </p>
-                                  <ChildCountInput
-                                    ariaLabel={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} child section count`}
-                                    name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-children`}
-                                    value={segment.childCount ?? 1}
-                                    onCommit={(value) => updateRadialChildCount(ringIndex, segmentIndex, value)}
-                                  />
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="min-w-0 flex-1">
+                                      <ChildCountInput
+                                        ariaLabel={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} child section count`}
+                                        name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-children`}
+                                        value={segment.childCount ?? 1}
+                                        onCommit={(value) => updateRadialChildCount(ringIndex, segmentIndex, value)}
+                                      />
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant={segment.childCount === 0 ? "default" : "outline"}
+                                      size="sm"
+                                      className="h-7 px-2 text-[10px]"
+                                      onClick={() => updateRadialChildCount(ringIndex, segmentIndex, 0)}
+                                    >
+                                      {segment.childCount === 0 ? "Merged" : "Merge"}
+                                    </Button>
+                                  </div>
                                   <p className="mt-1 text-[9px] text-muted-foreground">
                                     Set to 0 to merge through ring {ringIndex + 2}
                                   </p>
