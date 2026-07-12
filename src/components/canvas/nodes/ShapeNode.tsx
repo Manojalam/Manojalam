@@ -247,6 +247,15 @@ function wrapLinesToWidth(text: string, availableWidth: number, fontSize: number
   return result;
 }
 
+function wordSafeLabelContent(text: string): ReactNode[] {
+  return text.split(/(\s+)/).map((part, index) => {
+    if (!part) return null;
+    return /^\s+$/.test(part)
+      ? part
+      : <span key={`${index}-${part}`} style={{ whiteSpace: "nowrap" }}>{part}</span>;
+  });
+}
+
 function fitSectorLabel(
   text: string | undefined,
   innerRadius: number,
@@ -554,7 +563,6 @@ function RadialChartLayer({
               radialControlFontSize(segment.fontSize)
             );
             const { lines, fontSize, lineAdvance, point: textPoint } = labelFit;
-            const lineOffset = -((lines.length - 1) * lineAdvance) / 2;
             const isEditingSegment =
               editingText?.kind === "segment" &&
               editingText.ringIndex === ringIndex &&
@@ -611,25 +619,38 @@ function RadialChartLayer({
                   </g>
                 )}
                 {lines.length > 0 && !isEditingSegment && !(segment.childCount === 0 && !hiddenByParentMerge) && (
-                  <g clipPath={`url(#${segmentClipId})`}>
-                    <text
-                      x={textPoint.x}
-                      y={textPoint.y}
-                      pointerEvents="none"
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill={segment.textColor ?? "#111827"}
-                      fontSize={fontSize}
-                      fontWeight={ringIndex === 0 ? 700 : 500}
-                      transform={`rotate(${labelFit.rotation} ${textPoint.x} ${textPoint.y})`}
+                  <foreignObject
+                    x={textPoint.x - labelFit.availableWidth / 2}
+                    y={textPoint.y - labelFit.availableHeight / 2}
+                    width={labelFit.availableWidth}
+                    height={labelFit.availableHeight}
+                    transform={`rotate(${labelFit.rotation} ${textPoint.x} ${textPoint.y})`}
+                    clipPath={`url(#${segmentClipId})`}
+                    pointerEvents="none"
+                  >
+                    <div
+                      className="radial-sector-label"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        color: segment.textColor ?? "#111827",
+                        fontSize,
+                        lineHeight: fontSize > 0 ? lineAdvance / fontSize : 1.12,
+                        fontWeight: ringIndex === 0 ? 700 : 500,
+                        textAlign: "center",
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "normal",
+                        wordBreak: "normal",
+                        hyphens: "none",
+                      }}
                     >
-                      {lines.map((line, lineIndex) => (
-                        <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : lineAdvance}>
-                          {line}
-                        </tspan>
-                      ))}
-                    </text>
-                  </g>
+                      {wordSafeLabelContent(segment.text ?? "")}
+                    </div>
+                  </foreignObject>
                 )}
               </g>
             );
@@ -666,7 +687,7 @@ function RadialChartLayer({
             const { start, end } = ringAngles[ringIndex][segmentIndex];
             const renderedOuterRadius = bands[ringIndex + 1]?.outerRadius ?? segmentOuterRadius;
             const manualTextRotation = segment.textRotation ?? 0;
-            const { lines, fontSize, lineAdvance, point: textPoint, rotation: labelRotation } = fitSectorLabel(
+            const labelFit = fitSectorLabel(
               segment.text,
               innerRadius,
               renderedOuterRadius,
@@ -675,27 +696,43 @@ function RadialChartLayer({
               manualTextRotation,
               radialControlFontSize(segment.fontSize)
             );
-            const lineOffset = -((lines.length - 1) * lineAdvance) / 2;
+            const { lines, fontSize, lineAdvance, point: textPoint, rotation: labelRotation } = labelFit;
+            if (!lines.length) return null;
             const segmentClipId = `${clipId}-segment-${ringIndex}-${segmentIndex}`;
             return (
-              <g key={`merged-label-${ring.id}-${segment.id}`} clipPath={`url(#${segmentClipId})`}>
-                <text
-                  x={textPoint.x}
-                  y={textPoint.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={segment.textColor ?? "#111827"}
-                  fontSize={fontSize}
-                  fontWeight={ringIndex === 0 ? 700 : 500}
-                  transform={`rotate(${labelRotation} ${textPoint.x} ${textPoint.y})`}
+              <foreignObject
+                key={`merged-label-${ring.id}-${segment.id}`}
+                x={textPoint.x - labelFit.availableWidth / 2}
+                y={textPoint.y - labelFit.availableHeight / 2}
+                width={labelFit.availableWidth}
+                height={labelFit.availableHeight}
+                clipPath={`url(#${segmentClipId})`}
+                pointerEvents="none"
+                transform={`rotate(${labelRotation} ${textPoint.x} ${textPoint.y})`}
+              >
+                <div
+                  className="radial-sector-label"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    color: segment.textColor ?? "#111827",
+                    fontSize,
+                    lineHeight: fontSize > 0 ? lineAdvance / fontSize : 1.12,
+                    fontWeight: ringIndex === 0 ? 700 : 500,
+                    textAlign: "center",
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "normal",
+                    wordBreak: "normal",
+                    hyphens: "none",
+                  }}
                 >
-                  {lines.map((line, lineIndex) => (
-                    <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : lineAdvance}>
-                      {line}
-                    </tspan>
-                  ))}
-                </text>
-              </g>
+                  {wordSafeLabelContent(segment.text ?? "")}
+                </div>
+              </foreignObject>
             );
           });
         })}
