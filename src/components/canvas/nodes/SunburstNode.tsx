@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
@@ -21,6 +21,7 @@ type SunburstTreeNode = {
   parentId: string | null;
   depth: number;
   siblingIndex: number;
+  siblingCount: number;
   branchIndex: number;
   weight: number;
   startAngle: number;
@@ -58,6 +59,12 @@ type LabelGeometry = LabelFit & {
   rotation: number;
 };
 
+type LabelTextStyle = {
+  fontFamily?: string;
+  fontWeight?: CSSProperties["fontWeight"];
+  fontStyle?: CSSProperties["fontStyle"];
+};
+
 type BoundaryDrag = {
   pointerId: number;
   nodeId: string;
@@ -80,6 +87,11 @@ const CHART_PADDING = 22;
 const MIN_SECTOR_ANGLE = 2.5;
 const MIN_CENTER_RATIO = 14;
 const MAX_CENTER_RATIO = 58;
+const DEVANAGARI_LINE_HEIGHT = 1.46;
+const DEVANAGARI_INK_PADDING_X = 0.16;
+const DEVANAGARI_INK_PADDING_Y = 0.18;
+const DEVANAGARI_FONT = "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif";
+let textMeasurementCanvas: HTMLCanvasElement | null = null;
 
 function dimension(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -181,13 +193,78 @@ function isDevanagariText(text: string): boolean {
   return /[\u0900-\u097f]/.test(text);
 }
 
-function textMetrics(lines: string[], fontSize: number): { width: number; height: number } {
+function labelFontFamily(label: string, configured?: string): string | undefined {
+  if (!isDevanagariText(label)) return configured;
+  return configured ? `${DEVANAGARI_FONT}, ${configured}` : DEVANAGARI_FONT;
+}
+
+function labelFontWeight(label: string, configured: CSSProperties["fontWeight"]): CSSProperties["fontWeight"] {
+  if (!isDevanagariText(label)) return configured;
+  return typeof configured === "number" ? Math.min(700, configured) : configured;
+}
+
+function canvasFontFamily(family: string | undefined): string {
+  if (!family) return "sans-serif";
+  if (typeof document === "undefined") return family;
+  return family.replace(/var\((--[^),]+)(?:,[^)]+)?\)/g, (_match, variable: string) =>
+    getComputedStyle(document.documentElement).getPropertyValue(variable).trim() || "sans-serif"
+  );
+}
+
+function browserTextMetrics(
+  text: string,
+  fontSize: number,
+  label: string,
+  style: LabelTextStyle
+): TextMetrics | null {
+  if (typeof document === "undefined") return null;
+  textMeasurementCanvas ??= document.createElement("canvas");
+  const context = textMeasurementCanvas.getContext("2d");
+  if (!context) return null;
+  const family = canvasFontFamily(labelFontFamily(label, style.fontFamily));
+  const weight = labelFontWeight(label, style.fontWeight ?? 400) ?? 400;
+  context.font = `${style.fontStyle ?? "normal"} ${weight} ${fontSize}px ${family}`;
+  return context.measureText(text);
+}
+
+function textMetrics(
+  lines: string[],
+  fontSize: number,
+  label: string,
+  style: LabelTextStyle,
+  useBrowserMetrics: boolean
+): { width: number; height: number } {
   const devanagari = lines.some(isDevanagariText);
   const widthFactor = devanagari ? 0.62 : 0.54;
-  const lineHeight = devanagari ? 1.36 : 1.12;
+  const lineHeight = devanagari ? DEVANAGARI_LINE_HEIGHT : 1.12;
+  const inkPaddingX = devanagari ? DEVANAGARI_INK_PADDING_X : 0;
+  const inkPaddingY = devanagari ? DEVANAGARI_INK_PADDING_Y : 0;
+  const measurements = useBrowserMetrics
+    ? lines.map((line) => browserTextMetrics(line, fontSize, label, style))
+    : [];
+  const measuredWidth = measurements.length && measurements.every(Boolean)
+    ? Math.max(0, ...measurements.map((measurement) => {
+        if (!measurement) return 0;
+        return Math.max(
+          measurement.width,
+          (measurement.actualBoundingBoxLeft ?? 0) + (measurement.actualBoundingBoxRight ?? 0)
+        );
+      }))
+    : Math.max(0, ...lines.map((line) => textMeasureUnits(line) * fontSize * widthFactor));
+  const measuredInkHeight = measurements.length && measurements.every(Boolean)
+    ? Math.max(0, ...measurements.map((measurement) =>
+        measurement
+          ? (measurement.actualBoundingBoxAscent ?? 0) + (measurement.actualBoundingBoxDescent ?? 0)
+          : 0
+      ))
+    : 0;
+  const lineBoxHeight = fontSize * lineHeight;
   return {
-    width: Math.max(0, ...lines.map((line) => textMeasureUnits(line) * fontSize * widthFactor)),
-    height: Math.max(1, lines.length) * fontSize * lineHeight,
+    width: measuredWidth + fontSize * inkPaddingX,
+    height: Math.max(
+      lineBoxHeight * Math.max(1, lines.length),
+      lineBoxHeight * Math.max(0, lines.length - 1) + measuredInkHeight
+    ) + fontSize * inkPaddingY,
   };
 }
 
@@ -225,11 +302,49 @@ function wrapLabel(label: string, maxUnits: number): string[] {
   return lines.length ? lines : [""];
 }
 
+function wrapLabelToWidth(
+  label: string,
+  availableWidth: number,
+  fontSize: number,
+  style: LabelTextStyle,
+  useBrowserMetrics: boolean
+): string[] {
+  if (!useBrowserMetrics) {
+    const widthFactor = isDevanagariText(label) ? 0.62 : 0.54;
+    const maxUnits = availableWidth / Math.max(0.8, fontSize * widthFactor);
+    return wrapLabel(label, maxUnits);
+  }
+
+  const lines: string[] = [];
+  for (const explicitLine of label.replace(/\r\n/g, "\n").split("\n")) {
+    const words = explicitLine.split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push("");
+      continue;
+    }
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      const nextWidth = textMetrics([next], fontSize, label, style, true).width;
+      if (current && nextWidth > availableWidth) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines.length ? lines : [""];
+}
+
 function fitLabel(
   label: string,
   availableWidth: number,
   availableHeight: number,
-  preferredFontSize: number
+  preferredFontSize: number,
+  style: LabelTextStyle,
+  useBrowserMetrics: boolean
 ): LabelFit {
   const width = Math.max(0.5, availableWidth);
   const height = Math.max(0.5, availableHeight);
@@ -238,20 +353,25 @@ function fitLabel(
   const maxFont = Math.max(3, preferredFontSize);
   const minimumReadableFont = 4;
   const unwrapped = explicitLabelLines(label);
-  for (let fontSize = maxFont; fontSize >= minimumReadableFont; fontSize -= Math.max(0.25, fontSize * 0.06)) {
-    const unwrappedMetrics = textMetrics(unwrapped, fontSize);
-    if (unwrappedMetrics.width <= width && unwrappedMetrics.height <= height) {
-      return { lines: unwrapped, fontSize, width, height };
-    }
+  const unwrappedMetrics = textMetrics(unwrapped, maxFont, label, style, useBrowserMetrics);
+  if (unwrappedMetrics.width <= width && unwrappedMetrics.height <= height) {
+    return { lines: unwrapped, fontSize: maxFont, width, height };
+  }
+
+  const preferredWrapped = wrapLabelToWidth(label, width, maxFont, style, useBrowserMetrics);
+  const preferredWrappedMetrics = textMetrics(preferredWrapped, maxFont, label, style, useBrowserMetrics);
+  if (preferredWrappedMetrics.width <= width && preferredWrappedMetrics.height <= height) {
+    return { lines: preferredWrapped, fontSize: maxFont, width, height };
   }
 
   for (let fontSize = maxFont; fontSize >= minimumReadableFont; fontSize -= Math.max(0.25, fontSize * 0.06)) {
-    const widthFactor = isDevanagariText(label) ? 0.62 : 0.54;
-    const maxChars = Math.max(1, Math.floor(width / Math.max(0.8, fontSize * widthFactor)));
-    const lines = wrapLabel(label, maxChars);
-    const metrics = textMetrics(lines, fontSize);
-    const wordsFit = lines.every((line) => textMeasureUnits(line) * fontSize * widthFactor <= width);
-    if (wordsFit && metrics.height <= height) {
+    const smallerUnwrapped = textMetrics(unwrapped, fontSize, label, style, useBrowserMetrics);
+    if (smallerUnwrapped.width <= width && smallerUnwrapped.height <= height) {
+      return { lines: unwrapped, fontSize, width, height };
+    }
+    const lines = wrapLabelToWidth(label, width, fontSize, style, useBrowserMetrics);
+    const metrics = textMetrics(lines, fontSize, label, style, useBrowserMetrics);
+    if (metrics.width <= width && metrics.height <= height) {
       return { lines, fontSize, width, height };
     }
   }
@@ -259,7 +379,7 @@ function fitLabel(
   return { lines: [], fontSize: minimumReadableFont, width, height };
 }
 
-function sectorLabelGeometry(segment: SunburstSegment, center: number): LabelGeometry {
+function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowserMetrics: boolean): LabelGeometry {
   const midAngle = (segment.startAngle + segment.endAngle) / 2;
   const textRadius = (segment.innerRadius + segment.outerRadius) / 2;
   const point = pointOnCircle(center, center, textRadius, midAngle);
@@ -271,18 +391,29 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number): LabelGeo
   const height = useRadialAxis ? arcLength : radialBand;
   const defaultMax = segment.depth <= 1 ? 28 : 20;
   const preferred = clamp(segment.preferredFontSize ?? defaultMax, 4, 96);
-  const fit = fitLabel(segment.label, width, height, preferred);
+  const fit = fitLabel(segment.label, width, height, preferred, {
+    fontFamily: segment.fontFamily,
+    fontWeight: segment.fontWeight,
+    fontStyle: segment.fontStyle,
+  }, useBrowserMetrics);
   const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
   const normalized = ((baseRotation % 360) + 360) % 360;
   const rotation = normalized > 90 && normalized < 270 ? baseRotation + 180 : baseRotation;
   return { ...fit, x: point.x, y: point.y, rotation };
 }
 
-function circleLabelGeometry(label: string, radius: number, center: number, preferredFontSize?: number): LabelGeometry {
+function circleLabelGeometry(
+  label: string,
+  radius: number,
+  center: number,
+  preferredFontSize: number | undefined,
+  style: LabelTextStyle,
+  useBrowserMetrics: boolean
+): LabelGeometry {
   const width = Math.max(24, radius * 1.55);
   const height = Math.max(24, radius * 1.5);
   const preferred = clamp(preferredFontSize ?? Math.min(32, radius * 0.34), 5, 96);
-  return { ...fitLabel(label, width, height, preferred), x: center, y: center, rotation: 0 };
+  return { ...fitLabel(label, width, height, preferred, style, useBrowserMetrics), x: center, y: center, rotation: 0 };
 }
 
 function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<string, Node>): SunburstTreeNode {
@@ -291,11 +422,12 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
     parentId: string | null,
     depth: number,
     siblingIndex: number,
+    siblingCount: number,
     branchIndex: number
   ): SunburstTreeNode => {
     const childIds = hierarchy.get(id)?.childIds ?? [];
     const children = childIds.map((childId, index) =>
-      build(childId, id, depth + 1, index, depth === 0 ? index : branchIndex)
+      build(childId, id, depth + 1, index, childIds.length, depth === 0 ? index : branchIndex)
     );
     const data = (byId.get(id)?.data ?? {}) as Record<string, unknown>;
     const manualWeight = clamp(dimension(data.radialWeight, 1), 0.1, 10);
@@ -307,6 +439,7 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
       parentId,
       depth,
       siblingIndex,
+      siblingCount,
       branchIndex,
       weight: Math.max(0.01, automaticWeight * manualWeight),
       startAngle: ROOT_START_ANGLE,
@@ -316,20 +449,45 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
       children,
     };
   };
-  return build(rootId, null, 0, 0, 0);
+  return build(rootId, null, 0, 0, 1, 0);
 }
 
 function maxDepthOf(node: SunburstTreeNode): number {
   return Math.max(node.depth, ...node.children.map(maxDepthOf));
 }
 
-function assignGeometry(node: SunburstTreeNode, centerRadius: number, ringWidth: number): void {
+type RadialBand = { innerRadius: number; outerRadius: number };
+
+function radialBands(
+  centerRadius: number,
+  outerRadius: number,
+  depthCount: number,
+  widthWeights: unknown
+): RadialBand[] {
+  const source = Array.isArray(widthWeights) ? widthWeights : [];
+  const weights = Array.from({ length: depthCount }, (_, index) =>
+    clamp(dimension(source[index], 1), 0.25, 4)
+  );
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = centerRadius;
+  return weights.map((weight, index) => {
+    const width = index === weights.length - 1
+      ? outerRadius - cursor
+      : (outerRadius - centerRadius) * (weight / Math.max(0.01, total));
+    const band = { innerRadius: cursor, outerRadius: cursor + width };
+    cursor += width;
+    return band;
+  });
+}
+
+function assignGeometry(node: SunburstTreeNode, centerRadius: number, bands: RadialBand[]): void {
   if (node.depth === 0) {
     node.innerRadius = 0;
     node.outerRadius = centerRadius;
   } else {
-    node.innerRadius = centerRadius + (node.depth - 1) * ringWidth;
-    node.outerRadius = node.innerRadius + ringWidth;
+    const band = bands[Math.min(node.depth - 1, bands.length - 1)];
+    node.innerRadius = band?.innerRadius ?? centerRadius;
+    node.outerRadius = band?.outerRadius ?? centerRadius;
   }
 
   const childWeight = node.children.reduce((sum, child) => sum + child.weight, 0);
@@ -339,7 +497,7 @@ function assignGeometry(node: SunburstTreeNode, centerRadius: number, ringWidth:
     child.endAngle = index === node.children.length - 1
       ? node.endAngle
       : currentAngle + (node.endAngle - node.startAngle) * (child.weight / Math.max(0.01, childWeight));
-    assignGeometry(child, centerRadius, ringWidth);
+    assignGeometry(child, centerRadius, bands);
     currentAngle = child.endAngle;
   });
 }
@@ -360,7 +518,13 @@ function collectSegments(
       const source = byId.get(candidate.id);
       const data = (source?.data ?? {}) as Record<string, unknown>;
       const label = nodeLabel(source);
-      const paletteColors = radialSectorColors(scheme, candidate.branchIndex, candidate.depth, candidate.siblingIndex);
+      const paletteColors = radialSectorColors(
+        scheme,
+        candidate.branchIndex,
+        candidate.depth,
+        candidate.siblingIndex,
+        candidate.siblingCount
+      );
       segments.push({
         ...candidate,
         label,
@@ -431,11 +595,23 @@ function SunburstNodeComponent({ data }: NodeProps) {
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [fontMetricsReady, setFontMetricsReady] = useState(false);
   const clipPrefix = `sunburst-clip-${useId().replace(/:/g, "")}`;
   const svgRef = useRef<SVGSVGElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
   const centerDragRef = useRef<CenterDrag | null>(null);
   const editHistoryCaptured = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    if (typeof document === "undefined" || !document.fonts) return;
+    void document.fonts.ready.then(() => {
+      if (active) setFontMetricsReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const model = useMemo(() => {
     const chartNodes = nodes.filter((node) => node.type !== "sunburst" && node.type !== "frame");
@@ -458,10 +634,10 @@ function SunburstNodeComponent({ data }: NodeProps) {
     const centerRadius = tree.children.length
       ? outerRadius * (centerRatio / 100)
       : outerRadius;
-    const ringWidth = Math.max(1, (outerRadius - centerRadius) / maxDepth);
+    const bands = radialBands(centerRadius, outerRadius, maxDepth, rootData.radialRingWidths);
     tree.startAngle = ROOT_START_ANGLE;
     tree.endAngle = ROOT_END_ANGLE;
-    assignGeometry(tree, centerRadius, ringWidth);
+    assignGeometry(tree, centerRadius, bands);
     extendTerminalSectors(tree, outerRadius);
 
     return {
@@ -509,15 +685,27 @@ function SunburstNodeComponent({ data }: NodeProps) {
   const rootData = (model.root.data ?? {}) as Record<string, unknown>;
   const rootLabel = nodeLabel(model.root);
   const rootRichText = nodeRichText(model.root, rootLabel);
-  const rootFit = circleLabelGeometry(rootLabel, model.centerRadius, model.center, typeof rootData.fontSize === "number" ? rootData.fontSize : undefined);
+  const rootFit = circleLabelGeometry(
+    rootLabel,
+    model.centerRadius,
+    model.center,
+    typeof rootData.fontSize === "number" ? rootData.fontSize : undefined,
+    {
+      fontFamily: rootData.fontFamily as string | undefined,
+      fontWeight: rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
+      fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
+    },
+    fontMetricsReady
+  );
   const rootClipId = `${clipPrefix}-root`;
 
   const selectedGeometry = selectedId === d.rootId
     ? rootFit
     : selectedSegment
-      ? sectorLabelGeometry(selectedSegment, model.center)
+      ? sectorLabelGeometry(selectedSegment, model.center, fontMetricsReady)
       : null;
   const selectedRichText = selectedId === d.rootId ? rootRichText : selectedSegment?.richText ?? "";
+  const selectedLabel = selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "";
   const selectedClipId = selectedId === d.rootId
     ? rootClipId
     : selectedId
@@ -683,7 +871,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
             segment.endAngle
           );
           const segmentClipId = `${clipPrefix}-${segment.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-          const labelGeometry = sectorLabelGeometry(segment, model.center);
+          const labelGeometry = sectorLabelGeometry(segment, model.center, fontMetricsReady);
 
           return (
             <g key={segment.id}>
@@ -720,8 +908,10 @@ function SunburstNodeComponent({ data }: NodeProps) {
                   transform={`rotate(${labelGeometry.rotation} ${labelGeometry.x} ${labelGeometry.y})`}
                   clipPath={`url(#${segmentClipId})`}
                   pointerEvents="none"
+                  overflow="visible"
                 >
                   <div
+                    lang={isDevanagariText(segment.label) ? "sa" : undefined}
                     className="sunburst-rich-label"
                     style={{
                       width: "100%",
@@ -730,12 +920,14 @@ function SunburstNodeComponent({ data }: NodeProps) {
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      overflow: "hidden",
+                      overflow: "visible",
+                      boxSizing: "border-box",
+                      padding: isDevanagariText(segment.label) ? "0.08em 0.08em 0.1em" : undefined,
                       color: segment.textColor,
                       fontSize: labelGeometry.fontSize,
-                      lineHeight: isDevanagariText(segment.label) ? 1.36 : 1.12,
-                      fontFamily: segment.fontFamily,
-                      fontWeight: segment.fontWeight,
+                      lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+                      fontFamily: labelFontFamily(segment.label, segment.fontFamily),
+                      fontWeight: labelFontWeight(segment.label, segment.fontWeight),
                       fontStyle: segment.fontStyle,
                       textAlign: segment.textAlign,
                     }}
@@ -773,8 +965,10 @@ function SunburstNodeComponent({ data }: NodeProps) {
             height={rootFit.height}
             clipPath={`url(#${rootClipId})`}
             pointerEvents="none"
+            overflow="visible"
           >
             <div
+              lang={isDevanagariText(rootLabel) ? "sa" : undefined}
               className="sunburst-rich-label"
               style={{
                 width: "100%",
@@ -783,12 +977,14 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                overflow: "hidden",
+                overflow: "visible",
+                boxSizing: "border-box",
+                padding: isDevanagariText(rootLabel) ? "0.08em 0.08em 0.1em" : undefined,
                 color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
                 fontSize: rootFit.fontSize,
-                lineHeight: isDevanagariText(rootLabel) ? 1.36 : 1.12,
-                fontFamily: rootData.fontFamily as string | undefined,
-                fontWeight: rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
+                lineHeight: isDevanagariText(rootLabel) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+                fontFamily: labelFontFamily(rootLabel, rootData.fontFamily as string | undefined),
+                fontWeight: labelFontWeight(rootLabel, rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800),
                 fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
                 textAlign: (rootData.textAlign as CSSProperties["textAlign"] | undefined) ?? "center",
               }}
@@ -805,22 +1001,26 @@ function SunburstNodeComponent({ data }: NodeProps) {
             height={selectedGeometry.height}
             transform={`rotate(${selectedGeometry.rotation} ${selectedGeometry.x} ${selectedGeometry.y})`}
             clipPath={`url(#${selectedClipId})`}
-            className="sunburst-inline-editor nodrag nopan overflow-hidden"
-            style={{ pointerEvents: editingId === selectedId ? "all" : "none" }}
+            className="sunburst-inline-editor nodrag nopan overflow-visible"
+            overflow="visible"
+            style={{ pointerEvents: editingId === selectedId ? "all" : "none", overflow: "visible" }}
           >
             <div
+              lang={isDevanagariText(selectedLabel) ? "sa" : undefined}
               style={{
                 width: "100%",
                 height: "100%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                overflow: "hidden",
+                overflow: "visible",
+                boxSizing: "border-box",
+                padding: isDevanagariText(selectedLabel) ? "0.08em 0.08em 0.1em" : undefined,
                 color: selectedTextStyle.color,
                 fontSize: selectedGeometry.fontSize,
-                lineHeight: isDevanagariText(selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "") ? 1.36 : 1.12,
-                fontFamily: selectedTextStyle.fontFamily,
-                fontWeight: selectedTextStyle.fontWeight,
+                lineHeight: isDevanagariText(selectedLabel) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+                fontFamily: labelFontFamily(selectedLabel, selectedTextStyle.fontFamily),
+                fontWeight: labelFontWeight(selectedLabel, selectedTextStyle.fontWeight),
                 fontStyle: selectedTextStyle.fontStyle,
                 textAlign: selectedTextStyle.textAlign,
               }}
@@ -830,7 +1030,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 initialContent={selectedRichText}
                 editable={editingId === selectedId}
                 placeholder="Type here"
-                className="h-full w-full [&_.ProseMirror]:flex [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:flex-col [&_.ProseMirror]:items-center [&_.ProseMirror]:justify-center [&_.ProseMirror]:overflow-hidden"
+                className="h-full w-full [&_.ProseMirror]:flex [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:flex-col [&_.ProseMirror]:items-center [&_.ProseMirror]:justify-center [&_.ProseMirror]:overflow-visible"
                 blockAlign={(selectedNode.data as Record<string, unknown>).textAlign as "left" | "center" | "right" | "justify" | undefined}
                 onChange={(html) => updateText(selectedId, html)}
                 onBlur={finishEditing}

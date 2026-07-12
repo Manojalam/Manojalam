@@ -169,12 +169,26 @@ function sunburstTreeStats(rootId: string, hierarchy: ReturnType<typeof buildHie
   return walk(rootId, 0);
 }
 
-function sunburstChartSize(rootId: string, hierarchy: ReturnType<typeof buildHierarchy>): number {
+function sunburstChartSize(
+  rootId: string,
+  hierarchy: ReturnType<typeof buildHierarchy>,
+  rootData?: Record<string, unknown>
+): number {
   const { maxDepth, leaves } = sunburstTreeStats(rootId, hierarchy);
   const ringDepth = Math.max(1, maxDepth);
-  const byDepth = 148 + ringDepth * 132 + 64;
-  const byLeaves = (Math.max(1, leaves) * 72) / Math.PI + 96;
-  return Math.ceil(Math.max(760, byDepth * 2, byLeaves));
+  const ringWidth = clampValue(
+    typeof rootData?.radialRingWidth === "number" ? rootData.radialRingWidth : 132,
+    64,
+    260
+  );
+  const centerRatio = clampValue(
+    typeof rootData?.radialCenterRatio === "number" ? rootData.radialCenterRatio : 28,
+    14,
+    58
+  ) / 100;
+  const byDepth = 2 * (22 + (ringDepth * ringWidth) / Math.max(0.2, 1 - centerRatio));
+  const byLeaves = (Math.max(1, leaves) * 92) / Math.PI + 128;
+  return Math.ceil(Math.max(820, byDepth, byLeaves));
 }
 
 function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enabled: boolean): Node[] {
@@ -236,7 +250,8 @@ function withSunburstNode(
     x: rootRect.x + rootRect.width / 2,
     y: rootRect.y + rootRect.height / 2,
   };
-  const chartSize = sunburstChartSize(rootId, hierarchy);
+  const rootData = (rootNode.data ?? {}) as Record<string, unknown>;
+  const chartSize = sunburstChartSize(rootId, hierarchy, rootData);
   const hiddenNodes = restored.map((node) => {
     if (!scopeIds.has(node.id)) return node;
     return {
@@ -245,7 +260,6 @@ function withSunburstNode(
       data: { ...(node.data ?? {}), sunburstHiddenFor: key },
     };
   });
-  const rootData = (rootNode.data ?? {}) as Record<string, unknown>;
   const title = typeof rootData.text === "string" ? rootData.text : typeof rootData.title === "string" ? rootData.title : "";
   const chartNode: Node = {
     id: `sunburst-${key}`,
@@ -1164,6 +1178,31 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (updatedNode && patchNeedsContentFit(data)) {
         const fitted = fitNodeAfterContentChange(updatedNode);
         nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
+      }
+
+      if (updatedNode && Object.prototype.hasOwnProperty.call(data, "radialRingWidth")) {
+        const hierarchy = buildHierarchy(nodes, state.edges);
+        const nextSize = sunburstChartSize(
+          nodeId,
+          hierarchy,
+          (updatedNode.data ?? {}) as Record<string, unknown>
+        );
+        nodes = nodes.map((candidate) => {
+          const candidateData = (candidate.data ?? {}) as Record<string, unknown>;
+          if (candidate.type !== "sunburst" || candidateData.rootId !== nodeId) return candidate;
+          const current = styleSizeOf(candidate);
+          const widthDelta = nextSize - current.w;
+          const heightDelta = nextSize - current.h;
+          return {
+            ...candidate,
+            position: {
+              x: candidate.position.x - widthDelta / 2,
+              y: candidate.position.y - heightDelta / 2,
+            },
+            data: { ...candidateData, chartSize: nextSize },
+            style: { ...(candidate.style ?? {}), width: nextSize, height: nextSize },
+          };
+        });
       }
 
       return { nodes, saveStatus: "unsaved" };

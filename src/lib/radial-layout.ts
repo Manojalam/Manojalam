@@ -99,14 +99,23 @@ export function radialSectorColors(
   scheme: RadialColorSchemeDefinition,
   branchIndex: number,
   depth: number,
-  siblingIndex: number
+  siblingIndex: number,
+  siblingCount = 1
 ): { fill: string; text: string; border: string } {
-  const hue = (scheme.hues[branchIndex % scheme.hues.length] + siblingIndex * 2.5) % 360;
-  const saturation = Math.max(38, scheme.saturation - Math.max(0, depth - 1) * 4);
-  const lightness = Math.min(86, scheme.lightness + Math.max(0, depth - 1) * 10 + (siblingIndex % 2) * 1.5);
+  // Keep a branch on one recognizable hue and encode hierarchy primarily by
+  // depth. Descendant siblings fan out within a bounded hue window.
+  const siblingOffset = depth <= 1 || siblingCount <= 1
+    ? 0
+    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 24;
+  const hue = (scheme.hues[branchIndex % scheme.hues.length] + siblingOffset + 360) % 360;
+  const depthOffset = Math.max(0, depth - 1) * 9;
+  const siblingLightness = depth <= 1 ? 0 : siblingIndex % 2 ? 2.5 : -2.5;
+  const saturation = Math.max(42, scheme.saturation - Math.max(0, depth - 1) * 3);
+  const lightness = Math.min(80, scheme.lightness + depthOffset + siblingLightness);
+  const borderLightness = Math.max(22, lightness - 24);
   return {
     fill: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
     text: lightness < 56 ? "#f8fafc" : "#111827",
-    border: scheme.sectorBorder,
+    border: `hsla(${hue}, ${Math.max(34, saturation - 8)}%, ${borderLightness}%, 0.58)`,
   };
 }

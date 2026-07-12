@@ -281,8 +281,9 @@ mark { border-radius: 2px; padding: 0 2px; }
   hyphens: none;
 }
 .sunburst-inline-editor .ProseMirror {
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: none;
 }
 .sunburst-rich-label > *,
 .sunburst-inline-editor .ProseMirror > * {
