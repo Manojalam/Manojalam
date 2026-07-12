@@ -1878,9 +1878,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           <p className="mb-1 text-[9px] text-muted-foreground">Ring width</p>
                           <SliderControl
                             value={ring.thickness ?? 1}
-                            min={0.25}
-                            max={4}
-                            step={0.25}
+                            min={0.1}
+                            max={10}
+                            step={0.1}
                             suffix="×"
                             onChange={(value) => updateRadialRing(ringIndex, { thickness: value })}
                           />
