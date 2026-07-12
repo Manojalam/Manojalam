@@ -231,7 +231,7 @@ const CONVERT_TYPES = [
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
-function Section({ label, children, defaultOpen = true, visible = true }: {
+function Section({ label, children, defaultOpen = false, visible = true }: {
   label: string; children: React.ReactNode; defaultOpen?: boolean; visible?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -1319,7 +1319,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <div>
                     <p className="mb-1 text-[9px] text-muted-foreground">Center text size</p>
                     <SliderControl
-                      value={activeRadialChart.centerFontSize ?? Math.round(Math.max(5, Math.min(36, (activeRadialChart.centerRadius ?? 14) * 0.38)))}
+                      value={activeRadialChart.centerFontSize ?? Math.round(Math.max(5, Math.min(36, (activeRadialChart.centerRadius ?? 14) * 0.38)) * 4)}
                       min={2}
                       max={64}
                       step={1}
@@ -1520,12 +1520,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                               <div>
                                 <p className="mb-1 text-[9px] text-muted-foreground">Text size</p>
                                 <SliderControl
-                                  value={segment.fontSize ?? 0}
-                                  min={0}
+                                  value={segment.fontSize ?? 16}
+                                  min={1}
                                   max={64}
                                   step={1}
                                   suffix="px"
-                                  onChange={(value) => updateRadialSegment(ringIndex, segmentIndex, { fontSize: value > 0 ? value : undefined })}
+                                  onChange={(value) => updateRadialSegment(ringIndex, segmentIndex, { fontSize: value })}
                                 />
                               </div>
                               <div>

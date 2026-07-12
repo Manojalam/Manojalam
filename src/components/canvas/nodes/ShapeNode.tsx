@@ -147,17 +147,6 @@ function wrapTextLines(text: string | undefined, maxChars: number, maxLines = Nu
     let current = "";
 
     for (const word of words) {
-      if (word.length > safeMaxChars) {
-        if (current) {
-          lines.push(current);
-          current = "";
-        }
-        for (let offset = 0; offset < word.length; offset += safeMaxChars) {
-          lines.push(word.slice(offset, offset + safeMaxChars));
-        }
-        continue;
-      }
-
       const next = current ? `${current} ${word}` : word;
       if (next.length > safeMaxChars && current) {
         lines.push(current);
@@ -203,6 +192,14 @@ function fitSegmentText(
   const widthFit = availableWidth / (longest * 0.54);
   const heightFit = availableHeight / (Math.max(1, fallbackLines.length) * 1.12);
   return { lines: fallbackLines, fontSize: Math.max(0.35, Math.min(0.55, widthFit, heightFit)) };
+}
+
+// Chart text is rendered in a 100-unit SVG viewBox. Keep inspector "px" values
+// granular instead of treating every control step as a full SVG unit.
+const RADIAL_FONT_CONTROL_SCALE = 0.25;
+
+function radialControlFontSize(fontSize: number | undefined): number | undefined {
+  return fontSize && fontSize > 0 ? fontSize * RADIAL_FONT_CONTROL_SCALE : undefined;
 }
 
 function fitRadialSegmentLabel(
@@ -390,55 +387,6 @@ function radialRingBands(rings: RadialChartRing[], centerRadius: number, outerRa
   });
 }
 
-const MIN_RADIAL_LABEL_PIXELS = 16;
-const MIN_RADIAL_CENTER_LABEL_PIXELS = 20;
-const MAX_AUTO_RADIAL_SIZE = 4800;
-
-function radialChartMinimumPixelSize(chart: RadialChartData): number {
-  const rings = normalizeRelationshipRingCounts(
-    chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }]
-  );
-  const centerRadius = Math.max(0, Math.min(42, chart.centerRadius ?? 14));
-  const outerRadius = 49;
-  const bands = radialRingBands(rings, centerRadius, outerRadius);
-  const angles = radialRingAngles(rings, chart.rotation ?? 0);
-  const hiddenSegments = mergedChildIndices(rings);
-  let requiredSize = 420;
-
-  rings.forEach((ring, ringIndex) => {
-    const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
-    chartRingSegments(ring).forEach((segment, segmentIndex) => {
-      if (hiddenSegments[ringIndex].has(segmentIndex)) return;
-      if (!segment.text?.trim()) return;
-      const labelOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]
-        ? bands[ringIndex + 1].outerRadius
-        : segmentOuterRadius;
-      const ringThickness = labelOuterRadius - innerRadius;
-      const textRadius = (innerRadius + labelOuterRadius) / 2;
-      const angleWidth = angles[ringIndex][segmentIndex].end - angles[ringIndex][segmentIndex].start;
-      const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
-      const fit = fitRadialSegmentLabel(
-        segment.text,
-        arcLength,
-        ringThickness,
-        segment.fontSize && segment.fontSize > 0 ? segment.fontSize : undefined
-      );
-      if (fit.fontSize > 0) requiredSize = Math.max(requiredSize, (MIN_RADIAL_LABEL_PIXELS * 100) / fit.fontSize);
-    });
-  });
-
-  if (chart.centerText?.trim() && centerRadius > 0) {
-    const fit = fitCenterText(
-      chart.centerText,
-      centerRadius,
-      chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined
-    );
-    if (fit.fontSize > 0) requiredSize = Math.max(requiredSize, (MIN_RADIAL_CENTER_LABEL_PIXELS * 100) / fit.fontSize);
-  }
-
-  return Math.min(MAX_AUTO_RADIAL_SIZE, Math.ceil(requiredSize * 1.08));
-}
-
 type ChartTextEdit =
   | { kind: "segment"; ringIndex: number; segmentIndex: number; x: number; y: number; width: number; height: number; rotation: number; value: string; textColor?: string }
   | { kind: "center"; x: number; y: number; width: number; height: number; rotation: number; value: string; textColor?: string };
@@ -487,7 +435,7 @@ function RadialChartLayer({
   const centerTextFit = fitCenterText(
     chart.centerText,
     centerRadius,
-    chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined
+    radialControlFontSize(chart.centerFontSize)
   );
   const ringAngles = radialRingAngles(rings, rotation);
   const hiddenSegments = mergedChildIndices(rings);
@@ -523,18 +471,13 @@ function RadialChartLayer({
             const textPoint = polarPoint(50, 50, textRadius, mid);
             const angleWidth = end - start;
             const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
-            const { lines, fontSize, radial: useRadialLabel } = fitRadialSegmentLabel(
+            const { lines, fontSize } = fitRadialSegmentLabel(
               segment.text,
               arcLength,
               ringThickness,
-              segment.fontSize && segment.fontSize > 0 ? segment.fontSize : undefined
+              radialControlFontSize(segment.fontSize)
             );
-            const baseTextRotation = useRadialLabel ? mid : mid + 90;
-            const normalizedTextRotation = ((baseTextRotation % 360) + 360) % 360;
-            const readableTextRotation = normalizedTextRotation > 90 && normalizedTextRotation < 270
-              ? baseTextRotation + 180
-              : baseTextRotation;
-            const finalTextRotation = readableTextRotation + (segment.textRotation ?? 0);
+            const finalTextRotation = segment.textRotation ?? 0;
             const lineOffset = -((lines.length - 1) * fontSize * 1.12) / 2;
             const isEditingSegment =
               editingText?.kind === "segment" &&
@@ -566,8 +509,8 @@ function RadialChartLayer({
                       segmentIndex,
                       x: textPoint.x,
                       y: textPoint.y,
-                      width: Math.max(110, Math.min(280, arcLength * 4)),
-                      height: Math.max(36, Math.min(150, ringThickness * 3.2)),
+                      width: Math.max(110, arcLength * 4),
+                      height: Math.max(36, ringThickness * 3.2),
                       rotation: finalTextRotation,
                       value: segment.text ?? "",
                       textColor: segment.textColor ?? "#111827",
@@ -600,6 +543,27 @@ function RadialChartLayer({
           });
         })}
       </g>
+      {/* Child fills are painted after their parents. Redraw merged outlines last so
+          both radial sides remain crisp across the full merged band. */}
+      <g clipPath={`url(#${clipId})`} fill="none" pointerEvents="none">
+        {rings.flatMap((ring, ringIndex) => {
+          const band = bands[ringIndex];
+          return chartRingSegments(ring).map((segment, segmentIndex) => {
+            if (segment.childCount !== 0 || hiddenSegments[ringIndex].has(segmentIndex)) return null;
+            const { start, end } = ringAngles[ringIndex][segmentIndex];
+            const mergedOuterRadius = bands[ringIndex + 1]?.outerRadius ?? band.outerRadius;
+            return (
+              <path
+                key={`merged-outline-${ring.id}-${segment.id}-${segmentIndex}`}
+                d={annularSectorPath(band.innerRadius, mergedOuterRadius, start, end)}
+                stroke={segmentBorderWidth > 0 ? segmentBorderColor : "none"}
+                strokeWidth={segmentBorderWidth}
+                strokeLinejoin="round"
+              />
+            );
+          });
+        })}
+      </g>
       <g clipPath={`url(#${clipId})`} pointerEvents="none">
         {rings.flatMap((ring, ringIndex) => {
           const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
@@ -613,18 +577,13 @@ function RadialChartLayer({
             const textRadius = (innerRadius + renderedOuterRadius) / 2;
             const textPoint = polarPoint(50, 50, textRadius, mid);
             const arcLength = (2 * Math.PI * textRadius * (end - start)) / 360;
-            const { lines, fontSize, radial: useRadialLabel } = fitRadialSegmentLabel(
+            const { lines, fontSize } = fitRadialSegmentLabel(
               segment.text,
               arcLength,
               ringThickness,
-              segment.fontSize && segment.fontSize > 0 ? segment.fontSize : undefined
+              radialControlFontSize(segment.fontSize)
             );
-            const baseTextRotation = useRadialLabel ? mid : mid + 90;
-            const normalizedTextRotation = ((baseTextRotation % 360) + 360) % 360;
-            const readableTextRotation = normalizedTextRotation > 90 && normalizedTextRotation < 270
-              ? baseTextRotation + 180
-              : baseTextRotation;
-            const finalTextRotation = readableTextRotation + (segment.textRotation ?? 0);
+            const finalTextRotation = segment.textRotation ?? 0;
             const lineOffset = -((lines.length - 1) * fontSize * 1.12) / 2;
             const segmentClipId = `${clipId}-segment-${ringIndex}-${segmentIndex}`;
             return (
@@ -879,7 +838,6 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const dd = d as Record<string, unknown>;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
-  const resizeNodeToFitBounds = useCanvasStore((s) => s.resizeNodeToFitBounds);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const viewport = useViewport();
@@ -917,15 +875,6 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
-
-  useEffect(() => {
-    if (!radialChart?.enabled) return;
-    const requiredSize = radialChartMinimumPixelSize(radialChart);
-    const frame = requestAnimationFrame(() => {
-      resizeNodeToFitBounds(id, { width: requiredSize, height: requiredSize });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [id, radialChart, resizeNodeToFitBounds]);
 
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
