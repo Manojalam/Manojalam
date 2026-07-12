@@ -145,6 +145,7 @@ export interface RadialChartSegment {
 export interface RadialChartRing {
   id: string;
   segmentCount: number;
+  rotation?: number;
   segments?: RadialChartSegment[];
 }
 

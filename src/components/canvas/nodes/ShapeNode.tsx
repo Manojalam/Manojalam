@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useRef, useCallback, useMemo, useId, type CSSProperties, type ReactNode } from "react";
+import { memo, useState, useEffect, useRef, useCallback, useMemo, useId, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { NodeResizer, useViewport, type NodeProps } from "@xyflow/react";
 import { Layers2, Plus } from "lucide-react";
 import { cn, generateId } from "@/lib/utils";
@@ -260,12 +260,14 @@ function RadialChartLayer({
   editingText,
   onSegmentEdit,
   onCenterEdit,
+  onRingRotationChange,
 }: {
   chart?: RadialChartData;
   borderColor: string;
   editingText?: ChartTextEdit | null;
   onSegmentEdit?: (edit: ChartTextEdit & { kind: "segment" }) => void;
   onCenterEdit?: (edit: ChartTextEdit & { kind: "center" }) => void;
+  onRingRotationChange?: (ringIndex: number, rotation: number) => void;
 }) {
   const rawClipId = useId();
   const clipId = `radial-chart-clip-${rawClipId.replace(/:/g, "")}`;
@@ -284,6 +286,37 @@ function RadialChartLayer({
     centerRadius,
     chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined
   );
+  const dragRef = useRef<{ ringIndex: number; pointerId: number; startAngle: number; startRotation: number; moved: boolean } | null>(null);
+
+  const pointerAngle = (event: ReactPointerEvent<SVGPathElement>) => {
+    const bounds = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
+    if (!bounds) return 0;
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100 - 50;
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100 - 50;
+    return (Math.atan2(y, x) * 180) / Math.PI;
+  };
+
+  const snapRingRotation = (ringIndex: number, proposed: number) => {
+    const step = 360 / chartRingSegments(rings[ringIndex]).length;
+    let best = proposed;
+    let bestDistance = 4;
+    rings.forEach((other, otherIndex) => {
+      if (otherIndex === ringIndex) return;
+      const otherSegments = chartRingSegments(other);
+      const otherStep = 360 / otherSegments.length;
+      for (let boundary = 0; boundary < otherSegments.length; boundary += 1) {
+        const target = rotation + (other.rotation ?? 0) + boundary * otherStep;
+        const ownBoundary = Math.round((target - rotation - proposed) / step);
+        const candidate = target - rotation - ownBoundary * step;
+        const delta = ((candidate - proposed + 540) % 360) - 180;
+        if (Math.abs(delta) < bestDistance) {
+          bestDistance = Math.abs(delta);
+          best = proposed + delta;
+        }
+      }
+    });
+    return ((best % 360) + 360) % 360;
+  };
 
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[2] h-full w-full">
@@ -301,8 +334,9 @@ function RadialChartLayer({
           const segmentOuterRadius = centerRadius + ringThickness * (ringIndex + 1);
           const segments = chartRingSegments(ring);
           return segments.map((segment, segmentIndex) => {
-            const start = rotation + (360 / segments.length) * segmentIndex;
-            const end = rotation + (360 / segments.length) * (segmentIndex + 1);
+            const ringRotation = ring.rotation ?? 0;
+            const start = rotation + ringRotation + (360 / segments.length) * segmentIndex;
+            const end = rotation + ringRotation + (360 / segments.length) * (segmentIndex + 1);
             const mid = (start + end) / 2;
             const textRadius = (innerRadius + segmentOuterRadius) / 2;
             const textPoint = polarPoint(50, 50, textRadius, mid);
@@ -336,9 +370,26 @@ function RadialChartLayer({
                   stroke={segmentBorderWidth > 0 ? segmentBorderColor : "none"}
                   strokeWidth={segmentBorderWidth}
                   pointerEvents="auto"
-                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    dragRef.current = { ringIndex, pointerId: event.pointerId, startAngle: pointerAngle(event), startRotation: ringRotation, moved: false };
+                  }}
+                  onPointerMove={(event) => {
+                    const drag = dragRef.current;
+                    if (!drag || drag.pointerId !== event.pointerId || drag.ringIndex !== ringIndex) return;
+                    const delta = ((pointerAngle(event) - drag.startAngle + 540) % 360) - 180;
+                    if (Math.abs(delta) > 1) drag.moved = true;
+                    if (drag.moved) onRingRotationChange?.(ringIndex, snapRingRotation(ringIndex, drag.startRotation + delta));
+                  }}
+                  onPointerUp={(event) => {
+                    event.stopPropagation();
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                    window.setTimeout(() => { dragRef.current = null; }, 0);
+                  }}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (dragRef.current?.moved) return;
                     onSegmentEdit?.({
                       kind: "segment",
                       ringIndex,
@@ -775,6 +826,17 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
             chart={radialChart}
             borderColor={borderColor}
             editingText={activeChartTextEdit}
+            onRingRotationChange={(ringIndex, ringRotation) => {
+              if (!radialChart) return;
+              updateNodeData(id, {
+                radialChart: {
+                  ...radialChart,
+                  rings: (radialChart.rings ?? []).map((ring, index) =>
+                    index === ringIndex ? { ...ring, rotation: ringRotation } : ring
+                  ),
+                },
+              });
+            }}
             onSegmentEdit={(edit) => {
               editHistoryCaptured.current = false;
               editDirty.current = false;
