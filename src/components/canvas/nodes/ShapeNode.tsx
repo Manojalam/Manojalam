@@ -99,7 +99,9 @@ function selectedShapeStroke(shapeType: string, path: ReactNode, selected?: bool
   return path;
 }
 
-function polarPoint(cx: number, cy: number, radius: number, angleDeg: number) {
+type PolarPoint = { x: number; y: number };
+
+function polarPoint(cx: number, cy: number, radius: number, angleDeg: number): PolarPoint {
   const angle = (angleDeg - 90) * Math.PI / 180;
   return {
     x: cx + radius * Math.cos(angle),
