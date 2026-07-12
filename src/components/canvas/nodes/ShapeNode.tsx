@@ -134,6 +134,33 @@ function annularSectorPath(innerRadius: number, outerRadius: number, startAngle:
   ].join(" ");
 }
 
+const graphemeSegmenter = typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter("sa", { granularity: "grapheme" })
+  : null;
+
+function textMeasureUnits(text: string): number {
+  if (!text) return 0;
+  return graphemeSegmenter
+    ? Array.from(graphemeSegmenter.segment(text)).length
+    : Array.from(text).length;
+}
+
+function isDevanagariText(text: string): boolean {
+  return /[\u0900-\u097f]/.test(text);
+}
+
+function textLayoutMetrics(lines: string[], fontSize: number): { width: number; height: number; lineAdvance: number } {
+  const devanagari = lines.some(isDevanagariText);
+  const widthFactor = devanagari ? 0.62 : 0.54;
+  const lineAdvance = fontSize * (devanagari ? 1.36 : 1.12);
+  const glyphHeight = fontSize * (devanagari ? 1.18 : 1);
+  return {
+    width: Math.max(0, ...lines.map((line) => textMeasureUnits(line) * fontSize * widthFactor)),
+    height: glyphHeight + Math.max(0, lines.length - 1) * lineAdvance,
+    lineAdvance,
+  };
+}
+
 function wrapTextLines(text: string | undefined, maxChars: number, maxLines = Number.POSITIVE_INFINITY): string[] {
   if (!text?.trim()) return [];
   const safeMaxChars = Math.max(1, Math.floor(maxChars));
@@ -150,7 +177,7 @@ function wrapTextLines(text: string | undefined, maxChars: number, maxLines = Nu
 
     for (const word of words) {
       const next = current ? `${current} ${word}` : word;
-      if (next.length > safeMaxChars && current) {
+      if (textMeasureUnits(next) > safeMaxChars && current) {
         lines.push(current);
         current = word;
       } else {
@@ -177,6 +204,7 @@ function radialControlFontSize(fontSize: number | undefined): number | undefined
 type SectorLabelFit = {
   lines: string[];
   fontSize: number;
+  lineAdvance: number;
   point: PolarPoint;
   availableWidth: number;
   availableHeight: number;
@@ -233,17 +261,16 @@ function fitSectorLabel(
   const fallbackRadius = (innerRadius + outerRadius) / 2;
   const fallbackPoint = polarPoint(50, 50, fallbackRadius, midAngle);
   if (!label) {
-    return { lines: [], fontSize: preferredFontSize ?? 0, point: fallbackPoint, availableWidth: 0, availableHeight: 0 };
+    return { lines: [], fontSize: preferredFontSize ?? 0, lineAdvance: 0, point: fallbackPoint, availableWidth: 0, availableHeight: 0 };
   }
 
-  const padding = 0.7;
-  const inner = innerRadius + padding;
-  const outer = outerRadius - padding;
+  const inner = innerRadius;
+  const outer = outerRadius;
   const band = Math.max(0.5, outer - inner);
   const halfSpan = Math.min(Math.PI / 2, Math.abs(endAngle - startAngle) * Math.PI / 360);
   const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, band * 0.42));
-  const maxChars = Math.min(240, Math.max(1, label.length));
-  const radiusCandidates = Array.from({ length: 13 }, (_, index) => inner + (band * index) / 12);
+  const maxChars = Math.min(240, Math.max(1, Math.ceil(textMeasureUnits(label))));
+  const radiusCandidates = Array.from({ length: 25 }, (_, index) => inner + (band * index) / 24);
 
   for (let fontSize = preferred; fontSize >= 0.55; fontSize -= 0.15) {
     let best: SectorLabelFit | null = null;
@@ -251,14 +278,12 @@ function fitSectorLabel(
 
     for (const radius of radiusCandidates) {
       const radialSpace = Math.max(0, 2 * Math.min(radius - inner, outer - radius));
-      const tangentialSpace = Math.max(0, 2 * radius * Math.sin(halfSpan) - padding * 2);
+      const tangentialSpace = Math.max(0, 2 * radius * Math.sin(halfSpan));
       if (radialSpace <= 0 || tangentialSpace <= 0) continue;
 
       for (let charsPerLine = 1; charsPerLine <= maxChars; charsPerLine += 1) {
         const lines = wrapTextLines(label, charsPerLine);
-        const longest = Math.max(1, ...lines.map((line) => line.length));
-        const width = longest * fontSize * 0.54;
-        const height = lines.length * fontSize * 1.12;
+        const { width, height, lineAdvance } = textLayoutMetrics(lines, fontSize);
         const point = polarPoint(50, 50, radius, midAngle);
         if (!labelBoxFitsSector(point, width, height, rotation, inner, outer, startAngle, endAngle)) continue;
 
@@ -269,6 +294,7 @@ function fitSectorLabel(
           best = {
             lines,
             fontSize,
+            lineAdvance,
             point,
             availableWidth: tangentialSpace,
             availableHeight: radialSpace,
@@ -280,18 +306,22 @@ function fitSectorLabel(
     if (best) return best;
   }
 
+  const fallbackLines = wrapTextLines(label, maxChars);
+  const fallbackFontSize = 0.55;
   return {
-    lines: wrapTextLines(label, maxChars),
+    lines: fallbackLines,
     fontSize: 0.55,
+    lineAdvance: textLayoutMetrics(fallbackLines, fallbackFontSize).lineAdvance,
     point: fallbackPoint,
     availableWidth: Math.max(2, 2 * fallbackRadius * Math.sin(halfSpan)),
     availableHeight: Math.max(2, band),
   };
 }
 
-function fitCenterText(text: string | undefined, radius: number, preferredFontSize?: number): { lines: string[]; fontSize: number } {
+function fitCenterText(text: string | undefined, radius: number, preferredFontSize?: number): { lines: string[]; fontSize: number; lineAdvance: number } {
   if (!text?.trim() || radius <= 0) {
-    return { lines: [], fontSize: preferredFontSize ?? Math.max(3, radius * 0.34) };
+    const fontSize = preferredFontSize ?? Math.max(3, radius * 0.34);
+    return { lines: [], fontSize, lineAdvance: fontSize * 1.12 };
   }
 
   const preferred = preferredFontSize ?? Math.max(3, Math.min(12, radius * 0.38));
@@ -301,17 +331,19 @@ function fitCenterText(text: string | undefined, radius: number, preferredFontSi
   for (let fontSize = preferred; fontSize >= 0.55; fontSize -= 0.15) {
     const charsPerLine = Math.max(1, Math.floor(availableWidth / Math.max(0.36, fontSize * 0.54)));
     const lines = wrapTextLines(text, charsPerLine);
-    const longest = Math.max(1, ...lines.map((line) => line.length));
-    const widthFits = longest * fontSize * 0.54 <= availableWidth;
-    const heightFits = lines.length * fontSize * 1.12 <= availableHeight;
-    if (widthFits && heightFits) return { lines, fontSize };
+    const metrics = textLayoutMetrics(lines, fontSize);
+    if (metrics.width <= availableWidth && metrics.height <= availableHeight) {
+      return { lines, fontSize, lineAdvance: metrics.lineAdvance };
+    }
   }
 
   const fallbackLines = wrapTextLines(text, Math.max(1, Math.floor(availableWidth / 0.35)));
-  const longest = Math.max(1, ...fallbackLines.map((line) => line.length));
-  const widthFit = availableWidth / (longest * 0.54);
-  const heightFit = availableHeight / (Math.max(1, fallbackLines.length) * 1.12);
-  return { lines: fallbackLines, fontSize: Math.max(0.35, Math.min(0.55, widthFit, heightFit)) };
+  const unitWidth = Math.max(1, ...fallbackLines.map(textMeasureUnits));
+  const devanagari = fallbackLines.some(isDevanagariText);
+  const widthFit = availableWidth / (unitWidth * (devanagari ? 0.62 : 0.54));
+  const heightFactor = (devanagari ? 1.18 : 1) + Math.max(0, fallbackLines.length - 1) * (devanagari ? 1.36 : 1.12);
+  const fontSize = Math.max(0.35, Math.min(0.55, widthFit, availableHeight / heightFactor));
+  return { lines: fallbackLines, fontSize, lineAdvance: fontSize * (devanagari ? 1.36 : 1.12) };
 }
 
 function chartRingSegments(ring: RadialChartRing): RadialChartSegment[] {
@@ -443,7 +475,7 @@ function visibleMergedAncestor(
 }
 
 function radialRingBands(rings: RadialChartRing[], centerRadius: number, outerRadius = 49) {
-  const weights = rings.map((ring) => Math.max(0.25, Math.min(4, ring.thickness ?? 1)));
+  const weights = rings.map((ring) => Math.max(0.1, Math.min(10, ring.thickness ?? 1)));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   let cursor = centerRadius;
   return weights.map((weight) => {
@@ -542,8 +574,8 @@ function RadialChartLayer({
               finalTextRotation,
               radialControlFontSize(segment.fontSize)
             );
-            const { lines, fontSize, point: textPoint } = labelFit;
-            const lineOffset = -((lines.length - 1) * fontSize * 1.12) / 2;
+            const { lines, fontSize, lineAdvance, point: textPoint } = labelFit;
+            const lineOffset = -((lines.length - 1) * lineAdvance) / 2;
             const isEditingSegment =
               editingText?.kind === "segment" &&
               editingText.ringIndex === ringIndex &&
@@ -596,7 +628,7 @@ function RadialChartLayer({
                       transform={`rotate(${finalTextRotation} ${textPoint.x} ${textPoint.y})`}
                     >
                       {lines.map((line, lineIndex) => (
-                        <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : fontSize * 1.12}>
+                        <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : lineAdvance}>
                           {line}
                         </tspan>
                       ))}
@@ -638,7 +670,7 @@ function RadialChartLayer({
             const { start, end } = ringAngles[ringIndex][segmentIndex];
             const renderedOuterRadius = bands[ringIndex + 1]?.outerRadius ?? segmentOuterRadius;
             const finalTextRotation = segment.textRotation ?? 0;
-            const { lines, fontSize, point: textPoint } = fitSectorLabel(
+            const { lines, fontSize, lineAdvance, point: textPoint } = fitSectorLabel(
               segment.text,
               innerRadius,
               renderedOuterRadius,
@@ -647,7 +679,7 @@ function RadialChartLayer({
               finalTextRotation,
               radialControlFontSize(segment.fontSize)
             );
-            const lineOffset = -((lines.length - 1) * fontSize * 1.12) / 2;
+            const lineOffset = -((lines.length - 1) * lineAdvance) / 2;
             const segmentClipId = `${clipId}-segment-${ringIndex}-${segmentIndex}`;
             return (
               <g key={`merged-label-${ring.id}-${segment.id}`} clipPath={`url(#${segmentClipId})`}>
@@ -662,7 +694,7 @@ function RadialChartLayer({
                   transform={`rotate(${finalTextRotation} ${textPoint.x} ${textPoint.y})`}
                 >
                   {lines.map((line, lineIndex) => (
-                    <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : fontSize * 1.12}>
+                    <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : lineAdvance}>
                       {line}
                     </tspan>
                   ))}
@@ -714,7 +746,7 @@ function RadialChartLayer({
                   <tspan
                     key={lineIndex}
                     x="50"
-                    dy={lineIndex === 0 ? -((centerTextFit.lines.length - 1) * centerTextFit.fontSize * 1.12) / 2 : centerTextFit.fontSize * 1.12}
+                    dy={lineIndex === 0 ? -((centerTextFit.lines.length - 1) * centerTextFit.lineAdvance) / 2 : centerTextFit.lineAdvance}
                   >
                     {line}
                   </tspan>
