@@ -409,6 +409,7 @@ function BorderStylePicker({ value, onChange }: {
 
 export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>("style");
+  const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
@@ -1409,16 +1410,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             onChange={(value) => updateRadialRing(ringIndex, { thickness: value })}
                           />
                         </div>
-                        <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                        <div data-ring-segments className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
                           {segments.map((segment, segmentIndex) => {
                             const assignment = parentAssignments[segmentIndex];
                             const startsParentGroup = !!assignment && (
                               segmentIndex === 0 || parentAssignments[segmentIndex - 1]?.parentIndex !== assignment.parentIndex
                             );
+                            const parentGroupKey = assignment ? `${ring.id}:${assignment.parentIndex}` : "";
+                            const parentGroupOpen = !assignment || openRadialParentGroups.has(parentGroupKey);
                             return (
-                            <div key={segment.id} className="space-y-1">
+                            <div
+                              key={segment.id}
+                              className="space-y-1"
+                              data-parent-group={assignment?.parentIndex}
+                              data-child-index={assignment?.childIndex}
+                              hidden={!!assignment && assignment.childIndex > 0 && !parentGroupOpen}
+                            >
                               {startsParentGroup && (
-                                <div className="sticky top-0 z-10 flex items-center gap-1.5 rounded bg-muted px-1.5 py-1 text-[9px] font-medium shadow-sm">
+                                <button
+                                  type="button"
+                                  className="sticky top-0 z-10 flex w-full items-center gap-1.5 rounded bg-muted px-1.5 py-1 text-left text-[9px] font-medium shadow-sm"
+                                  onClick={() => {
+                                    setOpenRadialParentGroups((current) => {
+                                      const next = new Set(current);
+                                      if (next.has(parentGroupKey)) next.delete(parentGroupKey);
+                                      else next.add(parentGroupKey);
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform", parentGroupOpen && "rotate-90")} />
                                   <span
                                     className="h-2.5 w-2.5 shrink-0 rounded-sm border border-border"
                                     style={{ backgroundColor: assignment.parent.fillColor ?? "transparent" }}
@@ -1429,9 +1450,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   <span className="shrink-0 text-muted-foreground">
                                     {assignment.childCount} {assignment.childCount === 1 ? "child" : "children"}
                                   </span>
-                                </div>
+                                </button>
                               )}
-                            <div className="space-y-1.5 rounded-md border border-border/70 p-1.5">
+                            <div
+                              data-child-editor
+                              hidden={!!assignment && !parentGroupOpen}
+                              className="space-y-1.5 rounded-md border border-border/70 p-1.5"
+                            >
                               {assignment && (
                                 <p className="text-[9px] text-muted-foreground">
                                   Child {assignment.childIndex + 1} of {assignment.childCount}
