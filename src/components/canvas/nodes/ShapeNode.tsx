@@ -205,6 +205,18 @@ function fitSegmentText(
   return { lines: fallbackLines, fontSize: Math.max(0.35, Math.min(0.55, widthFit, heightFit)) };
 }
 
+function fitRadialSegmentLabel(
+  text: string | undefined,
+  arcLength: number,
+  radialBand: number,
+  preferredFontSize?: number
+): { lines: string[]; fontSize: number; radial: boolean } {
+  const tangential = fitSegmentText(text, arcLength, radialBand, preferredFontSize);
+  const radial = fitSegmentText(text, radialBand, arcLength, preferredFontSize);
+  if (radial.fontSize > tangential.fontSize * 1.08) return { ...radial, radial: true };
+  return { ...tangential, radial: false };
+}
+
 function fitCenterText(text: string | undefined, radius: number, preferredFontSize?: number): { lines: string[]; fontSize: number } {
   if (!text?.trim() || radius <= 0) {
     return { lines: [], fontSize: preferredFontSize ?? Math.max(3, radius * 0.34) };
@@ -294,9 +306,9 @@ function radialRingAngles(rings: RadialChartRing[], chartRotation: number): Segm
   return result;
 }
 
-const MIN_RADIAL_LABEL_PIXELS = 13;
-const MIN_RADIAL_CENTER_LABEL_PIXELS = 18;
-const MAX_AUTO_RADIAL_SIZE = 3200;
+const MIN_RADIAL_LABEL_PIXELS = 16;
+const MIN_RADIAL_CENTER_LABEL_PIXELS = 20;
+const MAX_AUTO_RADIAL_SIZE = 4800;
 
 function radialChartMinimumPixelSize(chart: RadialChartData): number {
   const rings = chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }];
@@ -314,7 +326,7 @@ function radialChartMinimumPixelSize(chart: RadialChartData): number {
       if (!segment.text?.trim()) return;
       const angleWidth = angles[ringIndex][segmentIndex].end - angles[ringIndex][segmentIndex].start;
       const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
-      const fit = fitSegmentText(
+      const fit = fitRadialSegmentLabel(
         segment.text,
         arcLength,
         ringThickness,
@@ -406,17 +418,20 @@ function RadialChartLayer({
             const mid = (start + end) / 2;
             const textRadius = (innerRadius + segmentOuterRadius) / 2;
             const textPoint = polarPoint(50, 50, textRadius, mid);
-            const textRotation = ((mid + 90) % 360 + 360) % 360;
-            const readableTextRotation = textRotation > 90 && textRotation < 270 ? textRotation + 180 : textRotation;
-            const finalTextRotation = readableTextRotation + (segment.textRotation ?? 0);
             const angleWidth = end - start;
             const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
-            const { lines, fontSize } = fitSegmentText(
+            const { lines, fontSize, radial: useRadialLabel } = fitRadialSegmentLabel(
               segment.text,
               arcLength,
               ringThickness,
               segment.fontSize && segment.fontSize > 0 ? segment.fontSize : undefined
             );
+            const baseTextRotation = useRadialLabel ? mid : mid + 90;
+            const normalizedTextRotation = ((baseTextRotation % 360) + 360) % 360;
+            const readableTextRotation = normalizedTextRotation > 90 && normalizedTextRotation < 270
+              ? baseTextRotation + 180
+              : baseTextRotation;
+            const finalTextRotation = readableTextRotation + (segment.textRotation ?? 0);
             const lineOffset = -((lines.length - 1) * fontSize * 1.12) / 2;
             const isEditingSegment =
               editingText?.kind === "segment" &&
