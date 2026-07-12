@@ -1333,6 +1333,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             onChange={(value) => updateRadialRing(ringIndex, { segmentCount: value })}
                           />
                         </div>
+                        <div>
+                          <p className="mb-1 text-[9px] text-muted-foreground">Ring width</p>
+                          <SliderControl
+                            value={ring.thickness ?? 1}
+                            min={0.25}
+                            max={4}
+                            step={0.25}
+                            suffix="×"
+                            onChange={(value) => updateRadialRing(ringIndex, { thickness: value })}
+                          />
+                        </div>
                         <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
                           {segments.map((segment, segmentIndex) => (
                             <div key={segment.id} className="space-y-1.5 rounded-md border border-border/70 p-1.5">
