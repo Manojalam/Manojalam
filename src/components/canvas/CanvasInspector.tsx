@@ -1341,7 +1341,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   aria-label={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} text`}
                                   name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-text`}
                                   value={segment.text ?? ""}
-                                  placeholder={`Segment ${segmentIndex + 1}`}
+                                  placeholder="Enter label (blank is hidden)"
                                   className="h-7 text-xs"
                                   onChange={(event) => updateRadialSegment(ringIndex, segmentIndex, { text: event.target.value })}
                                 />

@@ -212,8 +212,16 @@ function fitRadialSegmentLabel(
   preferredFontSize?: number
 ): { lines: string[]; fontSize: number; radial: boolean } {
   const tangential = fitSegmentText(text, arcLength, radialBand, preferredFontSize);
-  const radial = fitSegmentText(text, radialBand, arcLength, preferredFontSize);
-  if (radial.fontSize > tangential.fontSize * 1.08) return { ...radial, radial: true };
+  const singleLine = text?.replace(/\s+/g, " ").trim() ?? "";
+  const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, radialBand * 0.42));
+  const radialFontSize = singleLine
+    ? Math.max(0.55, Math.min(preferred, (radialBand * 0.84) / Math.max(1, singleLine.length * 0.54), (arcLength * 0.82) / 1.12))
+    : preferred;
+  const radial = { lines: singleLine ? [singleLine] : [], fontSize: radialFontSize };
+  const narrowSector = arcLength < radialBand * 0.62;
+  if ((narrowSector && radial.fontSize >= tangential.fontSize * 0.68) || radial.fontSize > tangential.fontSize * 1.08) {
+    return { ...radial, radial: true };
+  }
   return { ...tangential, radial: false };
 }
 
