@@ -54,6 +54,14 @@ export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 
+export type RadialColorScheme =
+  | "spectrum"
+  | "sanskrit"
+  | "lotus"
+  | "ocean"
+  | "forest"
+  | "scholar";
+
 export interface ActiveTextSelection {
   nodeId: string;
   hasSelection: boolean;
@@ -236,6 +244,10 @@ export interface BaseNodeData extends Record<string, unknown> {
   radialBorderStyle?: "solid" | "dashed" | "dotted";
   /** Relative sibling allocation in hierarchy-driven radial layout. */
   radialWeight?: number;
+  /** Radius of the hierarchy root as a percentage of the chart radius. */
+  radialCenterRatio?: number;
+  /** Root-level palette inherited by every radial sector without a color override. */
+  radialColorScheme?: RadialColorScheme;
 }
 
 export interface MindMapNodeData extends BaseNodeData {

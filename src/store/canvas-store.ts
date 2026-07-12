@@ -61,6 +61,7 @@ interface CanvasState {
   deleteSelected: () => void;
   deleteEdges: (ids: string[]) => void;
   createChildNode: (parentId: string) => void;
+  createChildNodes: (parentId: string, count: number, keepParentSelected?: boolean) => void;
   createSiblingNode: (nodeId: string) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   fitNodeToContent: (nodeId: string, contentSize: ContentSize) => void;
@@ -968,22 +969,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
-  createChildNode: (parentId) => {
+  createChildNode: (parentId) => get().createChildNodes(parentId, 1),
+
+  createChildNodes: (parentId, count, keepParentSelected = false) => {
     const { nodes, edges } = get();
     const parent = nodes.find((n) => n.id === parentId);
     if (!parent) return;
+    const safeCount = Math.max(1, Math.min(48, Math.round(count)));
     get().pushHistory();
-    const childId = generateId();
-    const childCount = edges.filter((e) => e.source === parentId).length;
+    const currentHierarchy = buildHierarchy(nodes, edges);
+    const currentLayoutRoot = findLayoutRoot(parentId, nodes, currentHierarchy);
+    const childIds = Array.from({ length: safeCount }, () => generateId());
+    const existingChildCount = currentHierarchy.get(parentId)?.childIds.length ?? 0;
     const parentData = parent.data as Record<string, unknown>;
     const childType = childTypeFor(parent.type);
-    const mode = (parentData.layoutMode as LayoutMode) ?? "horizontal";
-    const newNode: Node = {
+    const mode = currentLayoutRoot.mode ?? (parentData.layoutMode as LayoutMode) ?? "horizontal";
+    const hiddenInMatrix = mode === "matrix";
+    const hiddenInSunburst = mode === "radial";
+    const newNodes = childIds.map<Node>((childId, index) => ({
       id: childId,
       type: childType,
       position: {
         x: parent.position.x + 240,
-        y: parent.position.y + childCount * 90 - 40,
+        y: parent.position.y + (existingChildCount + index) * 90 - 40,
       },
       data: {
         ...inheritStyle(parentData),
@@ -993,46 +1001,56 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...(childType === "shape" && { shapeType: (parentData.shapeType as string) ?? "rounded" }),
       },
       style: parent.style ? { ...parent.style, height: undefined } : undefined,
-    };
-    const route = routeForMode(mode, parent, newNode);
-    const hiddenInMatrix = mode === "matrix";
-    const hiddenInSunburst = mode === "radial";
-    const newEdge: Edge = {
-      id: generateId(),
-      source: parentId,
-      target: childId,
-      type: "branch",
-      hidden: hiddenInMatrix || hiddenInSunburst,
-      sourceHandle: route.sourceHandle,
-      targetHandle: route.targetHandle,
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-      data: {
-        edgeType: "branch",
-        curveStyle: route.curveStyle,
-        hiddenInMatrix,
-        hiddenInSunburst,
-        hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(parentId) : undefined,
-        layoutMode: mode,
-      },
-    };
+    }));
+    const newEdges = newNodes.map<Edge>((newNode) => {
+      const route = routeForMode(mode, parent, newNode);
+      return {
+        id: generateId(),
+        source: parentId,
+        target: newNode.id,
+        type: "branch",
+        hidden: hiddenInMatrix || hiddenInSunburst,
+        sourceHandle: route.sourceHandle,
+        targetHandle: route.targetHandle,
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
+        data: {
+          edgeType: "branch",
+          curveStyle: route.curveStyle,
+          hiddenInMatrix,
+          hiddenInSunburst,
+          hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(currentLayoutRoot.id) : undefined,
+          layoutMode: mode,
+        },
+      };
+    });
     // Record child in the parent's sibling order.
-    const prevOrder = (parentData.childOrder as string[]) ?? [];
+    const storedOrder = parentData.childOrder as string[] | undefined;
+    const prevOrder = storedOrder?.length
+      ? storedOrder
+      : currentHierarchy.get(parentId)?.childIds ?? [];
     const nextNodes = [
       ...nodes.map((n) =>
         n.id === parentId
-          ? { ...n, data: { ...n.data, childOrder: [...prevOrder, childId] } }
+          ? { ...n, data: { ...n.data, childOrder: [...prevOrder, ...childIds] } }
           : n
       ),
-      newNode,
+      ...newNodes,
     ];
-    const nextEdges = [...edges, newEdge];
+    const nextEdges = [...edges, ...newEdges];
     const nextHierarchy = buildHierarchy(nextNodes, nextEdges);
     const layoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const useSunburst = layoutRoot.mode === "radial";
-    const placements = layoutRoot.mode && !useSunburst
-      ? computeLayout(nextNodes, nextEdges, layoutRoot.mode, { rootId: layoutRoot.id })
-      : resolveInsertedNodeCollisions(nextNodes, childId);
-    const placedNodes = applyPlacements(nextNodes, placements);
+    let placedNodes = nextNodes;
+    if (layoutRoot.mode && !useSunburst) {
+      placedNodes = applyPlacements(
+        nextNodes,
+        computeLayout(nextNodes, nextEdges, layoutRoot.mode, { rootId: layoutRoot.id })
+      );
+    } else if (!useSunburst) {
+      for (const childId of childIds) {
+        placedNodes = applyPlacements(placedNodes, resolveInsertedNodeCollisions(placedNodes, childId));
+      }
+    }
     const rootScope = new Set(getSubtree(layoutRoot.id, nextHierarchy));
     const matrixNodes = layoutRoot.mode === "matrix"
       ? withMatrixFrame(placedNodes, rootScope, matrixFrameKey(layoutRoot.id), true)
@@ -1044,7 +1062,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({
       nodes: finalNodes,
       edges: nextEdges,
-      selectedNodeIds: [childId],
+      selectedNodeIds: keepParentSelected ? [parentId] : [childIds[childIds.length - 1]],
       saveStatus: "unsaved",
     });
   },

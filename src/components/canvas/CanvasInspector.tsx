@@ -31,12 +31,14 @@ import type {
   RadialChartSegment,
   ShapeType,
   InlineTextFormatKey,
+  RadialColorScheme,
 } from "@/lib/types";
 import type { Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { ColorSwatchPicker } from "./ColorSwatchPicker";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
+import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -280,6 +282,8 @@ function clampControlValue(value: number, min: number, max: number): number {
 function SliderControl({
   value,
   onChange,
+  onChangeStart,
+  onChangeEnd,
   min = 0,
   max = 100,
   step = 1,
@@ -287,15 +291,22 @@ function SliderControl({
 }: {
   value: number;
   onChange: (v: number) => void;
+  onChangeStart?: () => void;
+  onChangeEnd?: () => void;
   min?: number;
   max?: number;
   step?: number;
   suffix?: string;
 }) {
   const apply = (next: number) => onChange(clampControlValue(next, min, max));
+  const applyStep = (next: number) => {
+    onChangeStart?.();
+    apply(next);
+    onChangeEnd?.();
+  };
   return (
     <div className="flex items-center gap-1.5">
-      <button onClick={() => apply(value - step)}
+      <button onClick={() => applyStep(value - step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Minus className="h-3 w-3" /></button>
       <input
         aria-label="Adjust value"
@@ -306,9 +317,16 @@ function SliderControl({
         step={step}
         value={value}
         onChange={(e) => apply(Number(e.target.value))}
+        onPointerDown={onChangeStart}
+        onPointerUp={onChangeEnd}
+        onPointerCancel={onChangeEnd}
+        onKeyDown={(event) => {
+          if (!event.repeat) onChangeStart?.();
+        }}
+        onKeyUp={onChangeEnd}
         className="flex-1 h-1.5 accent-primary"
       />
-      <button onClick={() => apply(value + step)}
+      <button onClick={() => applyStep(value + step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
       <span className="w-9 text-center text-[10px] text-muted-foreground">{value}{suffix}</span>
     </div>
@@ -467,6 +485,7 @@ function BorderStylePicker({ value, onChange }: {
 export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>("style");
   const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
+  const [bulkChildCount, setBulkChildCount] = useState(3);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
@@ -478,6 +497,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
+  const createChildNodes = useCanvasStore((s) => s.createChildNodes);
   const applyLayout     = useCanvasStore((s) => s.applyLayout);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
@@ -507,6 +527,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   // ALL hooks before any early return
   const d = (selectedNode?.data ?? {}) as Record<string, unknown>;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
+  const radialChartNode = isRadialLayoutSector
+    ? nodes.find((node) => node.type === "sunburst" && (node.data as Record<string, unknown>).sunburstFor === d.sunburstHiddenFor)
+    : null;
+  const radialRootId = typeof (radialChartNode?.data as Record<string, unknown> | undefined)?.rootId === "string"
+    ? (radialChartNode?.data as Record<string, unknown>).rootId as string
+    : null;
+  const radialRootNode = radialRootId ? nodes.find((node) => node.id === radialRootId) ?? null : null;
+  const radialRootData = (radialRootNode?.data ?? {}) as Record<string, unknown>;
+  const selectedIsRadialRoot = !!radialRootId && selectedNode?.id === radialRootId;
+  const activeRadialColorScheme = radialColorScheme(radialRootData.radialColorScheme);
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
     : null;
@@ -547,6 +577,28 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     for (const node of selectedNodes) {
       updateNodeData(node.id, fieldPatch((node.data ?? {}) as Record<string, unknown>, key, value));
     }
+  };
+
+  const applyRadialColorScheme = (scheme: RadialColorScheme) => {
+    if (!radialRootId) return;
+    const radialIds = new Set(getSubtree(radialRootId, hierarchy));
+    pushHistory();
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => {
+        if (!radialIds.has(node.id)) return node;
+        return {
+          ...node,
+          data: {
+            ...(node.data ?? {}),
+            radialColorScheme: node.id === radialRootId ? scheme : undefined,
+            radialFillColor: undefined,
+            radialTextColor: undefined,
+            radialBorderColor: undefined,
+          },
+        };
+      }),
+      saveStatus: "unsaved",
+    }));
   };
 
   const selectNodesById = (ids: string[]) => {
@@ -1079,6 +1131,51 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
       <div className="flex-1 divide-y overflow-y-auto">
 
+        {isRadialLayoutSector && (
+          <Section label="Children" visible={singleNodeTab === "layout"}>
+            <div className="rounded-md border border-border bg-muted/25 p-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-medium text-foreground">Add several children</p>
+                  <p className="text-[9px] text-muted-foreground">This parent currently has {childIds.length}.</p>
+                </div>
+                <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold tabular-nums text-primary">
+                  {bulkChildCount}
+                </span>
+              </div>
+              <SliderControl
+                value={bulkChildCount}
+                min={1}
+                max={24}
+                step={1}
+                onChange={(value) => setBulkChildCount(Math.round(value))}
+              />
+              <div className="mt-2 grid grid-cols-[1fr_auto] gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => {
+                    createChildNodes(selectedNode.id, bulkChildCount, true);
+                    toast.success(`Added ${bulkChildCount} child sector${bulkChildCount === 1 ? "" : "s"}.`);
+                  }}
+                >
+                  <Plus className="mr-1 h-3 w-3" /> Add {bulkChildCount}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[10px]"
+                  onClick={() => createChildNode(selectedNode.id)}
+                >
+                  Add one
+                </Button>
+              </div>
+            </div>
+          </Section>
+        )}
+
         <Section label="Hierarchy" visible={singleNodeTab === "layout"}>
           <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-2 text-[10px]">
             <div className="flex items-center justify-between gap-2">
@@ -1300,6 +1397,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isRadialLayoutSector && (
+          <Section label="Color scheme" visible={singleNodeTab === "style"}>
+            <div className="grid grid-cols-2 gap-1.5">
+              {RADIAL_COLOR_SCHEMES.map((scheme) => (
+                <button
+                  key={scheme.id}
+                  type="button"
+                  title={`Apply ${scheme.label} to the full radial layout`}
+                  onClick={() => applyRadialColorScheme(scheme.id)}
+                  className={cn(
+                    "overflow-hidden rounded-md border bg-background text-left transition-colors hover:border-primary/60",
+                    activeRadialColorScheme.id === scheme.id ? "border-primary ring-1 ring-primary/30" : "border-border"
+                  )}
+                >
+                  <span className="flex h-4 w-full">
+                    {scheme.swatches.map((color) => (
+                      <span key={color} className="h-full flex-1" style={{ backgroundColor: color }} />
+                    ))}
+                  </span>
+                  <span className="block px-2 py-1.5 text-[9px] font-medium text-foreground">{scheme.label}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {isRadialLayoutSector && (
           <Section label="Radial sector" visible={singleNodeTab === "style"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fill</p>
@@ -1351,25 +1474,54 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {isRadialLayoutSector && d.layoutMode !== "radial" && (
-          <Section label="Sector area" visible={singleNodeTab === "layout"}>
-            <SliderControl
-              value={typeof d.radialWeight === "number" ? d.radialWeight : 1}
-              min={0.2}
-              max={6}
-              step={0.1}
-              suffix="×"
-              onChange={(value) => setField("radialWeight", value)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 w-full text-[10px]"
-              onClick={() => setField("radialWeight", undefined)}
-            >
-              Use automatic size
-            </Button>
+        {isRadialLayoutSector && (
+          <Section label="Radial sizing" visible={singleNodeTab === "layout"}>
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Center size</p>
+                <span className="text-[9px] text-muted-foreground">Whole chart</span>
+              </div>
+              <SliderControl
+                value={typeof radialRootData.radialCenterRatio === "number" ? radialRootData.radialCenterRatio : 28}
+                min={14}
+                max={58}
+                step={1}
+                suffix="%"
+                onChangeStart={pushHistory}
+                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                onChange={(value) => {
+                  if (radialRootId) updateNodeData(radialRootId, { radialCenterRatio: value });
+                }}
+              />
+            </div>
+
+            {!selectedIsRadialRoot && (
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Sector area</p>
+                  <span className="text-[9px] text-muted-foreground">Relative to siblings</span>
+                </div>
+                <SliderControl
+                  value={typeof d.radialWeight === "number" ? d.radialWeight : 1}
+                  min={0.2}
+                  max={8}
+                  step={0.1}
+                  suffix="×"
+                  onChangeStart={pushHistory}
+                  onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                  onChange={(value) => updateNodeData(selectedNode.id, { radialWeight: value })}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-1.5 h-7 w-full text-[10px]"
+                  onClick={() => setField("radialWeight", undefined)}
+                >
+                  Use automatic sector size
+                </Button>
+              </div>
+            )}
           </Section>
         )}
 
