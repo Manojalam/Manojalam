@@ -211,8 +211,10 @@ function labelBoxFitsSector(
     const radius = Math.hypot(dx, dy);
     if (radius < innerRadius || radius > outerRadius) return false;
     if (span >= 359.999) return true;
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-    const relativeAngle = ((angle - startAngle) % 360 + 360) % 360;
+    // polarPoint uses chart angles with 0deg at twelve o'clock. Convert the
+    // standard atan2 angle back into that same coordinate system.
+    const chartAngle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+    const relativeAngle = ((chartAngle - startAngle) % 360 + 360) % 360;
     return relativeAngle <= span;
   });
 }
@@ -240,9 +242,6 @@ function fitSectorLabel(
   const band = Math.max(0.5, outer - inner);
   const halfSpan = Math.min(Math.PI / 2, Math.abs(endAngle - startAngle) * Math.PI / 360);
   const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, band * 0.42));
-  const relativeRotation = ((rotation - midAngle) * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(relativeRotation));
-  const sin = Math.abs(Math.sin(relativeRotation));
   const maxChars = Math.min(240, Math.max(1, label.length));
   const radiusCandidates = Array.from({ length: 13 }, (_, index) => inner + (band * index) / 12);
 
@@ -260,9 +259,6 @@ function fitSectorLabel(
         const longest = Math.max(1, ...lines.map((line) => line.length));
         const width = longest * fontSize * 0.54;
         const height = lines.length * fontSize * 1.12;
-        const radialProjection = width * cos + height * sin;
-        const tangentialProjection = width * sin + height * cos;
-        if (radialProjection > radialSpace || tangentialProjection > tangentialSpace) continue;
         const point = polarPoint(50, 50, radius, midAngle);
         if (!labelBoxFitsSector(point, width, height, rotation, inner, outer, startAngle, endAngle)) continue;
 
