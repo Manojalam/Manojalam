@@ -1343,20 +1343,29 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   {(activeRadialChart.rings ?? []).map((ring, ringIndex) => {
                     const segments = normalizeRadialSegments(ring);
                     return (
-                      <div key={ring.id} className="rounded-lg border border-border p-2 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-muted-foreground">Chart ring {ringIndex + 1}</span>
+                      <details key={ring.id} className="group rounded-lg border border-border">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2 py-2 marker:content-none">
+                          <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium">
+                            <ChevronRight className="h-3 w-3 shrink-0 transition-transform group-open:rotate-90" />
+                            Chart ring {ringIndex + 1}
+                            <span className="font-normal text-muted-foreground">{ring.segmentCount} sections · {ring.thickness ?? 1}×</span>
+                          </span>
                           <button
                             className="text-[10px] text-destructive hover:underline"
-                            onClick={() => setRadialChart({
-                              ...activeRadialChart,
-                              enabled: true,
-                              rings: (activeRadialChart.rings ?? []).filter((_, idx) => idx !== ringIndex),
-                            })}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setRadialChart({
+                                ...activeRadialChart,
+                                enabled: true,
+                                rings: (activeRadialChart.rings ?? []).filter((_, idx) => idx !== ringIndex),
+                              });
+                            }}
                           >
                             Remove
                           </button>
-                        </div>
+                        </summary>
+                        <div className="space-y-2 border-t border-border/70 p-2">
                         <div>
                           <p className="mb-1 text-[9px] text-muted-foreground">Segments</p>
                           <ChildCountInput
@@ -1461,7 +1470,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             </div>
                           ))}
                         </div>
-                      </div>
+                        </div>
+                      </details>
                     );
                   })}
                 </div>
