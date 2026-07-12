@@ -349,6 +349,35 @@ function mergedChildIndices(rings: RadialChartRing[]): Set<number>[] {
   return hidden;
 }
 
+type MergedChildSource = { ringIndex: number; segmentIndex: number; segment: RadialChartSegment };
+
+function mergedChildSources(rings: RadialChartRing[]): Map<number, MergedChildSource>[] {
+  const sources = rings.map(() => new Map<number, MergedChildSource>());
+  rings.slice(0, -1).forEach((ring, ringIndex) => {
+    let childIndex = 0;
+    chartRingSegments(ring).forEach((segment, segmentIndex) => {
+      const logicalCount = segmentAllocationCount(segment);
+      if (segment.childCount === 0) {
+        for (let offset = 0; offset < logicalCount; offset += 1) {
+          sources[ringIndex + 1].set(childIndex + offset, { ringIndex, segmentIndex, segment });
+        }
+      }
+      childIndex += logicalCount;
+    });
+  });
+  return sources;
+}
+
+function visibleMergedAncestor(
+  sources: Map<number, MergedChildSource>[],
+  ringIndex: number,
+  segmentIndex: number
+): RadialChartSegment | undefined {
+  const source = sources[ringIndex]?.get(segmentIndex);
+  if (!source) return undefined;
+  return visibleMergedAncestor(sources, source.ringIndex, source.segmentIndex) ?? source.segment;
+}
+
 function radialRingBands(rings: RadialChartRing[], centerRadius: number, outerRadius = 49) {
   const weights = rings.map((ring) => Math.max(0.25, Math.min(4, ring.thickness ?? 1)));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
@@ -462,6 +491,7 @@ function RadialChartLayer({
   );
   const ringAngles = radialRingAngles(rings, rotation);
   const hiddenSegments = mergedChildIndices(rings);
+  const mergedSources = mergedChildSources(rings);
 
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[2] h-full w-full">
@@ -478,7 +508,11 @@ function RadialChartLayer({
           const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
           const segments = chartRingSegments(ring);
           return segments.map((segment, segmentIndex) => {
-            if (hiddenSegments[ringIndex].has(segmentIndex)) return null;
+            const hiddenByParentMerge = hiddenSegments[ringIndex].has(segmentIndex);
+            if (hiddenByParentMerge && segment.childCount !== 0) return null;
+            const inheritedSegment = hiddenByParentMerge
+              ? visibleMergedAncestor(mergedSources, ringIndex, segmentIndex)
+              : undefined;
             const { start, end } = ringAngles[ringIndex][segmentIndex];
             const mid = (start + end) / 2;
             const renderedOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]
@@ -506,7 +540,10 @@ function RadialChartLayer({
               editingText?.kind === "segment" &&
               editingText.ringIndex === ringIndex &&
               editingText.segmentIndex === segmentIndex;
-            const segmentPath = annularSectorPath(innerRadius, renderedOuterRadius, start, end);
+            const renderedInnerRadius = hiddenByParentMerge
+              ? Math.max(0, innerRadius - Math.max(0.45, segmentBorderWidth) * 1.1)
+              : innerRadius;
+            const segmentPath = annularSectorPath(renderedInnerRadius, renderedOuterRadius, start, end);
             const segmentClipId = `${clipId}-segment-${ringIndex}-${segmentIndex}`;
             return (
               <g key={`${ring.id}-${segment.id}-${segmentIndex}`}>
@@ -516,9 +553,9 @@ function RadialChartLayer({
                 <path
                   d={segmentPath}
                   className="nodrag nopan cursor-text"
-                  fill={segment.fillColor ?? (ringIndex % 2 ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)")}
-                  stroke={segmentBorderWidth > 0 ? segmentBorderColor : "none"}
-                  strokeWidth={segmentBorderWidth}
+                  fill={inheritedSegment?.fillColor ?? segment.fillColor ?? (ringIndex % 2 ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.12)")}
+                  stroke={hiddenByParentMerge ? "none" : segmentBorderWidth > 0 ? segmentBorderColor : "none"}
+                  strokeWidth={hiddenByParentMerge ? 0 : segmentBorderWidth}
                   pointerEvents="auto"
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
