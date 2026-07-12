@@ -600,17 +600,29 @@ function findFreeResizedPosition(node: Node, nodes: Node[]) {
 }
 
 function patchNeedsContentFit(patch: Record<string, unknown>): boolean {
+  // Rich-text edits are measured from the rendered ProseMirror DOM. Applying
+  // the text-length heuristic first causes paste to resize twice with two
+  // different measurements.
+  if (Object.prototype.hasOwnProperty.call(patch, "richText")) return false;
   return Object.keys(patch).some((key) => AUTOFIT_FIELDS.has(key));
 }
 
-function fitNodeAfterContentChange(node: Node, nodes: Node[], measuredContent?: ContentSize): Node {
+function fitNodeAfterContentChange(node: Node, measuredContent?: ContentSize): Node {
   const fit = contentFitSize(node, measuredContent);
   if (!fit) return node;
-  const resized = {
+  const current = styleSizeOf(node);
+  const widthGrowth = Math.max(0, fit.width - current.w);
+  const heightGrowth = Math.max(0, fit.height - current.h);
+  return {
     ...node,
     style: { ...(node.style ?? {}), width: fit.width, height: fit.height },
+    // Keep the visual center stable. Content growth should never search for a
+    // different location or make the node jump across the canvas.
+    position: {
+      x: node.position.x - widthGrowth / 2,
+      y: node.position.y - heightGrowth / 2,
+    },
   };
-  return { ...resized, position: findFreeResizedPosition(resized, nodes) };
 }
 
 function nodeRectAt(node: Node, offset: { x: number; y: number } = { x: 0, y: 0 }) {
@@ -1150,7 +1162,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       });
 
       if (updatedNode && patchNeedsContentFit(data)) {
-        const fitted = fitNodeAfterContentChange(updatedNode, nodes);
+        const fitted = fitNodeAfterContentChange(updatedNode);
         nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
       }
 
@@ -1163,7 +1175,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const node = state.nodes.find((n) => n.id === nodeId);
       if (!node) return {};
 
-      const fitted = fitNodeAfterContentChange(node, state.nodes, contentSize);
+      const fitted = fitNodeAfterContentChange(node, contentSize);
       if (fitted === node) return {};
 
       const prevStyle = (node.style ?? {}) as Record<string, unknown>;
