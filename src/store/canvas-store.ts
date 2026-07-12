@@ -1168,12 +1168,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   updateNodeData: (nodeId, data) => {
     set((state) => {
-      let updatedNode: Node | null = null;
-      let nodes = state.nodes.map((n) => {
-        if (n.id !== nodeId) return n;
-        updatedNode = { ...n, data: { ...n.data, ...data } };
-        return updatedNode;
-      });
+      const sourceNode = state.nodes.find((node) => node.id === nodeId);
+      const updatedNode: Node | null = sourceNode
+        ? { ...sourceNode, data: { ...sourceNode.data, ...data } }
+        : null;
+      let nodes = state.nodes.map((node) => node.id === nodeId && updatedNode ? updatedNode : node);
 
       if (updatedNode && patchNeedsContentFit(data)) {
         const fitted = fitNodeAfterContentChange(updatedNode);
