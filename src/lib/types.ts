@@ -142,6 +142,8 @@ export interface RadialChartSegment {
   textRotation?: number;
   /** Number of sections in the next ring. Zero merges this section through that ring. */
   childCount?: number;
+  /** Allocation preserved while childCount is zero for a visual-only merge. */
+  mergedChildCount?: number;
 }
 
 export interface RadialChartRing {

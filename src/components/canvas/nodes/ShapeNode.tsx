@@ -256,12 +256,32 @@ function chartRingSegments(ring: RadialChartRing): RadialChartSegment[] {
   return Array.from({ length: count }, (_, index) => segments[index] ?? { id: `segment-${index + 1}` });
 }
 
+function segmentAllocationCount(segment: RadialChartSegment): number {
+  const count = segment.childCount === 0 ? segment.mergedChildCount ?? 1 : segment.childCount ?? 1;
+  return Math.max(1, Math.round(count));
+}
+
+function normalizeRelationshipRingCounts(rings: RadialChartRing[]): RadialChartRing[] {
+  const normalized = rings.map((ring) => ({ ...ring }));
+  for (let ringIndex = 0; ringIndex < normalized.length - 1; ringIndex += 1) {
+    const parents = chartRingSegments(normalized[ringIndex]);
+    if (!parents.some((segment) => segment.childCount != null)) continue;
+    const childCount = parents.reduce(
+      (sum, segment) => sum + segmentAllocationCount(segment),
+      0
+    );
+    const nextRing = normalized[ringIndex + 1];
+    normalized[ringIndex + 1] = { ...nextRing, segmentCount: childCount };
+  }
+  return normalized;
+}
+
 type SegmentAngle = { start: number; end: number };
 
 function radialRingAngles(rings: RadialChartRing[], chartRotation: number): SegmentAngle[][] {
   const segmentRings = rings.map(chartRingSegments);
   const childRanges = segmentRings.slice(0, -1).map((segments, ringIndex) => {
-    const counts = segments.map((segment) => Math.max(0, Math.round(segment.childCount ?? 1)));
+    const counts = segments.map(segmentAllocationCount);
     const linked = segments.some((segment) => segment.childCount != null) &&
       counts.reduce((sum, count) => sum + count, 0) === segmentRings[ringIndex + 1].length;
     let cursor = 0;
@@ -314,6 +334,21 @@ function radialRingAngles(rings: RadialChartRing[], chartRotation: number): Segm
   return result;
 }
 
+function mergedChildIndices(rings: RadialChartRing[]): Set<number>[] {
+  const hidden = rings.map(() => new Set<number>());
+  rings.slice(0, -1).forEach((ring, ringIndex) => {
+    let childIndex = 0;
+    chartRingSegments(ring).forEach((segment) => {
+      const logicalCount = segmentAllocationCount(segment);
+      if (segment.childCount === 0) {
+        for (let offset = 0; offset < logicalCount; offset += 1) hidden[ringIndex + 1].add(childIndex + offset);
+      }
+      childIndex += logicalCount;
+    });
+  });
+  return hidden;
+}
+
 function radialRingBands(rings: RadialChartRing[], centerRadius: number, outerRadius = 49) {
   const weights = rings.map((ring) => Math.max(0.25, Math.min(4, ring.thickness ?? 1)));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
@@ -331,16 +366,20 @@ const MIN_RADIAL_CENTER_LABEL_PIXELS = 20;
 const MAX_AUTO_RADIAL_SIZE = 4800;
 
 function radialChartMinimumPixelSize(chart: RadialChartData): number {
-  const rings = chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }];
+  const rings = normalizeRelationshipRingCounts(
+    chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }]
+  );
   const centerRadius = Math.max(0, Math.min(42, chart.centerRadius ?? 14));
   const outerRadius = 49;
   const bands = radialRingBands(rings, centerRadius, outerRadius);
   const angles = radialRingAngles(rings, chart.rotation ?? 0);
+  const hiddenSegments = mergedChildIndices(rings);
   let requiredSize = 420;
 
   rings.forEach((ring, ringIndex) => {
     const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
     chartRingSegments(ring).forEach((segment, segmentIndex) => {
+      if (hiddenSegments[ringIndex].has(segmentIndex)) return;
       if (!segment.text?.trim()) return;
       const labelOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]
         ? bands[ringIndex + 1].outerRadius
@@ -407,7 +446,9 @@ function RadialChartLayer({
   const centerClipId = `${clipId}-center`;
 
   if (!chart?.enabled) return null;
-  const rings = chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }];
+  const rings = normalizeRelationshipRingCounts(
+    chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }]
+  );
   const centerRadius = Math.max(0, Math.min(42, chart.centerRadius ?? 14));
   const outerRadius = 49;
   const bands = radialRingBands(rings, centerRadius, outerRadius);
@@ -420,6 +461,7 @@ function RadialChartLayer({
     chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined
   );
   const ringAngles = radialRingAngles(rings, rotation);
+  const hiddenSegments = mergedChildIndices(rings);
 
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[2] h-full w-full">
@@ -436,6 +478,7 @@ function RadialChartLayer({
           const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
           const segments = chartRingSegments(ring);
           return segments.map((segment, segmentIndex) => {
+            if (hiddenSegments[ringIndex].has(segmentIndex)) return null;
             const { start, end } = ringAngles[ringIndex][segmentIndex];
             const mid = (start + end) / 2;
             const renderedOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]

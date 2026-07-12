@@ -89,6 +89,30 @@ function normalizeRadialSegments(ring: RadialChartRing, count = ring.segmentCoun
   });
 }
 
+function radialSegmentAllocationCount(segment: RadialChartSegment): number {
+  const count = segment.childCount === 0 ? segment.mergedChildCount ?? 1 : segment.childCount ?? 1;
+  return Math.max(1, Math.round(count));
+}
+
+function normalizeRadialRelationships(rings: RadialChartRing[]): RadialChartRing[] {
+  const normalized = rings.map((ring) => ({ ...ring, segments: normalizeRadialSegments(ring) }));
+  for (let ringIndex = 0; ringIndex < normalized.length - 1; ringIndex += 1) {
+    const parents = normalizeRadialSegments(normalized[ringIndex]);
+    if (!parents.some((segment) => segment.childCount != null)) continue;
+    const childCount = parents.reduce(
+      (sum, segment) => sum + radialSegmentAllocationCount(segment),
+      0
+    );
+    const nextRing = normalized[ringIndex + 1];
+    normalized[ringIndex + 1] = {
+      ...nextRing,
+      segmentCount: childCount,
+      segments: normalizeRadialSegments(nextRing, childCount),
+    };
+  }
+  return normalized;
+}
+
 function ChildCountInput({
   value,
   ariaLabel,
@@ -169,11 +193,11 @@ function normalizeRadialChart(chart: RadialChartData | undefined, centerText = "
     centerColor: chart.centerColor ?? "#ffffff",
     centerTextColor: chart.centerTextColor ?? "#111827",
     centerFontSize: chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined,
-    rings: chart.rings.map((ring) => ({
+    rings: normalizeRadialRelationships(chart.rings.map((ring) => ({
       ...ring,
       segmentCount: Math.max(0, Math.min(360, Math.round(ring.segmentCount ?? 1))),
       segments: normalizeRadialSegments(ring),
-    })),
+    }))),
   };
 }
 
@@ -761,10 +785,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const nextRing = rings[ringIndex + 1];
     if (!ring || !nextRing) return;
 
-    const segments = normalizeRadialSegments(ring).map((segment, index) =>
-      index === segmentIndex ? { ...segment, childCount: Math.max(0, Math.min(360, Math.round(value))) } : segment
-    );
-    const childTotal = segments.reduce((sum, segment) => sum + Math.max(0, Math.round(segment.childCount ?? 1)), 0);
+    const segments = normalizeRadialSegments(ring).map((segment, index) => {
+      if (index !== segmentIndex) return segment;
+      const childCount = Math.max(0, Math.min(360, Math.round(value)));
+      return childCount === 0
+        ? { ...segment, childCount: 0, mergedChildCount: radialSegmentAllocationCount(segment) }
+        : { ...segment, childCount, mergedChildCount: undefined };
+    });
+    const childTotal = segments.reduce((sum, segment) => sum + radialSegmentAllocationCount(segment), 0);
     rings[ringIndex] = { ...ring, segments };
     rings[ringIndex + 1] = {
       ...nextRing,
@@ -777,7 +805,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       const parentSegments = normalizeRadialSegments(parent);
       if (!parentSegments.some((segment) => segment.childCount != null)) break;
       const descendantTotal = parentSegments.reduce(
-        (sum, segment) => sum + Math.max(0, Math.round(segment.childCount ?? 1)),
+        (sum, segment) => sum + radialSegmentAllocationCount(segment),
         0
       );
       rings[parentIndex + 1] = {
