@@ -186,8 +186,8 @@ function fitSegmentText(
   }
 
   const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, radialBand * 0.42));
-  const availableWidth = Math.max(2, arcLength * 0.9);
-  const availableHeight = Math.max(2, radialBand * 0.84);
+  const availableWidth = Math.max(2, arcLength * 0.98);
+  const availableHeight = Math.max(2, radialBand * 0.96);
 
   for (let fontSize = preferred; fontSize >= 0.55; fontSize -= 0.15) {
     const charsPerLine = Math.max(1, Math.floor(availableWidth / Math.max(0.36, fontSize * 0.54)));
@@ -212,8 +212,16 @@ function fitRadialSegmentLabel(
   preferredFontSize?: number
 ): { lines: string[]; fontSize: number; radial: boolean } {
   const tangential = fitSegmentText(text, arcLength, radialBand, preferredFontSize);
-  const radial = fitSegmentText(text, radialBand, arcLength, preferredFontSize);
-  if (radial.fontSize > tangential.fontSize * 1.08) return { ...radial, radial: true };
+  const singleLine = text?.replace(/\s+/g, " ").trim() ?? "";
+  const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, radialBand * 0.42));
+  const radialFontSize = singleLine
+    ? Math.max(0.55, Math.min(preferred, (radialBand * 0.96) / Math.max(1, singleLine.length * 0.54), (arcLength * 0.94) / 1.12))
+    : preferred;
+  const radial = { lines: singleLine ? [singleLine] : [], fontSize: radialFontSize };
+  const narrowSector = arcLength < radialBand * 0.62;
+  if ((narrowSector && radial.fontSize >= tangential.fontSize * 0.68) || radial.fontSize > tangential.fontSize * 1.08) {
+    return { ...radial, radial: true };
+  }
   return { ...tangential, radial: false };
 }
 
@@ -306,6 +314,18 @@ function radialRingAngles(rings: RadialChartRing[], chartRotation: number): Segm
   return result;
 }
 
+function radialRingBands(rings: RadialChartRing[], centerRadius: number, outerRadius = 49) {
+  const weights = rings.map((ring) => Math.max(0.25, Math.min(4, ring.thickness ?? 1)));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = centerRadius;
+  return weights.map((weight) => {
+    const width = (outerRadius - centerRadius) * (weight / totalWeight);
+    const band = { innerRadius: cursor, outerRadius: cursor + width, width };
+    cursor += width;
+    return band;
+  });
+}
+
 const MIN_RADIAL_LABEL_PIXELS = 16;
 const MIN_RADIAL_CENTER_LABEL_PIXELS = 20;
 const MAX_AUTO_RADIAL_SIZE = 4800;
@@ -314,13 +334,12 @@ function radialChartMinimumPixelSize(chart: RadialChartData): number {
   const rings = chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }];
   const centerRadius = Math.max(0, Math.min(42, chart.centerRadius ?? 14));
   const outerRadius = 49;
-  const ringThickness = rings.length ? (outerRadius - centerRadius) / rings.length : 0;
+  const bands = radialRingBands(rings, centerRadius, outerRadius);
   const angles = radialRingAngles(rings, chart.rotation ?? 0);
   let requiredSize = 420;
 
   rings.forEach((ring, ringIndex) => {
-    const innerRadius = centerRadius + ringThickness * ringIndex;
-    const segmentOuterRadius = centerRadius + ringThickness * (ringIndex + 1);
+    const { innerRadius, outerRadius: segmentOuterRadius, width: ringThickness } = bands[ringIndex];
     const textRadius = (innerRadius + segmentOuterRadius) / 2;
     chartRingSegments(ring).forEach((segment, segmentIndex) => {
       if (!segment.text?.trim()) return;
@@ -387,7 +406,7 @@ function RadialChartLayer({
   const rings = chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }];
   const centerRadius = Math.max(0, Math.min(42, chart.centerRadius ?? 14));
   const outerRadius = 49;
-  const ringThickness = rings.length ? (outerRadius - centerRadius) / rings.length : 0;
+  const bands = radialRingBands(rings, centerRadius, outerRadius);
   const rotation = chart.rotation ?? 0;
   const segmentBorderColor = chart.segmentBorderColor ?? borderColor;
   const segmentBorderWidth = Math.max(0, chart.segmentBorderWidth ?? 0.8);
@@ -410,8 +429,7 @@ function RadialChartLayer({
       </defs>
       <g clipPath={`url(#${clipId})`}>
         {rings.map((ring, ringIndex) => {
-          const innerRadius = centerRadius + ringThickness * ringIndex;
-          const segmentOuterRadius = centerRadius + ringThickness * (ringIndex + 1);
+          const { innerRadius, outerRadius: segmentOuterRadius, width: ringThickness } = bands[ringIndex];
           const segments = chartRingSegments(ring);
           return segments.map((segment, segmentIndex) => {
             const { start, end } = ringAngles[ringIndex][segmentIndex];

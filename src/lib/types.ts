@@ -148,6 +148,8 @@ export interface RadialChartRing {
   id: string;
   segmentCount: number;
   rotation?: number;
+  /** Relative radial width compared with the other rings. */
+  thickness?: number;
   segments?: RadialChartSegment[];
 }
 
