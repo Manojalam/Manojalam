@@ -723,6 +723,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       segmentCount: childTotal,
       segments: normalizeRadialSegments(nextRing, childTotal),
     };
+    for (let parentIndex = ringIndex + 1; parentIndex < rings.length - 1; parentIndex += 1) {
+      const parent = rings[parentIndex];
+      const child = rings[parentIndex + 1];
+      const parentSegments = normalizeRadialSegments(parent);
+      if (!parentSegments.some((segment) => segment.childCount != null)) break;
+      const descendantTotal = parentSegments.reduce(
+        (sum, segment) => sum + Math.max(1, Math.round(segment.childCount ?? 1)),
+        0
+      );
+      rings[parentIndex + 1] = {
+        ...child,
+        segmentCount: descendantTotal,
+        segments: normalizeRadialSegments(child, descendantTotal),
+      };
+    }
     setRadialChart({ ...activeRadialChart, rings, enabled: true });
   };
 
