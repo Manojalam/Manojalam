@@ -1813,6 +1813,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       onChange={(value) => setRadialChart({ ...activeRadialChart, rotation: value, enabled: true })}
                     />
                   </div>
+                  <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
+                    <div>
+                      <p className="text-[10px] font-medium">Debug label boxes</p>
+                      <p className="text-[9px] text-muted-foreground">Show computed arc-width and ring-height bounds</p>
+                    </div>
+                    <Switch
+                      checked={!!activeRadialChart.debugLabelBoxes}
+                      onCheckedChange={(checked) => setRadialChart({ ...activeRadialChart, debugLabelBoxes: checked, enabled: true })}
+                    />
+                  </div>
                 </div>
 
                 <Button
