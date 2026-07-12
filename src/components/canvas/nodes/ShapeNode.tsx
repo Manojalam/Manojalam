@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useRef, useCallback, useMemo, useId, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useState, useEffect, useRef, useCallback, useMemo, useId, type CSSProperties, type ReactNode } from "react";
 import { NodeResizer, useViewport, type NodeProps } from "@xyflow/react";
 import { Layers2, Plus } from "lucide-react";
 import { cn, generateId } from "@/lib/utils";
@@ -231,9 +231,51 @@ function fitCenterText(text: string | undefined, radius: number, preferredFontSi
 }
 
 function chartRingSegments(ring: RadialChartRing): RadialChartSegment[] {
-  const count = Math.max(1, Math.min(72, Math.round(ring.segmentCount || 1)));
+  const count = Math.max(1, Math.min(360, Math.round(ring.segmentCount || 1)));
   const segments = ring.segments ?? [];
   return Array.from({ length: count }, (_, index) => segments[index] ?? { id: `segment-${index + 1}` });
+}
+
+type SegmentAngle = { start: number; end: number };
+
+function radialRingAngles(rings: RadialChartRing[], chartRotation: number): SegmentAngle[][] {
+  const result: SegmentAngle[][] = [];
+
+  rings.forEach((ring, ringIndex) => {
+    const segments = chartRingSegments(ring);
+    const previousRing = rings[ringIndex - 1];
+    const previousAngles = result[ringIndex - 1];
+    const previousSegments = previousRing ? chartRingSegments(previousRing) : [];
+    const allocations = previousSegments.map((segment) => Math.max(1, Math.round(segment.childCount ?? 1)));
+    const isLinked = !!previousAngles && previousSegments.some((segment) => segment.childCount != null) &&
+      allocations.reduce((sum, count) => sum + count, 0) === segments.length;
+
+    if (isLinked) {
+      const angles: SegmentAngle[] = [];
+      previousAngles.forEach((parent, parentIndex) => {
+        const count = allocations[parentIndex];
+        const step = (parent.end - parent.start) / count;
+        for (let childIndex = 0; childIndex < count; childIndex += 1) {
+          angles.push({ start: parent.start + step * childIndex, end: parent.start + step * (childIndex + 1) });
+        }
+      });
+      result.push(angles);
+      return;
+    }
+
+    const ownAllocations = segments.map((segment) => Math.max(1, Math.round(segment.childCount ?? 1)));
+    const useWeightedWidth = ringIndex < rings.length - 1 && segments.some((segment) => segment.childCount != null);
+    const total = useWeightedWidth ? ownAllocations.reduce((sum, count) => sum + count, 0) : segments.length;
+    let cursor = chartRotation + (ring.rotation ?? 0);
+    result.push(segments.map((_, segmentIndex) => {
+      const span = 360 * (useWeightedWidth ? ownAllocations[segmentIndex] / total : 1 / total);
+      const angle = { start: cursor, end: cursor + span };
+      cursor += span;
+      return angle;
+    }));
+  });
+
+  return result;
 }
 
 type ChartTextEdit =
@@ -260,14 +302,12 @@ function RadialChartLayer({
   editingText,
   onSegmentEdit,
   onCenterEdit,
-  onRingRotationChange,
 }: {
   chart?: RadialChartData;
   borderColor: string;
   editingText?: ChartTextEdit | null;
   onSegmentEdit?: (edit: ChartTextEdit & { kind: "segment" }) => void;
   onCenterEdit?: (edit: ChartTextEdit & { kind: "center" }) => void;
-  onRingRotationChange?: (ringIndex: number, rotation: number) => void;
 }) {
   const rawClipId = useId();
   const clipId = `radial-chart-clip-${rawClipId.replace(/:/g, "")}`;
@@ -286,37 +326,7 @@ function RadialChartLayer({
     centerRadius,
     chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined
   );
-  const dragRef = useRef<{ ringIndex: number; pointerId: number; startAngle: number; startRotation: number; moved: boolean } | null>(null);
-
-  const pointerAngle = (event: ReactPointerEvent<SVGPathElement>) => {
-    const bounds = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
-    if (!bounds) return 0;
-    const x = ((event.clientX - bounds.left) / bounds.width) * 100 - 50;
-    const y = ((event.clientY - bounds.top) / bounds.height) * 100 - 50;
-    return (Math.atan2(y, x) * 180) / Math.PI;
-  };
-
-  const snapRingRotation = (ringIndex: number, proposed: number) => {
-    const step = 360 / chartRingSegments(rings[ringIndex]).length;
-    let best = proposed;
-    let bestDistance = 4;
-    rings.forEach((other, otherIndex) => {
-      if (otherIndex === ringIndex) return;
-      const otherSegments = chartRingSegments(other);
-      const otherStep = 360 / otherSegments.length;
-      for (let boundary = 0; boundary < otherSegments.length; boundary += 1) {
-        const target = rotation + (other.rotation ?? 0) + boundary * otherStep;
-        const ownBoundary = Math.round((target - rotation - proposed) / step);
-        const candidate = target - rotation - ownBoundary * step;
-        const delta = ((candidate - proposed + 540) % 360) - 180;
-        if (Math.abs(delta) < bestDistance) {
-          bestDistance = Math.abs(delta);
-          best = proposed + delta;
-        }
-      }
-    });
-    return ((best % 360) + 360) % 360;
-  };
+  const ringAngles = radialRingAngles(rings, rotation);
 
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[2] h-full w-full">
@@ -334,16 +344,14 @@ function RadialChartLayer({
           const segmentOuterRadius = centerRadius + ringThickness * (ringIndex + 1);
           const segments = chartRingSegments(ring);
           return segments.map((segment, segmentIndex) => {
-            const ringRotation = ring.rotation ?? 0;
-            const start = rotation + ringRotation + (360 / segments.length) * segmentIndex;
-            const end = rotation + ringRotation + (360 / segments.length) * (segmentIndex + 1);
+            const { start, end } = ringAngles[ringIndex][segmentIndex];
             const mid = (start + end) / 2;
             const textRadius = (innerRadius + segmentOuterRadius) / 2;
             const textPoint = polarPoint(50, 50, textRadius, mid);
             const textRotation = ((mid + 90) % 360 + 360) % 360;
             const readableTextRotation = textRotation > 90 && textRotation < 270 ? textRotation + 180 : textRotation;
             const finalTextRotation = readableTextRotation + (segment.textRotation ?? 0);
-            const angleWidth = 360 / segments.length;
+            const angleWidth = end - start;
             const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
             const { lines, fontSize } = fitSegmentText(
               segment.text,
@@ -370,26 +378,9 @@ function RadialChartLayer({
                   stroke={segmentBorderWidth > 0 ? segmentBorderColor : "none"}
                   strokeWidth={segmentBorderWidth}
                   pointerEvents="auto"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    dragRef.current = { ringIndex, pointerId: event.pointerId, startAngle: pointerAngle(event), startRotation: ringRotation, moved: false };
-                  }}
-                  onPointerMove={(event) => {
-                    const drag = dragRef.current;
-                    if (!drag || drag.pointerId !== event.pointerId || drag.ringIndex !== ringIndex) return;
-                    const delta = ((pointerAngle(event) - drag.startAngle + 540) % 360) - 180;
-                    if (Math.abs(delta) > 1) drag.moved = true;
-                    if (drag.moved) onRingRotationChange?.(ringIndex, snapRingRotation(ringIndex, drag.startRotation + delta));
-                  }}
-                  onPointerUp={(event) => {
-                    event.stopPropagation();
-                    event.currentTarget.releasePointerCapture(event.pointerId);
-                    window.setTimeout(() => { dragRef.current = null; }, 0);
-                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (dragRef.current?.moved) return;
                     onSegmentEdit?.({
                       kind: "segment",
                       ringIndex,
@@ -826,17 +817,6 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
             chart={radialChart}
             borderColor={borderColor}
             editingText={activeChartTextEdit}
-            onRingRotationChange={(ringIndex, ringRotation) => {
-              if (!radialChart) return;
-              updateNodeData(id, {
-                radialChart: {
-                  ...radialChart,
-                  rings: (radialChart.rings ?? []).map((ring, index) =>
-                    index === ringIndex ? { ...ring, rotation: ringRotation } : ring
-                  ),
-                },
-              });
-            }}
             onSegmentEdit={(edit) => {
               editHistoryCaptured.current = false;
               editDirty.current = false;

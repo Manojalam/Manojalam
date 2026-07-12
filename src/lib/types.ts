@@ -140,6 +140,8 @@ export interface RadialChartSegment {
   textColor?: string;
   fontSize?: number;
   textRotation?: number;
+  /** Number of sections allocated to this segment in the next ring. */
+  childCount?: number;
 }
 
 export interface RadialChartRing {

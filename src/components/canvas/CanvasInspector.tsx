@@ -79,7 +79,7 @@ function hexInputColor(value: unknown, fallback: string): string {
 }
 
 function normalizeRadialSegments(ring: RadialChartRing, count = ring.segmentCount): RadialChartSegment[] {
-  const safeCount = Math.max(1, Math.min(72, Math.round(count || 1)));
+  const safeCount = Math.max(1, Math.min(360, Math.round(count || 1)));
   const existing = ring.segments ?? [];
   return Array.from({ length: safeCount }, (_, index) => existing[index] ?? {
     id: generateId(),
@@ -123,7 +123,7 @@ function normalizeRadialChart(chart: RadialChartData | undefined, centerText = "
     centerFontSize: chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined,
     rings: chart.rings.map((ring) => ({
       ...ring,
-      segmentCount: Math.max(1, Math.min(72, Math.round(ring.segmentCount || 1))),
+      segmentCount: Math.max(1, Math.min(360, Math.round(ring.segmentCount || 1))),
       segments: normalizeRadialSegments(ring),
     })),
   };
@@ -707,6 +707,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     });
     setRadialChart({ ...activeRadialChart, rings: nextRings, enabled: true });
   };
+  const updateRadialChildCount = (ringIndex: number, segmentIndex: number, value: number) => {
+    const rings = [...(activeRadialChart.rings ?? [])];
+    const ring = rings[ringIndex];
+    const nextRing = rings[ringIndex + 1];
+    if (!ring || !nextRing) return;
+
+    const segments = normalizeRadialSegments(ring).map((segment, index) =>
+      index === segmentIndex ? { ...segment, childCount: Math.max(1, Math.min(360, Math.round(value || 1))) } : segment
+    );
+    const childTotal = segments.reduce((sum, segment) => sum + Math.max(1, Math.round(segment.childCount ?? 1)), 0);
+    rings[ringIndex] = { ...ring, segments };
+    rings[ringIndex + 1] = {
+      ...nextRing,
+      segmentCount: childTotal,
+      segments: normalizeRadialSegments(nextRing, childTotal),
+    };
+    setRadialChart({ ...activeRadialChart, rings, enabled: true });
+  };
 
   return (
     <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
@@ -1287,6 +1305,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   className="h-7 w-7 rounded border border-border bg-background"
                                 />
                               </div>
+                              {ringIndex < (activeRadialChart.rings ?? []).length - 1 && (
+                                <div>
+                                  <p className="mb-1 text-[9px] text-muted-foreground">
+                                    Sections in ring {ringIndex + 2}
+                                  </p>
+                                  <Input
+                                    aria-label={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} child section count`}
+                                    name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-children`}
+                                    type="number"
+                                    min={1}
+                                    max={360}
+                                    step={1}
+                                    value={segment.childCount ?? 1}
+                                    className="h-7 text-xs"
+                                    onChange={(event) => updateRadialChildCount(ringIndex, segmentIndex, Number(event.target.value))}
+                                  />
+                                </div>
+                              )}
                               <div>
                                 <p className="mb-1 text-[9px] text-muted-foreground">Text size</p>
                                 <SliderControl
