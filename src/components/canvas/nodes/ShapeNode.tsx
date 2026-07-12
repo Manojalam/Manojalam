@@ -294,6 +294,48 @@ function radialRingAngles(rings: RadialChartRing[], chartRotation: number): Segm
   return result;
 }
 
+const MIN_RADIAL_LABEL_PIXELS = 13;
+const MIN_RADIAL_CENTER_LABEL_PIXELS = 18;
+const MAX_AUTO_RADIAL_SIZE = 3200;
+
+function radialChartMinimumPixelSize(chart: RadialChartData): number {
+  const rings = chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }];
+  const centerRadius = Math.max(0, Math.min(42, chart.centerRadius ?? 14));
+  const outerRadius = 49;
+  const ringThickness = rings.length ? (outerRadius - centerRadius) / rings.length : 0;
+  const angles = radialRingAngles(rings, chart.rotation ?? 0);
+  let requiredSize = 420;
+
+  rings.forEach((ring, ringIndex) => {
+    const innerRadius = centerRadius + ringThickness * ringIndex;
+    const segmentOuterRadius = centerRadius + ringThickness * (ringIndex + 1);
+    const textRadius = (innerRadius + segmentOuterRadius) / 2;
+    chartRingSegments(ring).forEach((segment, segmentIndex) => {
+      if (!segment.text?.trim()) return;
+      const angleWidth = angles[ringIndex][segmentIndex].end - angles[ringIndex][segmentIndex].start;
+      const arcLength = (2 * Math.PI * textRadius * angleWidth) / 360;
+      const fit = fitSegmentText(
+        segment.text,
+        arcLength,
+        ringThickness,
+        segment.fontSize && segment.fontSize > 0 ? segment.fontSize : undefined
+      );
+      if (fit.fontSize > 0) requiredSize = Math.max(requiredSize, (MIN_RADIAL_LABEL_PIXELS * 100) / fit.fontSize);
+    });
+  });
+
+  if (chart.centerText?.trim() && centerRadius > 0) {
+    const fit = fitCenterText(
+      chart.centerText,
+      centerRadius,
+      chart.centerFontSize && chart.centerFontSize > 0 ? chart.centerFontSize : undefined
+    );
+    if (fit.fontSize > 0) requiredSize = Math.max(requiredSize, (MIN_RADIAL_CENTER_LABEL_PIXELS * 100) / fit.fontSize);
+  }
+
+  return Math.min(MAX_AUTO_RADIAL_SIZE, Math.ceil(requiredSize * 1.08));
+}
+
 type ChartTextEdit =
   | { kind: "segment"; ringIndex: number; segmentIndex: number; x: number; y: number; width: number; height: number; rotation: number; value: string; textColor?: string }
   | { kind: "center"; x: number; y: number; width: number; height: number; rotation: number; value: string; textColor?: string };
@@ -666,6 +708,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const dd = d as Record<string, unknown>;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
+  const resizeNodeToFitBounds = useCanvasStore((s) => s.resizeNodeToFitBounds);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const viewport = useViewport();
@@ -703,6 +746,15 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
+
+  useEffect(() => {
+    if (!radialChart?.enabled) return;
+    const requiredSize = radialChartMinimumPixelSize(radialChart);
+    const frame = requestAnimationFrame(() => {
+      resizeNodeToFitBounds(id, { width: requiredSize, height: requiredSize });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [id, radialChart, resizeNodeToFitBounds]);
 
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
