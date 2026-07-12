@@ -271,6 +271,29 @@ body {
 .ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
 mark { border-radius: 2px; padding: 0 2px; }
 
+/* Radial-layout labels use one fitted font size so inline formatting can never
+   push text outside its clipped sector. Color, weight, style and highlights
+   remain per-range. */
+.sunburst-rich-label,
+.sunburst-inline-editor .ProseMirror {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.sunburst-rich-label > *,
+.sunburst-inline-editor .ProseMirror > * {
+  width: 100%;
+  margin: 0;
+}
+.sunburst-rich-label *,
+.sunburst-inline-editor .ProseMirror * {
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+.sunburst-rich-label mark,
+.sunburst-inline-editor mark {
+  padding: 0 0.08em;
+}
+
 /* ─── Floating panel glass effect ─── */
 .vidya-float-panel {
   background: var(--card);

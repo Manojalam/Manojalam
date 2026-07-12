@@ -10,8 +10,11 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { FontFamily } from "@tiptap/extension-font-family";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
+import Highlight from "@tiptap/extension-highlight";
 import { cn } from "@/lib/utils";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
+import type { InlineTextFormatDetail } from "@/lib/types";
+import { useUIStore } from "@/store/ui-store";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
 const FontSize = Extension.create({
@@ -39,6 +42,7 @@ const EXTENSIONS = [
   FontFamily,
   FontSize,
   Underline,
+  Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
 ];
 
@@ -57,6 +61,7 @@ interface Anchor { top: number; left: number }
 interface Point { top: number; left: number }
 
 interface RichTextEditorProps {
+  nodeId?: string;
   initialContent: string;
   editable: boolean;
   placeholder?: string;
@@ -69,6 +74,7 @@ interface RichTextEditorProps {
 }
 
 export function RichTextEditor({
+  nodeId,
   initialContent,
   editable,
   placeholder,
@@ -78,6 +84,7 @@ export function RichTextEditor({
   onContentSizeChange,
   onBlur,
 }: RichTextEditorProps) {
+  const setActiveTextSelection = useUIStore((state) => state.setActiveTextSelection);
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
   const alignFirstRun = useRef(true);
   // Anchor = topmost point of the current selection (used to place the bar above it).
@@ -144,6 +151,69 @@ export function RichTextEditor({
       onBlur?.();
     },
   });
+
+  const publishTextSelection = useCallback(() => {
+    if (!editor || !nodeId) return;
+    const fontSizeValue = editor.getAttributes("textStyle").fontSize;
+    const parsedFontSize = typeof fontSizeValue === "string" ? Number.parseFloat(fontSizeValue) : undefined;
+    setActiveTextSelection({
+      nodeId,
+      hasSelection: !editor.state.selection.empty,
+      bold: editor.isActive("bold"),
+      italic: editor.isActive("italic"),
+      fontSize: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
+      fontFamily: editor.getAttributes("textStyle").fontFamily as string | undefined,
+      textColor: editor.getAttributes("textStyle").color as string | undefined,
+      highlightColor: editor.getAttributes("highlight").color as string | undefined,
+      textAlign: (["left", "center", "right", "justify"] as const).find((align) => editor.isActive({ textAlign: align })),
+    });
+  }, [editor, nodeId, setActiveTextSelection]);
+
+  useEffect(() => {
+    if (!editor || !nodeId) return;
+    const applyFormat = (event: Event) => {
+      const detail = (event as CustomEvent<InlineTextFormatDetail>).detail;
+      if (!detail || detail.nodeId !== nodeId || editor.state.selection.empty) return;
+
+      const wasEditable = editor.isEditable;
+      if (!wasEditable) editor.setEditable(true, false);
+      const chain = editor.chain();
+      switch (detail.key) {
+        case "fontWeight":
+          if (detail.value === "bold") chain.setBold();
+          else chain.unsetBold();
+          break;
+        case "fontStyle":
+          if (detail.value === "italic") chain.setItalic();
+          else chain.unsetItalic();
+          break;
+        case "fontSize":
+          chain.setMark("textStyle", { fontSize: `${Number(detail.value) || 14}px` });
+          break;
+        case "fontFamily":
+          if (detail.value) chain.setFontFamily(String(detail.value));
+          else chain.unsetFontFamily();
+          break;
+        case "textColor":
+          if (detail.value) chain.setColor(String(detail.value));
+          else chain.unsetColor();
+          break;
+        case "textHighlightColor":
+          if (detail.value) chain.setHighlight({ color: String(detail.value) });
+          else chain.unsetHighlight();
+          break;
+        case "textAlign":
+          chain.setTextAlign(String(detail.value));
+          break;
+      }
+      chain.run();
+      if (!wasEditable) editor.setEditable(false, false);
+      publishTextSelection();
+      scheduleContentReport(editor);
+    };
+    window.addEventListener("vidya:apply-inline-text-format", applyFormat);
+    return () => window.removeEventListener("vidya:apply-inline-text-format", applyFormat);
+  }, [editor, nodeId, publishTextSelection, scheduleContentReport]);
 
   useEffect(() => {
     if (!editor || editable) return;
@@ -230,6 +300,7 @@ export function RichTextEditor({
   }, [editor, reportContentSize]);
 
   const updateToolbar = useCallback(() => {
+    publishTextSelection();
     if (!editor?.isEditable) { hideToolbar(); return; }
     const { state, view } = editor;
     if (state.selection.empty) { hideToolbar(); return; }
@@ -241,7 +312,7 @@ export function RichTextEditor({
       top:  Math.min(start.top, end.top),
       left: (start.left + end.right) / 2,
     });
-  }, [editor, hideToolbar]);
+  }, [editor, hideToolbar, publishTextSelection]);
 
   useEffect(() => {
     if (!editor) return;

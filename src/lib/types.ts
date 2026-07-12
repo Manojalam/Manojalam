@@ -54,6 +54,33 @@ export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 
+export interface ActiveTextSelection {
+  nodeId: string;
+  hasSelection: boolean;
+  bold: boolean;
+  italic: boolean;
+  fontSize?: number;
+  fontFamily?: string;
+  textColor?: string;
+  highlightColor?: string;
+  textAlign?: "left" | "center" | "right" | "justify";
+}
+
+export type InlineTextFormatKey =
+  | "fontWeight"
+  | "fontStyle"
+  | "fontSize"
+  | "fontFamily"
+  | "textColor"
+  | "textHighlightColor"
+  | "textAlign";
+
+export interface InlineTextFormatDetail {
+  nodeId: string;
+  key: InlineTextFormatKey;
+  value: unknown;
+}
+
 export type LayoutMode =
   | "freeForm"
   | "fromParentFreeForm"
@@ -186,6 +213,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   fontStyle?: "normal" | "italic";
   fontWeight?: "normal" | "bold";
   textColor?: string;
+  textHighlightColor?: string;
   textAlign?: "left" | "center" | "right" | "justify";
   internalFillRegions?: InternalFillRegion[];
   tags?: string[];
@@ -200,6 +228,14 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutMode?: LayoutMode;
   matrixDensity?: MatrixDensity;
   groupId?: string;
+  /** Radial-layout-only presentation overrides. */
+  radialFillColor?: string;
+  radialTextColor?: string;
+  radialBorderColor?: string;
+  radialBorderWidth?: number;
+  radialBorderStyle?: "solid" | "dashed" | "dotted";
+  /** Relative sibling allocation in hierarchy-driven radial layout. */
+  radialWeight?: number;
 }
 
 export interface MindMapNodeData extends BaseNodeData {

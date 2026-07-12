@@ -139,6 +139,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
         <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
           style={{ color: "#374151", ...getTextStyle(dd) }}>
           <RichTextEditor
+            nodeId={id}
             initialContent={initialContent}
             editable={editing}
             placeholder="Double-click to write…"

@@ -30,6 +30,7 @@ import type {
   RadialChartRing,
   RadialChartSegment,
   ShapeType,
+  InlineTextFormatKey,
 } from "@/lib/types";
 import type { Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -377,10 +378,62 @@ function normalizeWholeBoxFontSize(data: Record<string, unknown>, value: unknown
   return patch;
 }
 
+function normalizeWholeTextHighlight(data: Record<string, unknown>, value: unknown): Record<string, unknown> {
+  const color = typeof value === "string" && value ? value : undefined;
+  const patch: Record<string, unknown> = { textHighlightColor: color };
+  if (typeof document === "undefined") return patch;
+
+  const container = document.createElement("div");
+  if (typeof data.richText === "string" && data.richText.trim()) {
+    container.innerHTML = data.richText;
+  } else {
+    const fallbackText = ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"]
+      .map((field) => data[field])
+      .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0) ?? "";
+    const lines = fallbackText.split(/\r?\n/);
+    for (const line of lines) {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = line;
+      container.appendChild(paragraph);
+    }
+  }
+
+  container.querySelectorAll("mark").forEach((mark) => mark.replaceWith(...Array.from(mark.childNodes)));
+  container.normalize();
+  if (color) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const textNodes: Text[] = [];
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode as Text;
+      if (textNode.data.trim()) textNodes.push(textNode);
+    }
+    for (const textNode of textNodes) {
+      const mark = document.createElement("mark");
+      mark.dataset.vidyaWholeHighlight = "true";
+      mark.style.backgroundColor = color;
+      textNode.parentNode?.replaceChild(mark, textNode);
+      mark.appendChild(textNode);
+    }
+  }
+  patch.richText = container.innerHTML;
+  return patch;
+}
+
 function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   if (key === "fontSize") return normalizeWholeBoxFontSize(data, value);
+  if (key === "textHighlightColor") return normalizeWholeTextHighlight(data, value);
   return { [key]: value };
 }
+
+const INLINE_TEXT_FIELDS = new Set<InlineTextFormatKey>([
+  "fontWeight",
+  "fontStyle",
+  "fontSize",
+  "fontFamily",
+  "textColor",
+  "textHighlightColor",
+  "textAlign",
+]);
 
 type InspectorTab = "style" | "text" | "shape" | "layout" | "data";
 
@@ -436,6 +489,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const drawingRegionOpacity = useUIStore((s) => s.drawingRegionOpacity);
   const setDrawingRegionOpacity = useUIStore((s) => s.setDrawingRegionOpacity);
   const setLayoutPanelOpen = useUIStore((s) => s.setLayoutPanelOpen);
+  const activeTextSelection = useUIStore((s) => s.activeTextSelection);
 
   const selectedNodes = selectedNodeIds.length
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
@@ -452,10 +506,30 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   // ALL hooks before any early return
   const d = (selectedNode?.data ?? {}) as Record<string, unknown>;
+  const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
+  const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
+    ? activeTextSelection
+    : null;
+
+  useEffect(() => {
+    if (!isRadialLayoutSector || singleNodeTab !== "shape") return;
+    const frame = requestAnimationFrame(() => setSingleNodeTab("style"));
+    return () => cancelAnimationFrame(frame);
+  }, [isRadialLayoutSector, singleNodeTab]);
 
   const setField = (key: string, value: unknown) => {
     if (!selectedNode) return;
     pushHistory();
+    if (selectedTextRange && INLINE_TEXT_FIELDS.has(key as InlineTextFormatKey)) {
+      window.dispatchEvent(new CustomEvent("vidya:apply-inline-text-format", {
+        detail: { nodeId: selectedNode.id, key, value },
+      }));
+      return;
+    }
+    if (isRadialLayoutSector && key === "textColor") {
+      updateNodeData(selectedNode.id, { radialTextColor: value });
+      return;
+    }
     updateNodeData(selectedNode.id, fieldPatch(d, key, value));
   };
 
@@ -862,6 +936,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeRadialChart = normalizeRadialChart(radialChart, (d.text as string | undefined) ?? "");
   const isDrawing     = drawingModeNodeId === selectedNode.id;
   const fontGroups    = groupFontsByCategory(FONT_OPTIONS);
+  const activeTextAlign = selectedTextRange?.textAlign ?? d.textAlign;
+  const activeFontSize = selectedTextRange?.fontSize ?? ((d.fontSize as number) || 14);
+  const activeFontFamily = selectedTextRange?.fontFamily ?? ((d.fontFamily as string) || "");
+  const activeTextColor = selectedTextRange?.textColor
+    ?? ((isRadialLayoutSector ? d.radialTextColor : d.textColor) as string | undefined)
+    ?? "";
+  const activeHighlightColor = selectedTextRange?.highlightColor ?? ((d.textHighlightColor as string) || "");
   const setRadialChart = (chart: RadialChartData) => setField("radialChart", chart);
   const enableRadialChart = (chart: RadialChartData) => {
     setRadialChart({ ...chart, enabled: true });
@@ -934,7 +1015,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       {/* ── Header ── */}
       <div className="flex items-center justify-between border-b px-3 py-2.5">
         <div>
-          <h3 className="text-sm font-semibold capitalize">{nodeType}</h3>
+          <h3 className="text-sm font-semibold capitalize">{isRadialLayoutSector ? "Radial sector" : nodeType}</h3>
           <p className="text-[10px] text-muted-foreground">{selectedNode.id.slice(0, 8)}…</p>
         </div>
         <div className="flex gap-1">
@@ -948,8 +1029,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-1 border-b bg-background/95 p-2">
-        {INSPECTOR_TABS.map((tab) => (
+      <div className={cn("grid gap-1 border-b bg-background/95 p-2", isRadialLayoutSector ? "grid-cols-4" : "grid-cols-5")}>
+        {INSPECTOR_TABS.filter((tab) => !isRadialLayoutSector || tab.id !== "shape").map((tab) => (
           <button
             key={tab.id}
             onClick={() => setSingleNodeTab(tab.id)}
@@ -1075,7 +1156,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>
         </Section>
 
-        {isContentNode && (
+        {isContentNode && !isRadialLayoutSector && (
           <Section label="Presets" visible={singleNodeTab === "style"}>
             <div className="grid grid-cols-2 gap-1.5">
               {([
@@ -1101,8 +1182,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Text ── */}
-        {isContentNode && (
+        {(isContentNode || isRadialLayoutSector) && (
           <Section label="Text" visible={singleNodeTab === "text"}>
+            <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
+              <span className="text-[10px] font-medium text-foreground">
+                {selectedTextRange ? "Selected text" : isRadialLayoutSector ? "Whole sector" : "Whole object"}
+              </span>
+              <span className="text-[9px] text-muted-foreground">
+                {selectedTextRange ? "Inline" : "All text"}
+              </span>
+            </div>
             {/* Alignment */}
             <Row label="Align">
               {([
@@ -1111,28 +1200,27 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 ["right",   <AlignRight   key="r" className="h-3.5 w-3.5" />, "Right"],
                 ["justify", <AlignJustify key="j" className="h-3.5 w-3.5" />, "Justify"],
               ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
-                <IconBtn key={val} active={d.textAlign === val} onClick={() => setField("textAlign", val)} title={title}>{icon}</IconBtn>
+                <IconBtn key={val} active={activeTextAlign === val} onClick={() => setField("textAlign", val)} title={title}>{icon}</IconBtn>
               ))}
             </Row>
 
             {/* Bold / Italic */}
             <Row label="Style">
-              <IconBtn active={d.fontWeight === "bold"}
-                onClick={() => setField("fontWeight", d.fontWeight === "bold" ? "normal" : "bold")} title="Bold (whole object)">
+              <IconBtn active={selectedTextRange ? selectedTextRange.bold : d.fontWeight === "bold"}
+                onClick={() => setField("fontWeight", (selectedTextRange ? selectedTextRange.bold : d.fontWeight === "bold") ? "normal" : "bold")} title="Bold">
                 <Bold className="h-3.5 w-3.5" />
               </IconBtn>
-              <IconBtn active={d.fontStyle === "italic"}
-                onClick={() => setField("fontStyle", d.fontStyle === "italic" ? "normal" : "italic")} title="Italic (whole object)">
+              <IconBtn active={selectedTextRange ? selectedTextRange.italic : d.fontStyle === "italic"}
+                onClick={() => setField("fontStyle", (selectedTextRange ? selectedTextRange.italic : d.fontStyle === "italic") ? "normal" : "italic")} title="Italic">
                 <Italic className="h-3.5 w-3.5" />
               </IconBtn>
-              <span className="ml-1 text-[9px] text-muted-foreground">whole box</span>
             </Row>
 
             {/* Font size */}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
               <ThicknessControl
-                value={(d.fontSize as number) ?? 14}
+                value={activeFontSize}
                 onChange={(v) => setField("fontSize", v)}
                 max={96}
               />
@@ -1141,7 +1229,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {/* Font family */}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
-              <Select value={(d.fontFamily as string) ?? ""} onValueChange={(v) => setField("fontFamily", v || undefined)}>
+              <Select value={activeFontFamily} onValueChange={(v) => setField("fontFamily", v || undefined)}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Default" /></SelectTrigger>
                 <SelectContent className="max-h-72">
                   <SelectItem value="">Default</SelectItem>
@@ -1162,7 +1250,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {/* Text color */}
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
-              <ColorSwatchPicker value={(d.textColor as string) ?? ""} onChange={(v) => setField("textColor", v || undefined)} size="sm" />
+              <ColorSwatchPicker value={activeTextColor} onChange={(v) => setField("textColor", v || undefined)} size="sm" />
+            </div>
+
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Highlight</p>
+              <ColorSwatchPicker value={activeHighlightColor} onChange={(v) => setField("textHighlightColor", v || undefined)} size="sm" />
+              {activeHighlightColor && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 h-6 px-2 text-[9px] text-muted-foreground"
+                  onClick={() => setField("textHighlightColor", undefined)}
+                >
+                  Remove highlight
+                </Button>
+              )}
             </div>
           </Section>
         )}
@@ -1195,8 +1299,82 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
+        {isRadialLayoutSector && (
+          <Section label="Radial sector" visible={singleNodeTab === "style"}>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fill</p>
+              <ColorSwatchPicker
+                value={(d.radialFillColor as string) ?? ""}
+                onChange={(value) => setField("radialFillColor", value || undefined)}
+              />
+            </div>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Border color</p>
+              <ColorSwatchPicker
+                value={(d.radialBorderColor as string) ?? "#ffffff"}
+                onChange={(value) => setField("radialBorderColor", value || undefined)}
+                size="sm"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Border thickness</p>
+              <ThicknessControl
+                value={typeof d.radialBorderWidth === "number" ? d.radialBorderWidth : 1}
+                onChange={(value) => setField("radialBorderWidth", value)}
+                max={16}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Border style</p>
+              <BorderStylePicker
+                value={(d.radialBorderStyle as string) ?? "solid"}
+                onChange={(value) => setField("radialBorderStyle", value)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-full text-[10px]"
+              onClick={() => {
+                pushHistory();
+                updateNodeData(selectedNode.id, {
+                  radialFillColor: undefined,
+                  radialBorderColor: undefined,
+                  radialBorderWidth: undefined,
+                  radialBorderStyle: undefined,
+                });
+              }}
+            >
+              Use automatic colors
+            </Button>
+          </Section>
+        )}
+
+        {isRadialLayoutSector && d.layoutMode !== "radial" && (
+          <Section label="Sector area" visible={singleNodeTab === "layout"}>
+            <SliderControl
+              value={typeof d.radialWeight === "number" ? d.radialWeight : 1}
+              min={0.2}
+              max={6}
+              step={0.1}
+              suffix="×"
+              onChange={(value) => setField("radialWeight", value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-full text-[10px]"
+              onClick={() => setField("radialWeight", undefined)}
+            >
+              Use automatic size
+            </Button>
+          </Section>
+        )}
+
         {/* ── Fill ── */}
-        {isContentNode && (
+        {isContentNode && !isRadialLayoutSector && (
           <Section label="Fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
               value={(d.fillColor as string) ?? ""}
@@ -1216,7 +1394,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Shape type (only for shape nodes) ── */}
-        {isShapeNode && (
+        {isShapeNode && !isRadialLayoutSector && (
           <Section label="Shape type" visible={singleNodeTab === "shape"}>
             <div className="grid grid-cols-3 gap-1">
               {SHAPE_TYPES.map(({ label, value }) => (
@@ -1251,7 +1429,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {isShapeNode && (
+        {isShapeNode && !isRadialLayoutSector && (
           <Section label="Transform" defaultOpen={false} visible={singleNodeTab === "shape"}>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
@@ -1267,7 +1445,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {isShapeNode && (
+        {isShapeNode && !isRadialLayoutSector && (
           <Section label="Concentric" defaultOpen={false} visible={singleNodeTab === "shape"}>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <span className="text-[10px] text-muted-foreground">{concentricLayers.length} inner shapes</span>
@@ -1380,7 +1558,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {isShapeNode && (
+        {isShapeNode && !isRadialLayoutSector && (
           <Section label="Split chart" defaultOpen={false} visible={singleNodeTab === "shape"}>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <Label className="text-xs">Radial split</Label>
@@ -1699,7 +1877,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Border ── */}
-        {isContentNode && (
+        {isContentNode && !isRadialLayoutSector && (
           <Section label="Border" visible={singleNodeTab === "style"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
@@ -1729,7 +1907,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Extra border layers ── */}
-        {isContentNode && (
+        {isContentNode && !isRadialLayoutSector && (
           <Section label="Extra borders" defaultOpen={false} visible={singleNodeTab === "style"}>
             {borderLayers.map((layer, i) => (
               <div key={layer.id} className="rounded-lg border border-border p-2 space-y-2">
@@ -1759,7 +1937,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Internal fill regions ── */}
-        {isContentNode && (
+        {isContentNode && !isRadialLayoutSector && (
           <Section label="Fill regions" defaultOpen={false} visible={singleNodeTab === "shape"}>
             {/* Region color */}
             <div>
@@ -1856,7 +2034,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Convert to ── */}
-        {isContentNode && (
+        {isContentNode && !isRadialLayoutSector && (
           <Section label="Convert to" defaultOpen={false} visible={singleNodeTab === "data"}>
             <div className="grid grid-cols-2 gap-1">
               {CONVERT_TYPES.filter((t) => t.value !== nodeType).map(({ label, value }) => (

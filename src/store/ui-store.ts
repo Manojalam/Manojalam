@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { LOCAL_STORAGE_KEYS } from "@/lib/config";
-import type { AppSettings, CanvasTool, ShapeType } from "@/lib/types";
+import type { ActiveTextSelection, AppSettings, CanvasTool, ShapeType } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 
 export type ShapeVariant = ShapeType;
@@ -14,6 +14,8 @@ interface UIState {
   setTouchSelectionMode: (active: boolean) => void;
   canvasDragging: boolean;
   setCanvasDragging: (active: boolean) => void;
+  activeTextSelection: ActiveTextSelection | null;
+  setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
   shapeVariant: ShapeVariant;
   setShapeVariant: (v: ShapeVariant) => void;
   /** ID of the node currently in free-draw internal-fill mode, or null */
@@ -55,6 +57,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   canvasDragging: false,
   setCanvasDragging: (active) => set({ canvasDragging: active }),
+  activeTextSelection: null,
+  setActiveTextSelection: (selection) => set({ activeTextSelection: selection }),
   shapeVariant: "rounded",
   setShapeVariant: (v) => set({ shapeVariant: v }),
   drawingModeNodeId: null,
