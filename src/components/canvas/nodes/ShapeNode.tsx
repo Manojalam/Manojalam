@@ -574,7 +574,7 @@ function RadialChartLayer({
                     });
                   }}
                 />
-                {lines.length > 0 && !isEditingSegment && (
+                {lines.length > 0 && !isEditingSegment && !(segment.childCount === 0 && !hiddenByParentMerge) && (
                   <g clipPath={`url(#${segmentClipId})`}>
                     <text
                       x={textPoint.x}
@@ -595,6 +595,56 @@ function RadialChartLayer({
                     </text>
                   </g>
                 )}
+              </g>
+            );
+          });
+        })}
+      </g>
+      <g clipPath={`url(#${clipId})`} pointerEvents="none">
+        {rings.flatMap((ring, ringIndex) => {
+          const { innerRadius, outerRadius: segmentOuterRadius } = bands[ringIndex];
+          return chartRingSegments(ring).map((segment, segmentIndex) => {
+            if (segment.childCount !== 0 || hiddenSegments[ringIndex].has(segmentIndex) || !segment.text?.trim()) return null;
+            if (editingText?.kind === "segment" && editingText.ringIndex === ringIndex && editingText.segmentIndex === segmentIndex) return null;
+            const { start, end } = ringAngles[ringIndex][segmentIndex];
+            const mid = (start + end) / 2;
+            const renderedOuterRadius = bands[ringIndex + 1]?.outerRadius ?? segmentOuterRadius;
+            const ringThickness = renderedOuterRadius - innerRadius;
+            const textRadius = (innerRadius + renderedOuterRadius) / 2;
+            const textPoint = polarPoint(50, 50, textRadius, mid);
+            const arcLength = (2 * Math.PI * textRadius * (end - start)) / 360;
+            const { lines, fontSize, radial: useRadialLabel } = fitRadialSegmentLabel(
+              segment.text,
+              arcLength,
+              ringThickness,
+              segment.fontSize && segment.fontSize > 0 ? segment.fontSize : undefined
+            );
+            const baseTextRotation = useRadialLabel ? mid : mid + 90;
+            const normalizedTextRotation = ((baseTextRotation % 360) + 360) % 360;
+            const readableTextRotation = normalizedTextRotation > 90 && normalizedTextRotation < 270
+              ? baseTextRotation + 180
+              : baseTextRotation;
+            const finalTextRotation = readableTextRotation + (segment.textRotation ?? 0);
+            const lineOffset = -((lines.length - 1) * fontSize * 1.12) / 2;
+            const segmentClipId = `${clipId}-segment-${ringIndex}-${segmentIndex}`;
+            return (
+              <g key={`merged-label-${ring.id}-${segment.id}`} clipPath={`url(#${segmentClipId})`}>
+                <text
+                  x={textPoint.x}
+                  y={textPoint.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill={segment.textColor ?? "#111827"}
+                  fontSize={fontSize}
+                  fontWeight={ringIndex === 0 ? 700 : 500}
+                  transform={`rotate(${finalTextRotation} ${textPoint.x} ${textPoint.y})`}
+                >
+                  {lines.map((line, lineIndex) => (
+                    <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : fontSize * 1.12}>
+                      {line}
+                    </tspan>
+                  ))}
+                </text>
               </g>
             );
           });
