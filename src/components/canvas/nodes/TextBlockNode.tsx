@@ -132,6 +132,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
         <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
+            nodeId={id}
             initialContent={initialContent}
             editable={editing}
             placeholder="Double-click to type…"

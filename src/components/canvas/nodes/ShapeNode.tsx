@@ -1102,6 +1102,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
             )}>
               <div ref={contentRef} className="w-full" style={getTextStyle(dd)}>
                 <RichTextEditor
+                  nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
                   placeholder="Double-click…"
