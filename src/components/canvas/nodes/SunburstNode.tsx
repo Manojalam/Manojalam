@@ -344,14 +344,14 @@ function fitLabel(
   availableHeight: number,
   preferredFontSize: number,
   style: LabelTextStyle,
-  useBrowserMetrics: boolean
+  useBrowserMetrics: boolean,
+  minimumReadableFont: number
 ): LabelFit {
   const width = Math.max(0.5, availableWidth);
   const height = Math.max(0.5, availableHeight);
   if (!label.trim()) return { lines: [], fontSize: preferredFontSize, width, height };
 
-  const maxFont = Math.max(3, preferredFontSize);
-  const minimumReadableFont = 4;
+  const maxFont = Math.max(minimumReadableFont, preferredFontSize);
   const unwrapped = explicitLabelLines(label);
   const unwrappedMetrics = textMetrics(unwrapped, maxFont, label, style, useBrowserMetrics);
   if (unwrappedMetrics.width <= width && unwrappedMetrics.height <= height) {
@@ -364,7 +364,8 @@ function fitLabel(
     return { lines: preferredWrapped, fontSize: maxFont, width, height };
   }
 
-  for (let fontSize = maxFont; fontSize >= minimumReadableFont; fontSize -= Math.max(0.25, fontSize * 0.06)) {
+  let fontSize = maxFont;
+  while (fontSize >= minimumReadableFont) {
     const smallerUnwrapped = textMetrics(unwrapped, fontSize, label, style, useBrowserMetrics);
     if (smallerUnwrapped.width <= width && smallerUnwrapped.height <= height) {
       return { lines: unwrapped, fontSize, width, height };
@@ -374,6 +375,8 @@ function fitLabel(
     if (metrics.width <= width && metrics.height <= height) {
       return { lines, fontSize, width, height };
     }
+    if (fontSize === minimumReadableFont) break;
+    fontSize = Math.max(minimumReadableFont, fontSize - Math.max(0.25, fontSize * 0.06));
   }
 
   return { lines: [], fontSize: minimumReadableFont, width, height };
@@ -391,11 +394,17 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowse
   const height = useRadialAxis ? arcLength : radialBand;
   const defaultMax = segment.depth <= 1 ? 28 : 20;
   const preferred = clamp(segment.preferredFontSize ?? defaultMax, 4, 96);
+  const automaticMinimum = isDevanagariText(segment.label)
+    ? segment.depth <= 1 ? 12 : 11
+    : segment.depth <= 1 ? 11 : 10;
+  const minimumReadable = segment.preferredFontSize === undefined
+    ? automaticMinimum
+    : Math.min(preferred, automaticMinimum);
   const fit = fitLabel(segment.label, width, height, preferred, {
     fontFamily: segment.fontFamily,
     fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
     fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
-  }, useBrowserMetrics);
+  }, useBrowserMetrics, minimumReadable);
   const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
   const normalized = ((baseRotation % 360) + 360) % 360;
   const rotation = normalized > 90 && normalized < 270 ? baseRotation + 180 : baseRotation;
@@ -413,7 +422,14 @@ function circleLabelGeometry(
   const width = Math.max(24, radius * 1.55);
   const height = Math.max(24, radius * 1.5);
   const preferred = clamp(preferredFontSize ?? Math.min(32, radius * 0.34), 5, 96);
-  return { ...fitLabel(label, width, height, preferred, style, useBrowserMetrics), x: center, y: center, rotation: 0 };
+  const automaticMinimum = isDevanagariText(label) ? 16 : 14;
+  const minimumReadable = preferredFontSize === undefined ? automaticMinimum : Math.min(preferred, automaticMinimum);
+  return {
+    ...fitLabel(label, width, height, preferred, style, useBrowserMetrics, minimumReadable),
+    x: center,
+    y: center,
+    rotation: 0,
+  };
 }
 
 function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<string, Node>): SunburstTreeNode {
@@ -466,14 +482,18 @@ function radialBands(
 ): RadialBand[] {
   const source = Array.isArray(widthWeights) ? widthWeights : [];
   const weights = Array.from({ length: depthCount }, (_, index) =>
-    clamp(dimension(source[index], 1), 0.25, 4)
+    clamp(dimension(source[index], 1), 0.000001, 1000000)
   );
+  if (!weights.length) return [];
   const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const availableRadius = Math.max(0, outerRadius - centerRadius);
+  const minimumBand = Math.min(28, availableRadius / (2 * weights.length));
+  const flexibleRadius = Math.max(0, availableRadius - minimumBand * weights.length);
   let cursor = centerRadius;
   return weights.map((weight, index) => {
     const width = index === weights.length - 1
       ? outerRadius - cursor
-      : (outerRadius - centerRadius) * (weight / Math.max(0.01, total));
+      : minimumBand + flexibleRadius * (weight / Math.max(0.01, total));
     const band = { innerRadius: cursor, outerRadius: cursor + width };
     cursor += width;
     return band;

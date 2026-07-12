@@ -299,6 +299,8 @@ function SliderControl({
   suffix?: string;
 }) {
   const apply = (next: number) => onChange(clampControlValue(next, min, max));
+  const displayPrecision = step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(step)));
+  const displayValue = Number(value.toFixed(displayPrecision));
   const applyStep = (next: number) => {
     onChangeStart?.();
     apply(next);
@@ -328,7 +330,7 @@ function SliderControl({
       />
       <button onClick={() => applyStep(value + step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
-      <span className="w-9 text-center text-[10px] text-muted-foreground">{value}{suffix}</span>
+      <span className="w-9 text-center text-[10px] text-muted-foreground">{displayValue}{suffix}</span>
     </div>
   );
 }
@@ -549,6 +551,49 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     }
     return currentId === radialRootId ? depth : 0;
   })();
+  const radialDepthCount = (() => {
+    if (!radialRootId) return 0;
+    let maximum = 0;
+    const visited = new Set<string>();
+    const walk = (nodeId: string, depth: number) => {
+      if (visited.has(nodeId)) return;
+      visited.add(nodeId);
+      maximum = Math.max(maximum, depth);
+      for (const childId of hierarchy.get(nodeId)?.childIds ?? []) walk(childId, depth + 1);
+    };
+    walk(radialRootId, 0);
+    return maximum;
+  })();
+  const radialRingWeights = Array.from({ length: Math.max(1, radialDepthCount) }, (_, index) => {
+    const source = Array.isArray(radialRootData.radialRingWidths)
+      ? Number(radialRootData.radialRingWidths[index] ?? 1)
+      : 1;
+    return clampControlValue(Number.isFinite(source) ? source : 1, 0.000001, 1000000);
+  });
+  const selectedRingWeight = selectedRadialDepth > 0 ? radialRingWeights[selectedRadialDepth - 1] ?? 1 : 1;
+  const radialRingWeightTotal = radialRingWeights.reduce((sum, weight) => sum + weight, 0);
+  const radialChartSize = typeof radialChartData.chartSize === "number" ? radialChartData.chartSize : 1000;
+  const radialOuterRadius = Math.max(1, radialChartSize / 2 - 22);
+  const radialCenterRatio = clampControlValue(
+    typeof radialRootData.radialCenterRatio === "number" ? radialRootData.radialCenterRatio : 28,
+    14,
+    58
+  ) / 100;
+  const radialAvailableRadius = Math.max(1, radialOuterRadius * (1 - radialCenterRatio));
+  const radialMinimumBand = Math.min(28, radialAvailableRadius / (2 * Math.max(1, radialDepthCount)));
+  const radialFlexibleRadius = Math.max(0, radialAvailableRadius - radialMinimumBand * Math.max(1, radialDepthCount));
+  const selectedBandWidth = radialMinimumBand
+    + radialFlexibleRadius * (selectedRingWeight / Math.max(0.01, radialRingWeightTotal));
+  const selectedRingMinShare = Math.max(5, Math.ceil((radialMinimumBand / radialAvailableRadius) * 100));
+  const selectedRingMaxShare = Math.min(
+    80,
+    Math.floor(((radialMinimumBand + radialFlexibleRadius) / radialAvailableRadius) * 100)
+  );
+  const selectedRingShare = clampControlValue(
+    Math.round((selectedBandWidth / radialAvailableRadius) * 100),
+    selectedRingMinShare,
+    selectedRingMaxShare
+  );
   const activeRadialColorScheme = radialColorScheme(radialRootData.radialColorScheme);
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
@@ -1492,7 +1537,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Center size</p>
-                <span className="text-[9px] text-muted-foreground">Whole chart</span>
+                <span className="text-[9px] text-muted-foreground">Fixed chart share</span>
               </div>
               <SliderControl
                 value={typeof radialRootData.radialCenterRatio === "number" ? radialRootData.radialCenterRatio : 28}
@@ -1508,38 +1553,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
-            <div>
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Chart diameter</p>
-                <span className="text-[9px] text-muted-foreground">Exact overall size</span>
-              </div>
-              <SliderControl
-                value={typeof radialRootData.radialChartDiameter === "number"
-                  ? radialRootData.radialChartDiameter
-                  : typeof radialChartData.chartSize === "number" ? radialChartData.chartSize : 820}
-                min={520}
-                max={8000}
-                step={20}
-                suffix="px"
-                onChangeStart={pushHistory}
-                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
-                onChange={(value) => {
-                  if (radialRootId) updateNodeData(radialRootId, { radialChartDiameter: value });
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-1.5 h-7 w-full text-[10px]"
-                onClick={() => {
-                  if (!radialRootId) return;
-                  pushHistory();
-                  updateNodeData(radialRootId, { radialChartDiameter: undefined });
-                }}
-              >
-                Use automatic diameter
-              </Button>
+            <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
+              <p className="text-[10px] font-medium">Compact one-page sizing</p>
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Overall size stays automatic. Depth controls redistribute the fixed chart radius.
+              </p>
             </div>
 
             <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
@@ -1559,31 +1577,61 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             {!selectedIsRadialRoot && (
               <div className="space-y-2.5">
-                {selectedRadialDepth > 0 && (
+                {selectedRadialDepth > 0 && radialDepthCount > 1 && (
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ring {selectedRadialDepth} width</p>
-                      <span className="text-[9px] text-muted-foreground">Whole depth</span>
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Depth {selectedRadialDepth} band</p>
+                      <span className="text-[9px] text-muted-foreground">Redistributes fixed chart</span>
                     </div>
                     <SliderControl
-                      value={Array.isArray(radialRootData.radialRingWidths)
-                        ? Number(radialRootData.radialRingWidths[selectedRadialDepth - 1] ?? 1)
-                        : 1}
-                      min={0.25}
-                      max={4}
-                      step={0.05}
-                      suffix="×"
+                      value={selectedRingShare}
+                      min={selectedRingMinShare}
+                      max={selectedRingMaxShare}
+                      step={1}
+                      suffix="%"
                       onChangeStart={pushHistory}
                       onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
                       onChange={(value) => {
                         if (!radialRootId) return;
-                        const widths = Array.isArray(radialRootData.radialRingWidths)
-                          ? [...radialRootData.radialRingWidths as number[]]
-                          : [];
-                        widths[selectedRadialDepth - 1] = value;
-                        updateNodeData(radialRootId, { radialRingWidths: widths });
+                        const widths = [...radialRingWeights];
+                        const index = selectedRadialDepth - 1;
+                        const otherTotal = widths.reduce((sum, weight, weightIndex) =>
+                          weightIndex === index ? sum : sum + weight, 0);
+                        const targetShare = clampControlValue(
+                          value / 100,
+                          selectedRingMinShare / 100,
+                          selectedRingMaxShare / 100
+                        );
+                        const flexibleShare = radialFlexibleRadius > 0
+                          ? clampControlValue(
+                              (targetShare * radialAvailableRadius - radialMinimumBand) / radialFlexibleRadius,
+                              0.001,
+                              0.999
+                            )
+                          : 1 / Math.max(1, radialDepthCount);
+                        widths[index] = Math.max(
+                          0.000001,
+                          (flexibleShare * Math.max(0.000001, otherTotal)) / Math.max(0.001, 1 - flexibleShare)
+                        );
+                        const scale = Math.max(...widths, 0.000001);
+                        updateNodeData(radialRootId, {
+                          radialRingWidths: widths.map((weight) => Math.max(0.000001, weight / scale)),
+                        });
                       }}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-1.5 h-7 w-full text-[10px]"
+                      onClick={() => {
+                        if (!radialRootId) return;
+                        pushHistory();
+                        updateNodeData(radialRootId, { radialRingWidths: undefined });
+                      }}
+                    >
+                      Balance all depth bands
+                    </Button>
                   </div>
                 )}
                 <div className="mb-1 flex items-center justify-between gap-2">
