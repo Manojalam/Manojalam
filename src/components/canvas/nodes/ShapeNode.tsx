@@ -270,9 +270,14 @@ function fitSectorLabel(
   const labelRadius = (innerRadius + outerRadius) / 2;
   const point = polarPoint(50, 50, labelRadius, midAngle);
   const angleSpan = Math.max(0, ((endAngle - startAngle) * Math.PI) / 180);
-  const availableWidth = Math.max(0, labelRadius * angleSpan);
-  const availableHeight = Math.max(0, outerRadius - innerRadius);
-  const rotation = midAngle + manualRotation;
+  const arcLength = Math.max(0, labelRadius * angleSpan);
+  const radialLength = Math.max(0, outerRadius - innerRadius);
+  const useRadialAxis = radialLength > arcLength;
+  const availableWidth = useRadialAxis ? radialLength : arcLength;
+  const availableHeight = useRadialAxis ? arcLength : radialLength;
+  // Chart angles start at twelve o'clock. Tangential text follows midAngle;
+  // radial text is perpendicular and uses the wedge's center ray.
+  const rotation = (useRadialAxis ? midAngle - 90 : midAngle) + manualRotation;
   if (!label) {
     return { lines: [], fontSize: preferredFontSize ?? 0, lineAdvance: 0, point, availableWidth, availableHeight, rotation };
   }
