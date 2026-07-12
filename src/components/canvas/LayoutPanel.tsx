@@ -38,7 +38,16 @@ function Preview({ mode }: { mode: LayoutMode }) {
       content = <>{line(28, 20, 12, 12)}{line(28, 20, 44, 12)}{line(28, 20, 14, 30)}{line(28, 20, 42, 30)}{dot(28, 20, 4)}{dot(12, 12)}{dot(44, 12)}{dot(14, 30)}{dot(42, 30)}</>;
       break;
     case "matrix":
-      content = <>{[10, 24, 38].map((x) => [10, 20, 30].map((y) => <circle key={`${x}-${y}`} cx={x + 4} cy={y} r={2.8} fill="#4262ff" />))}</>;
+      content = <>
+        <rect x="6" y="5" width="44" height="7" rx="1" fill="#4262ff" />
+        <rect x="6" y="14" width="14" height="20" rx="1" fill="#a5b4fc" />
+        <rect x="22" y="14" width="12" height="6" rx="1" fill="#c7d2fe" />
+        <rect x="36" y="14" width="14" height="6" rx="1" fill="#dbeafe" />
+        <rect x="22" y="22" width="12" height="5" rx="1" fill="#c7d2fe" />
+        <rect x="36" y="22" width="14" height="5" rx="1" fill="#dbeafe" />
+        <rect x="22" y="29" width="12" height="5" rx="1" fill="#c7d2fe" />
+        <rect x="36" y="29" width="14" height="5" rx="1" fill="#dbeafe" />
+      </>;
       break;
     case "fromParentFreeForm":
       content = <>{line(28, 20, 12, 10)}{line(28, 20, 46, 14)}{line(28, 20, 20, 33)}{line(28, 20, 44, 32)}{dot(28, 20, 4.2, "#ef4444")}{dot(12, 10)}{dot(46, 14)}{dot(20, 33)}{dot(44, 32)}</>;
@@ -94,7 +103,9 @@ export function LayoutPanel() {
     }
     applyLayout(mode);
     // Ask the canvas (inside the ReactFlow provider) to fit the view.
-    setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview")), 60);
+    setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+      detail: { nodeIds: branchIds },
+    })), 60);
     toast.success(`Applied ${layoutLabel(mode)} to ${affectedCount} node${affectedCount === 1 ? "" : "s"}.`, {
       action: {
         label: "Undo",

@@ -8,13 +8,15 @@ import { NodeQuickActions } from "./NodeQuickActions";
 
 function FrameNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as FrameNodeData;
+  const isMatrixFrame = typeof d.matrixFrameFor === "string";
 
   return (
     <>
       <NodeResizer minWidth={200} minHeight={150} isVisible={selected} />
       <div
         className={cn(
-          "relative h-full w-full rounded-xl border-2",
+          "relative h-full w-full border-2",
+          isMatrixFrame ? "rounded-md" : "rounded-xl",
           selected && "ring-2 ring-primary ring-offset-1",
           d.locked && "pointer-events-none"
         )}

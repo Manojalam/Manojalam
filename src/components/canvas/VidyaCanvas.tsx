@@ -36,6 +36,7 @@ import type { BoardContent } from "@/lib/types";
 import { debounce } from "@/lib/utils";
 import { resolveInsertedNodeCollisions, routeForMode, type LayoutMode } from "@/lib/layout";
 import { useDeviceProfile } from "@/lib/use-device-profile";
+import { SelectionToolbar } from "./SelectionToolbar";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -171,6 +172,19 @@ function AlignmentGuides({ guides }: { guides: Guides }) {
   );
 }
 
+function AdaptiveBackground({ variant, baseGap }: { variant: BackgroundVariant; baseGap: number }) {
+  const { zoom } = useViewport();
+  const density = zoom < 0.22 ? 2.5 : zoom < 0.55 ? 1.6 : zoom > 2.4 ? 0.75 : 1;
+  return (
+    <Background
+      variant={variant}
+      gap={Math.round(baseGap * density)}
+      size={variant === BackgroundVariant.Dots ? (zoom > 1.8 ? 1.2 : 1.5) : 1}
+      color="var(--canvas-dot)"
+    />
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VidyaCanvasInner({ boardId }: { boardId: string }) {
@@ -206,6 +220,11 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     timeout: number;
   } | null>(null);
   const suppressNextContextMenuRef = useRef(false);
+  const dragStartRef = useRef<{
+    source: { x: number; y: number };
+    positions: Map<string, { x: number; y: number }>;
+    axis: "x" | "y" | null;
+  } | null>(null);
 
   // Debounced autosave — reads state directly, no subscriptions
   const debouncedSave = useMemo(
@@ -238,7 +257,17 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
   // Fit the view after an auto-layout is applied (dispatched from LayoutPanel).
   useEffect(() => {
-    const handler = () => fitView({ padding: 0.2, duration: 400 });
+    const handler = (event: Event) => {
+      const nodeIds = (event as CustomEvent<{ nodeIds?: string[] }>).detail?.nodeIds;
+      const targetNodes = nodeIds?.length
+        ? useCanvasStore.getState().nodes.filter((node) => nodeIds.includes(node.id))
+        : undefined;
+      void fitView({
+        padding: 0.2,
+        duration: 400,
+        ...(targetNodes?.length ? { nodes: targetNodes } : {}),
+      });
+    };
     window.addEventListener("vidya:fitview", handler);
     return () => window.removeEventListener("vidya:fitview", handler);
   }, [fitView]);
@@ -276,8 +305,46 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     [setNodes, setSelectedNodeIds, setSelectedEdgeIds]
   );
 
-  // Alignment guides — live during drag
-  const onNodeDrag = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
+  const onNodeDragStart = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
+    const state = useCanvasStore.getState();
+    state.pushHistory();
+    const movingIds = state.selectedNodeIds.includes(draggedNode.id)
+      ? state.selectedNodeIds
+      : [draggedNode.id];
+    dragStartRef.current = {
+      source: { ...draggedNode.position },
+      positions: new Map(state.nodes
+        .filter((node) => movingIds.includes(node.id))
+        .map((node) => [node.id, { ...node.position }])),
+      axis: null,
+    };
+    useUIStore.getState().setCanvasDragging(true);
+  }, []);
+
+  // Alignment guides and Shift axis-lock — live during drag.
+  const onNodeDrag = useCallback((event: MouseEvent | TouchEvent, draggedNode: Node) => {
+    const drag = dragStartRef.current;
+    if (drag && event.shiftKey) {
+      const dx = draggedNode.position.x - drag.source.x;
+      const dy = draggedNode.position.y - drag.source.y;
+      if (!drag.axis && Math.hypot(dx, dy) > 4) drag.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      if (drag.axis) {
+        useCanvasStore.setState((state) => ({
+          nodes: state.nodes.map((node) => {
+            const start = drag.positions.get(node.id);
+            if (!start) return node;
+            return {
+              ...node,
+              position: {
+                x: start.x + (drag.axis === "x" ? dx : 0),
+                y: start.y + (drag.axis === "y" ? dy : 0),
+              },
+            };
+          }),
+        }));
+      }
+    }
+
     const allNodes = useCanvasStore.getState().nodes;
     const dw = (draggedNode.measured?.width  ?? 150) as number;
     const dh = (draggedNode.measured?.height ?? 60)  as number;
@@ -296,8 +363,41 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   // Push history when a drag ends (safe: fires once, not on every frame)
   const onNodeDragStop = useCallback(() => {
     setGuides({ h: [], v: [] });
-    useCanvasStore.getState().pushHistory();
-    useCanvasStore.getState().setSaveStatus("unsaved");
+    const movedIds = new Set(dragStartRef.current?.positions.keys() ?? []);
+    const state = useCanvasStore.getState();
+    const byId = new Map(state.nodes.map((node) => [node.id, node]));
+    const reroutedEdges = state.edges.map((edge) => {
+      if (!movedIds.has(edge.source) && !movedIds.has(edge.target)) return edge;
+      const sourceNode = byId.get(edge.source);
+      const targetNode = byId.get(edge.target);
+      if (!sourceNode || !targetNode) return edge;
+      const edgeData = (edge.data ?? {}) as Record<string, unknown>;
+      const mode = ((edgeData.layoutMode ?? (sourceNode.data as Record<string, unknown>).layoutMode ?? "freeForm") as LayoutMode);
+      const route = routeForMode(mode, sourceNode, targetNode);
+      return { ...edge, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle };
+    });
+    useCanvasStore.setState({ edges: reroutedEdges });
+    dragStartRef.current = null;
+    useUIStore.getState().setCanvasDragging(false);
+    state.setSaveStatus("unsaved");
+  }, []);
+
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    const groupId = (node.data as Record<string, unknown> | undefined)?.groupId;
+    if (typeof groupId !== "string" || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    useCanvasStore.setState((state) => {
+      const groupIds = state.nodes
+        .filter((candidate) => (candidate.data as Record<string, unknown> | undefined)?.groupId === groupId)
+        .map((candidate) => candidate.id);
+      if (groupIds.length < 2) return {};
+      const selected = new Set(groupIds);
+      return {
+        nodes: state.nodes.map((candidate) => ({ ...candidate, selected: selected.has(candidate.id) })),
+        edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
+        selectedNodeIds: groupIds,
+        selectedEdgeIds: [],
+      };
+    });
   }, []);
 
   const onEdgesChange: OnEdgesChange = useCallback(
@@ -532,7 +632,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (!pasted?.trim()) return;
       const data = (node.data ?? {}) as Record<string, unknown>;
       const existing = targetField === "text"
-        ? ((typeof data.text === "string" && data.text.trim()) ? data.text : stripRichText(data.richText))
+        ? (stripRichText(data.richText) || (typeof data.text === "string" ? data.text : ""))
         : (typeof data[targetField] === "string" ? data[targetField] : "");
       const nextText = existing ? `${existing}\n${pasted}` : pasted;
       cs.pushHistory();
@@ -576,6 +676,20 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       else if (e.key === "f" || e.key === "F") { fitView({ padding: 0.2 }); }
       else if (e.key === "+" || e.key === "=") { zoomIn(); }
       else if (e.key === "-")                  { zoomOut(); }
+      else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key) && cs.selectedNodeIds.length) {
+        e.preventDefault();
+        if (!e.repeat) cs.pushHistory();
+        const amount = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -amount : e.key === "ArrowRight" ? amount : 0;
+        const dy = e.key === "ArrowUp" ? -amount : e.key === "ArrowDown" ? amount : 0;
+        const selected = new Set(cs.selectedNodeIds);
+        useCanvasStore.setState((state) => ({
+          nodes: state.nodes.map((node) => selected.has(node.id)
+            ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } }
+            : node),
+          saveStatus: "unsaved",
+        }));
+      }
       else if (!mod && !e.shiftKey && e.key.length === 1) {
         const shortcuts: Record<string, string> = { v:"select", h:"pan", m:"mindmap", s:"sticky", t:"text", c:"connector", r:"shape" };
         const t = shortcuts[e.key.toLowerCase()];
@@ -719,6 +833,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       onReconnect={onReconnect}
       onEdgeClick={onEdgeClick}
       onPaneClick={onPaneClick}
+      onNodeClick={onNodeClick}
+      onNodeDragStart={onNodeDragStart}
       onNodeDrag={onNodeDrag}
       onNodeDragStop={onNodeDragStop}
       nodeTypes={nodeTypes}
@@ -763,9 +879,9 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       className="vidya-canvas-bg"
     >
       {bgVariant !== undefined && (
-        <Background variant={bgVariant} gap={settings.gridSize ?? 24}
-          size={bgVariant === BackgroundVariant.Dots ? 1.5 : 1} color="var(--canvas-dot)" />
+        <AdaptiveBackground variant={bgVariant} baseGap={settings.gridSize ?? 24} />
       )}
+      <SelectionToolbar />
       <AlignmentGuides guides={guides} />
       <Controls showInteractive={false} position="bottom-left" />
       <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}

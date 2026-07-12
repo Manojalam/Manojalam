@@ -149,7 +149,10 @@ function ChildCountInput({
 }) {
   const [draft, setDraft] = useState(String(value));
 
-  useEffect(() => setDraft(String(value)), [value]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setDraft(String(value)));
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
 
   const commit = () => {
     const parsed = Number.parseInt(draft, 10);
@@ -379,13 +382,14 @@ function fieldPatch(data: Record<string, unknown>, key: string, value: unknown):
   return { [key]: value };
 }
 
-type InspectorTab = "style" | "shape" | "structure" | "more";
+type InspectorTab = "style" | "text" | "shape" | "layout" | "data";
 
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: "style", label: "Style" },
+  { id: "text", label: "Text" },
   { id: "shape", label: "Shape" },
-  { id: "structure", label: "Structure" },
-  { id: "more", label: "More" },
+  { id: "layout", label: "Layout" },
+  { id: "data", label: "Data" },
 ];
 
 /** Border style selector: Solid | Dashed | Dotted */
@@ -421,6 +425,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
+  const applyLayout     = useCanvasStore((s) => s.applyLayout);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
 
@@ -541,6 +546,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     });
   };
 
+  const setSelectedEdgeField = (key: string, value: unknown) => {
+    if (!selectedEdges.length) return;
+    pushHistory();
+    const selectedIds = new Set(selectedEdges.map((edge) => edge.id));
+    useCanvasStore.setState((state) => ({
+      edges: state.edges.map((edge) => {
+        if (!selectedIds.has(edge.id)) return edge;
+        if (key === "arrowEnd") {
+          return {
+            ...edge,
+            markerEnd: value ? {
+              type: MarkerType.ArrowClosed,
+              color: ((((edge.data ?? {}) as Record<string, unknown>).color as string | undefined) ?? "#6366f1"),
+            } : undefined,
+            data: { ...(edge.data ?? {}), arrowEnd: value },
+          };
+        }
+        if (key === "color" && edge.markerEnd) {
+          return {
+            ...edge,
+            markerEnd: { type: MarkerType.ArrowClosed, color: String(value) },
+            data: { ...(edge.data ?? {}), color: value },
+          };
+        }
+        return { ...edge, data: { ...(edge.data ?? {}), [key]: value } };
+      }),
+      saveStatus: "unsaved",
+    }));
+  };
+
   if (selectedNodes.length > 1) {
     const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
     const commonFillOpacity = typeof commonValue("fillOpacity") === "number" ? commonValue("fillOpacity") as number : 0.18;
@@ -659,6 +694,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   // ── No selection ──────────────────────────────────────────────────────────
   if (!selectedNode) {
     if (selectedEdges.length) {
+      const edgeData = (selectedEdges[0].data ?? {}) as Record<string, unknown>;
+      const commonEdgeValue = (key: string) => {
+        const first = edgeData[key];
+        return selectedEdges.every((edge) => ((edge.data ?? {}) as Record<string, unknown>)[key] === first) ? first : undefined;
+      };
       return (
         <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
           <div className="flex items-center justify-between border-b px-3 py-2.5">
@@ -672,11 +712,61 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
-          {selectedEdges.length === 1 && (
-            <div className="px-3 py-3 text-xs text-muted-foreground">
-              {selectedEdges[0].source} → {selectedEdges[0].target}
-            </div>
-          )}
+          <div className="flex-1 divide-y overflow-y-auto">
+            <Section label="Path">
+              <div className="grid grid-cols-3 gap-1">
+                {([
+                  ["step", "Elbow"],
+                  ["smooth", "Curved"],
+                  ["straight", "Straight"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSelectedEdgeField("curveStyle", value)}
+                    className={cn(
+                      "rounded-md border px-2 py-1.5 text-[10px] transition-colors",
+                      (commonEdgeValue("curveStyle") ?? "step") === value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Dashed</Label>
+                <Switch checked={!!commonEdgeValue("dashed")} onCheckedChange={(value) => setSelectedEdgeField("dashed", value)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Arrowhead</Label>
+                <Switch checked={commonEdgeValue("arrowEnd") !== false} onCheckedChange={(value) => setSelectedEdgeField("arrowEnd", value)} />
+              </div>
+            </Section>
+            <Section label="Appearance">
+              <div>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
+                <ColorSwatchPicker value={(commonEdgeValue("color") as string) ?? "#94a3b8"} onChange={(value) => setSelectedEdgeField("color", value)} size="sm" />
+              </div>
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
+                <ThicknessControl value={(commonEdgeValue("width") as number) ?? 2} onChange={(value) => setSelectedEdgeField("width", value)} max={12} />
+              </div>
+              {selectedEdges.length === 1 && (
+                <div>
+                  <Label htmlFor="connection-label" className="text-xs">Label</Label>
+                  <Input
+                    id="connection-label"
+                    name="connection-label"
+                    value={(edgeData.label as string) ?? ""}
+                    onChange={(event) => setSelectedEdgeField("label", event.target.value)}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              )}
+            </Section>
+          </div>
         </aside>
       );
     }
@@ -858,7 +948,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-1 border-b bg-background/95 p-2">
+      <div className="grid grid-cols-5 gap-1 border-b bg-background/95 p-2">
         {INSPECTOR_TABS.map((tab) => (
           <button
             key={tab.id}
@@ -898,7 +988,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           className="h-7 px-1 text-[10px]"
           onClick={() => {
             selectNodesById([selectedNode.id]);
-            setSingleNodeTab("structure");
+            setSingleNodeTab("layout");
             setLayoutPanelOpen(true);
           }}
         >
@@ -908,7 +998,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
       <div className="flex-1 divide-y overflow-y-auto">
 
-        <Section label="Hierarchy" visible={singleNodeTab === "structure"}>
+        <Section label="Hierarchy" visible={singleNodeTab === "layout"}>
           <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-2 text-[10px]">
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Parent</span>
@@ -965,7 +1055,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               variant="outline"
               size="sm"
               className="h-7 text-[10px]"
-              onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview"))}
+              onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                detail: { nodeIds: [selectedNode.id, ...descendantIds] },
+              }))}
             >
               Fit view
             </Button>
@@ -983,9 +1075,34 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>
         </Section>
 
+        {isContentNode && (
+          <Section label="Presets" visible={singleNodeTab === "style"}>
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, borderRadius: 10, textColor: "#111827", fontSize: 15 }],
+                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, borderRadius: 6, textColor: "#1f2937" }],
+                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, borderRadius: 8, textColor: "#1e1b4b", fontSize: 14 }],
+                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, borderRadius: 2, textColor: "#431407", fontFamily: "Noto Sans Devanagari", fontSize: 16 }],
+              ] as Array<[string, Record<string, unknown>]>).map(([label, patch]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    pushHistory();
+                    updateNodeData(selectedNode.id, patch);
+                  }}
+                  className="rounded-md border border-border px-2 py-2 text-left text-[10px] font-medium hover:border-primary/50 hover:bg-muted"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
         {/* ── Text ── */}
         {isContentNode && (
-          <Section label="Text" visible={singleNodeTab === "style"}>
+          <Section label="Text" visible={singleNodeTab === "text"}>
             {/* Alignment */}
             <Row label="Align">
               {([
@@ -1046,6 +1163,34 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
               <ColorSwatchPicker value={(d.textColor as string) ?? ""} onChange={(v) => setField("textColor", v || undefined)} size="sm" />
+            </div>
+          </Section>
+        )}
+
+        {d.layoutMode === "matrix" && (
+          <Section label="Matrix density" visible={singleNodeTab === "layout"}>
+            <div className="grid grid-cols-3 gap-1">
+              {(["compact", "comfortable", "presentation"] as const).map((density) => (
+                <button
+                  key={density}
+                  type="button"
+                  onClick={() => {
+                    updateNodeData(selectedNode.id, { matrixDensity: density });
+                    applyLayout("matrix");
+                    setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                      detail: { nodeIds: [selectedNode.id, ...descendantIds] },
+                    })), 40);
+                  }}
+                  className={cn(
+                    "rounded-md border px-1 py-1.5 text-[9px] capitalize",
+                    ((d.matrixDensity as string) ?? "compact") === density
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  {density}
+                </button>
+              ))}
             </div>
           </Section>
         )}
@@ -1712,7 +1857,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Convert to ── */}
         {isContentNode && (
-          <Section label="Convert to" defaultOpen={false} visible={singleNodeTab === "more"}>
+          <Section label="Convert to" defaultOpen={false} visible={singleNodeTab === "data"}>
             <div className="grid grid-cols-2 gap-1">
               {CONVERT_TYPES.filter((t) => t.value !== nodeType).map(({ label, value }) => (
                 <button key={value}
@@ -1733,7 +1878,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Sanskrit ── */}
         {isSanskrit && (
-          <Section label="Sanskrit" visible={singleNodeTab === "more"}>
+          <Section label="Sanskrit" visible={singleNodeTab === "data"}>
             {"devanagari" in d && <div><Label className="text-xs">Devanāgarī</Label>
               <Textarea aria-label="Devanagari text" name="devanagari" value={(d.devanagari as string) ?? ""} onChange={(e) => setField("devanagari", e.target.value)} className="mt-1 font-devanagari text-base" rows={2} /></div>}
             {"iast" in d && <div><Label className="text-xs">IAST</Label>
@@ -1757,7 +1902,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Script ── */}
         {"scriptMode" in d && (
-          <Section label="Script" defaultOpen={false} visible={singleNodeTab === "more"}>
+          <Section label="Script" defaultOpen={false} visible={singleNodeTab === "data"}>
             <Select value={(d.scriptMode as string) ?? "plain"} onValueChange={(v) => setField("scriptMode", v)}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1771,7 +1916,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Tags ── */}
-        <Section label="Tags" defaultOpen={false} visible={singleNodeTab === "more"}>
+        <Section label="Tags" defaultOpen={false} visible={singleNodeTab === "data"}>
           <Input value={((d.tags as string[]) ?? []).join(", ")}
             aria-label="Tags"
             name="tags"
@@ -1789,7 +1934,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </Section>
 
         {/* ── Notes ── */}
-        <Section label="Notes" defaultOpen={false} visible={singleNodeTab === "more"}>
+        <Section label="Notes" defaultOpen={false} visible={singleNodeTab === "data"}>
           <Textarea value={(d.notes as string) ?? ""} onChange={(e) => setField("notes", e.target.value)}
             aria-label="Private notes" name="notes" rows={3} className="text-sm" placeholder="Private notes…" />
         </Section>

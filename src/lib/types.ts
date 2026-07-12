@@ -52,6 +52,7 @@ export type CanvasTool =
   | "grammar";
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
+export type MatrixDensity = "compact" | "comfortable" | "presentation";
 
 export type LayoutMode =
   | "freeForm"
@@ -197,6 +198,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   childOrder?: string[];
   /** Layout mode last applied to this node's branch (set on the branch root). */
   layoutMode?: LayoutMode;
+  matrixDensity?: MatrixDensity;
+  groupId?: string;
 }
 
 export interface MindMapNodeData extends BaseNodeData {

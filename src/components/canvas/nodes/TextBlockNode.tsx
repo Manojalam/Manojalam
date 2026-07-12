@@ -41,7 +41,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
-  const [initialContent] = useState(() => dd.richText as string || d.text || "");
+  const initialContent = (dd.richText as string) || d.text || "";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const boxRef = useRef<HTMLDivElement>(null);

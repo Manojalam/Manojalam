@@ -23,49 +23,37 @@ export function NodeHandles({ color = "#6366f1" }: { color?: string }) {
 
   return (
     <>
-      <Handle
-        type="target"
-        id="auto"
-        position={Position.Top}
-        className="!border-0 !bg-transparent !opacity-0"
-        style={{
-          width: "100%",
-          height: "100%",
-          left: 0,
-          top: 0,
-          transform: "none",
-          pointerEvents: fullSurfaceActive ? "all" : "none",
-        }}
-      />
-      <Handle
-        type="source"
-        id="auto"
-        position={Position.Top}
-        className="!border-0 !bg-transparent !opacity-0"
-        style={{
-          width: "100%",
-          height: "100%",
-          left: 0,
-          top: 0,
-          transform: "none",
-          pointerEvents: fullSurfaceActive ? "all" : "none",
-        }}
-      />
       {SIDES.map(({ id, pos }) => (
         <Fragment key={id}>
           <Handle
             type="target"
             id={id}
             position={pos}
-            className="!h-2 !w-2 !border !border-background !opacity-0"
-            style={{ background: color }}
+            className="!border !border-background !opacity-0"
+            style={{
+              background: color,
+              pointerEvents: fullSurfaceActive ? "all" : undefined,
+              ...(fullSurfaceActive && (id === "top" || id === "bottom")
+                ? { width: "calc(100% - 18px)", height: 18, borderRadius: 9 }
+                : fullSurfaceActive
+                  ? { width: 18, height: "calc(100% - 18px)", borderRadius: 9 }
+                  : { width: 10, height: 10 }),
+            }}
           />
           <Handle
             type="source"
             id={id}
             position={pos}
-            className="!h-2 !w-2 !border !border-background !opacity-0"
-            style={{ background: color }}
+            className="!border !border-background !opacity-0"
+            style={{
+              background: color,
+              pointerEvents: fullSurfaceActive ? "all" : undefined,
+              ...(fullSurfaceActive && (id === "top" || id === "bottom")
+                ? { width: "calc(100% - 18px)", height: 18, borderRadius: 9 }
+                : fullSurfaceActive
+                  ? { width: 18, height: "calc(100% - 18px)", borderRadius: 9 }
+                  : { width: 10, height: 10 }),
+            }}
           />
         </Fragment>
       ))}

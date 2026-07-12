@@ -75,6 +75,10 @@ function cloneState(nodes: Node[], edges: Edge[]): HistoryEntry {
   return { nodes: structuredClone(nodes), edges: structuredClone(edges) };
 }
 
+function sameHistoryEntry(a: HistoryEntry, b: HistoryEntry): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function applyPlacements(nodes: Node[], placements: Record<string, LayoutPlacement>): Node[] {
   return nodes.map((n) => {
     const placement = placements[n.id];
@@ -189,7 +193,7 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
   const minY = Math.min(...rects.map((r) => r.y));
   const maxX = Math.max(...rects.map((r) => r.x + r.width));
   const maxY = Math.max(...rects.map((r) => r.y + r.height));
-  const pad = 6;
+  const pad = 3;
   const frame: Node = {
     id: `matrix-frame-${key}`,
     type: "frame",
@@ -812,20 +816,28 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const { nodes, edges, history, historyIndex } = get();
     const entry = cloneState(nodes, edges);
     const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(entry);
+    if (!newHistory.length || !sameHistoryEntry(newHistory[newHistory.length - 1], entry)) {
+      newHistory.push(entry);
+    }
     if (newHistory.length > HISTORY_LIMIT) newHistory.shift();
     set({ history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
   undo: () => {
-    const { history, historyIndex } = get();
-    if (historyIndex <= 0) return;
-    const newIndex = historyIndex - 1;
-    const entry = history[newIndex];
+    const { history, historyIndex, nodes, edges } = get();
+    if (historyIndex < 0) return;
+    const current = cloneState(nodes, edges);
+    let targetIndex = historyIndex;
+    if (history[targetIndex] && sameHistoryEntry(history[targetIndex], current)) targetIndex -= 1;
+    if (targetIndex < 0) return;
+    const nextHistory = history.slice();
+    nextHistory[targetIndex + 1] = current;
+    const entry = nextHistory[targetIndex];
     set({
       nodes: structuredClone(entry.nodes),
       edges: structuredClone(entry.edges),
-      historyIndex: newIndex,
+      history: nextHistory,
+      historyIndex: targetIndex,
       saveStatus: "unsaved",
     });
   },
@@ -857,17 +869,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const { clipboard, nodes, edges } = get();
     if (!clipboard) return;
     get().pushHistory();
-    const idMap = new Map<string, string>();
-    const newNodes = clipboard.nodes.map((n) => {
-      const newId = generateId();
-      idMap.set(n.id, newId);
+    const idMap = new Map(clipboard.nodes.map((node) => [node.id, generateId()]));
+    const preparedNodes = clipboard.nodes.map((n) => {
+      const newId = idMap.get(n.id)!;
+      const data = structuredClone((n.data ?? {}) as Record<string, unknown>);
+      if (typeof data.parentId === "string") data.parentId = idMap.get(data.parentId) ?? null;
+      if (Array.isArray(data.childOrder)) {
+        data.childOrder = data.childOrder
+          .filter((id): id is string => typeof id === "string" && idMap.has(id))
+          .map((id) => idMap.get(id)!);
+      }
       return {
         ...structuredClone(n),
         id: newId,
-        position: { x: n.position.x + 40, y: n.position.y + 40 },
+        data,
+        style: duplicateNodeStyle(n),
         selected: true,
       };
     });
+    const offset = findFreeDuplicateOffset(preparedNodes, nodes);
+    const newNodes = preparedNodes.map((node) => ({
+      ...node,
+      position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
+    }));
     const newEdges = clipboard.edges.map((e) => ({
       ...structuredClone(e),
       id: generateId(),
@@ -1284,6 +1308,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         const h = hierarchy.get(n.id);
         data = { ...data, parentId: h?.parentId ?? null, childOrder: h?.childIds ?? [] };
         if (n.id === rootId) data.layoutMode = mode;
+        if (mode === "matrix") {
+          data.matrixCell = true;
+          data.matrixCellRole = n.id === rootId ? "header" : h?.parentId === rootId ? "category" : "cell";
+        } else if (data.matrixCell || data.matrixCellRole) {
+          const { matrixCell: _matrixCell, matrixCellRole: _matrixCellRole, ...rest } = data;
+          void _matrixCell;
+          void _matrixCellRole;
+          data = rest;
+        }
       }
       const style = pos?.width || pos?.height
         ? { ...(n.style ?? {}), width: pos.width, height: pos.height }
