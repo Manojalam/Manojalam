@@ -208,63 +208,43 @@ type SectorLabelFit = {
   point: PolarPoint;
   availableWidth: number;
   availableHeight: number;
+  rotation: number;
 };
 
-function labelBoxFitsSector(
-  point: PolarPoint,
-  width: number,
-  height: number,
-  rotation: number,
-  innerRadius: number,
-  outerRadius: number,
-  startAngle: number,
-  endAngle: number
-): boolean {
-  const rotationRad = (rotation * Math.PI) / 180;
-  const cos = Math.cos(rotationRad);
-  const sin = Math.sin(rotationRad);
-  const span = Math.min(360, Math.max(0, endAngle - startAngle));
-  const corners = [
-    [-width / 2, -height / 2],
-    [width / 2, -height / 2],
-    [width / 2, height / 2],
-    [-width / 2, height / 2],
-  ];
-
-  return corners.every(([localX, localY]) => {
-    const x = point.x + localX * cos - localY * sin;
-    const y = point.y + localX * sin + localY * cos;
-    const dx = x - 50;
-    const dy = y - 50;
-    const radius = Math.hypot(dx, dy);
-    if (radius < innerRadius || radius > outerRadius) return false;
-    if (span >= 359.999) return true;
-    // polarPoint uses chart angles with 0deg at twelve o'clock. Convert the
-    // standard atan2 angle back into that same coordinate system.
-    const chartAngle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    const relativeAngle = ((chartAngle - startAngle) % 360 + 360) % 360;
-    return relativeAngle <= span;
-  });
+function measuredLineWidth(text: string, fontSize: number): number {
+  return textMeasureUnits(text) * fontSize * (isDevanagariText(text) ? 0.62 : 0.54);
 }
 
-function sectorLineLayouts(label: string, maxChars: number): string[][] {
-  const layouts: string[][] = [];
-  const seen = new Set<string>();
+function explicitTextLines(text: string): string[] {
+  return text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
 
-  for (let charsPerLine = maxChars; charsPerLine >= 1; charsPerLine -= 1) {
-    const lines = wrapTextLines(label, charsPerLine);
-    const key = lines.join("\u0000");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    layouts.push(lines);
+function wrapLinesToWidth(text: string, availableWidth: number, fontSize: number): string[] {
+  const result: string[] = [];
+  for (const sourceLine of explicitTextLines(text)) {
+    if (measuredLineWidth(sourceLine, fontSize) <= availableWidth) {
+      result.push(sourceLine);
+      continue;
+    }
+
+    const words = sourceLine.split(/\s+/).filter(Boolean);
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (current && measuredLineWidth(next, fontSize) > availableWidth) {
+        result.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    }
+    if (current) result.push(current);
   }
-
-  return layouts.sort((left, right) => {
-    if (left.length !== right.length) return left.length - right.length;
-    const leftWidth = Math.max(0, ...left.map(textMeasureUnits));
-    const rightWidth = Math.max(0, ...right.map(textMeasureUnits));
-    return leftWidth - rightWidth;
-  });
+  return result;
 }
 
 function fitSectorLabel(
@@ -273,74 +253,47 @@ function fitSectorLabel(
   outerRadius: number,
   startAngle: number,
   endAngle: number,
-  rotation: number,
+  manualRotation: number,
   preferredFontSize?: number
 ): SectorLabelFit {
   const label = text?.trim() ?? "";
   const midAngle = (startAngle + endAngle) / 2;
-  const fallbackRadius = (innerRadius + outerRadius) / 2;
-  const fallbackPoint = polarPoint(50, 50, fallbackRadius, midAngle);
+  const labelRadius = (innerRadius + outerRadius) / 2;
+  const point = polarPoint(50, 50, labelRadius, midAngle);
+  const angleSpan = Math.max(0, ((endAngle - startAngle) * Math.PI) / 180);
+  const availableWidth = Math.max(0, labelRadius * angleSpan);
+  const availableHeight = Math.max(0, outerRadius - innerRadius);
+  const rotation = midAngle + manualRotation;
   if (!label) {
-    return { lines: [], fontSize: preferredFontSize ?? 0, lineAdvance: 0, point: fallbackPoint, availableWidth: 0, availableHeight: 0 };
+    return { lines: [], fontSize: preferredFontSize ?? 0, lineAdvance: 0, point, availableWidth, availableHeight, rotation };
   }
 
-  const inner = innerRadius;
-  const outer = outerRadius;
-  const band = Math.max(0.5, outer - inner);
-  const halfSpan = Math.min(Math.PI / 2, Math.abs(endAngle - startAngle) * Math.PI / 360);
-  const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, band * 0.42));
-  const maxChars = Math.min(240, Math.max(1, Math.ceil(textMeasureUnits(label))));
-  const lineLayouts = sectorLineLayouts(label, maxChars);
-  const minimumLineCount = lineLayouts[0]?.length ?? 1;
-  const radiusCandidates = Array.from({ length: 25 }, (_, index) => inner + (band * index) / 24);
+  const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, availableHeight * 0.42));
+  const minimumReadableFontSize = Math.max(0.8, Math.min(1.4, availableHeight * 0.12));
+  const unwrappedLines = explicitTextLines(label);
 
-  for (const lines of lineLayouts) {
-    // Prefer an unwrapped label whenever it remains reasonably readable. Only
-    // introduce whitespace wrapping when the unwrapped form cannot fit.
-    const minimumFontSize = lines.length === minimumLineCount
-      ? Math.max(0.55, preferred * 0.72)
-      : 0.55;
+  for (let fontSize = preferred; fontSize >= minimumReadableFontSize; fontSize -= 0.15) {
+    const unwrappedMetrics = textLayoutMetrics(unwrappedLines, fontSize);
+    if (unwrappedMetrics.width <= availableWidth && unwrappedMetrics.height <= availableHeight) {
+      return { lines: unwrappedLines, fontSize, lineAdvance: unwrappedMetrics.lineAdvance, point, availableWidth, availableHeight, rotation };
+    }
 
-    for (let fontSize = preferred; fontSize >= minimumFontSize; fontSize -= 0.15) {
-      let best: SectorLabelFit | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-      const { width, height, lineAdvance } = textLayoutMetrics(lines, fontSize);
-
-      for (const radius of radiusCandidates) {
-        const radialSpace = Math.max(0, 2 * Math.min(radius - inner, outer - radius));
-        const tangentialSpace = Math.max(0, 2 * radius * Math.sin(halfSpan));
-        if (radialSpace <= 0 || tangentialSpace <= 0) continue;
-        const point = polarPoint(50, 50, radius, midAngle);
-        if (!labelBoxFitsSector(point, width, height, rotation, inner, outer, startAngle, endAngle)) continue;
-
-        const centerPenalty = Math.abs(radius - fallbackRadius) / Math.max(1, band);
-        const score = centerPenalty;
-        if (score < bestScore) {
-          bestScore = score;
-          best = {
-            lines,
-            fontSize,
-            lineAdvance,
-            point,
-            availableWidth: tangentialSpace,
-            availableHeight: radialSpace,
-          };
-        }
-      }
-
-      if (best) return best;
+    const wrappedLines = wrapLinesToWidth(label, availableWidth, fontSize);
+    const wrappedMetrics = textLayoutMetrics(wrappedLines, fontSize);
+    const everyLineFits = wrappedLines.every((line) => measuredLineWidth(line, fontSize) <= availableWidth);
+    if (everyLineFits && wrappedMetrics.height <= availableHeight) {
+      return { lines: wrappedLines, fontSize, lineAdvance: wrappedMetrics.lineAdvance, point, availableWidth, availableHeight, rotation };
     }
   }
 
-  const fallbackLines = wrapTextLines(label, maxChars);
-  const fallbackFontSize = 0.55;
   return {
-    lines: fallbackLines,
-    fontSize: 0.55,
-    lineAdvance: textLayoutMetrics(fallbackLines, fallbackFontSize).lineAdvance,
-    point: fallbackPoint,
-    availableWidth: Math.max(2, 2 * fallbackRadius * Math.sin(halfSpan)),
-    availableHeight: Math.max(2, band),
+    lines: [],
+    fontSize: minimumReadableFontSize,
+    lineAdvance: minimumReadableFontSize * (isDevanagariText(label) ? 1.36 : 1.12),
+    point,
+    availableWidth,
+    availableHeight,
+    rotation,
   };
 }
 
@@ -590,14 +543,14 @@ function RadialChartLayer({
             const renderedOuterRadius = segment.childCount === 0 && bands[ringIndex + 1]
               ? bands[ringIndex + 1].outerRadius
               : segmentOuterRadius;
-            const finalTextRotation = segment.textRotation ?? 0;
+            const manualTextRotation = segment.textRotation ?? 0;
             const labelFit = fitSectorLabel(
               segment.text,
               innerRadius,
               renderedOuterRadius,
               start,
               end,
-              finalTextRotation,
+              manualTextRotation,
               radialControlFontSize(segment.fontSize)
             );
             const { lines, fontSize, lineAdvance, point: textPoint } = labelFit;
@@ -634,12 +587,29 @@ function RadialChartLayer({
                       y: textPoint.y,
                       width: Math.max(110, labelFit.availableWidth * 4),
                       height: Math.max(36, labelFit.availableHeight * 4),
-                      rotation: finalTextRotation,
+                      rotation: labelFit.rotation,
                       value: segment.text ?? "",
                       textColor: segment.textColor ?? "#111827",
                     });
                   }}
-                />
+                >
+                  {segment.text?.trim() && <title>{segment.text}</title>}
+                </path>
+                {chart.debugLabelBoxes && (
+                  <g clipPath={`url(#${segmentClipId})`} pointerEvents="none">
+                    <rect
+                      x={textPoint.x - labelFit.availableWidth / 2}
+                      y={textPoint.y - labelFit.availableHeight / 2}
+                      width={labelFit.availableWidth}
+                      height={labelFit.availableHeight}
+                      fill="rgba(236,72,153,0.08)"
+                      stroke="#db2777"
+                      strokeWidth="0.18"
+                      strokeDasharray="0.8 0.5"
+                      transform={`rotate(${labelFit.rotation} ${textPoint.x} ${textPoint.y})`}
+                    />
+                  </g>
+                )}
                 {lines.length > 0 && !isEditingSegment && !(segment.childCount === 0 && !hiddenByParentMerge) && (
                   <g clipPath={`url(#${segmentClipId})`}>
                     <text
@@ -651,7 +621,7 @@ function RadialChartLayer({
                       fill={segment.textColor ?? "#111827"}
                       fontSize={fontSize}
                       fontWeight={ringIndex === 0 ? 700 : 500}
-                      transform={`rotate(${finalTextRotation} ${textPoint.x} ${textPoint.y})`}
+                      transform={`rotate(${labelFit.rotation} ${textPoint.x} ${textPoint.y})`}
                     >
                       {lines.map((line, lineIndex) => (
                         <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : lineAdvance}>
@@ -695,14 +665,14 @@ function RadialChartLayer({
             if (editingText?.kind === "segment" && editingText.ringIndex === ringIndex && editingText.segmentIndex === segmentIndex) return null;
             const { start, end } = ringAngles[ringIndex][segmentIndex];
             const renderedOuterRadius = bands[ringIndex + 1]?.outerRadius ?? segmentOuterRadius;
-            const finalTextRotation = segment.textRotation ?? 0;
-            const { lines, fontSize, lineAdvance, point: textPoint } = fitSectorLabel(
+            const manualTextRotation = segment.textRotation ?? 0;
+            const { lines, fontSize, lineAdvance, point: textPoint, rotation: labelRotation } = fitSectorLabel(
               segment.text,
               innerRadius,
               renderedOuterRadius,
               start,
               end,
-              finalTextRotation,
+              manualTextRotation,
               radialControlFontSize(segment.fontSize)
             );
             const lineOffset = -((lines.length - 1) * lineAdvance) / 2;
@@ -717,7 +687,7 @@ function RadialChartLayer({
                   fill={segment.textColor ?? "#111827"}
                   fontSize={fontSize}
                   fontWeight={ringIndex === 0 ? 700 : 500}
-                  transform={`rotate(${finalTextRotation} ${textPoint.x} ${textPoint.y})`}
+                  transform={`rotate(${labelRotation} ${textPoint.x} ${textPoint.y})`}
                 >
                   {lines.map((line, lineIndex) => (
                     <tspan key={lineIndex} x={textPoint.x} dy={lineIndex === 0 ? lineOffset : lineAdvance}>

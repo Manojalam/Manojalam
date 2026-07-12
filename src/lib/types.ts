@@ -201,6 +201,7 @@ export interface RadialChartData {
   centerTextColor?: string;
   centerFontSize?: number;
   centerRadius?: number;
+  debugLabelBoxes?: boolean;
   rings?: RadialChartRing[];
 }
 
