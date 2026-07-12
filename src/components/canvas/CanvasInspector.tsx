@@ -536,6 +536,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const radialRootNode = radialRootId ? nodes.find((node) => node.id === radialRootId) ?? null : null;
   const radialRootData = (radialRootNode?.data ?? {}) as Record<string, unknown>;
   const selectedIsRadialRoot = !!radialRootId && selectedNode?.id === radialRootId;
+  const selectedRadialDepth = (() => {
+    if (!radialRootId || !selectedNode) return 0;
+    let depth = 0;
+    let currentId: string | null | undefined = selectedNode.id;
+    const visited = new Set<string>();
+    while (currentId && currentId !== radialRootId && !visited.has(currentId)) {
+      visited.add(currentId);
+      depth += 1;
+      currentId = hierarchy.get(currentId)?.parentId;
+    }
+    return currentId === radialRootId ? depth : 0;
+  })();
   const activeRadialColorScheme = radialColorScheme(radialRootData.radialColorScheme);
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
@@ -1260,7 +1272,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, borderRadius: 10, textColor: "#111827", fontSize: 15 }],
                 ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, borderRadius: 6, textColor: "#1f2937" }],
                 ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, borderRadius: 8, textColor: "#1e1b4b", fontSize: 14 }],
-                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, borderRadius: 2, textColor: "#431407", fontFamily: "Noto Sans Devanagari", fontSize: 16 }],
+                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, borderRadius: 2, textColor: "#431407", fontFamily: "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif", fontSize: 16 }],
               ] as Array<[string, Record<string, unknown>]>).map(([label, patch]) => (
                 <button
                   key={label}
@@ -1495,8 +1507,54 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ring diameter</p>
+                <span className="text-[9px] text-muted-foreground">Resizes whole chart</span>
+              </div>
+              <SliderControl
+                value={typeof radialRootData.radialRingWidth === "number" ? radialRootData.radialRingWidth : 132}
+                min={64}
+                max={260}
+                step={4}
+                suffix="px"
+                onChangeStart={pushHistory}
+                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                onChange={(value) => {
+                  if (radialRootId) updateNodeData(radialRootId, { radialRingWidth: value });
+                }}
+              />
+            </div>
+
             {!selectedIsRadialRoot && (
-              <div>
+              <div className="space-y-2.5">
+                {selectedRadialDepth > 0 && (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ring {selectedRadialDepth} width</p>
+                      <span className="text-[9px] text-muted-foreground">Whole depth</span>
+                    </div>
+                    <SliderControl
+                      value={Array.isArray(radialRootData.radialRingWidths)
+                        ? Number(radialRootData.radialRingWidths[selectedRadialDepth - 1] ?? 1)
+                        : 1}
+                      min={0.25}
+                      max={4}
+                      step={0.05}
+                      suffix="×"
+                      onChangeStart={pushHistory}
+                      onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                      onChange={(value) => {
+                        if (!radialRootId) return;
+                        const widths = Array.isArray(radialRootData.radialRingWidths)
+                          ? [...radialRootData.radialRingWidths as number[]]
+                          : [];
+                        widths[selectedRadialDepth - 1] = value;
+                        updateNodeData(radialRootId, { radialRingWidths: widths });
+                      }}
+                    />
+                  </div>
+                )}
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Sector area</p>
                   <span className="text-[9px] text-muted-foreground">Relative to siblings</span>
