@@ -94,11 +94,13 @@ function ChildCountInput({
   ariaLabel,
   name,
   onCommit,
+  minValue = 0,
 }: {
   value: number;
   ariaLabel: string;
   name: string;
   onCommit: (value: number) => void;
+  minValue?: number;
 }) {
   const [draft, setDraft] = useState(String(value));
 
@@ -106,7 +108,7 @@ function ChildCountInput({
 
   const commit = () => {
     const parsed = Number.parseInt(draft, 10);
-    const nextValue = Number.isFinite(parsed) ? Math.max(0, Math.min(360, parsed)) : value;
+    const nextValue = Number.isFinite(parsed) ? Math.max(minValue, Math.min(360, parsed)) : value;
     setDraft(String(nextValue));
     if (nextValue !== value) onCommit(nextValue);
   };
@@ -115,16 +117,16 @@ function ChildCountInput({
     <Input
       aria-label={ariaLabel}
       name={name}
-      type="number"
-      min={0}
-      max={360}
-      step={1}
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
       value={draft}
       className="h-7 text-xs"
       onChange={(event) => {
         const nextDraft = event.target.value;
+        if (!/^\d*$/.test(nextDraft)) return;
         setDraft(nextDraft);
-        if (nextDraft === "0" && value !== 0) onCommit(0);
+        if (minValue === 0 && nextDraft === "0" && value !== 0) onCommit(0);
       }}
       onBlur={commit}
       onKeyDown={(event) => {
@@ -1329,12 +1331,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         </div>
                         <div>
                           <p className="mb-1 text-[9px] text-muted-foreground">Segments</p>
-                          <SliderControl
+                          <ChildCountInput
+                            ariaLabel={`Ring ${ringIndex + 1} segment count`}
+                            name={`radial-ring-${ringIndex + 1}-segment-count`}
                             value={ring.segmentCount}
-                            min={1}
-                            max={72}
-                            step={1}
-                            onChange={(value) => updateRadialRing(ringIndex, { segmentCount: value })}
+                            minValue={1}
+                            onCommit={(value) => updateRadialRing(ringIndex, { segmentCount: value })}
                           />
                         </div>
                         <div>
