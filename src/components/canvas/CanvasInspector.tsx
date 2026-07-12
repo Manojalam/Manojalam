@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -87,6 +87,48 @@ function normalizeRadialSegments(ring: RadialChartRing, count = ring.segmentCoun
     fillColor: RADIAL_SEGMENT_COLORS[index % RADIAL_SEGMENT_COLORS.length],
     textColor: "#111827",
   });
+}
+
+function ChildCountInput({
+  value,
+  ariaLabel,
+  name,
+  onCommit,
+}: {
+  value: number;
+  ariaLabel: string;
+  name: string;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => setDraft(String(value)), [value]);
+
+  const commit = () => {
+    const parsed = Number.parseInt(draft, 10);
+    const nextValue = Number.isFinite(parsed) ? Math.max(1, Math.min(360, parsed)) : value;
+    setDraft(String(nextValue));
+    if (nextValue !== value) onCommit(nextValue);
+  };
+
+  return (
+    <Input
+      aria-label={ariaLabel}
+      name={name}
+      type="number"
+      min={1}
+      max={360}
+      step={1}
+      value={draft}
+      className="h-7 text-xs"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") setDraft(String(value));
+      }}
+    />
+  );
 }
 
 function createDefaultRadialChart(centerText = ""): RadialChartData {
@@ -1325,16 +1367,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   <p className="mb-1 text-[9px] text-muted-foreground">
                                     Sections in ring {ringIndex + 2}
                                   </p>
-                                  <Input
-                                    aria-label={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} child section count`}
+                                  <ChildCountInput
+                                    ariaLabel={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} child section count`}
                                     name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-children`}
-                                    type="number"
-                                    min={1}
-                                    max={360}
-                                    step={1}
                                     value={segment.childCount ?? 1}
-                                    className="h-7 text-xs"
-                                    onChange={(event) => updateRadialChildCount(ringIndex, segmentIndex, Number(event.target.value))}
+                                    onCommit={(value) => updateRadialChildCount(ringIndex, segmentIndex, value)}
                                   />
                                 </div>
                               )}
