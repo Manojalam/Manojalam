@@ -11,12 +11,6 @@ import {
   radialSectorColors,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
-import {
-  RADIAL_CENTER_RADIUS_MAX,
-  RADIAL_CENTER_RADIUS_MIN,
-  resolveRadialSizing,
-  type RadialBand,
-} from "@/lib/radial-sizing";
 import { useCanvasStore } from "@/store/canvas-store";
 import { RichTextEditor } from "../RichTextEditor";
 
@@ -91,7 +85,10 @@ type CenterDrag = {
 
 const ROOT_START_ANGLE = -90;
 const ROOT_END_ANGLE = 270;
+const CHART_PADDING = 22;
 const MIN_SECTOR_ANGLE = 2.5;
+const MIN_CENTER_RATIO = 14;
+const MAX_CENTER_RATIO = 58;
 const DEVANAGARI_LINE_HEIGHT = 1.46;
 const DEVANAGARI_INK_PADDING_X = 0.16;
 const DEVANAGARI_INK_PADDING_Y = 0.18;
@@ -487,6 +484,34 @@ function maxDepthOf(node: SunburstTreeNode): number {
   return Math.max(node.depth, ...node.children.map(maxDepthOf));
 }
 
+type RadialBand = { innerRadius: number; outerRadius: number };
+
+function radialBands(
+  centerRadius: number,
+  outerRadius: number,
+  depthCount: number,
+  widthWeights: unknown
+): RadialBand[] {
+  const source = Array.isArray(widthWeights) ? widthWeights : [];
+  const weights = Array.from({ length: depthCount }, (_, index) =>
+    clamp(dimension(source[index], 1), 0.000001, 1000000)
+  );
+  if (!weights.length) return [];
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const availableRadius = Math.max(0, outerRadius - centerRadius);
+  const minimumBand = Math.min(28, availableRadius / (2 * weights.length));
+  const flexibleRadius = Math.max(0, availableRadius - minimumBand * weights.length);
+  let cursor = centerRadius;
+  return weights.map((weight, index) => {
+    const width = index === weights.length - 1
+      ? outerRadius - cursor
+      : minimumBand + flexibleRadius * (weight / Math.max(0.01, total));
+    const band = { innerRadius: cursor, outerRadius: cursor + width };
+    cursor += width;
+    return band;
+  });
+}
+
 function assignGeometry(node: SunburstTreeNode, centerRadius: number, bands: RadialBand[]): void {
   if (node.depth === 0) {
     node.innerRadius = 0;
@@ -507,6 +532,11 @@ function assignGeometry(node: SunburstTreeNode, centerRadius: number, bands: Rad
     assignGeometry(child, centerRadius, bands);
     currentAngle = child.endAngle;
   });
+}
+
+function extendTerminalSectors(node: SunburstTreeNode, outerRadius: number): void {
+  if (node.depth > 0 && !node.children.length) node.outerRadius = outerRadius;
+  node.children.forEach((child) => extendTerminalSectors(child, outerRadius));
 }
 
 function collectSegments(
@@ -641,22 +671,23 @@ function SunburstNodeComponent({ data }: NodeProps) {
     const hierarchy = buildHierarchy(chartNodes, edges);
     const tree = buildSunburstTree(d.rootId, hierarchy, byId);
     const maxDepth = Math.max(1, maxDepthOf(tree));
+    const size = dimension(d.chartSize, 720);
+    const outerRadius = size / 2 - CHART_PADDING;
     const rootData = (root.data ?? {}) as Record<string, unknown>;
     const scheme = radialColorScheme(rootData.radialColorScheme);
-    const sizing = resolveRadialSizing({
-      chartSize: dimension(d.chartSize, 900),
-      depthCount: maxDepth,
-      centerRatio: rootData.radialCenterRatio,
-      legacyRingWeights: rootData.radialRingWidths,
-      centerRadiusPx: rootData.radialCenterRadiusPx,
-      ringWidthsPx: rootData.radialRingWidthsPx,
-    });
-    const size = sizing.diameter;
-    const outerRadius = sizing.outerRadius;
-    const centerRadius = tree.children.length ? sizing.centerRadius : outerRadius;
+    const centerRatio = clamp(
+      dimension(rootData.radialCenterRatio, 28),
+      MIN_CENTER_RATIO,
+      MAX_CENTER_RATIO
+    );
+    const centerRadius = tree.children.length
+      ? outerRadius * (centerRatio / 100)
+      : outerRadius;
+    const bands = radialBands(centerRadius, outerRadius, maxDepth, rootData.radialRingWidths);
     tree.startAngle = ROOT_START_ANGLE;
     tree.endAngle = ROOT_END_ANGLE;
-    assignGeometry(tree, centerRadius, sizing.bands);
+    assignGeometry(tree, centerRadius, bands);
+    extendTerminalSectors(tree, outerRadius);
 
     return {
       root,
@@ -666,7 +697,6 @@ function SunburstNodeComponent({ data }: NodeProps) {
       center: size / 2,
       centerRadius,
       outerRadius,
-      ringWidths: sizing.ringWidths,
       scheme,
       segments: collectSegments(tree, byId, scheme),
     };
@@ -813,15 +843,13 @@ function SunburstNodeComponent({ data }: NodeProps) {
     const x = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * model.size;
     const y = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * model.size;
     if (centerDrag && centerDrag.pointerId === event.pointerId) {
-      const radius = clamp(
-        Math.hypot(x - model.center, y - model.center),
-        RADIAL_CENTER_RADIUS_MIN,
-        RADIAL_CENTER_RADIUS_MAX
-      );
-      updateNodeData(centerDrag.rootId, {
-        radialCenterRadiusPx: radius,
-        radialRingWidthsPx: model.ringWidths,
-      });
+      const radius = Math.hypot(x - model.center, y - model.center);
+      const ratio = clamp((radius / Math.max(1, model.outerRadius)) * 100, MIN_CENTER_RATIO, MAX_CENTER_RATIO);
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => node.id === centerDrag.rootId
+          ? { ...node, data: { ...(node.data ?? {}), radialCenterRatio: ratio } }
+          : node),
+      }));
       return;
     }
     if (!drag) return;
@@ -852,13 +880,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
     if (centerDrag?.pointerId === event.pointerId) {
       centerDragRef.current = null;
       const root = useCanvasStore.getState().nodes.find((node) => node.id === centerDrag.rootId);
-      const rootSizing = (root?.data ?? {}) as Record<string, unknown>;
-      updateNodeData(centerDrag.rootId, {
-        radialCenterRadiusPx: dimension(rootSizing.radialCenterRadiusPx, model.centerRadius),
-        radialRingWidthsPx: Array.isArray(rootSizing.radialRingWidthsPx)
-          ? rootSizing.radialRingWidthsPx
-          : model.ringWidths,
-      });
+      const ratio = dimension((root?.data as Record<string, unknown> | undefined)?.radialCenterRatio, 28);
+      updateNodeData(centerDrag.rootId, { radialCenterRatio: ratio });
     }
     try { svgRef.current?.releasePointerCapture(event.pointerId); } catch {}
     useCanvasStore.getState().setSaveStatus("unsaved");
