@@ -887,16 +887,13 @@ function SunburstNodeComponent({ data }: NodeProps) {
     useCanvasStore.getState().setSaveStatus("unsaved");
   };
 
-  const plusGeometry = selectedId === d.rootId
-    ? pointOnCircle(model.center, model.center, model.centerRadius * 0.72, 0)
-    : selectedSegment
-      ? pointOnCircle(
-          model.center,
-          model.center,
-          Math.max(selectedSegment.innerRadius + 20, selectedSegment.outerRadius - 20),
-          (selectedSegment.startAngle + selectedSegment.endAngle) / 2
-        )
-      : null;
+  const controlAngle = selectedSegment
+    ? (selectedSegment.startAngle + selectedSegment.endAngle) / 2
+    : -90;
+  const controlGeometry = selectedId
+    ? pointOnCircle(model.center, model.center, model.outerRadius + 76, controlAngle)
+    : null;
+  const controlsVertical = Math.abs(Math.cos((controlAngle * Math.PI) / 180)) > 0.62;
 
   return (
     <div className="relative h-full w-full">
@@ -1230,24 +1227,24 @@ function SunburstNodeComponent({ data }: NodeProps) {
         )}
       </svg>
 
-      {selectedId && plusGeometry && (
+      {selectedId && controlGeometry && (
         <div
-          className="nodrag nopan absolute z-30 flex gap-1"
-          style={{ left: plusGeometry.x, top: plusGeometry.y, transform: "translate(-50%, -50%)" }}
+          className={`nodrag nopan absolute z-30 flex gap-1 ${controlsVertical ? "flex-col" : "flex-row"}`}
+          style={{ left: controlGeometry.x, top: controlGeometry.y, transform: "translate(-50%, -50%)" }}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <button
             type="button"
             title="Add child sector"
             aria-label="Add child sector"
-            className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110"
+            className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110"
             onClick={(event) => {
               event.stopPropagation();
               finishEditing();
               createChildNode(selectedId);
             }}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
           {selectedSegment?.parentId && (
             <>
@@ -1255,42 +1252,42 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 type="button"
                 title="Add sibling sector"
                 aria-label="Add sibling sector"
-                className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-700 text-white shadow-lg transition-transform hover:scale-110"
+                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-700 text-white shadow-lg transition-transform hover:scale-110"
                 onClick={(event) => {
                   event.stopPropagation();
                   finishEditing();
                   createSiblingNode(selectedSegment.id);
                 }}
               >
-                <Rows3 className="h-4 w-4" />
+                <Rows3 className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
                 title="Move sibling backward"
                 aria-label="Move sibling backward"
                 disabled={!previousSibling}
-                className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-background text-foreground shadow-lg transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-background text-foreground shadow-lg transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={(event) => {
                   event.stopPropagation();
                   finishEditing();
                   moveSiblingNode(selectedSegment.id, -1);
                 }}
               >
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeft className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
                 title="Move sibling forward"
                 aria-label="Move sibling forward"
                 disabled={!nextSibling}
-                className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-background text-foreground shadow-lg transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-background text-foreground shadow-lg transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={(event) => {
                   event.stopPropagation();
                   finishEditing();
                   moveSiblingNode(selectedSegment.id, 1);
                 }}
               >
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </button>
             </>
           )}
