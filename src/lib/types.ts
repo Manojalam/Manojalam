@@ -249,6 +249,10 @@ export interface BaseNodeData extends Record<string, unknown> {
   radialCenterRatio?: number;
   /** Relative radial thickness for each hierarchy depth, stored on the root. */
   radialRingWidths?: number[];
+  /** Absolute center radius used by intrinsic radial sizing. */
+  radialCenterRadiusPx?: number;
+  /** Absolute band thickness for each hierarchy depth. */
+  radialRingWidthsPx?: number[];
   /** Draw the computed long-axis label rectangles for visual verification. */
   radialDebugLabelBoxes?: boolean;
   /** Root-level palette inherited by every radial sector without a color override. */

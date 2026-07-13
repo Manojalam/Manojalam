@@ -19,6 +19,7 @@ import {
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import type { LayoutMode } from "@/lib/types";
+import { resolveRadialSizing } from "@/lib/radial-sizing";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -63,6 +64,7 @@ interface CanvasState {
   createChildNode: (parentId: string) => void;
   createChildNodes: (parentId: string, count: number, keepParentSelected?: boolean) => void;
   createSiblingNode: (nodeId: string) => void;
+  moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   fitNodeToContent: (nodeId: string, contentSize: ContentSize) => void;
   resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
@@ -171,13 +173,23 @@ function sunburstTreeStats(rootId: string, hierarchy: ReturnType<typeof buildHie
 
 function sunburstChartSize(
   rootId: string,
-  hierarchy: ReturnType<typeof buildHierarchy>
+  hierarchy: ReturnType<typeof buildHierarchy>,
+  nodes: Node[]
 ): number {
   const { maxDepth, leaves } = sunburstTreeStats(rootId, hierarchy);
   const ringDepth = Math.max(1, maxDepth);
   const byDepth = 820 + Math.max(0, ringDepth - 2) * 90;
   const byDensity = 820 + Math.min(460, Math.sqrt(Math.max(1, leaves)) * 26);
-  return Math.ceil(clampValue(Math.max(byDepth, byDensity), 900, 1280));
+  const automaticSize = Math.ceil(clampValue(Math.max(byDepth, byDensity), 900, 1280));
+  const rootData = (nodes.find((node) => node.id === rootId)?.data ?? {}) as Record<string, unknown>;
+  return resolveRadialSizing({
+    chartSize: automaticSize,
+    depthCount: ringDepth,
+    centerRatio: rootData.radialCenterRatio,
+    legacyRingWeights: rootData.radialRingWidths,
+    centerRadiusPx: rootData.radialCenterRadiusPx,
+    ringWidthsPx: rootData.radialRingWidthsPx,
+  }).diameter;
 }
 
 function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enabled: boolean): Node[] {
@@ -240,7 +252,7 @@ function withSunburstNode(
     y: rootRect.y + rootRect.height / 2,
   };
   const rootData = (rootNode.data ?? {}) as Record<string, unknown>;
-  const chartSize = sunburstChartSize(rootId, hierarchy);
+  const chartSize = sunburstChartSize(rootId, hierarchy, restored);
   const hiddenNodes = restored.map((node) => {
     if (!scopeIds.has(node.id)) return node;
     return {
@@ -620,7 +632,7 @@ function normalizeSunburstChartSizes(
   return nodes.map((node) => {
     const data = (node.data ?? {}) as Record<string, unknown>;
     if (node.type !== "sunburst" || typeof data.rootId !== "string" || !byId.has(data.rootId)) return node;
-    const nextSize = sunburstChartSize(data.rootId, hierarchy);
+    const nextSize = sunburstChartSize(data.rootId, hierarchy, nodes);
     const current = styleSizeOf(node);
     return {
       ...node,
@@ -1111,13 +1123,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const { nodes, edges } = get();
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return;
-    const parentEdge = edges.find((e) => e.target === nodeId);
+    const currentHierarchy = buildHierarchy(nodes, edges);
+    const parentId = currentHierarchy.get(nodeId)?.parentId;
+    if (!parentId) return;
+    const parentNode = nodes.find((candidate) => candidate.id === parentId);
+    if (!parentNode) return;
+    const layoutRoot = findLayoutRoot(nodeId, nodes, currentHierarchy);
     get().pushHistory();
     const siblingId = generateId();
     const nodeData = node.data as Record<string, unknown>;
     const sibType = childTypeFor(node.type);
-    const parentNode = parentEdge ? nodes.find((n) => n.id === parentEdge.source) : undefined;
-    const mode = (parentNode?.data as Record<string, unknown> | undefined)?.layoutMode as LayoutMode | undefined;
+    const parentData = (parentNode.data ?? {}) as Record<string, unknown>;
+    const edgeMode = layoutRoot.mode ?? (parentData.layoutMode as LayoutMode | undefined) ?? "horizontal";
     const newNode: Node = {
       id: siblingId,
       type: sibType,
@@ -1126,56 +1143,80 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...inheritStyle(nodeData),
         text: "New Idea",
         tags: [],
-        parentId: parentEdge?.source ?? null,
+        parentId,
         ...(sibType === "shape" && { shapeType: (nodeData.shapeType as string) ?? "rounded" }),
       },
       style: node.style ? { ...node.style, height: undefined } : undefined,
     };
     const newEdges = [...edges];
-    if (parentEdge && parentNode) {
-      const edgeMode = mode ?? "horizontal";
-      const route = routeForMode(edgeMode, parentNode, newNode);
-      const hiddenInMatrix = edgeMode === "matrix";
-      const hiddenInSunburst = edgeMode === "radial";
-      newEdges.push({
-        id: generateId(),
-        source: parentEdge.source,
-        target: siblingId,
-        type: "branch",
-        hidden: hiddenInMatrix || hiddenInSunburst,
-        sourceHandle: route.sourceHandle,
-        targetHandle: route.targetHandle,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: {
-          edgeType: "branch",
-          curveStyle: route.curveStyle,
-          hiddenInMatrix,
-          hiddenInSunburst,
-          hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(parentEdge.source) : undefined,
-          layoutMode: edgeMode,
-        },
-      });
-    }
-    const nextNodes = [...nodes, newNode];
+    const route = routeForMode(edgeMode, parentNode, newNode);
+    const hiddenInMatrix = edgeMode === "matrix";
+    const hiddenInSunburst = edgeMode === "radial";
+    newEdges.push({
+      id: generateId(),
+      source: parentId,
+      target: siblingId,
+      type: "branch",
+      hidden: hiddenInMatrix || hiddenInSunburst,
+      sourceHandle: route.sourceHandle,
+      targetHandle: route.targetHandle,
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
+      data: {
+        edgeType: "branch",
+        curveStyle: route.curveStyle,
+        hiddenInMatrix,
+        hiddenInSunburst,
+        hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(layoutRoot.id) : undefined,
+        layoutMode: edgeMode,
+      },
+    });
+    const siblingOrder = [...(currentHierarchy.get(parentId)?.childIds ?? [])];
+    const insertionIndex = Math.max(0, siblingOrder.indexOf(nodeId) + 1);
+    siblingOrder.splice(insertionIndex, 0, siblingId);
+    const nextNodes = [
+      ...nodes.map((candidate) => candidate.id === parentId
+        ? { ...candidate, data: { ...(candidate.data ?? {}), childOrder: siblingOrder } }
+        : candidate),
+      newNode,
+    ];
     const nextHierarchy = buildHierarchy(nextNodes, newEdges);
-    const layoutRoot = findLayoutRoot(parentEdge?.source ?? nodeId, nextNodes, nextHierarchy);
-    const useSunburst = layoutRoot.mode === "radial";
-    const placements = layoutRoot.mode && !useSunburst
-      ? computeLayout(nextNodes, newEdges, layoutRoot.mode, { rootId: layoutRoot.id })
+    const nextLayoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
+    const useSunburst = nextLayoutRoot.mode === "radial";
+    const placements = nextLayoutRoot.mode && !useSunburst
+      ? computeLayout(nextNodes, newEdges, nextLayoutRoot.mode, { rootId: nextLayoutRoot.id })
       : resolveInsertedNodeCollisions(nextNodes, siblingId);
     const placedNodes = applyPlacements(nextNodes, placements);
-    const rootScope = new Set(getSubtree(layoutRoot.id, nextHierarchy));
-    const matrixNodes = layoutRoot.mode === "matrix"
-      ? withMatrixFrame(placedNodes, rootScope, matrixFrameKey(layoutRoot.id), true)
+    const rootScope = new Set(getSubtree(nextLayoutRoot.id, nextHierarchy));
+    const matrixNodes = nextLayoutRoot.mode === "matrix"
+      ? withMatrixFrame(placedNodes, rootScope, matrixFrameKey(nextLayoutRoot.id), true)
       : placedNodes;
     const finalNodes = useSunburst
-      ? withSunburstNode(matrixNodes, nextHierarchy, rootScope, sunburstFrameKey(layoutRoot.id), layoutRoot.id, true)
+      ? withSunburstNode(matrixNodes, nextHierarchy, rootScope, sunburstFrameKey(nextLayoutRoot.id), nextLayoutRoot.id, true)
       : matrixNodes;
 
     set({
       nodes: finalNodes,
       edges: newEdges,
       selectedNodeIds: [siblingId],
+      saveStatus: "unsaved",
+    });
+  },
+
+  moveSiblingNode: (nodeId, direction) => {
+    const { nodes, edges } = get();
+    const hierarchy = buildHierarchy(nodes, edges);
+    const parentId = hierarchy.get(nodeId)?.parentId;
+    if (!parentId) return;
+    const order = [...(hierarchy.get(parentId)?.childIds ?? [])];
+    const currentIndex = order.indexOf(nodeId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+    [order[currentIndex], order[nextIndex]] = [order[nextIndex], order[currentIndex]];
+    get().pushHistory();
+    set({
+      nodes: nodes.map((candidate) => candidate.id === parentId
+        ? { ...candidate, data: { ...(candidate.data ?? {}), childOrder: order } }
+        : candidate),
       saveStatus: "unsaved",
     });
   },
@@ -1191,6 +1232,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (updatedNode && patchNeedsContentFit(data)) {
         const fitted = fitNodeAfterContentChange(updatedNode);
         nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
+      }
+
+      if (updatedNode && ["radialCenterRadiusPx", "radialRingWidthsPx", "radialCenterRatio", "radialRingWidths"]
+        .some((key) => Object.prototype.hasOwnProperty.call(data, key))) {
+        nodes = normalizeSunburstChartSizes(nodes, buildHierarchy(nodes, state.edges));
       }
 
       return { nodes, saveStatus: "unsaved" };
