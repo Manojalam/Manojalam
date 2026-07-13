@@ -39,15 +39,6 @@ import { ColorSwatchPicker } from "./ColorSwatchPicker";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
-import {
-  RADIAL_CENTER_RADIUS_MAX,
-  RADIAL_CENTER_RADIUS_MIN,
-  RADIAL_CHART_PADDING,
-  RADIAL_RING_WIDTH_MAX,
-  RADIAL_RING_WIDTH_MIN,
-  clampRadialSize,
-  resolveRadialSizing,
-} from "@/lib/radial-sizing";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -640,28 +631,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     walk(radialRootId, 0);
     return maximum;
   })();
-  const radialChartSize = typeof radialChartData.chartSize === "number" ? radialChartData.chartSize : 1000;
-  const radialSizing = resolveRadialSizing({
-    chartSize: radialChartSize,
-    depthCount: Math.max(1, radialDepthCount),
-    centerRatio: radialRootData.radialCenterRatio,
-    legacyRingWeights: radialRootData.radialRingWidths,
-    centerRadiusPx: radialRootData.radialCenterRadiusPx,
-    ringWidthsPx: radialRootData.radialRingWidthsPx,
+  const radialRingWeights = Array.from({ length: Math.max(1, radialDepthCount) }, (_, index) => {
+    const source = Array.isArray(radialRootData.radialRingWidths)
+      ? Number(radialRootData.radialRingWidths[index] ?? 1)
+      : 1;
+    return clampControlValue(Number.isFinite(source) ? source : 1, 0.000001, 1000000);
   });
-  const selectedBandWidth = selectedRadialDepth > 0
-    ? radialSizing.ringWidths[selectedRadialDepth - 1] ?? radialSizing.ringWidths[0]
-    : radialSizing.ringWidths[0];
-  const radialMinimumDiameter = Math.ceil(2 * (
-    RADIAL_CHART_PADDING
-    + RADIAL_CENTER_RADIUS_MIN
-    + Math.max(1, radialDepthCount) * RADIAL_RING_WIDTH_MIN
-  ));
-  const radialMaximumDiameter = Math.ceil(2 * (
-    RADIAL_CHART_PADDING
-    + RADIAL_CENTER_RADIUS_MAX
-    + Math.max(1, radialDepthCount) * RADIAL_RING_WIDTH_MAX
-  ));
+  const selectedRingWeight = selectedRadialDepth > 0 ? radialRingWeights[selectedRadialDepth - 1] ?? 1 : 1;
+  const radialRingWeightTotal = radialRingWeights.reduce((sum, weight) => sum + weight, 0);
+  const radialChartSize = typeof radialChartData.chartSize === "number" ? radialChartData.chartSize : 1000;
+  const radialOuterRadius = Math.max(1, radialChartSize / 2 - 22);
+  const radialCenterRatio = clampControlValue(
+    typeof radialRootData.radialCenterRatio === "number" ? radialRootData.radialCenterRatio : 28,
+    14,
+    58
+  ) / 100;
+  const radialAvailableRadius = Math.max(1, radialOuterRadius * (1 - radialCenterRatio));
+  const radialMinimumBand = Math.min(28, radialAvailableRadius / (2 * Math.max(1, radialDepthCount)));
+  const radialFlexibleRadius = Math.max(0, radialAvailableRadius - radialMinimumBand * Math.max(1, radialDepthCount));
+  const selectedBandWidth = radialMinimumBand
+    + radialFlexibleRadius * (selectedRingWeight / Math.max(0.01, radialRingWeightTotal));
+  const selectedRingMinShare = Math.max(5, Math.ceil((radialMinimumBand / radialAvailableRadius) * 100));
+  const selectedRingMaxShare = Math.min(
+    80,
+    Math.floor(((radialMinimumBand + radialFlexibleRadius) / radialAvailableRadius) * 100)
+  );
+  const selectedRingShare = clampControlValue(
+    Math.round((selectedBandWidth / radialAvailableRadius) * 100),
+    selectedRingMinShare,
+    selectedRingMaxShare
+  );
   const activeRadialColorScheme = radialColorScheme(radialRootData.radialColorScheme);
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
@@ -687,24 +686,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       return;
     }
     updateNodeData(selectedNode.id, fieldPatch(d, key, value));
-  };
-
-  const updateIntrinsicRadialSizing = (centerRadius: number, activeRingWidths: number[]) => {
-    if (!radialRootId) return;
-    const storedWidths = Array.isArray(radialRootData.radialRingWidthsPx)
-      ? radialRootData.radialRingWidthsPx.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
-      : [];
-    updateNodeData(radialRootId, {
-      radialCenterRadiusPx: clampRadialSize(
-        centerRadius,
-        RADIAL_CENTER_RADIUS_MIN,
-        RADIAL_CENTER_RADIUS_MAX
-      ),
-      radialRingWidthsPx: [
-        ...activeRingWidths.map((width) => clampRadialSize(width, RADIAL_RING_WIDTH_MIN, RADIAL_RING_WIDTH_MAX)),
-        ...storedWidths.slice(activeRingWidths.length),
-      ],
-    });
   };
 
   const commonValue = (key: string) => {
@@ -1738,89 +1719,28 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Radial sizing" visible={singleNodeTab === "layout"}>
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Overall diameter</p>
-                <span className="text-[9px] text-muted-foreground">Scales every band</span>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Center size</p>
+                <span className="text-[9px] text-muted-foreground">Fixed chart share</span>
               </div>
               <SliderControl
-                value={Math.round(radialSizing.diameter)}
-                min={radialMinimumDiameter}
-                max={Math.max(radialMaximumDiameter, Math.ceil(radialSizing.diameter))}
-                step={10}
-                suffix="px"
+                value={typeof radialRootData.radialCenterRatio === "number" ? radialRootData.radialCenterRatio : 28}
+                min={14}
+                max={58}
+                step={1}
+                suffix="%"
                 onChangeStart={pushHistory}
                 onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
                 onChange={(value) => {
-                  const targetContentRadius = Math.max(1, value / 2 - RADIAL_CHART_PADDING);
-                  const currentContentRadius = radialSizing.centerRadius
-                    + radialSizing.ringWidths.reduce((sum, width) => sum + width, 0);
-                  const scale = targetContentRadius / Math.max(1, currentContentRadius);
-                  updateIntrinsicRadialSizing(
-                    radialSizing.centerRadius * scale,
-                    radialSizing.ringWidths.map((width) => width * scale)
-                  );
+                  if (radialRootId) updateNodeData(radialRootId, { radialCenterRatio: value });
                 }}
-              />
-            </div>
-
-            <div>
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Center radius</p>
-                <span className="text-[9px] text-muted-foreground">Resizes chart</span>
-              </div>
-              <SliderControl
-                value={Math.round(radialSizing.centerRadius)}
-                min={RADIAL_CENTER_RADIUS_MIN}
-                max={RADIAL_CENTER_RADIUS_MAX}
-                step={2}
-                suffix="px"
-                onChangeStart={pushHistory}
-                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
-                onChange={(value) => updateIntrinsicRadialSizing(value, radialSizing.ringWidths)}
               />
             </div>
 
             <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
-              <p className="text-[10px] font-medium">Intrinsic ring sizing</p>
+              <p className="text-[10px] font-medium">Compact one-page sizing</p>
               <p className="text-[9px] leading-snug text-muted-foreground">
-                Reducing one band contracts the chart. Other bands keep their own widths.
+                Overall size stays automatic. Depth controls redistribute the fixed chart radius.
               </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-1 text-[10px]"
-                onClick={() => {
-                  pushHistory();
-                  const average = radialSizing.ringWidths.reduce((sum, width) => sum + width, 0)
-                    / Math.max(1, radialSizing.ringWidths.length);
-                  updateIntrinsicRadialSizing(
-                    radialSizing.centerRadius,
-                    radialSizing.ringWidths.map(() => average)
-                  );
-                }}
-              >
-                Equalize bands
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-1 text-[10px]"
-                onClick={() => {
-                  if (!radialRootId) return;
-                  pushHistory();
-                  updateNodeData(radialRootId, {
-                    radialCenterRadiusPx: undefined,
-                    radialRingWidthsPx: undefined,
-                    radialRingWidths: undefined,
-                  });
-                }}
-              >
-                Automatic sizing
-              </Button>
             </div>
 
             <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
@@ -1840,27 +1760,61 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             {!selectedIsRadialRoot && (
               <div className="space-y-2.5">
-                {selectedRadialDepth > 0 && (
+                {selectedRadialDepth > 0 && radialDepthCount > 1 && (
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Depth {selectedRadialDepth} band width</p>
-                      <span className="text-[9px] text-muted-foreground">Independent</span>
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Depth {selectedRadialDepth} band</p>
+                      <span className="text-[9px] text-muted-foreground">Redistributes fixed chart</span>
                     </div>
                     <SliderControl
-                      value={Math.round(selectedBandWidth)}
-                      min={RADIAL_RING_WIDTH_MIN}
-                      max={RADIAL_RING_WIDTH_MAX}
-                      step={2}
-                      suffix="px"
+                      value={selectedRingShare}
+                      min={selectedRingMinShare}
+                      max={selectedRingMaxShare}
+                      step={1}
+                      suffix="%"
                       onChangeStart={pushHistory}
                       onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
                       onChange={(value) => {
-                        const widths = [...radialSizing.ringWidths];
+                        if (!radialRootId) return;
+                        const widths = [...radialRingWeights];
                         const index = selectedRadialDepth - 1;
-                        widths[index] = value;
-                        updateIntrinsicRadialSizing(radialSizing.centerRadius, widths);
+                        const otherTotal = widths.reduce((sum, weight, weightIndex) =>
+                          weightIndex === index ? sum : sum + weight, 0);
+                        const targetShare = clampControlValue(
+                          value / 100,
+                          selectedRingMinShare / 100,
+                          selectedRingMaxShare / 100
+                        );
+                        const flexibleShare = radialFlexibleRadius > 0
+                          ? clampControlValue(
+                              (targetShare * radialAvailableRadius - radialMinimumBand) / radialFlexibleRadius,
+                              0.001,
+                              0.999
+                            )
+                          : 1 / Math.max(1, radialDepthCount);
+                        widths[index] = Math.max(
+                          0.000001,
+                          (flexibleShare * Math.max(0.000001, otherTotal)) / Math.max(0.001, 1 - flexibleShare)
+                        );
+                        const scale = Math.max(...widths, 0.000001);
+                        updateNodeData(radialRootId, {
+                          radialRingWidths: widths.map((weight) => Math.max(0.000001, weight / scale)),
+                        });
                       }}
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-1.5 h-7 w-full text-[10px]"
+                      onClick={() => {
+                        if (!radialRootId) return;
+                        pushHistory();
+                        updateNodeData(radialRootId, { radialRingWidths: undefined });
+                      }}
+                    >
+                      Balance all depth bands
+                    </Button>
                   </div>
                 )}
                 <div className="mb-1 flex items-center justify-between gap-2">
