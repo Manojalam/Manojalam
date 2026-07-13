@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Undo2, Redo2, Download, Upload, Search,
@@ -15,12 +16,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
-import { downloadJson, downloadMarkdown } from "@/lib/export";
+import {
+  downloadJson,
+  downloadMarkdown,
+  downloadSunburstPng,
+  downloadSunburstSvg,
+} from "@/lib/export";
 import { importBoard } from "@/lib/storage/board-store";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { APP_NAME } from "@/lib/config";
+import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
+import type { BoardContent, VidyaBoard } from "@/lib/types";
 
 /* ── Save status dot ── */
 function SaveStatus({ status }: { status: string }) {
@@ -96,8 +103,28 @@ export function CanvasTopbar() {
   const undo            = useCanvasStore((s) => s.undo);
   const redo            = useCanvasStore((s) => s.redo);
   const updateBoardTitle = useCanvasStore((s) => s.updateBoardTitle);
+  const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const { setSanskritPanelOpen, setSearchPanelOpen } = useUIStore();
   const router = useRouter();
+  const [exportingImage, setExportingImage] = useState<"svg" | "png" | null>(null);
+
+  const currentBoardSnapshot = (): VidyaBoard | null => {
+    const state = useCanvasStore.getState();
+    if (!state.board) return null;
+    return {
+      ...state.board,
+      content: {
+        ...state.board.content,
+        version: BOARD_CONTENT_VERSION,
+        nodes: state.nodes,
+        edges: state.edges,
+        relationships: state.relationships,
+        relationshipFans: state.relationshipFans,
+        viewport: state.viewport,
+        settings: state.settings,
+      } as BoardContent,
+    };
+  };
 
   const handleImport = () => {
     const input = document.createElement("input");
@@ -118,6 +145,24 @@ export function CanvasTopbar() {
     input.click();
   };
 
+  const handleSunburstExport = async (format: "svg" | "png") => {
+    if (!board || exportingImage) return;
+    setExportingImage(format);
+    const toastId = toast.loading(`Preparing ${format.toUpperCase()} export…`);
+    try {
+      if (format === "svg") await downloadSunburstSvg(board.title);
+      else await downloadSunburstPng(board.title);
+      toast.success(`${format.toUpperCase()} exported`, { id: toastId });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Unable to export ${format.toUpperCase()}.`,
+        { id: toastId }
+      );
+    } finally {
+      setExportingImage(null);
+    }
+  };
+
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 shadow-sm max-sm:gap-1 max-sm:px-2">
       {/* Logo */}
@@ -133,8 +178,8 @@ export function CanvasTopbar() {
 
       {/* Undo / Redo */}
       <div className="flex items-center gap-0.5">
-        <IconBtn icon={<Undo2 className="h-4 w-4" />} label="Undo (⌘Z)" onClick={undo} />
-        <IconBtn icon={<Redo2 className="h-4 w-4" />} label="Redo (⌘⇧Z)" onClick={redo} />
+        <IconBtn icon={<Undo2 className="h-4 w-4" />} label="Undo (⌘Z)" onClick={undo} disabled={Boolean(relationshipSelection)} />
+        <IconBtn icon={<Redo2 className="h-4 w-4" />} label="Redo (⌘⇧Z)" onClick={redo} disabled={Boolean(relationshipSelection)} />
       </div>
 
       {/* Divider */}
@@ -180,10 +225,27 @@ export function CanvasTopbar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-xl">
             <DropdownMenuLabel className="text-xs text-muted-foreground">Export as</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => board && downloadJson(board)}>JSON backup</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => board && downloadMarkdown(board)}>Markdown outline</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const snapshot = currentBoardSnapshot();
+              if (snapshot) downloadJson(snapshot);
+            }}>JSON backup</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const snapshot = currentBoardSnapshot();
+              if (snapshot) downloadMarkdown(snapshot);
+            }}>Markdown outline</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled className="text-xs text-muted-foreground">PNG — coming soon</DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!board || exportingImage !== null}
+              onClick={() => void handleSunburstExport("svg")}
+            >
+              Radial chart (SVG)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!board || exportingImage !== null}
+              onClick={() => void handleSunburstExport("png")}
+            >
+              Radial chart (PNG, 2×)
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 

@@ -110,10 +110,34 @@ export interface BoardSettings {
   gridSize?: number;
 }
 
+export interface NodeRelationship {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relationType: string;
+}
+
+export interface RelationshipFanState {
+  sourceNodeId: string;
+  relationType: string;
+  visible: boolean;
+  targetBranchNodeId?: string;
+}
+
+export interface RelationshipSelectionSession {
+  sourceNodeId: string;
+  relationType: string;
+  chartRootNodeId: string;
+  targetBranchNodeId: string;
+  draftTargetIds: string[];
+}
+
 export interface BoardContent {
   version: number;
   nodes: VidyaNode[];
   edges: VidyaEdge[];
+  relationships: NodeRelationship[];
+  relationshipFans: RelationshipFanState[];
   viewport?: Viewport;
   settings: BoardSettings;
 }

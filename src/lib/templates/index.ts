@@ -12,6 +12,8 @@ function makeContent(
     version: BOARD_CONTENT_VERSION,
     nodes,
     edges,
+    relationships: [],
+    relationshipFans: [],
     viewport: { x: 0, y: 0, zoom: 0.8 },
     settings: { ...DEFAULT_BOARD_SETTINGS },
   };

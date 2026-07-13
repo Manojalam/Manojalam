@@ -26,12 +26,16 @@ export default function BoardEditorPage() {
   const setBoard = useCanvasStore((s) => s.setBoard);
   const pushHistory = useCanvasStore((s) => s.pushHistory);
   const layoutPanelOpen = useUIStore((s) => s.layoutPanelOpen);
+  const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const device = useDeviceProfile();
   const isPhone = device.kind === "phone";
 
   useEffect(() => {
+    let active = true;
+    useUIStore.getState().cancelRelationshipSelection();
     getBoard(boardId)
       .then((board) => {
+        if (!active) return;
         if (board) {
           setBoard(board);
           pushHistory();
@@ -39,8 +43,16 @@ export default function BoardEditorPage() {
           setNotFound(true);
         }
       })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (active) setNotFound(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      useUIStore.getState().cancelRelationshipSelection();
+    };
   }, [boardId, setBoard, pushHistory]);
 
   if (loading) {
@@ -93,9 +105,11 @@ export default function BoardEditorPage() {
               : "inset-y-0 left-0 items-center pl-3"
           )}
         >
-          <div className="pointer-events-auto">
-            <CanvasToolbar />
-          </div>
+          {!relationshipSelection && (
+            <div className="pointer-events-auto">
+              <CanvasToolbar />
+            </div>
+          )}
         </div>
 
         {/* Floating layout panel (left, next to toolbar) */}
@@ -107,9 +121,11 @@ export default function BoardEditorPage() {
               : "inset-y-0 left-16 items-start pt-3"
           )}
         >
-          <div className="pointer-events-auto">
-            <LayoutPanel />
-          </div>
+          {!relationshipSelection && (
+            <div className="pointer-events-auto">
+              <LayoutPanel />
+            </div>
+          )}
         </div>
 
         {/* Floating right inspector */}
@@ -121,9 +137,11 @@ export default function BoardEditorPage() {
               : "inset-y-0 right-0 items-start pt-3 pr-3"
           )}
         >
-          <div className="pointer-events-auto max-h-[calc(100dvh-100px)] overflow-y-auto">
-            {!(isPhone && layoutPanelOpen) && <CanvasInspector compact={isPhone} />}
-          </div>
+          {!relationshipSelection && (
+            <div className="pointer-events-auto max-h-[calc(100dvh-100px)] overflow-y-auto">
+              {!(isPhone && layoutPanelOpen) && <CanvasInspector compact={isPhone} />}
+            </div>
+          )}
         </div>
 
         {/* Status bar inside canvas area */}
