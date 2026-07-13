@@ -17,6 +17,9 @@ export interface RelationshipTypeDefinition {
   includeTargetBranchRoot?: boolean;
 }
 
+export const DEFAULT_RELATIONSHIP_TYPE = "related-to";
+export const LEGACY_RELATIONSHIP_TYPE = "has-guna";
+
 export type RelationshipPolicyFailure =
   | "unknown-relation-type"
   | "missing-chart-root"
@@ -52,14 +55,30 @@ export interface ResolveRelationshipPolicyOptions {
 }
 
 export const RELATIONSHIP_TYPE_DEFINITIONS: Readonly<Record<string, RelationshipTypeDefinition>> = {
-  "has-guna": {
-    relationType: "has-guna",
+  [DEFAULT_RELATIONSHIP_TYPE]: {
+    relationType: DEFAULT_RELATIONSHIP_TYPE,
+    label: "Related to",
+    // Empty branch constraints mean every node in the current radial chart
+    // can be a source and every other node can be a target.
+    sourceBranchLabels: [],
+    targetBranchLabels: [],
+    includeTargetBranchRoot: true,
+  },
+  [LEGACY_RELATIONSHIP_TYPE]: {
+    relationType: LEGACY_RELATIONSHIP_TYPE,
     label: "Has guṇa",
-    sourceBranchLabels: ["द्रव्यम्"],
-    targetBranchLabels: ["गुणः", "गुणाः"],
-    includeTargetBranchRoot: false,
+    // Existing records keep their semantic type, but selection is no longer
+    // coupled to Sanskrit labels or to one particular chart template.
+    sourceBranchLabels: [],
+    targetBranchLabels: [],
+    includeTargetBranchRoot: true,
   },
 };
+
+/** Normalize storage/action input without changing semantic relationship ids. */
+export function canonicalRelationshipType(relationType: string): string {
+  return relationType.trim();
+}
 
 const LABEL_FIELDS = [
   "text",
@@ -138,7 +157,7 @@ export function normalizeRelationshipLabel(value: string): string {
 export function relationshipIdentity(
   relationship: Pick<NodeRelationship, "sourceNodeId" | "targetNodeId" | "relationType">
 ): string {
-  return `${relationship.relationType}\u0000${relationship.sourceNodeId}\u0000${relationship.targetNodeId}`;
+  return `${canonicalRelationshipType(relationship.relationType)}\u0000${relationship.sourceNodeId}\u0000${relationship.targetNodeId}`;
 }
 
 export function deduplicateRelationships(relationships: readonly NodeRelationship[]): NodeRelationship[] {
@@ -196,7 +215,7 @@ export function orderRelationshipsByChart(
 }
 
 export function relationshipDefinition(relationType: string): RelationshipTypeDefinition | null {
-  return RELATIONSHIP_TYPE_DEFINITIONS[relationType] ?? null;
+  return RELATIONSHIP_TYPE_DEFINITIONS[canonicalRelationshipType(relationType)] ?? null;
 }
 
 function emptyResolution(
@@ -270,17 +289,20 @@ export function resolveRelationshipPolicy(
     return emptyResolution(options, definition, "source-not-eligible");
   }
 
-  const persistedTargetId = options.targetBranchNodeId;
-  const persistedTargetIsUsable = !!persistedTargetId
-    && byId.has(persistedTargetId)
-    && isDescendant(options.chartRootId, persistedTargetId, options.hierarchy);
-  const targetLabelKeys = new Set(definition.targetBranchLabels.map(normalizeRelationshipLabel));
-  const targetBranchNodeId = persistedTargetIsUsable
-    ? persistedTargetId
-    : orderedHierarchyNodeIds(options.chartRootId, options.hierarchy)
-        .find((nodeId) => targetLabelKeys.has(
-          normalizeRelationshipLabel(nodeDisplayLabel(byId.get(nodeId)))
-        )) ?? null;
+  const targetBranchNodeId = definition.targetBranchLabels.length === 0
+    ? options.chartRootId
+    : (() => {
+        const persistedTargetId = options.targetBranchNodeId;
+        const persistedTargetIsUsable = !!persistedTargetId
+          && byId.has(persistedTargetId)
+          && isDescendant(options.chartRootId, persistedTargetId, options.hierarchy);
+        if (persistedTargetIsUsable) return persistedTargetId;
+        const targetLabelKeys = new Set(definition.targetBranchLabels.map(normalizeRelationshipLabel));
+        return orderedHierarchyNodeIds(options.chartRootId, options.hierarchy)
+          .find((nodeId) => targetLabelKeys.has(
+            normalizeRelationshipLabel(nodeDisplayLabel(byId.get(nodeId)))
+          )) ?? null;
+      })();
 
   if (!targetBranchNodeId) {
     return emptyResolution(

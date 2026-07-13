@@ -24,6 +24,7 @@ import {
   type LayoutPlacement,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { canonicalRelationshipType } from "@/lib/relationships";
 import type { LayoutMode } from "@/lib/types";
 
 interface HistoryEntry {
@@ -65,7 +66,8 @@ interface CanvasState {
     sourceNodeId: string,
     relationType: string,
     targetNodeIds: string[],
-    targetBranchNodeId?: string
+    targetBranchNodeId?: string,
+    editableTargetNodeIds?: readonly string[]
   ) => void;
   clearRelationships: (sourceNodeId: string, relationType: string) => void;
   setRelationshipFanVisible: (sourceNodeId: string, relationType: string, visible: boolean) => void;
@@ -110,7 +112,7 @@ function sameHistoryEntry(a: HistoryEntry, b: HistoryEntry): boolean {
 }
 
 function relationshipGroupKey(sourceNodeId: string, relationType: string): string {
-  return `${sourceNodeId}\u0000${relationType}`;
+  return `${sourceNodeId}\u0000${canonicalRelationshipType(relationType)}`;
 }
 
 function normalizeRelationshipState(
@@ -133,7 +135,9 @@ function normalizeRelationshipState(
       const candidate = value as Partial<NodeRelationship>;
       const sourceNodeId = typeof candidate.sourceNodeId === "string" ? candidate.sourceNodeId : "";
       const targetNodeId = typeof candidate.targetNodeId === "string" ? candidate.targetNodeId : "";
-      const relationType = typeof candidate.relationType === "string" ? candidate.relationType.trim() : "";
+      const relationType = typeof candidate.relationType === "string"
+        ? canonicalRelationshipType(candidate.relationType)
+        : "";
       if (
         !sourceNodeId ||
         !targetNodeId ||
@@ -163,7 +167,9 @@ function normalizeRelationshipState(
       if (!value || typeof value !== "object") continue;
       const candidate = value as Partial<RelationshipFanState>;
       const sourceNodeId = typeof candidate.sourceNodeId === "string" ? candidate.sourceNodeId : "";
-      const relationType = typeof candidate.relationType === "string" ? candidate.relationType.trim() : "";
+      const relationType = typeof candidate.relationType === "string"
+        ? canonicalRelationshipType(candidate.relationType)
+        : "";
       const groupKey = relationshipGroupKey(sourceNodeId, relationType);
       if (!validNodeIds.has(sourceNodeId) || !relationType || !populatedGroups.has(groupKey)) continue;
       if (relationshipFansByGroup.has(groupKey)) continue;
@@ -1010,8 +1016,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  replaceRelationships: (sourceNodeId, rawRelationType, targetNodeIds, targetBranchNodeId) => {
-    const relationType = rawRelationType.trim();
+  replaceRelationships: (
+    sourceNodeId,
+    rawRelationType,
+    targetNodeIds,
+    targetBranchNodeId,
+    editableTargetNodeIds
+  ) => {
+    const relationType = canonicalRelationshipType(rawRelationType);
     if (!sourceNodeId || !relationType) return;
     const state = get();
     const validNodeIds = new Set(
@@ -1021,26 +1033,38 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     );
     if (!validNodeIds.has(sourceNodeId)) return;
 
-    const uniqueTargetIds = Array.from(new Set(targetNodeIds)).filter(
-      (targetNodeId) => targetNodeId !== sourceNodeId && validNodeIds.has(targetNodeId)
+    const editableTargetIdSet = editableTargetNodeIds
+      ? new Set(editableTargetNodeIds.filter((nodeId) => validNodeIds.has(nodeId)))
+      : null;
+    const uniqueTargetIds = Array.from(new Set(targetNodeIds)).filter((targetNodeId) =>
+      targetNodeId !== sourceNodeId
+      && validNodeIds.has(targetNodeId)
+      && (!editableTargetIdSet || editableTargetIdSet.has(targetNodeId))
     );
     const groupKey = relationshipGroupKey(sourceNodeId, relationType);
-    const existingByTarget = new Map(
-      state.relationships
-        .filter((relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) === groupKey)
-        .map((relationship) => [relationship.targetNodeId, relationship])
+    const existingGroup = state.relationships.filter(
+      (relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) === groupKey
     );
+    const existingByTarget = new Map(
+      existingGroup.map((relationship) => [relationship.targetNodeId, relationship])
+    );
+    // A hierarchy node can be shown by more than one radial chart. Editing one
+    // chart must not silently delete the source's relationships to another.
+    const relationshipsOutsideEditableChart = editableTargetIdSet
+      ? existingGroup.filter((relationship) => !editableTargetIdSet.has(relationship.targetNodeId))
+      : [];
     const replacement = uniqueTargetIds.map<NodeRelationship>((targetNodeId) => ({
       id: existingByTarget.get(targetNodeId)?.id ?? generateId(),
       sourceNodeId,
       targetNodeId,
       relationType,
     }));
+    const completeReplacement = [...relationshipsOutsideEditableChart, ...replacement];
     const nextRelationships = [
       ...state.relationships.filter(
         (relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) !== groupKey
       ),
-      ...replacement,
+      ...completeReplacement,
     ];
 
     const existingFan = state.relationshipFans.find(
@@ -1052,7 +1076,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const validTargetBranchNodeId = targetBranchNodeId && validNodeIds.has(targetBranchNodeId)
       ? targetBranchNodeId
       : existingFan?.targetBranchNodeId;
-    const nextRelationshipFans = replacement.length
+    const nextRelationshipFans = completeReplacement.length
       ? [
           ...otherFans,
           {
@@ -1078,7 +1102,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   clearRelationships: (sourceNodeId, rawRelationType) => {
-    const relationType = rawRelationType.trim();
+    const relationType = canonicalRelationshipType(rawRelationType);
     if (!sourceNodeId || !relationType) return;
     const state = get();
     const groupKey = relationshipGroupKey(sourceNodeId, relationType);
@@ -1101,7 +1125,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   setRelationshipFanVisible: (sourceNodeId, rawRelationType, visible) => {
-    const relationType = rawRelationType.trim();
+    const relationType = canonicalRelationshipType(rawRelationType);
     if (!sourceNodeId || !relationType) return;
     const state = get();
     const groupKey = relationshipGroupKey(sourceNodeId, relationType);

@@ -28,8 +28,8 @@ export function commitRelationshipSelection(): boolean {
     hierarchy,
   });
 
-  if (!policy.ok || !policy.targetBranchNodeId) {
-    toast.error("The target branch is no longer available. No relationships were changed.");
+  if (!policy.ok) {
+    toast.error("This chart is no longer available. No relationships were changed.");
     return false;
   }
 
@@ -39,7 +39,8 @@ export function commitRelationshipSelection(): boolean {
     session.sourceNodeId,
     session.relationType,
     orderedTargetIds,
-    policy.targetBranchNodeId
+    policy.targetBranchNodeId ?? undefined,
+    policy.validTargetIds
   );
   ui.cancelRelationshipSelection();
   toast.success(

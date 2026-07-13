@@ -128,7 +128,7 @@ export interface RelationshipSelectionSession {
   sourceNodeId: string;
   relationType: string;
   chartRootNodeId: string;
-  targetBranchNodeId: string;
+  targetBranchNodeId?: string;
   draftTargetIds: string[];
 }
 

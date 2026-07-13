@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, Link2, Plus, Rows3, Trash2 } from "lucide-react";
@@ -24,8 +24,11 @@ import {
   type RelationshipFanSourceGeometry,
 } from "@/lib/relationship-fan-layout";
 import {
+  DEFAULT_RELATIONSHIP_TYPE,
+  LEGACY_RELATIONSHIP_TYPE,
   nodeDisplayLabel,
   orderRelationshipsByChart,
+  relationshipDefinition,
   resolveRelationshipPolicy,
 } from "@/lib/relationships";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -800,9 +803,11 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
     assignGeometry(tree, centerRadius, bands);
     extendTerminalSectors(tree, outerRadius);
 
+    const segments = collectSegments(tree, byId, scheme);
     return {
       root,
       byId,
+      chartNodeIds: new Set([d.rootId, ...segments.map((segment) => segment.id)]),
       chartNodes,
       hierarchy,
       tree,
@@ -811,7 +816,7 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
       centerRadius,
       outerRadius,
       scheme,
-      segments: collectSegments(tree, byId, scheme),
+      segments,
     };
   }, [d.chartSize, d.rootId, edges, nodes]);
 
@@ -839,10 +844,10 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
     );
   }
 
-  const selectedId = selectedNodeIds.length === 1 && model.byId.has(selectedNodeIds[0])
+  const selectedId = selectedNodeIds.length === 1 && model.chartNodeIds.has(selectedNodeIds[0])
     ? selectedNodeIds[0]
     : null;
-  const selectedSectorIds = new Set(selectedNodeIds.filter((nodeId) => model.byId.has(nodeId)));
+  const selectedSectorIds = new Set(selectedNodeIds.filter((nodeId) => model.chartNodeIds.has(nodeId)));
   const selectedSegment = selectedId ? model.segments.find((segment) => segment.id === selectedId) ?? null : null;
   const selectedNode = selectedId ? model.byId.get(selectedId) ?? null : null;
   const rootData = (model.root.data ?? {}) as Record<string, unknown>;
@@ -912,17 +917,36 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
     : new Set<string>();
   const draftRelationshipTargetIds = new Set(activeRelationshipSession?.draftTargetIds ?? []);
 
-  const selectedRelationshipFan = selectedId
-    ? relationshipFans.find((fan) => fan.sourceNodeId === selectedId && fan.relationType === "has-guna") ?? null
-    : null;
-  const selectedRelationships = selectedId
+  const relationshipsForSelectedChart = selectedId
     ? relationships.filter((relationship) =>
-        relationship.sourceNodeId === selectedId && relationship.relationType === "has-guna"
+        relationship.sourceNodeId === selectedId
+        && model.chartNodeIds.has(relationship.targetNodeId)
       )
     : [];
+  const selectedRelationshipTypes = Array.from(new Set(
+    relationshipsForSelectedChart.map((relationship) => relationship.relationType)
+  ));
+  // Existing boards used `has-guna`. Keep that group as the primary editable
+  // relationship until the user explicitly creates a newer generic group.
+  const primaryRelationshipType = selectedRelationshipTypes.includes(DEFAULT_RELATIONSHIP_TYPE)
+    ? DEFAULT_RELATIONSHIP_TYPE
+    : selectedRelationshipTypes.includes(LEGACY_RELATIONSHIP_TYPE)
+      ? LEGACY_RELATIONSHIP_TYPE
+      : DEFAULT_RELATIONSHIP_TYPE;
+  const selectedRelationshipFan = selectedId
+    ? relationshipFans.find((fan) =>
+        fan.sourceNodeId === selectedId && fan.relationType === primaryRelationshipType
+      ) ?? null
+    : null;
+  const selectedRelationships = relationshipsForSelectedChart.filter(
+    (relationship) => relationship.relationType === primaryRelationshipType
+  );
+  const legacySelectedRelationshipTypes = selectedRelationshipTypes.filter(
+    (relationType) => relationType !== primaryRelationshipType
+  );
   const selectedRelationshipPolicy = selectedId
     ? resolveRelationshipPolicy({
-        relationType: "has-guna",
+        relationType: primaryRelationshipType,
         sourceNodeId: selectedId,
         chartRootId: d.rootId,
         targetBranchNodeId: selectedRelationshipFan?.targetBranchNodeId,
@@ -933,7 +957,10 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
 
   const relationshipGroups = new Map<string, typeof relationships>();
   for (const relationship of relationships) {
-    if (!model.byId.has(relationship.sourceNodeId) || !model.byId.has(relationship.targetNodeId)) continue;
+    if (
+      !model.chartNodeIds.has(relationship.sourceNodeId)
+      || !model.chartNodeIds.has(relationship.targetNodeId)
+    ) continue;
     const key = `${relationship.sourceNodeId}\u0000${relationship.relationType}`;
     const group = relationshipGroups.get(key) ?? [];
     group.push(relationship);
@@ -988,27 +1015,53 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
     fanThickness: 44,
   });
 
-  const beginRelationshipSelection = () => {
-    if (!selectedId || !selectedRelationshipPolicy?.ok || !selectedRelationshipPolicy.targetBranchNodeId) {
-      toast.error("This node does not have an available relationship target branch.");
+  const beginRelationshipSelection = (relationType = DEFAULT_RELATIONSHIP_TYPE) => {
+    if (!selectedId) return;
+    const existingFan = relationshipFans.find((fan) =>
+      fan.sourceNodeId === selectedId && fan.relationType === relationType
+    );
+    const policy = resolveRelationshipPolicy({
+      relationType,
+      sourceNodeId: selectedId,
+      chartRootId: d.rootId,
+      targetBranchNodeId: existingFan?.targetBranchNodeId,
+      nodes: model.chartNodes,
+      hierarchy: model.hierarchy,
+    });
+    if (!policy.ok) {
+      toast.error("Relationships are not available for this section.");
+      return;
+    }
+    if (!policy.validTargetIds.length) {
+      toast.error("This chart does not contain another section to relate to.");
       return;
     }
     finishEditing();
     selectOriginalNode(selectedId);
-    const existingTargets = new Set(selectedRelationships.map((relationship) => relationship.targetNodeId));
+    const existingTargets = new Set(
+      relationships
+        .filter((relationship) =>
+          relationship.sourceNodeId === selectedId && relationship.relationType === relationType
+        )
+        .map((relationship) => relationship.targetNodeId)
+    );
     startRelationshipSelection({
       sourceNodeId: selectedId,
-      relationType: "has-guna",
+      relationType,
       chartRootNodeId: d.rootId,
-      targetBranchNodeId: selectedRelationshipPolicy.targetBranchNodeId,
-      draftTargetIds: selectedRelationshipPolicy.validTargetIds.filter((nodeId) => existingTargets.has(nodeId)),
+      ...(policy.targetBranchNodeId ? { targetBranchNodeId: policy.targetBranchNodeId } : {}),
+      draftTargetIds: policy.validTargetIds.filter((nodeId) => existingTargets.has(nodeId)),
     });
   };
 
-  const confirmClearRelationships = () => {
-    if (!selectedId || !selectedRelationships.length) return;
-    if (!window.confirm(`Clear all ${selectedRelationships.length} saved relationships for this node?`)) return;
-    clearRelationships(selectedId, "has-guna");
+  const confirmClearRelationships = (relationType: string) => {
+    if (!selectedId) return;
+    const count = relationships.filter((relationship) =>
+      relationship.sourceNodeId === selectedId && relationship.relationType === relationType
+    ).length;
+    if (!count) return;
+    if (!window.confirm(`Clear all ${count} saved relationship${count === 1 ? "" : "s"} for this section?`)) return;
+    clearRelationships(selectedId, relationType);
     toast.success("Relationships cleared.");
   };
 
@@ -1124,12 +1177,12 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
   const controlAngle = selectedSegment
     ? (selectedSegment.startAngle + selectedSegment.endAngle) / 2
     : -90;
-  const selectedFanLayout = selectedId
-    ? relationshipFanLayout.fans.find((fan) => fan.sourceNodeId === selectedId && fan.visible) ?? null
-    : null;
+  const selectedFanLayouts = selectedId
+    ? relationshipFanLayout.fans.filter((fan) => fan.sourceNodeId === selectedId && fan.visible)
+    : [];
   const controlRadius = Math.max(
     model.outerRadius + 76,
-    selectedFanLayout ? selectedFanLayout.outerRadius + 44 : 0
+    ...selectedFanLayouts.map((fan) => fan.outerRadius + 44)
   );
   const controlGeometry = selectedId
     ? pointOnCircle(model.center, model.center, controlRadius, controlAngle)
@@ -1650,7 +1703,7 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
           onPointerDown={(event) => event.stopPropagation()}
           data-export-ignore
         >
-          {(selectedRelationshipPolicy?.ok || selectedRelationships.length > 0) && (
+          {selectedRelationshipPolicy?.ok && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -1664,8 +1717,8 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                   Relationships
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="center" className="w-52">
-                <DropdownMenuItem onSelect={beginRelationshipSelection}>
+              <DropdownMenuContent align="center" className="w-64">
+                <DropdownMenuItem onSelect={() => beginRelationshipSelection(primaryRelationshipType)}>
                   <Link2 className="h-4 w-4" />
                   {selectedRelationships.length ? "Edit relationships" : "Add relationships"}
                 </DropdownMenuItem>
@@ -1674,7 +1727,11 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onSelect={() => {
-                        setRelationshipFanVisible(selectedId, "has-guna", selectedRelationshipFan?.visible === false);
+                        setRelationshipFanVisible(
+                          selectedId,
+                          primaryRelationshipType,
+                          selectedRelationshipFan?.visible === false
+                        );
                         toast.success(selectedRelationshipFan?.visible === false ? "Relationship fan shown." : "Relationship fan hidden.");
                       }}
                     >
@@ -1685,13 +1742,51 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
-                      onSelect={confirmClearRelationships}
+                      onSelect={() => confirmClearRelationships(primaryRelationshipType)}
                     >
                       <Trash2 className="h-4 w-4" />
                       Clear relationships
                     </DropdownMenuItem>
                   </>
                 )}
+                {legacySelectedRelationshipTypes.map((relationType) => {
+                  const groupRelationships = relationships.filter((relationship) =>
+                    relationship.sourceNodeId === selectedId
+                    && relationship.relationType === relationType
+                    && model.chartNodeIds.has(relationship.targetNodeId)
+                  );
+                  const fan = relationshipFans.find((candidate) =>
+                    candidate.sourceNodeId === selectedId && candidate.relationType === relationType
+                  );
+                  const relationshipLabel = relationshipDefinition(relationType)?.label ?? relationType;
+                  return (
+                    <Fragment key={relationType}>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => beginRelationshipSelection(relationType)}>
+                        <Link2 className="h-4 w-4" />
+                        Edit {relationshipLabel} relationships
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setRelationshipFanVisible(selectedId, relationType, fan?.visible === false);
+                          toast.success(fan?.visible === false ? "Relationship fan shown." : "Relationship fan hidden.");
+                        }}
+                      >
+                        {fan?.visible === false
+                          ? <Eye className="h-4 w-4" />
+                          : <EyeOff className="h-4 w-4" />}
+                        {fan?.visible === false ? "Show fan" : "Hide fan"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => confirmClearRelationships(relationType)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Clear {groupRelationships.length === 1 ? "relationship" : "relationships"}
+                      </DropdownMenuItem>
+                    </Fragment>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
