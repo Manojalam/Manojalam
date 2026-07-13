@@ -398,6 +398,52 @@ function normalizeWholeBoxFontSize(data: Record<string, unknown>, value: unknown
   return patch;
 }
 
+function normalizeWholeTextFormat(
+  data: Record<string, unknown>,
+  key: "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
+  value: unknown
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = { [key]: value };
+  if (typeof data.richText !== "string") return patch;
+  const cssProperty = {
+    fontFamily: "font-family",
+    fontWeight: "font-weight",
+    fontStyle: "font-style",
+    textColor: "color",
+    textAlign: "text-align",
+  }[key];
+  const fallback = data.richText.replace(new RegExp(`${cssProperty}\\s*:\\s*[^;\"']+;?`, "gi"), "");
+  if (typeof document === "undefined") {
+    patch.richText = fallback;
+    return patch;
+  }
+
+  const container = document.createElement("div");
+  container.innerHTML = data.richText;
+  container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
+    element.style.removeProperty(cssProperty);
+    if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
+  });
+  if (key === "textColor") {
+    container.querySelectorAll<HTMLElement>("[color]").forEach((element) => element.removeAttribute("color"));
+  }
+  if (key === "fontFamily") {
+    container.querySelectorAll<HTMLElement>("[face]").forEach((element) => element.removeAttribute("face"));
+  }
+  if (key === "textAlign") {
+    container.querySelectorAll<HTMLElement>("[align]").forEach((element) => element.removeAttribute("align"));
+  }
+  if (key === "fontWeight" && value !== "bold") {
+    container.querySelectorAll("strong, b").forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
+  }
+  if (key === "fontStyle" && value !== "italic") {
+    container.querySelectorAll("em, i").forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
+  }
+  container.normalize();
+  patch.richText = container.innerHTML || fallback;
+  return patch;
+}
+
 function normalizeWholeTextHighlight(data: Record<string, unknown>, value: unknown): Record<string, unknown> {
   const color = typeof value === "string" && value ? value : undefined;
   const patch: Record<string, unknown> = { textHighlightColor: color };
@@ -442,6 +488,13 @@ function normalizeWholeTextHighlight(data: Record<string, unknown>, value: unkno
 function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   if (key === "fontSize") return normalizeWholeBoxFontSize(data, value);
   if (key === "textHighlightColor") return normalizeWholeTextHighlight(data, value);
+  if (["fontFamily", "fontWeight", "fontStyle", "textColor", "textAlign"].includes(key)) {
+    return normalizeWholeTextFormat(
+      data,
+      key as "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
+      value
+    );
+  }
   return { [key]: value };
 }
 
@@ -517,6 +570,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
     : [];
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  const radialSelectionKeys = new Set(selectedNodes.map((node) =>
+    ((node.data ?? {}) as Record<string, unknown>).sunburstHiddenFor
+  ).filter((value): value is string => typeof value === "string"));
+  const isRadialMultiSelection = selectedNodes.length > 1
+    && radialSelectionKeys.size === 1
+    && selectedNodes.every((node) => typeof ((node.data ?? {}) as Record<string, unknown>).sunburstHiddenFor === "string");
   const selectedEdges = edges.filter((edge) => selectedEdgeIds.includes(edge.id));
   const hierarchy = buildHierarchy(nodes, edges);
   const selectedHierarchy = selectedNode ? hierarchy.get(selectedNode.id) : null;
@@ -623,8 +682,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   const commonValue = (key: string) => {
     if (!selectedNodes.length) return undefined;
-    const first = (selectedNodes[0].data as Record<string, unknown>)[key];
-    return selectedNodes.every((node) => (node.data as Record<string, unknown>)[key] === first)
+    const selectionValue = (node: Node): unknown => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      if (!isRadialMultiSelection) return data[key];
+      if (key === "textColor") return data.radialTextColor ?? data.textColor;
+      if (key === "fillColor") return data.radialFillColor;
+      if (key === "borderColor") return data.radialBorderColor;
+      if (key === "borderWidth") return data.radialBorderWidth;
+      if (key === "borderStyle") return data.radialBorderStyle;
+      return data[key];
+    };
+    const first = selectionValue(selectedNodes[0]);
+    return selectedNodes.every((node) => selectionValue(node) === first)
       ? first
       : undefined;
   };
@@ -633,30 +702,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (!selectedNodes.length) return;
     pushHistory();
     for (const node of selectedNodes) {
-      updateNodeData(node.id, fieldPatch((node.data ?? {}) as Record<string, unknown>, key, value));
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const patch = fieldPatch(data, key, value);
+      if (isRadialMultiSelection && key === "textColor") {
+        delete patch.textColor;
+        patch.radialTextColor = value;
+      } else if (isRadialMultiSelection && key === "fillColor") {
+        delete patch.fillColor;
+        patch.radialFillColor = value;
+      } else if (isRadialMultiSelection && key === "borderColor") {
+        delete patch.borderColor;
+        patch.radialBorderColor = value;
+      } else if (isRadialMultiSelection && key === "borderWidth") {
+        delete patch.borderWidth;
+        patch.radialBorderWidth = value;
+      } else if (isRadialMultiSelection && key === "borderStyle") {
+        delete patch.borderStyle;
+        patch.radialBorderStyle = value;
+      }
+      updateNodeData(node.id, patch);
     }
   };
 
   const applyRadialColorScheme = (scheme: RadialColorScheme) => {
     if (!radialRootId) return;
-    const radialIds = new Set(getSubtree(radialRootId, hierarchy));
     pushHistory();
-    useCanvasStore.setState((state) => ({
-      nodes: state.nodes.map((node) => {
-        if (!radialIds.has(node.id)) return node;
-        return {
-          ...node,
-          data: {
-            ...(node.data ?? {}),
-            radialColorScheme: node.id === radialRootId ? scheme : undefined,
-            radialFillColor: undefined,
-            radialTextColor: undefined,
-            radialBorderColor: undefined,
-          },
-        };
-      }),
-      saveStatus: "unsaved",
-    }));
+    updateNodeData(radialRootId, { radialColorScheme: scheme });
   };
 
   const selectNodesById = (ids: string[]) => {
@@ -762,9 +833,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   if (selectedNodes.length > 1) {
     const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
+    const commonFontFamily = typeof commonValue("fontFamily") === "string" ? commonValue("fontFamily") as string : "";
     const commonFillOpacity = typeof commonValue("fillOpacity") === "number" ? commonValue("fillOpacity") as number : 0.18;
-    const commonBorderWidth = typeof commonValue("borderWidth") === "number" ? commonValue("borderWidth") as number : 2;
+    const commonBorderWidth = typeof commonValue("borderWidth") === "number"
+      ? commonValue("borderWidth") as number
+      : isRadialMultiSelection ? 1 : 2;
     const commonBorderStyle = typeof commonValue("borderStyle") === "string" ? commonValue("borderStyle") as string : "solid";
+    const multiFontGroups = groupFontsByCategory(FONT_OPTIONS);
     const radiusNodes = selectedNodes.filter(supportsCornerRadius);
     const firstRadius = radiusNodes.length
       ? (radiusNodes[0].data as Record<string, unknown>).borderRadius
@@ -777,18 +852,37 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       pushHistory();
       for (const node of radiusNodes) updateNodeData(node.id, { borderRadius: value });
     };
+    const clearSelectedRadialColors = () => {
+      if (!isRadialMultiSelection) return;
+      pushHistory();
+      for (const node of selectedNodes) {
+        updateNodeData(node.id, {
+          radialFillColor: undefined,
+          radialTextColor: undefined,
+          radialBorderColor: undefined,
+          radialBorderWidth: undefined,
+          radialBorderStyle: undefined,
+        });
+      }
+    };
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Selection</h3>
-            <p className="text-[10px] text-muted-foreground">{selectedNodes.length} objects</p>
+            <h3 className="text-sm font-semibold text-foreground">
+              {isRadialMultiSelection ? "Radial sectors" : "Selection"}
+            </h3>
+            <p className="text-[10px] text-muted-foreground">
+              {selectedNodes.length} {isRadialMultiSelection ? "sections" : "objects"}
+            </p>
           </div>
           <div className="flex gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
+            {!isRadialMultiSelection && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -828,17 +922,44 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ThicknessControl value={commonFontSize} onChange={(v) => setSelectedField("fontSize", v)} max={96} />
             </div>
             <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
+              <Select
+                value={commonFontFamily || "__default_font__"}
+                onValueChange={(value) => setSelectedField("fontFamily", value === "__default_font__" ? undefined : value)}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Mixed / default" /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="__default_font__">Default</SelectItem>
+                  {[...multiFontGroups.entries()].map(([category, fonts]) => (
+                    <div key={category}>
+                      <div className="bg-muted px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{category}</div>
+                      {fonts.map((font) => (
+                        <SelectItem key={font.value} value={font.value}>
+                          <span style={{ fontFamily: font.value }}>{font.label}</span>
+                        </SelectItem>
+                      ))}
+                    </div>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
               <ColorSwatchPicker value={(commonValue("textColor") as string) ?? ""} onChange={(v) => setSelectedField("textColor", v || undefined)} size="sm" />
             </div>
           </Section>
 
           <Section label="Fill">
+            {isRadialMultiSelection && (
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Band-1 colors coordinate the gradient shades of their descendants.
+              </p>
+            )}
             <ColorSwatchPicker
               value={(commonValue("fillColor") as string) ?? ""}
               onChange={(v) => setSelectedField("fillColor", v || undefined)}
             />
-            <div>
+            {!isRadialMultiSelection && <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
               </div>
@@ -847,7 +968,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 onChange={(value) => setSelectedField("fillOpacity", value / 100)}
                 suffix="%"
               />
-            </div>
+            </div>}
+            {isRadialMultiSelection && (
+              <Button type="button" variant="outline" size="sm" className="h-7 w-full text-[10px]" onClick={clearSelectedRadialColors}>
+                Use automatic colors
+              </Button>
+            )}
           </Section>
 
           <Section label="Border">
@@ -1384,10 +1510,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {/* Font family */}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
-              <Select value={activeFontFamily} onValueChange={(v) => setField("fontFamily", v || undefined)}>
+              <Select
+                value={activeFontFamily || "__default_font__"}
+                onValueChange={(value) => setField("fontFamily", value === "__default_font__" ? undefined : value)}
+              >
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Default" /></SelectTrigger>
                 <SelectContent className="max-h-72">
-                  <SelectItem value="">Default</SelectItem>
+                  <SelectItem value="__default_font__">Default</SelectItem>
                   {[...fontGroups.entries()].map(([cat, fonts]) => (
                     <div key={cat}>
                       <div className="px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted">{cat}</div>
@@ -1482,12 +1611,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {isRadialLayoutSector && (
           <Section label="Radial sector" visible={singleNodeTab === "style"}>
+            <p className="text-[9px] leading-snug text-muted-foreground">
+              Shift/Ctrl/Command-click sections in the chart to format them together.
+            </p>
             <div>
-              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fill</p>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                {selectedRadialDepth === 1 ? "Branch color" : selectedRadialDepth > 1 ? "Sector color override" : "Center color"}
+              </p>
               <ColorSwatchPicker
                 value={(d.radialFillColor as string) ?? ""}
                 onChange={(value) => setField("radialFillColor", value || undefined)}
               />
+              {selectedRadialDepth === 1 && (
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  Descendants automatically receive coordinated gradient shades.
+                </p>
+              )}
             </div>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Border color</p>
@@ -1521,6 +1660,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 pushHistory();
                 updateNodeData(selectedNode.id, {
                   radialFillColor: undefined,
+                  radialTextColor: undefined,
                   radialBorderColor: undefined,
                   radialBorderWidth: undefined,
                   radialBorderStyle: undefined,

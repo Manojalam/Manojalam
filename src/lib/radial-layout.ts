@@ -100,22 +100,125 @@ export function radialSectorColors(
   branchIndex: number,
   depth: number,
   siblingIndex: number,
-  siblingCount = 1
-): { fill: string; text: string; border: string } {
-  // Keep a branch on one recognizable hue and encode hierarchy primarily by
-  // depth. Descendant siblings fan out within a bounded hue window.
+  siblingCount = 1,
+  branchBaseColor?: string,
+  fillOverride?: string
+): { fill: string; fillEnd: string; text: string; border: string } {
+  const automaticAnchor: HslColor = {
+    h: scheme.hues[branchIndex % scheme.hues.length],
+    s: scheme.saturation,
+    l: scheme.lightness,
+  };
+  const anchor = parseColor(branchBaseColor) ?? automaticAnchor;
   const siblingOffset = depth <= 1 || siblingCount <= 1
     ? 0
-    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 24;
-  const hue = (scheme.hues[branchIndex % scheme.hues.length] + siblingOffset + 360) % 360;
-  const depthOffset = Math.max(0, depth - 1) * 9;
-  const siblingLightness = depth <= 1 ? 0 : siblingIndex % 2 ? 2.5 : -2.5;
-  const saturation = Math.max(42, scheme.saturation - Math.max(0, depth - 1) * 3);
-  const lightness = Math.min(80, scheme.lightness + depthOffset + siblingLightness);
-  const borderLightness = Math.max(22, lightness - 24);
-  return {
-    fill: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
-    text: lightness < 56 ? "#f8fafc" : "#111827",
-    border: `hsla(${hue}, ${Math.max(34, saturation - 8)}%, ${borderLightness}%, 0.58)`,
+    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 12;
+  const siblingLightness = depth <= 1 || siblingCount <= 1
+    ? 0
+    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 4;
+  const depthOffset = Math.max(0, depth - 1) * (anchor.l >= 72 ? -6 : 8);
+  const derived: HslColor = {
+    h: normalizeHue(anchor.h + siblingOffset),
+    s: clamp(anchor.s - Math.max(0, depth - 1) * 3, 34, 86),
+    l: clamp(anchor.l + depthOffset + siblingLightness, 24, 86),
   };
+  const override = parseColor(fillOverride);
+  const start = override ?? derived;
+  const gradientDirection = start.l >= 76 ? -1 : 1;
+  const end: HslColor = {
+    ...start,
+    l: clamp(start.l + gradientDirection * (depth <= 1 ? 4 : 7), 20, 90),
+  };
+  const fill = fillOverride && !override ? fillOverride : hslString(start);
+  const fillEnd = fillOverride && !override ? fillOverride : hslString(end);
+  const borderLightness = clamp(Math.min(start.l, end.l) - 18, 18, 68);
+  return {
+    fill,
+    fillEnd,
+    text: readableTextColor(start, end),
+    border: `hsla(${start.h.toFixed(1)}, ${Math.max(30, start.s - 10).toFixed(1)}%, ${borderLightness.toFixed(1)}%, 0.62)`,
+  };
+}
+
+type HslColor = { h: number; s: number; l: number };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeHue(value: number): number {
+  return ((value % 360) + 360) % 360;
+}
+
+function hslString(color: HslColor): string {
+  return `hsl(${color.h.toFixed(1)}, ${color.s.toFixed(1)}%, ${color.l.toFixed(1)}%)`;
+}
+
+function parseColor(value: string | undefined): HslColor | null {
+  if (!value) return null;
+  const hex = value.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const expanded = hex[1].length === 3
+      ? hex[1].split("").map((character) => `${character}${character}`).join("")
+      : hex[1];
+    const red = Number.parseInt(expanded.slice(0, 2), 16) / 255;
+    const green = Number.parseInt(expanded.slice(2, 4), 16) / 255;
+    const blue = Number.parseInt(expanded.slice(4, 6), 16) / 255;
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    const delta = maximum - minimum;
+    const lightness = (maximum + minimum) / 2;
+    let hue = 0;
+    if (delta) {
+      if (maximum === red) hue = 60 * (((green - blue) / delta) % 6);
+      else if (maximum === green) hue = 60 * ((blue - red) / delta + 2);
+      else hue = 60 * ((red - green) / delta + 4);
+    }
+    const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+    return { h: normalizeHue(hue), s: saturation * 100, l: lightness * 100 };
+  }
+
+  const hsl = value.trim().match(/^hsla?\(\s*(-?[\d.]+)(?:deg)?[ ,]+([\d.]+)%[ ,]+([\d.]+)%/i);
+  if (!hsl) return null;
+  return {
+    h: normalizeHue(Number(hsl[1])),
+    s: clamp(Number(hsl[2]), 0, 100),
+    l: clamp(Number(hsl[3]), 0, 100),
+  };
+}
+
+function hslToRgb(color: HslColor): [number, number, number] {
+  const saturation = color.s / 100;
+  const lightness = color.l / 100;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const hue = normalizeHue(color.h) / 60;
+  const secondary = chroma * (1 - Math.abs((hue % 2) - 1));
+  const [red, green, blue] = hue < 1 ? [chroma, secondary, 0]
+    : hue < 2 ? [secondary, chroma, 0]
+      : hue < 3 ? [0, chroma, secondary]
+        : hue < 4 ? [0, secondary, chroma]
+          : hue < 5 ? [secondary, 0, chroma]
+            : [chroma, 0, secondary];
+  const match = lightness - chroma / 2;
+  return [red + match, green + match, blue + match];
+}
+
+function relativeLuminance(color: HslColor): number {
+  const channels = hslToRgb(color).map((channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  );
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+
+function contrastRatio(first: number, second: number): number {
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function readableTextColor(start: HslColor, end: HslColor): string {
+  const background = (relativeLuminance(start) + relativeLuminance(end)) / 2;
+  const dark = 0.008;
+  const light = 0.955;
+  return contrastRatio(background, dark) >= contrastRatio(background, light) ? "#0f172a" : "#f8fafc";
 }

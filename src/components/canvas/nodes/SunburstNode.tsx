@@ -19,6 +19,7 @@ type PolarPoint = { x: number; y: number };
 type SunburstTreeNode = {
   id: string;
   parentId: string | null;
+  branchId: string;
   depth: number;
   siblingIndex: number;
   siblingCount: number;
@@ -35,6 +36,7 @@ type SunburstSegment = SunburstTreeNode & {
   label: string;
   richText: string;
   fill: string;
+  fillEnd: string;
   textColor: string;
   borderColor: string;
   borderWidth: number;
@@ -392,11 +394,11 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowse
   const useRadialAxis = radialBand > arcLength;
   const width = useRadialAxis ? radialBand : arcLength;
   const height = useRadialAxis ? arcLength : radialBand;
-  const defaultMax = segment.depth <= 1 ? 28 : 20;
+  const defaultMax = segment.depth <= 1 ? 30 : 22;
   const preferred = clamp(segment.preferredFontSize ?? defaultMax, 4, 96);
   const automaticMinimum = isDevanagariText(segment.label)
-    ? segment.depth <= 1 ? 12 : 11
-    : segment.depth <= 1 ? 11 : 10;
+    ? segment.depth <= 1 ? 14 : 12
+    : segment.depth <= 1 ? 13 : 11;
   const minimumReadable = segment.preferredFontSize === undefined
     ? automaticMinimum
     : Math.min(preferred, automaticMinimum);
@@ -439,11 +441,20 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
     depth: number,
     siblingIndex: number,
     siblingCount: number,
-    branchIndex: number
+    branchIndex: number,
+    branchId: string
   ): SunburstTreeNode => {
     const childIds = hierarchy.get(id)?.childIds ?? [];
     const children = childIds.map((childId, index) =>
-      build(childId, id, depth + 1, index, childIds.length, depth === 0 ? index : branchIndex)
+      build(
+        childId,
+        id,
+        depth + 1,
+        index,
+        childIds.length,
+        depth === 0 ? index : branchIndex,
+        depth === 0 ? childId : branchId
+      )
     );
     const data = (byId.get(id)?.data ?? {}) as Record<string, unknown>;
     const manualWeight = clamp(dimension(data.radialWeight, 1), 0.1, 10);
@@ -453,6 +464,7 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
     return {
       id,
       parentId,
+      branchId,
       depth,
       siblingIndex,
       siblingCount,
@@ -465,7 +477,7 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
       children,
     };
   };
-  return build(rootId, null, 0, 0, 1, 0);
+  return build(rootId, null, 0, 0, 1, 0, rootId);
 }
 
 function maxDepthOf(node: SunburstTreeNode): number {
@@ -537,19 +549,23 @@ function collectSegments(
     if (candidate.depth > 0) {
       const source = byId.get(candidate.id);
       const data = (source?.data ?? {}) as Record<string, unknown>;
+      const branchData = (byId.get(candidate.branchId)?.data ?? {}) as Record<string, unknown>;
       const label = nodeLabel(source);
       const paletteColors = radialSectorColors(
         scheme,
         candidate.branchIndex,
         candidate.depth,
         candidate.siblingIndex,
-        candidate.siblingCount
+        candidate.siblingCount,
+        branchData.radialFillColor as string | undefined,
+        data.radialFillColor as string | undefined
       );
       segments.push({
         ...candidate,
         label,
         richText: nodeRichText(source, label),
-        fill: (data.radialFillColor as string | undefined) ?? paletteColors.fill,
+        fill: paletteColors.fill,
+        fillEnd: paletteColors.fillEnd,
         textColor: (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
         borderColor: (data.radialBorderColor as string | undefined) ?? paletteColors.border,
         borderWidth: clamp(dimension(data.radialBorderWidth, 1.4), 0, 16),
@@ -571,13 +587,19 @@ function collectSegments(
   return segments;
 }
 
-function selectOriginalNode(nodeId: string): void {
-  useCanvasStore.setState((state) => ({
-    nodes: state.nodes.map((node) => ({ ...node, selected: node.id === nodeId })),
-    edges: state.edges.map((edge) => ({ ...edge, selected: false })),
-    selectedNodeIds: [nodeId],
-    selectedEdgeIds: [],
-  }));
+function selectOriginalNode(nodeId: string, additive = false): void {
+  useCanvasStore.setState((state) => {
+    const selectedIds = new Set(additive ? state.selectedNodeIds : []);
+    if (additive && selectedIds.has(nodeId)) selectedIds.delete(nodeId);
+    else selectedIds.add(nodeId);
+    const nextIds = Array.from(selectedIds);
+    return {
+      nodes: state.nodes.map((node) => ({ ...node, selected: selectedIds.has(node.id) })),
+      edges: state.edges.map((edge) => ({ ...edge, selected: false })),
+      selectedNodeIds: nextIds,
+      selectedEdgeIds: [],
+    };
+  });
 }
 
 function dashArray(style: SunburstSegment["borderStyle"]): string | undefined {
@@ -705,6 +727,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
   const selectedId = selectedNodeIds.length === 1 && model.byId.has(selectedNodeIds[0])
     ? selectedNodeIds[0]
     : null;
+  const selectedSectorIds = new Set(selectedNodeIds.filter((nodeId) => model.byId.has(nodeId)));
   const selectedSegment = selectedId ? model.segments.find((segment) => segment.id === selectedId) ?? null : null;
   const selectedNode = selectedId ? model.byId.get(selectedId) ?? null : null;
   const rootData = (model.root.data ?? {}) as Record<string, unknown>;
@@ -892,7 +915,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
         </defs>
 
         {model.segments.map((segment) => {
-          const selected = selectedId === segment.id;
+          const selected = selectedSectorIds.has(segment.id);
           const hovered = hoveredId === segment.id;
           const segmentPath = arcSegmentPath(
             model.center,
@@ -903,6 +926,19 @@ function SunburstNodeComponent({ data }: NodeProps) {
             segment.endAngle
           );
           const segmentClipId = `${clipPrefix}-${segment.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+          const segmentGradientId = `${segmentClipId}-gradient`;
+          const gradientStart = pointOnCircle(
+            model.center,
+            model.center,
+            segment.innerRadius,
+            (segment.startAngle + segment.endAngle) / 2
+          );
+          const gradientEnd = pointOnCircle(
+            model.center,
+            model.center,
+            segment.outerRadius,
+            (segment.startAngle + segment.endAngle) / 2
+          );
           const labelGeometry = sectorLabelGeometry(segment, model.center, fontMetricsReady);
 
           return (
@@ -911,10 +947,21 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 <clipPath id={segmentClipId}>
                   <path d={segmentPath} />
                 </clipPath>
+                <linearGradient
+                  id={segmentGradientId}
+                  gradientUnits="userSpaceOnUse"
+                  x1={gradientStart.x}
+                  y1={gradientStart.y}
+                  x2={gradientEnd.x}
+                  y2={gradientEnd.y}
+                >
+                  <stop offset="0%" stopColor={segment.fill} />
+                  <stop offset="100%" stopColor={segment.fillEnd} />
+                </linearGradient>
               </defs>
               <path
                 d={segmentPath}
-                fill={segment.fill}
+                fill={`url(#${segmentGradientId})`}
                 stroke={selected ? "#2563eb" : hovered ? "#0f172a" : segment.borderColor}
                 strokeWidth={selected ? Math.max(3, segment.borderWidth) : hovered ? Math.max(2, segment.borderWidth) : segment.borderWidth}
                 strokeDasharray={selected ? undefined : dashArray(segment.borderStyle)}
@@ -925,6 +972,12 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 onMouseLeave={() => setHoveredId(null)}
                 onClick={(event) => {
                   event.stopPropagation();
+                  const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+                  if (additive) {
+                    finishEditing();
+                    selectOriginalNode(segment.id, true);
+                    return;
+                  }
                   selectOriginalNode(segment.id);
                   setEditingId(segment.id);
                 }}
@@ -975,6 +1028,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                         fontWeight: labelFontWeight(segment.label, segment.fontWeight),
                         fontStyle: segment.fontStyle,
                         textAlign: segment.textAlign,
+                        textShadow: "0 1px 1px rgba(255,255,255,0.28)",
                       }}
                       dangerouslySetInnerHTML={{ __html: segment.richText }}
                     />
@@ -990,13 +1044,19 @@ function SunburstNodeComponent({ data }: NodeProps) {
           cy={model.center}
           r={model.centerRadius}
           fill={(rootData.radialFillColor as string | undefined) ?? model.scheme.rootFill}
-          stroke={selectedId === d.rootId ? "#2563eb" : (rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
-          strokeWidth={selectedId === d.rootId ? Math.max(4, dimension(rootData.radialBorderWidth, 4)) : dimension(rootData.radialBorderWidth, 4)}
-          strokeDasharray={selectedId === d.rootId ? undefined : dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
+          stroke={selectedSectorIds.has(d.rootId) ? "#2563eb" : (rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
+          strokeWidth={selectedSectorIds.has(d.rootId) ? Math.max(4, dimension(rootData.radialBorderWidth, 4)) : dimension(rootData.radialBorderWidth, 4)}
+          strokeDasharray={selectedSectorIds.has(d.rootId) ? undefined : dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
           className="cursor-text"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
+            const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+            if (additive) {
+              finishEditing();
+              selectOriginalNode(d.rootId, true);
+              return;
+            }
             selectOriginalNode(d.rootId);
             setEditingId(d.rootId);
           }}
