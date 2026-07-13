@@ -2,7 +2,13 @@
 
 import { create } from "zustand";
 import { LOCAL_STORAGE_KEYS } from "@/lib/config";
-import type { ActiveTextSelection, AppSettings, CanvasTool, ShapeType } from "@/lib/types";
+import type {
+  ActiveTextSelection,
+  AppSettings,
+  CanvasTool,
+  RelationshipSelectionSession,
+  ShapeType,
+} from "@/lib/types";
 import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 
 export type ShapeVariant = ShapeType;
@@ -14,6 +20,11 @@ interface UIState {
   setTouchSelectionMode: (active: boolean) => void;
   canvasDragging: boolean;
   setCanvasDragging: (active: boolean) => void;
+  relationshipSelection: RelationshipSelectionSession | null;
+  startRelationshipSelection: (session: RelationshipSelectionSession) => void;
+  toggleRelationshipTarget: (nodeId: string) => void;
+  clearRelationshipTargets: () => void;
+  cancelRelationshipSelection: () => void;
   activeTextSelection: ActiveTextSelection | null;
   setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
   shapeVariant: ShapeVariant;
@@ -57,6 +68,35 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   canvasDragging: false,
   setCanvasDragging: (active) => set({ canvasDragging: active }),
+  relationshipSelection: null,
+  startRelationshipSelection: (session) => set({
+    activeTool: "select",
+    touchSelectionMode: false,
+    drawingModeNodeId: null,
+    relationshipSelection: {
+      ...session,
+      draftTargetIds: Array.from(new Set(session.draftTargetIds)).filter(
+        (nodeId) => nodeId !== session.sourceNodeId
+      ),
+    },
+  }),
+  toggleRelationshipTarget: (nodeId) => set((state) => {
+    const session = state.relationshipSelection;
+    if (!session || nodeId === session.sourceNodeId) return {};
+    const selected = new Set(session.draftTargetIds);
+    if (selected.has(nodeId)) selected.delete(nodeId);
+    else selected.add(nodeId);
+    return {
+      relationshipSelection: {
+        ...session,
+        draftTargetIds: Array.from(selected),
+      },
+    };
+  }),
+  clearRelationshipTargets: () => set((state) => state.relationshipSelection
+    ? { relationshipSelection: { ...state.relationshipSelection, draftTargetIds: [] } }
+    : {}),
+  cancelRelationshipSelection: () => set({ relationshipSelection: null }),
   activeTextSelection: null,
   setActiveTextSelection: (selection) => set({ activeTextSelection: selection }),
   shapeVariant: "rounded",

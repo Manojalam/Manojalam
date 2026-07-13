@@ -16,13 +16,22 @@ interface BoardRow {
   updated_at: string;
 }
 
+function normalizeBoardContent(content: BoardContent): BoardContent {
+  return {
+    ...content,
+    version: BOARD_CONTENT_VERSION,
+    relationships: Array.isArray(content.relationships) ? content.relationships : [],
+    relationshipFans: Array.isArray(content.relationshipFans) ? content.relationshipFans : [],
+  };
+}
+
 function rowToBoard(row: BoardRow): VidyaBoard {
   return {
     id: row.id,
     userId: row.user_id,
     title: row.title,
     description: row.description,
-    content: row.content,
+    content: normalizeBoardContent(row.content),
     thumbnailUrl: row.thumbnail_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -49,6 +58,8 @@ function createEmptyContent(title = "Untitled Board"): BoardContent {
       },
     ],
     edges: [],
+    relationships: [],
+    relationshipFans: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     settings: { ...DEFAULT_BOARD_SETTINGS },
   };
@@ -133,7 +144,7 @@ export async function updateBoard(
     .update({
       ...(partial.title !== undefined && { title: partial.title }),
       ...(partial.description !== undefined && { description: partial.description }),
-      ...(partial.content !== undefined && { content: partial.content }),
+      ...(partial.content !== undefined && { content: normalizeBoardContent(partial.content) }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -180,12 +191,14 @@ export async function exportBoard(id: string): Promise<string | null> {
 export async function importBoard(json: string): Promise<VidyaBoard> {
   const parsed = JSON.parse(json);
   const boardData = parsed.board ?? parsed;
-  const content: BoardContent = boardData.content ?? parsed.content;
+  const rawContent: BoardContent = boardData.content ?? parsed.content;
   const title = boardData.title ?? parsed.title ?? "Imported Board";
 
-  if (!content?.nodes || !Array.isArray(content.nodes)) {
+  if (!rawContent?.nodes || !Array.isArray(rawContent.nodes)) {
     throw new Error("Invalid board format: missing nodes array");
   }
+
+  const content = normalizeBoardContent(rawContent);
 
   const board = await createBoard(undefined, title);
   return (await updateBoard(board.id, { content, title }))!;

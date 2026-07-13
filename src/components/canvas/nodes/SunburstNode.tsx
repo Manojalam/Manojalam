@@ -3,16 +3,35 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
-import { ArrowLeft, ArrowRight, Plus, Rows3 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Link2, Plus, Rows3, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import type { SunburstNodeData } from "@/lib/types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { buildHierarchy, type Hierarchy } from "@/lib/layout/hierarchy";
 import {
   radialColorScheme,
   radialSectorColors,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
+import {
+  layoutRelationshipFans,
+  type RelationshipFanSourceGeometry,
+} from "@/lib/relationship-fan-layout";
+import {
+  nodeDisplayLabel,
+  orderRelationshipsByChart,
+  resolveRelationshipPolicy,
+} from "@/lib/relationships";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
+import { RelationshipFanRenderer } from "./RelationshipFanRenderer";
 
 type PolarPoint = { x: number; y: number };
 
@@ -83,6 +102,13 @@ type CenterDrag = {
   rootId: string;
 };
 
+type SunburstVisualBounds = {
+  minX: number;
+  minY: number;
+  width: number;
+  height: number;
+};
+
 const ROOT_START_ANGLE = -90;
 const ROOT_END_ANGLE = 270;
 const CHART_PADDING = 22;
@@ -93,7 +119,85 @@ const DEVANAGARI_LINE_HEIGHT = 1.46;
 const DEVANAGARI_INK_PADDING_X = 0.16;
 const DEVANAGARI_INK_PADDING_Y = 0.18;
 const DEVANAGARI_FONT = "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif";
+const RELATIONSHIP_FAN_FONT_SIZE = 15;
 let textMeasurementCanvas: HTMLCanvasElement | null = null;
+
+function roundedBound(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function storedVisualBounds(value: unknown): SunburstVisualBounds | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<SunburstVisualBounds>;
+  if (
+    typeof candidate.minX !== "number" || !Number.isFinite(candidate.minX) ||
+    typeof candidate.minY !== "number" || !Number.isFinite(candidate.minY) ||
+    typeof candidate.width !== "number" || !Number.isFinite(candidate.width) || candidate.width <= 0 ||
+    typeof candidate.height !== "number" || !Number.isFinite(candidate.height) || candidate.height <= 0
+  ) return null;
+  return candidate as SunburstVisualBounds;
+}
+
+function SunburstBoundsSynchronizer({
+  nodeId,
+  chartSize,
+  bounds,
+}: {
+  nodeId: string;
+  chartSize: number;
+  bounds: SunburstVisualBounds;
+}) {
+  const minX = roundedBound(bounds.minX);
+  const minY = roundedBound(bounds.minY);
+  const width = roundedBound(bounds.width);
+  const height = roundedBound(bounds.height);
+
+  useEffect(() => {
+    useCanvasStore.setState((state) => {
+      const node = state.nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return {};
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const previous = storedVisualBounds(data.relationshipVisualBounds) ?? {
+        minX: 0,
+        minY: 0,
+        width: chartSize,
+        height: chartSize,
+      };
+      const currentWidth = dimension(node.style?.width, chartSize);
+      const currentHeight = dimension(node.style?.height, chartSize);
+      if (
+        previous.minX === minX && previous.minY === minY &&
+        previous.width === width && previous.height === height &&
+        Math.abs(currentWidth - width) < 0.001 && Math.abs(currentHeight - height) < 0.001
+      ) return {};
+
+      const nextData = { ...data };
+      const isBaseBounds = Math.abs(minX) < 0.001
+        && Math.abs(minY) < 0.001
+        && Math.abs(width - chartSize) < 0.001
+        && Math.abs(height - chartSize) < 0.001;
+      if (isBaseBounds) delete nextData.relationshipVisualBounds;
+      else nextData.relationshipVisualBounds = { minX, minY, width, height };
+
+      const basePosition = {
+        x: node.position.x - previous.minX,
+        y: node.position.y - previous.minY,
+      };
+      return {
+        nodes: state.nodes.map((candidate) => candidate.id === nodeId
+          ? {
+              ...candidate,
+              position: { x: basePosition.x + minX, y: basePosition.y + minY },
+              data: nextData,
+              style: { ...(candidate.style ?? {}), width, height },
+            }
+          : candidate),
+      };
+    });
+  }, [chartSize, height, minX, minY, nodeId, width]);
+
+  return null;
+}
 
 function dimension(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -627,16 +731,23 @@ function unwrapAngle(angle: number, near: number): number {
   return result;
 }
 
-function SunburstNodeComponent({ data }: NodeProps) {
+function SunburstNodeComponent({ data, id }: NodeProps) {
   const d = data as SunburstNodeData;
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const relationships = useCanvasStore((state) => state.relationships);
+  const relationshipFans = useCanvasStore((state) => state.relationshipFans);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
   const moveSiblingNode = useCanvasStore((state) => state.moveSiblingNode);
+  const clearRelationships = useCanvasStore((state) => state.clearRelationships);
+  const setRelationshipFanVisible = useCanvasStore((state) => state.setRelationshipFanVisible);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
+  const relationshipSelection = useUIStore((state) => state.relationshipSelection);
+  const startRelationshipSelection = useUIStore((state) => state.startRelationshipSelection);
+  const toggleRelationshipTarget = useUIStore((state) => state.toggleRelationshipTarget);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
@@ -692,6 +803,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
     return {
       root,
       byId,
+      chartNodes,
+      hierarchy,
       tree,
       size,
       center: size / 2,
@@ -781,6 +894,124 @@ function SunburstNodeComponent({ data }: NodeProps) {
         }
       : null;
 
+  const activeRelationshipSession = relationshipSelection?.chartRootNodeId === d.rootId
+    ? relationshipSelection
+    : null;
+  const activeRelationshipPolicy = activeRelationshipSession
+    ? resolveRelationshipPolicy({
+        relationType: activeRelationshipSession.relationType,
+        sourceNodeId: activeRelationshipSession.sourceNodeId,
+        chartRootId: d.rootId,
+        targetBranchNodeId: activeRelationshipSession.targetBranchNodeId,
+        nodes: model.chartNodes,
+        hierarchy: model.hierarchy,
+      })
+    : null;
+  const validRelationshipTargetIds = activeRelationshipPolicy?.ok
+    ? activeRelationshipPolicy.validTargetIdSet
+    : new Set<string>();
+  const draftRelationshipTargetIds = new Set(activeRelationshipSession?.draftTargetIds ?? []);
+
+  const selectedRelationshipFan = selectedId
+    ? relationshipFans.find((fan) => fan.sourceNodeId === selectedId && fan.relationType === "has-guna") ?? null
+    : null;
+  const selectedRelationships = selectedId
+    ? relationships.filter((relationship) =>
+        relationship.sourceNodeId === selectedId && relationship.relationType === "has-guna"
+      )
+    : [];
+  const selectedRelationshipPolicy = selectedId
+    ? resolveRelationshipPolicy({
+        relationType: "has-guna",
+        sourceNodeId: selectedId,
+        chartRootId: d.rootId,
+        targetBranchNodeId: selectedRelationshipFan?.targetBranchNodeId,
+        nodes: model.chartNodes,
+        hierarchy: model.hierarchy,
+      })
+    : null;
+
+  const relationshipGroups = new Map<string, typeof relationships>();
+  for (const relationship of relationships) {
+    if (!model.byId.has(relationship.sourceNodeId) || !model.byId.has(relationship.targetNodeId)) continue;
+    const key = `${relationship.sourceNodeId}\u0000${relationship.relationType}`;
+    const group = relationshipGroups.get(key) ?? [];
+    group.push(relationship);
+    relationshipGroups.set(key, group);
+  }
+  const relationshipFanSources: RelationshipFanSourceGeometry[] = [];
+  for (const group of relationshipGroups.values()) {
+    const first = group[0];
+    if (!first) continue;
+    const sourceSegment = model.segments.find((segment) => segment.id === first.sourceNodeId) ?? null;
+    const sourceIsRoot = first.sourceNodeId === d.rootId;
+    if (!sourceSegment && !sourceIsRoot) continue;
+    const ordered = orderRelationshipsByChart(group, d.rootId, model.hierarchy);
+    const fanState = relationshipFans.find((fan) =>
+      fan.sourceNodeId === first.sourceNodeId && fan.relationType === first.relationType
+    );
+    relationshipFanSources.push({
+      sourceNodeId: first.sourceNodeId,
+      relationType: first.relationType,
+      startAngle: sourceSegment?.startAngle ?? ROOT_START_ANGLE,
+      endAngle: sourceSegment?.endAngle ?? ROOT_END_ANGLE,
+      innerRadius: sourceSegment?.innerRadius ?? 0,
+      outerRadius: sourceSegment?.outerRadius ?? model.centerRadius,
+      sourceFill: sourceSegment?.fill
+        ?? (rootData.radialFillColor as string | undefined)
+        ?? model.scheme.rootFill,
+      sourceFillEnd: sourceSegment?.fillEnd,
+      visible: fanState?.visible !== false,
+      targets: ordered.map((relationship) => {
+        const label = nodeDisplayLabel(model.byId.get(relationship.targetNodeId));
+        return {
+          targetNodeId: relationship.targetNodeId,
+          label,
+          measuredTextWidth: textMetrics(
+            [label],
+            RELATIONSHIP_FAN_FONT_SIZE,
+            label,
+            { fontWeight: 600 },
+            fontMetricsReady
+          ).width,
+        };
+      }),
+    });
+  }
+  const relationshipFanLayout = layoutRelationshipFans(relationshipFanSources, {
+    centerX: model.center,
+    centerY: model.center,
+    chartOuterRadius: model.outerRadius,
+    chartBounds: { minX: 0, minY: 0, maxX: model.size, maxY: model.size },
+    fanFontSize: RELATIONSHIP_FAN_FONT_SIZE,
+    minimumFanFontSize: 11,
+    fanThickness: 44,
+  });
+
+  const beginRelationshipSelection = () => {
+    if (!selectedId || !selectedRelationshipPolicy?.ok || !selectedRelationshipPolicy.targetBranchNodeId) {
+      toast.error("This node does not have an available relationship target branch.");
+      return;
+    }
+    finishEditing();
+    selectOriginalNode(selectedId);
+    const existingTargets = new Set(selectedRelationships.map((relationship) => relationship.targetNodeId));
+    startRelationshipSelection({
+      sourceNodeId: selectedId,
+      relationType: "has-guna",
+      chartRootNodeId: d.rootId,
+      targetBranchNodeId: selectedRelationshipPolicy.targetBranchNodeId,
+      draftTargetIds: selectedRelationshipPolicy.validTargetIds.filter((nodeId) => existingTargets.has(nodeId)),
+    });
+  };
+
+  const confirmClearRelationships = () => {
+    if (!selectedId || !selectedRelationships.length) return;
+    if (!window.confirm(`Clear all ${selectedRelationships.length} saved relationships for this node?`)) return;
+    clearRelationships(selectedId, "has-guna");
+    toast.success("Relationships cleared.");
+  };
+
   const nextSibling = selectedSegment
     ? model.segments.find((candidate) =>
         candidate.parentId === selectedSegment.parentId &&
@@ -800,11 +1031,12 @@ function SunburstNodeComponent({ data }: NodeProps) {
       ].filter((pair): pair is { first: SunburstSegment; second: SunburstSegment; key: string } => !!pair)
     : [];
 
-  const beginBoundaryDrag = (
-    event: ReactPointerEvent<SVGElement>,
-    boundaryFirst: SunburstSegment,
-    boundarySecond: SunburstSegment
-  ) => {
+  const beginBoundaryDrag = (event: ReactPointerEvent<SVGElement>) => {
+    const boundaryFirstId = event.currentTarget.dataset.boundaryFirstId;
+    const boundarySecondId = event.currentTarget.dataset.boundarySecondId;
+    const boundaryFirst = model.segments.find((segment) => segment.id === boundaryFirstId);
+    const boundarySecond = model.segments.find((segment) => segment.id === boundarySecondId);
+    if (!boundaryFirst || !boundarySecond) return;
     event.preventDefault();
     event.stopPropagation();
     pushHistory();
@@ -839,9 +1071,11 @@ function SunburstNodeComponent({ data }: NodeProps) {
     if ((!drag || drag.pointerId !== event.pointerId) && (!centerDrag || centerDrag.pointerId !== event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
-    const bounds = svg.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * model.size;
-    const y = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * model.size;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    const x = point.x;
+    const y = point.y;
     if (centerDrag && centerDrag.pointerId === event.pointerId) {
       const radius = Math.hypot(x - model.center, y - model.center);
       const ratio = clamp((radius / Math.max(1, model.outerRadius)) * 100, MIN_CENTER_RATIO, MAX_CENTER_RATIO);
@@ -890,17 +1124,36 @@ function SunburstNodeComponent({ data }: NodeProps) {
   const controlAngle = selectedSegment
     ? (selectedSegment.startAngle + selectedSegment.endAngle) / 2
     : -90;
+  const selectedFanLayout = selectedId
+    ? relationshipFanLayout.fans.find((fan) => fan.sourceNodeId === selectedId && fan.visible) ?? null
+    : null;
+  const controlRadius = Math.max(
+    model.outerRadius + 76,
+    selectedFanLayout ? selectedFanLayout.outerRadius + 44 : 0
+  );
   const controlGeometry = selectedId
-    ? pointOnCircle(model.center, model.center, model.outerRadius + 76, controlAngle)
+    ? pointOnCircle(model.center, model.center, controlRadius, controlAngle)
     : null;
   const controlsVertical = Math.abs(Math.cos((controlAngle * Math.PI) / 180)) > 0.62;
 
   return (
     <div className="relative h-full w-full">
+      <SunburstBoundsSynchronizer
+        nodeId={id}
+        chartSize={model.size}
+        bounds={relationshipFanLayout.bounds}
+      />
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${model.size} ${model.size}`}
-        className="h-full w-full overflow-visible"
+        viewBox={`${relationshipFanLayout.bounds.minX} ${relationshipFanLayout.bounds.minY} ${relationshipFanLayout.bounds.width} ${relationshipFanLayout.bounds.height}`}
+        width={relationshipFanLayout.bounds.width}
+        height={relationshipFanLayout.bounds.height}
+        className="absolute overflow-visible"
+        style={{
+          left: 0,
+          top: 0,
+        }}
+        data-sunburst-export="true"
         role="img"
         aria-label={`Sunburst chart for ${rootLabel}`}
         onPointerMove={moveDirectManipulation}
@@ -913,9 +1166,31 @@ function SunburstNodeComponent({ data }: NodeProps) {
           </clipPath>
         </defs>
 
+        <rect
+          x={relationshipFanLayout.bounds.minX}
+          y={relationshipFanLayout.bounds.minY}
+          width={relationshipFanLayout.bounds.width}
+          height={relationshipFanLayout.bounds.height}
+          fill="none"
+          stroke="none"
+          pointerEvents="none"
+          data-export-bounds
+        />
+        <RelationshipFanRenderer
+          fans={relationshipFanLayout.fans}
+          layer="panels"
+          opacity={activeRelationshipSession ? 0.18 : 1}
+        />
+
         {model.segments.map((segment) => {
           const selected = selectedSectorIds.has(segment.id);
           const hovered = hoveredId === segment.id;
+          const relationshipSource = activeRelationshipSession?.sourceNodeId === segment.id;
+          const validRelationshipTarget = validRelationshipTargetIds.has(segment.id);
+          const selectedRelationshipTarget = draftRelationshipTargetIds.has(segment.id);
+          const dimForRelationshipMode = !!activeRelationshipSession
+            && !relationshipSource
+            && !validRelationshipTarget;
           const segmentPath = arcSegmentPath(
             model.center,
             model.center,
@@ -939,6 +1214,12 @@ function SunburstNodeComponent({ data }: NodeProps) {
             (segment.startAngle + segment.endAngle) / 2
           );
           const labelGeometry = sectorLabelGeometry(segment, model.center, fontMetricsReady);
+          const relationshipMarkerPoint = pointOnCircle(
+            model.center,
+            model.center,
+            segment.outerRadius - Math.min(15, (segment.outerRadius - segment.innerRadius) * 0.32),
+            (segment.startAngle + segment.endAngle) / 2
+          );
 
           return (
             <g key={segment.id}>
@@ -961,16 +1242,25 @@ function SunburstNodeComponent({ data }: NodeProps) {
               <path
                 d={segmentPath}
                 fill={`url(#${segmentGradientId})`}
-                stroke={selected ? "#2563eb" : hovered ? "#0f172a" : segment.borderColor}
-                strokeWidth={selected ? Math.max(3, segment.borderWidth) : hovered ? Math.max(2, segment.borderWidth) : segment.borderWidth}
-                strokeDasharray={selected ? undefined : dashArray(segment.borderStyle)}
-                className="cursor-text transition-opacity"
-                opacity={hoveredId && !hovered && !selected ? 0.78 : 1}
+                stroke={segment.borderColor}
+                strokeWidth={segment.borderWidth}
+                strokeDasharray={dashArray(segment.borderStyle)}
+                className={activeRelationshipSession
+                  ? validRelationshipTarget ? "cursor-pointer" : "cursor-not-allowed"
+                  : "cursor-text"}
                 onPointerDown={(event) => event.stopPropagation()}
-                onMouseEnter={() => setHoveredId(segment.id)}
-                onMouseLeave={() => setHoveredId(null)}
+                onMouseEnter={() => {
+                  if (!activeRelationshipSession) setHoveredId(segment.id);
+                }}
+                onMouseLeave={() => {
+                  if (!activeRelationshipSession) setHoveredId(null);
+                }}
                 onClick={(event) => {
                   event.stopPropagation();
+                  if (activeRelationshipSession) {
+                    if (validRelationshipTarget) toggleRelationshipTarget(segment.id);
+                    return;
+                  }
                   const additive = event.shiftKey || event.ctrlKey || event.metaKey;
                   if (additive) {
                     finishEditing();
@@ -995,10 +1285,16 @@ function SunburstNodeComponent({ data }: NodeProps) {
                   strokeWidth="2"
                   strokeDasharray="8 5"
                   pointerEvents="none"
+                  data-export-ignore
                 />
               )}
-              {(!selected || editingId !== segment.id) && labelGeometry.lines.length > 0 && (
-                <g clipPath={`url(#${segmentClipId})`} pointerEvents="none">
+              {labelGeometry.lines.length > 0 && (
+                <g
+                  clipPath={`url(#${segmentClipId})`}
+                  pointerEvents="none"
+                  style={{ visibility: selected && editingId === segment.id ? "hidden" : "visible" }}
+                  data-export-restore={selected && editingId === segment.id ? "true" : undefined}
+                >
                   <foreignObject
                     x={labelGeometry.x - labelGeometry.width / 2}
                     y={labelGeometry.y - labelGeometry.height / 2}
@@ -1034,6 +1330,57 @@ function SunburstNodeComponent({ data }: NodeProps) {
                   </foreignObject>
                 </g>
               )}
+              {!activeRelationshipSession && (selected || hovered) && (
+                <path
+                  d={segmentPath}
+                  fill="none"
+                  stroke={selected ? "#2563eb" : "#0f172a"}
+                  strokeWidth={selected ? Math.max(3, segment.borderWidth) : Math.max(2, segment.borderWidth)}
+                  pointerEvents="none"
+                  data-export-ignore
+                />
+              )}
+              {dimForRelationshipMode && (
+                <path
+                  d={segmentPath}
+                  fill="#f8fafc"
+                  fillOpacity="0.72"
+                  stroke="none"
+                  pointerEvents="none"
+                  data-export-ignore
+                />
+              )}
+              {activeRelationshipSession && (relationshipSource || validRelationshipTarget) && (
+                <path
+                  d={segmentPath}
+                  fill={selectedRelationshipTarget ? "rgba(16,185,129,0.18)" : "none"}
+                  stroke={relationshipSource ? "#2563eb" : selectedRelationshipTarget ? "#059669" : "#0ea5e9"}
+                  strokeWidth={relationshipSource ? 5 : selectedRelationshipTarget ? 4 : 2.5}
+                  strokeDasharray={relationshipSource || selectedRelationshipTarget ? undefined : "7 5"}
+                  pointerEvents="none"
+                  data-export-ignore
+                />
+              )}
+              {activeRelationshipSession && selectedRelationshipTarget && (
+                <g pointerEvents="none" data-export-ignore>
+                  <circle
+                    cx={relationshipMarkerPoint.x}
+                    cy={relationshipMarkerPoint.y}
+                    r="11"
+                    fill="#059669"
+                    stroke="#ffffff"
+                    strokeWidth="2.5"
+                  />
+                  <path
+                    d={`M ${relationshipMarkerPoint.x - 5} ${relationshipMarkerPoint.y} l 3.5 3.5 7 -8`}
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              )}
             </g>
           );
         })}
@@ -1043,13 +1390,19 @@ function SunburstNodeComponent({ data }: NodeProps) {
           cy={model.center}
           r={model.centerRadius}
           fill={(rootData.radialFillColor as string | undefined) ?? model.scheme.rootFill}
-          stroke={selectedSectorIds.has(d.rootId) ? "#2563eb" : (rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
-          strokeWidth={selectedSectorIds.has(d.rootId) ? Math.max(4, dimension(rootData.radialBorderWidth, 4)) : dimension(rootData.radialBorderWidth, 4)}
-          strokeDasharray={selectedSectorIds.has(d.rootId) ? undefined : dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
-          className="cursor-text"
+          stroke={(rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
+          strokeWidth={dimension(rootData.radialBorderWidth, 4)}
+          strokeDasharray={dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
+          className={activeRelationshipSession
+            ? validRelationshipTargetIds.has(d.rootId) ? "cursor-pointer" : "cursor-not-allowed"
+            : "cursor-text"}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
+            if (activeRelationshipSession) {
+              if (validRelationshipTargetIds.has(d.rootId)) toggleRelationshipTarget(d.rootId);
+              return;
+            }
             const additive = event.shiftKey || event.ctrlKey || event.metaKey;
             if (additive) {
               finishEditing();
@@ -1073,9 +1426,10 @@ function SunburstNodeComponent({ data }: NodeProps) {
             strokeWidth="2"
             strokeDasharray="8 5"
             pointerEvents="none"
+            data-export-ignore
           />
         )}
-        {(selectedId !== d.rootId || editingId !== d.rootId) && rootFit.lines.length > 0 && (
+        {rootFit.lines.length > 0 && (
           <foreignObject
             x={rootFit.x - rootFit.width / 2}
             y={rootFit.y - rootFit.height / 2}
@@ -1084,6 +1438,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
             clipPath={`url(#${rootClipId})`}
             pointerEvents="none"
             overflow="visible"
+            style={{ visibility: selectedId === d.rootId && editingId === d.rootId ? "hidden" : "visible" }}
+            data-export-restore={selectedId === d.rootId && editingId === d.rootId ? "true" : undefined}
           >
             <div
               lang={isDevanagariText(rootLabel) ? "sa" : undefined}
@@ -1111,7 +1467,58 @@ function SunburstNodeComponent({ data }: NodeProps) {
           </foreignObject>
         )}
 
-        {selectedId && editingId === selectedId && selectedNode && selectedGeometry && selectedTextStyle && selectedClipId && (
+        {!activeRelationshipSession && selectedSectorIds.has(d.rootId) && (
+          <circle
+            cx={model.center}
+            cy={model.center}
+            r={model.centerRadius}
+            fill="none"
+            stroke="#2563eb"
+            strokeWidth={Math.max(4, dimension(rootData.radialBorderWidth, 4))}
+            pointerEvents="none"
+            data-export-ignore
+          />
+        )}
+        {activeRelationshipSession
+          && activeRelationshipSession.sourceNodeId !== d.rootId
+          && !validRelationshipTargetIds.has(d.rootId) && (
+          <circle
+            cx={model.center}
+            cy={model.center}
+            r={model.centerRadius}
+            fill="#f8fafc"
+            fillOpacity="0.72"
+            stroke="none"
+            pointerEvents="none"
+            data-export-ignore
+          />
+        )}
+        {activeRelationshipSession
+          && (activeRelationshipSession.sourceNodeId === d.rootId || validRelationshipTargetIds.has(d.rootId)) && (
+          <circle
+            cx={model.center}
+            cy={model.center}
+            r={model.centerRadius}
+            fill={draftRelationshipTargetIds.has(d.rootId) ? "rgba(16,185,129,0.18)" : "none"}
+            stroke={activeRelationshipSession.sourceNodeId === d.rootId
+              ? "#2563eb"
+              : draftRelationshipTargetIds.has(d.rootId) ? "#059669" : "#0ea5e9"}
+            strokeWidth={activeRelationshipSession.sourceNodeId === d.rootId ? 5 : 3}
+            strokeDasharray={activeRelationshipSession.sourceNodeId === d.rootId || draftRelationshipTargetIds.has(d.rootId)
+              ? undefined
+              : "7 5"}
+            pointerEvents="none"
+            data-export-ignore
+          />
+        )}
+
+        <RelationshipFanRenderer
+          fans={relationshipFanLayout.fans}
+          layer="badges"
+          opacity={activeRelationshipSession ? 0.18 : 1}
+        />
+
+        {!activeRelationshipSession && selectedId && editingId === selectedId && selectedNode && selectedGeometry && selectedTextStyle && selectedClipId && (
           <foreignObject
             x={selectedGeometry.x - selectedGeometry.width / 2}
             y={selectedGeometry.y - selectedGeometry.height / 2}
@@ -1121,6 +1528,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
             className="sunburst-inline-editor nodrag nopan overflow-visible"
             overflow="visible"
             style={{ pointerEvents: "all", overflow: "visible" }}
+            data-export-ignore
           >
             <div
               lang={isDevanagariText(selectedLabel) ? "sa" : undefined}
@@ -1158,14 +1566,16 @@ function SunburstNodeComponent({ data }: NodeProps) {
           </foreignObject>
         )}
 
-        {boundaryPairs.map(({ first, second, key }) => {
+        {!activeRelationshipSession && boundaryPairs.map(({ first, second, key }) => {
           const boundaryAngle = first.endAngle;
           const innerRadius = Math.min(first.innerRadius, second.innerRadius);
           const outerRadius = Math.max(first.outerRadius, second.outerRadius);
           const handleRadius = (innerRadius + outerRadius) / 2;
           return (
-            <g key={key}>
+            <g key={key} data-export-ignore>
               <line
+                data-boundary-first-id={first.id}
+                data-boundary-second-id={second.id}
                 x1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).x}
                 y1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).y}
                 x2={pointOnCircle(model.center, model.center, outerRadius, boundaryAngle).x}
@@ -1173,7 +1583,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 stroke="transparent"
                 strokeWidth="20"
                 className="cursor-grab"
-                onPointerDown={(event) => beginBoundaryDrag(event, first, second)}
+                onPointerDown={beginBoundaryDrag}
               />
               <line
                 x1={pointOnCircle(model.center, model.center, innerRadius, boundaryAngle).x}
@@ -1185,6 +1595,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 pointerEvents="none"
               />
               <circle
+                data-boundary-first-id={first.id}
+                data-boundary-second-id={second.id}
                 cx={pointOnCircle(model.center, model.center, handleRadius, boundaryAngle).x}
                 cy={pointOnCircle(model.center, model.center, handleRadius, boundaryAngle).y}
                 r="7"
@@ -1192,7 +1604,7 @@ function SunburstNodeComponent({ data }: NodeProps) {
                 stroke="#2563eb"
                 strokeWidth="3"
                 className="cursor-grab"
-                onPointerDown={(event) => beginBoundaryDrag(event, first, second)}
+                onPointerDown={beginBoundaryDrag}
               >
                 <title>Drag to resize adjacent sectors</title>
               </circle>
@@ -1200,8 +1612,8 @@ function SunburstNodeComponent({ data }: NodeProps) {
           );
         })}
 
-        {selectedId === d.rootId && model.tree.children.length > 0 && (
-          <g>
+        {!activeRelationshipSession && selectedId === d.rootId && model.tree.children.length > 0 && (
+          <g data-export-ignore>
             <circle
               cx={model.center}
               cy={model.center}
@@ -1227,12 +1639,62 @@ function SunburstNodeComponent({ data }: NodeProps) {
         )}
       </svg>
 
-      {selectedId && controlGeometry && (
+      {!activeRelationshipSession && selectedId && controlGeometry && (
         <div
           className={`nodrag nopan absolute z-30 flex gap-1 ${controlsVertical ? "flex-col" : "flex-row"}`}
-          style={{ left: controlGeometry.x, top: controlGeometry.y, transform: "translate(-50%, -50%)" }}
+          style={{
+            left: controlGeometry.x - relationshipFanLayout.bounds.minX,
+            top: controlGeometry.y - relationshipFanLayout.bounds.minY,
+            transform: "translate(-50%, -50%)",
+          }}
           onPointerDown={(event) => event.stopPropagation()}
+          data-export-ignore
         >
+          {(selectedRelationshipPolicy?.ok || selectedRelationships.length > 0) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title="Relationships"
+                  aria-label="Relationships"
+                  className="flex h-7 items-center justify-center gap-1 rounded-full border-2 border-white bg-emerald-600 px-2.5 text-[11px] font-semibold text-white shadow-lg transition-transform hover:scale-105"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Relationships
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-52">
+                <DropdownMenuItem onSelect={beginRelationshipSelection}>
+                  <Link2 className="h-4 w-4" />
+                  {selectedRelationships.length ? "Edit relationships" : "Add relationships"}
+                </DropdownMenuItem>
+                {selectedRelationships.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setRelationshipFanVisible(selectedId, "has-guna", selectedRelationshipFan?.visible === false);
+                        toast.success(selectedRelationshipFan?.visible === false ? "Relationship fan shown." : "Relationship fan hidden.");
+                      }}
+                    >
+                      {selectedRelationshipFan?.visible === false
+                        ? <Eye className="h-4 w-4" />
+                        : <EyeOff className="h-4 w-4" />}
+                      {selectedRelationshipFan?.visible === false ? "Show fan" : "Hide fan"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={confirmClearRelationships}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Clear relationships
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <button
             type="button"
             title="Add child sector"

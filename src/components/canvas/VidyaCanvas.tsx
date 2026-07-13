@@ -31,12 +31,12 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { generateId } from "@/lib/utils";
 import { updateBoard } from "@/lib/storage/board-store";
-import { AUTOSAVE_DELAY_MS } from "@/lib/config";
+import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent } from "@/lib/types";
-import { debounce } from "@/lib/utils";
 import { resolveInsertedNodeCollisions, routeForMode, type LayoutMode } from "@/lib/layout";
 import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -200,6 +200,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const setSelectedEdgeIds = useCanvasStore((s) => s.setSelectedEdgeIds);
   const activeTool  = useUIStore((s) => s.activeTool);
   const touchSelectionMode = useUIStore((s) => s.touchSelectionMode);
+  const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
 
@@ -226,34 +227,93 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     axis: "x" | "y" | null;
   } | null>(null);
 
-  // Debounced autosave — reads state directly, no subscriptions
-  const debouncedSave = useMemo(
-    () => debounce(async () => {
-      const s = useCanvasStore.getState();
-      if (!s.board || s.saveStatus === "saved") return;
-      s.setSaveStatus("saving");
-      try {
-        await updateBoard(boardId, {
-          title: s.board.title,
-          content: {
-            version: s.board.content.version,
-            nodes: s.nodes,
-            edges: s.edges,
-            viewport: s.viewport,
-            settings: s.settings,
-          } as BoardContent,
-        });
-        useCanvasStore.getState().setSaveStatus("saved");
-      } catch {
-        useCanvasStore.getState().setSaveStatus("error");
-      }
-    }, AUTOSAVE_DELAY_MS),
-    [boardId]
-  );
+  const displayNodes = useMemo(() => {
+    if (!relationshipSelection) return nodes;
+    return nodes.map((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const isActiveChart = node.type === "sunburst" && data.rootId === relationshipSelection.chartRootNodeId;
+      if (isActiveChart || node.hidden) return node;
+      return {
+        ...node,
+        style: {
+          ...(node.style ?? {}),
+          opacity: 0.2,
+          pointerEvents: "none" as const,
+        },
+      };
+    });
+  }, [nodes, relationshipSelection]);
+
+  const displayEdges = useMemo(() => {
+    if (!relationshipSelection) return edges;
+    return edges.map((edge) => ({
+      ...edge,
+      animated: false,
+      style: { ...(edge.style ?? {}), opacity: 0.12 },
+    }));
+  }, [edges, relationshipSelection]);
+
+  // Serialize saves so an edit made during an in-flight request cannot be
+  // overwritten by an older response. Every queued job verifies its board id
+  // before reading the global store, which also prevents cross-board writes.
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const saveTimerRef = useRef<number | null>(null);
+  const enqueueSave = useCallback(() => {
+    const requestedBoardId = boardId;
+    saveQueueRef.current = saveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const state = useCanvasStore.getState();
+        if (state.board?.id !== requestedBoardId || state.saveStatus === "saved") return;
+
+        const title = state.board.title;
+        const content = {
+          version: BOARD_CONTENT_VERSION,
+          nodes: state.nodes,
+          edges: state.edges,
+          relationships: state.relationships,
+          relationshipFans: state.relationshipFans,
+          viewport: state.viewport,
+          settings: state.settings,
+        } as BoardContent;
+        state.setSaveStatus("saving");
+
+        try {
+          await updateBoard(requestedBoardId, { title, content });
+          const current = useCanvasStore.getState();
+          if (current.board?.id === requestedBoardId && current.saveStatus === "saving") {
+            current.setSaveStatus("saved");
+          }
+        } catch {
+          const current = useCanvasStore.getState();
+          if (current.board?.id === requestedBoardId && current.saveStatus !== "unsaved") {
+            current.setSaveStatus("error");
+          }
+        }
+      });
+  }, [boardId]);
+
+  const flushSave = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    enqueueSave();
+  }, [enqueueSave]);
 
   useEffect(() => {
-    if (saveStatus === "unsaved") debouncedSave();
-  }, [saveStatus, debouncedSave]);
+    if (saveStatus !== "unsaved") return;
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      enqueueSave();
+    }, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (saveTimerRef.current !== null) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [saveStatus, enqueueSave]);
 
   // Fit the view after an auto-layout is applied (dispatched from LayoutPanel).
   useEffect(() => {
@@ -282,6 +342,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   // - Drag-end history is pushed by onNodeDragStop (fires once on mouse-up).
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
+      if (useUIStore.getState().relationshipSelection) {
+        const dimensionChanges = changes.filter((change) => change.type === "dimensions");
+        if (dimensionChanges.length) {
+          useCanvasStore.setState((state) => ({
+            nodes: applyNodeChanges(dimensionChanges, state.nodes),
+          }));
+        }
+        return;
+      }
       const isStructural = changes.some((c) => c.type === "remove" || c.type === "add");
 
       if (isStructural) {
@@ -306,6 +375,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   );
 
   const onNodeDragStart = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
+    if (useUIStore.getState().relationshipSelection) return;
     const state = useCanvasStore.getState();
     state.pushHistory();
     const movingIds = state.selectedNodeIds.includes(draggedNode.id)
@@ -362,6 +432,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
   // Push history when a drag ends (safe: fires once, not on every frame)
   const onNodeDragStop = useCallback(() => {
+    if (useUIStore.getState().relationshipSelection) return;
     setGuides({ h: [], v: [] });
     const movedIds = new Set(dragStartRef.current?.positions.keys() ?? []);
     const state = useCanvasStore.getState();
@@ -383,6 +454,11 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   }, []);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (useUIStore.getState().relationshipSelection) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const groupId = (node.data as Record<string, unknown> | undefined)?.groupId;
     if (typeof groupId !== "string" || event.metaKey || event.ctrlKey || event.shiftKey) return;
     useCanvasStore.setState((state) => {
@@ -402,6 +478,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
+      if (useUIStore.getState().relationshipSelection) return;
       const isStructural = changes.some((c) => c.type === "remove" || c.type === "add");
       if (isStructural) {
         useCanvasStore.getState().pushHistory();
@@ -422,6 +499,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   );
 
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    if (useUIStore.getState().relationshipSelection) return;
     event.stopPropagation();
     useCanvasStore.setState((state) => ({
       nodes: state.nodes.map((node) => ({ ...node, selected: false })),
@@ -436,6 +514,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       source: string; target: string;
       sourceHandle?: string | null; targetHandle?: string | null;
     }) => {
+      if (useUIStore.getState().relationshipSelection) return;
       const cs = useCanvasStore.getState();
       cs.pushHistory();
       const source = cs.nodes.find((n) => n.id === connection.source);
@@ -474,6 +553,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   );
 
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    if (useUIStore.getState().relationshipSelection) return;
     const cs = useCanvasStore.getState();
     const source = cs.nodes.find((n) => n.id === connection.source);
     const target = cs.nodes.find((n) => n.id === connection.target);
@@ -535,6 +615,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
+      if (useUIStore.getState().relationshipSelection) return;
       const tool = useUIStore.getState().activeTool;
       if (tool === "select" || tool === "pan") {
         useCanvasStore.setState((state) => ({
@@ -662,9 +743,29 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const cs  = useCanvasStore.getState();
       const ui  = useUIStore.getState();
 
+      if (ui.relationshipSelection) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          useUIStore.setState({ relationshipSelection: null });
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          window.dispatchEvent(new Event("vidya:commit-relationships"));
+        } else if (e.key === "+" || e.key === "=") {
+          e.preventDefault();
+          zoomIn();
+        } else if (e.key === "-") {
+          e.preventDefault();
+          zoomOut();
+        } else if (!mod && (e.key === "f" || e.key === "F")) {
+          e.preventDefault();
+          fitView({ padding: 0.2 });
+        }
+        return;
+      }
+
       if (mod && e.shiftKey && e.key === "z") { e.preventDefault(); cs.redo(); }
       else if (mod && e.key === "z")           { e.preventDefault(); cs.undo(); }
-      else if (mod && e.key === "s")           { e.preventDefault(); debouncedSave(); cs.setSaveStatus("unsaved"); }
+      else if (mod && e.key === "s")           { e.preventDefault(); cs.setSaveStatus("unsaved"); flushSave(); }
       else if (mod && e.key === "c")           { cs.copySelected(); }
       else if (mod && e.key === "v")           { e.preventDefault(); void pasteClipboard(); }
       else if (mod && e.key === "d")           { e.preventDefault(); cs.duplicateSelected(); }
@@ -709,7 +810,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [fitView, zoomIn, zoomOut, debouncedSave, pasteClipboard]);  // No `store` dep — stable!
+  }, [fitView, zoomIn, zoomOut, flushSave, pasteClipboard]);  // No `store` dep — stable!
 
   const bgVariant =
     settings.background === "grid"  ? BackgroundVariant.Lines :
@@ -825,8 +926,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
   return (
     <ReactFlow
-      nodes={nodes}
-      edges={edges}
+      nodes={displayNodes}
+      edges={displayEdges}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
@@ -840,7 +941,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       connectionMode={ConnectionMode.Loose}
-      edgesReconnectable
+      nodesDraggable={!relationshipSelection}
+      nodesConnectable={!relationshipSelection}
+      elementsSelectable={!relationshipSelection}
+      edgesReconnectable={!relationshipSelection}
       reconnectRadius={isTouchDevice ? 28 : 14}
       minZoom={MIN_CANVAS_ZOOM}
       maxZoom={MAX_CANVAS_ZOOM}
@@ -848,8 +952,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
       snapToGrid={settings.snapToGrid}
       snapGrid={[settings.gridSize ?? 20, settings.gridSize ?? 20]}
-      panOnDrag={isTouchDevice ? !touchSelectionMode : activeTool === "pan" || spacePressed ? [0, 1, 2] : [1, 2]}
-      selectionOnDrag={touchSelectionMode || (!isTouchDevice && activeTool === "select")}
+      panOnDrag={relationshipSelection
+        ? [0, 1, 2]
+        : isTouchDevice
+          ? !touchSelectionMode
+          : activeTool === "pan" || spacePressed ? [0, 1, 2] : [1, 2]}
+      selectionOnDrag={!relationshipSelection && (touchSelectionMode || (!isTouchDevice && activeTool === "select"))}
       selectionMode={SelectionMode.Partial}
       multiSelectionKeyCode={["Meta", "Control", "Shift"]}
       panOnScroll
@@ -881,7 +989,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={settings.gridSize ?? 24} />
       )}
-      <SelectionToolbar />
+      {!relationshipSelection && <SelectionToolbar />}
+      <RelationshipSelectionToolbar />
       <AlignmentGuides guides={guides} />
       <Controls showInteractive={false} position="bottom-left" />
       <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}

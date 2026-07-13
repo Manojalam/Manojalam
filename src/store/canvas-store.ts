@@ -3,9 +3,15 @@
 import { create } from "zustand";
 import { MarkerType } from "@xyflow/react";
 import type { Node, Edge, Viewport } from "@xyflow/react";
-import type { BoardSettings, SaveStatus, VidyaBoard } from "@/lib/types";
+import type {
+  BoardSettings,
+  NodeRelationship,
+  RelationshipFanState,
+  SaveStatus,
+  VidyaBoard,
+} from "@/lib/types";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
-import { HISTORY_LIMIT } from "@/lib/config";
+import { BOARD_CONTENT_VERSION, HISTORY_LIMIT } from "@/lib/config";
 import { generateId } from "@/lib/utils";
 import {
   computeLayout,
@@ -23,6 +29,8 @@ import type { LayoutMode } from "@/lib/types";
 interface HistoryEntry {
   nodes: Node[];
   edges: Edge[];
+  relationships: NodeRelationship[];
+  relationshipFans: RelationshipFanState[];
 }
 
 type ContentSize = { width: number; height: number; lineCount?: number; lineHeight?: number };
@@ -31,6 +39,8 @@ interface CanvasState {
   board: VidyaBoard | null;
   nodes: Node[];
   edges: Edge[];
+  relationships: NodeRelationship[];
+  relationshipFans: RelationshipFanState[];
   viewport: Viewport;
   settings: BoardSettings;
   selectedNodeIds: string[];
@@ -51,6 +61,14 @@ interface CanvasState {
   setSelectedNodeIds: (ids: string[]) => void;
   setSelectedEdgeIds: (ids: string[]) => void;
   setSearchQuery: (query: string) => void;
+  replaceRelationships: (
+    sourceNodeId: string,
+    relationType: string,
+    targetNodeIds: string[],
+    targetBranchNodeId?: string
+  ) => void;
+  clearRelationships: (sourceNodeId: string, relationType: string) => void;
+  setRelationshipFanVisible: (sourceNodeId: string, relationType: string, visible: boolean) => void;
   pushHistory: () => void;
   undo: () => void;
   redo: () => void;
@@ -73,12 +91,106 @@ interface CanvasState {
   applyLayout: (mode: LayoutMode) => void;
 }
 
-function cloneState(nodes: Node[], edges: Edge[]): HistoryEntry {
-  return { nodes: structuredClone(nodes), edges: structuredClone(edges) };
+function cloneState(
+  nodes: Node[],
+  edges: Edge[],
+  relationships: NodeRelationship[],
+  relationshipFans: RelationshipFanState[]
+): HistoryEntry {
+  return {
+    nodes: structuredClone(nodes),
+    edges: structuredClone(edges),
+    relationships: structuredClone(relationships),
+    relationshipFans: structuredClone(relationshipFans),
+  };
 }
 
 function sameHistoryEntry(a: HistoryEntry, b: HistoryEntry): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function relationshipGroupKey(sourceNodeId: string, relationType: string): string {
+  return `${sourceNodeId}\u0000${relationType}`;
+}
+
+function normalizeRelationshipState(
+  nodes: Node[],
+  rawRelationships: unknown,
+  rawRelationshipFans: unknown
+): { relationships: NodeRelationship[]; relationshipFans: RelationshipFanState[] } {
+  const validNodeIds = new Set(
+    nodes
+      .filter((node) => node.type !== "sunburst" && node.type !== "frame")
+      .map((node) => node.id)
+  );
+  const relationships: NodeRelationship[] = [];
+  const relationshipKeys = new Set<string>();
+  const relationshipIds = new Set<string>();
+
+  if (Array.isArray(rawRelationships)) {
+    for (const value of rawRelationships) {
+      if (!value || typeof value !== "object") continue;
+      const candidate = value as Partial<NodeRelationship>;
+      const sourceNodeId = typeof candidate.sourceNodeId === "string" ? candidate.sourceNodeId : "";
+      const targetNodeId = typeof candidate.targetNodeId === "string" ? candidate.targetNodeId : "";
+      const relationType = typeof candidate.relationType === "string" ? candidate.relationType.trim() : "";
+      if (
+        !sourceNodeId ||
+        !targetNodeId ||
+        !relationType ||
+        sourceNodeId === targetNodeId ||
+        !validNodeIds.has(sourceNodeId) ||
+        !validNodeIds.has(targetNodeId)
+      ) continue;
+
+      const relationshipKey = `${relationshipGroupKey(sourceNodeId, relationType)}\u0000${targetNodeId}`;
+      if (relationshipKeys.has(relationshipKey)) continue;
+      relationshipKeys.add(relationshipKey);
+
+      let id = typeof candidate.id === "string" && candidate.id.trim() ? candidate.id : generateId();
+      if (relationshipIds.has(id)) id = generateId();
+      relationshipIds.add(id);
+      relationships.push({ id, sourceNodeId, targetNodeId, relationType });
+    }
+  }
+
+  const populatedGroups = new Set(
+    relationships.map((relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType))
+  );
+  const relationshipFansByGroup = new Map<string, RelationshipFanState>();
+  if (Array.isArray(rawRelationshipFans)) {
+    for (const value of rawRelationshipFans) {
+      if (!value || typeof value !== "object") continue;
+      const candidate = value as Partial<RelationshipFanState>;
+      const sourceNodeId = typeof candidate.sourceNodeId === "string" ? candidate.sourceNodeId : "";
+      const relationType = typeof candidate.relationType === "string" ? candidate.relationType.trim() : "";
+      const groupKey = relationshipGroupKey(sourceNodeId, relationType);
+      if (!validNodeIds.has(sourceNodeId) || !relationType || !populatedGroups.has(groupKey)) continue;
+      if (relationshipFansByGroup.has(groupKey)) continue;
+      const targetBranchNodeId = typeof candidate.targetBranchNodeId === "string" && validNodeIds.has(candidate.targetBranchNodeId)
+        ? candidate.targetBranchNodeId
+        : undefined;
+      relationshipFansByGroup.set(groupKey, {
+        sourceNodeId,
+        relationType,
+        visible: candidate.visible !== false,
+        ...(targetBranchNodeId ? { targetBranchNodeId } : {}),
+      });
+    }
+  }
+
+  for (const relationship of relationships) {
+    const groupKey = relationshipGroupKey(relationship.sourceNodeId, relationship.relationType);
+    if (!relationshipFansByGroup.has(groupKey)) {
+      relationshipFansByGroup.set(groupKey, {
+        sourceNodeId: relationship.sourceNodeId,
+        relationType: relationship.relationType,
+        visible: true,
+      });
+    }
+  }
+
+  return { relationships, relationshipFans: Array.from(relationshipFansByGroup.values()) };
 }
 
 function applyPlacements(nodes: Node[], placements: Record<string, LayoutPlacement>): Node[] {
@@ -623,13 +735,27 @@ function normalizeSunburstChartSizes(
     if (node.type !== "sunburst" || typeof data.rootId !== "string" || !byId.has(data.rootId)) return node;
     const nextSize = sunburstChartSize(data.rootId, hierarchy);
     const current = styleSizeOf(node);
+    const visualBounds = data.relationshipVisualBounds && typeof data.relationshipVisualBounds === "object"
+      ? data.relationshipVisualBounds as Partial<{ minX: number; minY: number }>
+      : null;
+    const visualMinX = typeof visualBounds?.minX === "number" && Number.isFinite(visualBounds.minX)
+      ? visualBounds.minX
+      : 0;
+    const visualMinY = typeof visualBounds?.minY === "number" && Number.isFinite(visualBounds.minY)
+      ? visualBounds.minY
+      : 0;
+    const previousChartSize = typeof data.chartSize === "number" && Number.isFinite(data.chartSize)
+      ? data.chartSize
+      : visualBounds ? nextSize : current.w;
+    const normalizedData: Record<string, unknown> = { ...data, chartSize: nextSize };
+    delete normalizedData.relationshipVisualBounds;
     return {
       ...node,
       position: {
-        x: node.position.x - (nextSize - current.w) / 2,
-        y: node.position.y - (nextSize - current.h) / 2,
+        x: node.position.x - visualMinX - (nextSize - previousChartSize) / 2,
+        y: node.position.y - visualMinY - (nextSize - previousChartSize) / 2,
       },
-      data: { ...data, chartSize: nextSize },
+      data: normalizedData,
       style: { ...(node.style ?? {}), width: nextSize, height: nextSize },
     };
   });
@@ -792,6 +918,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   board: null,
   nodes: [],
   edges: [],
+  relationships: [],
+  relationshipFans: [],
   viewport: { x: 0, y: 0, zoom: 1 },
   settings: { ...DEFAULT_BOARD_SETTINGS },
   selectedNodeIds: [],
@@ -815,23 +943,51 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
     const edges = assignDefaultHandles(parentedNodes, board.content.edges);
     const nodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, edges));
+    const { relationships, relationshipFans } = normalizeRelationshipState(
+      nodes,
+      board.content.relationships,
+      board.content.relationshipFans
+    );
+    const relationshipMigrationRequired =
+      JSON.stringify(board.content.relationships ?? []) !== JSON.stringify(relationships) ||
+      JSON.stringify(board.content.relationshipFans ?? []) !== JSON.stringify(relationshipFans);
+    const normalizedBoard: VidyaBoard = {
+      ...board,
+      content: {
+        ...board.content,
+        version: BOARD_CONTENT_VERSION,
+        relationships,
+        relationshipFans,
+      },
+    };
     set({
-      board,
+      board: normalizedBoard,
       nodes,
       edges,
+      relationships,
+      relationshipFans,
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings: board.content.settings ?? DEFAULT_BOARD_SETTINGS,
-      saveStatus: "saved",
+      saveStatus: relationshipMigrationRequired ? "unsaved" : "saved",
       history: [],
       historyIndex: -1,
     });
   },
 
   setNodes: (nodesOrFn) =>
-    set((state) => ({
-      nodes: typeof nodesOrFn === "function" ? nodesOrFn(state.nodes) : nodesOrFn,
-      saveStatus: "unsaved",
-    })),
+    set((state) => {
+      const nodes = typeof nodesOrFn === "function" ? nodesOrFn(state.nodes) : nodesOrFn;
+      const relationshipState = normalizeRelationshipState(
+        nodes,
+        state.relationships,
+        state.relationshipFans
+      );
+      return {
+        nodes,
+        ...relationshipState,
+        saveStatus: "unsaved",
+      };
+    }),
 
   setEdges: (edgesOrFn) =>
     set((state) => ({
@@ -854,9 +1010,129 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setSearchQuery: (query) => set({ searchQuery: query }),
 
+  replaceRelationships: (sourceNodeId, rawRelationType, targetNodeIds, targetBranchNodeId) => {
+    const relationType = rawRelationType.trim();
+    if (!sourceNodeId || !relationType) return;
+    const state = get();
+    const validNodeIds = new Set(
+      state.nodes
+        .filter((node) => node.type !== "sunburst" && node.type !== "frame")
+        .map((node) => node.id)
+    );
+    if (!validNodeIds.has(sourceNodeId)) return;
+
+    const uniqueTargetIds = Array.from(new Set(targetNodeIds)).filter(
+      (targetNodeId) => targetNodeId !== sourceNodeId && validNodeIds.has(targetNodeId)
+    );
+    const groupKey = relationshipGroupKey(sourceNodeId, relationType);
+    const existingByTarget = new Map(
+      state.relationships
+        .filter((relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) === groupKey)
+        .map((relationship) => [relationship.targetNodeId, relationship])
+    );
+    const replacement = uniqueTargetIds.map<NodeRelationship>((targetNodeId) => ({
+      id: existingByTarget.get(targetNodeId)?.id ?? generateId(),
+      sourceNodeId,
+      targetNodeId,
+      relationType,
+    }));
+    const nextRelationships = [
+      ...state.relationships.filter(
+        (relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) !== groupKey
+      ),
+      ...replacement,
+    ];
+
+    const existingFan = state.relationshipFans.find(
+      (fan) => relationshipGroupKey(fan.sourceNodeId, fan.relationType) === groupKey
+    );
+    const otherFans = state.relationshipFans.filter(
+      (fan) => relationshipGroupKey(fan.sourceNodeId, fan.relationType) !== groupKey
+    );
+    const validTargetBranchNodeId = targetBranchNodeId && validNodeIds.has(targetBranchNodeId)
+      ? targetBranchNodeId
+      : existingFan?.targetBranchNodeId;
+    const nextRelationshipFans = replacement.length
+      ? [
+          ...otherFans,
+          {
+            sourceNodeId,
+            relationType,
+            visible: existingFan?.visible ?? true,
+            ...(validTargetBranchNodeId ? { targetBranchNodeId: validTargetBranchNodeId } : {}),
+          },
+        ]
+      : otherFans;
+
+    if (
+      JSON.stringify(state.relationships) === JSON.stringify(nextRelationships) &&
+      JSON.stringify(state.relationshipFans) === JSON.stringify(nextRelationshipFans)
+    ) return;
+
+    state.pushHistory();
+    set({
+      relationships: nextRelationships,
+      relationshipFans: nextRelationshipFans,
+      saveStatus: "unsaved",
+    });
+  },
+
+  clearRelationships: (sourceNodeId, rawRelationType) => {
+    const relationType = rawRelationType.trim();
+    if (!sourceNodeId || !relationType) return;
+    const state = get();
+    const groupKey = relationshipGroupKey(sourceNodeId, relationType);
+    const nextRelationships = state.relationships.filter(
+      (relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) !== groupKey
+    );
+    const nextRelationshipFans = state.relationshipFans.filter(
+      (fan) => relationshipGroupKey(fan.sourceNodeId, fan.relationType) !== groupKey
+    );
+    if (
+      nextRelationships.length === state.relationships.length &&
+      nextRelationshipFans.length === state.relationshipFans.length
+    ) return;
+    state.pushHistory();
+    set({
+      relationships: nextRelationships,
+      relationshipFans: nextRelationshipFans,
+      saveStatus: "unsaved",
+    });
+  },
+
+  setRelationshipFanVisible: (sourceNodeId, rawRelationType, visible) => {
+    const relationType = rawRelationType.trim();
+    if (!sourceNodeId || !relationType) return;
+    const state = get();
+    const groupKey = relationshipGroupKey(sourceNodeId, relationType);
+    const hasRelationships = state.relationships.some(
+      (relationship) => relationshipGroupKey(relationship.sourceNodeId, relationship.relationType) === groupKey
+    );
+    if (!hasRelationships) return;
+    const existingFan = state.relationshipFans.find(
+      (fan) => relationshipGroupKey(fan.sourceNodeId, fan.relationType) === groupKey
+    );
+    if (existingFan?.visible === visible) return;
+    state.pushHistory();
+    set({
+      relationshipFans: [
+        ...state.relationshipFans.filter(
+          (fan) => relationshipGroupKey(fan.sourceNodeId, fan.relationType) !== groupKey
+        ),
+        {
+          sourceNodeId,
+          relationType,
+          visible,
+          ...(existingFan?.targetBranchNodeId ? { targetBranchNodeId: existingFan.targetBranchNodeId } : {}),
+        },
+      ],
+      saveStatus: "unsaved",
+    });
+  },
+
   pushHistory: () => {
-    const { nodes, edges, history, historyIndex } = get();
-    const entry = cloneState(nodes, edges);
+    const { nodes, edges, relationships, relationshipFans, history, historyIndex } = get();
+    const entry = cloneState(nodes, edges, relationships, relationshipFans);
     const newHistory = history.slice(0, historyIndex + 1);
     if (!newHistory.length || !sameHistoryEntry(newHistory[newHistory.length - 1], entry)) {
       newHistory.push(entry);
@@ -866,9 +1142,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   undo: () => {
-    const { history, historyIndex, nodes, edges } = get();
+    const { history, historyIndex, nodes, edges, relationships, relationshipFans } = get();
     if (historyIndex < 0) return;
-    const current = cloneState(nodes, edges);
+    const current = cloneState(nodes, edges, relationships, relationshipFans);
     let targetIndex = historyIndex;
     if (history[targetIndex] && sameHistoryEntry(history[targetIndex], current)) targetIndex -= 1;
     if (targetIndex < 0) return;
@@ -878,6 +1154,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({
       nodes: structuredClone(entry.nodes),
       edges: structuredClone(entry.edges),
+      relationships: structuredClone(entry.relationships),
+      relationshipFans: structuredClone(entry.relationshipFans),
       history: nextHistory,
       historyIndex: targetIndex,
       saveStatus: "unsaved",
@@ -892,6 +1170,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({
       nodes: structuredClone(entry.nodes),
       edges: structuredClone(entry.edges),
+      relationships: structuredClone(entry.relationships),
+      relationshipFans: structuredClone(entry.relationshipFans),
       historyIndex: newIndex,
       saveStatus: "unsaved",
     });
@@ -981,16 +1261,36 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   deleteSelected: () => {
-    const { selectedNodeIds, selectedEdgeIds, nodes, edges } = get();
+    const { selectedNodeIds, selectedEdgeIds, nodes, edges, relationships, relationshipFans } = get();
     if (!selectedNodeIds.length && !selectedEdgeIds.length) return;
     get().pushHistory();
     const selectedNodes = new Set(selectedNodeIds);
     const selectedEdges = new Set(selectedEdgeIds);
+    const nextRelationships = relationships.filter(
+      (relationship) =>
+        !selectedNodes.has(relationship.sourceNodeId) &&
+        !selectedNodes.has(relationship.targetNodeId)
+    );
+    const populatedRelationshipGroups = new Set(
+      nextRelationships.map((relationship) =>
+        relationshipGroupKey(relationship.sourceNodeId, relationship.relationType)
+      )
+    );
+    const nextRelationshipFans = relationshipFans
+      .filter((fan) =>
+        !selectedNodes.has(fan.sourceNodeId) &&
+        populatedRelationshipGroups.has(relationshipGroupKey(fan.sourceNodeId, fan.relationType))
+      )
+      .map((fan) => selectedNodes.has(fan.targetBranchNodeId ?? "")
+        ? { ...fan, targetBranchNodeId: undefined }
+        : fan);
     set({
       nodes: nodes.filter((n) => !selectedNodes.has(n.id)),
       edges: edges.filter(
         (e) => !selectedEdges.has(e.id) && !selectedNodes.has(e.source) && !selectedNodes.has(e.target)
       ),
+      relationships: nextRelationships,
+      relationshipFans: nextRelationshipFans,
       selectedNodeIds: [],
       selectedEdgeIds: [],
       saveStatus: "unsaved",

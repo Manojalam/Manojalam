@@ -1,4 +1,281 @@
 import type { VidyaBoard, VidyaNode } from "@/lib/types";
+import { BOARD_CONTENT_VERSION } from "@/lib/config";
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+const SUNBURST_EXPORT_SELECTOR = 'svg[data-sunburst-export="true"]';
+const EXPORT_SCALE = 2;
+
+type PreparedSvg = {
+  source: string;
+  width: number;
+  height: number;
+};
+
+function safeFilename(title: string, extension: "svg" | "png"): string {
+  const base = title
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[.\s-]+|[.\s-]+$/g, "") || "radial-chart";
+  return `${base}.${extension}`;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function isVisibleSvg(svg: SVGSVGElement): boolean {
+  const style = window.getComputedStyle(svg);
+  const bounds = svg.getBoundingClientRect();
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    Number.parseFloat(style.opacity || "1") > 0 &&
+    bounds.width > 0 &&
+    bounds.height > 0
+  );
+}
+
+function findVisibleSunburstSvg(): SVGSVGElement {
+  const candidates = Array.from(
+    document.querySelectorAll<SVGSVGElement>(SUNBURST_EXPORT_SELECTOR)
+  ).filter(isVisibleSvg);
+
+  const svg = candidates.sort((a, b) => {
+    const aBounds = a.getBoundingClientRect();
+    const bBounds = b.getBoundingClientRect();
+    return bBounds.width * bBounds.height - aBounds.width * aBounds.height;
+  })[0];
+
+  if (!svg) {
+    throw new Error("No visible radial chart is available to export.");
+  }
+  return svg;
+}
+
+function isSameOriginStylesheet(sheet: CSSStyleSheet): boolean {
+  if (!sheet.href) return true;
+  try {
+    return new URL(sheet.href, document.baseURI).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function absoluteCssUrls(cssText: string, baseUrl: string): string {
+  return cssText.replace(
+    /url\(\s*(?:(["'])(.*?)\1|([^)]*?))\s*\)/gi,
+    (match, _quote: string | undefined, quotedUrl: string | undefined, rawUrl: string | undefined) => {
+      const value = (quotedUrl ?? rawUrl ?? "").trim();
+      if (!value || value.startsWith("data:") || value.startsWith("blob:") || value.startsWith("#")) {
+        return match;
+      }
+      try {
+        return `url("${new URL(value, baseUrl).href}")`;
+      } catch {
+        return match;
+      }
+    }
+  );
+}
+
+function collectFontFacesFromRules(
+  rules: CSSRuleList,
+  fallbackBaseUrl: string,
+  fontFaces: Set<string>
+): void {
+  for (const rule of Array.from(rules)) {
+    if (rule.type === CSSRule.FONT_FACE_RULE) {
+      const baseUrl = rule.parentStyleSheet?.href ?? fallbackBaseUrl;
+      fontFaces.add(absoluteCssUrls(rule.cssText, baseUrl));
+      continue;
+    }
+
+    if (rule.type === CSSRule.IMPORT_RULE) {
+      const importedSheet = (rule as CSSImportRule).styleSheet;
+      if (!importedSheet || !isSameOriginStylesheet(importedSheet)) continue;
+      try {
+        collectFontFacesFromRules(
+          importedSheet.cssRules,
+          importedSheet.href ?? fallbackBaseUrl,
+          fontFaces
+        );
+      } catch {
+        // Browsers intentionally block CSSOM access to inaccessible sheets.
+      }
+      continue;
+    }
+
+    if ("cssRules" in rule) {
+      try {
+        collectFontFacesFromRules(
+          (rule as CSSGroupingRule).cssRules,
+          rule.parentStyleSheet?.href ?? fallbackBaseUrl,
+          fontFaces
+        );
+      } catch {
+        // Ignore inaccessible nested rules while keeping the export usable.
+      }
+    }
+  }
+}
+
+function embeddedFontFaceCss(): string {
+  const fontFaces = new Set<string>();
+  for (const sheet of Array.from(document.styleSheets)) {
+    if (!isSameOriginStylesheet(sheet)) continue;
+    try {
+      collectFontFacesFromRules(
+        sheet.cssRules,
+        sheet.href ?? document.baseURI,
+        fontFaces
+      );
+    } catch {
+      // A sheet can still reject CSSOM access despite appearing same-origin.
+    }
+  }
+  return Array.from(fontFaces).join("\n");
+}
+
+function restoreExportElements(svg: SVGSVGElement): void {
+  for (const element of Array.from(svg.querySelectorAll<SVGElement>("[data-export-restore]"))) {
+    element.removeAttribute("hidden");
+    element.removeAttribute("aria-hidden");
+    element.removeAttribute("display");
+    element.removeAttribute("visibility");
+    element.removeAttribute("opacity");
+    element.style.removeProperty("display");
+    element.style.removeProperty("visibility");
+    element.style.removeProperty("opacity");
+    element.removeAttribute("data-export-restore");
+  }
+}
+
+function copyCssCustomProperties(source: SVGSVGElement, clone: SVGSVGElement): void {
+  const computed = window.getComputedStyle(source);
+  for (let index = 0; index < computed.length; index += 1) {
+    const property = computed.item(index);
+    if (!property.startsWith("--")) continue;
+    const value = computed.getPropertyValue(property);
+    if (value) clone.style.setProperty(property, value);
+  }
+}
+
+function exportViewBox(svg: SVGSVGElement): { value: string; width: number; height: number } {
+  const viewBox = svg.viewBox.baseVal;
+  if (viewBox.width > 0 && viewBox.height > 0) {
+    return {
+      value: `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`,
+      width: viewBox.width,
+      height: viewBox.height,
+    };
+  }
+
+  const bounds = svg.getBoundingClientRect();
+  const width = Math.max(1, bounds.width || svg.width.baseVal.value || 1);
+  const height = Math.max(1, bounds.height || svg.height.baseVal.value || 1);
+  return { value: `0 0 ${width} ${height}`, width, height };
+}
+
+async function prepareSunburstSvg(): Promise<PreparedSvg> {
+  if (typeof document === "undefined") {
+    throw new Error("Radial chart export is only available in the browser.");
+  }
+
+  if (document.fonts) await document.fonts.ready;
+
+  const sourceSvg = findVisibleSunburstSvg();
+  const clone = sourceSvg.cloneNode(true) as SVGSVGElement;
+  for (const element of Array.from(clone.querySelectorAll("[data-export-ignore]"))) {
+    element.remove();
+  }
+  restoreExportElements(clone);
+
+  const viewBox = exportViewBox(sourceSvg);
+  clone.setAttribute("xmlns", SVG_NAMESPACE);
+  clone.setAttribute("xmlns:xlink", XLINK_NAMESPACE);
+  clone.setAttribute("viewBox", viewBox.value);
+  clone.setAttribute("width", String(viewBox.width));
+  clone.setAttribute("height", String(viewBox.height));
+  clone.style.width = `${viewBox.width}px`;
+  clone.style.height = `${viewBox.height}px`;
+  clone.style.overflow = "visible";
+  copyCssCustomProperties(sourceSvg, clone);
+
+  const exportCss = `
+.sunburst-rich-label {
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: none;
+}
+.sunburst-rich-label > * {
+  width: 100%;
+  margin: 0;
+}
+.sunburst-rich-label * {
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+.sunburst-rich-label[lang="sa"] * {
+  font-family: inherit !important;
+}
+.sunburst-rich-label mark {
+  padding: 0 0.08em;
+}
+${embeddedFontFaceCss()}`.trim();
+  if (exportCss) {
+    const style = document.createElementNS(SVG_NAMESPACE, "style");
+    style.setAttribute("type", "text/css");
+    style.textContent = exportCss;
+    clone.insertBefore(style, clone.firstChild);
+  }
+
+  const serialized = new XMLSerializer().serializeToString(clone);
+  return {
+    source: `<?xml version="1.0" encoding="UTF-8"?>\n${serialized}`,
+    width: viewBox.width,
+    height: viewBox.height,
+  };
+}
+
+function loadSvgImage(source: string): Promise<{ image: HTMLImageElement; url: string }> {
+  const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve({ image, url });
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("The radial chart SVG could not be rendered as an image."));
+    };
+    image.src = url;
+  });
+}
+
+function canvasPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("The browser could not create the PNG file."));
+      }, "image/png");
+    } catch {
+      reject(new Error("The browser blocked PNG creation for this chart."));
+    }
+  });
+}
 
 function getNodeText(node: VidyaNode): string {
   const d = node.data;
@@ -97,18 +374,12 @@ export function exportToMarkdown(board: VidyaBoard): string {
 }
 
 export function downloadFile(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([content], { type: mime }), filename);
 }
 
 export function downloadJson(board: VidyaBoard) {
   const json = JSON.stringify(
-    { version: 1, exportedAt: new Date().toISOString(), board },
+    { version: BOARD_CONTENT_VERSION, exportedAt: new Date().toISOString(), board },
     null,
     2
   );
@@ -121,4 +392,31 @@ export function downloadMarkdown(board: VidyaBoard) {
     `${board.title.replace(/\s+/g, "-")}.md`,
     "text/markdown"
   );
+}
+
+export async function downloadSunburstSvg(boardTitle: string): Promise<void> {
+  const prepared = await prepareSunburstSvg();
+  downloadBlob(
+    new Blob([prepared.source], { type: "image/svg+xml;charset=utf-8" }),
+    safeFilename(boardTitle, "svg")
+  );
+}
+
+export async function downloadSunburstPng(boardTitle: string): Promise<void> {
+  const prepared = await prepareSunburstSvg();
+  const { image, url } = await loadSvgImage(prepared.source);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(prepared.width * EXPORT_SCALE));
+    canvas.height = Math.max(1, Math.ceil(prepared.height * EXPORT_SCALE));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("The browser could not initialize PNG rendering.");
+
+    context.setTransform(EXPORT_SCALE, 0, 0, EXPORT_SCALE, 0, 0);
+    context.drawImage(image, 0, 0, prepared.width, prepared.height);
+    const png = await canvasPngBlob(canvas);
+    downloadBlob(png, safeFilename(boardTitle, "png"));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
