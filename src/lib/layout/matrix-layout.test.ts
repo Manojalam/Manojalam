@@ -246,6 +246,19 @@ test("Matrix cells shrink oversized free-form boxes to their content", () => {
   assertClean(result);
 });
 
+test("one long unbroken word stays in a single Matrix row", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "Title" },
+    { id: "detail", parentId: "root", text: "अतिदीर्घसंस्कृतसमासपदम्".repeat(8) },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const detail = result.cells.find((cell) => cell.nodeId === "detail")!;
+
+  assert.equal(detail.height, MATRIX_DENSITY_SETTINGS.comfortable.minRowHeight);
+  assertClean(result);
+});
+
 test("Matrix overrides do not replace the stored normal node size", () => {
   const node: Node = {
     id: "cell",

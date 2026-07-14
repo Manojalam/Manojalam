@@ -76,9 +76,9 @@ function wrappedLineCount(lines: string[], charactersPerLine: number): number {
     let current = 0;
     for (const word of words) {
       const length = Array.from(word).length;
-      if (length >= limit) {
+      if (length > limit) {
         if (current) count += 1;
-        count += Math.ceil(length / limit);
+        count += 1;
         current = 0;
         continue;
       }

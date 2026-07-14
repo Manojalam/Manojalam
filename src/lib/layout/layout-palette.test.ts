@@ -57,9 +57,9 @@ test("hierarchy colors keep descendants related while separating root branches",
   assert.notEqual(styles.get("branch-a")?.fillColor, styles.get("branch-b")?.fillColor);
   assert.notEqual(styles.get("a-1")?.fillColor, styles.get("a-2")?.fillColor);
   assert.equal(styles.get("a-1")?.depth, 2);
-  assert.equal(styles.get("root")?.fontSize, 18);
-  assert.equal(styles.get("branch-a")?.fontSize, 16);
-  assert.ok((styles.get("a-1")?.fontSize ?? 0) >= 14);
+  assert.equal(styles.get("root")?.fontSize, 22);
+  assert.equal(styles.get("branch-a")?.fontSize, 19);
+  assert.ok((styles.get("a-1")?.fontSize ?? 0) >= 17);
   assert.ok((styles.get("root")?.borderWidth ?? 0) > (styles.get("a-1")?.borderWidth ?? 0));
 });
 

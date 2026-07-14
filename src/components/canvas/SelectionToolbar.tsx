@@ -20,12 +20,13 @@ import {
   Ungroup,
 } from "lucide-react";
 import { generateId } from "@/lib/utils";
-import { getNodeRect, nodePositionFromTopLeft } from "@/lib/layout";
-import { compactEqualSpacing } from "@/lib/canvas/selection-geometry";
+import {
+  alignSelection,
+  compactEqualSpacing,
+  type SelectionAlignment,
+} from "@/lib/canvas/selection-geometry";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
-
-type AlignMode = "left" | "centerX" | "right" | "top" | "centerY" | "bottom";
 
 function ActionButton({
   label,
@@ -86,27 +87,9 @@ export function SelectionToolbar() {
     }));
   };
 
-  const align = (mode: AlignMode) => {
+  const align = (mode: SelectionAlignment) => {
     if (selected.length < 2) return;
-    const rects = selected.map((node) => ({ node, rect: getNodeRect(node) }));
-    const left = Math.min(...rects.map(({ rect }) => rect.left));
-    const right = Math.max(...rects.map(({ rect }) => rect.right));
-    const top = Math.min(...rects.map(({ rect }) => rect.top));
-    const bottom = Math.max(...rects.map(({ rect }) => rect.bottom));
-    const centerX = (left + right) / 2;
-    const centerY = (top + bottom) / 2;
-    const positions = new Map<string, { x: number; y: number }>();
-    for (const { node, rect } of rects) {
-      const topLeft = { x: rect.left, y: rect.top };
-      if (mode === "left") topLeft.x = left;
-      if (mode === "centerX") topLeft.x = centerX - rect.width / 2;
-      if (mode === "right") topLeft.x = right - rect.width;
-      if (mode === "top") topLeft.y = top;
-      if (mode === "centerY") topLeft.y = centerY - rect.height / 2;
-      if (mode === "bottom") topLeft.y = bottom - rect.height;
-      positions.set(node.id, nodePositionFromTopLeft(node, topLeft, rect));
-    }
-    updateGeometry(positions);
+    updateGeometry(alignSelection(selected, mode));
   };
 
   const distribute = (axis: "x" | "y") => {
@@ -145,7 +128,7 @@ export function SelectionToolbar() {
       isVisible
       position={Position.Top}
       offset={14}
-      className="selection-toolbar nodrag nopan flex items-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
+      className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
       {singleId && !singleIsRelationshipDiagram && (
         <>

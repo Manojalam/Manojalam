@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createNodeRect, resizeAroundAnchor } from "./node-geometry";
-import { effectiveCornerRadius, fitShapeToContent } from "./shape-fitting";
+import {
+  effectiveCornerRadius,
+  fitShapeToContent,
+  fitSingleUnbrokenWord,
+  shapeTextContentWidth,
+} from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
 
 test("top-left growth and center conversion use different anchors", () => {
@@ -41,4 +46,14 @@ test("adaptive grid density preserves logical multiples", () => {
   assert.equal(adaptiveGridMultiplier(24, 0.2), 4);
   assert.equal(renderedGridGap(24, 0.2), 96);
   assert.equal(renderedGridGap(24, 2), 24);
+});
+
+test("one unbroken word stays on one line and shrinks to the available width", () => {
+  const fitted = fitSingleUnbrokenWord("अतिदीर्घसंस्कृतसमासपदम्", 24, 120);
+  const phrase = fitSingleUnbrokenWord("two words", 24, 120);
+
+  assert.equal(fitted.singleWord, true);
+  assert.ok(fitted.fontSize > 0 && fitted.fontSize < 24);
+  assert.deepEqual(phrase, { singleWord: false, fontSize: 24 });
+  assert.ok(shapeTextContentWidth("diamond", 240) < shapeTextContentWidth("rectangle", 240));
 });

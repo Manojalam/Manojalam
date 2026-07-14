@@ -281,8 +281,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const setNodes    = useCanvasStore((s) => s.setNodes);
   const setEdges    = useCanvasStore((s) => s.setEdges);
   const setStoredViewport = useCanvasStore((s) => s.setViewport);
-  const setSelectedNodeIds = useCanvasStore((s) => s.setSelectedNodeIds);
-  const setSelectedEdgeIds = useCanvasStore((s) => s.setSelectedEdgeIds);
   const activeTool  = useUIStore((s) => s.activeTool);
   const touchSelectionMode = useUIStore((s) => s.touchSelectionMode);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
@@ -544,12 +542,14 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
       // Keep selectedNodeIds in sync (only when selection actually changed)
       if (changes.some((c) => c.type === "select")) {
-        const nodes = useCanvasStore.getState().nodes;
-        setSelectedNodeIds(nodes.filter((n) => n.selected).map((n) => n.id));
-        setSelectedEdgeIds([]);
+        const state = useCanvasStore.getState();
+        useCanvasStore.setState({
+          selectedNodeIds: state.nodes.filter((node) => node.selected).map((node) => node.id),
+          selectedEdgeIds: state.edges.filter((edge) => edge.selected).map((edge) => edge.id),
+        });
       }
     },
-    [setNodes, setSelectedNodeIds, setSelectedEdgeIds]
+    [setNodes]
   );
 
   const onNodeDragStart = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
@@ -694,23 +694,33 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       }
 
       if (changes.some((c) => c.type === "select")) {
-        const edges = useCanvasStore.getState().edges;
-        setSelectedEdgeIds(edges.filter((e) => e.selected).map((e) => e.id));
-        setSelectedNodeIds([]);
+        const state = useCanvasStore.getState();
+        useCanvasStore.setState({
+          selectedNodeIds: state.nodes.filter((node) => node.selected).map((node) => node.id),
+          selectedEdgeIds: state.edges.filter((edge) => edge.selected).map((edge) => edge.id),
+        });
       }
     },
-    [setEdges, setSelectedEdgeIds, setSelectedNodeIds]
+    [setEdges]
   );
 
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     if (useUIStore.getState().relationshipSelection) return;
     event.stopPropagation();
-    useCanvasStore.setState((state) => ({
-      nodes: state.nodes.map((node) => ({ ...node, selected: false })),
-      edges: state.edges.map((candidate) => ({ ...candidate, selected: candidate.id === edge.id })),
-      selectedNodeIds: [],
-      selectedEdgeIds: [edge.id],
-    }));
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+    useCanvasStore.setState((state) => {
+      const selectedEdgeIds = new Set(additive ? state.selectedEdgeIds : []);
+      if (additive && selectedEdgeIds.has(edge.id)) selectedEdgeIds.delete(edge.id);
+      else selectedEdgeIds.add(edge.id);
+      const selectedNodeIds = additive ? state.selectedNodeIds : [];
+      const selectedNodes = new Set(selectedNodeIds);
+      return {
+        nodes: state.nodes.map((node) => ({ ...node, selected: selectedNodes.has(node.id) })),
+        edges: state.edges.map((candidate) => ({ ...candidate, selected: selectedEdgeIds.has(candidate.id) })),
+        selectedNodeIds,
+        selectedEdgeIds: Array.from(selectedEdgeIds),
+      };
+    });
   }, []);
 
   const onConnect = useCallback(

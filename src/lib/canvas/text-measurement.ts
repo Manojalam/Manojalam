@@ -42,6 +42,7 @@ export function measureRichTextElement(
 ): ContentMeasurement {
   const host = getMeasurementHost();
   const sourceStyle = window.getComputedStyle(element);
+  const singleWord = !!element.closest(".single-word-fit");
   const clone = element.cloneNode(true) as HTMLElement;
   clone.removeAttribute("contenteditable");
   clone.removeAttribute("tabindex");
@@ -51,8 +52,9 @@ export function measureRichTextElement(
   clone.style.height = "auto";
   clone.style.minHeight = "0";
   clone.style.overflow = "visible";
-  clone.style.whiteSpace = "pre-wrap";
-  clone.style.overflowWrap = "break-word";
+  clone.style.whiteSpace = singleWord ? "nowrap" : "pre-wrap";
+  clone.style.overflowWrap = singleWord ? "normal" : "break-word";
+  clone.style.wordBreak = singleWord ? "keep-all" : sourceStyle.wordBreak;
   clone.style.fontFamily = sourceStyle.fontFamily;
   clone.style.fontSize = sourceStyle.fontSize;
   clone.style.fontWeight = sourceStyle.fontWeight;

@@ -19,6 +19,22 @@ export interface ShapeFitOptions {
   maxContentWidth?: number;
 }
 
+export interface SingleWordFit {
+  singleWord: boolean;
+  fontSize: number;
+}
+
+interface GraphemeSegmenter {
+  segment(value: string): Iterable<unknown>;
+}
+
+const SegmenterConstructor = (Intl as unknown as {
+  Segmenter?: new (locale: string, options: { granularity: "grapheme" }) => GraphemeSegmenter;
+}).Segmenter;
+const graphemeSegmenter = SegmenterConstructor
+  ? new SegmenterConstructor("und", { granularity: "grapheme" })
+  : null;
+
 function finitePositive(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
@@ -28,6 +44,68 @@ function nodePadding(nodeType: string | undefined): Size {
   if (nodeType === "text") return { width: 36, height: 26 };
   if (nodeType === "mindmap") return { width: 44, height: 30 };
   return { width: 52, height: 42 };
+}
+
+function graphemeCount(value: string): number {
+  return graphemeSegmenter
+    ? Array.from(graphemeSegmenter.segment(value)).length
+    : Array.from(value).length;
+}
+
+/** Keep one unbroken token on one line and reduce its font only when necessary. */
+export function fitSingleUnbrokenWord(
+  value: string,
+  preferredFontSize: number,
+  availableWidth: number
+): SingleWordFit {
+  const normalized = value.trim();
+  const preferred = finitePositive(preferredFontSize, 14);
+  if (!normalized || /\s/u.test(normalized)) return { singleWord: false, fontSize: preferred };
+
+  const units = Math.max(1, graphemeCount(normalized));
+  const widthFactor = /[\u2e80-\u9fff\uf900-\ufaff]/u.test(normalized)
+    ? 1
+    : /[\u0900-\u097f]/u.test(normalized) ? 0.95 : 0.58;
+  const safeWidth = Math.max(1, availableWidth) * 0.96;
+  const estimatedWidth = units * preferred * widthFactor;
+  const fitted = estimatedWidth > safeWidth
+    ? preferred * (safeWidth / estimatedWidth)
+    : preferred;
+  return { singleWord: true, fontSize: Math.max(0.5, Math.min(preferred, fitted)) };
+}
+
+/** Approximate the safe horizontal text interior used by each supported shape. */
+export function shapeTextContentWidth(
+  shapeType: string | undefined,
+  renderedWidth: number,
+  nodeType = "shape"
+): number {
+  const width = finitePositive(renderedWidth, MIN_AUTOFIT_WIDTH);
+  const scale = (() => {
+    switch (shapeType) {
+      case "circle": return Math.SQRT2;
+      case "ellipse": return Math.SQRT2;
+      case "diamond": return 2;
+      case "star":
+      case "flower": return 1.8;
+      case "triangle": return 1.75;
+      case "arrow": return 1.55;
+      case "callout":
+      case "offPageConnector": return 1.3;
+      case "parallelogram":
+      case "trapezoid": return 1.35;
+      case "hexagon":
+      case "document":
+      case "database":
+      case "predefinedProcess":
+      case "delay":
+      case "cloud":
+      case "leaf": return 1.26;
+      case "capsule": return 1.5;
+      default: return 1;
+    }
+  })();
+  return Math.max(8, width / scale - nodePadding(nodeType).width);
 }
 
 function shapeSafeSize(shapeType: string, box: Size): Size {

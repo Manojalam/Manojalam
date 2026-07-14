@@ -2,6 +2,35 @@ import type { Node } from "@xyflow/react";
 import { getNodeRect, nodePositionFromTopLeft, type Point } from "../layout/geometry";
 
 export const COMPACT_SELECTION_GAP = 28;
+export type SelectionAlignment = "left" | "centerX" | "right" | "top" | "centerY" | "bottom";
+
+/** Align arbitrary selected nodes by their rendered bounds, including centered origins. */
+export function alignSelection(
+  nodes: Node[],
+  mode: SelectionAlignment
+): Map<string, Point> {
+  const positions = new Map<string, Point>();
+  if (nodes.length < 2) return positions;
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
+  const left = Math.min(...entries.map(({ rect }) => rect.left));
+  const right = Math.max(...entries.map(({ rect }) => rect.right));
+  const top = Math.min(...entries.map(({ rect }) => rect.top));
+  const bottom = Math.max(...entries.map(({ rect }) => rect.bottom));
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+
+  for (const { node, rect } of entries) {
+    const topLeft = { x: rect.left, y: rect.top };
+    if (mode === "left") topLeft.x = left;
+    if (mode === "centerX") topLeft.x = centerX - rect.width / 2;
+    if (mode === "right") topLeft.x = right - rect.width;
+    if (mode === "top") topLeft.y = top;
+    if (mode === "centerY") topLeft.y = centerY - rect.height / 2;
+    if (mode === "bottom") topLeft.y = bottom - rect.height;
+    positions.set(node.id, nodePositionFromTopLeft(node, topLeft, rect));
+  }
+  return positions;
+}
 
 /** Pack nodes with a fixed edge-to-edge gap while preserving the group center. */
 export function compactEqualSpacing(

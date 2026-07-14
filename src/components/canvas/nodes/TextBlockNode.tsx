@@ -6,10 +6,11 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
 import {
-  getTextStyle, resolveFillColor, resolveBorderColor,
+  getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity, resolveBorderStyle,
   textMeasurementKey,
 } from "@/lib/style-utils";
+import { shapeTextContentWidth } from "@/lib/canvas/shape-fitting";
 import type { TextBlockNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -53,6 +54,8 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
 
   const [editing, setEditing] = useState(false);
   const initialContent = (dd.richText as string) || d.text || "";
+  const availableTextWidth = shapeTextContentWidth("rectangle", nodeSize.width, "text");
+  const textPresentation = getFittedTextPresentation(dd, availableTextWidth);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -146,12 +149,13 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
         </div>}
 
         <div className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
-          style={getTextStyle(dd)}>
+          style={textPresentation.style}>
           <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            measurementKey={textMeasurementKey(dd)}
+            className={cn(textPresentation.singleWord && "single-word-fit")}
+            measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextWidth)}`}
             placeholder="Double-click to type…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {
