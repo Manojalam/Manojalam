@@ -4,6 +4,7 @@ import { BOARD_CONTENT_VERSION } from "@/lib/config";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 const SUNBURST_EXPORT_SELECTOR = 'svg[data-sunburst-export="true"]';
+const RELATIONSHIP_DIAGRAM_EXPORT_ATTRIBUTE = "data-relationship-diagram-export";
 const EXPORT_SCALE = 2;
 
 type PreparedSvg = {
@@ -12,13 +13,17 @@ type PreparedSvg = {
   height: number;
 };
 
-function safeFilename(title: string, extension: "svg" | "png"): string {
+function safeFilename(
+  title: string,
+  extension: "svg" | "png",
+  fallback = "radial-chart"
+): string {
   const base = title
     .trim()
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^[.\s-]+|[.\s-]+$/g, "") || "radial-chart";
+    .replace(/^[.\s-]+|[.\s-]+$/g, "") || fallback;
   return `${base}.${extension}`;
 }
 
@@ -59,6 +64,25 @@ function findVisibleSunburstSvg(): SVGSVGElement {
 
   if (!svg) {
     throw new Error("No visible radial chart is available to export.");
+  }
+  return svg;
+}
+
+function findVisibleRelationshipDiagramSvg(nodeId: string): SVGSVGElement {
+  const candidates = Array.from(
+    document.querySelectorAll<SVGSVGElement>(`svg[${RELATIONSHIP_DIAGRAM_EXPORT_ATTRIBUTE}]`)
+  ).filter((svg) =>
+    svg.getAttribute(RELATIONSHIP_DIAGRAM_EXPORT_ATTRIBUTE) === nodeId && isVisibleSvg(svg)
+  );
+
+  const svg = candidates.sort((a, b) => {
+    const aBounds = a.getBoundingClientRect();
+    const bBounds = b.getBoundingClientRect();
+    return bBounds.width * bBounds.height - aBounds.width * aBounds.height;
+  })[0];
+
+  if (!svg) {
+    throw new Error("The selected relationship diagram is not visible and cannot be exported.");
   }
   return svg;
 }
@@ -187,14 +211,13 @@ function exportViewBox(svg: SVGSVGElement): { value: string; width: number; heig
   return { value: `0 0 ${width} ${height}`, width, height };
 }
 
-async function prepareSunburstSvg(): Promise<PreparedSvg> {
+async function prepareSvgElement(sourceSvg: SVGSVGElement): Promise<PreparedSvg> {
   if (typeof document === "undefined") {
-    throw new Error("Radial chart export is only available in the browser.");
+    throw new Error("SVG export is only available in the browser.");
   }
 
   if (document.fonts) await document.fonts.ready;
 
-  const sourceSvg = findVisibleSunburstSvg();
   const clone = sourceSvg.cloneNode(true) as SVGSVGElement;
   for (const element of Array.from(clone.querySelectorAll("[data-export-ignore]"))) {
     element.remove();
@@ -213,23 +236,28 @@ async function prepareSunburstSvg(): Promise<PreparedSvg> {
   copyCssCustomProperties(sourceSvg, clone);
 
   const exportCss = `
+.relationship-diagram-label,
 .sunburst-rich-label {
   white-space: pre-wrap;
   word-break: keep-all;
   overflow-wrap: normal;
   hyphens: none;
 }
+.relationship-diagram-label > *,
 .sunburst-rich-label > * {
   width: 100%;
   margin: 0;
 }
+.relationship-diagram-label *,
 .sunburst-rich-label * {
   font-size: inherit !important;
   line-height: inherit !important;
 }
+.relationship-diagram-label[lang="sa"] *,
 .sunburst-rich-label[lang="sa"] * {
   font-family: inherit !important;
 }
+.relationship-diagram-label mark,
 .sunburst-rich-label mark {
   padding: 0 0.08em;
 }
@@ -249,6 +277,20 @@ ${embeddedFontFaceCss()}`.trim();
   };
 }
 
+async function prepareSunburstSvg(): Promise<PreparedSvg> {
+  if (typeof document === "undefined") {
+    throw new Error("Radial chart export is only available in the browser.");
+  }
+  return prepareSvgElement(findVisibleSunburstSvg());
+}
+
+async function prepareRelationshipDiagramSvg(nodeId: string): Promise<PreparedSvg> {
+  if (typeof document === "undefined") {
+    throw new Error("Relationship diagram export is only available in the browser.");
+  }
+  return prepareSvgElement(findVisibleRelationshipDiagramSvg(nodeId));
+}
+
 function loadSvgImage(source: string): Promise<{ image: HTMLImageElement; url: string }> {
   const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -258,7 +300,7 @@ function loadSvgImage(source: string): Promise<{ image: HTMLImageElement; url: s
     image.onload = () => resolve({ image, url });
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("The radial chart SVG could not be rendered as an image."));
+      reject(new Error("The exported SVG could not be rendered as an image."));
     };
     image.src = url;
   });
@@ -275,6 +317,23 @@ function canvasPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
       reject(new Error("The browser blocked PNG creation for this chart."));
     }
   });
+}
+
+async function preparedSvgPngBlob(prepared: PreparedSvg): Promise<Blob> {
+  const { image, url } = await loadSvgImage(prepared.source);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(prepared.width * EXPORT_SCALE));
+    canvas.height = Math.max(1, Math.ceil(prepared.height * EXPORT_SCALE));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("The browser could not initialize PNG rendering.");
+
+    context.setTransform(EXPORT_SCALE, 0, 0, EXPORT_SCALE, 0, 0);
+    context.drawImage(image, 0, 0, prepared.width, prepared.height);
+    return canvasPngBlob(canvas);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function getNodeText(node: VidyaNode): string {
@@ -404,19 +463,26 @@ export async function downloadSunburstSvg(boardTitle: string): Promise<void> {
 
 export async function downloadSunburstPng(boardTitle: string): Promise<void> {
   const prepared = await prepareSunburstSvg();
-  const { image, url } = await loadSvgImage(prepared.source);
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.ceil(prepared.width * EXPORT_SCALE));
-    canvas.height = Math.max(1, Math.ceil(prepared.height * EXPORT_SCALE));
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("The browser could not initialize PNG rendering.");
+  const png = await preparedSvgPngBlob(prepared);
+  downloadBlob(png, safeFilename(boardTitle, "png"));
+}
 
-    context.setTransform(EXPORT_SCALE, 0, 0, EXPORT_SCALE, 0, 0);
-    context.drawImage(image, 0, 0, prepared.width, prepared.height);
-    const png = await canvasPngBlob(canvas);
-    downloadBlob(png, safeFilename(boardTitle, "png"));
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+export async function downloadRelationshipDiagramSvg(
+  nodeId: string,
+  title: string
+): Promise<void> {
+  const prepared = await prepareRelationshipDiagramSvg(nodeId);
+  downloadBlob(
+    new Blob([prepared.source], { type: "image/svg+xml;charset=utf-8" }),
+    safeFilename(title, "svg", "relationship-diagram")
+  );
+}
+
+export async function downloadRelationshipDiagramPng(
+  nodeId: string,
+  title: string
+): Promise<void> {
+  const prepared = await prepareRelationshipDiagramSvg(nodeId);
+  const png = await preparedSvgPngBlob(prepared);
+  downloadBlob(png, safeFilename(title, "png", "relationship-diagram"));
 }

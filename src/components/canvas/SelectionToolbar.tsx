@@ -15,6 +15,7 @@ import {
   Network,
   Plus,
   Rows3,
+  Share2,
   Trash2,
   Ungroup,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export function SelectionToolbar() {
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
   const setLayoutPanelOpen = useUIStore((state) => state.setLayoutPanelOpen);
+  const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
@@ -152,6 +154,10 @@ export function SelectionToolbar() {
   };
 
   const singleId = selected.length === 1 ? selected[0].id : null;
+  const singleIsRelationshipDiagram = selected.length === 1 && selected[0].type === "relationshipDiagram";
+  const relationshipSourceIds = selected
+    .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
+    .map((node) => node.id);
 
   return (
     <NodeToolbar
@@ -161,11 +167,35 @@ export function SelectionToolbar() {
       offset={14}
       className="selection-toolbar nodrag nopan flex items-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
-      {singleId && (
+      {singleId && !singleIsRelationshipDiagram && (
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
+          <Divider />
+        </>
+      )}
+
+      {relationshipSourceIds.length > 0 && (
+        <>
+          <ActionButton
+            label="Generate relationship diagram"
+            onClick={() => openRelationshipDiagram({ mode: "create", sourceNodeIds: relationshipSourceIds })}
+          >
+            <Share2 className="h-4 w-4" />
+          </ActionButton>
+          <Divider />
+        </>
+      )}
+
+      {singleIsRelationshipDiagram && singleId && (
+        <>
+          <ActionButton
+            label="Relationship diagram options"
+            onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: singleId })}
+          >
+            <Share2 className="h-4 w-4" />
+          </ActionButton>
           <Divider />
         </>
       )}

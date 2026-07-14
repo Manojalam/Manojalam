@@ -58,9 +58,48 @@ function dimension(value: unknown, fallback: number): number {
 }
 
 export function sizeOf(node: Node): { w: number; h: number } {
-  const w = dimension(node.style?.width ?? node.measured?.width, DEFAULT_W);
-  const h = dimension(node.style?.height ?? node.measured?.height, DEFAULT_H);
+  const width = node.type === "relationshipDiagram"
+    ? node.width ?? node.measured?.width ?? node.style?.width
+    : node.style?.width ?? node.measured?.width ?? node.width;
+  const height = node.type === "relationshipDiagram"
+    ? node.height ?? node.measured?.height ?? node.style?.height
+    : node.style?.height ?? node.measured?.height ?? node.height;
+  const w = dimension(width, DEFAULT_W);
+  const h = dimension(height, DEFAULT_H);
   return { w, h };
+}
+
+/** Keep React Flow's resizer fields and the persisted CSS size in sync. */
+export function synchronizeNodeDimensions<NodeType extends Node>(
+  node: NodeType,
+  width: number,
+  height: number
+): NodeType {
+  return {
+    ...node,
+    width,
+    height,
+    measured: { ...(node.measured ?? {}), width, height },
+    style: { ...(node.style ?? {}), width, height },
+  };
+}
+
+/**
+ * Set a programmatic size and discard stale React Flow measurements so the DOM
+ * is measured again from the new persisted style.
+ */
+export function resetNodeDimensions<NodeType extends Node>(
+  node: NodeType,
+  width: number,
+  height: number
+): NodeType {
+  return {
+    ...node,
+    width: undefined,
+    height: undefined,
+    measured: undefined,
+    style: { ...(node.style ?? {}), width, height },
+  };
 }
 
 export function getNodeRect(node: Node): NodeRect {

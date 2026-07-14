@@ -3,7 +3,7 @@
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { Node, NodeProps } from "@xyflow/react";
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Link2, Plus, Rows3, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Link2, Plus, Rows3, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { SunburstNodeData } from "@/lib/types";
 import {
@@ -20,21 +20,14 @@ import {
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
 import {
-  layoutRelationshipFans,
-  type RelationshipFanSourceGeometry,
-} from "@/lib/relationship-fan-layout";
-import {
   DEFAULT_RELATIONSHIP_TYPE,
   LEGACY_RELATIONSHIP_TYPE,
-  nodeDisplayLabel,
-  orderRelationshipsByChart,
   relationshipDefinition,
   resolveRelationshipPolicy,
 } from "@/lib/relationships";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
-import { RelationshipFanRenderer } from "./RelationshipFanRenderer";
 
 type PolarPoint = { x: number; y: number };
 
@@ -122,7 +115,6 @@ const DEVANAGARI_LINE_HEIGHT = 1.46;
 const DEVANAGARI_INK_PADDING_X = 0.16;
 const DEVANAGARI_INK_PADDING_Y = 0.18;
 const DEVANAGARI_FONT = "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif";
-const RELATIONSHIP_FAN_FONT_SIZE = 15;
 let textMeasurementCanvas: HTMLCanvasElement | null = null;
 
 function roundedBound(value: number): number {
@@ -746,11 +738,11 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
   const moveSiblingNode = useCanvasStore((state) => state.moveSiblingNode);
   const clearRelationships = useCanvasStore((state) => state.clearRelationships);
-  const setRelationshipFanVisible = useCanvasStore((state) => state.setRelationshipFanVisible);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const relationshipSelection = useUIStore((state) => state.relationshipSelection);
   const startRelationshipSelection = useUIStore((state) => state.startRelationshipSelection);
   const toggleRelationshipTarget = useUIStore((state) => state.toggleRelationshipTarget);
+  const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
@@ -777,7 +769,11 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
   const fontMetricsReady = fontMetricsRevision > 0;
 
   const model = useMemo(() => {
-    const chartNodes = nodes.filter((node) => node.type !== "sunburst" && node.type !== "frame");
+    const chartNodes = nodes.filter((node) =>
+      node.type !== "sunburst"
+      && node.type !== "frame"
+      && node.type !== "relationshipDiagram"
+    );
     const byId = new Map(chartNodes.map((node) => [node.id, node]));
     const root = byId.get(d.rootId);
     if (!root) return null;
@@ -923,6 +919,12 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
         && model.chartNodeIds.has(relationship.targetNodeId)
       )
     : [];
+  const hasRelationshipsForSelectedSource = selectedId
+    ? relationships.some((relationship) =>
+        relationship.sourceNodeId === selectedId
+        && model.byId.has(relationship.targetNodeId)
+      )
+    : false;
   const selectedRelationshipTypes = Array.from(new Set(
     relationshipsForSelectedChart.map((relationship) => relationship.relationType)
   ));
@@ -955,70 +957,16 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
       })
     : null;
 
-  const relationshipGroups = new Map<string, typeof relationships>();
+  const relationshipTargetsBySource = new Map<string, Set<string>>();
   for (const relationship of relationships) {
     if (
       !model.chartNodeIds.has(relationship.sourceNodeId)
-      || !model.chartNodeIds.has(relationship.targetNodeId)
+      || !model.byId.has(relationship.targetNodeId)
     ) continue;
-    const key = `${relationship.sourceNodeId}\u0000${relationship.relationType}`;
-    const group = relationshipGroups.get(key) ?? [];
-    group.push(relationship);
-    relationshipGroups.set(key, group);
+    const targets = relationshipTargetsBySource.get(relationship.sourceNodeId) ?? new Set<string>();
+    targets.add(relationship.targetNodeId);
+    relationshipTargetsBySource.set(relationship.sourceNodeId, targets);
   }
-  const relationshipFanSources: RelationshipFanSourceGeometry[] = [];
-  for (const group of relationshipGroups.values()) {
-    const first = group[0];
-    if (!first) continue;
-    const sourceSegment = model.segments.find((segment) => segment.id === first.sourceNodeId) ?? null;
-    const sourceIsRoot = first.sourceNodeId === d.rootId;
-    if (!sourceSegment && !sourceIsRoot) continue;
-    const ordered = orderRelationshipsByChart(group, d.rootId, model.hierarchy);
-    const fanState = relationshipFans.find((fan) =>
-      fan.sourceNodeId === first.sourceNodeId && fan.relationType === first.relationType
-    );
-    relationshipFanSources.push({
-      sourceNodeId: first.sourceNodeId,
-      relationType: first.relationType,
-      startAngle: sourceSegment?.startAngle ?? ROOT_START_ANGLE,
-      endAngle: sourceSegment?.endAngle ?? ROOT_END_ANGLE,
-      innerRadius: sourceSegment?.innerRadius ?? 0,
-      outerRadius: sourceSegment?.outerRadius ?? model.centerRadius,
-      sourceFill: sourceSegment?.fill
-        ?? (rootData.radialFillColor as string | undefined)
-        ?? model.scheme.rootFill,
-      sourceFillEnd: sourceSegment?.fillEnd,
-      visible: fanState?.visible !== false,
-      targets: ordered.map((relationship) => {
-        const label = nodeDisplayLabel(model.byId.get(relationship.targetNodeId));
-        return {
-          targetNodeId: relationship.targetNodeId,
-          label,
-          measuredTextWidth: textMetrics(
-            [label],
-            RELATIONSHIP_FAN_FONT_SIZE,
-            label,
-            { fontWeight: 600 },
-            fontMetricsReady
-          ).width,
-        };
-      }),
-    });
-  }
-  const relationshipFanLayout = layoutRelationshipFans(relationshipFanSources, {
-    centerX: model.center,
-    centerY: model.center,
-    chartOuterRadius: model.outerRadius,
-    chartBounds: { minX: 0, minY: 0, maxX: model.size, maxY: model.size },
-    fanFontSize: RELATIONSHIP_FAN_FONT_SIZE,
-    minimumFanFontSize: 11,
-    fanThickness: 42,
-    attachmentGap: 14,
-    angularCollisionGap: 0.75,
-    cellPaddingX: 6,
-    cellPaddingY: 5,
-    minimumCellArcWidth: 28,
-  });
 
   const beginRelationshipSelection = (relationType = DEFAULT_RELATIONSHIP_TYPE) => {
     if (!selectedId) return;
@@ -1182,30 +1130,31 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
   const controlAngle = selectedSegment
     ? (selectedSegment.startAngle + selectedSegment.endAngle) / 2
     : -90;
-  const selectedFanLayouts = selectedId
-    ? relationshipFanLayout.fans.filter((fan) => fan.sourceNodeId === selectedId && fan.visible)
-    : [];
-  const controlRadius = Math.max(
-    model.outerRadius + 76,
-    ...selectedFanLayouts.map((fan) => fan.outerRadius + 44)
-  );
+  const controlRadius = model.outerRadius + 76;
   const controlGeometry = selectedId
     ? pointOnCircle(model.center, model.center, controlRadius, controlAngle)
     : null;
   const controlsVertical = Math.abs(Math.cos((controlAngle * Math.PI) / 180)) > 0.62;
+  const rootRelationshipCount = relationshipTargetsBySource.get(d.rootId)?.size ?? 0;
+  const rootRelationshipMarkerPoint = pointOnCircle(
+    model.center,
+    model.center,
+    Math.max(12, model.centerRadius - 15),
+    -45
+  );
 
   return (
     <div className="relative h-full w-full">
       <SunburstBoundsSynchronizer
         nodeId={id}
         chartSize={model.size}
-        bounds={relationshipFanLayout.bounds}
+        bounds={{ minX: 0, minY: 0, width: model.size, height: model.size }}
       />
       <svg
         ref={svgRef}
-        viewBox={`${relationshipFanLayout.bounds.minX} ${relationshipFanLayout.bounds.minY} ${relationshipFanLayout.bounds.width} ${relationshipFanLayout.bounds.height}`}
-        width={relationshipFanLayout.bounds.width}
-        height={relationshipFanLayout.bounds.height}
+        viewBox={`0 0 ${model.size} ${model.size}`}
+        width={model.size}
+        height={model.size}
         className="absolute overflow-visible"
         style={{
           left: 0,
@@ -1225,21 +1174,15 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
         </defs>
 
         <rect
-          x={relationshipFanLayout.bounds.minX}
-          y={relationshipFanLayout.bounds.minY}
-          width={relationshipFanLayout.bounds.width}
-          height={relationshipFanLayout.bounds.height}
+          x="0"
+          y="0"
+          width={model.size}
+          height={model.size}
           fill="none"
           stroke="none"
           pointerEvents="none"
           data-export-bounds
         />
-        <RelationshipFanRenderer
-          fans={relationshipFanLayout.fans}
-          layer="panels"
-          opacity={activeRelationshipSession ? 0.18 : 1}
-        />
-
         {model.segments.map((segment) => {
           const selected = selectedSectorIds.has(segment.id);
           const hovered = hoveredId === segment.id;
@@ -1278,6 +1221,7 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
             segment.outerRadius - Math.min(15, (segment.outerRadius - segment.innerRadius) * 0.32),
             (segment.startAngle + segment.endAngle) / 2
           );
+          const relationshipCount = relationshipTargetsBySource.get(segment.id)?.size ?? 0;
 
           return (
             <g key={segment.id}>
@@ -1439,6 +1383,29 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                   />
                 </g>
               )}
+              {!activeRelationshipSession && relationshipCount > 0 && (
+                <g pointerEvents="none" role="img" aria-label={`${relationshipCount} relationships`}>
+                  <circle
+                    cx={relationshipMarkerPoint.x}
+                    cy={relationshipMarkerPoint.y}
+                    r="9"
+                    fill="rgba(255,255,255,0.9)"
+                    stroke={segment.borderColor}
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x={relationshipMarkerPoint.x}
+                    y={relationshipMarkerPoint.y + 0.5}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#0f172a"
+                    fontSize="9"
+                    fontWeight="700"
+                  >
+                    {relationshipCount}
+                  </text>
+                </g>
+              )}
             </g>
           );
         })}
@@ -1524,6 +1491,29 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
             />
           </foreignObject>
         )}
+        {!activeRelationshipSession && rootRelationshipCount > 0 && (
+          <g pointerEvents="none" role="img" aria-label={`${rootRelationshipCount} relationships`}>
+            <circle
+              cx={rootRelationshipMarkerPoint.x}
+              cy={rootRelationshipMarkerPoint.y}
+              r="10"
+              fill="rgba(255,255,255,0.92)"
+              stroke={(rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
+              strokeWidth="1.5"
+            />
+            <text
+              x={rootRelationshipMarkerPoint.x}
+              y={rootRelationshipMarkerPoint.y + 0.5}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="#0f172a"
+              fontSize="9"
+              fontWeight="700"
+            >
+              {rootRelationshipCount}
+            </text>
+          </g>
+        )}
 
         {!activeRelationshipSession && selectedSectorIds.has(d.rootId) && (
           <circle
@@ -1569,12 +1559,6 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
             data-export-ignore
           />
         )}
-
-        <RelationshipFanRenderer
-          fans={relationshipFanLayout.fans}
-          layer="badges"
-          opacity={activeRelationshipSession ? 0.18 : 1}
-        />
 
         {!activeRelationshipSession && selectedId && editingId === selectedId && selectedNode && selectedGeometry && selectedTextStyle && selectedClipId && (
           <foreignObject
@@ -1701,8 +1685,8 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
         <div
           className={`nodrag nopan absolute z-30 flex gap-1 ${controlsVertical ? "flex-col" : "flex-row"}`}
           style={{
-            left: controlGeometry.x - relationshipFanLayout.bounds.minX,
-            top: controlGeometry.y - relationshipFanLayout.bounds.minY,
+            left: controlGeometry.x,
+            top: controlGeometry.y,
             transform: "translate(-50%, -50%)",
           }}
           onPointerDown={(event) => event.stopPropagation()}
@@ -1727,24 +1711,23 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                   <Link2 className="h-4 w-4" />
                   {selectedRelationships.length ? "Edit relationships" : "Add relationships"}
                 </DropdownMenuItem>
-                {selectedRelationships.length > 0 && (
+                {hasRelationshipsForSelectedSource && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onSelect={() => {
-                        setRelationshipFanVisible(
-                          selectedId,
-                          primaryRelationshipType,
-                          selectedRelationshipFan?.visible === false
-                        );
-                        toast.success(selectedRelationshipFan?.visible === false ? "Relationship fan shown." : "Relationship fan hidden.");
-                      }}
+                      onSelect={() => openRelationshipDiagram({
+                        mode: "create",
+                        chartRootNodeId: d.rootId,
+                        sourceNodeIds: [selectedId],
+                      })}
                     >
-                      {selectedRelationshipFan?.visible === false
-                        ? <Eye className="h-4 w-4" />
-                        : <EyeOff className="h-4 w-4" />}
-                      {selectedRelationshipFan?.visible === false ? "Show fan" : "Hide fan"}
+                      <Rows3 className="h-4 w-4" />
+                      Generate relationship diagram
                     </DropdownMenuItem>
+                  </>
+                )}
+                {selectedRelationships.length > 0 && (
+                  <>
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onSelect={() => confirmClearRelationships(primaryRelationshipType)}
@@ -1760,9 +1743,6 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                     && relationship.relationType === relationType
                     && model.chartNodeIds.has(relationship.targetNodeId)
                   );
-                  const fan = relationshipFans.find((candidate) =>
-                    candidate.sourceNodeId === selectedId && candidate.relationType === relationType
-                  );
                   const relationshipLabel = relationshipDefinition(relationType)?.label ?? relationType;
                   return (
                     <Fragment key={relationType}>
@@ -1770,17 +1750,6 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
                       <DropdownMenuItem onSelect={() => beginRelationshipSelection(relationType)}>
                         <Link2 className="h-4 w-4" />
                         Edit {relationshipLabel} relationships
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setRelationshipFanVisible(selectedId, relationType, fan?.visible === false);
-                          toast.success(fan?.visible === false ? "Relationship fan shown." : "Relationship fan hidden.");
-                        }}
-                      >
-                        {fan?.visible === false
-                          ? <Eye className="h-4 w-4" />
-                          : <EyeOff className="h-4 w-4" />}
-                        {fan?.visible === false ? "Show fan" : "Hide fan"}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"

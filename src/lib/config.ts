@@ -18,6 +18,6 @@ export const APP_TAGLINE =
 
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3005";
 
-export const BOARD_CONTENT_VERSION = 2;
+export const BOARD_CONTENT_VERSION = 3;
 export const HISTORY_LIMIT = 100;
 export const AUTOSAVE_DELAY_MS = 1200;
