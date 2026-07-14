@@ -7,7 +7,6 @@ import type { VidyaEdgeData } from "@/lib/types";
 import {
   buildTreeConnectorModel,
   DEFAULT_TREE_CONNECTOR_WIDTH,
-  type TreeConnectorGroup,
   type TreeConnectorModel,
 } from "@/lib/layout/tree-layout";
 import { resolveAccentColor } from "@/lib/style-utils";
@@ -44,13 +43,6 @@ function branchPath(segments: Array<{ x1: number; y1: number; x2: number; y2: nu
   return segments.map(segmentPath).join(" ");
 }
 
-function visibleGroup(group: TreeConnectorGroup, manualIds: Set<string>): TreeConnectorGroup | null {
-  if (manualIds.has(group.parentId)) return null;
-  const branches = group.branches.filter((branch) => !manualIds.has(branch.childId));
-  if (!branches.length) return null;
-  return { ...group, branches };
-}
-
 function selectEdge(edgeId: string, additive: boolean): void {
   useCanvasStore.setState((state) => ({
     nodes: additive ? state.nodes : state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
@@ -66,29 +58,22 @@ function selectEdge(edgeId: string, additive: boolean): void {
 }
 
 /**
- * Renders automatic Horizontal and Vertical hierarchy edges as one shared bus
- * per parent. Cross-links and manually moved endpoints stay on SmartBranchEdge.
+ * Renders Horizontal and Vertical hierarchy edges as one shared bus per parent,
+ * including manually adjusted endpoints.
  */
 export function StructuredTreeConnectors() {
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
   const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const relationshipSelection = useUIStore((state) => state.relationshipSelection);
-  const canvasDragging = useUIStore((state) => state.canvasDragging);
   const [model, setModel] = useState<TreeConnectorModel>(() => buildTreeConnectorModel(nodes, edges));
 
   useEffect(() => {
-    if (canvasDragging) return;
     const frame = requestAnimationFrame(() => setModel(buildTreeConnectorModel(nodes, edges)));
     return () => cancelAnimationFrame(frame);
-  }, [canvasDragging, edges, nodes]);
+  }, [edges, nodes]);
 
-  const manualIds = useMemo(() => new Set(nodes
-    .filter((node) => (node.data as Record<string, unknown>).treeManualOverride === true)
-    .map((node) => node.id)), [nodes]);
-  const groups = useMemo(() => model.groups
-    .map((group) => visibleGroup(group, manualIds))
-    .filter((group): group is TreeConnectorGroup => group !== null), [manualIds, model.groups]);
+  const groups = model.groups;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   if (relationshipSelection || !groups.length) return null;

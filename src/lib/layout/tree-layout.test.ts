@@ -177,16 +177,19 @@ test("shared tree buses replace overlapping per-child elbows and avoid every box
   }
 });
 
-test("manually moved endpoints leave grouped buses for live smart routing", () => {
+test("manually moved endpoints remain on grouped hierarchy buses", () => {
   const fixture = denseTree();
-  const nodes = fixture.nodes.map((node) => node.id === "branch-3"
-    ? { ...node, data: { ...node.data, treeManualOverride: true } }
+  const placed = applyLayout(fixture.nodes, fixture.edges, "vertical").map((node) => node.id === "branch-3"
+    ? {
+        ...node,
+        position: { x: node.position.x + 48, y: node.position.y + 24 },
+        data: { ...node.data, treeManualOverride: true },
+      }
     : node);
-  const placed = applyLayout(nodes, fixture.edges, "vertical");
   const model = buildTreeConnectorModel(placed, fixture.edges);
   const rootGroup = model.groups.find((group) => group.parentId === "root");
 
   assert.ok(rootGroup);
-  assert.equal(rootGroup!.branches.some((branch) => branch.childId === "branch-3"), false);
-  assert.equal(model.groups.some((group) => group.parentId === "branch-3"), false);
+  assert.equal(rootGroup!.branches.some((branch) => branch.childId === "branch-3"), true);
+  assert.equal(model.groups.some((group) => group.parentId === "branch-3"), true);
 });

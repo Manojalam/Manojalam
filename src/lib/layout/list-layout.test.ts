@@ -233,6 +233,25 @@ test("List connectors use one vertical trunk per parent with short child stubs",
   assert.deepEqual(model.obstacleIntersections, []);
 });
 
+test("manually moved List endpoints remain on shared hierarchy trunks", () => {
+  const tree = buildTree(referenceSpecs);
+  const hierarchy = buildHierarchy(tree.nodes, tree.edges);
+  const placements = computeListLayout("root", hierarchy, new Map(tree.nodes.map((node) => [node.id, node])));
+  const nodes = positionedNodes(tree.nodes, placements).map((node) => node.id === "a2"
+    ? {
+        ...node,
+        position: { x: node.position.x + 36, y: node.position.y + 18 },
+        data: { ...node.data, listManualOverride: true },
+      }
+    : node);
+  const model = buildListConnectorModel(nodes, tree.edges);
+  const parentGroup = model.groups.find((group) => group.parentId === "a");
+
+  assert.ok(parentGroup);
+  assert.equal(parentGroup!.branches.some((branch) => branch.childId === "a2"), true);
+  assert.equal(model.groups.some((group) => group.parentId === "a2"), true);
+});
+
 test("duplicate logical hierarchy edges produce one visible child branch", () => {
   const tree = buildTree([
     { id: "root", parentId: null, width: 180, height: 60 },

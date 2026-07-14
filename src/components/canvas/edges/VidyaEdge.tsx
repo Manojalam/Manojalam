@@ -34,19 +34,14 @@ function VidyaEdgeComponent({
   const deleteEdges = useCanvasStore((s) => s.deleteEdges);
   const endpointData = useNodesData([source, target]);
   const curveStyle = d.curveStyle ?? "smooth";
-  const sourceData = (endpointData.find((node) => node.id === source)?.data ?? {}) as Record<string, unknown>;
   const targetData = (endpointData.find((node) => node.id === target)?.data ?? {}) as Record<string, unknown>;
   if (
     d.layoutMode === "list" &&
-    targetData.parentId === source &&
-    sourceData.listManualOverride !== true &&
-    targetData.listManualOverride !== true
+    targetData.parentId === source
   ) return null;
   if (
     (d.layoutMode === "horizontal" || d.layoutMode === "vertical" || d.layoutMode === "topDown") &&
-    targetData.parentId === source &&
-    sourceData.treeManualOverride !== true &&
-    targetData.treeManualOverride !== true
+    targetData.parentId === source
   ) return null;
 
   let path: string;

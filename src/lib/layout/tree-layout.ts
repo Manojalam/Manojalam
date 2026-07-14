@@ -199,12 +199,9 @@ export function isGroupedTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>):
   const source = byId.get(edge.source);
   const target = byId.get(edge.target);
   if (!source || !target || source.hidden || target.hidden || edge.hidden) return false;
-  const sourceData = (source.data ?? {}) as Record<string, unknown>;
   const targetData = (target.data ?? {}) as Record<string, unknown>;
   return isTreeMode(data.layoutMode)
-    && targetData.parentId === edge.source
-    && sourceData.treeManualOverride !== true
-    && targetData.treeManualOverride !== true;
+    && targetData.parentId === edge.source;
 }
 
 function groupSegments(group: TreeConnectorGroup): OrthogonalSegment[] {
