@@ -44,9 +44,9 @@ test("generated typography remains readable and follows hierarchy roles", () => 
   const rootData = styled.nodes[0].data as Record<string, unknown>;
   const childData = styled.nodes[1].data as Record<string, unknown>;
 
-  assert.equal(resolveLayoutFontSize(rootData), 18);
-  assert.equal(resolveLayoutFontSize(childData), 16);
-  assert.ok((resolveLayoutFontSize(childData) ?? 0) >= 14);
+  assert.equal(resolveLayoutFontSize(rootData), 22);
+  assert.equal(resolveLayoutFontSize(childData), 19);
+  assert.ok((resolveLayoutFontSize(childData) ?? 0) >= 17);
 });
 
 test("List uses uniform column widths while allowing long text to increase row height", () => {
@@ -70,4 +70,17 @@ test("an explicit typography override wins over generated layout text size", () 
     layoutAutoTypography: false,
   };
   assert.equal(resolveLayoutFontSize(data), 22);
+});
+
+test("generated typography never shrinks an existing larger font size", () => {
+  const { nodes, edges } = fixture();
+  nodes[1] = {
+    ...nodes[1],
+    data: { ...nodes[1].data, fontSize: 30 },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "matrix", "ocean");
+  const data = styled.nodes[1].data as Record<string, unknown>;
+
+  assert.equal(resolveLayoutFontSize(data), 30);
 });

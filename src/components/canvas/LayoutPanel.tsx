@@ -318,7 +318,7 @@ export function LayoutPanel() {
                   key={density}
                   type="button"
                   onClick={() => {
-                    updateNodeData(matrixRoot.id, { matrixDensity: density });
+                    updateNodeData(matrixRoot.id, { matrixDensity: density, matrixDensityUserSet: true });
                     requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
                   }}
                   className={cn(

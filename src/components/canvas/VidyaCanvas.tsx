@@ -59,8 +59,8 @@ interface Guides { h: number[]; v: number[] }
 const GUIDE_THRESHOLD = 6; // px in flow coords
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
-const MIN_READABLE_LIST_ZOOM = 0.5;
-const MIN_READABLE_MATRIX_ZOOM = 0.5;
+const MIN_READABLE_LIST_ZOOM = 0.65;
+const MIN_READABLE_MATRIX_ZOOM = 0.7;
 const LONG_PRESS_PAN_MS = 180;
 const LONG_PRESS_CANCEL_DISTANCE = 7;
 

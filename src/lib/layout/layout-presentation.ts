@@ -96,10 +96,10 @@ function wrappedLineCount(lines: string[], charactersPerLine: number): number {
 }
 
 function roleFontSize(mode: LayoutMode, depth: number): number {
-  if (mode === "matrix") return depth === 0 ? 18 : depth === 1 ? 16 : 14;
-  if (mode === "list") return depth === 0 ? 18 : depth === 1 ? 16 : 15;
-  if (mode === "linear") return depth === 0 ? 17 : 15;
-  return depth === 0 ? 18 : depth === 1 ? 16 : 15;
+  if (mode === "matrix") return depth === 0 ? 24 : depth === 1 ? 20 : 18;
+  if (mode === "list") return depth === 0 ? 22 : depth === 1 ? 19 : 17;
+  if (mode === "linear") return depth === 0 ? 20 : 18;
+  return depth === 0 ? 22 : depth === 1 ? 19 : 17;
 }
 
 export function layoutFontSizeFor(mode: LayoutMode, depth: number): number {
@@ -108,14 +108,17 @@ export function layoutFontSizeFor(mode: LayoutMode, depth: number): number {
 
 export function resolveLayoutFontSize(data: Record<string, unknown>): number | undefined {
   const visualStyle = data.layoutVisualStyle as Partial<LayoutVisualStyle> | undefined;
+  const storedFontSize = positiveNumber(data.fontSize);
   if (
     data.layoutAutoTypography !== false
     && typeof visualStyle?.fontSize === "number"
     && Number.isFinite(visualStyle.fontSize)
   ) {
-    return visualStyle.fontSize;
+    // Layout typography is a readability floor. It must never shrink text the
+    // user already made larger before arranging the branch.
+    return Math.max(storedFontSize ?? 0, visualStyle.fontSize);
   }
-  return positiveNumber(data.fontSize) ?? undefined;
+  return storedFontSize ?? undefined;
 }
 
 export function supportsGeneratedLayoutSizing(mode: LayoutMode): boolean {

@@ -350,6 +350,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** Keeps a manually dragged List node off generated rows until List is reapplied. */
   listManualOverride?: boolean;
   matrixDensity?: MatrixDensity;
+  matrixDensityUserSet?: boolean;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
   /** Render-only dimensions for the active structured layout. */
