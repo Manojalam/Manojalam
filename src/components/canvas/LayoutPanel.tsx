@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Grid3X3, Maximize2, RefreshCw, Ungroup, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -80,6 +80,7 @@ export function LayoutPanel() {
   const open = useUIStore((s) => s.layoutPanelOpen);
   const setOpen = useUIStore((s) => s.setLayoutPanelOpen);
   const applyLayout = useCanvasStore((s) => s.applyLayout);
+  const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
@@ -95,18 +96,28 @@ export function LayoutPanel() {
   const currentMode = selectedNode
     ? ((selectedNode.data as Record<string, unknown> | undefined)?.layoutMode as string | undefined) ?? "freeForm"
     : undefined;
+  const selectedData = (selectedNode?.data ?? {}) as Record<string, unknown>;
+  const matrixRootId = typeof selectedData.matrixRootId === "string" ? selectedData.matrixRootId : null;
+  const matrixRoot = matrixRootId
+    ? nodes.find((node) => node.id === matrixRootId) ?? null
+    : currentMode === "matrix" ? selectedNode : null;
+  const matrixBranchIds = matrixRoot ? getSubtree(matrixRoot.id, hierarchy) : [];
+
+  const requestMeasuredLayout = (mode: "list" | "matrix", rootId: string, nodeIds: string[]) => {
+    window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+      detail: { mode, rootId, nodeIds },
+    }));
+  };
 
   const handleApply = (mode: LayoutMode) => {
     if (!selectedNode) {
       toast.error("Select one parent node first to apply a branch layout.");
       return;
     }
-    if (mode === "list") {
+    if (mode === "list" || mode === "matrix") {
       // React Flow owns the authoritative rendered measurements. Ask the canvas
       // to refresh them, then apply the outline on the following frames.
-      window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
-        detail: { mode, rootId: selectedNode.id, nodeIds: branchIds },
-      }));
+      requestMeasuredLayout(mode, selectedNode.id, branchIds);
     } else {
       applyLayout(mode, selectedNode.id);
       setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
@@ -114,8 +125,8 @@ export function LayoutPanel() {
       })), 60);
     }
     toast.success(`Applied ${layoutLabel(mode)} to ${affectedCount} node${affectedCount === 1 ? "" : "s"}.`, {
-      description: mode === "list" && affectedCount > 30
-        ? "The branch is long, so a readable zoom is preserved."
+      description: (mode === "list" || mode === "matrix") && affectedCount > 30
+        ? "The branch is large, so a readable zoom was preserved."
         : undefined,
       action: {
         label: "Undo",
@@ -196,6 +207,84 @@ export function LayoutPanel() {
                 onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview"))}
               >
                 Fit
+              </button>
+            </div>
+          </div>
+        )}
+
+        {matrixRoot && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-medium text-foreground">Matrix table</div>
+              <button
+                type="button"
+                title="Show or hide cell borders"
+                aria-label="Show or hide cell borders"
+                onClick={() => {
+                  const rootMatrixData = (matrixRoot.data ?? {}) as Record<string, unknown>;
+                  updateNodeData(matrixRoot.id, { matrixGridVisible: rootMatrixData.matrixGridVisible === false });
+                  requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                }}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-md border",
+                  ((matrixRoot.data as Record<string, unknown>).matrixGridVisible ?? true)
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground"
+                )}
+              >
+                <Grid3X3 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1">
+              {(["compact", "comfortable", "presentation"] as const).map((density) => (
+                <button
+                  key={density}
+                  type="button"
+                  onClick={() => {
+                    updateNodeData(matrixRoot.id, { matrixDensity: density });
+                    requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                  }}
+                  className={cn(
+                    "rounded-md border px-1 py-1.5 text-[9px] capitalize",
+                    (((matrixRoot.data as Record<string, unknown>).matrixDensity as string | undefined) ?? "comfortable") === density
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background hover:bg-muted"
+                  )}
+                >
+                  {density}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-1">
+              <button
+                type="button"
+                onClick={() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds)}
+                className="flex items-center justify-center gap-1 rounded-md border border-border bg-background px-1 py-1.5 text-[9px] hover:bg-muted"
+              >
+                <RefreshCw className="h-3 w-3" /> Reflow
+              </button>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                  detail: { nodeIds: matrixBranchIds, mode: "matrix", rootId: matrixRoot.id, forceFit: true },
+                }))}
+                className="flex items-center justify-center gap-1 rounded-md border border-border bg-background px-1 py-1.5 text-[9px] hover:bg-muted"
+              >
+                <Maximize2 className="h-3 w-3" /> Fit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  applyLayout("freeForm", matrixRoot.id);
+                  toast.success("Converted Matrix to Free Form.", {
+                    action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                  });
+                }}
+                className="flex items-center justify-center gap-1 rounded-md border border-border bg-background px-1 py-1.5 text-[9px] hover:bg-muted"
+              >
+                <Ungroup className="h-3 w-3" /> Free
               </button>
             </div>
           </div>

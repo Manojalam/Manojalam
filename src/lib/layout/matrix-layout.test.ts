@@ -1,0 +1,243 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { Edge, Node } from "@xyflow/react";
+import { buildHierarchy } from "./hierarchy";
+import {
+  MATRIX_DENSITY_SETTINGS,
+  MATRIX_HEADER_MIN_WIDTH,
+  MATRIX_MAX_COLUMN_WIDTH,
+  buildMatrixLeafRows,
+  computeMatrixLayout,
+  getMatrixBaseSize,
+  isMatrixHierarchyEdge,
+  type MatrixLayoutResult,
+} from "./matrix-layout";
+
+type TreeNode = {
+  id: string;
+  parentId: string | null;
+  text?: string;
+  width?: number;
+  height?: number;
+  hidden?: boolean;
+  collapsed?: boolean;
+};
+
+function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
+  const childOrder = new Map<string, string[]>();
+  specs.forEach((spec) => {
+    if (spec.parentId) childOrder.set(spec.parentId, [...(childOrder.get(spec.parentId) ?? []), spec.id]);
+  });
+  const nodes = specs.map<Node>((spec, index) => ({
+    id: spec.id,
+    type: "shape",
+    position: index === 0 ? { x: 300, y: 160 } : { x: index * 7, y: index * 5 },
+    measured: { width: spec.width ?? 180, height: spec.height ?? 64 },
+    hidden: spec.hidden,
+    data: {
+      text: spec.text ?? spec.id,
+      parentId: spec.parentId,
+      childOrder: childOrder.get(spec.id) ?? [],
+      ...(spec.collapsed ? { collapsed: true } : {}),
+    },
+  }));
+  const edges = specs
+    .filter((spec): spec is TreeNode & { parentId: string } => spec.parentId !== null)
+    .map<Edge>((spec) => ({
+      id: `edge-${spec.parentId}-${spec.id}`,
+      source: spec.parentId,
+      target: spec.id,
+      type: "branch",
+    }));
+  return { nodes, edges };
+}
+
+function assertClean(result: MatrixLayoutResult): void {
+  assert.deepEqual(result.diagnostics, {
+    duplicateNodeIds: [],
+    missingNodeIds: [],
+    nonContiguousNodeIds: [],
+    invalidNodeIds: [],
+    overlapPairs: [],
+  });
+  const renderedIds = [result.header.nodeId, ...result.cells.map((cell) => cell.nodeId)];
+  assert.equal(new Set(renderedIds).size, renderedIds.length);
+  for (const cell of result.cells) {
+    assert.ok(cell.width > 0 && cell.height > 0);
+    assert.ok(cell.height >= cell.requiredHeight - 0.5);
+  }
+}
+
+function referenceTree(): { nodes: Node[]; edges: Edge[] } {
+  return buildTree([
+    { id: "root", parentId: null, text: "Month/Year", width: 260, height: 72 },
+    { id: "week-1", parentId: "root", text: "Week 1" },
+    { id: "week-1-task-1", parentId: "week-1", text: "Task 1" },
+    { id: "week-1-new", parentId: "week-1-task-1", text: "New" },
+    { id: "week-1-task-2", parentId: "week-1", text: "Task 2" },
+    { id: "week-1-task-3", parentId: "week-1", text: "Task 3" },
+    { id: "week-2", parentId: "root", text: "Week 2" },
+    { id: "week-2-task-1", parentId: "week-2", text: "Task 1" },
+    { id: "week-2-task-2", parentId: "week-2", text: "Task 2" },
+    { id: "week-2-task-3", parentId: "week-2", text: "Task 3" },
+    { id: "week-3", parentId: "root", text: "Week 3" },
+    { id: "week-3-task-1", parentId: "week-3", text: "Task 1" },
+    { id: "week-3-task-2", parentId: "week-3", text: "Task 2" },
+    { id: "week-3-task-3", parentId: "week-3", text: "Task 3" },
+    { id: "week-4", parentId: "root", text: "Week 4" },
+    { id: "week-5", parentId: "root", text: "Week 5" },
+    { id: "week-5-task-1", parentId: "week-5", text: "Task 1" },
+    { id: "week-5-new", parentId: "week-5-task-1", text: "New" },
+    { id: "week-5-new-new", parentId: "week-5-new", text: "New New" },
+    { id: "week-5-task-2", parentId: "week-5", text: "Task 2" },
+  ]);
+}
+
+test("Month/Year becomes a merged hierarchy table", () => {
+  const { nodes, edges } = referenceTree();
+  const hierarchy = buildHierarchy(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const result = computeMatrixLayout("root", hierarchy, byId);
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(result.rows.length, 12);
+  assert.equal(result.columnWidths.length, 4);
+  assert.equal(result.header.nodeId, "root");
+  assert.equal(result.header.width, result.bounds.width);
+  assert.equal(cells.get("week-1")?.rowSpan, 3);
+  assert.equal(cells.get("week-2")?.rowSpan, 3);
+  assert.equal(cells.get("week-3")?.rowSpan, 3);
+  assert.equal(cells.get("week-4")?.rowSpan, 1);
+  assert.equal(cells.get("week-5")?.rowSpan, 2);
+
+  const weekOneTaskRow = result.rows.find((row) => row.path.includes("week-1-new"));
+  assert.deepEqual(weekOneTaskRow?.path, ["week-1", "week-1-task-1", "week-1-new"]);
+  const weekFiveDeepRow = result.rows.find((row) => row.path.includes("week-5-new-new"));
+  assert.deepEqual(weekFiveDeepRow?.path, ["week-5", "week-5-task-1", "week-5-new", "week-5-new-new"]);
+  const scopeIds = new Set(["root", ...result.cells.map((cell) => cell.nodeId)]);
+  assert.equal(isMatrixHierarchyEdge(edges[0], hierarchy, scopeIds), true);
+  assert.equal(isMatrixHierarchyEdge({ source: "week-1-task-1", target: "week-2-task-1" }, hierarchy, scopeIds), false);
+  assertClean(result);
+});
+
+test("uneven branches create blank later columns instead of stretched cells", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "short", parentId: "root" },
+    { id: "deep-1", parentId: "root" },
+    { id: "deep-2", parentId: "deep-1" },
+    { id: "deep-3", parentId: "deep-2" },
+    { id: "deep-4", parentId: "deep-3" },
+    { id: "deep-5", parentId: "deep-4" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const result = computeMatrixLayout("root", hierarchy, byId);
+  const short = result.cells.find((cell) => cell.nodeId === "short")!;
+
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.columnWidths.length, 5);
+  assert.equal(short.column, 0);
+  assert.equal(short.width, result.columnWidths[0]);
+  assert.ok(short.width < result.bounds.width);
+  assertClean(result);
+});
+
+test("a shallow table grows its body to the readable header width", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "A readable Matrix title" },
+    { id: "only-child", parentId: "root", text: "One cell" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+
+  assert.equal(result.columnWidths.length, 1);
+  assert.ok(result.header.width >= MATRIX_HEADER_MIN_WIDTH);
+  assert.equal(result.header.width, result.columnWidths[0]);
+  assertClean(result);
+});
+
+test("long Sanskrit content reaches the width cap and increases row height", () => {
+  const paragraph = "अथातो धर्मजिज्ञासा संस्कृतव्याकरणस्य विस्तीर्णविवरणम् ".repeat(18).trim();
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "व्याकरणम्" },
+    { id: "category", parentId: "root", text: "प्रकरणम्" },
+    { id: "detail", parentId: "category", text: paragraph },
+  ]);
+  nodes[2] = {
+    ...nodes[2],
+    data: { ...nodes[2].data, fontSize: 24 },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const detail = result.cells.find((cell) => cell.nodeId === "detail")!;
+
+  assert.equal(detail.width, MATRIX_MAX_COLUMN_WIDTH);
+  assert.ok(detail.height > MATRIX_DENSITY_SETTINGS.comfortable.minRowHeight * 3);
+  assertClean(result);
+});
+
+test("collapsed and hidden descendants do not create table rows", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "collapsed", parentId: "root", collapsed: true },
+    { id: "collapsed-child", parentId: "collapsed" },
+    { id: "visible", parentId: "root" },
+    { id: "hidden", parentId: "visible", hidden: true },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const rows = buildMatrixLeafRows("root", hierarchy, byId);
+  const result = computeMatrixLayout("root", hierarchy, byId);
+
+  assert.deepEqual(rows.map((row) => row.path), [["collapsed"], ["visible"]]);
+  assert.equal(result.cells.some((cell) => cell.nodeId === "collapsed-child"), false);
+  assert.equal(result.cells.some((cell) => cell.nodeId === "hidden"), false);
+  assertClean(result);
+});
+
+test("a 98-node hierarchy produces one cell per non-root node without overlap", () => {
+  const specs: TreeNode[] = [{ id: "root", parentId: null, text: "Large table" }];
+  for (let group = 0; group < 7; group++) {
+    const parentId = `group-${group}`;
+    specs.push({ id: parentId, parentId: "root", text: `Group ${group + 1}` });
+    const leaves = group === 6 ? 12 : 13;
+    for (let leaf = 0; leaf < leaves; leaf++) {
+      specs.push({
+        id: `${parentId}-leaf-${leaf}`,
+        parentId,
+        text: `विषय ${group + 1}.${leaf + 1} with readable content`,
+        height: 56 + (leaf % 4) * 18,
+      });
+    }
+  }
+  assert.equal(specs.length, 98);
+  const { nodes, edges } = buildTree(specs);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const positions = Object.values(result.placements).map((placement) => `${placement.x}:${placement.y}`);
+
+  assert.equal(result.rows.length, 90);
+  assert.equal(result.cells.length, 97);
+  assert.equal(Object.keys(result.placements).length, 98);
+  assert.equal(new Set(positions).size, positions.length);
+  for (let group = 0; group < 7; group++) {
+    const expectedSpan = group === 6 ? 12 : 13;
+    assert.equal(result.cells.find((cell) => cell.nodeId === `group-${group}`)?.rowSpan, expectedSpan);
+  }
+  assertClean(result);
+});
+
+test("Matrix overrides do not replace the stored normal node size", () => {
+  const node: Node = {
+    id: "cell",
+    position: { x: 0, y: 0 },
+    measured: { width: 600, height: 420 },
+    style: { width: 600, height: 420 },
+    data: {
+      userSize: { width: 240, height: 96 },
+      layoutSizeOverride: { mode: "matrix", width: 600, height: 420 },
+    },
+  };
+  assert.deepEqual(getMatrixBaseSize(node), { width: 240, height: 96 });
+});

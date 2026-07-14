@@ -10,15 +10,20 @@ import { NodeQuickActions } from "./NodeQuickActions";
 
 function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
+  const matrixCell = d.matrixCell === true;
+  const matrixGridVisible = d.matrixGridVisible !== false;
+  const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
 
   return (
     <>
-      <NodeResizer minWidth={280} minHeight={160} isVisible={selected} />
+      <NodeResizer minWidth={280} minHeight={160} isVisible={selected && !matrixCell} />
       <div
         className={cn(
-          "relative w-[300px] rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
+          "relative rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
+          matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[300px]",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
+        style={matrixCell ? { borderWidth: matrixGridVisible ? 1 : 0, borderRadius: matrixRadius } : undefined}
       >
         <NodeQuickActions nodeId={id} color="#4f46e5" selected={selected} />
         <Handle type="target" position={Position.Left} />

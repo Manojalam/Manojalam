@@ -339,7 +339,9 @@ export function routeLayoutEdge(
     case "topDown":
       return routeVerticalEdge(sourceRect, targetRect, obstacles);
     case "matrix":
-      return makeRoute([]);
+      // Structural Matrix edges are hidden by edge metadata. Any remaining
+      // edge is a useful cross-link and should route around the table cells.
+      return routeRectilinearEdge(sourceRect, targetRect, obstacles);
     case "radial":
     case "fromParentFreeForm":
     case "freeForm":

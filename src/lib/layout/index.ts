@@ -1,12 +1,23 @@
 import type { Node, Edge } from "@xyflow/react";
-import type { LayoutMode, MatrixDensity } from "@/lib/types";
+import type { LayoutMode } from "@/lib/types";
 import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarchy";
 import { computeListLayout } from "./list-layout";
+import { computeMatrixLayout } from "./matrix-layout";
 import {
   createNodeRect,
   sizeOf,
   type NodeRect,
 } from "./geometry";
+export {
+  buildMatrixLeafRows,
+  computeMatrixLayout,
+  getMatrixBaseSize,
+  isMatrixHierarchyEdge,
+  MATRIX_DENSITY_SETTINGS,
+  type MatrixCellGeometry,
+  type MatrixLayoutResult,
+  type MatrixRow,
+} from "./matrix-layout";
 
 export type { LayoutMode };
 export {
@@ -36,28 +47,8 @@ const LEVEL_GAP_Y = 170;
 const RADIAL_LEVEL_GAP = 280;
 const LINEAR_GAP = 120;
 
-// Matrix constants
-const MATRIX_MIN_COL_WIDTH = 140;
-const MATRIX_CATEGORY_COL_WIDTH = 220;
-const MATRIX_ITEM_COL_WIDTH = 230;
-const MATRIX_DETAIL_MIN_WIDTH = 320;
-const MATRIX_MAX_DETAIL_WIDTH = 680;
-const MATRIX_MIN_ROW_HEIGHT = 46;
-const MATRIX_CELL_PAD_X = 18;
-const MATRIX_CELL_PAD_Y = 10;
-const MATRIX_MAX_NATURAL_CELL_HEIGHT = 180;
-
 const DEFAULT_W = 180;
 const DEFAULT_H = 80;
-
-function dimension(value: unknown, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
 
 /** Keep React Flow's resizer fields and the persisted CSS size in sync. */
 export function synchronizeNodeDimensions<NodeType extends Node>(
@@ -103,71 +94,6 @@ function rectsTooClose(a: NodeRect, b: NodeRect, padX: number, padY: number): bo
 function centerOf(node: Node): Pos {
   const { w, h } = sizeOf(node);
   return { x: node.position.x + w / 2, y: node.position.y + h / 2 };
-}
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
-
-function nodeText(node: Node): string {
-  const data = (node.data ?? {}) as Record<string, unknown>;
-  const fields = ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"];
-  const plain = fields
-    .map((field) => data[field])
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join(" ");
-  const richText = typeof data.richText === "string" ? data.richText.replace(/<[^>]*>/g, " ") : "";
-  return (plain || richText || " ").replace(/\s+/g, " ").trim();
-}
-
-function textMetric(node: Node): { text: string; fontSize: number; charWidth: number; lineHeight: number } {
-  const data = (node.data ?? {}) as Record<string, unknown>;
-  const fontSize = clamp(dimension(data.fontSize, 14), 10, 32);
-  return {
-    text: nodeText(node),
-    fontSize,
-    charWidth: fontSize * 0.58,
-    lineHeight: fontSize * 1.35,
-  };
-}
-
-function textBoxWidth(node: Node, minWidth: number, maxWidth: number): number {
-  const { text, charWidth } = textMetric(node);
-  const words = text.split(/\s+/).filter(Boolean);
-  const longestWord = words.reduce((max, word) => Math.max(max, word.length), 0);
-  const preferredChars = Math.min(Math.max(longestWord + 8, Math.ceil(text.length * 0.55)), 48);
-  return clamp(Math.ceil(preferredChars * charWidth + MATRIX_CELL_PAD_X * 2), minWidth, maxWidth);
-}
-
-function textBoxHeight(node: Node, width: number, minHeight: number, maxHeight: number): number {
-  const { text, charWidth, lineHeight } = textMetric(node);
-  const usableWidth = Math.max(48, width - MATRIX_CELL_PAD_X * 2);
-  const charsPerLine = Math.max(8, Math.floor(usableWidth / charWidth));
-  const lines = text
-    .split(/\n/)
-    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
-  return clamp(Math.ceil(lines * lineHeight + MATRIX_CELL_PAD_Y * 2), minHeight, maxHeight);
-}
-
-function matrixNaturalWidth(node: Node, col: number, maxCols: number): number {
-  const itemMax = maxCols === 2 ? 420 : 300;
-  if (col === 0 && maxCols > 1) {
-    return textBoxWidth(node, MATRIX_CATEGORY_COL_WIDTH, 340);
-  }
-  if (maxCols === 1) {
-    return textBoxWidth(node, MATRIX_DETAIL_MIN_WIDTH, MATRIX_MAX_DETAIL_WIDTH);
-  }
-  if (maxCols === 2) {
-    return textBoxWidth(node, MATRIX_ITEM_COL_WIDTH, itemMax);
-  }
-  if (col === maxCols - 1) {
-    return textBoxWidth(node, MATRIX_DETAIL_MIN_WIDTH, MATRIX_MAX_DETAIL_WIDTH);
-  }
-  return textBoxWidth(node, MATRIX_MIN_COL_WIDTH, 300);
-}
-
-function matrixNaturalHeight(node: Node, width: number, minHeight = MATRIX_MIN_ROW_HEIGHT): number {
-  return textBoxHeight(node, width, minHeight, MATRIX_MAX_NATURAL_CELL_HEIGHT);
 }
 
 // -- Collision resolution (structure-preserving, axis-constrained) ------------
@@ -390,147 +316,6 @@ function centersToPositions(centers: Positions, rootId: string, byId: Map<string
   return out;
 }
 
-// -- Matrix: hierarchy-aware chart / table ------------------------------------
-
-function matrixLayout(rootId: string, hierarchy: Hierarchy, byId: Map<string, Node>): Positions {
-  const out: Positions = {};
-  const rootNode = byId.get(rootId)!;
-  const rootCenter = centerOf(rootNode);
-  const startY = rootNode.position.y;
-  const density = (((rootNode.data ?? {}) as Record<string, unknown>).matrixDensity ?? "compact") as MatrixDensity;
-  const densitySettings = density === "presentation"
-    ? { gapX: 16, gapY: 14, headerGap: 12, headerHeight: 80, minRowHeight: 72 }
-    : density === "comfortable"
-      ? { gapX: 8, gapY: 7, headerGap: 7, headerHeight: 66, minRowHeight: 56 }
-      : { gapX: 1, gapY: 1, headerGap: 1, headerHeight: 54, minRowHeight: 44 };
-
-  const rootChildren = hierarchy.get(rootId)?.childIds ?? [];
-  const tableTop = startY + densitySettings.headerHeight + densitySettings.headerGap;
-
-  if (!rootChildren.length) {
-    const width = matrixNaturalWidth(rootNode, 0, 1);
-    out[rootId] = { x: rootCenter.x - width / 2, y: startY, width, height: densitySettings.headerHeight };
-    return out;
-  }
-
-  const rootChildrenAreLeaves = rootChildren.every((child) => !(hierarchy.get(child)?.childIds ?? []).length);
-  if (rootChildrenAreLeaves && rootChildren.length > 3) {
-    const columns = clamp(Math.ceil(Math.sqrt(rootChildren.length * 1.4)), 3, 8);
-    const cellWidth = Math.max(...rootChildren.map((id) => matrixNaturalWidth(byId.get(id)!, 0, 2)), MATRIX_MIN_COL_WIDTH);
-    const cellHeight = Math.max(...rootChildren.map((id) => matrixNaturalHeight(byId.get(id)!, cellWidth)), densitySettings.minRowHeight);
-    const gridWidth = columns * cellWidth + (columns - 1) * densitySettings.gapX;
-    const tableWidth = Math.max(gridWidth, matrixNaturalWidth(rootNode, 0, 1));
-    const tableStartX = rootCenter.x - tableWidth / 2;
-    const gridStartX = tableStartX + (tableWidth - gridWidth) / 2;
-    out[rootId] = {
-      x: tableStartX,
-      y: startY,
-      width: tableWidth,
-      height: densitySettings.headerHeight,
-    };
-    for (let index = 0; index < rootChildren.length; index++) {
-      const id = rootChildren[index];
-      const col = index % columns;
-      const row = Math.floor(index / columns);
-      out[id] = {
-        x: gridStartX + col * (cellWidth + densitySettings.gapX),
-        y: tableTop + row * (cellHeight + densitySettings.gapY),
-        width: cellWidth,
-        height: cellHeight,
-      };
-    }
-    return out;
-  }
-
-  const rows: string[][] = [];
-  const walkRows = (id: string, path: string[]) => {
-    const kids = hierarchy.get(id)?.childIds ?? [];
-    const next = [...path, id];
-    if (!kids.length) {
-      rows.push(next);
-      return;
-    }
-    for (const child of kids) walkRows(child, next);
-  };
-  for (const child of rootChildren) walkRows(child, []);
-
-  const maxCols = Math.max(1, ...rows.map((r) => r.length));
-  const colWidth = Array.from({ length: maxCols }, (_, col) => {
-    const ids = rows.map((row) => row[col]).filter(Boolean);
-    const widest = Math.max(...ids.map((id) => matrixNaturalWidth(byId.get(id)!, col, maxCols)), 0);
-    if (maxCols === 1) return Math.max(widest, MATRIX_DETAIL_MIN_WIDTH);
-    if (col === 0) return Math.max(widest, MATRIX_CATEGORY_COL_WIDTH);
-    if (maxCols === 2) return Math.max(widest, MATRIX_ITEM_COL_WIDTH);
-    if (col === maxCols - 1) return Math.max(widest, MATRIX_DETAIL_MIN_WIDTH);
-    return Math.max(widest, MATRIX_MIN_COL_WIDTH);
-  });
-  const bodyWidth = colWidth.reduce((sum, width) => sum + width, 0) + (maxCols - 1) * densitySettings.gapX;
-  const tableWidth = Math.max(bodyWidth, matrixNaturalWidth(rootNode, 0, 1));
-  const extraWidth = tableWidth - bodyWidth;
-  if (extraWidth > 0) colWidth[colWidth.length - 1] += extraWidth;
-  const tableStartX = rootCenter.x - tableWidth / 2;
-  const colX: number[] = [];
-  let x = tableStartX;
-  for (const width of colWidth) {
-    colX.push(x);
-    x += width + densitySettings.gapX;
-  }
-
-  const naturalCellHeight = (id: string, col: number) => matrixNaturalHeight(byId.get(id)!, colWidth[col]);
-  const rowHeight = rows.map((row) =>
-    Math.max(...row.map((id, col) => naturalCellHeight(id, col)), densitySettings.minRowHeight)
-  );
-  const spans = new Map<string, { col: number; start: number; end: number }>();
-  rows.forEach((row, rowIndex) => {
-    row.forEach((id, col) => {
-      const span = spans.get(id) ?? { col, start: rowIndex, end: rowIndex };
-      span.start = Math.min(span.start, rowIndex);
-      span.end = Math.max(span.end, rowIndex);
-      spans.set(id, span);
-    });
-  });
-
-  // If a parent label is taller than its child rows, distribute the extra height
-  // across the rows it spans. This keeps the parent cell spanning its children.
-  for (const [id, span] of spans) {
-    const naturalH = naturalCellHeight(id, span.col);
-    const currentH = rowHeight.slice(span.start, span.end + 1).reduce((sum, h) => sum + h, 0) +
-      (span.end - span.start) * densitySettings.gapY;
-    if (naturalH <= currentH) continue;
-    const extraPerRow = (naturalH - currentH) / (span.end - span.start + 1);
-    for (let row = span.start; row <= span.end; row++) rowHeight[row] += extraPerRow;
-  }
-
-  const rowY: number[] = [];
-  let y = tableTop;
-  for (const height of rowHeight) {
-    rowY.push(y);
-    y += height + densitySettings.gapY;
-  }
-
-  out[rootId] = { x: tableStartX, y: startY, width: tableWidth, height: densitySettings.headerHeight };
-
-  const leafIds = new Set(rows.map((row) => row[row.length - 1]));
-  for (const [id, span] of spans) {
-    const isLeaf = leafIds.has(id) && !(hierarchy.get(id)?.childIds ?? []).length;
-    const x = colX[span.col];
-    const y = rowY[span.start];
-    const height = rowY[span.end] + rowHeight[span.end] - y;
-    const width = isLeaf && span.col < maxCols - 1
-      ? colWidth.slice(span.col).reduce((sum, w) => sum + w, 0) + (maxCols - 1 - span.col) * densitySettings.gapX
-      : colWidth[span.col];
-
-    out[id] = {
-      x,
-      y,
-      width,
-      height,
-    };
-  }
-
-  return out;
-}
-
 // -- Public: compute positions ------------------------------------------------
 
 export function computeLayout(
@@ -580,8 +365,7 @@ export function computeLayout(
       }
       resolveCollisions(result, byId, "x");
     } else if (mode === "matrix") {
-      const pos = matrixLayout(root, hierarchy, byId);
-      Object.assign(result, pos);
+      Object.assign(result, computeMatrixLayout(root, hierarchy, byId).placements);
     }
   }
 

@@ -37,11 +37,13 @@ import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent } from "@/lib/types";
 import {
   getNodeRect,
+  isMatrixHierarchyEdge,
   resolveInsertedNodeCollisions,
   routeForMode,
   synchronizeNodeDimensions,
   type LayoutMode,
 } from "@/lib/layout";
+import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
@@ -56,6 +58,7 @@ const GUIDE_THRESHOLD = 6; // px in flow coords
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
 const MIN_READABLE_LIST_ZOOM = 0.5;
+const MIN_READABLE_MATRIX_ZOOM = 0.5;
 const LONG_PRESS_PAN_MS = 180;
 const LONG_PRESS_CANCEL_DISTANCE = 7;
 
@@ -72,20 +75,33 @@ function initialShapeSize(shapeType: string): { width: number; height: number } 
 
 function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]): Node[] {
   const nextNodes = applyNodeChanges(changes, nodes);
-  const resizedRelationshipDiagrams = new Map(
+  const resizedNodes = new Map(
     changes.flatMap((change) =>
       change.type === "dimensions" && change.dimensions
         ? [[change.id, change.dimensions] as const]
         : []
     )
   );
-  if (!resizedRelationshipDiagrams.size) return nextNodes;
+  if (!resizedNodes.size) return nextNodes;
 
   return nextNodes.map((node) => {
-    const dimensions = resizedRelationshipDiagrams.get(node.id);
-    return node.type === "relationshipDiagram" && dimensions
-      ? synchronizeNodeDimensions(node, dimensions.width, dimensions.height)
-      : node;
+    const dimensions = resizedNodes.get(node.id);
+    if (!dimensions) return node;
+    if (node.type === "relationshipDiagram") {
+      return synchronizeNodeDimensions(node, dimensions.width, dimensions.height);
+    }
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const override = data.layoutSizeOverride as { mode?: unknown } | undefined;
+    if (data.userSize && override?.mode !== "matrix") {
+      return {
+        ...node,
+        data: {
+          ...data,
+          userSize: { width: dimensions.width, height: dimensions.height },
+        },
+      };
+    }
+    return node;
   });
 }
 
@@ -254,15 +270,27 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   } | null>(null);
   const suppressNextContextMenuRef = useRef(false);
   const measuredLayoutFramesRef = useRef<number[]>([]);
+  const [initialViewport] = useState(() => useCanvasStore.getState().viewport);
   const dragStartRef = useRef<{
     source: { x: number; y: number };
     positions: Map<string, { x: number; y: number }>;
     axis: "x" | "y" | null;
+    matrixRootId: string | null;
   } | null>(null);
 
   const displayNodes = useMemo(() => {
-    if (!relationshipSelection) return nodes;
-    return nodes.map((node) => {
+    const matrixAwareNodes = nodes.map((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      if (data.matrixCell !== true) return node;
+      const matrixRootId = typeof data.matrixRootId === "string" ? data.matrixRootId : null;
+      return {
+        ...node,
+        draggable: matrixRootId === node.id,
+        resizable: false,
+      };
+    });
+    if (!relationshipSelection) return matrixAwareNodes;
+    return matrixAwareNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const isActiveChart = node.type === "sunburst" && data.rootId === relationshipSelection.chartRootNodeId;
       if (isActiveChart || node.hidden) return node;
@@ -348,8 +376,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     };
   }, [saveStatus, enqueueSave]);
 
-  // List layout waits for React Flow to refresh rendered dimensions before the
-  // store performs its one atomic placement transaction.
+  // Measured table/outline layouts wait for React Flow to refresh rendered
+  // dimensions before the store performs one atomic placement transaction.
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{
@@ -357,14 +385,14 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         rootId?: string;
         nodeIds?: string[];
       }>).detail;
-      if (detail?.mode !== "list" || !detail.rootId || !detail.nodeIds?.length) return;
+      if ((detail?.mode !== "list" && detail?.mode !== "matrix") || !detail.rootId || !detail.nodeIds?.length) return;
 
       measuredLayoutFramesRef.current.forEach(cancelAnimationFrame);
       measuredLayoutFramesRef.current = [];
       updateNodeInternals(detail.nodeIds);
       const first = requestAnimationFrame(() => {
         const second = requestAnimationFrame(() => {
-          useCanvasStore.getState().applyLayout("list", detail.rootId);
+          useCanvasStore.getState().applyLayout(detail.mode!, detail.rootId);
           window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
         });
         measuredLayoutFramesRef.current = [second];
@@ -386,17 +414,21 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         nodeIds?: string[];
         mode?: LayoutMode;
         rootId?: string;
+        forceFit?: boolean;
       }>).detail;
       const nodeIds = detail?.nodeIds;
-      if (detail?.mode === "list" && detail.rootId) {
+      if (!detail?.forceFit && (detail?.mode === "list" || detail?.mode === "matrix") && detail.rootId) {
         const root = useCanvasStore.getState().nodes.find((node) => node.id === detail.rootId);
         if (root) {
           const rootRect = getNodeRect(root);
           const currentZoom = getViewport().zoom;
-          const zoom = Math.max(MIN_READABLE_LIST_ZOOM, Math.min(MAX_CANVAS_ZOOM, currentZoom));
+          const minimumZoom = detail.mode === "matrix" ? MIN_READABLE_MATRIX_ZOOM : MIN_READABLE_LIST_ZOOM;
+          const zoom = Math.max(minimumZoom, Math.min(MAX_CANVAS_ZOOM, currentZoom));
           const canvasBounds = document.querySelector<HTMLElement>(".vidya-canvas-bg")?.getBoundingClientRect();
-          const screenX = canvasBounds ? Math.max(96, Math.min(280, canvasBounds.width * 0.24)) : 180;
-          const screenY = canvasBounds ? Math.max(88, Math.min(180, canvasBounds.height * 0.18)) : 120;
+          const screenX = canvasBounds
+            ? Math.max(96, Math.min(detail.mode === "matrix" ? 220 : 280, canvasBounds.width * 0.2))
+            : 160;
+          const screenY = canvasBounds ? Math.max(84, Math.min(160, canvasBounds.height * 0.16)) : 110;
           void setFlowViewport({
             x: screenX - rootRect.left * zoom,
             y: screenY - rootRect.top * zoom,
@@ -453,6 +485,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       for (const change of changes) {
         if (change.type === "dimensions") {
           useCanvasStore.getState().scheduleListReflow(change.id);
+          useCanvasStore.getState().scheduleMatrixReflow(change.id);
         }
       }
 
@@ -470,15 +503,30 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     if (useUIStore.getState().relationshipSelection) return;
     const state = useCanvasStore.getState();
     state.pushHistory();
-    const movingIds = state.selectedNodeIds.includes(draggedNode.id)
-      ? state.selectedNodeIds
-      : [draggedNode.id];
+    const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
+    const matrixRootId = draggedData.matrixCellRole === "header"
+      && draggedData.matrixRootId === draggedNode.id
+      ? draggedNode.id
+      : null;
+    const movingIds = matrixRootId
+      ? state.nodes
+        .filter((node) => {
+          const data = (node.data ?? {}) as Record<string, unknown>;
+          return node.id === matrixRootId
+            || data.matrixRootId === matrixRootId
+            || data.matrixFrameFor === matrixRootId;
+        })
+        .map((node) => node.id)
+      : state.selectedNodeIds.includes(draggedNode.id)
+        ? state.selectedNodeIds
+        : [draggedNode.id];
     dragStartRef.current = {
       source: { ...draggedNode.position },
       positions: new Map(state.nodes
         .filter((node) => movingIds.includes(node.id))
         .map((node) => [node.id, { ...node.position }])),
       axis: null,
+      matrixRootId,
     };
     state.markListManualOverride(movingIds, true);
     useUIStore.getState().setCanvasDragging(true);
@@ -487,11 +535,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   // Alignment guides and Shift axis-lock — live during drag.
   const onNodeDrag = useCallback((event: MouseEvent | TouchEvent, draggedNode: Node) => {
     const drag = dragStartRef.current;
-    if (drag && event.shiftKey) {
+    if (drag) {
       const dx = draggedNode.position.x - drag.source.x;
       const dy = draggedNode.position.y - drag.source.y;
-      if (!drag.axis && Math.hypot(dx, dy) > 4) drag.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
-      if (drag.axis) {
+      if (event.shiftKey && !drag.axis && Math.hypot(dx, dy) > 4) {
+        drag.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      }
+      if (drag.matrixRootId || drag.axis) {
+        const moveX = drag.axis === "y" ? 0 : dx;
+        const moveY = drag.axis === "x" ? 0 : dy;
         useCanvasStore.setState((state) => ({
           nodes: state.nodes.map((node) => {
             const start = drag.positions.get(node.id);
@@ -499,8 +551,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
             return {
               ...node,
               position: {
-                x: start.x + (drag.axis === "x" ? dx : 0),
-                y: start.y + (drag.axis === "y" ? dy : 0),
+                x: start.x + moveX,
+                y: start.y + moveY,
               },
             };
           }),
@@ -513,7 +565,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const dh = (draggedNode.measured?.height ?? 60)  as number;
     const dragged = { x: draggedNode.position.x, y: draggedNode.position.y, w: dw, h: dh };
     const others  = allNodes
-      .filter((n) => n.id !== draggedNode.id)
+      .filter((node) => {
+        if (node.id === draggedNode.id) return false;
+        if (!drag?.matrixRootId) return true;
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
+      })
       .map((n) => ({
         x: n.position.x,
         y: n.position.y,
@@ -536,6 +593,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const targetNode = byId.get(edge.target);
       if (!sourceNode || !targetNode) return edge;
       const edgeData = (edge.data ?? {}) as Record<string, unknown>;
+      if (edgeData.hiddenInMatrix === true) return edge;
       const mode = ((edgeData.layoutMode ?? (sourceNode.data as Record<string, unknown>).layoutMode ?? "freeForm") as LayoutMode);
       const route = routeForMode(mode, sourceNode, targetNode);
       return { ...edge, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle };
@@ -612,9 +670,16 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       cs.pushHistory();
       const source = cs.nodes.find((n) => n.id === connection.source);
       const targetNode = cs.nodes.find((n) => n.id === connection.target);
-      const mode = ((source?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode ?? "freeForm") as LayoutMode;
+      const sourceData = (source?.data ?? {}) as Record<string, unknown>;
+      const matrixRoot = typeof sourceData.matrixRootId === "string"
+        ? cs.nodes.find((node) => node.id === sourceData.matrixRootId)
+        : null;
+      const mode = (((matrixRoot?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode
+        ?? sourceData.layoutMode
+        ?? "freeForm") as LayoutMode);
       const route = source && targetNode ? routeForMode(mode, source, targetNode) : null;
-      const hiddenInMatrix = mode === "matrix";
+      const hasParent = targetNode && (targetNode.data as { parentId?: string | null }).parentId;
+      const hiddenInMatrix = mode === "matrix" && !hasParent;
       const hiddenInSunburst = mode === "radial";
       const newEdge: Edge = {
         id: generateId(),
@@ -630,17 +695,18 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
           edgeType: "branch",
           curveStyle: route?.curveStyle ?? "smooth",
           hiddenInMatrix,
+          hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
           hiddenInSunburst,
           hiddenInSunburstFor: hiddenInSunburst ? connection.source : undefined,
           layoutMode: mode,
         },
       };
       // Record parent→child relationship if the target has no parent yet.
-      const hasParent = targetNode && (targetNode.data as { parentId?: string | null }).parentId;
       if (targetNode && !hasParent) {
         cs.updateNodeData(connection.target, { parentId: connection.source });
       }
       setEdges((eds) => [...eds, newEdge]);
+      if (mode === "matrix") requestAnimationFrame(() => cs.scheduleMatrixReflow(connection.source));
     },
     [setEdges]
   );
@@ -653,35 +719,19 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     if (!source || !target || source.id === target.id) return;
 
     cs.pushHistory();
-    const mode = ((source.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode ?? "freeForm") as LayoutMode;
+    const currentHierarchy = buildHierarchy(cs.nodes, cs.edges);
+    const wasHierarchyEdge = currentHierarchy.get(oldEdge.target)?.parentId === oldEdge.source;
+    const sourceData = (source.data ?? {}) as Record<string, unknown>;
+    const matrixRoot = typeof sourceData.matrixRootId === "string"
+      ? cs.nodes.find((node) => node.id === sourceData.matrixRootId)
+      : null;
+    const mode = (((matrixRoot?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode
+      ?? sourceData.layoutMode
+      ?? "freeForm") as LayoutMode);
     const route = routeForMode(mode, source, target);
-    const hiddenInMatrix = mode === "matrix";
-    const hiddenInSunburst = mode === "radial";
-
-    const nextEdges = cs.edges.map((edge) => {
-      if (edge.id !== oldEdge.id) return edge;
-      return {
-        ...edge,
-        source: connection.source,
-        target: connection.target,
-        sourceHandle: connection.sourceHandle ?? route.sourceHandle,
-        targetHandle: connection.targetHandle ?? route.targetHandle,
-        hidden: hiddenInMatrix || hiddenInSunburst,
-        reconnectable: true,
-        markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
-        data: {
-          ...(edge.data ?? {}),
-          edgeType: "branch",
-          curveStyle: route.curveStyle,
-          hiddenInMatrix,
-          hiddenInSunburst,
-          hiddenInSunburstFor: hiddenInSunburst ? connection.source : undefined,
-          layoutMode: mode,
-        },
-      };
-    });
-
-    const nextNodes = cs.nodes.map((node) => {
+    // Reconnecting a cross-link must not silently rewrite the canonical tree.
+    // Only an edge that was already structural transfers parent metadata.
+    const nextNodes = wasHierarchyEdge ? cs.nodes.map((node) => {
       const data = node.data as Record<string, unknown>;
       if (node.id === oldEdge.target && oldEdge.target !== connection.target) {
         return { ...node, data: { ...data, parentId: null } };
@@ -701,9 +751,54 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         return { ...node, data: { ...data, parentId: connection.source } };
       }
       return node;
+    }) : cs.nodes;
+    const nextHierarchy = buildHierarchy(nextNodes, cs.edges.map((edge) => edge.id === oldEdge.id
+      ? { ...edge, source: connection.source, target: connection.target }
+      : edge));
+    const matrixScope = matrixRoot ? new Set(getSubtree(matrixRoot.id, nextHierarchy)) : null;
+    const hierarchyEdge = nextHierarchy.get(connection.target)?.parentId === connection.source;
+    const hiddenInMatrix = mode === "matrix"
+      && !!matrixScope
+      && isMatrixHierarchyEdge(
+        { source: connection.source, target: connection.target },
+        nextHierarchy,
+        matrixScope
+      );
+    const hiddenInSunburst = mode === "radial" && hierarchyEdge;
+
+    const nextEdges = cs.edges.map((edge) => {
+      if (edge.id !== oldEdge.id) return edge;
+      const edgeData = (edge.data ?? {}) as Record<string, unknown>;
+      const baseHidden = !!edge.hidden
+        && edgeData.hiddenInMatrix !== true
+        && edgeData.hiddenInSunburst !== true;
+      return {
+        ...edge,
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: connection.sourceHandle ?? route.sourceHandle,
+        targetHandle: connection.targetHandle ?? route.targetHandle,
+        hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
+        reconnectable: true,
+        markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
+        data: {
+          ...edgeData,
+          edgeType: "branch",
+          curveStyle: route.curveStyle,
+          hiddenInMatrix,
+          hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
+          hiddenInSunburst,
+          hiddenInSunburstFor: hiddenInSunburst ? connection.source : undefined,
+          layoutMode: mode,
+        },
+      };
     });
 
     useCanvasStore.setState({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
+    requestAnimationFrame(() => {
+      cs.scheduleMatrixReflow(oldEdge.source);
+      cs.scheduleMatrixReflow(connection.source);
+    });
   }, []);
 
   const onPaneClick = useCallback(
@@ -1053,7 +1148,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       reconnectRadius={isTouchDevice ? 28 : 14}
       minZoom={MIN_CANVAS_ZOOM}
       maxZoom={MAX_CANVAS_ZOOM}
-      fitView
+      defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
       snapToGrid={settings.snapToGrid}
       snapGrid={[settings.gridSize ?? 20, settings.gridSize ?? 20]}

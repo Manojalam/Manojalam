@@ -33,8 +33,13 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const nodeColor    = d.color ?? "#6366f1";
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd);
-  const borderWidth  = resolveBorderWidth(dd);
-  const borderRadius = resolveNodeBorderRadius(dd, 16);
+  const matrixCell   = dd.matrixCell === true;
+  const matrixRole   = dd.matrixCellRole as string | undefined;
+  const matrixGridVisible = dd.matrixGridVisible !== false;
+  const borderWidth  = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
+  const borderRadius = matrixCell
+    ? (matrixRole === "header" ? 7 : 4)
+    : resolveNodeBorderRadius(dd, 16);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
@@ -85,11 +90,12 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={120} minHeight={40} isVisible={selected && !editing && !isDrawing} />
+      <NodeResizer minWidth={120} minHeight={40} isVisible={selected && !editing && !isDrawing && !matrixCell} />
       <div
         ref={boxRef}
         className={cn(
-          "group relative h-full w-full px-4 py-3 shadow-md transition-shadow",
+          "group relative h-full w-full px-4 py-3 transition-shadow",
+          matrixCell ? "shadow-none" : "shadow-md",
           selected && "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg",
           d.locked && "opacity-75"
         )}
@@ -101,7 +107,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
         onDoubleClick={startEditing}
       >
         {/* Extra border layers — expand outward, not clipped */}
-        <BorderLayers layers={borderLayers} primaryWidth={borderWidth} baseRadius={borderRadius} />
+        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={borderWidth} baseRadius={borderRadius} />}
         <NodeQuickActions nodeId={id} color={borderColor ?? nodeColor} selected={selected} />
 
         <Handle type="target" position={Position.Left}
@@ -112,7 +118,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
           style={{ background: nodeColor }} />
 
         {/* Internal fill regions (below text, clipped to node bounds) */}
-        <div className="absolute inset-0 overflow-hidden" style={{ borderRadius }}>
+        {!matrixCell && <div className="absolute inset-0 overflow-hidden" style={{ borderRadius }}>
           <InternalFillLayer
             regions={fillRegions}
             isDrawingMode={isDrawing}
@@ -125,7 +131,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
               internalFillRegions: fillRegions.map((x) => x.id === rid ? { ...x, ...patch } : x),
             })}
           />
-        </div>
+        </div>}
 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
 
