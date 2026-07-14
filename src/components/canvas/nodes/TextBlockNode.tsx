@@ -16,9 +16,9 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
+import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 
-function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
+function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as TextBlockNodeData;
   const dd = d as Record<string, unknown>;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -37,9 +37,13 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
   const bWidth       = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
+  const nodeSize = {
+    width: typeof width === "number" && width > 0 ? width : 240,
+    height: typeof height === "number" && height > 0 ? height : 56,
+  };
   const bRadius      = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
-    : resolveNodeBorderRadius(dd, 12);
+    : resolveNodeBorderRadius(dd, nodeSize, 32);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
@@ -49,11 +53,6 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
   const initialContent = (dd.richText as string) || d.text || "";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
-
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
       pushHistory();
@@ -61,6 +60,9 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
     }
     editDirty.current = true;
   }, [pushHistory]);
+
+  const beginRequestedEdit = useCallback(() => setEditing(true), []);
+  useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
     if (editDirty.current) {
@@ -80,15 +82,21 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={160} minHeight={40} isVisible={selected && !editing && !isDrawing && !matrixCell} />
+      <NodeResizer
+        minWidth={160}
+        minHeight={40}
+        isVisible={selected && !editing && !isDrawing && !matrixCell}
+        lineStyle={{ borderRadius: bRadius }}
+      />
       <div
-        ref={boxRef}
-        className={cn("group relative h-full w-full px-4 py-3")}
+        className={cn(
+          "group relative h-full w-full px-4 py-3",
+          selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+        )}
         style={{
           backgroundColor: fillColor ?? "transparent",
           border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
           borderRadius: bRadius,
-          boxShadow: selected ? "0 0 0 1px hsl(var(--primary) / 0.3)" : undefined,
         }}
         onDoubleClick={() => {
           if (isDrawing) return;
@@ -135,12 +143,13 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
           />
         </div>}
 
-        <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
+        <div className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
             placeholder="Double-click to type…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

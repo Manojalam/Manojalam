@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 import type { BorderLayer } from "./types";
+import { effectiveCornerRadius, legacyRadiusToPercent } from "./canvas/shape-fitting";
+import type { Size } from "./canvas/node-geometry";
 
 /** CSS applied to the text-content container of a node.
  *  Always emits explicit values for inheritable properties so CSS
@@ -71,9 +73,27 @@ export function resolveBorderWidth(d: Record<string, unknown>): number {
   return typeof d.borderWidth === "number" ? d.borderWidth : 2;
 }
 
-/** Resolve border radius in px for a content node (mindmap/text/sticky) */
-export function resolveNodeBorderRadius(d: Record<string, unknown>, defaultPx = 16): number {
-  return typeof d.borderRadius === "number" ? d.borderRadius : defaultPx;
+export function resolveCornerRadiusPercent(
+  d: Record<string, unknown>,
+  size: Size,
+  fallbackPercent = 40
+): number {
+  if (typeof d.cornerRadiusPercent === "number" && Number.isFinite(d.cornerRadiusPercent)) {
+    return Math.max(0, Math.min(100, d.cornerRadiusPercent));
+  }
+  if (typeof d.borderRadius === "number") {
+    return legacyRadiusToPercent(d.borderRadius, size, fallbackPercent);
+  }
+  return fallbackPercent;
+}
+
+/** Resolve the normalized radius against the node's current rendered dimensions. */
+export function resolveNodeBorderRadius(
+  d: Record<string, unknown>,
+  size: Size,
+  fallbackPercent = 40
+): number {
+  return effectiveCornerRadius(resolveCornerRadiusPercent(d, size, fallbackPercent), size, fallbackPercent);
 }
 
 /**

@@ -17,7 +17,7 @@ import { downloadJson } from "@/lib/export";
 
 export function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen, setSanskritPanelOpen, setActiveTool } = useUIStore();
-  const { board, setSettings } = useCanvasStore();
+  const { board, settings, setSettings, pushHistory } = useCanvasStore();
   const router = useRouter();
 
   useEffect(() => {
@@ -55,7 +55,10 @@ export function CommandPalette() {
           <CommandItem onSelect={() => run(() => setActiveTool("shloka"))}>Add śloka card</CommandItem>
         </CommandGroup>
         <CommandGroup heading="View">
-          <CommandItem onSelect={() => run(() => setSettings({ background: board?.content.settings.background === "dots" ? "plain" : "dots" }))}>
+          <CommandItem onSelect={() => run(() => {
+            pushHistory();
+            setSettings({ background: settings.background === "dots" ? "plain" : "dots" });
+          })}>
             Toggle grid
           </CommandItem>
           <CommandItem onSelect={() => run(() => setSanskritPanelOpen(true))}>Open Sanskrit tools</CommandItem>

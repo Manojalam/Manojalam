@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
-  Controls,
+  Panel,
   MiniMap,
   BackgroundVariant,
   useReactFlow,
@@ -26,6 +26,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toast } from "sonner";
+import { Focus, Minus, Plus } from "lucide-react";
 
 import { nodeTypes } from "./nodes";
 import { edgeTypes } from "./edges/VidyaEdge";
@@ -34,7 +35,7 @@ import { useUIStore } from "@/store/ui-store";
 import { generateId } from "@/lib/utils";
 import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
-import type { BoardContent } from "@/lib/types";
+import { DEFAULT_BOARD_SETTINGS, type BoardContent } from "@/lib/types";
 import {
   getNodeRect,
   isMatrixHierarchyEdge,
@@ -50,6 +51,7 @@ import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
 import { RelationshipDiagramDialog } from "./RelationshipDiagramDialog";
 import { ExportDialog } from "./ExportDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
+import { renderedGridGap } from "@/lib/canvas/grid-density";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -67,6 +69,7 @@ function initialShapeSize(shapeType: string): { width: number; height: number } 
     return { width: 120, height: 120 };
   }
   if (shapeType === "leaf") return { width: 160, height: 96 };
+  if (shapeType === "ellipse") return { width: 180, height: 110 };
   if (["document", "database", "predefinedProcess", "delay", "cloud"].includes(shapeType)) {
     return { width: 170, height: 96 };
   }
@@ -219,16 +222,51 @@ function AlignmentGuides({ guides }: { guides: Guides }) {
   );
 }
 
-function AdaptiveBackground({ variant, baseGap }: { variant: BackgroundVariant; baseGap: number }) {
+function AdaptiveBackground({
+  variant,
+  baseGap,
+  color,
+}: {
+  variant: BackgroundVariant;
+  baseGap: number;
+  color: string;
+}) {
   const { zoom } = useViewport();
-  const density = zoom < 0.22 ? 2.5 : zoom < 0.55 ? 1.6 : zoom > 2.4 ? 0.75 : 1;
   return (
     <Background
       variant={variant}
-      gap={Math.round(baseGap * density)}
+      gap={renderedGridGap(baseGap, zoom)}
       size={variant === BackgroundVariant.Dots ? (zoom > 1.8 ? 1.2 : 1.5) : 1}
-      color="var(--canvas-dot)"
+      color={color}
     />
+  );
+}
+
+function CanvasZoomControls() {
+  const { zoom } = useViewport();
+  const { fitView, zoomTo } = useReactFlow();
+  const changeZoom = (delta: number) => {
+    const next = Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, Math.round((zoom + delta) * 10) / 10));
+    void zoomTo(next, { duration: 120 });
+  };
+
+  return (
+    <Panel position="bottom-left" className="canvas-zoom-panel !m-3">
+      <div className="canvas-zoom-controls flex items-center overflow-hidden rounded-lg border border-border bg-card shadow-md">
+        <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => changeZoom(-0.1)}>
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <span className="min-w-12 border-x border-border px-1 text-center text-[10px] tabular-nums text-muted-foreground">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button type="button" title="Zoom in" aria-label="Zoom in" onClick={() => changeZoom(0.1)}>
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+        <button type="button" title="Fit board" aria-label="Fit board" className="border-l border-border" onClick={() => void fitView({ padding: 0.2, duration: 300 })}>
+          <Focus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </Panel>
   );
 }
 
@@ -251,7 +289,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
 
-  const { screenToFlowPosition, fitView, zoomIn, zoomOut, getViewport, setViewport: setFlowViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, zoomTo, getViewport, setViewport: setFlowViewport } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
@@ -277,6 +315,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     axis: "x" | "y" | null;
     matrixRootId: string | null;
   } | null>(null);
+
+  const zoomByStep = useCallback((delta: number) => {
+    const current = getViewport().zoom;
+    const next = Math.max(MIN_CANVAS_ZOOM, Math.min(MAX_CANVAS_ZOOM, Math.round((current + delta) * 10) / 10));
+    void zoomTo(next, { duration: 120 });
+  }, [getViewport, zoomTo]);
 
   const displayNodes = useMemo(() => {
     const matrixAwareNodes = nodes.map((node) => {
@@ -405,6 +449,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       measuredLayoutFramesRef.current.forEach(cancelAnimationFrame);
       measuredLayoutFramesRef.current = [];
     };
+  }, [updateNodeInternals]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const nodeIds = (event as CustomEvent<{ nodeIds?: string[] }>).detail?.nodeIds;
+      if (nodeIds?.length) updateNodeInternals(nodeIds);
+    };
+    window.addEventListener("vidya:update-node-internals", handler);
+    return () => window.removeEventListener("vidya:update-node-internals", handler);
   }, [updateNodeInternals]);
 
   // Fit the view after an auto-layout is applied (dispatched from LayoutPanel).
@@ -940,10 +993,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
           window.dispatchEvent(new Event("vidya:commit-relationships"));
         } else if (e.key === "+" || e.key === "=") {
           e.preventDefault();
-          zoomIn();
+          zoomByStep(0.1);
         } else if (e.key === "-") {
           e.preventDefault();
-          zoomOut();
+          zoomByStep(-0.1);
         } else if (!mod && (e.key === "f" || e.key === "F")) {
           e.preventDefault();
           fitView({ padding: 0.2 });
@@ -973,8 +1026,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         }
       }
       else if (e.key === "f" || e.key === "F") { fitView({ padding: 0.2 }); }
-      else if (e.key === "+" || e.key === "=") { zoomIn(); }
-      else if (e.key === "-")                  { zoomOut(); }
+      else if (e.key === "+" || e.key === "=") { zoomByStep(0.1); }
+      else if (e.key === "-")                  { zoomByStep(-0.1); }
       else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key) && cs.selectedNodeIds.length) {
         e.preventDefault();
         if (!e.repeat) cs.pushHistory();
@@ -1008,11 +1061,14 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [fitView, zoomIn, zoomOut, flushSave, pasteClipboard]);  // No `store` dep — stable!
+  }, [fitView, flushSave, pasteClipboard, zoomByStep]);  // No `store` dep — stable!
 
   const bgVariant =
     settings.background === "grid"  ? BackgroundVariant.Lines :
     settings.background === "dots"  ? BackgroundVariant.Dots  : undefined;
+  const gridSpacing = settings.gridSpacing ?? settings.gridSize ?? DEFAULT_BOARD_SETTINGS.gridSpacing ?? 32;
+  const canvasBackgroundColor = settings.canvasBackgroundColor ?? "var(--canvas-bg)";
+  const gridColor = settings.gridColor ?? "var(--canvas-dot)";
 
   const clearLongPressPan = useCallback(() => {
     if (longPressPanRef.current) window.clearTimeout(longPressPanRef.current.timeout);
@@ -1151,7 +1207,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
       snapToGrid={settings.snapToGrid}
-      snapGrid={[settings.gridSize ?? 20, settings.gridSize ?? 20]}
+      snapGrid={[gridSpacing, gridSpacing]}
       panOnDrag={relationshipSelection
         ? [0, 1, 2]
         : isTouchDevice
@@ -1185,15 +1241,16 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       }}
       onMoveEnd={(_, viewport) => setStoredViewport(viewport)}
       className="vidya-canvas-bg"
+      style={{ "--board-canvas-bg": canvasBackgroundColor } as React.CSSProperties}
     >
       {bgVariant !== undefined && (
-        <AdaptiveBackground variant={bgVariant} baseGap={settings.gridSize ?? 24} />
+        <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
       )}
       <ListTreeConnectors />
       {!relationshipSelection && <SelectionToolbar />}
       <RelationshipSelectionToolbar />
       <AlignmentGuides guides={guides} />
-      <Controls showInteractive={false} position="bottom-left" />
+      <CanvasZoomControls />
       <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}
         maskColor="rgba(0,0,0,0.06)" position="bottom-right" pannable zoomable />
     </ReactFlow>

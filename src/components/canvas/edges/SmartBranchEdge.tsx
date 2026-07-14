@@ -57,7 +57,9 @@ function RoutedSmartBranchEdge({
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
 
-  if ((canvasDragging && d.layoutMode !== "list") || curveStyle !== "step") {
+  // Keep every connector inexpensive while nodes are moving. The obstacle-aware
+  // route is recalculated from the final node geometry as soon as dragging ends.
+  if (canvasDragging || curveStyle !== "step") {
     const routed = curveStyle === "straight"
       ? getStraightPath({ sourceX, sourceY, targetX, targetY })
       : curveStyle === "smooth"

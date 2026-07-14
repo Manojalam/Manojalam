@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:list-layout": "rm -rf .list-layout-test && tsc --outDir .list-layout-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/list-layout.ts src/lib/layout/list-layout.test.ts && node --test .list-layout-test/list-layout.test.js; status=$?; rm -rf .list-layout-test; exit $status",
-    "test:matrix-layout": "rm -rf .matrix-layout-test && tsc --outDir .matrix-layout-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/matrix-layout.ts src/lib/layout/matrix-layout.test.ts && node --test .matrix-layout-test/matrix-layout.test.js; status=$?; rm -rf .matrix-layout-test; exit $status"
+    "test:matrix-layout": "rm -rf .matrix-layout-test && tsc --outDir .matrix-layout-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/matrix-layout.ts src/lib/layout/matrix-layout.test.ts && node --test .matrix-layout-test/matrix-layout.test.js; status=$?; rm -rf .matrix-layout-test; exit $status",
+    "test:canvas-geometry": "rm -rf .canvas-geometry-test && tsc --outDir .canvas-geometry-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/canvas/node-geometry.ts src/lib/canvas/shape-fitting.ts src/lib/canvas/grid-density.ts src/lib/canvas/shape-fitting.test.ts && node --test .canvas-geometry-test/canvas/shape-fitting.test.js; status=$?; rm -rf .canvas-geometry-test; exit $status"
   },
   "dependencies": {
     "@indic-transliteration/sanscript": "^1.3.3",

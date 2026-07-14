@@ -7,7 +7,7 @@ import { cn, generateId } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
-  resolveBorderWidth, resolveFillOpacity,
+  resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity,
 } from "@/lib/style-utils";
 import type {
@@ -26,7 +26,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
+import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -51,10 +51,6 @@ const POLYGON_POINTS: Partial<Record<string, string>> = {
   trapezoid: "18,1 82,1 99,99 1,99",
   offPageConnector: "1,1 99,1 99,76 50,99 1,76",
   callout: "1,1 99,1 99,78 64,78 50,99 38,78 1,78",
-};
-
-const DEFAULT_RADIUS: Partial<Record<string, number>> = {
-  rectangle: 0, rounded: 16, circle: 9999, capsule: 9999,
 };
 
 const CUSTOM_SVG_SHAPES = new Set([
@@ -966,7 +962,7 @@ function ShapeSurface({
   );
 }
 
-function ShapeNodeComponent({ id, data, selected }: NodeProps) {
+function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as ShapeNodeData;
   const dd = d as Record<string, unknown>;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -993,9 +989,15 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const matrixGridVisible = dd.matrixGridVisible !== false;
   const bWidth       = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
+  const nodeSize = {
+    width: typeof width === "number" && width > 0 ? width : 180,
+    height: typeof height === "number" && height > 0 ? height : 80,
+  };
   const bRadius      = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
-    : typeof dd.borderRadius === "number" ? dd.borderRadius : DEFAULT_RADIUS[shapeType] ?? 16;
+    : ["circle", "ellipse", "capsule"].includes(shapeType)
+      ? Math.min(nodeSize.width, nodeSize.height) / 2
+      : resolveNodeBorderRadius(dd, nodeSize, shapeType === "rectangle" ? 0 : 40);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
@@ -1012,11 +1014,6 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const initialContent = (dd.richText as string) || (d.text as string) || "";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
-
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
       pushHistory();
@@ -1024,6 +1021,11 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
     }
     editDirty.current = true;
   }, [pushHistory]);
+
+  const beginRequestedEdit = useCallback(() => {
+    if (!matrixCell && !isDrawing) setEditing(true);
+  }, [isDrawing, matrixCell]);
+  useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
     if (editDirty.current) {
@@ -1083,11 +1085,15 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={60} minHeight={60} isVisible={selected && !editing && !isDrawing && !matrixCell}
-        keepAspectRatio={SQUARE_ASPECT_SHAPES.has(shapeType)} />
+      <NodeResizer
+        minWidth={60}
+        minHeight={60}
+        isVisible={selected && !editing && !isDrawing && !matrixCell}
+        keepAspectRatio={SQUARE_ASPECT_SHAPES.has(shapeType)}
+        lineStyle={{ borderRadius: bRadius }}
+      />
 
       <div
-        ref={boxRef}
         className="group relative flex h-full w-full items-center justify-center"
         onDoubleClick={() => {
           if (isDrawing || radialChart?.enabled) return;
@@ -1240,11 +1246,12 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
               "nodrag nopan relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-sm font-medium text-foreground",
               editing && "cursor-text"
             )}>
-              <div ref={contentRef} className="w-full" style={getTextStyle(dd)}>
+              <div className="w-full" style={getTextStyle(dd)}>
                 <RichTextEditor
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
+                  measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
                   placeholder="Double-click…"
                   className="[&_.ProseMirror]:text-center"
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
