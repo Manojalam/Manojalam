@@ -126,6 +126,7 @@ interface CanvasState {
   createSiblingNode: (nodeId: string) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+  setNodeLocked: (nodeId: string, locked: boolean) => void;
   fitNodeToContent: (nodeId: string, contentSize: ContentSize) => void;
   resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
@@ -641,6 +642,17 @@ function sunburstChartSize(
   return Math.ceil(clampValue(Math.max(byDepth, byDensity), 900, 1280));
 }
 
+const MIN_MANUAL_SUNBURST_SIZE = 420;
+const MAX_MANUAL_SUNBURST_SIZE = 4096;
+
+function storedSunburstSize(data: Record<string, unknown>, fallback: number): number {
+  if (data.chartSizeManual !== true) return fallback;
+  const value = typeof data.chartSize === "number" ? data.chartSize : Number(data.chartSize);
+  return Number.isFinite(value)
+    ? Math.round(clampValue(value, MIN_MANUAL_SUNBURST_SIZE, MAX_MANUAL_SUNBURST_SIZE))
+    : fallback;
+}
+
 function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enabled: boolean): Node[] {
   const withoutCurrentFrame = nodes.filter((n) => {
     const frameKey = autoMatrixFrameKey(n);
@@ -716,6 +728,7 @@ function withSunburstNode(
   rootId: string | undefined,
   enabled: boolean
 ): Node[] {
+  const existingChart = nodes.find((node) => autoSunburstKey(node) === key);
   const restored = clearSunburstNodes(nodes);
   if (!enabled || !rootId) return restored;
 
@@ -728,7 +741,10 @@ function withSunburstNode(
     y: rootRect.y + rootRect.height / 2,
   };
   const rootData = (rootNode.data ?? {}) as Record<string, unknown>;
-  const chartSize = sunburstChartSize(rootId, hierarchy);
+  const automaticChartSize = sunburstChartSize(rootId, hierarchy);
+  const existingData = (existingChart?.data ?? {}) as Record<string, unknown>;
+  const locked = existingData.locked === true;
+  const chartSize = storedSunburstSize(existingData, automaticChartSize);
   const hiddenNodes = restored.map((node) => {
     if (!scopeIds.has(node.id)) return node;
     return {
@@ -741,19 +757,24 @@ function withSunburstNode(
   const chartNode: Node = {
     id: `sunburst-${key}`,
     type: "sunburst",
-    position: { x: rootCenter.x - chartSize / 2, y: rootCenter.y - chartSize / 2 },
+    position: existingChart?.position ?? {
+      x: rootCenter.x - chartSize / 2,
+      y: rootCenter.y - chartSize / 2,
+    },
     data: {
+      ...existingData,
       rootId,
       sunburstFor: key,
       chartSize,
       title,
-      locked: true,
+      locked,
       tags: [],
     },
-    style: { width: chartSize, height: chartSize },
-    zIndex: 20,
-    selectable: false,
-    draggable: false,
+    style: { ...(existingChart?.style ?? {}), width: chartSize, height: chartSize },
+    zIndex: existingChart?.zIndex ?? 20,
+    selected: existingChart?.selected ?? false,
+    selectable: true,
+    draggable: !locked,
   };
 
   return [...hiddenNodes, chartNode];
@@ -773,14 +794,27 @@ function migrateNodes(nodes: Node[]): Node[] {
     delete data.radialChartDiameter;
     delete data.radialRingWidth;
     if (n.type === "relationshipDiagram") {
+      const locked = data.locked === true;
       return {
         ...n,
+        selectable: true,
+        draggable: !locked,
         data: {
           ...data,
+          locked,
           relationshipDiagramSpec: normalizeRelationshipDiagramSpec(
             data.relationshipDiagramSpec ?? data.spec
           ),
         },
+      };
+    }
+    if (n.type === "sunburst") {
+      const locked = data.locked === true;
+      return {
+        ...n,
+        selectable: true,
+        draggable: !locked,
+        data: { ...data, locked },
       };
     }
     if (n.type !== "mindmap") return { ...n, data };
@@ -1036,7 +1070,7 @@ function normalizeSunburstChartSizes(
   return nodes.map((node) => {
     const data = (node.data ?? {}) as Record<string, unknown>;
     if (node.type !== "sunburst" || typeof data.rootId !== "string" || !byId.has(data.rootId)) return node;
-    const nextSize = sunburstChartSize(data.rootId, hierarchy);
+    const nextSize = storedSunburstSize(data, sunburstChartSize(data.rootId, hierarchy));
     const current = styleSizeOf(node);
     const visualBounds = data.relationshipVisualBounds && typeof data.relationshipVisualBounds === "object"
       ? data.relationshipVisualBounds as Partial<{ minX: number; minY: number }>
@@ -1050,16 +1084,25 @@ function normalizeSunburstChartSizes(
     const previousChartSize = typeof data.chartSize === "number" && Number.isFinite(data.chartSize)
       ? data.chartSize
       : visualBounds ? nextSize : current.w;
-    const normalizedData: Record<string, unknown> = { ...data, chartSize: nextSize };
+    const locked = data.locked === true;
+    const normalizedData: Record<string, unknown> = {
+      ...data,
+      chartSize: nextSize,
+      locked,
+    };
     delete normalizedData.relationshipVisualBounds;
-    return resetNodeDimensions({
+    return {
+      ...resetNodeDimensions({
       ...node,
       position: {
         x: node.position.x - visualMinX - (nextSize - previousChartSize) / 2,
         y: node.position.y - visualMinY - (nextSize - previousChartSize) / 2,
       },
       data: normalizedData,
-    }, nextSize, nextSize);
+      }, nextSize, nextSize),
+      selectable: true,
+      draggable: !locked,
+    };
   });
 }
 
@@ -1874,6 +1917,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       .filter((node) => selectedNodes.has(node.id))
       .map((node) => (node.data as { matrixRootId?: unknown } | undefined)?.matrixRootId)
       .filter((rootId): rootId is string => typeof rootId === "string" && !selectedNodes.has(rootId)));
+    const selectedSunbursts = nodes.filter((node) => selectedNodes.has(node.id) && isAutoSunburstNode(node));
+    const removedSunburstKeys = new Set(
+      selectedSunbursts.map((node) => autoSunburstKey(node)).filter((key): key is string => !!key)
+    );
+    const restoredRootIds = new Set(selectedSunbursts
+      .map((node) => (node.data as Record<string, unknown> | undefined)?.rootId)
+      .filter((rootId): rootId is string => typeof rootId === "string"));
     const nextRelationships = relationships.filter(
       (relationship) =>
         !selectedNodes.has(relationship.sourceNodeId) &&
@@ -1899,8 +1949,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         return !frameRootId || !deletedMatrixRoots.has(frameRootId);
       })
       .map((node) => {
-        const rootId = matrixRootByNode.get(node.id);
-        return rootId && deletedMatrixRoots.has(rootId) ? restoreMatrixPresentation(node) : node;
+        const matrixRootId = matrixRootByNode.get(node.id);
+        const restoredNode = matrixRootId && deletedMatrixRoots.has(matrixRootId)
+          ? restoreMatrixPresentation(node)
+          : node;
+        const data = (restoredNode.data ?? {}) as Record<string, unknown>;
+        const restoreFromSunburst = typeof data.sunburstHiddenFor === "string"
+          && removedSunburstKeys.has(data.sunburstHiddenFor);
+        const restoreRootLayout = restoredRootIds.has(restoredNode.id) && data.layoutMode === "radial";
+        if (!restoreFromSunburst && !restoreRootLayout) return restoredNode;
+        const nextData = { ...data };
+        if (restoreFromSunburst) delete nextData.sunburstHiddenFor;
+        if (restoreRootLayout) delete nextData.layoutMode;
+        return {
+          ...restoredNode,
+          ...(restoreFromSunburst ? { hidden: false } : {}),
+          data: nextData,
+        };
       });
     const nextEdges = edges
       .filter((edge) => !selectedEdges.has(edge.id) && !selectedNodes.has(edge.source) && !selectedNodes.has(edge.target))
@@ -1910,17 +1975,30 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         const deletedRootId = sourceRootId && deletedMatrixRoots.has(sourceRootId)
           ? sourceRootId
           : targetRootId && deletedMatrixRoots.has(targetRootId) ? targetRootId : null;
-        if (!deletedRootId) return edge;
         const data = (edge.data ?? {}) as Record<string, unknown>;
+        const restoreFromSunburst = typeof data.hiddenInSunburstFor === "string"
+          && removedSunburstKeys.has(data.hiddenInSunburstFor);
+        if (!deletedRootId && !restoreFromSunburst) return edge;
+        const nextData: Record<string, unknown> = { ...data };
+        if (deletedRootId) {
+          nextData.hiddenInMatrix = false;
+          nextData.hiddenInMatrixFor = undefined;
+          nextData.layoutMode = "freeForm";
+        }
+        if (restoreFromSunburst) {
+          delete nextData.hiddenInSunburst;
+          delete nextData.hiddenInSunburstFor;
+          nextData.layoutMode = "freeForm";
+        }
+        const baseHidden = !!edge.hidden
+          && data.hiddenInMatrix !== true
+          && data.hiddenInSunburst !== true;
         return {
           ...edge,
-          hidden: !!edge.hidden && data.hiddenInMatrix !== true,
-          data: {
-            ...data,
-            hiddenInMatrix: false,
-            hiddenInMatrixFor: undefined,
-            layoutMode: "freeForm",
-          },
+          hidden: baseHidden
+            || nextData.hiddenInMatrix === true
+            || nextData.hiddenInSunburst === true,
+          data: nextData,
         };
       });
     set({
@@ -2231,6 +2309,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
+  },
+
+  setNodeLocked: (nodeId, locked) => {
+    const node = get().nodes.find((candidate) => candidate.id === nodeId);
+    if (!node || ((node.data ?? {}) as Record<string, unknown>).locked === locked) return;
+    get().pushHistory();
+    set((state) => ({
+      nodes: state.nodes.map((candidate) => candidate.id === nodeId
+        ? {
+            ...candidate,
+            draggable: !locked,
+            data: { ...(candidate.data ?? {}), locked },
+          }
+        : candidate),
+      saveStatus: "unsaved",
+    }));
   },
 
   fitNodeToContent: (nodeId, contentSize) => {

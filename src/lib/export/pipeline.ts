@@ -1,6 +1,7 @@
 import { classifyExportError, ExportError, toExportError } from "./errors";
 import { createPngExportPlan } from "./limits";
 import { prepareReactFlowDomSvg } from "./dom-renderer";
+import type { ExportAssetWarning } from "./resources";
 import type {
   ExportBounds,
   ExportDiagnostics,
@@ -35,6 +36,7 @@ export interface ExportBoardVisualResult {
   height: number;
   effectiveScale: number;
   plan?: ExportPlan;
+  assetWarnings: ExportAssetWarning[];
   downloadInitiated: true;
 }
 
@@ -94,6 +96,8 @@ function logExportStage(
     // The second argument remains serializable for diagnostics collection; the
     // final argument preserves the native exception and its browser stack.
     console.error("[Manojalam export]", payload, rootCause(error));
+  } else if ((diagnostics.assetWarningCount ?? 0) > 0) {
+    console.warn("[Manojalam export]", payload);
   } else {
     console.info("[Manojalam export]", payload);
   }
@@ -430,6 +434,7 @@ export async function exportBoardVisual(
       signal: options.signal,
       strictFontEmbedding: options.format === "png",
       preserveRemoteReferences: options.format === "svg",
+      substituteInaccessibleRemoteAssets: options.format === "png",
       onStageComplete: (stage, diagnostics) => {
         logExportStage("completed", {
           ...baseDiagnostics,
@@ -571,6 +576,7 @@ export async function exportBoardVisual(
     height,
     effectiveScale,
     ...(plan ? { plan } : {}),
+    assetWarnings: prepared.assets.warnings,
     downloadInitiated: true,
   };
 }

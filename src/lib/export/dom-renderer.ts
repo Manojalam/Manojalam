@@ -734,6 +734,10 @@ export async function prepareReactFlowDomSvg(
     embeddedStyleAssetCount: assets.embeddedStyleAssetCount,
     embeddedFontCount: assets.embeddedFontCount,
     assetWarningCount: assets.warnings.length,
+    proxiedRemoteAssetCount: assets.proxiedRemoteAssetCount,
+    preservedRemoteAssetCount: assets.preservedRemoteAssetCount,
+    substitutedRemoteAssetCount: assets.substitutedRemoteAssetCount,
+    assetWarnings: assets.warnings,
     stageDurationsMs: { "prepare-assets": performance.now() - assetsStartedAt },
   });
   abortIfRequested(options.signal);

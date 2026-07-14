@@ -8,6 +8,7 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
+  FileImage, FileType2, Maximize2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { toast } from "sonner";
@@ -35,6 +36,8 @@ import type {
   ShapeType,
   InlineTextFormatKey,
   RadialColorScheme,
+  RelationshipDiagramSpec,
+  RelationshipDiagramPalette,
 } from "@/lib/types";
 import type { Edge, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -713,6 +716,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const settings        = useCanvasStore((s) => s.settings);
   const setSettings     = useCanvasStore((s) => s.setSettings);
   const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
+  const updateRelationshipDiagramSpec = useCanvasStore((s) => s.updateRelationshipDiagramSpec);
+  const setNodeLocked = useCanvasStore((s) => s.setNodeLocked);
   const resizeNodeToFitBounds = useCanvasStore((s) => s.resizeNodeToFitBounds);
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
   const deleteEdges     = useCanvasStore((s) => s.deleteEdges);
@@ -737,6 +742,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setLayoutPanelOpen = useUIStore((s) => s.setLayoutPanelOpen);
   const activeTextSelection = useUIStore((s) => s.activeTextSelection);
   const openRelationshipDiagram = useUIStore((s) => s.openRelationshipDiagram);
+  const openBoardExport = useUIStore((s) => s.openBoardExport);
 
   const selectedNodes = selectedNodeIds.length
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
@@ -860,6 +866,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   const setField = (key: string, value: unknown) => {
     if (!selectedNode) return;
+    if (key === "locked") {
+      setNodeLocked(selectedNode.id, value === true);
+      return;
+    }
     pushHistory();
     if (selectedTextRange && INLINE_TEXT_FIELDS.has(key as InlineTextFormatKey)) {
       window.dispatchEvent(new CustomEvent("vidya:apply-inline-text-format", {
@@ -1477,6 +1487,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   // ── Node selected ──────────────────────────────────────────────────────────
   if (selectedNode.type === "relationshipDiagram") {
     const diagramSpec = (d.relationshipDiagramSpec ?? {}) as Record<string, unknown>;
+    const diagramTitle = typeof diagramSpec.title === "string" ? diagramSpec.title : "Relationship Diagram";
+    const diagramSubtitle = typeof diagramSpec.subtitle === "string" ? diagramSpec.subtitle : "";
+    const diagramBackground = typeof diagramSpec.background === "string"
+      ? diagramSpec.background
+      : "transparent";
+    const transparentBackground = ["", "transparent", "none", "rgba(0,0,0,0)", "#00000000"]
+      .includes(diagramBackground.trim().toLowerCase());
+    const updateDiagram = (patch: Partial<RelationshipDiagramSpec>) => {
+      updateRelationshipDiagramSpec(selectedNode.id, patch);
+    };
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
         <div className="flex items-center justify-between border-b px-3 py-2.5">
@@ -1487,6 +1507,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </p>
           </div>
           <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title={d.locked ? "Unlock" : "Lock"}
+              onClick={() => setNodeLocked(selectedNode.id, d.locked !== true)}
+            >
+              {d.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
               <Copy className="h-3.5 w-3.5" />
             </Button>
@@ -1495,18 +1524,157 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </Button>
           </div>
         </div>
-        <div className="space-y-3 p-3">
-          <p className="text-[10px] leading-relaxed text-muted-foreground">
-            This is a separate, live view of saved relationships. Moving, resizing, or exporting it does not change the source chart.
-          </p>
-          <Button
-            type="button"
-            className="h-8 w-full justify-start gap-2 text-xs"
-            onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: selectedNode.id })}
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            Change layout and options
-          </Button>
+        <div className="flex-1 divide-y overflow-y-auto">
+          <div className="space-y-2 p-3">
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              This live relationship view can be moved, resized, styled, and exported like any other canvas object.
+            </p>
+            <Button
+              type="button"
+              className="h-8 w-full justify-start gap-2 text-xs"
+              onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: selectedNode.id })}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Change layout and options
+            </Button>
+            <div className="grid grid-cols-3 gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => window.dispatchEvent(new CustomEvent(
+                  "vidya:fit-relationship-diagram",
+                  { detail: { nodeId: selectedNode.id } }
+                ))}
+              >
+                <Maximize2 className="h-3.5 w-3.5" /> Fit
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => openBoardExport({
+                  scope: "node",
+                  nodeIds: [selectedNode.id],
+                  format: "png",
+                  title: diagramTitle,
+                })}
+              >
+                <FileImage className="h-3.5 w-3.5" /> PNG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => openBoardExport({
+                  scope: "node",
+                  nodeIds: [selectedNode.id],
+                  format: "svg",
+                  title: diagramTitle,
+                })}
+              >
+                <FileType2 className="h-3.5 w-3.5" /> SVG
+              </Button>
+            </div>
+          </div>
+
+          <Section label="Text">
+            <div>
+              <Label htmlFor="relationship-diagram-inspector-title" className="text-xs">Title</Label>
+              <Input
+                id="relationship-diagram-inspector-title"
+                value={diagramTitle}
+                onChange={(event) => updateDiagram({ title: event.target.value })}
+                className="mt-1 h-8 text-xs"
+              />
+            </div>
+            <div>
+              <Label htmlFor="relationship-diagram-inspector-subtitle" className="text-xs">Subtitle</Label>
+              <Input
+                id="relationship-diagram-inspector-subtitle"
+                value={diagramSubtitle}
+                onChange={(event) => updateDiagram({ subtitle: event.target.value })}
+                className="mt-1 h-8 text-xs"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text size</p>
+              <SliderControl
+                value={typeof diagramSpec.textSize === "number" ? diagramSpec.textSize : 14}
+                min={8}
+                max={36}
+                step={1}
+                suffix="px"
+                onChange={(value) => updateDiagram({ textSize: value })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs">Show counts</Label>
+              <Switch
+                checked={diagramSpec.showCounts !== false}
+                onCheckedChange={(value) => updateDiagram({ showCounts: value })}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs">Show markers</Label>
+              <Switch
+                checked={diagramSpec.showIcons !== false}
+                onCheckedChange={(value) => updateDiagram({ showIcons: value })}
+              />
+            </div>
+          </Section>
+
+          <Section label="Appearance">
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Palette</p>
+              <Select
+                value={typeof diagramSpec.palette === "string" ? diagramSpec.palette : "source"}
+                onValueChange={(value) => updateDiagram({ palette: value as RelationshipDiagramPalette })}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="source">Source colors</SelectItem>
+                  <SelectItem value="spectrum">Spectrum</SelectItem>
+                  <SelectItem value="warm">Warm</SelectItem>
+                  <SelectItem value="cool">Cool</SelectItem>
+                  <SelectItem value="pastel">Pastel</SelectItem>
+                  <SelectItem value="monochrome">Monochrome</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label className="text-xs">Transparent background</Label>
+                <p className="text-[9px] text-muted-foreground">Show the board behind the diagram.</p>
+              </div>
+              <Switch
+                checked={transparentBackground}
+                onCheckedChange={(checked) => updateDiagram({
+                  background: checked ? "transparent" : "#ffffff",
+                })}
+              />
+            </div>
+            {!transparentBackground && (
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  aria-label="Relationship diagram background color"
+                  value={/^#[0-9a-f]{6}$/i.test(diagramBackground) ? diagramBackground : "#ffffff"}
+                  onChange={(event) => updateDiagram({ background: event.target.value })}
+                  className="h-8 w-10 rounded border border-border bg-background p-1"
+                />
+                <Input
+                  value={diagramBackground}
+                  onChange={(event) => updateDiagram({ background: event.target.value })}
+                  className="h-8 text-xs"
+                  aria-label="Relationship diagram background"
+                />
+              </div>
+            )}
+          </Section>
         </div>
       </aside>
     );

@@ -11,13 +11,19 @@ import {
   AlignStartVertical,
   AlignVerticalDistributeCenter,
   Copy,
+  FileImage,
+  FileType2,
   Group,
+  Lock,
+  Maximize2,
   Network,
   Plus,
   Rows3,
+  Settings2,
   Share2,
   Trash2,
   Ungroup,
+  Unlock,
 } from "lucide-react";
 import { generateId } from "@/lib/utils";
 import {
@@ -68,8 +74,10 @@ export function SelectionToolbar() {
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
+  const setNodeLocked = useCanvasStore((state) => state.setNodeLocked);
   const setLayoutPanelOpen = useUIStore((state) => state.setLayoutPanelOpen);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
+  const openBoardExport = useUIStore((state) => state.openBoardExport);
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
@@ -117,6 +125,16 @@ export function SelectionToolbar() {
 
   const singleId = selected.length === 1 ? selected[0].id : null;
   const singleIsRelationshipDiagram = selected.length === 1 && selected[0].type === "relationshipDiagram";
+  const singleIsSunburst = selected.length === 1 && selected[0].type === "sunburst";
+  const singleLocked = selected.length === 1
+    && ((selected[0].data ?? {}) as Record<string, unknown>).locked === true;
+  const exportTitle = selected.length === 1
+    ? String(
+        ((selected[0].data ?? {}) as Record<string, unknown>).title
+        ?? ((selected[0].data ?? {}) as Record<string, unknown>).text
+        ?? "canvas-object"
+      )
+    : "canvas-selection";
   const relationshipSourceIds = selected
     .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
     .map((node) => node.id);
@@ -130,7 +148,7 @@ export function SelectionToolbar() {
       offset={14}
       className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
-      {singleId && !singleIsRelationshipDiagram && (
+      {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && (
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
@@ -154,10 +172,19 @@ export function SelectionToolbar() {
       {singleIsRelationshipDiagram && singleId && (
         <>
           <ActionButton
-            label="Relationship diagram options"
+            label="Change layout and options"
             onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: singleId })}
           >
-            <Share2 className="h-4 w-4" />
+            <Settings2 className="h-4 w-4" />
+          </ActionButton>
+          <ActionButton
+            label="Fit frame to diagram"
+            onClick={() => window.dispatchEvent(new CustomEvent(
+              "vidya:fit-relationship-diagram",
+              { detail: { nodeId: singleId } }
+            ))}
+          >
+            <Maximize2 className="h-4 w-4" />
           </ActionButton>
           <Divider />
         </>
@@ -180,7 +207,45 @@ export function SelectionToolbar() {
         </>
       )}
 
-      <ActionButton label="Duplicate" onClick={duplicateSelected}><Copy className="h-4 w-4" /></ActionButton>
+      {singleId && (
+        <ActionButton
+          label={singleLocked ? "Unlock object" : "Lock object"}
+          onClick={() => setNodeLocked(singleId, !singleLocked)}
+        >
+          {singleLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+        </ActionButton>
+      )}
+      <ActionButton
+        label="Export PNG"
+        onClick={() => openBoardExport({
+          scope: selected.length === 1 ? "node" : "selection",
+          nodeIds: selected.map((node) => node.id),
+          format: "png",
+          title: exportTitle,
+        })}
+      >
+        <FileImage className="h-4 w-4" />
+      </ActionButton>
+      <ActionButton
+        label="Export SVG"
+        onClick={() => openBoardExport({
+          scope: selected.length === 1 ? "node" : "selection",
+          nodeIds: selected.map((node) => node.id),
+          format: "svg",
+          title: exportTitle,
+        })}
+      >
+        <FileType2 className="h-4 w-4" />
+      </ActionButton>
+      <Divider />
+
+      <ActionButton
+        label={singleIsSunburst ? "Radial charts cannot be duplicated without their source branch" : "Duplicate"}
+        disabled={singleIsSunburst}
+        onClick={duplicateSelected}
+      >
+        <Copy className="h-4 w-4" />
+      </ActionButton>
       <ActionButton label="Delete" onClick={deleteSelected}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
     </NodeToolbar>
   );

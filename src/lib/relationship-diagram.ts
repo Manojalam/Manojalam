@@ -59,7 +59,7 @@ export const DEFAULT_RELATIONSHIP_DIAGRAM_SPEC: Readonly<RelationshipDiagramSpec
   textSize: 16,
   density: "comfortable",
   decorativeLevel: "balanced",
-  background: "#ffffff",
+  background: "transparent",
   sortSources: "natural",
   sortTargets: "natural",
 };
@@ -117,6 +117,23 @@ function nonEmptyString(value: unknown): string | null {
 
 function textValue(value: unknown, fallback: string): string {
   return typeof value === "string" ? value.trim() : fallback;
+}
+
+export function isTransparentRelationshipDiagramBackground(value: unknown): boolean {
+  if (typeof value !== "string") return true;
+  const token = value.trim().toLocaleLowerCase().replace(/\s+/gu, "");
+  return !token
+    || token === "transparent"
+    || token === "none"
+    || token === "rgba(0,0,0,0)"
+    || token === "hsla(0,0%,0%,0)";
+}
+
+function normalizeBackground(value: unknown): string {
+  const background = textValue(value, DEFAULT_RELATIONSHIP_DIAGRAM_SPEC.background);
+  return isTransparentRelationshipDiagramBackground(background)
+    ? DEFAULT_RELATIONSHIP_DIAGRAM_SPEC.background
+    : background;
 }
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
@@ -307,9 +324,18 @@ export function normalizeRelationshipDiagramScope(
     raw.sourceNodeIds ?? raw.nodeIds ?? fallback.sourceNodeIds ?? []
   );
   const mode = normalizeScopeMode(raw.mode ?? raw.kind ?? fallback.mode, sourceNodeIds);
-  const branchRootNodeId = nonEmptyString(
+  const legacyBranchRootNodeId = nonEmptyString(
     raw.branchRootNodeId ?? raw.rootNodeId ?? fallback.branchRootNodeId
-  ) ?? (mode === "selected-branch" ? sourceNodeIds[0] ?? null : null);
+  );
+  let branchRootNodeIds = uniqueStrings(
+    raw.branchRootNodeIds ?? fallback.branchRootNodeIds ?? []
+  );
+  if (!branchRootNodeIds.length && legacyBranchRootNodeId) {
+    branchRootNodeIds = [legacyBranchRootNodeId];
+  }
+  if (mode === "selected-branch" && !branchRootNodeIds.length) {
+    branchRootNodeIds = [...sourceNodeIds];
+  }
   const chartRootNodeId = nonEmptyString(raw.chartRootNodeId ?? fallback.chartRootNodeId);
   const normalizedSourceIds = mode === "selected-node"
     ? sourceNodeIds.slice(0, 1)
@@ -318,7 +344,9 @@ export function normalizeRelationshipDiagramScope(
   return {
     mode,
     sourceNodeIds: normalizedSourceIds,
-    ...(branchRootNodeId ? { branchRootNodeId } : {}),
+    ...(mode === "selected-branch" && branchRootNodeIds.length
+      ? { branchRootNodeIds }
+      : {}),
     ...(chartRootNodeId ? { chartRootNodeId } : {}),
   };
 }
@@ -340,6 +368,7 @@ export function normalizeRelationshipDiagramSpec(
       ? storedScopeValue
       : optionValue(raw, legacyOptions, "scopeMode"),
     sourceNodeIds: optionValue(raw, legacyOptions, "sourceNodeIds", "nodeIds"),
+    branchRootNodeIds: optionValue(raw, legacyOptions, "branchRootNodeIds"),
     branchRootNodeId: optionValue(raw, legacyOptions, "branchRootNodeId", "rootNodeId"),
     chartRootNodeId: optionValue(raw, legacyOptions, "chartRootNodeId"),
   };
@@ -380,9 +409,8 @@ export function normalizeRelationshipDiagramSpec(
     decorativeLevel: normalizeDecorativeLevel(
       optionValue(raw, legacyOptions, "decorativeLevel", "decoration")
     ),
-    background: textValue(
-      optionValue(raw, legacyOptions, "background", "backgroundColor"),
-      DEFAULT_RELATIONSHIP_DIAGRAM_SPEC.background
+    background: normalizeBackground(
+      optionValue(raw, legacyOptions, "background", "backgroundColor")
     ),
     sortSources: normalizeSourceSort(
       optionValue(raw, legacyOptions, "sortSources", "sourceSort")
@@ -420,10 +448,12 @@ export function expandRelationshipDiagramScope(
   const normalized = normalizeRelationshipDiagramScope(scope);
   let sourceNodeIds: string[];
   if (normalized.mode === "selected-branch") {
-    const branchRootNodeId = normalized.branchRootNodeId ?? normalized.sourceNodeIds[0];
-    sourceNodeIds = branchRootNodeId && hierarchy
-      ? getSubtree(branchRootNodeId, hierarchy)
-      : branchRootNodeId ? [branchRootNodeId] : normalized.sourceNodeIds;
+    const branchRootNodeIds = normalized.branchRootNodeIds?.length
+      ? normalized.branchRootNodeIds
+      : normalized.sourceNodeIds;
+    sourceNodeIds = branchRootNodeIds.flatMap((branchRootNodeId) =>
+      hierarchy ? getSubtree(branchRootNodeId, hierarchy) : [branchRootNodeId]
+    );
   } else if (normalized.mode === "selected-node") {
     sourceNodeIds = normalized.sourceNodeIds.slice(0, 1);
   } else {
