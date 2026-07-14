@@ -1,5 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
-import type { LayoutMode } from "@/lib/types";
+import type { LayoutMode } from "../types";
 import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarchy";
 import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
@@ -43,13 +43,14 @@ export type LayoutPlacement = Pos & { width?: number; height?: number };
 type Positions = Record<string, LayoutPlacement>;
 type Side = "top" | "right" | "bottom" | "left";
 
-// -- Spacing constants (generous by design - clarity over compactness) --------
-const MIN_NODE_PADDING_X = 80;
-const MIN_NODE_PADDING_Y = 48;
-const LEVEL_GAP_X = 260;
-const LEVEL_GAP_Y = 170;
-const RADIAL_LEVEL_GAP = 280;
-const LINEAR_GAP = 120;
+// Content-aware clearances. These leave routing corridors between levels while
+// avoiding the oversized empty bands that made structured layouts feel sparse.
+const MIN_NODE_PADDING_X = 64;
+const MIN_NODE_PADDING_Y = 40;
+const LEVEL_GAP_X = 140;
+const LEVEL_GAP_Y = 112;
+const RADIAL_LEVEL_GAP = 230;
+const LINEAR_GAP = 84;
 
 const DEFAULT_W = 180;
 const DEFAULT_H = 80;
@@ -110,7 +111,7 @@ function resolveCollisions(
   axis: "x" | "y",
   padX = MIN_NODE_PADDING_X,
   padY = MIN_NODE_PADDING_Y,
-  iterations = 8
+  iterations = 24
 ): void {
   const ids = Object.keys(positions);
   const rect = (id: string): NodeRect => {

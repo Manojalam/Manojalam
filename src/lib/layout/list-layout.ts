@@ -2,7 +2,6 @@ import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy } from "./hierarchy";
 import {
-  createNodeRect,
   getNodeDimensions,
   getNodeRect,
   inflateRect,
@@ -14,10 +13,8 @@ import {
 export type ListDensity = "compact" | "comfortable";
 
 export interface ListDensitySettings {
-  rootToBranchGapX: number;
-  branchColumnGapX: number;
-  continuationColumnGapX: number;
-  maxColumnBodyHeight: number;
+  rootToFirstRowGapY: number;
+  majorBranchGapY: number;
   childIndentX: number;
   rowGapY: number;
   parentChildGapY: number;
@@ -27,34 +24,30 @@ export interface ListDensitySettings {
 
 export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
   compact: {
-    rootToBranchGapX: 96,
-    branchColumnGapX: 84,
-    continuationColumnGapX: 72,
-    maxColumnBodyHeight: 1040,
-    childIndentX: 76,
+    rootToFirstRowGapY: 34,
+    majorBranchGapY: 34,
+    childIndentX: 132,
     rowGapY: 18,
-    parentChildGapY: 26,
-    siblingSubtreeGapY: 22,
-    connectorGutterX: 30,
+    parentChildGapY: 24,
+    siblingSubtreeGapY: 26,
+    connectorGutterX: 42,
   },
   comfortable: {
-    rootToBranchGapX: 128,
-    branchColumnGapX: 112,
-    continuationColumnGapX: 96,
-    maxColumnBodyHeight: 1280,
-    childIndentX: 96,
+    rootToFirstRowGapY: 46,
+    majorBranchGapY: 46,
+    childIndentX: 156,
     rowGapY: 26,
-    parentChildGapY: 36,
-    siblingSubtreeGapY: 32,
-    connectorGutterX: 38,
+    parentChildGapY: 34,
+    siblingSubtreeGapY: 38,
+    connectorGutterX: 50,
   },
 };
 
 export const DEFAULT_LIST_DENSITY: ListDensity = "compact";
 export const LIST_ROW_GAP = LIST_DENSITIES.compact.rowGapY;
-export const LIST_ROOT_BRANCH_GAP = LIST_DENSITIES.compact.rootToBranchGapX;
+export const LIST_ROOT_BRANCH_GAP = LIST_DENSITIES.compact.rootToFirstRowGapY;
 export const LIST_COLUMN_GUTTER = LIST_DENSITIES.compact.childIndentX;
-export const LIST_MIN_COLUMN_GAP = LIST_DENSITIES.compact.branchColumnGapX;
+export const LIST_MIN_COLUMN_GAP = LIST_DENSITIES.compact.childIndentX;
 export const LIST_OUTER_PADDING = 24;
 export const LIST_COLLISION_PADDING_X = 20;
 export const LIST_COLLISION_PADDING_Y = 14;
@@ -79,14 +72,6 @@ export interface ListPlacement {
 }
 
 export type ListPlacements = Record<string, ListPlacement>;
-
-export interface BranchColumn {
-  branchRootId: string;
-  nodeIds: string[];
-  bounds: NodeRect;
-  width: number;
-  height: number;
-}
 
 export interface ListLayoutDiagnostics {
   duplicateNodeIds: string[];
@@ -233,152 +218,41 @@ export function computeListLayout(
   const traversal = getPreorderTraversal(rootId, hierarchy).filter((entry) => byId.has(entry.nodeId));
   if (!traversal.length) return {};
   const preserveManualOverrides = options.preserveManualOverrides ?? false;
-  const preserveBranchAnchors = options.preserveBranchAnchors ?? preserveManualOverrides;
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
   const density = LIST_DENSITIES[options.density ?? storedDensity];
   const rootRect = getNodeRect(root);
   const generated: ListPlacements = { [rootId]: { ...root.position } };
-  const globallyPlaced = new Set<string>([rootId]);
+  const seen = new Set<string>([rootId]);
+  let cursorY = rootRect.bottom + density.rootToFirstRowGapY;
 
-  type CompactSubtree = {
-    placements: ListPlacements;
-    nodeIds: string[];
-    bounds: NodeRect;
-  };
-
-  const mergeBounds = (id: string, first: NodeRect, second: NodeRect): NodeRect => createNodeRect(
-    id,
-    Math.min(first.left, second.left),
-    Math.min(first.top, second.top),
-    Math.max(first.right, second.right) - Math.min(first.left, second.left),
-    Math.max(first.bottom, second.bottom) - Math.min(first.top, second.top)
-  );
-
-  const moveSubtree = (subtree: CompactSubtree, dx: number, dy: number): void => {
-    if (dx === 0 && dy === 0) return;
-    for (const nodeId of subtree.nodeIds) {
-      const position = subtree.placements[nodeId];
-      subtree.placements[nodeId] = { x: position.x + dx, y: position.y + dy };
-    }
-    subtree.bounds = createNodeRect(
-      subtree.bounds.id,
-      subtree.bounds.left + dx,
-      subtree.bounds.top + dy,
-      subtree.bounds.width,
-      subtree.bounds.height
-    );
-  };
-
-  const layoutCompactSubtree = (
-    nodeId: string,
-    baseX: number,
-    top: number,
-    relativeDepth: number
-  ): CompactSubtree | null => {
+  const placeOutlineSubtree = (nodeId: string, depth: number): void => {
     const node = byId.get(nodeId);
-    if (!node || globallyPlaced.has(nodeId)) return null;
-    globallyPlaced.add(nodeId);
-    const placement = topLeftPosition(node, baseX + relativeDepth * density.childIndentX, top);
+    if (!node || seen.has(nodeId)) return;
+    seen.add(nodeId);
+
+    const placement = topLeftPosition(
+      node,
+      rootRect.left + depth * density.childIndentX,
+      cursorY
+    );
+    generated[nodeId] = placement;
     const nodeRect = rectAt(node, placement);
-    const placements: ListPlacements = { [nodeId]: placement };
-    const nodeIds = [nodeId];
-    let bounds = nodeRect;
-    let cursorY = nodeRect.bottom + Math.max(density.rowGapY, density.parentChildGapY);
     const children = hierarchy.get(nodeId)?.childIds ?? [];
-    const childSubtrees: CompactSubtree[] = [];
+    cursorY = nodeRect.bottom + (children.length ? density.parentChildGapY : density.rowGapY);
 
-    for (const childId of children) {
-      const child = layoutCompactSubtree(childId, baseX, cursorY, relativeDepth + 1);
-      if (!child) continue;
-      childSubtrees.push(child);
-      cursorY = child.bounds.bottom + Math.max(density.rowGapY, density.siblingSubtreeGapY);
-    }
-
-    if (childSubtrees.length) {
-      const bodyTop = nodeRect.bottom + Math.max(density.rowGapY, density.parentChildGapY);
-      let laneLeft = childSubtrees[0].bounds.left;
-      let laneRight = laneLeft;
-      let overallRight = laneLeft;
-      let laneCursorY = bodyTop;
-      let laneHasSubtree = false;
-
-      for (const child of childSubtrees) {
-        const exceedsLane = laneHasSubtree
-          && laneCursorY + child.bounds.height - bodyTop > density.maxColumnBodyHeight;
-        if (exceedsLane) {
-          laneLeft = overallRight + density.continuationColumnGapX;
-          laneRight = laneLeft;
-          laneCursorY = bodyTop;
-          laneHasSubtree = false;
-        }
-
-        moveSubtree(child, laneLeft - child.bounds.left, laneCursorY - child.bounds.top);
-        laneRight = Math.max(laneRight, child.bounds.right);
-        overallRight = Math.max(overallRight, laneRight);
-        laneCursorY = child.bounds.bottom + Math.max(density.rowGapY, density.siblingSubtreeGapY);
-        laneHasSubtree = true;
-
-        Object.assign(placements, child.placements);
-        nodeIds.push(...child.nodeIds);
-        bounds = mergeBounds(`branch-${nodeId}`, bounds, child.bounds);
+    children.forEach((childId, index) => {
+      if (index > 0) {
+        cursorY += Math.max(0, density.siblingSubtreeGapY - density.rowGapY);
       }
-    }
-    return { placements, nodeIds, bounds };
+      placeOutlineSubtree(childId, depth + 1);
+    });
   };
 
-  const branchColumns: BranchColumn[] = [];
-  for (const branchRootId of hierarchy.get(rootId)?.childIds ?? []) {
-    const branch = layoutCompactSubtree(branchRootId, 0, 0, 0);
-    if (!branch) continue;
-    branchColumns.push({
-      branchRootId,
-      nodeIds: branch.nodeIds,
-      bounds: branch.bounds,
-      width: branch.bounds.width,
-      height: branch.bounds.height,
-    });
-    Object.assign(generated, branch.placements);
-  }
-
-  const branchesTop = rootRect.top;
-  const branchesLeft = rootRect.right + density.rootToBranchGapX;
-  let nextBranchLeft = preserveBranchAnchors
-    ? Number.NEGATIVE_INFINITY
-    : branchesLeft;
-  const preservedTop = preserveBranchAnchors && branchColumns.length
-    ? (() => {
-        const first = branchColumns[0];
-        const node = byId.get(first.branchRootId)!;
-        const localRootRect = rectAt(node, generated[first.branchRootId]);
-        return getNodeRect(node).top - (localRootRect.top - first.bounds.top);
-      })()
-    : branchesTop;
-  for (const branch of branchColumns) {
-    const branchNode = byId.get(branch.branchRootId)!;
-    const localRootRect = rectAt(branchNode, generated[branch.branchRootId]);
-    const existingRootRect = getNodeRect(branchNode);
-    const anchoredLeft = existingRootRect.left - (localRootRect.left - branch.bounds.left);
-    const targetLeft = preserveBranchAnchors
-      ? Math.max(nextBranchLeft, anchoredLeft)
-      : nextBranchLeft;
-    const dx = targetLeft - branch.bounds.left;
-    const dy = preservedTop - branch.bounds.top;
-    for (const nodeId of branch.nodeIds) {
-      generated[nodeId] = {
-        x: generated[nodeId].x + dx,
-        y: generated[nodeId].y + dy,
-      };
-    }
-    branch.bounds = createNodeRect(
-      branch.bounds.id,
-      branch.bounds.left + dx,
-      branch.bounds.top + dy,
-      branch.bounds.width,
-      branch.bounds.height
-    );
-    nextBranchLeft = branch.bounds.right + density.branchColumnGapX;
-  }
+  (hierarchy.get(rootId)?.childIds ?? []).forEach((childId, index) => {
+    if (index > 0) cursorY += density.majorBranchGapY;
+    placeOutlineSubtree(childId, 1);
+  });
 
   const placements: ListPlacements = {};
   for (const entry of traversal) {
@@ -497,89 +371,49 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     }
     const rootData = (root.data ?? {}) as Record<string, unknown>;
     const density = LIST_DENSITIES[rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY];
-    const parentData = (parent.data ?? {}) as Record<string, unknown>;
-    const isRootGroup = parent.id === root.id && parentData.layoutMode === "list";
-
-    const group: ListConnectorGroup = isRootGroup
-      ? (() => {
-          const busY = Math.min(...childRects.map((item) => item.rect.top)) - density.connectorGutterX;
-          const childXs = childRects.map((item) => item.rect.centerX);
-          const rootExitX = parentRect.right + density.connectorGutterX;
-          return {
-            parentId,
-            orientation: "horizontal" as const,
-            sharedSegments: [
-              {
-                x1: parentRect.right,
-                y1: parentRect.centerY,
-                x2: rootExitX,
-                y2: parentRect.centerY,
-              },
-              {
-                x1: rootExitX,
-                y1: parentRect.centerY,
-                x2: rootExitX,
-                y2: busY,
-              },
-              {
-                x1: rootExitX,
-                y1: busY,
-                x2: Math.max(rootExitX, ...childXs),
-                y2: busY,
-              },
-            ],
-            branches: childRects.map(({ edge, rect }) => ({
-              edge,
-              childId: edge.target,
-              segments: [{ x1: rect.centerX, y1: busY, x2: rect.centerX, y2: rect.top }],
-            })),
-          };
-        })()
-      : (() => {
-          const junctionY = Math.min(
-            Math.min(...childRects.map((item) => item.rect.centerY)),
-            parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
-          );
-          const parentAnchorX = parentRect.left + Math.min(14, parentRect.width / 2);
-          const lanes: Array<{ left: number; items: typeof childRects }> = [];
-          for (const item of childRects) {
-            const lane = lanes.find((candidate) => Math.abs(candidate.left - item.rect.left) < 1);
-            if (lane) lane.items.push(item);
-            else lanes.push({ left: item.rect.left, items: [item] });
-          }
-          lanes.sort((a, b) => a.left - b.left);
-          const trunkByChildId = new Map<string, number>();
-          const trunks = lanes.map((lane) => {
-            const trunkX = lane.left - density.connectorGutterX;
-            lane.items.forEach((item) => trunkByChildId.set(item.edge.target, trunkX));
-            return {
-              x1: trunkX,
-              y1: junctionY,
-              x2: trunkX,
-              y2: Math.max(junctionY, ...lane.items.map((item) => item.rect.centerY)),
-            };
-          });
-          const railEndX = Math.max(...trunks.map((trunk) => trunk.x1));
-          return {
-            parentId,
-            orientation: "vertical" as const,
-            sharedSegments: [
-              { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
-              { x1: parentAnchorX, y1: junctionY, x2: railEndX, y2: junctionY },
-              ...trunks,
-            ],
-            branches: childRects.map(({ edge, rect }) => ({
-              edge,
-              childId: edge.target,
-              segments: [{
-                x1: trunkByChildId.get(edge.target) ?? rect.left - density.connectorGutterX,
-                y1: rect.centerY,
-                x2: rect.left,
-                y2: rect.centerY,
-              }],
-            })),
-          };
-        })();
+    const junctionY = Math.min(
+      Math.min(...childRects.map((item) => item.rect.centerY)),
+      parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
+    );
+    const parentAnchorX = parentRect.left + Math.min(14, parentRect.width / 2);
+    const lanes: Array<{ left: number; items: typeof childRects }> = [];
+    for (const item of childRects) {
+      const lane = lanes.find((candidate) => Math.abs(candidate.left - item.rect.left) < 1);
+      if (lane) lane.items.push(item);
+      else lanes.push({ left: item.rect.left, items: [item] });
+    }
+    lanes.sort((a, b) => a.left - b.left);
+    const trunkByChildId = new Map<string, number>();
+    const trunks = lanes.map((lane) => {
+      const trunkX = lane.left - density.connectorGutterX;
+      lane.items.forEach((item) => trunkByChildId.set(item.edge.target, trunkX));
+      return {
+        x1: trunkX,
+        y1: junctionY,
+        x2: trunkX,
+        y2: Math.max(junctionY, ...lane.items.map((item) => item.rect.centerY)),
+      };
+    });
+    const railEndX = Math.max(...trunks.map((trunk) => trunk.x1));
+    const group: ListConnectorGroup = {
+      parentId,
+      orientation: "vertical",
+      sharedSegments: [
+        { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
+        { x1: parentAnchorX, y1: junctionY, x2: railEndX, y2: junctionY },
+        ...trunks,
+      ],
+      branches: childRects.map(({ edge, rect }) => ({
+        edge,
+        childId: edge.target,
+        segments: [{
+          x1: trunkByChildId.get(edge.target) ?? rect.left - density.connectorGutterX,
+          y1: rect.centerY,
+          x2: rect.left,
+          y2: rect.centerY,
+        }],
+      })),
+    };
 
     const excluded = new Set([parentId, ...childRects.map((item) => item.edge.target)]);
     const obstacles = visibleRects.filter((rect) => !excluded.has(rect.id));
