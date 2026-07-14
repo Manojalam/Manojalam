@@ -318,6 +318,19 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** Keeps a manually dragged List node off generated rows until List is reapplied. */
   listManualOverride?: boolean;
   matrixDensity?: MatrixDensity;
+  /** Normal editable size retained while a structured layout owns the rendered cell size. */
+  userSize?: { width: number; height: number };
+  /** Render-only dimensions for the active structured layout. */
+  layoutSizeOverride?: { mode: "matrix"; width: number; height: number };
+  /** Last DOM content measurement used for Matrix text wrapping and row reflow. */
+  matrixIntrinsicSize?: { width: number; height: number; lineCount?: number; lineHeight?: number };
+  matrixCell?: boolean;
+  matrixCellRole?: "header" | "category" | "cell";
+  matrixRootId?: string;
+  matrixColumn?: number;
+  matrixRowStart?: number;
+  matrixRowSpan?: number;
+  matrixGridVisible?: boolean;
   groupId?: string;
   /** Radial-layout-only presentation overrides. */
   radialFillColor?: string;
@@ -420,6 +433,8 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   width?: number;
   dashed?: boolean;
   hiddenInMatrix?: boolean;
+  /** Matrix root that temporarily owns the hidden hierarchy edge. */
+  hiddenInMatrixFor?: string;
   hiddenInSunburst?: boolean;
   hiddenInSunburstFor?: string;
   layoutMode?: LayoutMode;

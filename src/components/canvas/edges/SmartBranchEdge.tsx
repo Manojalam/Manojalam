@@ -19,7 +19,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
 const ROUTING_CORRIDOR_PAD = 360;
-const MAX_ROUTING_OBSTACLES = 80;
+const MAX_ROUTING_OBSTACLES = 160;
 
 function nearRouteCorridor(rect: NodeRect, source: NodeRect, target: NodeRect): boolean {
   const minX = Math.min(source.x, target.x) - ROUTING_CORRIDOR_PAD;

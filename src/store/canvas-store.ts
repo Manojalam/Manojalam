@@ -27,6 +27,13 @@ import {
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { computeListLayout } from "@/lib/layout/list-layout";
+import {
+  computeMatrixLayout,
+  getMatrixBaseSize,
+  isMatrixHierarchyEdge,
+  type MatrixCellGeometry,
+  type MatrixLayoutResult,
+} from "@/lib/layout/matrix-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
 import type { LayoutMode } from "@/lib/types";
@@ -104,6 +111,7 @@ interface CanvasState {
   resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
   scheduleListReflow: (nodeId: string) => void;
+  scheduleMatrixReflow: (nodeId: string) => void;
   markListManualOverride: (nodeIds: string[], value: boolean) => void;
   updateBoardTitle: (title: string) => void;
   performSearch: (query: string) => void;
@@ -112,6 +120,17 @@ interface CanvasState {
 
 const pendingListReflowNodeIds = new Set<string>();
 let listReflowTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingMatrixReflowNodeIds = new Set<string>();
+let matrixReflowTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelPendingLayoutReflows(): void {
+  if (listReflowTimer) clearTimeout(listReflowTimer);
+  listReflowTimer = null;
+  pendingListReflowNodeIds.clear();
+  if (matrixReflowTimer) clearTimeout(matrixReflowTimer);
+  matrixReflowTimer = null;
+  pendingMatrixReflowNodeIds.clear();
+}
 
 function cloneState(
   nodes: Node[],
@@ -238,6 +257,173 @@ function applyPlacements(nodes: Node[], placements: Record<string, LayoutPlaceme
   });
 }
 
+function storedNodeSize(value: unknown): { width: number; height: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const size = value as Record<string, unknown>;
+  const width = typeof size.width === "number" && Number.isFinite(size.width) && size.width > 0
+    ? size.width
+    : null;
+  const height = typeof size.height === "number" && Number.isFinite(size.height) && size.height > 0
+    ? size.height
+    : null;
+  return width && height ? { width, height } : null;
+}
+
+function matrixCellById(result: MatrixLayoutResult): Map<string, MatrixCellGeometry> {
+  return new Map([[result.rootId, result.header], ...result.cells.map((cell) => [cell.nodeId, cell] as const)]);
+}
+
+function clearMatrixPresentationData(data: Record<string, unknown>): Record<string, unknown> {
+  const {
+    layoutSizeOverride,
+    matrixCell,
+    matrixCellRole,
+    matrixRootId,
+    matrixColumn,
+    matrixRowStart,
+    matrixRowSpan,
+    ...rest
+  } = data;
+  void matrixCell;
+  void matrixCellRole;
+  void matrixRootId;
+  void matrixColumn;
+  void matrixRowStart;
+  void matrixRowSpan;
+  if ((layoutSizeOverride as { mode?: unknown } | undefined)?.mode !== "matrix") {
+    return { ...rest, ...(layoutSizeOverride !== undefined ? { layoutSizeOverride } : {}) };
+  }
+  return rest;
+}
+
+/** Restores normal dimensions before another layout reads node geometry. */
+function restoreMatrixPresentation(node: Node): Node {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const override = data.layoutSizeOverride as { mode?: unknown } | undefined;
+  if (override?.mode !== "matrix" && data.matrixCell !== true) return node;
+  const size = storedNodeSize(data.userSize) ?? getMatrixBaseSize(node);
+  return resetNodeDimensions({
+    ...node,
+    data: clearMatrixPresentationData(data),
+  }, size.width, size.height);
+}
+
+function applyMatrixResultToNodes(
+  nodes: Node[],
+  result: MatrixLayoutResult,
+  hierarchy: ReturnType<typeof buildHierarchy>,
+  scopeIds: Set<string>
+): Node[] {
+  const placements = result.placements;
+  const cells = matrixCellById(result);
+  const matrixIds = new Set(Object.keys(placements));
+  const root = nodes.find((node) => node.id === result.rootId);
+  const rootData = (root?.data ?? {}) as Record<string, unknown>;
+  const gridVisible = rootData.matrixGridVisible !== false;
+
+  return nodes.map((node) => {
+    const h = hierarchy.get(node.id);
+    const originalData = (node.data ?? {}) as Record<string, unknown>;
+    if (!scopeIds.has(node.id)) {
+      if (originalData.matrixRootId !== result.rootId) return node;
+      const restored = restoreMatrixPresentation(node);
+      return {
+        ...restored,
+        data: {
+          ...clearMatrixPresentationData((restored.data ?? {}) as Record<string, unknown>),
+          parentId: h?.parentId ?? null,
+          childOrder: h?.childIds ?? [],
+        },
+      };
+    }
+    if (!matrixIds.has(node.id)) {
+      const restored = restoreMatrixPresentation(node);
+      return {
+        ...restored,
+        data: {
+          ...clearMatrixPresentationData((restored.data ?? {}) as Record<string, unknown>),
+          parentId: h?.parentId ?? null,
+          childOrder: h?.childIds ?? [],
+        },
+      };
+    }
+
+    const placement = placements[node.id];
+    const cell = cells.get(node.id)!;
+    const normalSize = storedNodeSize(originalData.userSize) ?? getMatrixBaseSize(node);
+    const currentOverride = originalData.layoutSizeOverride as Partial<{
+      mode: string;
+      width: number;
+      height: number;
+    }> | undefined;
+    const sizeChanged = currentOverride?.mode !== "matrix"
+      || Math.abs((currentOverride.width ?? 0) - placement.width) > 0.5
+      || Math.abs((currentOverride.height ?? 0) - placement.height) > 0.5;
+    let data: Record<string, unknown> = {
+      ...originalData,
+      parentId: h?.parentId ?? null,
+      childOrder: h?.childIds ?? [],
+      userSize: normalSize,
+      layoutSizeOverride: {
+        mode: "matrix",
+        width: placement.width,
+        height: placement.height,
+      },
+      matrixCell: true,
+      matrixCellRole: node.id === result.rootId ? "header" : h?.parentId === result.rootId ? "category" : "cell",
+      matrixRootId: result.rootId,
+      matrixColumn: cell.column,
+      matrixRowStart: cell.rowStart,
+      matrixRowSpan: cell.rowSpan,
+      matrixGridVisible: gridVisible,
+    };
+    if (node.id === result.rootId) {
+      data.layoutMode = "matrix";
+      data.matrixDensity = result.density;
+    } else if (data.layoutMode !== undefined) {
+      const { layoutMode: _layoutMode, ...rest } = data;
+      void _layoutMode;
+      data = rest;
+    }
+
+    return {
+      ...node,
+      ...(sizeChanged ? { width: undefined, height: undefined, measured: undefined } : {}),
+      position: { x: placement.x, y: placement.y },
+      style: { ...(node.style ?? {}), width: placement.width, height: placement.height },
+      data,
+    };
+  });
+}
+
+function matrixGeometryChanged(before: Node[], after: Node[], rootId: string): boolean {
+  const beforeById = new Map(before.map((node) => [node.id, node]));
+  const relevant = (node: Node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    return node.id === rootId || data.matrixRootId === rootId || data.matrixFrameFor === rootId;
+  };
+  for (const node of after.filter(relevant)) {
+    const previous = beforeById.get(node.id);
+    if (!previous) return true;
+    const previousData = (previous.data ?? {}) as Record<string, unknown>;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const previousSize = previousData.layoutSizeOverride as Partial<{ width: number; height: number }> | undefined;
+    const size = data.layoutSizeOverride as Partial<{ width: number; height: number }> | undefined;
+    if (
+      Math.abs(previous.position.x - node.position.x) > 0.5
+      || Math.abs(previous.position.y - node.position.y) > 0.5
+      || Math.abs((previousSize?.width ?? numericDimension(previous.style?.width, 0)) - (size?.width ?? numericDimension(node.style?.width, 0))) > 0.5
+      || Math.abs((previousSize?.height ?? numericDimension(previous.style?.height, 0)) - (size?.height ?? numericDimension(node.style?.height, 0))) > 0.5
+      || previousData.matrixCellRole !== data.matrixCellRole
+      || previousData.matrixColumn !== data.matrixColumn
+      || previousData.matrixRowStart !== data.matrixRowStart
+      || previousData.matrixRowSpan !== data.matrixRowSpan
+      || previousData.matrixGridVisible !== data.matrixGridVisible
+    ) return true;
+  }
+  return before.filter(relevant).length !== after.filter(relevant).length;
+}
+
 function findLayoutRoot(nodeId: string, nodes: Node[], hierarchy: ReturnType<typeof buildHierarchy>): { id: string; mode?: LayoutMode } {
   let cur: string | null = nodeId;
   let fallback = nodeId;
@@ -282,16 +468,18 @@ function isAutoSunburstNode(node: Node): boolean {
   return autoSunburstKey(node) !== null;
 }
 
+function restoreSunburstPresentation(node: Node): Node {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  if (!data.sunburstHiddenFor) return node;
+  const { sunburstHiddenFor: _sunburstHiddenFor, ...nextData } = data;
+  void _sunburstHiddenFor;
+  return { ...node, hidden: false, data: nextData };
+}
+
 function clearSunburstNodes(nodes: Node[]): Node[] {
   return nodes
     .filter((node) => !isAutoSunburstNode(node))
-    .map((node) => {
-      const data = (node.data ?? {}) as Record<string, unknown>;
-      if (!data.sunburstHiddenFor) return node;
-      const { sunburstHiddenFor: _sunburstHiddenFor, ...nextData } = data;
-      void _sunburstHiddenFor;
-      return { ...node, hidden: false, data: nextData };
-    });
+    .map(restoreSunburstPresentation);
 }
 
 function sunburstTreeStats(rootId: string, hierarchy: ReturnType<typeof buildHierarchy>): { maxDepth: number; leaves: number } {
@@ -332,15 +520,33 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
 
   if (!enabled) return withoutCurrentFrame;
 
-  const scopedNodes = withoutCurrentFrame.filter((n) => scopeIds.has(n.id));
+  const scopedNodes = withoutCurrentFrame.filter((node) => {
+    if (!scopeIds.has(node.id) || node.hidden) return false;
+    if (key === BOARD_MATRIX_FRAME_KEY) return true;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    return node.id === key || data.matrixRootId === key;
+  });
   if (!scopedNodes.length) return withoutCurrentFrame;
 
-  const rects = scopedNodes.map(getNodeRect);
+  const rects = scopedNodes.map((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const override = data.layoutSizeOverride as Partial<{ mode: string; width: number; height: number }> | undefined;
+    if (override?.mode !== "matrix" || !override.width || !override.height) return getNodeRect(node);
+    return getNodeRect({
+      ...node,
+      width: undefined,
+      height: undefined,
+      measured: undefined,
+      style: { ...(node.style ?? {}), width: override.width, height: override.height },
+    });
+  });
   const minX = Math.min(...rects.map((r) => r.x));
   const minY = Math.min(...rects.map((r) => r.y));
   const maxX = Math.max(...rects.map((r) => r.x + r.width));
   const maxY = Math.max(...rects.map((r) => r.y + r.height));
-  const pad = 3;
+  const root = scopedNodes.find((node) => node.id === key);
+  const rootData = (root?.data ?? {}) as Record<string, unknown>;
+  const pad = 4;
   const frame: Node = {
     id: `matrix-frame-${key}`,
     type: "frame",
@@ -352,6 +558,7 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
       borderStyle: "solid",
       locked: true,
       matrixFrameFor: key,
+      matrixGridVisible: rootData.matrixGridVisible !== false,
       tags: [],
     },
     style: { width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 },
@@ -475,6 +682,10 @@ const AUTOFIT_FIELDS = new Set([
   "text", "richText", "label", "title", "topic", "devanagari", "iast", "translation",
   "rule", "fontSize", "fontFamily", "fontStyle", "fontWeight", "textAlign",
   "shapeType", "petalCount", "borderWidth", "borderRadius", "borderStyle",
+]);
+const MATRIX_REFLOW_FIELDS = new Set([
+  ...AUTOFIT_FIELDS,
+  "collapsed", "parentId", "childOrder", "matrixDensity", "matrixGridVisible",
 ]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
@@ -764,6 +975,10 @@ function patchNeedsContentFit(patch: Record<string, unknown>): boolean {
   // different measurements.
   if (Object.prototype.hasOwnProperty.call(patch, "richText")) return false;
   return Object.keys(patch).some((key) => AUTOFIT_FIELDS.has(key));
+}
+
+function patchNeedsMatrixReflow(patch: Record<string, unknown>): boolean {
+  return Object.keys(patch).some((key) => MATRIX_REFLOW_FIELDS.has(key));
 }
 
 function normalizeSunburstChartSizes(
@@ -1103,9 +1318,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   searchResults: [],
 
   setBoard: (board) => {
-    if (listReflowTimer) clearTimeout(listReflowTimer);
-    listReflowTimer = null;
-    pendingListReflowNodeIds.clear();
+    cancelPendingLayoutReflows();
     const migrated = migrateNodes(board.content.nodes);
     // Infer + persist parentId from directed edges (for old boards).
     const hierarchy = buildHierarchy(migrated, board.content.edges);
@@ -1358,6 +1571,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   undo: () => {
+    cancelPendingLayoutReflows();
     const { history, historyIndex, nodes, edges, relationships, relationshipFans } = get();
     if (historyIndex < 0) return;
     const current = cloneState(nodes, edges, relationships, relationshipFans);
@@ -1383,6 +1597,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   redo: () => {
+    cancelPendingLayoutReflows();
     const { history, historyIndex } = get();
     if (historyIndex >= history.length - 1) return;
     const newIndex = historyIndex + 1;
@@ -1586,6 +1801,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     get().pushHistory();
     const selectedNodes = new Set(selectedNodeIds);
     const selectedEdges = new Set(selectedEdgeIds);
+    const deletedMatrixRoots = new Set(nodes
+      .filter((node) => {
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        return selectedNodes.has(node.id)
+          && data.matrixCellRole === "header"
+          && data.matrixRootId === node.id;
+      })
+      .map((node) => node.id));
+    const matrixRootByNode = new Map(nodes.map((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return [node.id, typeof data.matrixRootId === "string" ? data.matrixRootId : null] as const;
+    }));
+    const affectedMatrixRoots = new Set(nodes
+      .filter((node) => selectedNodes.has(node.id))
+      .map((node) => (node.data as { matrixRootId?: unknown } | undefined)?.matrixRootId)
+      .filter((rootId): rootId is string => typeof rootId === "string" && !selectedNodes.has(rootId)));
     const nextRelationships = relationships.filter(
       (relationship) =>
         !selectedNodes.has(relationship.sourceNodeId) &&
@@ -1604,17 +1835,47 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       .map((fan) => selectedNodes.has(fan.targetBranchNodeId ?? "")
         ? { ...fan, targetBranchNodeId: undefined }
         : fan);
+    const nextNodes = nodes
+      .filter((node) => !selectedNodes.has(node.id))
+      .filter((node) => {
+        const frameRootId = autoMatrixFrameKey(node);
+        return !frameRootId || !deletedMatrixRoots.has(frameRootId);
+      })
+      .map((node) => {
+        const rootId = matrixRootByNode.get(node.id);
+        return rootId && deletedMatrixRoots.has(rootId) ? restoreMatrixPresentation(node) : node;
+      });
+    const nextEdges = edges
+      .filter((edge) => !selectedEdges.has(edge.id) && !selectedNodes.has(edge.source) && !selectedNodes.has(edge.target))
+      .map((edge) => {
+        const sourceRootId = matrixRootByNode.get(edge.source);
+        const targetRootId = matrixRootByNode.get(edge.target);
+        const deletedRootId = sourceRootId && deletedMatrixRoots.has(sourceRootId)
+          ? sourceRootId
+          : targetRootId && deletedMatrixRoots.has(targetRootId) ? targetRootId : null;
+        if (!deletedRootId) return edge;
+        const data = (edge.data ?? {}) as Record<string, unknown>;
+        return {
+          ...edge,
+          hidden: !!edge.hidden && data.hiddenInMatrix !== true,
+          data: {
+            ...data,
+            hiddenInMatrix: false,
+            hiddenInMatrixFor: undefined,
+            layoutMode: "freeForm",
+          },
+        };
+      });
     set({
-      nodes: nodes.filter((n) => !selectedNodes.has(n.id)),
-      edges: edges.filter(
-        (e) => !selectedEdges.has(e.id) && !selectedNodes.has(e.source) && !selectedNodes.has(e.target)
-      ),
+      nodes: nextNodes,
+      edges: nextEdges,
       relationships: nextRelationships,
       relationshipFans: nextRelationshipFans,
       selectedNodeIds: [],
       selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
+    affectedMatrixRoots.forEach((rootId) => get().scheduleMatrixReflow(rootId));
   },
 
   deleteEdges: (ids) => {
@@ -1661,7 +1922,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         parentId,
         ...(childType === "shape" && { shapeType: (parentData.shapeType as string) ?? "rounded" }),
       },
-      style: parent.style ? { ...parent.style, height: undefined } : undefined,
+      style: parent.style ? { ...parent.style, width: undefined, height: undefined } : undefined,
     }));
     const newEdges = newNodes.map<Edge>((newNode) => {
       const route = routeForMode(mode, parent, newNode);
@@ -1678,6 +1939,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           edgeType: "branch",
           curveStyle: route.curveStyle,
           hiddenInMatrix,
+          hiddenInMatrixFor: hiddenInMatrix ? currentLayoutRoot.id : undefined,
           hiddenInSunburst,
           hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(currentLayoutRoot.id) : undefined,
           layoutMode: mode,
@@ -1702,7 +1964,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const layoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const useSunburst = layoutRoot.mode === "radial";
     let placedNodes = nextNodes;
-    if (layoutRoot.mode && !useSunburst) {
+    if (layoutRoot.mode === "matrix") {
+      const result = computeMatrixLayout(
+        layoutRoot.id,
+        nextHierarchy,
+        new Map(nextNodes.filter((node) => !isAutoMatrixFrame(node)).map((node) => [node.id, node]))
+      );
+      placedNodes = applyMatrixResultToNodes(
+        nextNodes,
+        result,
+        nextHierarchy,
+        new Set(getSubtree(layoutRoot.id, nextHierarchy))
+      );
+    } else if (layoutRoot.mode && !useSunburst) {
       placedNodes = applyPlacements(
         nextNodes,
         computeLayout(nextNodes, nextEdges, layoutRoot.mode, { rootId: layoutRoot.id })
@@ -1755,7 +2029,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         parentId,
         ...(sibType === "shape" && { shapeType: (nodeData.shapeType as string) ?? "rounded" }),
       },
-      style: node.style ? { ...node.style, height: undefined } : undefined,
+      style: node.style ? { ...node.style, width: undefined, height: undefined } : undefined,
     };
     const newEdges = [...edges];
     const route = routeForMode(edgeMode, parentNode, newNode);
@@ -1774,6 +2048,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         edgeType: "branch",
         curveStyle: route.curveStyle,
         hiddenInMatrix,
+        hiddenInMatrixFor: hiddenInMatrix ? layoutRoot.id : undefined,
         hiddenInSunburst,
         hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(layoutRoot.id) : undefined,
         layoutMode: edgeMode,
@@ -1791,10 +2066,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const nextHierarchy = buildHierarchy(nextNodes, newEdges);
     const nextLayoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const useSunburst = nextLayoutRoot.mode === "radial";
-    const placements = nextLayoutRoot.mode && !useSunburst
-      ? computeLayout(nextNodes, newEdges, nextLayoutRoot.mode, { rootId: nextLayoutRoot.id })
-      : resolveInsertedNodeCollisions(nextNodes, siblingId);
-    const placedNodes = applyPlacements(nextNodes, placements);
+    const placedNodes = nextLayoutRoot.mode === "matrix"
+      ? applyMatrixResultToNodes(
+          nextNodes,
+          computeMatrixLayout(
+            nextLayoutRoot.id,
+            nextHierarchy,
+            new Map(nextNodes.filter((candidate) => !isAutoMatrixFrame(candidate)).map((candidate) => [candidate.id, candidate]))
+          ),
+          nextHierarchy,
+          new Set(getSubtree(nextLayoutRoot.id, nextHierarchy))
+        )
+      : applyPlacements(
+          nextNodes,
+          nextLayoutRoot.mode && !useSunburst
+            ? computeLayout(nextNodes, newEdges, nextLayoutRoot.mode, { rootId: nextLayoutRoot.id })
+            : resolveInsertedNodeCollisions(nextNodes, siblingId)
+        );
     const rootScope = new Set(getSubtree(nextLayoutRoot.id, nextHierarchy));
     const matrixNodes = nextLayoutRoot.mode === "matrix"
       ? withMatrixFrame(placedNodes, rootScope, matrixFrameKey(nextLayoutRoot.id), true)
@@ -1809,6 +2097,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selectedNodeIds: [siblingId],
       saveStatus: "unsaved",
     });
+    get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
   },
 
   moveSiblingNode: (nodeId, direction) => {
@@ -1828,6 +2118,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         : candidate),
       saveStatus: "unsaved",
     });
+    get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
   },
 
   updateNodeData: (nodeId, data) => {
@@ -1839,9 +2131,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       let nodes = state.nodes.map((node) => node.id === nodeId && updatedNode ? updatedNode : node);
 
       if (updatedNode && patchNeedsContentFit(data)) {
-        const fittedNode = fitNodeAfterContentChange(updatedNode);
         const hierarchy = buildHierarchy(state.nodes, state.edges);
-        const fitted = findLayoutRoot(nodeId, state.nodes, hierarchy).mode === "list"
+        const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
+        const fittedNode = layoutMode === "matrix" ? updatedNode : fitNodeAfterContentChange(updatedNode);
+        const fitted = layoutMode === "list"
           ? { ...fittedNode, position: updatedNode.position }
           : fittedNode;
         nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
@@ -1849,7 +2142,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       return { nodes, saveStatus: "unsaved" };
     });
-    if (patchNeedsContentFit(data)) get().scheduleListReflow(nodeId);
+    if (patchNeedsContentFit(data)) {
+      get().scheduleListReflow(nodeId);
+    }
+    if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
   },
 
   fitNodeToContent: (nodeId, contentSize) => {
@@ -1857,9 +2153,51 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const node = state.nodes.find((n) => n.id === nodeId);
       if (!node) return {};
 
-      const fittedNode = fitNodeAfterContentChange(node, contentSize);
       const hierarchy = buildHierarchy(state.nodes, state.edges);
-      const fitted = findLayoutRoot(nodeId, state.nodes, hierarchy).mode === "list"
+      const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
+      if (layoutMode === "matrix") {
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        const normalSize = storedNodeSize(data.userSize) ?? getMatrixBaseSize(node);
+        const normalNode = {
+          ...node,
+          width: undefined,
+          height: undefined,
+          measured: undefined,
+          style: { ...(node.style ?? {}), width: normalSize.width, height: normalSize.height },
+        };
+        const fittedNormal = fitNodeAfterContentChange(normalNode, contentSize);
+        const fittedStyle = fittedNormal.style as Record<string, unknown> | undefined;
+        const nextUserSize = {
+          width: numericDimension(fittedStyle?.width, normalSize.width),
+          height: numericDimension(fittedStyle?.height, normalSize.height),
+        };
+        const previousIntrinsic = data.matrixIntrinsicSize as Partial<ContentSize> | undefined;
+        const intrinsicChanged =
+          Math.abs((previousIntrinsic?.width ?? 0) - contentSize.width) > 1
+          || Math.abs((previousIntrinsic?.height ?? 0) - contentSize.height) > 1
+          || Math.abs((previousIntrinsic?.lineCount ?? 0) - (contentSize.lineCount ?? 0)) > 0.5
+          || Math.abs((previousIntrinsic?.lineHeight ?? 0) - (contentSize.lineHeight ?? 0)) > 0.5;
+        const userSizeChanged =
+          Math.abs(normalSize.width - nextUserSize.width) > 1
+          || Math.abs(normalSize.height - nextUserSize.height) > 1;
+        if (!intrinsicChanged && !userSizeChanged) return {};
+        return {
+          nodes: state.nodes.map((candidate) => candidate.id === nodeId
+            ? {
+                ...candidate,
+                data: {
+                  ...(candidate.data ?? {}),
+                  userSize: nextUserSize,
+                  matrixIntrinsicSize: contentSize,
+                },
+              }
+            : candidate),
+          saveStatus: "unsaved" as SaveStatus,
+        };
+      }
+
+      const fittedNode = fitNodeAfterContentChange(node, contentSize);
+      const fitted = layoutMode === "list"
         ? { ...fittedNode, position: node.position }
         : fittedNode;
       if (fitted === node) return {};
@@ -1880,12 +2218,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       };
     });
     get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
   },
 
   resizeNodeToFitBounds: (nodeId, bounds) => {
     set((state) => {
       const node = state.nodes.find((n) => n.id === nodeId);
       if (!node) return {};
+
+      const hierarchy = buildHierarchy(state.nodes, state.edges);
+      const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
+      if (layoutMode === "matrix") {
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        const normalSize = storedNodeSize(data.userSize) ?? getMatrixBaseSize(node);
+        const width = Math.max(normalSize.width, Math.ceil(bounds.width));
+        const height = Math.max(normalSize.height, Math.ceil(bounds.height));
+        if (width <= normalSize.width + 1 && height <= normalSize.height + 1) return {};
+        return {
+          nodes: state.nodes.map((candidate) => candidate.id === nodeId
+            ? { ...candidate, data: { ...(candidate.data ?? {}), userSize: { width, height } } }
+            : candidate),
+          saveStatus: "unsaved" as SaveStatus,
+        };
+      }
 
       const current = styleSizeOf(node);
       let width = Math.max(current.w, Math.ceil(bounds.width));
@@ -1903,7 +2258,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...node,
         style: { ...(node.style ?? {}), width, height },
       };
-      const hierarchy = buildHierarchy(state.nodes, state.edges);
       const fitted = {
         ...resized,
         position: findLayoutRoot(nodeId, state.nodes, hierarchy).mode === "list"
@@ -1917,6 +2271,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       };
     });
     get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
   },
 
   convertNode: (nodeId, newType, extraData = {}) => {
@@ -1931,8 +2286,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (newType === "sticky"  && !newData.color)   newData.color = "yellow";
 
     // Resize to fit text when switching to shapes that need more room
-    const curW = (node.measured?.width  ?? (node.style?.width  as number) ?? 180) as number;
-    const curH = (node.measured?.height ?? (node.style?.height as number) ?? 80)  as number;
+    const hierarchy = buildHierarchy(nodes, get().edges);
+    const matrixMode = findLayoutRoot(nodeId, nodes, hierarchy).mode === "matrix";
+    const matrixBase = matrixMode ? getMatrixBaseSize(node) : null;
+    const curW = matrixBase?.width ?? (node.measured?.width  ?? (node.style?.width  as number) ?? 180) as number;
+    const curH = matrixBase?.height ?? (node.measured?.height ?? (node.style?.height as number) ?? 80)  as number;
     const shapeType = (newData.shapeType as string) ?? "";
     let newStyle = { ...node.style };
     if (shapeType === "diamond")  { newStyle = { ...newStyle, width: Math.max(curW * 1.5, 180), height: Math.max(curH * 1.5, 120) }; }
@@ -1942,11 +2300,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // Ensure a minimum size for shapes
     if (newType === "shape" && !newStyle.height) newStyle = { ...newStyle, height: Math.max(curH, 80) };
 
+    const convertedData = matrixMode
+      ? {
+          ...newData,
+          userSize: {
+            width: numericDimension(newStyle.width, curW),
+            height: numericDimension(newStyle.height, curH),
+          },
+        }
+      : newData;
     set({
-      nodes: nodes.map((n) => n.id === nodeId ? { ...n, type: newType, data: newData, style: newStyle } : n),
+      nodes: nodes.map((n) => n.id === nodeId
+        ? { ...n, type: newType, data: convertedData, style: matrixMode ? n.style : newStyle }
+        : n),
       saveStatus: "unsaved",
     });
     get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
   },
 
   scheduleListReflow: (nodeId) => {
@@ -1991,6 +2361,94 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }, 96);
   },
 
+  scheduleMatrixReflow: (nodeId) => {
+    pendingMatrixReflowNodeIds.add(nodeId);
+    if (matrixReflowTimer) clearTimeout(matrixReflowTimer);
+    matrixReflowTimer = setTimeout(() => {
+      matrixReflowTimer = null;
+      const requestedNodeIds = [...pendingMatrixReflowNodeIds];
+      pendingMatrixReflowNodeIds.clear();
+      const state = get();
+      const layoutNodes = state.nodes.filter((node) =>
+        !isAutoMatrixFrame(node)
+        && !isAutoSunburstNode(node)
+        && node.type !== "relationshipDiagram"
+      );
+      const hierarchy = buildHierarchy(layoutNodes, state.edges);
+      const byId = new Map(layoutNodes.map((node) => [node.id, node]));
+      const rootIds = new Set<string>();
+
+      for (const requestedNodeId of requestedNodeIds) {
+        const node = byId.get(requestedNodeId);
+        if (!node) continue;
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        const storedRootId = typeof data.matrixRootId === "string" ? data.matrixRootId : null;
+        const root = storedRootId && byId.has(storedRootId)
+          ? { id: storedRootId, mode: "matrix" as LayoutMode }
+          : findLayoutRoot(requestedNodeId, layoutNodes, hierarchy);
+        if (root.mode === "matrix") rootIds.add(root.id);
+      }
+      if (!rootIds.size) return;
+
+      let nextNodes = state.nodes;
+      let nextEdges = state.edges;
+      for (const rootId of rootIds) {
+        const previouslyOwnedNodeIds = new Set(nextNodes
+          .filter((node) => {
+            const data = (node.data ?? {}) as Record<string, unknown>;
+            return node.id === rootId || data.matrixRootId === rootId;
+          })
+          .map((node) => node.id));
+        const currentLayoutNodes = nextNodes.filter((node) =>
+          !isAutoMatrixFrame(node)
+          && !isAutoSunburstNode(node)
+          && node.type !== "relationshipDiagram"
+        );
+        const currentHierarchy = buildHierarchy(currentLayoutNodes, nextEdges);
+        const currentById = new Map(currentLayoutNodes.map((node) => [node.id, node]));
+        if (!currentById.has(rootId)) continue;
+        const result = computeMatrixLayout(rootId, currentHierarchy, currentById);
+        const scopeIds = new Set(getSubtree(rootId, currentHierarchy));
+        nextNodes = applyMatrixResultToNodes(nextNodes, result, currentHierarchy, scopeIds);
+        nextNodes = withMatrixFrame(nextNodes, scopeIds, matrixFrameKey(rootId), true);
+        nextEdges = nextEdges.map((edge) => {
+          const data = (edge.data ?? {}) as Record<string, unknown>;
+          const ownedByRoot = data.hiddenInMatrixFor === rootId
+            || (data.hiddenInMatrix === true
+              && (previouslyOwnedNodeIds.has(edge.source) || previouslyOwnedNodeIds.has(edge.target)));
+          const hiddenInMatrix = isMatrixHierarchyEdge(edge, currentHierarchy, scopeIds);
+          if (!ownedByRoot && !hiddenInMatrix) return edge;
+
+          const baseHidden = !!edge.hidden
+            && data.hiddenInMatrix !== true
+            && data.hiddenInSunburst !== true;
+          const hidden = baseHidden || hiddenInMatrix || data.hiddenInSunburst === true;
+          const hiddenInMatrixFor = hiddenInMatrix ? rootId : undefined;
+          if (
+            edge.hidden === hidden
+            && data.hiddenInMatrix === hiddenInMatrix
+            && data.hiddenInMatrixFor === hiddenInMatrixFor
+          ) return edge;
+          return {
+            ...edge,
+            hidden,
+            data: {
+              ...data,
+              hiddenInMatrix,
+              hiddenInMatrixFor,
+            },
+          };
+        });
+      }
+
+      const geometryChanged = [...rootIds].some((rootId) => matrixGeometryChanged(state.nodes, nextNodes, rootId));
+      const edgesChanged = nextEdges.some((edge, index) => edge !== state.edges[index]);
+      if (geometryChanged || edgesChanged) {
+        set({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
+      }
+    }, 140);
+  },
+
   markListManualOverride: (nodeIds, value) => {
     if (!nodeIds.length) return;
     const { nodes, edges } = get();
@@ -2018,28 +2476,39 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   applyLayout: (mode, rootIdOverride) => {
     const { nodes, edges, selectedNodeIds } = get();
     if (!nodes.length) return;
-    const layoutNodes = nodes.filter((n) =>
+    if (matrixReflowTimer) clearTimeout(matrixReflowTimer);
+    matrixReflowTimer = null;
+    pendingMatrixReflowNodeIds.clear();
+
+    const rawLayoutNodes = nodes.filter((n) =>
       !isAutoMatrixFrame(n) &&
       !isAutoSunburstNode(n) &&
       n.type !== "relationshipDiagram"
     );
     const selectedRootId = rootIdOverride ?? (selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined);
-    const rootId = selectedRootId && layoutNodes.some((n) => n.id === selectedRootId) ? selectedRootId : undefined;
+    const rootId = selectedRootId && rawLayoutNodes.some((n) => n.id === selectedRootId) ? selectedRootId : undefined;
     if (!rootId) return;
+    const rawHierarchy = buildHierarchy(rawLayoutNodes, edges);
+    const selectedScopeIds = new Set(getSubtree(rootId, rawHierarchy));
+    const visibleLayoutNodes = mode === "radial"
+      ? rawLayoutNodes
+      : rawLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreSunburstPresentation(node) : node);
+    const layoutNodes = mode === "matrix"
+      ? visibleLayoutNodes
+      : visibleLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreMatrixPresentation(node) : node);
     const sunburstEnabled = mode === "radial" && !!rootId;
     const sunburstKey = sunburstFrameKey(rootId);
 
     const hierarchy = buildHierarchy(layoutNodes, edges);
-    const positions = sunburstEnabled ? {} : computeLayout(layoutNodes, edges, mode, { rootId });
-
-    // Nodes in scope: the selected subtree, or the whole board when nothing selected.
-    const scopeIds = rootId
-      ? new Set(getSubtree(rootId, hierarchy))
-      : new Set(layoutNodes.map((n) => n.id));
+    const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    const byId = new Map(layoutNodes.map((n) => [n.id, n]));
+    const matrixResult = mode === "matrix"
+      ? computeMatrixLayout(rootId, hierarchy, byId)
+      : null;
+    const positions = matrixResult?.placements
+      ?? (sunburstEnabled ? {} : computeLayout(layoutNodes, edges, mode, { rootId }));
 
     get().pushHistory();
-
-    const byId = new Map(layoutNodes.map((n) => [n.id, n]));
 
     // Reroute parent→child edges within scope, using post-layout geometry.
     const newEdges = edges.map((e) => {
@@ -2051,7 +2520,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         void _hiddenInSunburstFor;
         edge = {
           ...e,
-          hidden: !!restData.hiddenInMatrix,
+          hidden: e.hidden && !originalData.hiddenInSunburst && !originalData.hiddenInMatrix,
           data: restData,
         };
       }
@@ -2059,13 +2528,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const touchesScope = scopeIds.has(e.source) || scopeIds.has(e.target);
       const insideScope = scopeIds.has(e.source) && scopeIds.has(e.target);
       if (!touchesScope) return edge;
+      const edgeData = (edge.data ?? {}) as Record<string, unknown>;
+      const baseHidden = !!edge.hidden && edgeData.hiddenInMatrix !== true && edgeData.hiddenInSunburst !== true;
       if (!insideScope) {
-        const hiddenInMatrix = mode === "matrix";
-        const hiddenInSunburst = false;
         return {
           ...edge,
-          hidden: hiddenInMatrix || hiddenInSunburst,
-          data: { ...(edge.data ?? {}), hiddenInMatrix, hiddenInSunburst, layoutMode: mode },
+          hidden: baseHidden,
+          data: {
+            ...edgeData,
+            hiddenInMatrix: false,
+            hiddenInMatrixFor: undefined,
+            hiddenInSunburst: false,
+            hiddenInSunburstFor: undefined,
+            layoutMode: mode,
+          },
         };
       }
       const parent = byId.get(edge.source);
@@ -2074,13 +2550,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const pParent = positions[edge.source] ? { ...parent, position: positions[edge.source] } : parent;
       const pChild = positions[edge.target] ? { ...child, position: positions[edge.target] } : child;
       const route = routeForMode(mode, pParent, pChild);
-      const hiddenInMatrix = mode === "matrix";
-      const hiddenInSunburst = !!sunburstEnabled && hierarchy.get(edge.target)?.parentId === edge.source;
       const hierarchyEdge = hierarchy.get(edge.target)?.parentId === edge.source;
+      const hiddenInMatrix = mode === "matrix" && isMatrixHierarchyEdge(edge, hierarchy, scopeIds);
+      const hiddenInSunburst = !!sunburstEnabled && hierarchyEdge;
       return {
         ...edge,
         ...(hierarchyEdge ? { type: "branch", reconnectable: true } : {}),
-        hidden: hiddenInMatrix || hiddenInSunburst,
+        hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
         sourceHandle: route.sourceHandle,
         targetHandle: route.targetHandle,
         markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
@@ -2089,6 +2565,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           edgeType: "branch",
           curveStyle: route.curveStyle,
           hiddenInMatrix,
+          hiddenInMatrixFor: hiddenInMatrix ? rootId : undefined,
           hiddenInSunburst,
           hiddenInSunburstFor: hiddenInSunburst ? sunburstKey : undefined,
           layoutMode: mode,
@@ -2096,41 +2573,39 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       };
     });
 
-    // Apply positions + persist hierarchy metadata for in-scope nodes.
-    const laidOutNodes = layoutNodes.map((n) => {
-      const inScope = scopeIds.has(n.id);
-      const pos = positions[n.id];
-      let data = n.data as Record<string, unknown>;
-      if (inScope) {
-        const h = hierarchy.get(n.id);
-        data = { ...data, parentId: h?.parentId ?? null, childOrder: h?.childIds ?? [] };
-        if (n.id === rootId) {
-          data.layoutMode = mode;
-        } else if (mode === "list" && data.layoutMode !== undefined) {
-          const { layoutMode: _layoutMode, ...rest } = data;
-          void _layoutMode;
-          data = rest;
-        }
-        if (mode === "list" && data.listManualOverride !== undefined) {
-          const { listManualOverride: _listManualOverride, ...rest } = data;
-          void _listManualOverride;
-          data = rest;
-        }
-        if (mode === "matrix") {
-          data.matrixCell = true;
-          data.matrixCellRole = n.id === rootId ? "header" : h?.parentId === rootId ? "category" : "cell";
-        } else if (data.matrixCell || data.matrixCellRole) {
-          const { matrixCell: _matrixCell, matrixCellRole: _matrixCellRole, ...rest } = data;
-          void _matrixCell;
-          void _matrixCellRole;
-          data = rest;
-        }
-      }
-      const style = pos?.width || pos?.height
-        ? { ...(n.style ?? {}), width: pos.width, height: pos.height }
-        : n.style;
-      return { ...n, ...(pos ? { position: { x: pos.x, y: pos.y } } : {}), style, data };
-    });
+    const laidOutNodes = matrixResult
+      ? applyMatrixResultToNodes(layoutNodes, matrixResult, hierarchy, scopeIds)
+      : layoutNodes.map((node) => {
+          if (!scopeIds.has(node.id)) return node;
+          const placement = positions[node.id];
+          const h = hierarchy.get(node.id);
+          let data: Record<string, unknown> = {
+            ...clearMatrixPresentationData((node.data ?? {}) as Record<string, unknown>),
+            parentId: h?.parentId ?? null,
+            childOrder: h?.childIds ?? [],
+          };
+          if (node.id === rootId) {
+            data.layoutMode = mode;
+          } else if (mode === "list" && data.layoutMode !== undefined) {
+            const { layoutMode: _layoutMode, ...rest } = data;
+            void _layoutMode;
+            data = rest;
+          }
+          if (mode === "list" && data.listManualOverride !== undefined) {
+            const { listManualOverride: _listManualOverride, ...rest } = data;
+            void _listManualOverride;
+            data = rest;
+          }
+          const style = placement?.width || placement?.height
+            ? { ...(node.style ?? {}), width: placement.width, height: placement.height }
+            : node.style;
+          return {
+            ...node,
+            ...(placement ? { position: { x: placement.x, y: placement.y } } : {}),
+            style,
+            data,
+          };
+        });
     const existingMatrixFrames = nodes.filter(isAutoMatrixFrame);
     const frameKey = matrixFrameKey(rootId);
     const framedNodes = withMatrixFrame(
@@ -2148,7 +2623,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       sunburstEnabled
     );
 
-    set({ nodes: newNodes, edges: newEdges, saveStatus: "unsaved" });
+    const selectedNodes = mode === "matrix"
+      ? newNodes.map((node) => ({ ...node, selected: node.id === rootId }))
+      : newNodes;
+    set({
+      nodes: selectedNodes,
+      edges: mode === "matrix"
+        ? newEdges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
+        : newEdges,
+      ...(mode === "matrix" ? { selectedNodeIds: [rootId], selectedEdgeIds: [] } : {}),
+      saveStatus: "unsaved",
+    });
   },
 
   updateBoardTitle: (title) =>

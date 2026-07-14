@@ -15,6 +15,9 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const mode = d.displayMode ?? "both-stacked";
+  const matrixCell = d.matrixCell === true;
+  const matrixGridVisible = d.matrixGridVisible !== false;
+  const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -29,12 +32,14 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={280} minHeight={180} isVisible={selected} />
+      <NodeResizer minWidth={280} minHeight={180} isVisible={selected && !matrixCell} />
       <div
         className={cn(
-          "relative w-[320px] rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
+          "relative rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
+          matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[320px]",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
+        style={matrixCell ? { borderWidth: matrixGridVisible ? 1 : 0, borderRadius: matrixRadius } : undefined}
       >
         <NodeQuickActions nodeId={id} color="#d97706" selected={selected} />
         <Handle type="target" position={Position.Left} />

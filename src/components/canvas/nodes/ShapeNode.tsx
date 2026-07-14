@@ -980,24 +980,28 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
   const drawingRegionOpacity = useUIStore((s) => s.drawingRegionOpacity);
   const isDrawing           = drawingModeNodeId === id;
 
+  const matrixCell = dd.matrixCell === true;
   const shapeType = (d.shapeType ?? "rounded") as string;
-  const svgShape = isSvgShape(shapeType);
+  // Matrix owns only the visual cell surface. The stored shape type remains
+  // untouched so switching layouts restores the user's original geometry.
+  const renderedShapeType = matrixCell ? "rectangle" : shapeType;
+  const svgShape = isSvgShape(renderedShapeType);
 
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
-  const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
-  const bWidth       = matrixCell ? 1 : resolveBorderWidth(dd);
+  const matrixGridVisible = dd.matrixGridVisible !== false;
+  const bWidth       = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
   const bRadius      = matrixCell
-    ? (matrixRole === "header" ? 6 : 2)
+    ? (matrixRole === "header" ? 7 : 4)
     : typeof dd.borderRadius === "number" ? dd.borderRadius : DEFAULT_RADIUS[shapeType] ?? 16;
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
   const petalCount   = normalizePetalCount(d.petalCount);
-  const radialChart  = d.radialChart;
-  const rotation     = typeof dd.rotation === "number" ? dd.rotation : 0;
+  const radialChart  = matrixCell ? undefined : d.radialChart;
+  const rotation     = matrixCell ? 0 : typeof dd.rotation === "number" ? dd.rotation : 0;
   const concentricLayers = useMemo(
     () => (d.concentricLayers ?? []) as ConcentricShapeLayer[],
     [d.concentricLayers]
@@ -1037,8 +1041,8 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
     }
   }, [selected, editing, finishEditing]);
 
-  const shapeStyle: CSSProperties = CLIP_PATHS[shapeType]
-    ? { clipPath: CLIP_PATHS[shapeType] }
+  const shapeStyle: CSSProperties = CLIP_PATHS[renderedShapeType]
+    ? { clipPath: CLIP_PATHS[renderedShapeType] }
     : { borderRadius: bRadius };
   const activeChartTextEdit = selected && radialChart?.enabled ? chartTextEdit : null;
   const chartEditorScale = activeChartTextEdit
@@ -1079,7 +1083,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={60} minHeight={60} isVisible={selected && !editing && !isDrawing}
+      <NodeResizer minWidth={60} minHeight={60} isVisible={selected && !editing && !isDrawing && !matrixCell}
         keepAspectRatio={SQUARE_ASPECT_SHAPES.has(shapeType)} />
 
       <div
@@ -1109,10 +1113,10 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
           </button>
         )}
         <div className="absolute inset-0" style={visualRotationStyle}>
-          {!svgShape && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
+          {!matrixCell && !svgShape && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
           <ShapeSurface
-            shapeType={shapeType}
+            shapeType={renderedShapeType}
             fillColor={fillColor}
             borderColor={borderColor}
             borderWidth={bWidth}
@@ -1123,20 +1127,22 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
           />
 
           {/* Internal fill regions — clipped inside shape */}
-          <div className="absolute inset-0 overflow-hidden" style={shapeStyle}>
-            <InternalFillLayer
-              regions={fillRegions}
-              isDrawingMode={isDrawing}
-              drawingColor={drawingRegionColor}
-              drawingOpacity={drawingRegionOpacity}
-              fillOpacity={fillOpacity}
-              interactive={selected && !isDrawing}
-              onRegionAdded={(r) => updateNodeData(id, { internalFillRegions: [...fillRegions, r] })}
-              onRegionUpdated={(rid, patch) => updateNodeData(id, {
-                internalFillRegions: fillRegions.map((x) => x.id === rid ? { ...x, ...patch } : x),
-              })}
-            />
-          </div>
+          {!matrixCell && (
+            <div className="absolute inset-0 overflow-hidden" style={shapeStyle}>
+              <InternalFillLayer
+                regions={fillRegions}
+                isDrawingMode={isDrawing}
+                drawingColor={drawingRegionColor}
+                drawingOpacity={drawingRegionOpacity}
+                fillOpacity={fillOpacity}
+                interactive={selected && !isDrawing}
+                onRegionAdded={(r) => updateNodeData(id, { internalFillRegions: [...fillRegions, r] })}
+                onRegionUpdated={(rid, patch) => updateNodeData(id, {
+                  internalFillRegions: fillRegions.map((x) => x.id === rid ? { ...x, ...patch } : x),
+                })}
+              />
+            </div>
+          )}
 
           <RadialChartLayer
             chart={radialChart}
@@ -1195,7 +1201,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
             />
           )}
 
-          {concentricLayers.map((layer, index) => {
+          {!matrixCell && concentricLayers.map((layer, index) => {
             const inset = concentricInset(index, concentricLayers.length);
             const innerShape = layer.shapeType ?? (shapeType as ShapeType);
             return (
@@ -1254,7 +1260,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
           )}
         </div>
 
-        {selected && !editing && !isDrawing && (
+        {selected && !editing && !isDrawing && !matrixCell && (
           <button
             className="nodrag nopan absolute -left-3.5 -bottom-3.5 z-30 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: borderColor }}

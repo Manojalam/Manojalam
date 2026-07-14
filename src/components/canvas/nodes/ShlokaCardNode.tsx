@@ -26,6 +26,9 @@ const STATUS_COLORS = {
 
 function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as ShlokaCardNodeData;
+  const matrixCell = d.matrixCell === true;
+  const matrixGridVisible = d.matrixGridVisible !== false;
+  const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
   const [collapsed, setCollapsed] = useState<Set<string>>(
     new Set(d.collapsedSections ?? [])
   );
@@ -39,12 +42,14 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={300} minHeight={200} isVisible={selected} />
+      <NodeResizer minWidth={300} minHeight={200} isVisible={selected && !matrixCell} />
       <div
         className={cn(
-          "relative w-[360px] rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
+          "relative rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
+          matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[360px]",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
+        style={matrixCell ? { borderWidth: matrixGridVisible ? 1 : 0, borderRadius: matrixRadius } : undefined}
       >
         <NodeQuickActions nodeId={id} color="#d97706" selected={selected} />
         <Handle type="target" position={Position.Left} />

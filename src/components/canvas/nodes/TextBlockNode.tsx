@@ -33,8 +33,13 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
 
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd);
-  const bWidth       = resolveBorderWidth(dd);
-  const bRadius      = resolveNodeBorderRadius(dd, 12);
+  const matrixCell   = dd.matrixCell === true;
+  const matrixRole   = dd.matrixCellRole as string | undefined;
+  const matrixGridVisible = dd.matrixGridVisible !== false;
+  const bWidth       = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
+  const bRadius      = matrixCell
+    ? (matrixRole === "header" ? 7 : 4)
+    : resolveNodeBorderRadius(dd, 12);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
@@ -75,13 +80,13 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={160} minHeight={40} isVisible={selected && !editing && !isDrawing} />
+      <NodeResizer minWidth={160} minHeight={40} isVisible={selected && !editing && !isDrawing && !matrixCell} />
       <div
         ref={boxRef}
         className={cn("group relative h-full w-full px-4 py-3")}
         style={{
           backgroundColor: fillColor ?? "transparent",
-          border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? "transparent"}` : undefined,
+          border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
           borderRadius: bRadius,
           boxShadow: selected ? "0 0 0 1px hsl(var(--primary) / 0.3)" : undefined,
         }}
@@ -96,7 +101,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         {/* Extra border layers */}
-        <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />
+        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
         <NodeHandles color={borderColor ?? "#6366f1"} />
         <NodeQuickActions nodeId={id} color={borderColor ?? "#6366f1"} selected={selected} />
@@ -114,7 +119,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
         )}
 
         {/* Internal fill regions (clipped to node bounds) */}
-        <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
+        {!matrixCell && <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
           <InternalFillLayer
             regions={fillRegions}
             isDrawingMode={isDrawing}
@@ -127,7 +132,7 @@ function TextBlockNodeComponent({ id, data, selected }: NodeProps) {
               internalFillRegions: fillRegions.map((x) => x.id === rid ? { ...x, ...patch } : x),
             })}
           />
-        </div>
+        </div>}
 
         <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm text-foreground", editing && "cursor-text")}
           style={getTextStyle(dd)}>

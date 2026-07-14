@@ -20,7 +20,7 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
-import { LAYOUT_OPTIONS, routeForMode, type LayoutMode } from "@/lib/layout";
+import { LAYOUT_OPTIONS, isMatrixHierarchyEdge, routeForMode, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import type {
   BorderLayer,
@@ -555,7 +555,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const createChildNodes = useCanvasStore((s) => s.createChildNodes);
   const createSiblingNode = useCanvasStore((s) => s.createSiblingNode);
   const moveSiblingNode = useCanvasStore((s) => s.moveSiblingNode);
-  const applyLayout     = useCanvasStore((s) => s.applyLayout);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
 
@@ -788,26 +787,47 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (!edges.length) return;
     pushHistory();
     const byId = new Map(nodes.map((node) => [node.id, node]));
+    const hierarchy = buildHierarchy(nodes, edges);
+    const matrixScopes = new Map<string, Set<string>>();
+    nodes.forEach((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      if (data.layoutMode === "matrix") {
+        matrixScopes.set(node.id, new Set(getSubtree(node.id, hierarchy)));
+      }
+    });
     useCanvasStore.setState({
       edges: edges.map((edge) => {
         const source = byId.get(edge.source);
         const target = byId.get(edge.target);
         if (!source || !target) return edge;
-        const mode = (((source.data as Record<string, unknown>).layoutMode as LayoutMode | undefined) ?? "freeForm");
+        const sourceData = (source.data ?? {}) as Record<string, unknown>;
+        const matrixRootId = typeof sourceData.matrixRootId === "string"
+          ? sourceData.matrixRootId
+          : sourceData.layoutMode === "matrix" ? source.id : null;
+        const matrixRoot = matrixRootId ? byId.get(matrixRootId) : null;
+        const mode = ((((matrixRoot?.data ?? source.data) as Record<string, unknown>).layoutMode as LayoutMode | undefined) ?? "freeForm");
         const route = routeForMode(mode, source, target);
-        const hiddenInMatrix = mode === "matrix";
+        const scopeIds = matrixRootId ? matrixScopes.get(matrixRootId) : undefined;
+        const hiddenInMatrix = mode === "matrix"
+          && !!scopeIds
+          && isMatrixHierarchyEdge(edge, hierarchy, scopeIds);
         const hiddenInSunburst = mode === "radial";
+        const edgeData = (edge.data ?? {}) as Record<string, unknown>;
+        const baseHidden = !!edge.hidden
+          && edgeData.hiddenInMatrix !== true
+          && edgeData.hiddenInSunburst !== true;
         return {
           ...edge,
-          hidden: hiddenInMatrix || hiddenInSunburst,
+          hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
           sourceHandle: route.sourceHandle,
           targetHandle: route.targetHandle,
           markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
           data: {
-            ...(edge.data ?? {}),
+            ...edgeData,
             edgeType: "branch",
             curveStyle: route.curveStyle,
             hiddenInMatrix,
+            hiddenInMatrixFor: hiddenInMatrix ? matrixRootId : undefined,
             hiddenInSunburst,
             hiddenInSunburstFor: hiddenInSunburst ? edge.source : undefined,
             layoutMode: mode,
@@ -1672,14 +1692,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   type="button"
                   onClick={() => {
                     updateNodeData(selectedNode.id, { matrixDensity: density });
-                    applyLayout("matrix");
-                    setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
-                      detail: { nodeIds: [selectedNode.id, ...descendantIds] },
-                    })), 40);
+                    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                      detail: {
+                        mode: "matrix",
+                        rootId: selectedNode.id,
+                        nodeIds: [selectedNode.id, ...descendantIds],
+                      },
+                    })));
                   }}
                   className={cn(
                     "rounded-md border px-1 py-1.5 text-[9px] capitalize",
-                    ((d.matrixDensity as string) ?? "compact") === density
+                    ((d.matrixDensity as string) ?? "comfortable") === density
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
