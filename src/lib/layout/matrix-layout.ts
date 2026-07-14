@@ -76,9 +76,9 @@ export const MATRIX_HEADER_MIN_WIDTH = 280;
 export const MATRIX_DENSITY_SETTINGS: Record<MatrixTableDensity, DensitySettings> = {
   compact: {
     cellGap: 2,
-    paddingX: 16,
-    paddingY: 10,
-    minRowHeight: 54,
+    paddingX: 14,
+    paddingY: 8,
+    minRowHeight: 48,
     minHeaderHeight: 64,
   },
   comfortable: {
@@ -230,14 +230,14 @@ function preferredCellWidth(node: Node, column: number, settings: DensitySetting
   const words = text.split(/\s+/).filter(Boolean);
   const longestWord = words.reduce((max, word) => Math.max(max, Array.from(word).length), 0);
   const charCount = Math.max(1, Array.from(text.replace(/\s+/g, " ")).length);
-  const preferredChars = clamp(Math.max(longestWord + 3, Math.ceil(Math.sqrt(charCount) * 3.2)), 18, 52);
+  const balancedChars = charCount <= 38 ? charCount : Math.ceil(Math.sqrt(charCount) * 3.2);
+  const preferredChars = clamp(Math.max(longestWord + 3, balancedChars), 18, 52);
   const estimatedWidth = preferredChars * charWidth + settings.paddingX * 2;
   const content = matrixContentSize(node);
   const measuredContentWidth = content?.width ? content.width + settings.paddingX * 2 : 0;
-  const baseWidth = Math.min(getMatrixBaseSize(node).width, MATRIX_MAX_COLUMN_WIDTH);
   const minimum = column === 0 ? MATRIX_FIRST_COLUMN_MIN_WIDTH : MATRIX_MIN_COLUMN_WIDTH;
   return Math.ceil(clamp(
-    Math.max(minimum, baseWidth, estimatedWidth, measuredContentWidth),
+    Math.max(minimum, estimatedWidth, measuredContentWidth),
     minimum,
     MATRIX_MAX_COLUMN_WIDTH
   ));
@@ -262,11 +262,16 @@ function requiredCellHeight(
   const textHeight = estimatedLines * metrics.lineHeight + settings.paddingY * 2;
   return Math.ceil(Math.max(
     minimum,
-    getMatrixBaseSize(node).height,
     textHeight,
     measuredHeight,
     measuredLinesHeight
   ));
+}
+
+function storedDensity(value: unknown): MatrixTableDensity | null {
+  return value === "compact" || value === "comfortable" || value === "presentation"
+    ? value
+    : null;
 }
 
 function isVisible(nodeId: string, byId: Map<string, Node>): boolean {
@@ -407,11 +412,16 @@ export function computeMatrixLayout(
   const root = byId.get(rootId);
   if (!root) throw new Error(`Matrix root ${rootId} does not exist.`);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
-  const density = options.density
-    ?? (rootData.matrixDensity as MatrixTableDensity | undefined)
-    ?? "comfortable";
-  const settings = MATRIX_DENSITY_SETTINGS[density] ?? MATRIX_DENSITY_SETTINGS.comfortable;
   const rows = buildMatrixLeafRows(rootId, hierarchy, byId);
+  const savedDensity = storedDensity(rootData.matrixDensity);
+  const userSelectedDensity = rootData.matrixDensityUserSet === true
+    || savedDensity === "compact"
+    || savedDensity === "presentation";
+  const density = options.density
+    ?? (userSelectedDensity ? savedDensity : null)
+    ?? (rows.length >= 24 ? "compact" : savedDensity)
+    ?? "comfortable";
+  const settings = MATRIX_DENSITY_SETTINGS[density];
   const rootRect = getNodeRect(root);
   const tableX = rootRect.left;
   const tableY = rootRect.top;

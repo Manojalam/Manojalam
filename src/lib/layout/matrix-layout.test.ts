@@ -218,6 +218,8 @@ test("a 98-node hierarchy produces one cell per non-root node without overlap", 
   const positions = Object.values(result.placements).map((placement) => `${placement.x}:${placement.y}`);
 
   assert.equal(result.rows.length, 90);
+  assert.equal(result.density, "compact");
+  assert.ok(result.bounds.height < 4_700);
   assert.equal(result.cells.length, 97);
   assert.equal(Object.keys(result.placements).length, 98);
   assert.equal(new Set(positions).size, positions.length);
@@ -225,6 +227,22 @@ test("a 98-node hierarchy produces one cell per non-root node without overlap", 
     const expectedSpan = group === 6 ? 12 : 13;
     assert.equal(result.cells.find((cell) => cell.nodeId === `group-${group}`)?.rowSpan, expectedSpan);
   }
+  assertClean(result);
+});
+
+test("Matrix cells shrink oversized free-form boxes to their content", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "Compact title", width: 900, height: 420 },
+    { id: "category", parentId: "root", text: "Category", width: 720, height: 360 },
+    { id: "detail", parentId: "category", text: "Short detail", width: 640, height: 320 },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const detail = result.cells.find((cell) => cell.nodeId === "detail")!;
+
+  assert.ok(result.header.height < 120);
+  assert.ok(detail.height < 120);
+  assert.ok(detail.width < 640);
   assertClean(result);
 });
 

@@ -2204,6 +2204,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   fitNodeToContent: (nodeId, contentSize) => {
     let geometryChanged = false;
+    let matrixContentChanged = false;
     set((state) => {
       const node = state.nodes.find((n) => n.id === nodeId);
       if (!node) return {};
@@ -2219,38 +2220,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
       if (layoutMode === "matrix") {
         const data = (node.data ?? {}) as Record<string, unknown>;
-        const normalSize = storedNodeSize(data.userSize) ?? getMatrixBaseSize(node);
-        const normalNode = {
-          ...node,
-          width: undefined,
-          height: undefined,
-          measured: undefined,
-          style: { ...(node.style ?? {}), width: normalSize.width, height: normalSize.height },
-        };
-        const fittedNormal = fitNodeAfterContentChange(normalNode, normalizedContent);
-        const fittedStyle = fittedNormal.style as Record<string, unknown> | undefined;
-        const nextUserSize = {
-          width: numericDimension(fittedStyle?.width, normalSize.width),
-          height: numericDimension(fittedStyle?.height, normalSize.height),
-        };
         const previousIntrinsic = data.matrixIntrinsicSize as Partial<ContentSize> | undefined;
         const intrinsicChanged =
           Math.abs((previousIntrinsic?.width ?? 0) - normalizedContent.width) > 1
           || Math.abs((previousIntrinsic?.height ?? 0) - normalizedContent.height) > 1
           || Math.abs((previousIntrinsic?.lineCount ?? 0) - (normalizedContent.lineCount ?? 0)) > 0.5
           || Math.abs((previousIntrinsic?.lineHeight ?? 0) - (normalizedContent.lineHeight ?? 0)) > 0.5;
-        const userSizeChanged =
-          Math.abs(normalSize.width - nextUserSize.width) > 1
-          || Math.abs(normalSize.height - nextUserSize.height) > 1;
-        if (!intrinsicChanged && !userSizeChanged) return {};
-        geometryChanged = userSizeChanged;
+        if (!intrinsicChanged) return {};
+        matrixContentChanged = true;
         return {
           nodes: state.nodes.map((candidate) => candidate.id === nodeId
             ? {
                 ...candidate,
                 data: {
                   ...(candidate.data ?? {}),
-                  userSize: nextUserSize,
                   intrinsicContentSize: normalizedContent,
                   matrixIntrinsicSize: normalizedContent,
                 },
@@ -2315,6 +2298,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       get().scheduleListReflow(nodeId);
       get().scheduleMatrixReflow(nodeId);
       get().scheduleStructuredReflow(nodeId);
+    } else if (matrixContentChanged) {
+      get().scheduleMatrixReflow(nodeId);
     }
   },
 

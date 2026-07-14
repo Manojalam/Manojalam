@@ -1784,7 +1784,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   key={density}
                   type="button"
                   onClick={() => {
-                    updateNodeData(selectedNode.id, { matrixDensity: density });
+                    updateNodeData(selectedNode.id, { matrixDensity: density, matrixDensityUserSet: true });
                     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
                       detail: {
                         mode: "matrix",
