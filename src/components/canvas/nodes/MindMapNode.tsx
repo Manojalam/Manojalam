@@ -15,9 +15,9 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
+import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 
-function MindMapNodeComponent({ id, data, selected }: NodeProps) {
+function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as MindMapNodeData;
   const dd = d as Record<string, unknown>;
   const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
@@ -37,9 +37,13 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
   const borderWidth  = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
+  const nodeSize = {
+    width: typeof width === "number" && width > 0 ? width : 180,
+    height: typeof height === "number" && height > 0 ? height : 72,
+  };
   const borderRadius = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
-    : resolveNodeBorderRadius(dd, 16);
+    : resolveNodeBorderRadius(dd, nodeSize, 40);
   const bStyle       = (dd.borderStyle as string) ?? "solid";
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
@@ -49,11 +53,6 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
   const initialContent = (dd.richText as string) || d.text || "";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
-
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
       pushHistory();
@@ -61,6 +60,9 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
     }
     editDirty.current = true;
   }, [pushHistory]);
+
+  const beginRequestedEdit = useCallback(() => setEditing(true), []);
+  useNodeTextEditRequest(id, beginRequestedEdit);
 
   const startEditing = () => {
     if (d.locked || isDrawing) return;
@@ -90,9 +92,13 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={120} minHeight={40} isVisible={selected && !editing && !isDrawing && !matrixCell} />
+      <NodeResizer
+        minWidth={120}
+        minHeight={40}
+        isVisible={selected && !editing && !isDrawing && !matrixCell}
+        lineStyle={{ borderRadius }}
+      />
       <div
-        ref={boxRef}
         className={cn(
           "group relative h-full w-full px-4 py-3 transition-shadow",
           matrixCell ? "shadow-none" : "shadow-md",
@@ -135,12 +141,13 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
 
-        <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
+        <div className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
           style={getTextStyle(dd)}>
           <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
             placeholder="Double-click to edit…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

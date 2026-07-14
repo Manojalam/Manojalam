@@ -5,6 +5,8 @@ import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
 import {
   createNodeRect,
+  getNodeRect,
+  nodePositionFromTopLeft,
   sizeOf,
   type NodeRect,
 } from "./geometry";
@@ -23,8 +25,10 @@ export type { LayoutMode };
 export {
   getNodeDimensions,
   getNodeRect,
+  nodePositionFromTopLeft,
   createNodeRect,
   rectsOverlap,
+  resizeAroundAnchor,
   sizeOf,
   type NodeRect,
 } from "./geometry";
@@ -151,41 +155,44 @@ export function resolveInsertedNodeCollisions(
   const inserted = nodes.find((n) => n.id === insertedId);
   if (!inserted) return {};
 
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const positions: Positions = {};
-  for (const n of nodes) positions[n.id] = { ...n.position };
-
-  const rect = (id: string): NodeRect => {
-    const n = byId.get(id)!;
-    const { w, h } = sizeOf(n);
-    return createNodeRect(id, positions[id].x, positions[id].y, w, h);
+  const initial = getNodeRect(inserted);
+  const obstacles = nodes
+    .filter((node) => node.id !== insertedId && !node.hidden)
+    .map(getNodeRect);
+  const isFree = (left: number, top: number) => {
+    const candidate = createNodeRect(insertedId, left, top, initial.width, initial.height);
+    return obstacles.every((obstacle) => !rectsTooClose(candidate, obstacle, padX, padY));
+  };
+  const placement = (left: number, top: number): Positions => {
+    if (left === initial.left && top === initial.top) return {};
+    return {
+      [insertedId]: nodePositionFromTopLeft(
+        inserted,
+        { x: left, y: top },
+        { width: initial.width, height: initial.height }
+      ),
+    };
   };
 
-  for (let iteration = 0; iteration < 10; iteration++) {
-    let moved = false;
-    const anchor = rect(insertedId);
-    for (const node of nodes) {
-      if (node.id === insertedId) continue;
-      const other = rect(node.id);
-      if (!rectsTooClose(anchor, other, padX, padY)) continue;
-      const pushBelow = other.y + other.height / 2 >= anchor.y + anchor.height / 2;
-      if (pushBelow) {
-        positions[node.id].y = Math.max(positions[node.id].y, anchor.y + anchor.height + padY);
-      } else {
-        positions[node.id].y = Math.min(positions[node.id].y, anchor.y - other.height - padY);
-      }
-      moved = true;
+  if (isFree(initial.left, initial.top)) return {};
+
+  const stepX = initial.width + padX;
+  const stepY = initial.height + padY;
+  const directions = [
+    [0, 1], [1, 0], [-1, 0], [0, -1],
+    [1, 1], [-1, 1], [1, -1], [-1, -1],
+  ] as const;
+  for (let ring = 1; ring <= 20; ring += 1) {
+    for (const [dx, dy] of directions) {
+      const left = initial.left + dx * stepX * ring;
+      const top = initial.top + dy * stepY * ring;
+      if (isFree(left, top)) return placement(left, top);
     }
-    resolveCollisions(positions, byId, "y", padX, padY, 3);
-    if (!moved) break;
   }
 
-  const changed: Positions = {};
-  for (const n of nodes) {
-    const p = positions[n.id];
-    if (p.x !== n.position.x || p.y !== n.position.y) changed[n.id] = p;
-  }
-  return changed;
+  // Deterministic final fallback below all existing content.
+  const top = Math.max(initial.top, ...obstacles.map((obstacle) => obstacle.bottom + padY));
+  return placement(initial.left, top);
 }
 
 // -- Tidy tree with adaptive, content-aware level spacing ---------------------

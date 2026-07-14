@@ -19,8 +19,8 @@ import {
 } from "@/components/ui/select";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
-import { SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
-import { LAYOUT_OPTIONS, isMatrixHierarchyEdge, routeForMode, type LayoutMode } from "@/lib/layout";
+import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
+import { LAYOUT_OPTIONS, getNodeDimensions, isMatrixHierarchyEdge, routeForMode, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import type {
   BorderLayer,
@@ -39,6 +39,7 @@ import { ColorSwatchPicker } from "./ColorSwatchPicker";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
+import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ const SHAPE_TYPES = [
   { label: "Rounded",    value: "rounded"   },
   { label: "Rectangle",  value: "rectangle" },
   { label: "Circle",     value: "circle"    },
+  { label: "Ellipse",    value: "ellipse"   },
   { label: "Diamond",    value: "diamond"   },
   { label: "Capsule",    value: "capsule"   },
   { label: "Data",       value: "parallelogram" },
@@ -363,6 +365,21 @@ function supportsCornerRadius(node: Node): boolean {
   return ["rounded", "rectangle"].includes(shapeType);
 }
 
+function cornerRadiusPercentForNode(node: Node, fallback?: number): number {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const shapeType = data.shapeType as string | undefined;
+  const defaultPercent = fallback ?? (
+    node.type === "sticky" ? 20
+      : node.type === "text" ? 32
+        : node.type === "shape" && shapeType === "rectangle" ? 0
+          : 40
+  );
+  if (typeof data.cornerRadiusPercent === "number" && Number.isFinite(data.cornerRadiusPercent)) {
+    return clampControlValue(data.cornerRadiusPercent, 0, 100);
+  }
+  return legacyRadiusToPercent(data.borderRadius, getNodeDimensions(node), defaultPercent);
+}
+
 function inspectorNodeTitle(node: Node | undefined | null): string {
   if (!node) return "None";
   const data = (node.data ?? {}) as Record<string, unknown>;
@@ -557,6 +574,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const moveSiblingNode = useCanvasStore((s) => s.moveSiblingNode);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
+  const setBoardSettings = (patch: Parameters<typeof setSettings>[0]) => {
+    pushHistory();
+    setSettings(patch);
+  };
 
   const drawingModeNodeId  = useUIStore((s) => s.drawingModeNodeId);
   const setDrawingModeNodeId = useUIStore((s) => s.setDrawingModeNodeId);
@@ -881,16 +902,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const commonBorderStyle = typeof commonValue("borderStyle") === "string" ? commonValue("borderStyle") as string : "solid";
     const multiFontGroups = groupFontsByCategory(FONT_OPTIONS);
     const radiusNodes = selectedNodes.filter(supportsCornerRadius);
-    const firstRadius = radiusNodes.length
-      ? (radiusNodes[0].data as Record<string, unknown>).borderRadius
-      : undefined;
+    const firstRadius = radiusNodes.length ? cornerRadiusPercentForNode(radiusNodes[0]) : undefined;
     const commonBorderRadius = typeof firstRadius === "number" && radiusNodes.every((node) =>
-      (node.data as Record<string, unknown>).borderRadius === firstRadius
-    ) ? firstRadius : 16;
+      Math.abs(cornerRadiusPercentForNode(node) - firstRadius) < 0.5
+    ) ? firstRadius : 40;
     const setSelectedRadius = (value: number) => {
       if (!radiusNodes.length) return;
-      pushHistory();
-      for (const node of radiusNodes) updateNodeData(node.id, { borderRadius: value });
+      for (const node of radiusNodes) updateNodeData(node.id, { cornerRadiusPercent: value, borderRadius: undefined });
     };
     const clearSelectedRadialColors = () => {
       if (!isRadialMultiSelection) return;
@@ -1048,7 +1066,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {radiusNodes.length > 0 && (
               <div>
                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Corner radius</p>
-                <SliderControl value={commonBorderRadius} onChange={setSelectedRadius} suffix="px" />
+                <SliderControl value={commonBorderRadius} onChange={setSelectedRadius} onChangeStart={pushHistory} suffix="%" />
               </div>
             )}
           </Section>
@@ -1147,7 +1165,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
         <div className="flex-1 overflow-y-auto">
           <Section label="Background">
-            <Select value={settings.background} onValueChange={(v) => setSettings({ background: v as "dots" | "grid" | "plain" })}>
+            <Select value={settings.background} onValueChange={(v) => setBoardSettings({ background: v as "dots" | "grid" | "plain" })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="dots">Dots</SelectItem>
@@ -1155,12 +1173,80 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <SelectItem value="plain">Plain</SelectItem>
               </SelectContent>
             </Select>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Canvas color</p>
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setBoardSettings({ canvasBackgroundColor: DEFAULT_BOARD_SETTINGS.canvasBackgroundColor })}
+                >
+                  Reset
+                </button>
+              </div>
+              <ColorSwatchPicker
+                value={settings.canvasBackgroundColor ?? DEFAULT_BOARD_SETTINGS.canvasBackgroundColor}
+                onChange={(value) => setBoardSettings({ canvasBackgroundColor: value })}
+              />
+            </div>
+            {settings.background !== "plain" && (
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {settings.background === "dots" ? "Dot color" : "Grid color"}
+                  </p>
+                  <button
+                    type="button"
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                    onClick={() => setBoardSettings({ gridColor: DEFAULT_BOARD_SETTINGS.gridColor })}
+                  >
+                    Reset
+                  </button>
+                </div>
+                <ColorSwatchPicker
+                  value={settings.gridColor ?? DEFAULT_BOARD_SETTINGS.gridColor}
+                  onChange={(value) => setBoardSettings({ gridColor: value })}
+                  size="sm"
+                />
+              </div>
+            )}
+            {settings.background !== "plain" && (
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Spacing</p>
+                <SliderControl
+                  value={settings.gridSpacing ?? settings.gridSize ?? DEFAULT_BOARD_SETTINGS.gridSpacing ?? 32}
+                  onChange={(value) => setSettings({ gridSpacing: value })}
+                  onChangeStart={pushHistory}
+                  min={8}
+                  max={160}
+                  step={4}
+                  suffix="px"
+                />
+                <div className="mt-1.5 grid grid-cols-2 gap-1">
+                  {([['Fine', 16], ['Medium', 32], ['Large', 64], ['Extra large', 96]] as const).map(([label, value]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={cn(
+                        "rounded border px-1.5 py-1 text-[10px] transition-colors hover:bg-muted",
+                        (settings.gridSpacing ?? settings.gridSize ?? 32) === value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground"
+                      )}
+                      onClick={() => setBoardSettings({ gridSpacing: value })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </Section>
           <Separator />
           <Section label="Behavior">
             <div className="flex items-center justify-between">
               <Label className="text-xs">Snap to grid</Label>
-              <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setSettings({ snapToGrid: v })} />
+              <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setBoardSettings({ snapToGrid: v })} />
             </div>
           </Section>
           <Separator />
@@ -1194,7 +1280,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
           <Separator />
           <Section label="Script">
-            <Select value={settings.defaultScriptMode} onValueChange={(v) => setSettings({ defaultScriptMode: v as typeof settings.defaultScriptMode })}>
+            <Select value={settings.defaultScriptMode} onValueChange={(v) => setBoardSettings({ defaultScriptMode: v as typeof settings.defaultScriptMode })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="plain">Plain</SelectItem>
@@ -1254,7 +1340,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const isSanskrit    = ["sanskrit", "shloka", "grammar"].includes(nodeType);
 
   const borderWidth   = typeof d.borderWidth   === "number" ? d.borderWidth   : 2;
-  const borderRadius  = typeof d.borderRadius  === "number" ? d.borderRadius  : 16;
+  const borderRadius  = cornerRadiusPercentForNode(selectedNode);
   // Corner-radius only makes sense for rectangular-ish shapes.
   const shapeType     = (d.shapeType as string) ?? "";
   const supportsRadius = isTextNode || (isShapeNode && ["rounded", "rectangle"].includes(shapeType));
@@ -1569,10 +1655,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Presets" visible={singleNodeTab === "style"}>
             <div className="grid grid-cols-2 gap-1.5">
               {([
-                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, borderRadius: 10, textColor: "#111827", fontSize: 15 }],
-                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, borderRadius: 6, textColor: "#1f2937" }],
-                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, borderRadius: 8, textColor: "#1e1b4b", fontSize: 14 }],
-                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, borderRadius: 2, textColor: "#431407", fontFamily: "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif", fontSize: 16 }],
+                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, cornerRadiusPercent: 25, textColor: "#111827", fontSize: 15 }],
+                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 15, textColor: "#1f2937" }],
+                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 20, textColor: "#1e1b4b", fontSize: 14 }],
+                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, cornerRadiusPercent: 5, textColor: "#431407", fontFamily: "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif", fontSize: 16 }],
               ] as Array<[string, Record<string, unknown>]>).map(([label, patch]) => (
                 <button
                   key={label}
@@ -1960,11 +2046,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               {SHAPE_TYPES.map(({ label, value }) => (
                 <button key={value}
                   onClick={() => {
-                    // Reset borderRadius so DEFAULT_RADIUS kicks in for the new shape
-                    pushHistory();
-                    updateNodeData(selectedNode.id, {
+                    convertNode(selectedNode.id, "shape", {
                       shapeType: value,
                       borderRadius: undefined,
+                      ...(value === "rectangle" ? { cornerRadiusPercent: 0 } : {}),
+                      ...(value === "rounded" ? { cornerRadiusPercent: Math.max(40, Number(d.cornerRadiusPercent) || 0) } : {}),
                       ...(value === "flower" && { petalCount: (d.petalCount as number | undefined) ?? 8 }),
                     });
                   }}
@@ -2467,7 +2553,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {supportsRadius && (
               <div>
                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Corner radius</p>
-                <SliderControl value={borderRadius} onChange={(value) => setField("borderRadius", value)} suffix="px" />
+                <SliderControl
+                  value={borderRadius}
+                  onChange={(value) => updateNodeData(selectedNode.id, { cornerRadiusPercent: value, borderRadius: undefined })}
+                  onChangeStart={pushHistory}
+                  suffix="%"
+                />
                 <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
                   <span>Sharp</span><span>Pill</span>
                 </div>

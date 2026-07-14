@@ -19,6 +19,7 @@ export type ShapeType =
   | "rectangle"
   | "rounded"
   | "circle"
+  | "ellipse"
   | "diamond"
   | "capsule"
   | "callout"
@@ -107,6 +108,10 @@ export interface BoardSettings {
   defaultScriptMode: ScriptMode;
   defaultNodeColor: string;
   defaultFont: string;
+  canvasBackgroundColor?: string;
+  gridColor?: string;
+  gridSpacing?: number;
+  /** @deprecated Legacy alias retained while old boards migrate. */
   gridSize?: number;
 }
 
@@ -293,6 +298,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   fillOpacity?: number;
   borderColor?: string;
   borderWidth?: number;
+  /** Normalized 0-100 corner softness. */
+  cornerRadiusPercent?: number;
+  /** @deprecated Legacy pixel radius retained for old board compatibility. */
   borderRadius?: number;
   borderStyle?: "solid" | "dashed" | "dotted";
   rotation?: number;
@@ -324,6 +332,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutSizeOverride?: { mode: "matrix"; width: number; height: number };
   /** Last DOM content measurement used for Matrix text wrapping and row reflow. */
   matrixIntrinsicSize?: { width: number; height: number; lineCount?: number; lineHeight?: number };
+  /** Last rendered rich-text measurement used by editing and shape conversion. */
+  intrinsicContentSize?: { width: number; height: number; lineCount?: number; lineHeight?: number };
   matrixCell?: boolean;
   matrixCellRole?: "header" | "category" | "cell";
   matrixRootId?: string;
@@ -482,7 +492,10 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   defaultScriptMode: "plain",
   defaultNodeColor: "#6366f1",
   defaultFont: "Inter",
-  gridSize: 20,
+  canvasBackgroundColor: "#f0eeea",
+  gridColor: "#d5d2cb",
+  gridSpacing: 32,
+  gridSize: 32,
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

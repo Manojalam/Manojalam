@@ -137,7 +137,7 @@ body {
 
 /* ─── Canvas background ─── */
 .vidya-canvas-bg {
-  background-color: var(--canvas-bg) !important;
+  background-color: var(--board-canvas-bg, var(--canvas-bg)) !important;
 }
 
 /* ─── React Flow overrides ─── */
@@ -183,6 +183,13 @@ body {
   border-radius: 3px;
 }
 
+.react-flow__node-shape.selected,
+.react-flow__node-mindmap.selected,
+.react-flow__node-sticky.selected,
+.react-flow__node-text.selected {
+  outline: none;
+}
+
 .react-flow__node.dragging {
   cursor: grabbing !important;
   filter: drop-shadow(0 8px 12px rgba(31, 41, 55, 0.16));
@@ -200,7 +207,7 @@ body {
 }
 
 .react-flow__minimap {
-  background: var(--card) !important;
+  background: var(--board-canvas-bg, var(--card)) !important;
   border: 1px solid var(--border) !important;
   border-radius: 12px !important;
   overflow: hidden;
@@ -225,6 +232,16 @@ body {
 .react-flow__controls button:last-child { border-bottom: none !important; }
 .react-flow__controls button:hover { background: var(--accent) !important; }
 .react-flow__controls button svg { fill: var(--foreground) !important; }
+
+.canvas-zoom-controls button {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  color: var(--foreground);
+}
+.canvas-zoom-controls button:hover { background: var(--accent); }
 
 .react-flow__edge-path { stroke-width: 2; }
 [data-input="touch"] .react-flow__edge-interaction,
@@ -366,6 +383,10 @@ mark { border-radius: 2px; padding: 0 2px; }
 [data-device-kind="phone"] .react-flow__controls {
   left: 0.75rem !important;
   bottom: calc(env(safe-area-inset-bottom) + 6.5rem) !important;
+}
+
+[data-device-kind="phone"] .canvas-zoom-panel {
+  bottom: calc(env(safe-area-inset-bottom) + 6rem) !important;
 }
 
 [data-device-kind="tablet"] .canvas-inspector-panel,

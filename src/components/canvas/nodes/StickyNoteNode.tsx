@@ -5,7 +5,7 @@ import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
-import { getTextStyle, resolveBorderWidth, resolveFillOpacity } from "@/lib/style-utils";
+import { getTextStyle, resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius } from "@/lib/style-utils";
 import type { StickyNoteNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -13,7 +13,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { useNodeContentAutoFit } from "./useNodeContentAutoFit";
+import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -24,7 +24,7 @@ const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: stri
   purple: { bg: "#f3e8ff", border: "#d8b4fe", shadow: "#e9d5ff" },
 };
 
-function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
+function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as StickyNoteNodeData;
   const dd = d as Record<string, unknown>;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -45,9 +45,13 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
   const matrixGridVisible = dd.matrixGridVisible !== false;
   const bWidth   = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
   const bStyle   = (dd.borderStyle as string) ?? "solid";
+  const nodeSize = {
+    width: typeof width === "number" && width > 0 ? width : 180,
+    height: typeof height === "number" && height > 0 ? height : 90,
+  };
   const bRadius  = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
-    : typeof dd.borderRadius === "number" ? dd.borderRadius : 8;
+    : resolveNodeBorderRadius(dd, nodeSize, 20);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
@@ -56,11 +60,6 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
   const initialContent = (dd.richText as string) || d.text || "";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useNodeContentAutoFit({ nodeId: id, boxRef, contentRef });
-
   const captureTextHistory = useCallback(() => {
     if (!editHistoryCaptured.current) {
       pushHistory();
@@ -68,6 +67,9 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
     }
     editDirty.current = true;
   }, [pushHistory]);
+
+  const beginRequestedEdit = useCallback(() => setEditing(true), []);
+  useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
     if (editDirty.current) {
@@ -88,12 +90,11 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer minWidth={140} minHeight={80} isVisible={selected && !editing && !isDrawing && !matrixCell}
-        lineStyle={{ borderColor: border }} handleStyle={{ borderColor: border, backgroundColor: "white" }} />
+        lineStyle={{ borderColor: border, borderRadius: bRadius }} handleStyle={{ borderColor: border, backgroundColor: "white" }} />
       <div
-        ref={boxRef}
         className={cn(
           "group relative h-full w-full p-3 transition-shadow",
-          matrixCell ? "shadow-none" : selected ? "shadow-lg" : "shadow-md"
+          matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
         )}
         style={{ backgroundColor: bg, border: `${bWidth}px ${bStyle} ${border}`, borderRadius: bRadius }}
         onDoubleClick={() => {
@@ -146,12 +147,13 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
           style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${palette.shadow} 45%, transparent 45%)` }} />
         }
 
-        <div ref={contentRef} className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
+        <div className={cn("relative z-10 nodrag nopan text-sm", editing && "cursor-text")}
           style={{ color: "#374151", ...getTextStyle(dd) }}>
           <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
             placeholder="Double-click to write…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

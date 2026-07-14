@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import type { InlineTextFormatDetail } from "@/lib/types";
 import { useUIStore } from "@/store/ui-store";
+import { measureRichTextElement } from "@/lib/canvas/text-measurement";
+import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Palette } from "lucide-react";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
 const FontSize = Extension.create({
@@ -57,8 +59,49 @@ const SIZE_PRESETS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 /** Gap in px kept between the selection and the bottom of the floating toolbar. */
 const TOOLBAR_GAP = 10;
 
-interface Anchor { top: number; left: number }
+function selectedMarkValue(editor: Editor, markName: string, attribute?: string): string | null | "mixed" {
+  const { from, to, empty } = editor.state.selection;
+  if (empty) return null;
+  const values = new Set<string>();
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (!node.isText) return;
+    const mark = node.marks.find((candidate) => candidate.type.name === markName);
+    if (!attribute) values.add(mark ? "present" : "absent");
+    else values.add(mark?.attrs?.[attribute] == null ? "absent" : String(mark.attrs[attribute]));
+  });
+  if (values.size > 1) return "mixed";
+  const value = values.values().next().value;
+  return value && value !== "absent" ? value : null;
+}
+
+interface Anchor { top: number; bottom: number; left: number }
 interface Point { top: number; left: number }
+
+function FormatButton({
+  active,
+  mixed,
+  onAction,
+  children,
+  title,
+}: {
+  active?: boolean;
+  mixed?: boolean;
+  onAction: () => void;
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <button title={title} onMouseDown={(event) => { event.preventDefault(); onAction(); }}
+      className={cn(
+        "flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-xs font-medium transition-colors",
+        active ? "bg-primary text-primary-foreground" : "hover:bg-muted text-foreground",
+        mixed && "ring-1 ring-inset ring-primary/60 bg-primary/10"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 interface RichTextEditorProps {
   nodeId?: string;
@@ -66,6 +109,8 @@ interface RichTextEditorProps {
   editable: boolean;
   placeholder?: string;
   className?: string;
+  /** Changes when inherited typography changes outside TipTap's document. */
+  measurementKey?: string;
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
   onChange: (html: string) => void;
@@ -79,6 +124,7 @@ export function RichTextEditor({
   editable,
   placeholder,
   className,
+  measurementKey,
   blockAlign,
   onChange,
   onContentSizeChange,
@@ -92,14 +138,19 @@ export function RichTextEditor({
   // Drag = manual position set by the user; overrides the auto (above-selection) position.
   const [drag, setDrag] = useState<Point | null>(null);
   const [autoTop, setAutoTop] = useState(0);
+  const [autoLeft, setAutoLeft] = useState(0);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
   const [showColors,  setShowColors]  = useState(false);
+  const [showHighlights, setShowHighlights] = useState(false);
   const [showFonts,   setShowFonts]   = useState(false);
   const [showSizes,   setShowSizes]   = useState(false);
   const [mounted, setMounted] = useState(false);
   const customColorRef = useRef<HTMLInputElement>(null);
+  const customHighlightRef = useRef<HTMLInputElement>(null);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
+  const contentReportFrameRef = useRef(0);
+  const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -111,6 +162,7 @@ export function RichTextEditor({
     setAnchor(null);
     setDrag(null);
     setShowColors(false);
+    setShowHighlights(false);
     setShowFonts(false);
     setShowSizes(false);
   }, []);
@@ -118,23 +170,19 @@ export function RichTextEditor({
   const reportContentSize = useCallback((activeEditor: Editor | null | undefined) => {
     const element = activeEditor?.view.dom as HTMLElement | undefined;
     if (!element) return;
-    const computed = window.getComputedStyle(element);
-    const fontSize = Number.parseFloat(computed.fontSize) || 14;
-    const lineHeight = Number.parseFloat(computed.lineHeight) || fontSize * 1.35;
-    const text = element.innerText || element.textContent || "";
-    const explicitLines = Math.max(1, text.replace(/\r\n/g, "\n").split("\n").length);
-    const width = element.scrollWidth > element.clientWidth + 2 ? Math.ceil(element.scrollWidth) : 0;
-    const height = Math.ceil(Math.max(element.scrollHeight, element.offsetHeight));
-    const lineCount = Math.max(explicitLines, Math.ceil(height / Math.max(1, lineHeight)));
-    if (height > 0) onContentSizeChangeRef.current?.({ width, height, lineCount, lineHeight });
+    const measured = measureRichTextElement(element, { maxWidth: 480 });
+    if (measured.height > 0) onContentSizeChangeRef.current?.(measured);
   }, []);
 
   const scheduleContentReport = useCallback((activeEditor: Editor | null | undefined) => {
-    requestAnimationFrame(() => {
+    cancelAnimationFrame(contentReportFrameRef.current);
+    contentReportFrameRef.current = requestAnimationFrame(() => {
       reportContentSize(activeEditor);
-      requestAnimationFrame(() => reportContentSize(activeEditor));
+      contentReportFrameRef.current = requestAnimationFrame(() => reportContentSize(activeEditor));
     });
   }, [reportContentSize]);
+
+  useEffect(() => () => cancelAnimationFrame(contentReportFrameRef.current), []);
 
   const editor = useEditor({
     extensions: EXTENSIONS,
@@ -145,9 +193,9 @@ export function RichTextEditor({
       onChange(editor.getHTML());
       scheduleContentReport(editor);
     },
-    onBlur({ editor }) {
+    onBlur({ editor, event }) {
       reportContentSize(editor);
-      hideToolbar();
+      if (!toolbarRef.current?.contains(event.relatedTarget as globalThis.Node | null)) hideToolbar();
       onBlur?.();
     },
   });
@@ -173,11 +221,14 @@ export function RichTextEditor({
     if (!editor || !nodeId) return;
     const applyFormat = (event: Event) => {
       const detail = (event as CustomEvent<InlineTextFormatDetail>).detail;
-      if (!detail || detail.nodeId !== nodeId || editor.state.selection.empty) return;
+      if (!detail || detail.nodeId !== nodeId) return;
+      const savedSelection = savedSelectionRef.current;
+      if (editor.state.selection.empty && !savedSelection) return;
 
       const wasEditable = editor.isEditable;
       if (!wasEditable) editor.setEditable(true, false);
       const chain = editor.chain();
+      if (editor.state.selection.empty && savedSelection) chain.setTextSelection(savedSelection);
       switch (detail.key) {
         case "fontWeight":
           if (detail.value === "bold") chain.setBold();
@@ -240,7 +291,7 @@ export function RichTextEditor({
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
     if (editable) {
       requestAnimationFrame(() => {
-        editor.commands.focus("end");
+        editor.commands.focus("end", { scrollIntoView: false });
         scheduleContentReport(editor);
       });
     } else {
@@ -282,7 +333,7 @@ export function RichTextEditor({
     if (!editor) return;
     const frame = requestAnimationFrame(() => reportContentSize(editor));
     return () => cancelAnimationFrame(frame);
-  }, [editor, editable, reportContentSize]);
+  }, [editor, editable, measurementKey, reportContentSize]);
 
   useEffect(() => {
     const element = editor?.view.dom as HTMLElement | undefined;
@@ -305,11 +356,13 @@ export function RichTextEditor({
     const { state, view } = editor;
     if (state.selection.empty) { hideToolbar(); return; }
     const { from, to } = state.selection;
+    savedSelectionRef.current = { from, to };
     const start = view.coordsAtPos(from);
     const end   = view.coordsAtPos(to);
     // Anchor at the very top of the selection; horizontal center of the range.
     setAnchor({
       top:  Math.min(start.top, end.top),
+      bottom: Math.max(start.bottom, end.bottom),
       left: (start.left + end.right) / 2,
     });
   }, [editor, hideToolbar, publishTextSelection]);
@@ -326,8 +379,11 @@ export function RichTextEditor({
   useLayoutEffect(() => {
     if (!anchor || drag) return;
     const h = toolbarRef.current?.offsetHeight ?? 40;
-    setAutoTop(Math.max(8, anchor.top - h - TOOLBAR_GAP));
-  }, [anchor, drag, showColors, showFonts, showSizes]);
+    const w = toolbarRef.current?.offsetWidth ?? 620;
+    const above = anchor.top - h - TOOLBAR_GAP;
+    setAutoTop(above >= 8 ? above : Math.max(8, Math.min(window.innerHeight - h - 8, anchor.bottom + TOOLBAR_GAP)));
+    setAutoLeft(Math.max(w / 2 + 8, Math.min(window.innerWidth - w / 2 - 8, anchor.left)));
+  }, [anchor, drag, showColors, showFonts, showHighlights, showSizes]);
 
   // ── Dragging the toolbar ──
   const onGripDown = useCallback((e: React.PointerEvent) => {
@@ -344,7 +400,12 @@ export function RichTextEditor({
     const d = dragState.current;
     if (!d) return;
     e.preventDefault();
-    setDrag({ left: d.ox + (e.clientX - d.sx), top: d.oy + (e.clientY - d.sy) });
+    const width = toolbarRef.current?.offsetWidth ?? 0;
+    const height = toolbarRef.current?.offsetHeight ?? 0;
+    setDrag({
+      left: Math.max(8, Math.min(window.innerWidth - width - 8, d.ox + (e.clientX - d.sx))),
+      top: Math.max(8, Math.min(window.innerHeight - height - 8, d.oy + (e.clientY - d.sy))),
+    });
   }, []);
 
   const onGripUp = useCallback((e: React.PointerEvent) => {
@@ -353,32 +414,58 @@ export function RichTextEditor({
     try { (e.target as Element).releasePointerCapture(e.pointerId); } catch {}
   }, []);
 
-  const fmtBtn = (active: boolean, onMD: () => void, label: React.ReactNode, title?: string) => (
-    <button key={title} title={title} onMouseDown={(e) => { e.preventDefault(); onMD(); }}
-      className={cn("flex h-7 min-w-[28px] items-center justify-center rounded px-1 text-xs font-medium transition-colors",
-        active ? "bg-primary text-primary-foreground" : "hover:bg-muted text-foreground")}>{label}</button>
-  );
+  const selectionChain = useCallback(() => {
+    if (!editor) return null;
+    const chain = editor.chain();
+    const selection = savedSelectionRef.current;
+    if (selection) chain.setTextSelection(selection);
+    return chain.focus(undefined, { scrollIntoView: false });
+  }, [editor]);
+  const toggleBold = useCallback(() => { selectionChain()?.toggleBold().run(); }, [selectionChain]);
+  const toggleItalic = useCallback(() => { selectionChain()?.toggleItalic().run(); }, [selectionChain]);
+  const toggleUnderline = useCallback(() => { selectionChain()?.toggleUnderline().run(); }, [selectionChain]);
+  const alignLeft = useCallback(() => { selectionChain()?.setTextAlign("left").run(); }, [selectionChain]);
+  const alignCenter = useCallback(() => { selectionChain()?.setTextAlign("center").run(); }, [selectionChain]);
+  const alignRight = useCallback(() => { selectionChain()?.setTextAlign("right").run(); }, [selectionChain]);
+  const clearFormatting = useCallback(() => { selectionChain()?.unsetAllMarks().run(); }, [selectionChain]);
 
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
 
-  const currentFontSize = editor?.getAttributes("textStyle").fontSize
-    ? parseInt(String(editor.getAttributes("textStyle").fontSize)) : null;
-  const currentFamily   = editor?.getAttributes("textStyle").fontFamily ?? null;
-
-  const currentColor = editor?.getAttributes("textStyle").color ?? null;
+  const selectedFontSize = editor ? selectedMarkValue(editor, "textStyle", "fontSize") : null;
+  const selectedFamily = editor ? selectedMarkValue(editor, "textStyle", "fontFamily") : null;
+  const selectedColor = editor ? selectedMarkValue(editor, "textStyle", "color") : null;
+  const selectedHighlight = editor ? selectedMarkValue(editor, "highlight", "color") : null;
+  const currentFontSize = selectedFontSize === "mixed"
+    ? null
+    : selectedFontSize ? parseInt(selectedFontSize) : editor?.getAttributes("textStyle").fontSize
+      ? parseInt(String(editor.getAttributes("textStyle").fontSize)) : null;
+  const currentFamily = selectedFamily === "mixed"
+    ? null
+    : selectedFamily ?? editor?.getAttributes("textStyle").fontFamily ?? null;
+  const currentColor = selectedColor === "mixed"
+    ? null
+    : selectedColor ?? editor?.getAttributes("textStyle").color ?? null;
+  const currentHighlight = selectedHighlight === "mixed"
+    ? null
+    : selectedHighlight ?? editor?.getAttributes("highlight").color ?? null;
+  const boldState = editor ? selectedMarkValue(editor, "bold") : null;
+  const italicState = editor ? selectedMarkValue(editor, "italic") : null;
+  const underlineState = editor ? selectedMarkValue(editor, "underline") : null;
+  const openPopoversBelow = drag
+    ? drag.top < window.innerHeight / 2
+    : !!anchor && autoTop >= anchor.bottom;
 
   return (
     <>
       {mounted && anchor && editor && createPortal(
         <div
           ref={toolbarRef}
-          className="fixed z-[9999] flex items-center gap-0.5 rounded-xl border border-border bg-background px-1.5 py-1 shadow-2xl"
+          className="fixed z-[9999] flex max-w-[min(94vw,920px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-background p-2 shadow-2xl"
           style={
             drag
               ? { top: drag.top, left: drag.left }
-              : { top: autoTop, left: anchor.left, transform: "translateX(-50%)" }
+              : { top: autoTop, left: autoLeft, transform: "translateX(-50%)" }
           }
-          onMouseDown={(e) => e.preventDefault()}
         >
           {/* Drag grip */}
           <div
@@ -386,45 +473,48 @@ export function RichTextEditor({
             onPointerDown={onGripDown}
             onPointerMove={onGripMove}
             onPointerUp={onGripUp}
-            className="flex h-7 w-4 cursor-move items-center justify-center rounded text-muted-foreground hover:bg-muted"
+            className="flex h-8 w-5 cursor-move items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
           >
-            <span className="text-xs leading-none tracking-tighter select-none">⋮⋮</span>
+            <GripVertical className="h-4 w-4" />
           </div>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
           {/* Inline marks */}
-          {fmtBtn(editor.isActive("bold"),      () => editor.chain().focus().toggleBold().run(),      <b className="text-xs">B</b>,  "Bold")}
-          {fmtBtn(editor.isActive("italic"),    () => editor.chain().focus().toggleItalic().run(),    <i className="text-xs">I</i>,  "Italic")}
-          {fmtBtn(editor.isActive("underline"), () => editor.chain().focus().toggleUnderline().run(), <u className="text-xs">U</u>,  "Underline")}
+          <FormatButton active={editor.isActive("bold")} mixed={boldState === "mixed"} onAction={toggleBold} title="Bold"><b className="text-xs">B</b></FormatButton>
+          <FormatButton active={editor.isActive("italic")} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
+          <FormatButton active={editor.isActive("underline")} mixed={underlineState === "mixed"} onAction={toggleUnderline} title="Underline"><u className="text-xs">U</u></FormatButton>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
           {/* Alignment */}
-          {fmtBtn(editor.isActive({ textAlign: "left" }),   () => editor.chain().focus().setTextAlign("left").run(),   "≡L", "Left")}
-          {fmtBtn(editor.isActive({ textAlign: "center" }), () => editor.chain().focus().setTextAlign("center").run(), "≡C", "Center")}
-          {fmtBtn(editor.isActive({ textAlign: "right" }),  () => editor.chain().focus().setTextAlign("right").run(),  "≡R", "Right")}
+          <FormatButton active={editor.isActive({ textAlign: "left" })} onAction={alignLeft} title="Left"><AlignLeft className="h-4 w-4" /></FormatButton>
+          <FormatButton active={editor.isActive({ textAlign: "center" })} onAction={alignCenter} title="Center"><AlignCenter className="h-4 w-4" /></FormatButton>
+          <FormatButton active={editor.isActive({ textAlign: "right" })} onAction={alignRight} title="Right"><AlignRight className="h-4 w-4" /></FormatButton>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
           {/* Font family */}
           <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setShowColors(false); setShowSizes(false); }}
-              className="flex h-7 items-center gap-1 rounded border border-border px-2 text-[10px] hover:bg-muted max-w-[110px]">
+            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setShowColors(false); setShowHighlights(false); setShowSizes(false); }}
+              className="flex h-8 max-w-[140px] items-center gap-1 rounded-md border border-border px-2.5 text-[11px] hover:bg-muted">
               <span className="truncate" style={{ fontFamily: currentFamily ?? undefined }}>
-                {currentFamily ? FONT_OPTIONS.find((f) => f.value === currentFamily)?.label ?? "Custom" : "Font"}
+                {selectedFamily === "mixed" ? "Mixed" : currentFamily ? FONT_OPTIONS.find((f) => f.value === currentFamily)?.label ?? "Custom" : "Font"}
               </span>
               <span className="text-muted-foreground">▾</span>
             </button>
             {showFonts && (
-              <div className="absolute bottom-full left-0 mb-1 max-h-64 w-52 overflow-y-auto rounded-lg border border-border bg-background shadow-xl z-10">
+              <div className={cn(
+                "absolute left-0 z-10 max-h-64 w-52 overflow-y-auto rounded-lg border border-border bg-background shadow-xl",
+                openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1"
+              )}>
                 {[...fontGroups.entries()].map(([cat, fonts]) => (
                   <div key={cat}>
                     <div className="sticky top-0 bg-muted px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{cat}</div>
                     {fonts.map((f) => (
                       <button key={f.value} onMouseDown={(e) => {
                         e.preventDefault();
-                        editor.chain().focus().setFontFamily(f.value).run();
+                        selectionChain()?.setFontFamily(f.value).run();
                         setShowFonts(false);
                       }} className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-muted text-left"
                         style={{ fontFamily: f.value }}>
@@ -433,7 +523,7 @@ export function RichTextEditor({
                     ))}
                   </div>
                 ))}
-                <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().unsetFontFamily().run(); setShowFonts(false); }}
+                <button onMouseDown={(e) => { e.preventDefault(); selectionChain()?.unsetFontFamily().run(); setShowFonts(false); }}
                   className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted text-left border-t border-border">
                   Default font
                 </button>
@@ -445,20 +535,23 @@ export function RichTextEditor({
           <button onMouseDown={(e) => {
             e.preventDefault();
             const cur = currentFontSize ?? 14;
-            editor.chain().focus().setMark("textStyle", { fontSize: `${Math.max(8, cur - 1)}px` }).run();
-          }} className="flex h-7 w-6 items-center justify-center rounded border border-border text-xs hover:bg-muted">−</button>
+            selectionChain()?.setMark("textStyle", { fontSize: `${Math.max(8, cur - 1)}px` }).run();
+          }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">−</button>
 
           <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setShowColors(false); }}
-              className="flex h-7 w-9 items-center justify-center rounded border border-border text-xs hover:bg-muted">
-              {currentFontSize ?? "—"}
+            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setShowColors(false); setShowHighlights(false); }}
+              className={cn("flex h-8 items-center justify-center rounded-md border border-border px-2 text-xs hover:bg-muted", selectedFontSize === "mixed" ? "w-14" : "w-10")}>
+              {selectedFontSize === "mixed" ? "Mixed" : currentFontSize ?? "—"}
             </button>
             {showSizes && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 grid grid-cols-4 gap-1 rounded-lg border border-border bg-background p-1.5 shadow-xl z-10 w-40">
+              <div className={cn(
+                "absolute left-1/2 z-10 grid w-40 -translate-x-1/2 grid-cols-4 gap-1 rounded-lg border border-border bg-background p-1.5 shadow-xl",
+                openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1"
+              )}>
                 {SIZE_PRESETS.map((s) => (
                   <button key={s} onMouseDown={(e) => {
                     e.preventDefault();
-                    editor.chain().focus().setMark("textStyle", { fontSize: `${s}px` }).run();
+                    selectionChain()?.setMark("textStyle", { fontSize: `${s}px` }).run();
                     setShowSizes(false);
                   }} className={cn("rounded px-1 py-1 text-[11px] hover:bg-muted", currentFontSize === s && "bg-primary text-primary-foreground")}>
                     {s}
@@ -471,34 +564,85 @@ export function RichTextEditor({
           <button onMouseDown={(e) => {
             e.preventDefault();
             const cur = currentFontSize ?? 14;
-            editor.chain().focus().setMark("textStyle", { fontSize: `${Math.min(96, cur + 1)}px` }).run();
-          }} className="flex h-7 w-6 items-center justify-center rounded border border-border text-xs hover:bg-muted">+</button>
+            selectionChain()?.setMark("textStyle", { fontSize: `${Math.min(96, cur + 1)}px` }).run();
+          }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">+</button>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
           {/* Text color */}
           <div className="relative">
-            <button title="Text color" onMouseDown={(e) => { e.preventDefault(); setShowColors((v) => !v); setShowFonts(false); setShowSizes(false); }}
-              className="flex h-7 w-7 items-center justify-center rounded hover:bg-muted relative">
-              <span className="text-xs font-bold" style={{ color: currentColor ?? "currentColor" }}>A</span>
+            <button title={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"} onMouseDown={(e) => { e.preventDefault(); setShowColors((v) => !v); setShowHighlights(false); setShowFonts(false); setShowSizes(false); }}
+              className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedColor === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
+              <Palette className="h-4 w-4" />
               <span className="absolute bottom-1 left-1 right-1 h-[2px] rounded-full" style={{ backgroundColor: currentColor ?? "#111827" }} />
             </button>
             {showColors && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 rounded-lg border border-border bg-background p-2 shadow-xl z-10">
-                <div className="grid grid-cols-6 gap-1">
+              <div className={cn(
+                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-background p-3 shadow-xl",
+                openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+              )}>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Text color</span>
+                  <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground" onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectionChain()?.unsetColor().run();
+                    setShowColors(false);
+                  }}>Reset</button>
+                </div>
+                <div className="grid grid-cols-6 gap-2">
                   {COLOR_SWATCHES.map((hex) => (
                     <button key={hex} title={hex}
-                      onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().setColor(hex).run(); setShowColors(false); }}
-                      className={cn("h-5 w-5 flex-none rounded-full border border-border/40 transition-transform hover:scale-125",
+                      onMouseDown={(e) => { e.preventDefault(); selectionChain()?.setColor(hex).run(); setShowColors(false); }}
+                      className={cn("h-7 w-7 flex-none rounded-full border border-border/50 transition-transform hover:scale-110",
                         currentColor === hex && "ring-2 ring-primary ring-offset-1")}
                       style={{ backgroundColor: hex }} />
                   ))}
-                  <label className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-red-400 via-green-400 to-blue-400 text-[9px] font-bold text-white hover:scale-125 transition-transform" title="Custom color">
+                  <label className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-red-400 via-green-400 to-blue-400 text-[10px] font-bold text-white transition-transform hover:scale-110" title="Custom color">
                     +
                     <input ref={customColorRef} type="color" className="sr-only"
                       aria-label="Choose custom text color"
                       name="custom-text-color"
-                      onChange={(e) => { editor.chain().focus().setColor(e.target.value).run(); }} />
+                      onChange={(e) => { selectionChain()?.setColor(e.target.value).run(); setShowColors(false); }} />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Highlight color */}
+          <div className="relative">
+            <button title={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"} onMouseDown={(e) => { e.preventDefault(); setShowHighlights((v) => !v); setShowColors(false); setShowFonts(false); setShowSizes(false); }}
+              className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedHighlight === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
+              <Highlighter className="h-4 w-4" />
+              <span className="absolute bottom-1 left-1 right-1 h-[3px] rounded-full" style={{ backgroundColor: currentHighlight ?? "#fde68a" }} />
+            </button>
+            {showHighlights && (
+              <div className={cn(
+                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-background p-3 shadow-xl",
+                openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+              )}>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Highlight</span>
+                  <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground" onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectionChain()?.unsetHighlight().run();
+                    setShowHighlights(false);
+                  }}>Reset</button>
+                </div>
+                <div className="grid grid-cols-6 gap-2">
+                  {COLOR_SWATCHES.map((hex) => (
+                    <button key={hex} title={hex}
+                      onMouseDown={(e) => { e.preventDefault(); selectionChain()?.setHighlight({ color: hex }).run(); setShowHighlights(false); }}
+                      className={cn("h-7 w-7 flex-none rounded-full border border-border/50 transition-transform hover:scale-110",
+                        currentHighlight === hex && "ring-2 ring-primary ring-offset-1")}
+                      style={{ backgroundColor: hex }} />
+                  ))}
+                  <label className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-yellow-200 via-pink-300 to-cyan-300 text-[10px] font-bold text-slate-800 transition-transform hover:scale-110" title="Custom highlight">
+                    +
+                    <input ref={customHighlightRef} type="color" className="sr-only"
+                      aria-label="Choose custom highlight color"
+                      name="custom-highlight-color"
+                      onChange={(e) => { selectionChain()?.setHighlight({ color: e.target.value }).run(); setShowHighlights(false); }} />
                   </label>
                 </div>
               </div>
@@ -506,7 +650,7 @@ export function RichTextEditor({
           </div>
 
           {/* Clear formatting */}
-          {fmtBtn(false, () => editor.chain().focus().unsetAllMarks().run(), <span className="text-[10px]">✕</span>, "Clear formatting")}
+          <FormatButton onAction={clearFormatting} title="Clear formatting"><Eraser className="h-4 w-4" /></FormatButton>
         </div>,
         document.body
       )}

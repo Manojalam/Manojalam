@@ -8,6 +8,11 @@ export interface NodeDimensions {
   height: number;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface RectBounds extends NodeDimensions {
   id: string;
   x: number;
@@ -41,14 +46,17 @@ function positiveDimension(value: unknown): number | null {
 
 export function getNodeDimensions(node: Node): NodeDimensions {
   const data = (node.data ?? {}) as Record<string, unknown>;
+  const layoutOverride = data.layoutSizeOverride as Partial<NodeDimensions> | undefined;
   const width = positiveDimension(node.measured?.width)
     ?? positiveDimension(node.width)
     ?? positiveDimension(node.style?.width)
+    ?? positiveDimension(layoutOverride?.width)
     ?? positiveDimension(data.width)
     ?? DEFAULT_NODE_WIDTH;
   const height = positiveDimension(node.measured?.height)
     ?? positiveDimension(node.height)
     ?? positiveDimension(node.style?.height)
+    ?? positiveDimension(layoutOverride?.height)
     ?? positiveDimension(data.height)
     ?? DEFAULT_NODE_HEIGHT;
   return { width, height };
@@ -87,6 +95,36 @@ export function createNodeRect(
     bottom: y + height,
     centerX: x + width / 2,
     centerY: y + height / 2,
+  };
+}
+
+export type ResizeAnchor = "top-left" | "center";
+
+/** Return the top-left position for a resized rectangle without mixing coordinate systems. */
+export function resizeAroundAnchor(
+  oldRect: Pick<NodeRect, "left" | "top" | "centerX" | "centerY">,
+  newSize: NodeDimensions,
+  anchor: ResizeAnchor
+): Point {
+  if (anchor === "center") {
+    return {
+      x: oldRect.centerX - newSize.width / 2,
+      y: oldRect.centerY - newSize.height / 2,
+    };
+  }
+  return { x: oldRect.left, y: oldRect.top };
+}
+
+/** Convert a normalized top-left rectangle position back to React Flow's node origin. */
+export function nodePositionFromTopLeft(
+  node: Pick<Node, "origin">,
+  topLeft: Point,
+  size: NodeDimensions
+): Point {
+  const origin = node.origin ?? [0, 0];
+  return {
+    x: topLeft.x + size.width * origin[0],
+    y: topLeft.y + size.height * origin[1],
   };
 }
 
