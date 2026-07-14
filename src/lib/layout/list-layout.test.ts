@@ -174,6 +174,45 @@ test("comfortable List density increases root, branch, and row clearances", () =
   assertNoOverlap(positionedNodes(nodes, comfortablePlacements));
 });
 
+test("large sibling groups wrap into subtree-safe continuation lanes", () => {
+  const leafSpecs: TreeSpec[] = Array.from({ length: 48 }, (_, index) => ({
+    id: `leaf-${index}`,
+    parentId: "branch",
+    width: 180 + (index % 3) * 20,
+    height: 64 + (index % 2) * 12,
+  }));
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "branch", parentId: "root", width: 220, height: 68 },
+    ...leafSpecs,
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const rects = positionedRects(nodes, placements);
+  const leafRects = leafSpecs.map((spec) => rects.get(spec.id)!);
+  const laneLefts = [...new Set(leafRects.map((rect) => Math.round(rect.left)))];
+  const bodyTop = rects.get("branch")!.bottom + LIST_DENSITIES.compact.parentChildGapY;
+
+  assert.ok(laneLefts.length >= 4, "a large sibling group should continue across several lanes");
+  assert.ok(
+    Math.max(...leafRects.map((rect) => rect.bottom)) - bodyTop
+      <= LIST_DENSITIES.compact.maxColumnBodyHeight,
+    "continuation lanes should cap the branch body height"
+  );
+  const placed = positionedNodes(nodes, placements);
+  assertNoOverlap(placed);
+
+  const connectorModel = buildListConnectorModel(placed, edges);
+  const branchGroup = connectorModel.groups.find((group) => group.parentId === "branch");
+  const childTrunkXs = new Set(branchGroup?.branches.map((branch) => branch.segments[0].x1));
+  assert.equal(childTrunkXs.size, laneLefts.length);
+  assert.ok(branchGroup?.branches.every((branch) => {
+    const segment = branch.segments[0];
+    return Math.abs(segment.x2 - segment.x1) <= LIST_DENSITIES.compact.connectorGutterX;
+  }));
+  assert.deepEqual(connectorModel.obstacleIntersections, []);
+});
+
 test("wide parents do not push descendants beyond one hierarchy indent", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, width: 620, height: 80 },
@@ -280,9 +319,9 @@ test("connector model uses a horizontal root bus and vertical nested trunks", ()
   const rootGroup = model.groups.find((group) => group.parentId === "root");
   const rects = positionedRects(tree.nodes, placements);
   assert.equal(rootGroup?.orientation, "horizontal");
-  assert.equal(rootGroup?.leads[0].x1, rects.get("root")!.right);
-  assert.equal(rootGroup?.leads[0].y1, rects.get("root")!.centerY);
-  assert.ok((rootGroup?.bus.y1 ?? Number.POSITIVE_INFINITY) < rects.get("a")!.top);
+  assert.equal(rootGroup?.sharedSegments[0].x1, rects.get("root")!.right);
+  assert.equal(rootGroup?.sharedSegments[0].y1, rects.get("root")!.centerY);
+  assert.ok((rootGroup?.sharedSegments[2].y1 ?? Number.POSITIVE_INFINITY) < rects.get("a")!.top);
   assert.equal(model.groups.find((group) => group.parentId === "a")?.orientation, "vertical");
   assert.deepEqual(model.obstacleIntersections, []);
 });
