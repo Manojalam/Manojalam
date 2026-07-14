@@ -26,6 +26,7 @@ import {
   type LayoutPlacement,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { computeListLayout } from "@/lib/layout/list-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
 import type { LayoutMode } from "@/lib/types";
@@ -102,10 +103,15 @@ interface CanvasState {
   fitNodeToContent: (nodeId: string, contentSize: ContentSize) => void;
   resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
+  scheduleListReflow: (nodeId: string) => void;
+  markListManualOverride: (nodeIds: string[], value: boolean) => void;
   updateBoardTitle: (title: string) => void;
   performSearch: (query: string) => void;
-  applyLayout: (mode: LayoutMode) => void;
+  applyLayout: (mode: LayoutMode, rootIdOverride?: string) => void;
 }
+
+const pendingListReflowNodeIds = new Set<string>();
+let listReflowTimer: ReturnType<typeof setTimeout> | null = null;
 
 function cloneState(
   nodes: Node[],
@@ -1097,13 +1103,28 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   searchResults: [],
 
   setBoard: (board) => {
+    if (listReflowTimer) clearTimeout(listReflowTimer);
+    listReflowTimer = null;
+    pendingListReflowNodeIds.clear();
     const migrated = migrateNodes(board.content.nodes);
     // Infer + persist parentId from directed edges (for old boards).
     const hierarchy = buildHierarchy(migrated, board.content.edges);
     const parentedNodes = migrated.map((n) => {
       const h = hierarchy.get(n.id);
-      const existing = (n.data as { parentId?: string | null }).parentId;
-      return { ...n, data: { ...n.data, parentId: existing ?? h?.parentId ?? null } };
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          parentId: h?.parentId ?? null,
+          childOrder: h?.childIds ?? [],
+        },
+      };
+    });
+    const hierarchyMigrationRequired = parentedNodes.some((node, index) => {
+      const before = (migrated[index].data ?? {}) as Record<string, unknown>;
+      const after = node.data as Record<string, unknown>;
+      return before.parentId !== after.parentId
+        || JSON.stringify(before.childOrder ?? []) !== JSON.stringify(after.childOrder ?? []);
     });
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
     const edges = assignDefaultHandles(parentedNodes, board.content.edges);
@@ -1138,7 +1159,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       relationshipFans,
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings: board.content.settings ?? DEFAULT_BOARD_SETTINGS,
-      saveStatus: relationshipMigrationRequired || structuralMigrationRequired ? "unsaved" : "saved",
+      saveStatus:
+        relationshipMigrationRequired || structuralMigrationRequired || hierarchyMigrationRequired
+          ? "unsaved"
+          : "saved",
       history: [],
       historyIndex: -1,
     });
@@ -1815,12 +1839,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       let nodes = state.nodes.map((node) => node.id === nodeId && updatedNode ? updatedNode : node);
 
       if (updatedNode && patchNeedsContentFit(data)) {
-        const fitted = fitNodeAfterContentChange(updatedNode);
+        const fittedNode = fitNodeAfterContentChange(updatedNode);
+        const hierarchy = buildHierarchy(state.nodes, state.edges);
+        const fitted = findLayoutRoot(nodeId, state.nodes, hierarchy).mode === "list"
+          ? { ...fittedNode, position: updatedNode.position }
+          : fittedNode;
         nodes = nodes.map((n) => (n.id === nodeId ? fitted : n));
       }
 
       return { nodes, saveStatus: "unsaved" };
     });
+    if (patchNeedsContentFit(data)) get().scheduleListReflow(nodeId);
   },
 
   fitNodeToContent: (nodeId, contentSize) => {
@@ -1828,7 +1857,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const node = state.nodes.find((n) => n.id === nodeId);
       if (!node) return {};
 
-      const fitted = fitNodeAfterContentChange(node, contentSize);
+      const fittedNode = fitNodeAfterContentChange(node, contentSize);
+      const hierarchy = buildHierarchy(state.nodes, state.edges);
+      const fitted = findLayoutRoot(nodeId, state.nodes, hierarchy).mode === "list"
+        ? { ...fittedNode, position: node.position }
+        : fittedNode;
       if (fitted === node) return {};
 
       const prevStyle = (node.style ?? {}) as Record<string, unknown>;
@@ -1846,6 +1879,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         saveStatus: "unsaved" as SaveStatus,
       };
     });
+    get().scheduleListReflow(nodeId);
   },
 
   resizeNodeToFitBounds: (nodeId, bounds) => {
@@ -1869,13 +1903,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...node,
         style: { ...(node.style ?? {}), width, height },
       };
-      const fitted = { ...resized, position: findFreeResizedPosition(resized, state.nodes) };
+      const hierarchy = buildHierarchy(state.nodes, state.edges);
+      const fitted = {
+        ...resized,
+        position: findLayoutRoot(nodeId, state.nodes, hierarchy).mode === "list"
+          ? node.position
+          : findFreeResizedPosition(resized, state.nodes),
+      };
 
       return {
         nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),
         saveStatus: "unsaved" as SaveStatus,
       };
     });
+    get().scheduleListReflow(nodeId);
   },
 
   convertNode: (nodeId, newType, extraData = {}) => {
@@ -1905,9 +1946,76 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       nodes: nodes.map((n) => n.id === nodeId ? { ...n, type: newType, data: newData, style: newStyle } : n),
       saveStatus: "unsaved",
     });
+    get().scheduleListReflow(nodeId);
   },
 
-  applyLayout: (mode) => {
+  scheduleListReflow: (nodeId) => {
+    pendingListReflowNodeIds.add(nodeId);
+    if (listReflowTimer) clearTimeout(listReflowTimer);
+    listReflowTimer = setTimeout(() => {
+      listReflowTimer = null;
+      const requestedNodeIds = [...pendingListReflowNodeIds];
+      pendingListReflowNodeIds.clear();
+      const state = get();
+      const layoutNodes = state.nodes.filter((node) => !isAutoMatrixFrame(node) && !isAutoSunburstNode(node));
+      const hierarchy = buildHierarchy(layoutNodes, state.edges);
+      const byId = new Map(layoutNodes.map((node) => [node.id, node]));
+      const rootIds = new Set<string>();
+
+      for (const requestedNodeId of requestedNodeIds) {
+        if (!byId.has(requestedNodeId)) continue;
+        const root = findLayoutRoot(requestedNodeId, layoutNodes, hierarchy);
+        if (root.mode === "list") rootIds.add(root.id);
+      }
+      if (!rootIds.size) return;
+
+      const placements: Record<string, LayoutPlacement> = {};
+      for (const rootId of rootIds) {
+        Object.assign(placements, computeListLayout(rootId, hierarchy, byId, {
+          preserveManualOverrides: true,
+        }));
+      }
+
+      let changed = false;
+      const nextNodes = state.nodes.map((node) => {
+        const placement = placements[node.id];
+        if (!placement) return node;
+        if (
+          Math.abs(node.position.x - placement.x) < 0.75 &&
+          Math.abs(node.position.y - placement.y) < 0.75
+        ) return node;
+        changed = true;
+        return { ...node, position: { x: placement.x, y: placement.y } };
+      });
+      if (changed) set({ nodes: nextNodes, saveStatus: "unsaved" });
+    }, 96);
+  },
+
+  markListManualOverride: (nodeIds, value) => {
+    if (!nodeIds.length) return;
+    const { nodes, edges } = get();
+    const hierarchy = buildHierarchy(nodes, edges);
+    const eligible = new Set(nodeIds.filter((nodeId) => {
+      if (!value) return true;
+      return findLayoutRoot(nodeId, nodes, hierarchy).mode === "list";
+    }));
+    if (!eligible.size) return;
+    set({
+      nodes: nodes.map((node) => {
+        if (!eligible.has(node.id)) return node;
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        if (value) return data.listManualOverride === true
+          ? node
+          : { ...node, data: { ...data, listManualOverride: true } };
+        if (!("listManualOverride" in data)) return node;
+        const { listManualOverride: _listManualOverride, ...rest } = data;
+        void _listManualOverride;
+        return { ...node, data: rest };
+      }),
+    });
+  },
+
+  applyLayout: (mode, rootIdOverride) => {
     const { nodes, edges, selectedNodeIds } = get();
     if (!nodes.length) return;
     const layoutNodes = nodes.filter((n) =>
@@ -1915,7 +2023,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       !isAutoSunburstNode(n) &&
       n.type !== "relationshipDiagram"
     );
-    const selectedRootId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined;
+    const selectedRootId = rootIdOverride ?? (selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined);
     const rootId = selectedRootId && layoutNodes.some((n) => n.id === selectedRootId) ? selectedRootId : undefined;
     if (!rootId) return;
     const sunburstEnabled = mode === "radial" && !!rootId;
@@ -1968,8 +2076,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const route = routeForMode(mode, pParent, pChild);
       const hiddenInMatrix = mode === "matrix";
       const hiddenInSunburst = !!sunburstEnabled && hierarchy.get(edge.target)?.parentId === edge.source;
+      const hierarchyEdge = hierarchy.get(edge.target)?.parentId === edge.source;
       return {
         ...edge,
+        ...(hierarchyEdge ? { type: "branch", reconnectable: true } : {}),
         hidden: hiddenInMatrix || hiddenInSunburst,
         sourceHandle: route.sourceHandle,
         targetHandle: route.targetHandle,
@@ -1994,7 +2104,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (inScope) {
         const h = hierarchy.get(n.id);
         data = { ...data, parentId: h?.parentId ?? null, childOrder: h?.childIds ?? [] };
-        if (n.id === rootId) data.layoutMode = mode;
+        if (n.id === rootId) {
+          data.layoutMode = mode;
+        } else if (mode === "list" && data.layoutMode !== undefined) {
+          const { layoutMode: _layoutMode, ...rest } = data;
+          void _layoutMode;
+          data = rest;
+        }
+        if (mode === "list" && data.listManualOverride !== undefined) {
+          const { listManualOverride: _listManualOverride, ...rest } = data;
+          void _listManualOverride;
+          data = rest;
+        }
         if (mode === "matrix") {
           data.matrixCell = true;
           data.matrixCellRole = n.id === rootId ? "header" : h?.parentId === rootId ? "category" : "cell";

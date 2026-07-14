@@ -7,6 +7,7 @@ import {
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
+  useNodesData,
   useNodes,
   type EdgeProps,
 } from "@xyflow/react";
@@ -28,7 +29,7 @@ function nearRouteCorridor(rect: NodeRect, source: NodeRect, target: NodeRect): 
   return rect.x < maxX && rect.x + rect.width > minX && rect.y < maxY && rect.y + rect.height > minY;
 }
 
-function SmartBranchEdgeComponent({
+function RoutedSmartBranchEdge({
   id,
   source,
   target,
@@ -56,7 +57,7 @@ function SmartBranchEdgeComponent({
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
 
-  if (canvasDragging || curveStyle !== "step") {
+  if ((canvasDragging && d.layoutMode !== "list") || curveStyle !== "step") {
     const routed = curveStyle === "straight"
       ? getStraightPath({ sourceX, sourceY, targetX, targetY })
       : curveStyle === "smooth"
@@ -138,6 +139,18 @@ function SmartBranchEdgeComponent({
       )}
     </>
   );
+}
+
+function SmartBranchEdgeComponent(props: EdgeProps) {
+  const endpointData = useNodesData([props.source, props.target]);
+  const sourceData = (endpointData.find((node) => node.id === props.source)?.data ?? {}) as Record<string, unknown>;
+  const targetData = (endpointData.find((node) => node.id === props.target)?.data ?? {}) as Record<string, unknown>;
+  const data = (props.data ?? {}) as VidyaEdgeData;
+  const isGroupedListEdge = data.layoutMode === "list"
+    && targetData.parentId === props.source
+    && sourceData.listManualOverride !== true
+    && targetData.listManualOverride !== true;
+  return isGroupedListEdge ? null : <RoutedSmartBranchEdge {...props} />;
 }
 
 export const SmartBranchEdge = memo(SmartBranchEdgeComponent);

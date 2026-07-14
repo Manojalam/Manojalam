@@ -315,6 +315,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   childOrder?: string[];
   /** Layout mode last applied to this node's branch (set on the branch root). */
   layoutMode?: LayoutMode;
+  /** Keeps a manually dragged List node off generated rows until List is reapplied. */
+  listManualOverride?: boolean;
   matrixDensity?: MatrixDensity;
   groupId?: string;
   /** Radial-layout-only presentation overrides. */

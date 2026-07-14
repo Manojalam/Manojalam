@@ -7,6 +7,7 @@ import {
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
+  useNodesData,
   type EdgeProps,
 } from "@xyflow/react";
 import { Trash2 } from "lucide-react";
@@ -16,6 +17,8 @@ import { SmartBranchEdge } from "./SmartBranchEdge";
 
 function VidyaEdgeComponent({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -28,7 +31,16 @@ function VidyaEdgeComponent({
 }: EdgeProps) {
   const d = (data ?? {}) as VidyaEdgeData;
   const deleteEdges = useCanvasStore((s) => s.deleteEdges);
+  const endpointData = useNodesData([source, target]);
   const curveStyle = d.curveStyle ?? "smooth";
+  const sourceData = (endpointData.find((node) => node.id === source)?.data ?? {}) as Record<string, unknown>;
+  const targetData = (endpointData.find((node) => node.id === target)?.data ?? {}) as Record<string, unknown>;
+  if (
+    d.layoutMode === "list" &&
+    targetData.parentId === source &&
+    sourceData.listManualOverride !== true &&
+    targetData.listManualOverride !== true
+  ) return null;
 
   let path: string;
   let labelX: number;

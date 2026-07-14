@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:list-layout": "rm -rf .list-layout-test && tsc --outDir .list-layout-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/list-layout.ts src/lib/layout/list-layout.test.ts && node --test .list-layout-test/list-layout.test.js; status=$?; rm -rf .list-layout-test; exit $status"
   },
   "dependencies": {
     "@indic-transliteration/sanscript": "^1.3.3",
