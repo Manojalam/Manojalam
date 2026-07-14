@@ -5,6 +5,9 @@ import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowLeft, ArrowRight, Share2,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { toast } from "sonner";
@@ -33,13 +36,18 @@ import type {
   InlineTextFormatKey,
   RadialColorScheme,
 } from "@/lib/types";
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { ColorSwatchPicker } from "./ColorSwatchPicker";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
+import {
+  alignSelection,
+  compactEqualSpacing,
+  type SelectionAlignment,
+} from "@/lib/canvas/selection-geometry";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -559,6 +567,83 @@ function BorderStylePicker({ value, onChange }: {
   );
 }
 
+function ConnectionInspectorSections({
+  connectionEdges,
+  commonValue,
+  onChange,
+  onDelete,
+  defaultOpen = false,
+}: {
+  connectionEdges: Edge[];
+  commonValue: (key: string) => unknown;
+  onChange: (key: string, value: unknown) => void;
+  onDelete: () => void;
+  defaultOpen?: boolean;
+}) {
+  const edgeData = (connectionEdges[0]?.data ?? {}) as Record<string, unknown>;
+  return (
+    <>
+      <Section label={`Connection path (${connectionEdges.length})`} defaultOpen={defaultOpen}>
+        <div className="grid grid-cols-3 gap-1">
+          {([
+            ["step", "Elbow"],
+            ["smooth", "Curved"],
+            ["straight", "Straight"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onChange("curveStyle", value)}
+              className={cn(
+                "rounded-md border px-2 py-1.5 text-[10px] transition-colors",
+                (commonValue("curveStyle") ?? "step") === value
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border hover:bg-muted"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs">Dashed</Label>
+          <Switch checked={!!commonValue("dashed")} onCheckedChange={(value) => onChange("dashed", value)} />
+        </div>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs">Arrowhead</Label>
+          <Switch checked={commonValue("arrowEnd") !== false} onCheckedChange={(value) => onChange("arrowEnd", value)} />
+        </div>
+      </Section>
+      <Section label="Connection appearance" defaultOpen={defaultOpen}>
+        <div>
+          <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
+          <ColorSwatchPicker value={(commonValue("color") as string) ?? "#94a3b8"} onChange={(value) => onChange("color", value)} size="sm" />
+        </div>
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
+          <ThicknessControl value={(commonValue("width") as number) ?? 2} onChange={(value) => onChange("width", value)} max={12} />
+        </div>
+        {connectionEdges.length === 1 && (
+          <div>
+            <Label htmlFor="connection-label" className="text-xs">Label</Label>
+            <Input
+              id="connection-label"
+              name="connection-label"
+              value={(edgeData.label as string) ?? ""}
+              onChange={(event) => onChange("label", event.target.value)}
+              className="mt-1 h-8 text-xs"
+            />
+          </div>
+        )}
+        <Button type="button" variant="outline" size="sm" className="h-7 w-full text-[10px] text-destructive hover:text-destructive" onClick={onDelete}>
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          Delete {connectionEdges.length === 1 ? "connection" : `${connectionEdges.length} connections`}
+        </Button>
+      </Section>
+    </>
+  );
+}
+
 // ── Main inspector ─────────────────────────────────────────────────────────
 
 export function CanvasInspector({ compact = false }: { compact?: boolean }) {
@@ -574,6 +659,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
   const resizeNodeToFitBounds = useCanvasStore((s) => s.resizeNodeToFitBounds);
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
+  const deleteEdges     = useCanvasStore((s) => s.deleteEdges);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const createChildNodes = useCanvasStore((s) => s.createChildNodes);
@@ -618,6 +704,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       })()
     : undefined;
   const selectedEdges = edges.filter((edge) => selectedEdgeIds.includes(edge.id));
+  const selectedNodeIdSet = new Set(selectedNodes.map((node) => node.id));
+  const enclosedSelectionEdges = selectedNodes.length > 1
+    ? edges.filter((edge) => !edge.hidden && selectedNodeIdSet.has(edge.source) && selectedNodeIdSet.has(edge.target))
+    : [];
+  const editableSelectionEdges = selectedEdges.length ? selectedEdges : enclosedSelectionEdges;
   const hierarchy = buildHierarchy(nodes, edges);
   const selectedHierarchy = selectedNode ? hierarchy.get(selectedNode.id) : null;
   const parentNode = selectedHierarchy?.parentId
@@ -870,9 +961,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   };
 
   const setSelectedEdgeField = (key: string, value: unknown) => {
-    if (!selectedEdges.length) return;
+    if (!editableSelectionEdges.length) return;
     pushHistory();
-    const selectedIds = new Set(selectedEdges.map((edge) => edge.id));
+    const selectedIds = new Set(editableSelectionEdges.map((edge) => edge.id));
     useCanvasStore.setState((state) => ({
       edges: state.edges.map((edge) => {
         if (!selectedIds.has(edge.id)) return edge;
@@ -899,7 +990,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     }));
   };
 
-  if (selectedNodes.length > 1) {
+  const commonEdgeValue = (key: string) => {
+    const first = ((editableSelectionEdges[0]?.data ?? {}) as Record<string, unknown>)[key];
+    return editableSelectionEdges.every((edge) => ((edge.data ?? {}) as Record<string, unknown>)[key] === first)
+      ? first
+      : undefined;
+  };
+
+  const deleteEditableConnections = () => {
+    deleteEdges(editableSelectionEdges.map((edge) => edge.id));
+  };
+
+  if (selectedNodes.length > 1 || (selectedNodes.length > 0 && selectedEdges.length > 0)) {
     const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
     const commonFontFamily = typeof commonValue("fontFamily") === "string" ? commonValue("fontFamily") as string : "";
     const commonFillOpacity = typeof commonValue("fillOpacity") === "number" ? commonValue("fillOpacity") as number : 0.18;
@@ -930,6 +1032,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         });
       }
     };
+    const updateSelectedGeometry = (positions: Map<string, { x: number; y: number }>) => {
+      if (!positions.size) return;
+      pushHistory();
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => {
+          const position = positions.get(node.id);
+          return position ? { ...node, position } : node;
+        }),
+        saveStatus: "unsaved",
+      }));
+    };
+    const alignSelectedNodes = (mode: SelectionAlignment) => {
+      updateSelectedGeometry(alignSelection(selectedNodes, mode));
+    };
+    const spaceSelectedNodes = (axis: "x" | "y") => {
+      updateSelectedGeometry(compactEqualSpacing(selectedNodes, axis));
+    };
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
@@ -940,6 +1059,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </h3>
             <p className="text-[10px] text-muted-foreground">
               {selectedNodes.length} {isRadialMultiSelection ? "sections" : "objects"}
+              {editableSelectionEdges.length > 0 ? ` · ${editableSelectionEdges.length} connection${editableSelectionEdges.length === 1 ? "" : "s"}` : ""}
             </p>
           </div>
           <div className="flex gap-1">
@@ -955,7 +1075,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
 
         <div className="flex-1 divide-y overflow-y-auto">
-          <div className="p-3">
+          {selectedNodes.length > 1 && <div className="p-3">
             <Button
               type="button"
               variant="outline"
@@ -970,7 +1090,35 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <Share2 className="h-3.5 w-3.5" />
               Generate relationship diagram
             </Button>
-          </div>
+          </div>}
+          {!isRadialMultiSelection && selectedNodes.length > 1 && (
+            <Section label="Arrange" defaultOpen>
+              <div>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Align bounds</p>
+                <div className="grid grid-cols-6 gap-1">
+                  <IconBtn onClick={() => alignSelectedNodes("left")} title="Align left"><AlignStartVertical className="h-3.5 w-3.5" /></IconBtn>
+                  <IconBtn onClick={() => alignSelectedNodes("centerX")} title="Align horizontal centers"><AlignCenterVertical className="h-3.5 w-3.5" /></IconBtn>
+                  <IconBtn onClick={() => alignSelectedNodes("right")} title="Align right"><AlignEndVertical className="h-3.5 w-3.5" /></IconBtn>
+                  <IconBtn onClick={() => alignSelectedNodes("top")} title="Align top"><AlignStartHorizontal className="h-3.5 w-3.5" /></IconBtn>
+                  <IconBtn onClick={() => alignSelectedNodes("centerY")} title="Align vertical centers"><AlignCenterHorizontal className="h-3.5 w-3.5" /></IconBtn>
+                  <IconBtn onClick={() => alignSelectedNodes("bottom")} title="Align bottom"><AlignEndHorizontal className="h-3.5 w-3.5" /></IconBtn>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 gap-1 px-2 py-1.5 text-[9px] leading-tight" onClick={() => spaceSelectedNodes("x")}>
+                  <AlignVerticalDistributeCenter className="h-3.5 w-3.5 shrink-0" />
+                  Equal horizontal spacing
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 gap-1 px-2 py-1.5 text-[9px] leading-tight" onClick={() => spaceSelectedNodes("y")}>
+                  <AlignHorizontalDistributeCenter className="h-3.5 w-3.5 shrink-0" />
+                  Equal vertical spacing
+                </Button>
+              </div>
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Works on any selected boxes; connectors and hierarchy are not required.
+              </p>
+            </Section>
+          )}
           <Section label="Text">
             <Row label="Align">
               {([
@@ -1077,6 +1225,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </div>
             )}
           </Section>
+          {editableSelectionEdges.length > 0 ? (
+            <ConnectionInspectorSections
+              connectionEdges={editableSelectionEdges}
+              commonValue={commonEdgeValue}
+              onChange={setSelectedEdgeField}
+              onDelete={deleteEditableConnections}
+              defaultOpen
+            />
+          ) : (
+            <Section label="Connections">
+              <p className="text-[10px] leading-snug text-muted-foreground">
+                No visible connectors are selected or run between the selected boxes.
+              </p>
+            </Section>
+          )}
         </div>
       </aside>
     );
@@ -1085,11 +1248,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   // ── No selection ──────────────────────────────────────────────────────────
   if (!selectedNode) {
     if (selectedEdges.length) {
-      const edgeData = (selectedEdges[0].data ?? {}) as Record<string, unknown>;
-      const commonEdgeValue = (key: string) => {
-        const first = edgeData[key];
-        return selectedEdges.every((edge) => ((edge.data ?? {}) as Record<string, unknown>)[key] === first) ? first : undefined;
-      };
       return (
         <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
           <div className="flex items-center justify-between border-b px-3 py-2.5">
@@ -1104,59 +1262,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </Button>
           </div>
           <div className="flex-1 divide-y overflow-y-auto">
-            <Section label="Path">
-              <div className="grid grid-cols-3 gap-1">
-                {([
-                  ["step", "Elbow"],
-                  ["smooth", "Curved"],
-                  ["straight", "Straight"],
-                ] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setSelectedEdgeField("curveStyle", value)}
-                    className={cn(
-                      "rounded-md border px-2 py-1.5 text-[10px] transition-colors",
-                      (commonEdgeValue("curveStyle") ?? "step") === value
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:bg-muted"
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Dashed</Label>
-                <Switch checked={!!commonEdgeValue("dashed")} onCheckedChange={(value) => setSelectedEdgeField("dashed", value)} />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Arrowhead</Label>
-                <Switch checked={commonEdgeValue("arrowEnd") !== false} onCheckedChange={(value) => setSelectedEdgeField("arrowEnd", value)} />
-              </div>
-            </Section>
-            <Section label="Appearance">
-              <div>
-                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
-                <ColorSwatchPicker value={(commonEdgeValue("color") as string) ?? "#94a3b8"} onChange={(value) => setSelectedEdgeField("color", value)} size="sm" />
-              </div>
-              <div>
-                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
-                <ThicknessControl value={(commonEdgeValue("width") as number) ?? 2} onChange={(value) => setSelectedEdgeField("width", value)} max={12} />
-              </div>
-              {selectedEdges.length === 1 && (
-                <div>
-                  <Label htmlFor="connection-label" className="text-xs">Label</Label>
-                  <Input
-                    id="connection-label"
-                    name="connection-label"
-                    value={(edgeData.label as string) ?? ""}
-                    onChange={(event) => setSelectedEdgeField("label", event.target.value)}
-                    className="mt-1 h-8 text-xs"
-                  />
-                </div>
-              )}
-            </Section>
+            <ConnectionInspectorSections
+              connectionEdges={selectedEdges}
+              commonValue={commonEdgeValue}
+              onChange={setSelectedEdgeField}
+              onDelete={deleteEditableConnections}
+              defaultOpen
+            />
           </div>
         </aside>
       );

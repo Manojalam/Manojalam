@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
 import { getNodeRect } from "../layout/geometry";
-import { compactEqualSpacing } from "./selection-geometry";
+import { alignSelection, compactEqualSpacing } from "./selection-geometry";
 
 function node(id: string, x: number, y: number, width: number, height: number, origin?: [number, number]): Node {
   return { id, position: { x, y }, origin, data: {}, style: { width, height } };
@@ -35,4 +35,30 @@ test("vertical compact spacing supports centered node origins", () => {
   assert.equal(after[1].top - after[0].bottom, 24);
   assert.equal(after[0].left, 150);
   assert.equal(after[1].left, 200);
+});
+
+test("left alignment uses rendered bounds for mixed node origins", () => {
+  const nodes = [
+    node("a", 60, 20, 80, 40),
+    node("b", 250, 160, 120, 80, [0.5, 0.5]),
+  ];
+  const positions = alignSelection(nodes, "left");
+  const after = nodes.map((item) => getNodeRect({ ...item, position: positions.get(item.id)! }));
+
+  assert.equal(after[0].left, after[1].left);
+  assert.equal(after[0].top, 20);
+  assert.equal(after[1].top, 120);
+});
+
+test("center alignment accounts for different rendered widths", () => {
+  const nodes = [
+    node("a", 20, 20, 80, 40),
+    node("b", 300, 100, 160, 40),
+  ];
+  const positions = alignSelection(nodes, "centerX");
+  const after = nodes.map((item) => getNodeRect({ ...item, position: positions.get(item.id)! }));
+
+  assert.equal(after[0].centerX, after[1].centerX);
+  assert.equal(after[0].top, 20);
+  assert.equal(after[1].top, 100);
 });

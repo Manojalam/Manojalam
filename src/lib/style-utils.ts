@@ -1,6 +1,10 @@
 import type { CSSProperties } from "react";
 import type { BorderLayer, LayoutVisualStyle } from "./types";
-import { effectiveCornerRadius, legacyRadiusToPercent } from "./canvas/shape-fitting";
+import {
+  effectiveCornerRadius,
+  fitSingleUnbrokenWord,
+  legacyRadiusToPercent,
+} from "./canvas/shape-fitting";
 import type { Size } from "./canvas/node-geometry";
 import { resolveLayoutFontSize } from "./layout/layout-presentation";
 
@@ -23,6 +27,52 @@ export function getTextStyle(d: Record<string, unknown>): CSSProperties {
     color:      layoutStyle && d.layoutAutoText !== false
       ? layoutStyle.textColor
       : (d.textColor as string) ?? undefined,
+  };
+}
+
+function plainTextForFitting(d: Record<string, unknown>): string {
+  if (typeof d.richText === "string" && d.richText.trim()) {
+    return d.richText
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .trim();
+  }
+  return typeof d.text === "string" ? d.text.trim() : "";
+}
+
+function maximumInlineFontSize(d: Record<string, unknown>): number {
+  if (typeof d.richText !== "string") return 0;
+  return Math.max(
+    0,
+    ...[...d.richText.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/gi)]
+      .map((match) => Number(match[1]))
+      .filter(Number.isFinite)
+  );
+}
+
+export function getFittedTextPresentation(
+  d: Record<string, unknown>,
+  availableWidth: number,
+  fallbackFontSize = 14
+): { style: CSSProperties; singleWord: boolean; fontSize: number } {
+  const style = getTextStyle(d);
+  const inheritedFontSize = typeof style.fontSize === "number"
+    ? style.fontSize
+    : typeof style.fontSize === "string" ? Number.parseFloat(style.fontSize) : fallbackFontSize;
+  const preferredFontSize = Math.max(
+    Number.isFinite(inheritedFontSize) ? inheritedFontSize : fallbackFontSize,
+    maximumInlineFontSize(d)
+  );
+  const fit = fitSingleUnbrokenWord(plainTextForFitting(d), preferredFontSize, availableWidth);
+  return {
+    style: fit.singleWord ? { ...style, fontSize: `${fit.fontSize}px` } : style,
+    singleWord: fit.singleWord,
+    fontSize: fit.fontSize,
   };
 }
 

@@ -6,10 +6,11 @@ import { Layers2, Plus } from "lucide-react";
 import { cn, generateId } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
 import {
-  getTextStyle, resolveFillColor, resolveBorderColor,
+  getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
 } from "@/lib/style-utils";
+import { shapeTextContentWidth } from "@/lib/canvas/shape-fitting";
 import type {
   ShapeNodeData,
   InternalFillRegion,
@@ -1013,6 +1014,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
+  const availableTextWidth = shapeTextContentWidth(renderedShapeType, nodeSize.width, "shape");
+  const textPresentation = getFittedTextPresentation(dd, availableTextWidth);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -1247,14 +1250,14 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               "nodrag nopan relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-sm font-medium text-foreground",
               editing && "cursor-text"
             )}>
-              <div className="w-full" style={getTextStyle(dd)}>
+              <div className="w-full" style={textPresentation.style}>
                 <RichTextEditor
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
-                  measurementKey={textMeasurementKey(dd)}
+                  measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextWidth)}`}
                   placeholder="Double-click…"
-                  className="[&_.ProseMirror]:text-center"
+                  className={cn("[&_.ProseMirror]:text-center", textPresentation.singleWord && "single-word-fit")}
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
                   onChange={(html) => {
                     captureTextHistory();

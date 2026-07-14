@@ -5,10 +5,11 @@ import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus, ChevronDown, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  getTextStyle, resolveFillColor, resolveBorderColor,
+  getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
   resolveBorderStyle, resolveAccentColor, textMeasurementKey,
 } from "@/lib/style-utils";
+import { shapeTextContentWidth } from "@/lib/canvas/shape-fitting";
 import type { MindMapNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -53,6 +54,8 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
 
   const [editing, setEditing] = useState(false);
   const initialContent = (dd.richText as string) || d.text || "";
+  const availableTextWidth = shapeTextContentWidth("rectangle", nodeSize.width, "mindmap");
+  const textPresentation = getFittedTextPresentation(dd, availableTextWidth);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -144,12 +147,13 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
 
         <div className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
-          style={getTextStyle(dd)}>
+          style={textPresentation.style}>
           <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            measurementKey={textMeasurementKey(dd)}
+            className={cn(textPresentation.singleWord && "single-word-fit")}
+            measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextWidth)}`}
             placeholder="Double-click to edit…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

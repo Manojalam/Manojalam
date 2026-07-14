@@ -203,12 +203,12 @@ function wrappedLineCount(text: string, charsPerLine: number): number {
     let current = 0;
     for (const word of words) {
       const length = Array.from(word).length;
-      if (length >= safeChars) {
+      if (length > safeChars) {
         if (current) {
           count += 1;
           current = 0;
         }
-        count += Math.ceil(length / safeChars);
+        count += 1;
         continue;
       }
       const next = current ? current + 1 + length : length;
