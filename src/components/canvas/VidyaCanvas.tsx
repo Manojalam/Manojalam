@@ -91,25 +91,27 @@ function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]
   const resizedNodes = new Map(
     changes.flatMap((change) =>
       change.type === "dimensions" && change.dimensions
-        ? [[change.id, change.dimensions] as const]
+        ? [[change.id, { dimensions: change.dimensions, resizing: change.resizing === true }] as const]
         : []
     )
   );
   if (!resizedNodes.size) return nextNodes;
 
   return nextNodes.map((node) => {
-    const dimensions = resizedNodes.get(node.id);
-    if (!dimensions) return node;
+    const resize = resizedNodes.get(node.id);
+    if (!resize) return node;
+    const { dimensions } = resize;
     if (node.type === "relationshipDiagram") {
       return synchronizeNodeDimensions(node, dimensions.width, dimensions.height);
     }
     const data = (node.data ?? {}) as Record<string, unknown>;
     const override = data.layoutSizeOverride as { mode?: unknown } | undefined;
-    if (data.userSize && override?.mode !== "matrix") {
+    if ((data.userSize || resize.resizing) && override?.mode !== "matrix") {
       return {
         ...node,
         data: {
           ...data,
+          ...(resize.resizing ? { autoSizeMode: "fixed" } : {}),
           userSize: { width: dimensions.width, height: dimensions.height },
         },
       };

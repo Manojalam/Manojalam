@@ -10,6 +10,7 @@ import type {
   RelationshipFanState,
   SaveStatus,
   VidyaBoard,
+  AutoSizeMode,
 } from "@/lib/types";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import { BOARD_CONTENT_VERSION, HISTORY_LIMIT } from "@/lib/config";
@@ -49,6 +50,7 @@ import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
 import type { LayoutMode, RadialColorScheme } from "@/lib/types";
 import {
+  effectiveCornerRadius,
   fitShapeToContent,
   legacyRadiusToPercent,
   MAX_AUTOFIT_NODE_HEIGHT,
@@ -57,6 +59,11 @@ import {
   MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
   type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
+import {
+  computeAutoSize,
+  resolveAutoSizeMode,
+  type ContentResizeReason,
+} from "@/lib/canvas/node-sizing";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -129,7 +136,12 @@ interface CanvasState {
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
-  fitNodeToContent: (nodeId: string, contentSize: ContentSize) => void;
+  fitNodeToContent: (nodeId: string, contentSize: ContentSize, reason?: ContentResizeReason) => void;
+  fitNodeToStoredContent: (nodeId: string) => void;
+  setNodeAutoSizeMode: (nodeId: string, mode: AutoSizeMode) => void;
+  beginManualNodeResize: (nodeId: string) => void;
+  finishManualNodeResize: (nodeId: string, size: { width: number; height: number }) => void;
+  setNodeSize: (nodeId: string, size: { width: number; height: number }) => void;
   resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
   scheduleListReflow: (nodeId: string) => void;
@@ -871,8 +883,25 @@ const LIST_REFLOW_FIELDS = new Set([
 ]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
-const MAX_AUTO_TEXT_WIDTH = 520;
-const MAX_AUTO_CARD_WIDTH = 560;
+const MAX_AUTO_TEXT_WIDTH = 480;
+const MAX_AUTO_CARD_WIDTH = 480;
+
+/** Follow persisted hierarchy metadata without rebuilding every edge route on each keystroke. */
+function storedLayoutModeForNode(nodeId: string, nodes: Node[]): LayoutMode | undefined {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const visited = new Set<string>();
+  let current = byId.get(nodeId);
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    const data = (current.data ?? {}) as Record<string, unknown>;
+    const override = data.layoutSizeOverride as { mode?: LayoutMode } | undefined;
+    if (override?.mode) return override.mode;
+    if (typeof data.layoutMode === "string") return data.layoutMode as LayoutMode;
+    const parentId = typeof data.parentId === "string" ? data.parentId : null;
+    current = parentId ? byId.get(parentId) : undefined;
+  }
+  return undefined;
+}
 
 function clampValue(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -957,6 +986,7 @@ function measuredOrEstimatedContent(data: Record<string, unknown>): ContentSize 
     return {
       width: stored.width,
       height: stored.height,
+      ...(stored.naturalWidth != null ? { naturalWidth: stored.naturalWidth } : {}),
       ...(stored.lineCount != null ? { lineCount: stored.lineCount } : {}),
       ...(stored.lineHeight != null ? { lineHeight: stored.lineHeight } : {}),
     };
@@ -979,6 +1009,29 @@ function measuredOrEstimatedContent(data: Record<string, unknown>): ContentSize 
   );
   const lineCount = wrappedLineCount(lines.length ? lines : [""], Math.max(8, Math.floor(width / charWidth)));
   return { width, height: Math.max(lineHeight, lineCount * lineHeight), lineCount, lineHeight };
+}
+
+function normalizedContentMeasurement(content: ContentSize): ContentSize {
+  return {
+    width: Math.max(1, Math.ceil(content.width)),
+    height: Math.max(1, Math.ceil(content.height)),
+    ...(content.naturalWidth != null
+      ? { naturalWidth: Math.max(1, Math.ceil(content.naturalWidth)) }
+      : {}),
+    ...(content.lineCount != null ? { lineCount: content.lineCount } : {}),
+    ...(content.lineHeight != null ? { lineHeight: content.lineHeight } : {}),
+  };
+}
+
+function contentMeasurementChanged(
+  previous: Partial<ContentSize> | undefined,
+  next: ContentSize
+): boolean {
+  return Math.abs((previous?.width ?? 0) - next.width) > 1
+    || Math.abs((previous?.height ?? 0) - next.height) > 1
+    || Math.abs((previous?.naturalWidth ?? 0) - (next.naturalWidth ?? 0)) > 1
+    || Math.abs((previous?.lineCount ?? 0) - (next.lineCount ?? 0)) > 0.5
+    || Math.abs((previous?.lineHeight ?? 0) - (next.lineHeight ?? 0)) > 0.5;
 }
 
 function wrappedLineCount(lines: string[], maxChars: number): number {
@@ -1017,10 +1070,8 @@ function wrappedLineCount(lines: string[], maxChars: number): number {
 function contentFitSize(
   node: Node,
   measuredContent?: ContentSize,
-  limits: { maxWidth: number; maxHeight: number; maxContentWidth?: number } = {
-    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
-    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
-  }
+  reason: ContentResizeReason = "input",
+  modeOverride?: AutoSizeMode
 ): { width: number; height: number } | null {
   if (!node.type || !AUTOFIT_NODE_TYPES.has(node.type)) return null;
   const data = node.data as Record<string, unknown>;
@@ -1045,23 +1096,24 @@ function contentFitSize(
   const content = measuredContent && measuredContent.width > 0 && measuredContent.height > 0
     ? measuredContent
     : measuredOrEstimatedContent(data);
-  const fitted = fitShapeToContent(node.type === "shape" ? shapeType : "rectangle", content, {
-    nodeType: node.type,
+  const fitted = computeAutoSize({
+    mode: modeOverride ?? resolveAutoSizeMode(data),
     currentSize: { width: currentWidth, height: currentHeight },
-    growOnly: true,
+    content,
+    nodeType: node.type,
+    shapeType: node.type === "shape" ? shapeType : "rectangle",
     borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : 2,
+    cornerRadius: typeof data.borderRadius === "number"
+      ? data.borderRadius
+      : effectiveCornerRadius(data.cornerRadiusPercent, { width: currentWidth, height: currentHeight }, 20),
+    reason,
     minWidth: node.type === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
     minHeight: node.type === "sticky" ? 90 : node.type === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
-    maxContentWidth: limits.maxContentWidth
-      ?? (node.type === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH),
-    maxWidth: limits.maxWidth,
-    maxHeight: limits.maxHeight,
+    maxContentWidth: node.type === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
+    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
   });
-  const targetWidth = fitted.width;
-  const targetHeight = fitted.height;
-
-  if (targetWidth <= currentWidth && targetHeight <= currentHeight) return null;
-  return { width: Math.ceil(targetWidth), height: Math.ceil(targetHeight) };
+  return fitted.changed ? { width: fitted.width, height: fitted.height } : null;
 }
 
 function patchNeedsMatrixReflow(patch: Record<string, unknown>): boolean {
@@ -1119,9 +1171,10 @@ function normalizeSunburstChartSizes(
 function fitNodeAfterContentChange(
   node: Node,
   measuredContent?: ContentSize,
-  limits?: { maxWidth: number; maxHeight: number; maxContentWidth?: number }
+  reason: ContentResizeReason = "input",
+  modeOverride?: AutoSizeMode
 ): Node {
-  const fit = contentFitSize(node, measuredContent, limits);
+  const fit = contentFitSize(node, measuredContent, reason, modeOverride);
   if (!fit) return node;
   const rect = getNodeRect(node);
   const nextSize = { width: fit.width, height: fit.height };
@@ -2341,33 +2394,124 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }));
   },
 
-  fitNodeToContent: (nodeId, contentSize) => {
+  setNodeAutoSizeMode: (nodeId, mode) => {
+    const node = get().nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (resolveAutoSizeMode(data) === mode && data.autoSizeMode === mode) return;
+    get().pushHistory();
+    const currentSize = getNodeDimensions(node);
+    set((state) => ({
+      nodes: state.nodes.map((candidate) => candidate.id === nodeId
+        ? {
+            ...candidate,
+            data: {
+              ...(candidate.data ?? {}),
+              autoSizeMode: mode,
+              ...(mode === "smart" ? {} : { userSize: currentSize }),
+            },
+          }
+        : candidate),
+      saveStatus: "unsaved",
+    }));
+  },
+
+  beginManualNodeResize: (nodeId) => {
+    const node = get().nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    get().pushHistory();
+    const currentSize = getNodeDimensions(node);
+    set((state) => ({
+      nodes: state.nodes.map((candidate) => candidate.id === nodeId
+        ? {
+            ...candidate,
+            data: {
+              ...(candidate.data ?? {}),
+              autoSizeMode: "fixed" as AutoSizeMode,
+              userSize: currentSize,
+            },
+          }
+        : candidate),
+      saveStatus: "unsaved",
+    }));
+  },
+
+  finishManualNodeResize: (nodeId, size) => {
+    const node = get().nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    let width = Math.max(60, Math.round(size.width));
+    let height = Math.max(40, Math.round(size.height));
+    const shapeType = String(data.shapeType ?? "");
+    if (["circle", "diamond", "star", "flower"].includes(shapeType)) {
+      const side = Math.max(width, height);
+      width = side;
+      height = side;
+    }
+    set((state) => ({
+      nodes: state.nodes.map((candidate) => candidate.id === nodeId
+        ? resetNodeDimensions({
+            ...candidate,
+            data: {
+              ...(candidate.data ?? {}),
+              autoSizeMode: "fixed" as AutoSizeMode,
+              userSize: { width, height },
+            },
+          }, width, height)
+        : candidate),
+      saveStatus: "unsaved",
+    }));
+    requestNodeInternalsRefresh([nodeId]);
+    get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
+    get().scheduleStructuredReflow(nodeId);
+  },
+
+  setNodeSize: (nodeId, size) => {
+    if (!get().nodes.some((candidate) => candidate.id === nodeId)) return;
+    get().pushHistory();
+    get().finishManualNodeResize(nodeId, size);
+  },
+
+  fitNodeToStoredContent: (nodeId) => {
+    const node = get().nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    get().pushHistory();
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const content = measuredOrEstimatedContent(data);
+    const layoutMode = storedLayoutModeForNode(nodeId, get().nodes);
+    let fitted: Node = {
+      ...node,
+      data: { ...(node.data ?? {}), autoSizeMode: "smart" as AutoSizeMode },
+    };
+    if (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm") {
+      fitted = fitNodeAfterContentChange(fitted, content, "fit", "smart");
+    }
+    set((state) => ({
+      nodes: state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate),
+      saveStatus: "unsaved",
+    }));
+    requestNodeInternalsRefresh([nodeId]);
+    get().scheduleListReflow(nodeId);
+    get().scheduleMatrixReflow(nodeId);
+    get().scheduleStructuredReflow(nodeId);
+  },
+
+  fitNodeToContent: (nodeId, contentSize, reason = "input") => {
     let geometryChanged = false;
-    let matrixContentChanged = false;
+    let intrinsicChanged = false;
+    let activeLayoutMode: LayoutMode | undefined;
     set((state) => {
       const node = state.nodes.find((n) => n.id === nodeId);
       if (!node) return {};
 
-      const normalizedContent: ContentSize = {
-        width: Math.max(1, Math.ceil(contentSize.width)),
-        height: Math.max(1, Math.ceil(contentSize.height)),
-        ...(contentSize.lineCount != null ? { lineCount: contentSize.lineCount } : {}),
-        ...(contentSize.lineHeight != null ? { lineHeight: contentSize.lineHeight } : {}),
-      };
-
-      const hierarchy = buildHierarchy(state.nodes, state.edges);
-      const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
-      const freeformSizing = !layoutMode || layoutMode === "freeForm";
-      if (layoutMode === "matrix") {
+      const normalizedContent = normalizedContentMeasurement(contentSize);
+      activeLayoutMode = storedLayoutModeForNode(nodeId, state.nodes);
+      if (activeLayoutMode === "matrix") {
         const data = (node.data ?? {}) as Record<string, unknown>;
         const previousIntrinsic = data.matrixIntrinsicSize as Partial<ContentSize> | undefined;
-        const intrinsicChanged =
-          Math.abs((previousIntrinsic?.width ?? 0) - normalizedContent.width) > 1
-          || Math.abs((previousIntrinsic?.height ?? 0) - normalizedContent.height) > 1
-          || Math.abs((previousIntrinsic?.lineCount ?? 0) - (normalizedContent.lineCount ?? 0)) > 0.5
-          || Math.abs((previousIntrinsic?.lineHeight ?? 0) - (normalizedContent.lineHeight ?? 0)) > 0.5;
+        intrinsicChanged = contentMeasurementChanged(previousIntrinsic, normalizedContent);
         if (!intrinsicChanged) return {};
-        matrixContentChanged = true;
         return {
           nodes: state.nodes.map((candidate) => candidate.id === nodeId
             ? {
@@ -2383,23 +2527,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         };
       }
 
-      const previousIntrinsic = ((node.data ?? {}) as Record<string, unknown>).intrinsicContentSize as Partial<ContentSize> | undefined;
-      const intrinsicChanged =
-        Math.abs((previousIntrinsic?.width ?? 0) - normalizedContent.width) > 1
-        || Math.abs((previousIntrinsic?.height ?? 0) - normalizedContent.height) > 1
-        || Math.abs((previousIntrinsic?.lineCount ?? 0) - (normalizedContent.lineCount ?? 0)) > 0.5
-        || Math.abs((previousIntrinsic?.lineHeight ?? 0) - (normalizedContent.lineHeight ?? 0)) > 0.5;
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const previousIntrinsic = data.intrinsicContentSize as Partial<ContentSize> | undefined;
+      intrinsicChanged = contentMeasurementChanged(previousIntrinsic, normalizedContent);
+
+      const override = data.layoutSizeOverride as Partial<{
+        mode: LayoutMode;
+        width: number;
+        height: number;
+      }> | undefined;
+      if (override?.mode && supportsGeneratedLayoutSizing(override.mode)) {
+        if (!intrinsicChanged) return {};
+        return {
+          nodes: state.nodes.map((candidate) => candidate.id === nodeId
+            ? {
+                ...candidate,
+                data: { ...(candidate.data ?? {}), intrinsicContentSize: normalizedContent },
+              }
+            : candidate),
+          saveStatus: "unsaved" as SaveStatus,
+        };
+      }
+
       const withMeasurement = {
         ...node,
         data: { ...(node.data ?? {}), intrinsicContentSize: normalizedContent },
       };
-      let fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent, freeformSizing
-        ? {
-            maxWidth: MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
-            maxHeight: MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
-            maxContentWidth: MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
-          }
-        : undefined);
+      let fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent, reason);
 
       const prevStyle = (node.style ?? {}) as Record<string, unknown>;
       const nextStyle = (fitted.style ?? {}) as Record<string, unknown>;
@@ -2409,25 +2563,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         prevStyle.width !== nextStyle.width ||
         prevStyle.height !== nextStyle.height;
 
-      const data = (node.data ?? {}) as Record<string, unknown>;
-      const override = data.layoutSizeOverride as Partial<{
-        mode: LayoutMode;
-        width: number;
-        height: number;
-      }> | undefined;
-      if (geometryChanged && override?.mode && supportsGeneratedLayoutSizing(override.mode)) {
-        const width = numericDimension(nextStyle.width, override.width ?? getNodeDimensions(fitted).width);
-        const height = numericDimension(nextStyle.height, override.height ?? getNodeDimensions(fitted).height);
-        const userSize = storedNodeSize(data.userSize) ?? getNodeDimensions(node);
+      if (geometryChanged && resolveAutoSizeMode(data) === "height-only") {
+        const nextSize = getNodeDimensions(fitted);
         fitted = {
           ...fitted,
           data: {
             ...(fitted.data ?? {}),
-            userSize: {
-              width: Math.max(userSize.width, width),
-              height: Math.max(userSize.height, height),
-            },
-            layoutSizeOverride: { mode: override.mode, width, height },
+            userSize: nextSize,
           },
         };
       }
@@ -2444,8 +2586,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       get().scheduleListReflow(nodeId);
       get().scheduleMatrixReflow(nodeId);
       get().scheduleStructuredReflow(nodeId);
-    } else if (matrixContentChanged) {
-      get().scheduleMatrixReflow(nodeId);
+    } else if (intrinsicChanged) {
+      if (activeLayoutMode === "matrix") get().scheduleMatrixReflow(nodeId);
+      else if (activeLayoutMode === "list") get().scheduleListReflow(nodeId);
+      else if (activeLayoutMode) get().scheduleStructuredReflow(nodeId);
     }
   },
 
@@ -2534,17 +2678,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       maxContentWidth: newType === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
       maxWidth: MAX_AUTOFIT_NODE_WIDTH,
       maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+      cornerRadius: typeof newData.borderRadius === "number"
+        ? newData.borderRadius
+        : effectiveCornerRadius(newData.cornerRadiusPercent, current, 20),
     });
 
-    const convertedData = matrixMode
-      ? {
-          ...newData,
-          userSize: fittedSize,
-        }
-      : newData;
+    const convertedData = {
+      ...newData,
+      autoSizeMode: resolveAutoSizeMode(newData as Record<string, unknown>),
+      userSize: fittedSize,
+    };
     const oldRect = getNodeRect(node);
     const topLeft = resizeAroundAnchor(oldRect, fittedSize, "center");
-    let convertedNode = resetNodeDimensions({
+    const convertedNode = resetNodeDimensions({
       ...node,
       type: newType,
       data: convertedData,
@@ -2552,12 +2698,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ? node.position
         : nodePositionFromTopLeft(node, topLeft, fittedSize),
     }, fittedSize.width, fittedSize.height);
-    const layoutMode = findLayoutRoot(nodeId, nodes, hierarchy).mode;
-    if (!matrixMode && (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm")) {
-      const provisional = nodes.map((candidate) => candidate.id === nodeId ? convertedNode : candidate);
-      const collisionPlacement = resolveInsertedNodeCollisions(provisional, nodeId, 32, 24)[nodeId];
-      if (collisionPlacement) convertedNode = { ...convertedNode, position: collisionPlacement };
-    }
     set({
       nodes: nodes.map((n) => n.id === nodeId
         ? matrixMode ? { ...convertedNode, style: n.style } : convertedNode

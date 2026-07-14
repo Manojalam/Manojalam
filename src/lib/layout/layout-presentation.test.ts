@@ -111,3 +111,29 @@ test("generated typography never shrinks an existing larger font size", () => {
 
   assert.equal(resolveLayoutFontSize(data), 30);
 });
+
+test("structured layouts respect fixed and keep-width manual sizing modes", () => {
+  const { nodes, edges } = fixture();
+  nodes[1] = {
+    ...nodes[1],
+    data: {
+      ...nodes[1].data,
+      autoSizeMode: "fixed",
+      userSize: { width: 310, height: 96 },
+    },
+  };
+  nodes[2] = {
+    ...nodes[2],
+    data: {
+      ...nodes[2].data,
+      autoSizeMode: "height-only",
+      userSize: { width: 360, height: 80 },
+    },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const sizes = computeLayoutNodeSizes(nodes, hierarchy, "root", "horizontal");
+
+  assert.deepEqual(sizes.get("short"), { width: 310, height: 96 });
+  assert.equal(sizes.get("long")?.width, 360);
+  assert.ok((sizes.get("long")?.height ?? 0) >= 64);
+});

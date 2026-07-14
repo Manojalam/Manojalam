@@ -2,19 +2,20 @@ import type { Size } from "./node-geometry";
 
 export const MIN_AUTOFIT_WIDTH = 160;
 export const MIN_AUTOFIT_HEIGHT = 56;
-export const MAX_AUTOFIT_WIDTH = 560;
+export const MAX_AUTOFIT_WIDTH = 480;
 export const MAX_AUTOFIT_NODE_WIDTH = 640;
-export const MAX_AUTOFIT_NODE_HEIGHT = 480;
-/**
- * Free-form nodes may expand to preserve the user's chosen typography.
- * Keep this separate from the compact generated-layout ceiling above.
- */
+export const MAX_AUTOFIT_NODE_HEIGHT = 1200;
+/** Explicit callers can opt into a larger canvas-local envelope. */
 export const MAX_FREEFORM_AUTOFIT_NODE_WIDTH = 4096;
 export const MAX_FREEFORM_AUTOFIT_NODE_HEIGHT = 4096;
+export const MEASUREMENT_SAFETY_X = 2;
+export const MEASUREMENT_SAFETY_Y = 2;
 
 export interface ContentMeasurement extends Size {
   lineCount?: number;
   lineHeight?: number;
+  /** Width of the longest explicit line before soft wrapping. */
+  naturalWidth?: number;
 }
 
 export interface ShapeFitOptions {
@@ -27,11 +28,16 @@ export interface ShapeFitOptions {
   maxContentWidth?: number;
   maxWidth?: number;
   maxHeight?: number;
+  cornerRadius?: number;
 }
 
 export interface SingleWordFit {
   singleWord: boolean;
   fontSize: number;
+}
+
+export interface ShapeTextContentOptions {
+  contentSize?: Partial<Size>;
 }
 
 interface GraphemeSegmenter {
@@ -49,7 +55,7 @@ function finitePositive(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function nodePadding(nodeType: string | undefined): Size {
+export function nodeContentPadding(nodeType: string | undefined): Size {
   if (nodeType === "sticky") return { width: 36, height: 30 };
   if (nodeType === "text") return { width: 36, height: 26 };
   if (nodeType === "mindmap") return { width: 44, height: 30 };
@@ -115,23 +121,56 @@ export function shapeTextContentWidth(
       default: return 1;
     }
   })();
-  return Math.max(8, width / scale - nodePadding(nodeType).width);
+  return Math.max(8, width / scale - nodeContentPadding(nodeType).width);
 }
 
 /** Approximate the safe text rectangle inside a rendered node shape. */
 export function shapeTextContentSize(
   shapeType: string | undefined,
   renderedSize: Size,
-  nodeType = "shape"
+  nodeType = "shape",
+  options: ShapeTextContentOptions = {}
 ): Size {
   const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
   const height = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
-  const padding = nodePadding(nodeType);
+  const padding = nodeContentPadding(nodeType);
+  const contentWidth = finitePositive(options.contentSize?.width, 180);
+  const contentHeight = finitePositive(options.contentSize?.height, 80);
+  const paddedAspect = Math.max(
+    0.35,
+    Math.min(4, (contentWidth + padding.width) / (contentHeight + padding.height))
+  );
+
+  if (shapeType === "circle") {
+    const safeHeight = Math.min(width, height) / Math.sqrt(paddedAspect ** 2 + 1);
+    return {
+      width: Math.max(8, safeHeight * paddedAspect - padding.width),
+      height: Math.max(8, safeHeight - padding.height),
+    };
+  }
+  if (shapeType === "ellipse") {
+    const radiusX = width / 2;
+    const radiusY = height / 2;
+    const halfHeight = 1 / Math.sqrt(
+      (paddedAspect / radiusX) ** 2 + (1 / radiusY) ** 2
+    );
+    return {
+      width: Math.max(8, halfHeight * 2 * paddedAspect - padding.width),
+      height: Math.max(8, halfHeight * 2 - padding.height),
+    };
+  }
+  if (shapeType === "diamond") {
+    const radiusX = width / 2;
+    const radiusY = height / 2;
+    const halfHeight = 1 / (paddedAspect / radiusX + 1 / radiusY);
+    return {
+      width: Math.max(8, halfHeight * 2 * paddedAspect - padding.width),
+      height: Math.max(8, halfHeight * 2 - padding.height),
+    };
+  }
+
   const scale = (() => {
     switch (shapeType) {
-      case "circle": return { width: Math.SQRT2, height: Math.SQRT2 };
-      case "ellipse": return { width: Math.SQRT2, height: Math.SQRT2 };
-      case "diamond": return { width: 2, height: 2 };
       case "star":
       case "flower": return { width: 1.8, height: 1.8 };
       case "triangle": return { width: 1.75, height: 1.9 };
@@ -157,14 +196,27 @@ export function shapeTextContentSize(
   };
 }
 
-function shapeSafeSize(shapeType: string, box: Size): Size {
+function shapeSafeSize(shapeType: string, box: Size, cornerRadius = 0): Size {
   switch (shapeType) {
     case "circle": {
-      const diameter = Math.max(box.width, box.height) * Math.SQRT2;
+      const diameter = Math.hypot(box.width, box.height);
       return { width: diameter, height: diameter };
     }
-    case "ellipse":
-      return { width: box.width * Math.SQRT2, height: box.height * Math.SQRT2 };
+    case "ellipse": {
+      const contentRatio = box.width / Math.max(1, box.height);
+      const ratios = [0.8, 1, 1.25, 1.4, 1.6, 1.8, 2, contentRatio]
+        .map((ratio) => Math.max(0.7, Math.min(2.4, ratio)));
+      return ratios
+        .map((ratio) => {
+          const radiusY = Math.sqrt(
+            Math.pow(box.width / 2 / ratio, 2) + Math.pow(box.height / 2, 2)
+          );
+          return { width: radiusY * 2 * ratio, height: radiusY * 2 };
+        })
+        .reduce((best, candidate) => (
+          candidate.width * candidate.height < best.width * best.height ? candidate : best
+        ));
+    }
     case "diamond":
       return { width: box.width * 2, height: box.height * 2 };
     case "star":
@@ -192,6 +244,10 @@ function shapeSafeSize(shapeType: string, box: Size): Size {
       return { width: box.width * 1.26, height: box.height * 1.26 };
     case "capsule":
       return { width: Math.max(box.width + box.height, box.height * 2), height: box.height };
+    case "rounded": {
+      const inset = Math.min(12, Math.max(0, cornerRadius) * 0.22);
+      return { width: box.width + inset * 2, height: box.height + inset * 2 };
+    }
     default:
       return box;
   }
@@ -203,16 +259,16 @@ export function fitShapeToContent(
   contentSize: ContentMeasurement,
   options: ShapeFitOptions = {}
 ): Size {
-  const padding = nodePadding(options.nodeType);
+  const padding = nodeContentPadding(options.nodeType);
   const borderAllowance = Math.max(0, finitePositive(options.borderWidth, 0)) * 2;
   const maxContentWidth = finitePositive(options.maxContentWidth, MAX_AUTOFIT_WIDTH - padding.width);
   const contentWidth = Math.min(maxContentWidth, finitePositive(contentSize.width, MIN_AUTOFIT_WIDTH - padding.width));
   const contentHeight = finitePositive(contentSize.height, MIN_AUTOFIT_HEIGHT - padding.height);
   const padded = {
-    width: contentWidth + padding.width + borderAllowance,
-    height: contentHeight + padding.height + borderAllowance,
+    width: contentWidth + padding.width + borderAllowance + MEASUREMENT_SAFETY_X,
+    height: contentHeight + padding.height + borderAllowance + MEASUREMENT_SAFETY_Y,
   };
-  const fitted = shapeSafeSize(shapeType ?? "rectangle", padded);
+  const fitted = shapeSafeSize(shapeType ?? "rectangle", padded, options.cornerRadius);
   let width = Math.max(options.minWidth ?? MIN_AUTOFIT_WIDTH, Math.ceil(fitted.width));
   let height = Math.max(options.minHeight ?? MIN_AUTOFIT_HEIGHT, Math.ceil(fitted.height));
   const maxWidth = finitePositive(options.maxWidth, Number.MAX_SAFE_INTEGER);

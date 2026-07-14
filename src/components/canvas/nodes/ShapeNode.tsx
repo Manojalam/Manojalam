@@ -10,7 +10,10 @@ import {
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
 } from "@/lib/style-utils";
-import { shapeTextContentSize } from "@/lib/canvas/shape-fitting";
+import {
+  shapeTextContentSize,
+} from "@/lib/canvas/shape-fitting";
+import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type {
   ShapeNodeData,
   InternalFillRegion,
@@ -28,6 +31,7 @@ import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
+import { useNodeManualResize } from "./useNodeManualResize";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -969,7 +973,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
-  const setSaveStatus  = useCanvasStore((s) => s.setSaveStatus);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const viewport = useViewport();
 
@@ -1015,8 +1018,17 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
-  const availableTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape");
-  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14);
+  const intrinsicContentSize = (dd.matrixIntrinsicSize ?? dd.intrinsicContentSize) as
+    | Partial<{ width: number; height: number }>
+    | undefined;
+  const availableTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape", {
+    contentSize: intrinsicContentSize,
+  });
+  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
+    availableHeight: availableTextSize.height,
+    constrain: shouldConstrainTextToNode(dd, nodeSize),
+  });
+  const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -1096,14 +1108,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         isVisible={selected && !editing && !isDrawing && !matrixCell}
         keepAspectRatio={SQUARE_ASPECT_SHAPES.has(shapeType)}
         lineStyle={{ borderRadius: bRadius }}
-        onResizeStart={(_, params) => {
-          pushHistory();
-          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
-        }}
-        onResizeEnd={(_, params) => {
-          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
-          setSaveStatus("unsaved");
-        }}
+        onResizeStart={resizeControls.onResizeStart}
+        onResizeEnd={resizeControls.onResizeEnd}
       />
 
       <div
@@ -1271,8 +1277,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
-                  measurementWidth={dd.userSize ? availableTextSize.width : undefined}
-                  measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
+                  measurementKey={`${textMeasurementKey(dd)}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
+                  measurementWidth={availableTextSize.width}
+                  measurementFontSize={textPresentation.authoredFontSize}
+                  contentScale={textPresentation.scale}
                   placeholder="Double-click…"
                   className="[&_.ProseMirror]:text-center"
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
@@ -1281,7 +1289,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     const plain = html.replace(/<[^>]+>/g, "").trim();
                     updateNodeData(id, { richText: html, text: plain });
                   }}
-                  onContentSizeChange={(size) => fitNodeToContent(id, size)}
+                  onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
                   onBlur={finishEditing}
                 />
               </div>

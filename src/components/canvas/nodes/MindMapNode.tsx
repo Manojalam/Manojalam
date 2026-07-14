@@ -9,7 +9,10 @@ import {
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
   resolveBorderStyle, resolveAccentColor, textMeasurementKey,
 } from "@/lib/style-utils";
-import { shapeTextContentSize } from "@/lib/canvas/shape-fitting";
+import {
+  shapeTextContentSize,
+} from "@/lib/canvas/shape-fitting";
+import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type { MindMapNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -18,6 +21,7 @@ import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
+import { useNodeManualResize } from "./useNodeManualResize";
 
 function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as MindMapNodeData;
@@ -26,7 +30,6 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
-  const setSaveStatus   = useCanvasStore((s) => s.setSaveStatus);
 
   const drawingModeNodeId   = useUIStore((s) => s.drawingModeNodeId);
   const drawingRegionColor  = useUIStore((s) => s.drawingRegionColor);
@@ -56,7 +59,11 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const [editing, setEditing] = useState(false);
   const initialContent = (dd.richText as string) || d.text || "";
   const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "mindmap");
-  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14);
+  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
+    availableHeight: availableTextSize.height,
+    constrain: shouldConstrainTextToNode(dd, nodeSize),
+  });
+  const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -103,14 +110,8 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
         minHeight={40}
         isVisible={selected && !editing && !isDrawing && !matrixCell}
         lineStyle={{ borderRadius }}
-        onResizeStart={(_, params) => {
-          pushHistory();
-          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
-        }}
-        onResizeEnd={(_, params) => {
-          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
-          setSaveStatus("unsaved");
-        }}
+        onResizeStart={resizeControls.onResizeStart}
+        onResizeEnd={resizeControls.onResizeEnd}
       />
       <div
         className={cn(
@@ -164,8 +165,14 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-          measurementWidth={dd.userSize ? availableTextSize.width : undefined}
-            measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
+            className={cn(
+              textPresentation.singleWord && "single-word-fit",
+              textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
+            )}
+            measurementKey={`${textMeasurementKey(dd)}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
+            measurementWidth={availableTextSize.width}
+            measurementFontSize={textPresentation.authoredFontSize}
+            contentScale={textPresentation.scale}
             placeholder="Double-click to edit…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {
@@ -173,7 +180,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
               const plain = html.replace(/<[^>]+>/g, "").trim();
               updateNodeData(id, { richText: html, text: plain });
             }}
-            onContentSizeChange={(size) => fitNodeToContent(id, size)}
+            onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
             onBlur={commitEdit}
           />
         </div>

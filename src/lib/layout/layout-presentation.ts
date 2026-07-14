@@ -1,6 +1,7 @@
 import type { Node } from "@xyflow/react";
 import type { LayoutMode, LayoutVisualStyle } from "../types";
 import {
+  effectiveCornerRadius,
   fitShapeToContent,
   MAX_AUTOFIT_NODE_HEIGHT,
   MAX_AUTOFIT_NODE_WIDTH,
@@ -8,6 +9,7 @@ import {
 } from "../canvas/shape-fitting";
 import type { Hierarchy } from "./hierarchy";
 import { getSubtree } from "./hierarchy";
+import { resolveAutoSizeMode } from "../canvas/node-sizing";
 
 const SIZED_LAYOUT_MODES = new Set<LayoutMode>([
   "fromParentFreeForm",
@@ -59,14 +61,6 @@ function nodeText(data: Record<string, unknown>): string {
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .join("\n")
     .trim();
-}
-
-function maximumInlineFontSize(data: Record<string, unknown>): number {
-  if (typeof data.richText !== "string") return 0;
-  const sizes = [...data.richText.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/gi)]
-    .map((match) => Number(match[1]))
-    .filter(Number.isFinite);
-  return sizes.length ? Math.max(...sizes) : 0;
 }
 
 function wrappedLineCount(lines: string[], charactersPerLine: number): number {
@@ -189,8 +183,21 @@ function estimatedContent(
 function nodeLayoutSize(node: Node, mode: LayoutMode, depth: number): LayoutNodeSize | null {
   if (!node.type || !["shape", "sticky", "text", "mindmap"].includes(node.type)) return null;
   const data = (node.data ?? {}) as Record<string, unknown>;
+  const userSize = data.userSize as Partial<LayoutNodeSize> | undefined;
+  if (
+    resolveAutoSizeMode(data) === "fixed"
+    && positiveNumber(userSize?.width)
+    && positiveNumber(userSize?.height)
+  ) {
+    return {
+      width: positiveNumber(userSize?.width)!,
+      height: positiveNumber(userSize?.height)!,
+    };
+  }
   const preset = sizingPreset(mode, depth);
-  const fontSize = Math.max(resolveLayoutFontSize(data) ?? 14, maximumInlineFontSize(data));
+  // Exact mixed-span dimensions arrive through intrinsicContentSize. Treating
+  // one enlarged word as the font size of the entire node caused huge cells.
+  const fontSize = resolveLayoutFontSize(data) ?? 14;
   const content = estimatedContent(node, fontSize, preset.maximumContentWidth);
   const shapeType = node.type === "shape" ? String(data.shapeType ?? "rectangle") : "rectangle";
   const fitted = fitShapeToContent(shapeType, content, {
@@ -202,7 +209,15 @@ function nodeLayoutSize(node: Node, mode: LayoutMode, depth: number): LayoutNode
     maxContentWidth: preset.maximumContentWidth,
     maxWidth: MAX_AUTOFIT_NODE_WIDTH,
     maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+    cornerRadius: effectiveCornerRadius(
+      data.cornerRadiusPercent,
+      { width: preset.minimumWidth, height: preset.minimumHeight },
+      20
+    ),
   });
+  if (resolveAutoSizeMode(data) === "height-only" && positiveNumber(userSize?.width)) {
+    return { width: positiveNumber(userSize?.width)!, height: Math.ceil(fitted.height) };
+  }
   return { width: Math.ceil(fitted.width), height: Math.ceil(fitted.height) };
 }
 
