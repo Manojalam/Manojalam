@@ -173,10 +173,13 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
           style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${palette.shadow} 45%, transparent 45%)` }} />
         }
 
-        <div className={cn(
-          "relative z-10 text-sm",
-          editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
-        )}
+        <div
+          data-node-content-layer="true"
+          data-node-owner={id}
+          className={cn(
+            "relative z-10 text-sm",
+            editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
+          )}
           style={{ color: "#374151", ...textPresentation.style }}>
           <RichTextEditor
             nodeId={id}

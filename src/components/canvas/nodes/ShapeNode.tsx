@@ -1261,10 +1261,14 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           })}
 
           {!radialChart?.enabled && (
-            <div className={cn(
-              "relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-sm font-medium text-foreground",
-              editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
-            )}>
+            <div
+              data-node-content-layer="true"
+              data-node-owner={id}
+              className={cn(
+                "absolute inset-0 z-10 box-border flex items-center justify-center px-3 text-center text-sm font-medium text-foreground",
+                editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
+              )}
+            >
               <div
                 className="w-full"
                 style={{

@@ -84,7 +84,7 @@ export function getFittedTextPresentation(
     scale = fittedContentScale(
       storedMeasurement,
       { width: availableWidth, height: availableHeight },
-      Math.min(0.2, minimumFontSize / preferredFontSize)
+      Math.min(1, Math.max(0.2, minimumFontSize / preferredFontSize))
     );
     if (d.autoSizeMode !== "fixed") scale = Math.min(1, scale);
   } else if (shouldConstrain && singleWord) {

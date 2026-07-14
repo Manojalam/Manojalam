@@ -26,9 +26,10 @@ import {
   Unlock,
 } from "lucide-react";
 import { generateId } from "@/lib/utils";
+import { toast } from "sonner";
 import {
   alignSelection,
-  compactEqualSpacing,
+  distributeSelection,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -56,7 +57,7 @@ function ActionButton({
         event.stopPropagation();
         onClick();
       }}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-35"
+      className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-35"
     >
       {children}
     </button>
@@ -101,7 +102,16 @@ export function SelectionToolbar() {
   };
 
   const distribute = (axis: "x" | "y") => {
-    updateGeometry(compactEqualSpacing(selected, axis));
+    const result = distributeSelection(selected, axis);
+    if (result.failure === "insufficient-span") {
+      toast.error("The outer nodes are too close to distribute without overlap. Move them farther apart first.");
+      return;
+    }
+    if (result.failure) return;
+    updateGeometry(result.positions);
+    toast.success(`Distributed ${selected.length} nodes ${axis === "x" ? "horizontally" : "vertically"}.`, {
+      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+    });
   };
 
   const commonGroupId = selected.length > 1
@@ -192,14 +202,32 @@ export function SelectionToolbar() {
 
       {selected.length > 1 && (
         <>
-          <ActionButton label="Align left" onClick={() => align("left")}><AlignStartVertical className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Align horizontal centers" onClick={() => align("centerX")}><AlignCenterVertical className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Align right" onClick={() => align("right")}><AlignEndVertical className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Align top" onClick={() => align("top")}><AlignStartHorizontal className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Align vertical centers" onClick={() => align("centerY")}><AlignCenterHorizontal className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Align bottom" onClick={() => align("bottom")}><AlignEndHorizontal className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Pack with equal horizontal spacing" onClick={() => distribute("x")}><AlignVerticalDistributeCenter className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Pack with equal vertical spacing" onClick={() => distribute("y")}><AlignHorizontalDistributeCenter className="h-4 w-4" /></ActionButton>
+          <div role="group" aria-label="Align selected objects" className="flex items-center">
+            <ActionButton label="Align left edges" onClick={() => align("left")}><AlignStartVertical className="h-4 w-4" /></ActionButton>
+            <ActionButton label="Align horizontal centers" onClick={() => align("centerX")}><AlignCenterVertical className="h-4 w-4" /></ActionButton>
+            <ActionButton label="Align right edges" onClick={() => align("right")}><AlignEndVertical className="h-4 w-4" /></ActionButton>
+            <ActionButton label="Align top edges" onClick={() => align("top")}><AlignStartHorizontal className="h-4 w-4" /></ActionButton>
+            <ActionButton label="Align vertical centers" onClick={() => align("centerY")}><AlignCenterHorizontal className="h-4 w-4" /></ActionButton>
+            <ActionButton label="Align bottom edges" onClick={() => align("bottom")}><AlignEndHorizontal className="h-4 w-4" /></ActionButton>
+          </div>
+          <Divider />
+          <div role="group" aria-label="Distribute selected objects" className="flex items-center">
+            <ActionButton
+              label={selected.length < 3 ? "Select at least 3 objects to distribute horizontally" : "Distribute horizontally"}
+              disabled={selected.length < 3}
+              onClick={() => distribute("x")}
+            >
+              <AlignVerticalDistributeCenter className="h-4 w-4" />
+            </ActionButton>
+            <ActionButton
+              label={selected.length < 3 ? "Select at least 3 objects to distribute vertically" : "Distribute vertically"}
+              disabled={selected.length < 3}
+              onClick={() => distribute("y")}
+            >
+              <AlignHorizontalDistributeCenter className="h-4 w-4" />
+            </ActionButton>
+          </div>
+          <Divider />
           <ActionButton label={grouped ? "Ungroup" : "Group"} onClick={toggleGroup}>
             {grouped ? <Ungroup className="h-4 w-4" /> : <Group className="h-4 w-4" />}
           </ActionButton>

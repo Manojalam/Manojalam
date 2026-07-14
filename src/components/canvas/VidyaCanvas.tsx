@@ -37,7 +37,6 @@ import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS, type BoardContent } from "@/lib/types";
 import {
-  getNodeRect,
   isMatrixHierarchyEdge,
   resolveInsertedNodeCollisions,
   routeForMode,
@@ -53,10 +52,14 @@ import { ExportDialog } from "./ExportDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
+import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import {
-  appendPlainTextToRichText,
-  richTextToPlainText,
-} from "@/lib/canvas/rich-text-paste";
+  createManojalamClipboardPayload,
+  MANOJALAM_NODES_MIME,
+  parseManojalamClipboard,
+  serializeManojalamClipboard,
+  shouldHandleCanvasClipboard,
+} from "@/lib/canvas/clipboard";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -64,9 +67,8 @@ interface Guides { h: number[]; v: number[] }
 const GUIDE_THRESHOLD = 6; // px in flow coords
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
-const MIN_READABLE_LIST_ZOOM = 0.65;
-const MIN_READABLE_MATRIX_ZOOM = 0.7;
-const MIN_READABLE_TREE_ZOOM = 0.28;
+const MIN_RADIAL_FIT_ZOOM = 0.25;
+const MAX_RADIAL_FIT_ZOOM = 1.5;
 const LONG_PRESS_PAN_MS = 180;
 const LONG_PRESS_CANCEL_DISTANCE = 7;
 
@@ -118,13 +120,6 @@ function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]
     }
     return node;
   });
-}
-
-function pasteTextFieldForNode(node: Node): "text" | "devanagari" | "rule" | null {
-  if (["shape", "mindmap", "sticky", "text"].includes(node.type ?? "")) return "text";
-  if (node.type === "sanskrit" || node.type === "shloka") return "devanagari";
-  if (node.type === "grammar") return "rule";
-  return null;
 }
 
 function calcGuides(
@@ -257,6 +252,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const edges       = useCanvasStore((s) => s.edges);
   const settings    = useCanvasStore((s) => s.settings);
   const saveStatus  = useCanvasStore((s) => s.saveStatus);
+  const hasHydratedBoard = useCanvasStore((s) => s.hasHydratedBoard);
+  const hasUserChangedBoard = useCanvasStore((s) => s.hasUserChangedBoard);
   const setNodes    = useCanvasStore((s) => s.setNodes);
   const setEdges    = useCanvasStore((s) => s.setEdges);
   const setStoredViewport = useCanvasStore((s) => s.setViewport);
@@ -284,6 +281,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     timeout: number;
   } | null>(null);
   const suppressNextContextMenuRef = useRef(false);
+  const lastPointerScreenRef = useRef<{ x: number; y: number } | null>(null);
   const measuredLayoutFramesRef = useRef<number[]>([]);
   const [initialViewport] = useState(() => useCanvasStore.getState().viewport);
   const dragStartRef = useRef<{
@@ -350,7 +348,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       .catch(() => undefined)
       .then(async () => {
         const state = useCanvasStore.getState();
-        if (state.board?.id !== requestedBoardId || state.saveStatus === "saved") return;
+        if (
+          state.board?.id !== requestedBoardId
+          || !state.hasHydratedBoard
+          || !state.hasUserChangedBoard
+          || state.saveStatus === "saved"
+        ) return;
 
         const title = state.board.title;
         const content = {
@@ -388,7 +391,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   }, [enqueueSave]);
 
   useEffect(() => {
-    if (saveStatus !== "unsaved") return;
+    if (saveStatus !== "unsaved" || !hasHydratedBoard) return;
+    if (!hasUserChangedBoard) {
+      useCanvasStore.setState({ hasUserChangedBoard: true });
+    }
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null;
       enqueueSave();
@@ -399,7 +405,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         saveTimerRef.current = null;
       }
     };
-  }, [saveStatus, enqueueSave]);
+  }, [saveStatus, hasHydratedBoard, hasUserChangedBoard, enqueueSave]);
 
   // Measured table/outline layouts wait for React Flow to refresh rendered
   // dimensions before the store performs one atomic placement transaction.
@@ -418,10 +424,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const first = requestAnimationFrame(() => {
         const second = requestAnimationFrame(() => {
           useCanvasStore.getState().applyLayout(detail.mode!, detail.rootId);
-          // List may grow beyond the viewport, but a previously fitted 4% view
-          // must not leave the result microscopic. The handler below only
-          // raises List to its readability floor and keeps the root anchored.
-          window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
         });
         measuredLayoutFramesRef.current = [second];
       });
@@ -444,7 +446,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     return () => window.removeEventListener("vidya:update-node-internals", handler);
   }, [updateNodeInternals]);
 
-  // Fit the view after an auto-layout is applied (dispatched from LayoutPanel).
+  // Viewport changes are explicit. Layout application never dispatches this
+  // event; only visible Fit/Focus controls do.
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{
@@ -454,78 +457,20 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         forceFit?: boolean;
       }>).detail;
       const nodeIds = detail?.nodeIds;
-      const isTreeLayout = detail?.mode === "horizontal"
-        || detail?.mode === "vertical"
-        || detail?.mode === "topDown";
-      if (
-        !detail?.forceFit
-        && (detail?.mode === "list" || detail?.mode === "matrix" || isTreeLayout)
-        && detail.rootId
-      ) {
-        const root = useCanvasStore.getState().nodes.find((node) => node.id === detail.rootId);
-        if (root) {
-          const rootRect = getNodeRect(root);
-          const currentViewport = getViewport();
-          const currentZoom = currentViewport.zoom;
-          const minimumZoom = detail.mode === "matrix"
-            ? MIN_READABLE_MATRIX_ZOOM
-            : isTreeLayout
-              ? MIN_READABLE_TREE_ZOOM
-              : MIN_READABLE_LIST_ZOOM;
-          const zoom = Math.max(minimumZoom, Math.min(MAX_CANVAS_ZOOM, currentZoom));
-          if (detail.mode === "list") {
-            if (Math.abs(zoom - currentZoom) < 0.001) return;
-            const rootScreenX = rootRect.centerX * currentZoom + currentViewport.x;
-            const rootScreenY = rootRect.centerY * currentZoom + currentViewport.y;
-            void setFlowViewport({
-              x: rootScreenX - rootRect.centerX * zoom,
-              y: rootScreenY - rootRect.centerY * zoom,
-              zoom,
-            }, { duration: 350 });
-            return;
-          }
-          const canvasBounds = document.querySelector<HTMLElement>(".vidya-canvas-bg")?.getBoundingClientRect();
-          if (isTreeLayout && canvasBounds) {
-            const horizontal = detail.mode === "horizontal";
-            const rootScreenX = horizontal
-              ? canvasBounds.width >= 900
-                ? Math.max(300, canvasBounds.width * 0.22)
-                : Math.max(96, canvasBounds.width * 0.24)
-              : canvasBounds.width / 2;
-            const rootScreenY = horizontal
-              ? canvasBounds.height / 2
-              : Math.max(150, canvasBounds.height * 0.18);
-            void setFlowViewport({
-              x: rootScreenX - rootRect.centerX * zoom,
-              y: rootScreenY - rootRect.centerY * zoom,
-              zoom,
-            }, { duration: 350 });
-            return;
-          }
-          const screenX = canvasBounds
-            ? Math.max(96, Math.min(detail.mode === "matrix" ? 220 : 280, canvasBounds.width * 0.2))
-            : 160;
-          const screenY = canvasBounds ? Math.max(84, Math.min(160, canvasBounds.height * 0.16)) : 110;
-          void setFlowViewport({
-            x: screenX - rootRect.left * zoom,
-            y: screenY - rootRect.top * zoom,
-            zoom,
-          }, { duration: 350 });
-          return;
-        }
-      }
       const targetNodes = nodeIds?.length
-        ? useCanvasStore.getState().nodes.filter((node) => nodeIds.includes(node.id))
+        ? useCanvasStore.getState().nodes.filter((node) => nodeIds.includes(node.id) && !node.hidden)
         : undefined;
+      const radialFit = detail?.mode === "radial";
       void fitView({
         padding: 0.2,
         duration: 400,
         ...(targetNodes?.length ? { nodes: targetNodes } : {}),
+        ...(radialFit ? { minZoom: MIN_RADIAL_FIT_ZOOM, maxZoom: MAX_RADIAL_FIT_ZOOM } : {}),
       });
     };
     window.addEventListener("vidya:fitview", handler);
     return () => window.removeEventListener("vidya:fitview", handler);
-  }, [fitView, getViewport, setFlowViewport]);
+  }, [fitView]);
 
   // ── onNodesChange ──────────────────────────────────────────────────
   // KEY DESIGN:
@@ -566,10 +511,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         }));
       }
 
-      for (const change of acceptedChanges) {
-        if (change.type === "dimensions") {
-          useCanvasStore.getState().scheduleListReflow(change.id);
-          useCanvasStore.getState().scheduleMatrixReflow(change.id);
+      const stateAfterChanges = useCanvasStore.getState();
+      const canReflowMeasuredLayouts = stateAfterChanges.hasUserChangedBoard
+        || stateAfterChanges.saveStatus === "unsaved";
+      if (canReflowMeasuredLayouts) {
+        for (const change of acceptedChanges) {
+          if (change.type === "dimensions") {
+            stateAfterChanges.scheduleListReflow(change.id);
+            stateAfterChanges.scheduleMatrixReflow(change.id);
+          }
         }
       }
 
@@ -994,59 +944,117 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     [screenToFlowPosition, setNodes]  // stable deps
   );
 
-  const pasteClipboard = useCallback(async () => {
-    const cs = useCanvasStore.getState();
-    if (cs.clipboard) {
-      cs.paste();
-      toast.success("Pasted copied objects.", {
-        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-      });
-      return;
-    }
+  const pastePlainTextOnCanvas = useCallback((value: string) => {
+    const text = value.replace(/\r\n/g, "\n").trimEnd();
+    if (!text.trim()) return;
+    const bounds = document.querySelector<HTMLElement>(".vidya-canvas-bg")?.getBoundingClientRect();
+    const pointer = lastPointerScreenRef.current;
+    const pointerInsideCanvas = !!bounds && !!pointer
+      && pointer.x >= bounds.left && pointer.x <= bounds.right
+      && pointer.y >= bounds.top && pointer.y <= bounds.bottom;
+    const screenPoint = pointerInsideCanvas && pointer
+      ? pointer
+      : bounds
+        ? { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const flowPoint = screenToFlowPosition(screenPoint);
+    const id = generateId();
+    const newNode: Node = {
+      id,
+      type: "text",
+      position: { x: flowPoint.x - 140, y: flowPoint.y - 28 },
+      data: {
+        text,
+        richText: plainTextToRichText(text),
+        autoSizeMode: "smart",
+        scriptMode: "plain",
+        tags: [],
+      },
+      style: { width: 280 },
+      selected: true,
+    };
 
-    if (cs.selectedNodeIds.length !== 1) {
-      toast.error("Select one editable node before pasting text.");
-      return;
-    }
+    const store = useCanvasStore.getState();
+    store.pushHistory();
+    useCanvasStore.setState((state) => {
+      const candidateNodes = [...state.nodes, newNode];
+      const placements = resolveInsertedNodeCollisions(candidateNodes, id);
+      return {
+        nodes: candidateNodes.map((node) => ({
+          ...node,
+          selected: node.id === id,
+          ...(placements[node.id] ? { position: placements[node.id] } : {}),
+        })),
+        edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
+        selectedNodeIds: [id],
+        selectedEdgeIds: [],
+        saveStatus: "unsaved",
+      };
+    });
+    toast.success("Pasted text as a new text object.", {
+      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+    });
+  }, [screenToFlowPosition]);
 
-    const node = cs.nodes.find((candidate) => candidate.id === cs.selectedNodeIds[0]);
-    if (!node) return;
-    const targetField = pasteTextFieldForNode(node);
-    if (!targetField) {
-      toast.error("Select a text, shape, sticky, mind-map, or Sanskrit node to paste text.");
-      return;
-    }
+  useEffect(() => {
+    const handleCopy = (event: ClipboardEvent) => {
+      if (!shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
+      const store = useCanvasStore.getState();
+      if (!event.clipboardData || !store.selectedNodeIds.length) return;
+      const selected = new Set(store.selectedNodeIds);
+      const selectedNodes = store.nodes.filter((node) => selected.has(node.id));
+      if (!selectedNodes.length) return;
+      const selectedEdges = store.edges.filter((edge) => selected.has(edge.source) && selected.has(edge.target));
+      const payload = createManojalamClipboardPayload(selectedNodes, selectedEdges);
+      try {
+        event.clipboardData.setData(MANOJALAM_NODES_MIME, serializeManojalamClipboard(payload));
+      } catch {
+        // Some mobile browsers reject custom types; plain text still works.
+      }
+      event.clipboardData.setData("text/plain", selectedNodes.map((node) => {
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        return String(data.text ?? data.title ?? data.devanagari ?? "");
+      }).filter(Boolean).join("\n"));
+      event.preventDefault();
+      store.copySelected();
+    };
 
-    try {
-      const pasted = await navigator.clipboard?.readText();
-      if (!pasted?.trim()) return;
-      const data = (node.data ?? {}) as Record<string, unknown>;
-      const existing = targetField === "text"
-        ? (richTextToPlainText(data.richText) || (typeof data.text === "string" ? data.text : ""))
-        : (typeof data[targetField] === "string" ? data[targetField] : "");
-      const nextText = existing ? `${existing}\n${pasted}` : pasted;
-      cs.pushHistory();
-      cs.updateNodeData(node.id, {
-        [targetField]: nextText,
-        ...(targetField === "text"
-          ? { richText: appendPlainTextToRichText(data.richText, existing, pasted) }
-          : {}),
-      });
-      toast.success("Pasted text into selected node.", {
-        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-      });
-    } catch {
-      toast.error("Open the node editor to paste text, or allow clipboard access.");
-    }
-  }, []);
+    const handlePaste = (event: ClipboardEvent) => {
+      if (!shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
+      const clipboard = event.clipboardData;
+      if (!clipboard) return;
+      const nodePayload = parseManojalamClipboard(clipboard.getData(MANOJALAM_NODES_MIME));
+      if (nodePayload) {
+        event.preventDefault();
+        event.stopPropagation();
+        useCanvasStore.getState().paste(nodePayload);
+        toast.success("Pasted copied objects.", {
+          action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+        });
+        return;
+      }
+
+      const plainText = clipboard.getData("text/plain");
+      if (!plainText.trim()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pastePlainTextOnCanvas(plainText);
+    };
+
+    window.addEventListener("copy", handleCopy);
+    window.addEventListener("paste", handlePaste);
+    return () => {
+      window.removeEventListener("copy", handleCopy);
+      window.removeEventListener("paste", handlePaste);
+    };
+  }, [pastePlainTextOnCanvas]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────
   // CRITICAL FIX: use getState() instead of subscribing to `store`
   // so this effect only runs once (fitView/zoom are stable from useReactFlow)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      if (!shouldHandleCanvasClipboard(e.target, document.activeElement)) return;
 
       if (e.code === "Space") { setSpacePressed(true); e.preventDefault(); return; }
 
@@ -1077,8 +1085,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (mod && e.shiftKey && e.key === "z") { e.preventDefault(); cs.redo(); }
       else if (mod && e.key === "z")           { e.preventDefault(); cs.undo(); }
       else if (mod && e.key === "s")           { e.preventDefault(); cs.setSaveStatus("unsaved"); flushSave(); }
-      else if (mod && e.key === "c")           { cs.copySelected(); }
-      else if (mod && e.key === "v")           { e.preventDefault(); void pasteClipboard(); }
       else if (mod && e.key === "d")           { e.preventDefault(); cs.duplicateSelected(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && !mod) { cs.deleteSelected(); }
       else if (e.key === "Tab") {
@@ -1131,7 +1137,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [fitView, flushSave, pasteClipboard, zoomByStep]);  // No `store` dep — stable!
+  }, [fitView, flushSave, zoomByStep]);  // No `store` dep — stable!
 
   const bgVariant =
     settings.background === "grid"  ? BackgroundVariant.Lines :
@@ -1146,6 +1152,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   }, []);
 
   const onPointerDownCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    lastPointerScreenRef.current = { x: event.clientX, y: event.clientY };
     if (!isTouchDevice || (event.pointerType !== "touch" && event.pointerType !== "pen")) return;
     if (touchSelectionMode) return;
     if (!event.isPrimary || activeTool === "connector" || useUIStore.getState().drawingModeNodeId) return;
@@ -1171,6 +1178,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   }, [activeTool, clearLongPressPan, getViewport, isTouchDevice, touchSelectionMode]);
 
   const onPointerMoveCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    lastPointerScreenRef.current = { x: event.clientX, y: event.clientY };
     const pan = longPressPanRef.current;
     if (!pan || pan.pointerId !== event.pointerId) return;
 

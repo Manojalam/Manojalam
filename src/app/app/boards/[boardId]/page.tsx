@@ -23,6 +23,7 @@ export default function BoardEditorPage() {
   const boardId = params.boardId as string;
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const beginBoardHydration = useCanvasStore((s) => s.beginBoardHydration);
   const setBoard = useCanvasStore((s) => s.setBoard);
   const pushHistory = useCanvasStore((s) => s.pushHistory);
   const layoutPanelOpen = useUIStore((s) => s.layoutPanelOpen);
@@ -32,6 +33,7 @@ export default function BoardEditorPage() {
 
   useEffect(() => {
     let active = true;
+    beginBoardHydration();
     useUIStore.getState().cancelRelationshipSelection();
     getBoard(boardId)
       .then((board) => {
@@ -53,7 +55,7 @@ export default function BoardEditorPage() {
       active = false;
       useUIStore.getState().cancelRelationshipSelection();
     };
-  }, [boardId, setBoard, pushHistory]);
+  }, [beginBoardHydration, boardId, setBoard, pushHistory]);
 
   if (loading) {
     return (

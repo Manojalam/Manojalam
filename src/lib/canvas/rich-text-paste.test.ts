@@ -5,6 +5,7 @@ import {
   appendPlainTextToRichText,
   plainTextToRichText,
   richTextToPlainText,
+  sanitizePastedHtml,
 } from "./rich-text-paste";
 
 test("escapes clipboard text while retaining its paragraph structure", () => {
@@ -26,5 +27,21 @@ test("produces the matching plain-text value", () => {
   assert.equal(
     richTextToPlainText("<p>अग्निः</p><p>रूपम्<br>तेजः</p>"),
     "अग्निः\nरूपम्\nतेजः"
+  );
+});
+
+test("external paste drops unsafe markup and document layout styles", () => {
+  assert.equal(
+    sanitizePastedHtml(
+      '<p class="WordSection" style="position:absolute;width:900px;font-size:72px" onclick="alert(1)"><strong>Safe</strong><script>bad()</script></p>'
+    ),
+    "<p><strong>Safe</strong></p>"
+  );
+});
+
+test("legacy font tags keep their text without importing font sizing", () => {
+  assert.equal(
+    sanitizePastedHtml('<font face="Papyrus" size="7">Text</font>'),
+    "<span>Text</span>"
   );
 });
