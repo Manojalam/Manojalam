@@ -190,7 +190,9 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
               const plain = html.replace(/<[^>]+>/g, "").trim();
               updateNodeData(id, { richText: html, text: plain });
             }}
-            onContentSizeChange={(size) => fitNodeToContent(id, size)}
+            onContentSizeChange={textPresentation.singleWord
+              ? undefined
+              : (size) => fitNodeToContent(id, size)}
             onBlur={finishEditing}
           />
         </div>
