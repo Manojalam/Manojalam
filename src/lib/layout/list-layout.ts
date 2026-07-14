@@ -324,9 +324,6 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     const source = byId.get(edge.source);
     const target = byId.get(edge.target);
     if (!source || !target || source.hidden || target.hidden) return false;
-    const sourceData = source.data as Record<string, unknown>;
-    const targetData = target.data as Record<string, unknown>;
-    if (sourceData.listManualOverride === true || targetData.listManualOverride === true) return false;
     if (renderedEdgeIds.has(edge.id)) return false;
     renderedEdgeIds.add(edge.id);
     const relationKey = `${edge.source}->${edge.target}`;

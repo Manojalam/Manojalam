@@ -7,7 +7,6 @@ import type { VidyaEdgeData } from "@/lib/types";
 import {
   buildListConnectorModel,
   DEFAULT_LIST_CONNECTOR_WIDTH,
-  type ListConnectorGroup,
   type ListConnectorModel,
 } from "@/lib/layout/list-layout";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -33,13 +32,6 @@ function markerId(edgeId: string): string {
 
 function segmentPath(segment: { x1: number; y1: number; x2: number; y2: number }): string {
   return `M ${segment.x1} ${segment.y1} L ${segment.x2} ${segment.y2}`;
-}
-
-function visibleGroup(group: ListConnectorGroup, manualIds: Set<string>): ListConnectorGroup | null {
-  if (manualIds.has(group.parentId)) return null;
-  const branches = group.branches.filter((branch) => !manualIds.has(branch.childId));
-  if (!branches.length) return null;
-  return { ...group, branches };
 }
 
 function selectEdge(edgeId: string, additive: boolean): void {
@@ -70,23 +62,14 @@ export function ListTreeConnectors() {
   const edges = useCanvasStore((state) => state.edges);
   const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const relationshipSelection = useUIStore((state) => state.relationshipSelection);
-  const canvasDragging = useUIStore((state) => state.canvasDragging);
   const [model, setModel] = useState<ListConnectorModel>(() => buildListConnectorModel(nodes, edges));
 
   useEffect(() => {
-    // Standard buses stay frozen during drag. The dragged node's connected
-    // edges are removed below and use SmartBranchEdge's live obstacle router.
-    if (canvasDragging) return;
     const frame = requestAnimationFrame(() => setModel(buildListConnectorModel(nodes, edges)));
     return () => cancelAnimationFrame(frame);
-  }, [canvasDragging, edges, nodes]);
+  }, [edges, nodes]);
 
-  const manualIds = useMemo(() => new Set(nodes
-    .filter((node) => (node.data as Record<string, unknown>).listManualOverride === true)
-    .map((node) => node.id)), [nodes]);
-  const groups = useMemo(() => model.groups
-    .map((group) => visibleGroup(group, manualIds))
-    .filter((group): group is ListConnectorGroup => group !== null), [manualIds, model.groups]);
+  const groups = model.groups;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   if (relationshipSelection || !groups.length) return null;

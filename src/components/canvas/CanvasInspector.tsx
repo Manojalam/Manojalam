@@ -1613,9 +1613,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <p className="text-[10px] text-muted-foreground">{selectedNode.id.slice(0, 8)}…</p>
         </div>
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" title={d.locked ? "Unlock" : "Lock"}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title={d.locked ? "Unlock element" : "Lock element"}
+            aria-label={d.locked ? "Unlock element" : "Lock element"}
+            aria-pressed={d.locked === true}
             onClick={() => setField("locked", !d.locked)}>
-            {d.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            {d.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={deleteSelected}>
             <Trash2 className="h-3.5 w-3.5" />
