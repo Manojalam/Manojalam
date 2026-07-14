@@ -8,7 +8,7 @@ import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
-  colorWithOpacity, resolveBorderStyle,
+  colorWithOpacity, resolveBorderStyle, textMeasurementKey,
 } from "@/lib/style-utils";
 import type {
   ShapeNodeData,
@@ -1252,7 +1252,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
-                  measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
+                  measurementKey={textMeasurementKey(dd)}
                   placeholder="Double-click…"
                   className="[&_.ProseMirror]:text-center"
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}

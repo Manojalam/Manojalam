@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
-  resolveBorderStyle, resolveAccentColor,
+  resolveBorderStyle, resolveAccentColor, textMeasurementKey,
 } from "@/lib/style-utils";
 import type { MindMapNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -149,7 +149,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
+            measurementKey={textMeasurementKey(dd)}
             placeholder="Double-click to edit…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

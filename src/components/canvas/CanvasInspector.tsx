@@ -518,6 +518,7 @@ function fieldPatch(data: Record<string, unknown>, key: string, value: unknown):
   if (["fillColor", "fillOpacity", "color"].includes(key)) patch.layoutAutoFill = false;
   if (["borderColor", "borderWidth", "borderStyle", "color"].includes(key)) patch.layoutAutoBorder = false;
   if (key === "textColor") patch.layoutAutoText = false;
+  if (key === "fontSize") patch.layoutAutoTypography = false;
   return patch;
 }
 

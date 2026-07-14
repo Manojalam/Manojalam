@@ -2,18 +2,20 @@ import type { CSSProperties } from "react";
 import type { BorderLayer, LayoutVisualStyle } from "./types";
 import { effectiveCornerRadius, legacyRadiusToPercent } from "./canvas/shape-fitting";
 import type { Size } from "./canvas/node-geometry";
+import { resolveLayoutFontSize } from "./layout/layout-presentation";
 
 /** CSS applied to the text-content container of a node.
  *  Always emits explicit values for inheritable properties so CSS
  *  inheritance works correctly inside TipTap's ProseMirror. */
 export function getTextStyle(d: Record<string, unknown>): CSSProperties {
   const layoutStyle = resolveLayoutVisualStyle(d);
+  const fontSize = resolveLayoutFontSize(d);
   return {
     // NOTE: text alignment is intentionally NOT applied here. Alignment is
     // handled purely at the paragraph level inside the editor so the right
     // panel (all paragraphs) and floating menu (selected paragraph) don't
     // fight over a container-level text-align.
-    fontSize:   d.fontSize  ? `${d.fontSize}px`    : undefined,
+    fontSize:   fontSize ? `${fontSize}px` : undefined,
     fontFamily: d.fontFamily ? String(d.fontFamily) : undefined,
     // Always emit italic/bold so browsers don't need to guess defaults
     fontStyle:  d.fontStyle  === "italic" ? "italic" : "normal",
@@ -22,6 +24,15 @@ export function getTextStyle(d: Record<string, unknown>): CSSProperties {
       ? layoutStyle.textColor
       : (d.textColor as string) ?? undefined,
   };
+}
+
+export function textMeasurementKey(d: Record<string, unknown>): string {
+  return [
+    d.fontFamily ?? "",
+    resolveLayoutFontSize(d) ?? "",
+    d.fontWeight ?? "",
+    d.fontStyle ?? "",
+  ].join("|");
 }
 
 /** Default softness applied to solid fill colors so text stays readable */

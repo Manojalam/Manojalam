@@ -57,6 +57,9 @@ test("hierarchy colors keep descendants related while separating root branches",
   assert.notEqual(styles.get("branch-a")?.fillColor, styles.get("branch-b")?.fillColor);
   assert.notEqual(styles.get("a-1")?.fillColor, styles.get("a-2")?.fillColor);
   assert.equal(styles.get("a-1")?.depth, 2);
+  assert.equal(styles.get("root")?.fontSize, 18);
+  assert.equal(styles.get("branch-a")?.fontSize, 16);
+  assert.ok((styles.get("a-1")?.fontSize ?? 0) >= 14);
   assert.ok((styles.get("root")?.borderWidth ?? 0) > (styles.get("a-1")?.borderWidth ?? 0));
 });
 
@@ -82,13 +85,19 @@ test("manual surface overrides survive palette changes and can be reset", () => 
   const { nodes, edges } = hierarchyFixture();
   nodes[2] = {
     ...nodes[2],
-    data: { ...nodes[2].data, layoutAutoFill: false, layoutAutoText: false },
+    data: {
+      ...nodes[2].data,
+      layoutAutoFill: false,
+      layoutAutoText: false,
+      layoutAutoTypography: false,
+    },
   };
   const hierarchy = buildHierarchy(nodes, edges);
   const preserved = applyLayoutPalette(nodes, edges, hierarchy, "root", "list", "forest");
   const preservedData = preserved.nodes[2].data as Record<string, unknown>;
   assert.equal(preservedData.layoutAutoFill, false);
   assert.equal(preservedData.layoutAutoText, false);
+  assert.equal(preservedData.layoutAutoTypography, false);
 
   const reset = applyLayoutPalette(
     preserved.nodes,
@@ -102,6 +111,7 @@ test("manual surface overrides survive palette changes and can be reset", () => 
   const resetData = reset.nodes[2].data as Record<string, unknown>;
   assert.equal(resetData.layoutAutoFill, undefined);
   assert.equal(resetData.layoutAutoText, undefined);
+  assert.equal(resetData.layoutAutoTypography, false);
 });
 
 test("free form removes only the generated presentation layer", () => {
