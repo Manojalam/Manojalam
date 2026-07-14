@@ -15,6 +15,7 @@ import {
   resolveFillColor,
   resolveLayoutVisualStyle,
 } from "@/lib/style-utils";
+import { useNodeManualResize } from "./useNodeManualResize";
 
 const SECTIONS = [
   { key: "verse", label: "Verse" },
@@ -50,6 +51,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(
     new Set(d.collapsedSections ?? [])
   );
+  const resizeControls = useNodeManualResize(id);
 
   const toggle = (key: string) => {
     const next = new Set(collapsed);
@@ -60,11 +62,18 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={300} minHeight={200} isVisible={selected && !matrixCell} />
+      <NodeResizer
+        minWidth={300}
+        minHeight={200}
+        isVisible={selected && !matrixCell}
+        onResizeStart={resizeControls.onResizeStart}
+        onResizeEnd={resizeControls.onResizeEnd}
+      />
       <div
         className={cn(
           "relative rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
-          matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[360px]",
+          matrixCell ? "rounded-md shadow-none" : "",
+          "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
         style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}

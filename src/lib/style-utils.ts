@@ -86,7 +86,6 @@ export function getFittedTextPresentation(
       { width: availableWidth, height: availableHeight },
       Math.min(1, Math.max(0.2, minimumFontSize / preferredFontSize))
     );
-    if (d.autoSizeMode !== "fixed") scale = Math.min(1, scale);
   } else if (shouldConstrain && singleWord) {
     const fit = fitSingleUnbrokenWord(plainText, preferredFontSize, availableWidth);
     scale = fit.fontSize / preferredFontSize;

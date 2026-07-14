@@ -15,6 +15,7 @@ import {
   resolveFillColor,
   resolveLayoutVisualStyle,
 } from "@/lib/style-utils";
+import { useNodeManualResize } from "./useNodeManualResize";
 
 function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
@@ -31,14 +32,22 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
     borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
+  const resizeControls = useNodeManualResize(id);
 
   return (
     <>
-      <NodeResizer minWidth={280} minHeight={160} isVisible={selected && !matrixCell} />
+      <NodeResizer
+        minWidth={280}
+        minHeight={160}
+        isVisible={selected && !matrixCell}
+        onResizeStart={resizeControls.onResizeStart}
+        onResizeEnd={resizeControls.onResizeEnd}
+      />
       <div
         className={cn(
           "relative rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
-          matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[300px]",
+          matrixCell ? "rounded-md shadow-none" : "",
+          "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
         style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}

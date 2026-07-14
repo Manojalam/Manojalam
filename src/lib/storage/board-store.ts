@@ -4,6 +4,7 @@ import type { BoardContent, VidyaBoard } from "@/lib/types";
 import { getTemplateById } from "@/lib/templates";
 import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
+import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 
 interface BoardRow {
   id: string;
@@ -20,6 +21,7 @@ function normalizeBoardContent(content: BoardContent): BoardContent {
   return {
     ...content,
     version: BOARD_CONTENT_VERSION,
+    nodes: normalizePersistedNodes(content.nodes),
     relationships: Array.isArray(content.relationships) ? content.relationships : [],
     relationshipFans: Array.isArray(content.relationshipFans) ? content.relationshipFans : [],
   };
@@ -126,7 +128,7 @@ export async function createBoard(
 
   const { data, error } = await supabase
     .from("boards")
-    .insert({ user_id: userId, title: boardTitle, content })
+    .insert({ user_id: userId, title: boardTitle, content: normalizeBoardContent(content) })
     .select()
     .single();
 

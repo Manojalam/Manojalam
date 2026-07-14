@@ -18,6 +18,7 @@ import {
   resolveFillColor,
   resolveLayoutVisualStyle,
 } from "@/lib/style-utils";
+import { useNodeManualResize } from "./useNodeManualResize";
 
 function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
@@ -36,6 +37,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
     borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
+  const resizeControls = useNodeManualResize(id);
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -50,11 +52,18 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer minWidth={280} minHeight={180} isVisible={selected && !matrixCell} />
+      <NodeResizer
+        minWidth={280}
+        minHeight={180}
+        isVisible={selected && !matrixCell}
+        onResizeStart={resizeControls.onResizeStart}
+        onResizeEnd={resizeControls.onResizeEnd}
+      />
       <div
         className={cn(
           "relative rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
-          matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[320px]",
+          matrixCell ? "rounded-md shadow-none" : "",
+          "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
         style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}

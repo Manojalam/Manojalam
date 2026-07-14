@@ -51,7 +51,6 @@ function isSettledReason(reason: ContentResizeReason | undefined): boolean {
   return reason === "blur"
     || reason === "fit"
     || reason === "format"
-    || reason === "layout"
     || reason === "conversion";
 }
 
@@ -87,7 +86,13 @@ export function computeAutoSize(options: AutoSizeOptions): AutoSizeResult {
     width: positive(options.currentSize.width, options.minWidth ?? 160),
     height: positive(options.currentSize.height, options.minHeight ?? 56),
   };
-  if (options.mode === "fixed") return { ...current, changed: false };
+  // A layout measurement is passive: it happens while a saved board hydrates,
+  // when fonts finish loading, and whenever ResizeObserver rechecks the DOM.
+  // It may refresh intrinsic text metrics, but it must never reinterpret the
+  // persisted node rectangle as a new user sizing command.
+  if (options.mode === "fixed" || options.reason === "layout") {
+    return { ...current, changed: false };
+  }
 
   const shapeType = options.shapeType ?? "rectangle";
   const nodeType = options.nodeType ?? "shape";
@@ -181,8 +186,8 @@ export function fittedContentScale(
   const height = positive(content.height, 1);
   const singleLine = (content.lineCount ?? 1) <= 1.05;
   const requiredWidth = singleLine ? width : wrappedWidth;
-  // This is an overflow fit, not an auto-fill effect. Authored text may shrink
-  // to remain visible, but a larger box must never silently enlarge it.
+  // This is overflow fitting, not auto-fill: authored text may shrink to remain
+  // visible, but larger boxes or reloads must never magnify it.
   const maximumScale = 1;
   const scale = Math.min(
     maximumScale,
