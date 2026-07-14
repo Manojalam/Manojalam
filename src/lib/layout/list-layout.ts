@@ -16,6 +16,8 @@ export type ListDensity = "compact" | "comfortable";
 export interface ListDensitySettings {
   rootToBranchGapX: number;
   branchColumnGapX: number;
+  continuationColumnGapX: number;
+  maxColumnBodyHeight: number;
   childIndentX: number;
   rowGapY: number;
   parentChildGapY: number;
@@ -27,6 +29,8 @@ export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
   compact: {
     rootToBranchGapX: 96,
     branchColumnGapX: 84,
+    continuationColumnGapX: 72,
+    maxColumnBodyHeight: 1040,
     childIndentX: 76,
     rowGapY: 18,
     parentChildGapY: 26,
@@ -36,6 +40,8 @@ export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
   comfortable: {
     rootToBranchGapX: 128,
     branchColumnGapX: 112,
+    continuationColumnGapX: 96,
+    maxColumnBodyHeight: 1280,
     childIndentX: 96,
     rowGapY: 26,
     parentChildGapY: 36,
@@ -97,8 +103,7 @@ export interface ListConnectorBranch {
 export interface ListConnectorGroup {
   parentId: string;
   orientation: "horizontal" | "vertical";
-  leads: OrthogonalSegment[];
-  bus: OrthogonalSegment;
+  sharedSegments: OrthogonalSegment[];
   branches: ListConnectorBranch[];
 }
 
@@ -250,6 +255,21 @@ export function computeListLayout(
     Math.max(first.bottom, second.bottom) - Math.min(first.top, second.top)
   );
 
+  const moveSubtree = (subtree: CompactSubtree, dx: number, dy: number): void => {
+    if (dx === 0 && dy === 0) return;
+    for (const nodeId of subtree.nodeIds) {
+      const position = subtree.placements[nodeId];
+      subtree.placements[nodeId] = { x: position.x + dx, y: position.y + dy };
+    }
+    subtree.bounds = createNodeRect(
+      subtree.bounds.id,
+      subtree.bounds.left + dx,
+      subtree.bounds.top + dy,
+      subtree.bounds.width,
+      subtree.bounds.height
+    );
+  };
+
   const layoutCompactSubtree = (
     nodeId: string,
     baseX: number,
@@ -266,14 +286,43 @@ export function computeListLayout(
     let bounds = nodeRect;
     let cursorY = nodeRect.bottom + Math.max(density.rowGapY, density.parentChildGapY);
     const children = hierarchy.get(nodeId)?.childIds ?? [];
+    const childSubtrees: CompactSubtree[] = [];
 
     for (const childId of children) {
       const child = layoutCompactSubtree(childId, baseX, cursorY, relativeDepth + 1);
       if (!child) continue;
-      Object.assign(placements, child.placements);
-      nodeIds.push(...child.nodeIds);
-      bounds = mergeBounds(`branch-${nodeId}`, bounds, child.bounds);
+      childSubtrees.push(child);
       cursorY = child.bounds.bottom + Math.max(density.rowGapY, density.siblingSubtreeGapY);
+    }
+
+    if (childSubtrees.length) {
+      const bodyTop = nodeRect.bottom + Math.max(density.rowGapY, density.parentChildGapY);
+      let laneLeft = childSubtrees[0].bounds.left;
+      let laneRight = laneLeft;
+      let overallRight = laneLeft;
+      let laneCursorY = bodyTop;
+      let laneHasSubtree = false;
+
+      for (const child of childSubtrees) {
+        const exceedsLane = laneHasSubtree
+          && laneCursorY + child.bounds.height - bodyTop > density.maxColumnBodyHeight;
+        if (exceedsLane) {
+          laneLeft = overallRight + density.continuationColumnGapX;
+          laneRight = laneLeft;
+          laneCursorY = bodyTop;
+          laneHasSubtree = false;
+        }
+
+        moveSubtree(child, laneLeft - child.bounds.left, laneCursorY - child.bounds.top);
+        laneRight = Math.max(laneRight, child.bounds.right);
+        overallRight = Math.max(overallRight, laneRight);
+        laneCursorY = child.bounds.bottom + Math.max(density.rowGapY, density.siblingSubtreeGapY);
+        laneHasSubtree = true;
+
+        Object.assign(placements, child.placements);
+        nodeIds.push(...child.nodeIds);
+        bounds = mergeBounds(`branch-${nodeId}`, bounds, child.bounds);
+      }
     }
     return { placements, nodeIds, bounds };
   };
@@ -382,8 +431,7 @@ function segmentKey(segment: OrthogonalSegment): string {
 
 function connectorSegments(group: ListConnectorGroup): OrthogonalSegment[] {
   return [
-    ...group.leads,
-    group.bus,
+    ...group.sharedSegments,
     ...group.branches.flatMap((branch) => branch.segments),
   ];
 }
@@ -460,7 +508,7 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
           return {
             parentId,
             orientation: "horizontal" as const,
-            leads: [
+            sharedSegments: [
               {
                 x1: parentRect.right,
                 y1: parentRect.centerY,
@@ -473,13 +521,13 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
                 x2: rootExitX,
                 y2: busY,
               },
+              {
+                x1: rootExitX,
+                y1: busY,
+                x2: Math.max(rootExitX, ...childXs),
+                y2: busY,
+              },
             ],
-            bus: {
-              x1: rootExitX,
-              y1: busY,
-              x2: Math.max(rootExitX, ...childXs),
-              y2: busY,
-            },
             branches: childRects.map(({ edge, rect }) => ({
               edge,
               childId: edge.target,
@@ -488,30 +536,47 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
           };
         })()
       : (() => {
-          const childLeft = Math.min(...childRects.map((item) => item.rect.left));
-          const trunkX = childLeft - density.connectorGutterX;
           const junctionY = Math.min(
             Math.min(...childRects.map((item) => item.rect.centerY)),
             parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
           );
           const parentAnchorX = parentRect.left + Math.min(14, parentRect.width / 2);
-          return {
-            parentId,
-            orientation: "vertical" as const,
-            leads: [
-              { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
-              { x1: parentAnchorX, y1: junctionY, x2: trunkX, y2: junctionY },
-            ],
-            bus: {
+          const lanes: Array<{ left: number; items: typeof childRects }> = [];
+          for (const item of childRects) {
+            const lane = lanes.find((candidate) => Math.abs(candidate.left - item.rect.left) < 1);
+            if (lane) lane.items.push(item);
+            else lanes.push({ left: item.rect.left, items: [item] });
+          }
+          lanes.sort((a, b) => a.left - b.left);
+          const trunkByChildId = new Map<string, number>();
+          const trunks = lanes.map((lane) => {
+            const trunkX = lane.left - density.connectorGutterX;
+            lane.items.forEach((item) => trunkByChildId.set(item.edge.target, trunkX));
+            return {
               x1: trunkX,
               y1: junctionY,
               x2: trunkX,
-              y2: Math.max(junctionY, ...childRects.map((item) => item.rect.centerY)),
-            },
+              y2: Math.max(junctionY, ...lane.items.map((item) => item.rect.centerY)),
+            };
+          });
+          const railEndX = Math.max(...trunks.map((trunk) => trunk.x1));
+          return {
+            parentId,
+            orientation: "vertical" as const,
+            sharedSegments: [
+              { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
+              { x1: parentAnchorX, y1: junctionY, x2: railEndX, y2: junctionY },
+              ...trunks,
+            ],
             branches: childRects.map(({ edge, rect }) => ({
               edge,
               childId: edge.target,
-              segments: [{ x1: trunkX, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
+              segments: [{
+                x1: trunkByChildId.get(edge.target) ?? rect.left - density.connectorGutterX,
+                y1: rect.centerY,
+                x2: rect.left,
+                y2: rect.centerY,
+              }],
             })),
           };
         })();

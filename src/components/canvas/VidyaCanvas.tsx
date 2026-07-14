@@ -435,11 +435,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const first = requestAnimationFrame(() => {
         const second = requestAnimationFrame(() => {
           useCanvasStore.getState().applyLayout(detail.mode!, detail.rootId);
-          // List is intentionally allowed to grow beyond the viewport. Keep the
-          // user's pan and zoom stable; the explicit Fit action remains available.
-          if (detail.mode === "matrix") {
-            window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
-          }
+          // List may grow beyond the viewport, but a previously fitted 4% view
+          // must not leave the result microscopic. The handler below only
+          // raises List to its readability floor and keeps the root anchored.
+          window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
         });
         measuredLayoutFramesRef.current = [second];
       });
@@ -476,9 +475,21 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         const root = useCanvasStore.getState().nodes.find((node) => node.id === detail.rootId);
         if (root) {
           const rootRect = getNodeRect(root);
-          const currentZoom = getViewport().zoom;
+          const currentViewport = getViewport();
+          const currentZoom = currentViewport.zoom;
           const minimumZoom = detail.mode === "matrix" ? MIN_READABLE_MATRIX_ZOOM : MIN_READABLE_LIST_ZOOM;
           const zoom = Math.max(minimumZoom, Math.min(MAX_CANVAS_ZOOM, currentZoom));
+          if (detail.mode === "list") {
+            if (Math.abs(zoom - currentZoom) < 0.001) return;
+            const rootScreenX = rootRect.centerX * currentZoom + currentViewport.x;
+            const rootScreenY = rootRect.centerY * currentZoom + currentViewport.y;
+            void setFlowViewport({
+              x: rootScreenX - rootRect.centerX * zoom,
+              y: rootScreenY - rootRect.centerY * zoom,
+              zoom,
+            }, { duration: 350 });
+            return;
+          }
           const canvasBounds = document.querySelector<HTMLElement>(".vidya-canvas-bg")?.getBoundingClientRect();
           const screenX = canvasBounds
             ? Math.max(96, Math.min(detail.mode === "matrix" ? 220 : 280, canvasBounds.width * 0.2))

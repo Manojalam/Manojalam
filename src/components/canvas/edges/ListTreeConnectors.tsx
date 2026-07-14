@@ -39,29 +39,7 @@ function visibleGroup(group: ListConnectorGroup, manualIds: Set<string>): ListCo
   if (manualIds.has(group.parentId)) return null;
   const branches = group.branches.filter((branch) => !manualIds.has(branch.childId));
   if (!branches.length) return null;
-  const junction = group.leads[group.leads.length - 1];
-  if (group.orientation === "horizontal") {
-    const branchXs = branches.map((branch) => branch.segments[0].x1);
-    return {
-      ...group,
-      branches,
-      bus: {
-        ...group.bus,
-        x1: Math.min(junction.x2, ...branchXs),
-        x2: Math.max(junction.x2, ...branchXs),
-      },
-    };
-  }
-  const branchYs = branches.map((branch) => branch.segments[0].y1);
-  return {
-    ...group,
-    branches,
-    bus: {
-      ...group.bus,
-      y1: Math.min(junction.y2, ...branchYs),
-      y2: Math.max(junction.y2, ...branchYs),
-    },
-  };
+  return { ...group, branches };
 }
 
 function selectEdge(edgeId: string, additive: boolean): void {
@@ -164,7 +142,7 @@ export function ListTreeConnectors() {
             };
             return (
               <g key={group.parentId}>
-                <path d={`${group.leads.map(segmentPath).join(" ")} ${segmentPath(group.bus)}`} {...commonStyle} />
+                <path d={group.sharedSegments.map(segmentPath).join(" ")} {...commonStyle} />
                 {group.branches.map(({ edge, segments }) => {
                   const branchData = edgeData(edge);
                   const color = edgeColor(edge);
