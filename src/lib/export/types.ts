@@ -116,6 +116,23 @@ export interface ExportErrorSnapshot {
   stack?: string;
 }
 
+export type ExportAssetWarningKind =
+  | "stylesheet"
+  | "font-face"
+  | "font-resource"
+  | "remote-asset";
+
+export type ExportAssetFallbackAction = "preserved-reference" | "substituted-placeholder";
+
+/** A non-fatal resource issue retained in logs and export results. */
+export interface ExportAssetWarning {
+  kind: ExportAssetWarningKind;
+  message: string;
+  url?: string;
+  element?: string;
+  action?: ExportAssetFallbackAction;
+}
+
 /** Serializable diagnostics suitable for structured console logging. */
 export interface ExportDiagnostics {
   exportId?: string;
@@ -142,6 +159,10 @@ export interface ExportDiagnostics {
   embeddedStyleAssetCount?: number;
   embeddedFontCount?: number;
   assetWarningCount?: number;
+  proxiedRemoteAssetCount?: number;
+  preservedRemoteAssetCount?: number;
+  substitutedRemoteAssetCount?: number;
+  assetWarnings?: ExportAssetWarning[];
   canvasCreated?: boolean;
   canvasContextCreated?: boolean;
   blobCreated?: boolean;

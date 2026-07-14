@@ -2,7 +2,7 @@
 
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import type { Node, NodeProps } from "@xyflow/react";
+import { NodeResizer, type Node, type NodeProps, type ResizeParams } from "@xyflow/react";
 import { ArrowLeft, ArrowRight, Link2, Plus, Rows3, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { SunburstNodeData } from "@/lib/types";
@@ -726,7 +726,7 @@ function unwrapAngle(angle: number, near: number): number {
   return result;
 }
 
-function SunburstNodeComponent({ data, id }: NodeProps) {
+function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const d = data as SunburstNodeData;
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
@@ -751,6 +751,23 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
   const centerDragRef = useRef<CenterDrag | null>(null);
   const editHistoryCaptured = useRef(false);
+
+  const resizeChart = useCallback((params: ResizeParams) => {
+    const nextSize = Math.max(420, Math.min(4096, Math.round(Math.max(params.width, params.height))));
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => node.id === id
+        ? {
+            ...node,
+            data: {
+              ...(node.data ?? {}),
+              chartSize: nextSize,
+              chartSizeManual: true,
+            },
+            style: { ...(node.style ?? {}), width: nextSize, height: nextSize },
+          }
+        : node),
+    }));
+  }, [id]);
 
   useEffect(() => {
     let active = true;
@@ -1145,6 +1162,20 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
 
   return (
     <div className="relative h-full w-full">
+      <NodeResizer
+        minWidth={420}
+        minHeight={420}
+        maxWidth={4096}
+        maxHeight={4096}
+        keepAspectRatio
+        isVisible={selected && d.locked !== true && !activeRelationshipSession}
+        onResizeStart={() => pushHistory()}
+        onResize={(_, params) => resizeChart(params)}
+        onResizeEnd={(_, params) => {
+          resizeChart(params);
+          useCanvasStore.getState().setSaveStatus("unsaved");
+        }}
+      />
       <SunburstBoundsSynchronizer
         nodeId={id}
         chartSize={model.size}
@@ -1173,6 +1204,21 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
           </clipPath>
         </defs>
 
+        <circle
+          cx={model.center}
+          cy={model.center}
+          r={model.outerRadius + 11}
+          fill="transparent"
+          stroke="transparent"
+          strokeWidth="22"
+          pointerEvents="stroke"
+          className={d.locked === true ? "cursor-default" : "cursor-move"}
+          data-export-ignore
+          aria-label="Select and drag the radial chart"
+        >
+          <title>Select and drag the radial chart from its perimeter</title>
+        </circle>
+
         <rect
           x="0"
           y="0"
@@ -1183,6 +1229,19 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
           pointerEvents="none"
           data-export-bounds
         />
+        {selected && !activeRelationshipSession && (
+          <circle
+            cx={model.center}
+            cy={model.center}
+            r={model.outerRadius + 5}
+            fill="none"
+            stroke="#2563eb"
+            strokeWidth="3"
+            strokeDasharray="9 6"
+            pointerEvents="none"
+            data-export-ignore
+          />
+        )}
         {model.segments.map((segment) => {
           const selected = selectedSectorIds.has(segment.id);
           const hovered = hoveredId === segment.id;

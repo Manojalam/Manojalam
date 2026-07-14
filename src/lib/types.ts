@@ -183,7 +183,9 @@ export type RelationshipDiagramDecorativeLevel = "minimal" | "balanced" | "ornat
 export interface RelationshipDiagramScope {
   mode: RelationshipDiagramScopeMode;
   sourceNodeIds: string[];
-  /** The hierarchy root expanded when mode is `selected-branch`. */
+  /** Hierarchy roots expanded when mode is `selected-branch`. */
+  branchRootNodeIds?: string[];
+  /** @deprecated Legacy single-root branch scope. */
   branchRootNodeId?: string;
   /** Optional originating chart, retained so the generation dialog can reopen in context. */
   chartRootNodeId?: string;
@@ -203,6 +205,7 @@ export interface RelationshipDiagramSpec {
   textSize: number;
   density: RelationshipDiagramDensity;
   decorativeLevel: RelationshipDiagramDecorativeLevel;
+  /** CSS color for the diagram canvas; `transparent` preserves the board beneath it. */
   background: string;
   sortSources: RelationshipDiagramSourceSort;
   sortTargets: RelationshipDiagramTargetSort;

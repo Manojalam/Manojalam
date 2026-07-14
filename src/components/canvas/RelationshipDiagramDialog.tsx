@@ -28,6 +28,7 @@ import {
   buildRelationshipGroupsForSpec,
   createRelationshipDiagramSpec,
   expandRelationshipDiagramScope,
+  isTransparentRelationshipDiagramBackground,
   normalizeRelationshipDiagramSpec,
 } from "@/lib/relationship-diagram";
 import type {
@@ -183,6 +184,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
         }),
     [contentNodes, hierarchy, previewSpec, relationshipFilter, relationships, selectedAvailableRelationTypes.length]
   );
+  const transparentBackground = isTransparentRelationshipDiagramBackground(draft.background);
 
   const update = <Key extends keyof RelationshipDiagramSpec>(
     key: Key,
@@ -192,14 +194,20 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
   const setScopeMode = (mode: RelationshipDiagramScopeMode) => {
     setDraft((current) => {
       const allIds = availableSourceNodeIds;
-      const first = allIds[0];
+      const scopeWithoutBranchRoots: RelationshipDiagramSpec["scope"] = {
+        ...current.scope,
+      };
+      delete scopeWithoutBranchRoots.branchRootNodeId;
+      delete scopeWithoutBranchRoots.branchRootNodeIds;
       return {
         ...current,
         scope: {
-          ...current.scope,
+          ...scopeWithoutBranchRoots,
           mode,
           sourceNodeIds: mode === "selected-node" ? allIds.slice(0, 1) : allIds,
-          ...(mode === "selected-branch" && first ? { branchRootNodeId: first } : {}),
+          ...(mode === "selected-branch" && allIds.length
+            ? { branchRootNodeIds: allIds }
+            : {}),
         },
       };
     });
@@ -219,7 +227,11 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
       ...draft,
       relationTypes: relationshipFilter === "all" ? [] : selectedAvailableRelationTypes,
     }, draft.scope);
-    if (!normalized.scope.sourceNodeIds.length && !normalized.scope.branchRootNodeId) {
+    if (
+      !normalized.scope.sourceNodeIds.length
+      && !normalized.scope.branchRootNodeIds?.length
+      && !normalized.scope.branchRootNodeId
+    ) {
       toast.error("Select at least one source section.");
       return;
     }
@@ -492,9 +504,26 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                   </Select>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="relationship-diagram-background" className="text-xs">Background</Label>
-                <div className="flex gap-2">
+              <div className="space-y-2 rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="relationship-diagram-transparent-background" className="text-xs">
+                      Transparent background
+                    </Label>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      Keep the canvas behind the diagram visible.
+                    </p>
+                  </div>
+                  <Switch
+                    id="relationship-diagram-transparent-background"
+                    checked={transparentBackground}
+                    onCheckedChange={(checked) => update(
+                      "background",
+                      checked ? "transparent" : "#ffffff"
+                    )}
+                  />
+                </div>
+                {!transparentBackground && <div className="flex gap-2">
                   <input
                     type="color"
                     value={/^#[0-9a-f]{6}$/i.test(draft.background) ? draft.background : "#ffffff"}
@@ -507,8 +536,9 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                     value={draft.background}
                     onChange={(event) => update("background", event.target.value)}
                     className="h-9 text-xs"
+                    aria-label="Background color value"
                   />
-                </div>
+                </div>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
