@@ -15,6 +15,25 @@ const MAX_REDIRECTS = 4;
 const MAX_URL_LENGTH = 8_192;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+export type ExportProxyAssetKind = "image" | "font";
+
+const FONT_CONTENT_TYPES = new Set([
+  "application/font-sfnt",
+  "application/font-woff",
+  "application/font-woff2",
+  "application/vnd.ms-fontobject",
+  "application/x-font-opentype",
+  "application/x-font-ttf",
+  "application/x-font-woff",
+  "application/x-font-woff2",
+  "font/collection",
+  "font/otf",
+  "font/sfnt",
+  "font/ttf",
+  "font/woff",
+  "font/woff2",
+]);
+
 const BLOCKED_ADDRESSES = new BlockList();
 
 for (const [network, prefix] of [
@@ -60,6 +79,7 @@ export type ExportAssetProxyErrorCode =
   | "TOO_MANY_REDIRECTS"
   | "UPSTREAM_RESPONSE"
   | "NOT_IMAGE"
+  | "NOT_FONT"
   | "ASSET_TOO_LARGE";
 
 export class ExportAssetProxyError extends Error {
@@ -86,6 +106,24 @@ interface UpstreamResponse {
   contentType?: string;
 }
 
+interface DestroyableTransfer {
+  readonly destroyed?: boolean;
+  destroy(): void;
+}
+
+/**
+ * Stops both halves of an upstream transfer without draining an untrusted
+ * response body. Exported so the early-termination contract can be tested
+ * without opening a real network connection.
+ */
+export function destroyExportAssetTransfer(
+  response?: DestroyableTransfer,
+  request?: DestroyableTransfer
+): void {
+  if (response && !response.destroyed) response.destroy();
+  if (request && !request.destroyed) request.destroy();
+}
+
 function normalizedHostname(hostname: string): string {
   const withoutBrackets = hostname.startsWith("[") && hostname.endsWith("]")
     ? hostname.slice(1, -1)
@@ -95,21 +133,21 @@ function normalizedHostname(hostname: string): string {
 
 export function validateExportAssetUrl(rawUrl: string): URL {
   if (!rawUrl || rawUrl.length > MAX_URL_LENGTH) {
-    throw new ExportAssetProxyError("INVALID_URL", 400, "The remote image URL is missing or too long.");
+    throw new ExportAssetProxyError("INVALID_URL", 400, "The remote asset URL is missing or too long.");
   }
 
   let target: URL;
   try {
     target = new URL(rawUrl);
   } catch (cause) {
-    throw new ExportAssetProxyError("INVALID_URL", 400, "The remote image URL is invalid.", cause);
+    throw new ExportAssetProxyError("INVALID_URL", 400, "The remote asset URL is invalid.", cause);
   }
 
   if (target.protocol !== "http:" && target.protocol !== "https:") {
-    throw new ExportAssetProxyError("INVALID_URL", 400, "Only HTTP and HTTPS image URLs are supported.");
+    throw new ExportAssetProxyError("INVALID_URL", 400, "Only HTTP and HTTPS asset URLs are supported.");
   }
   if (target.username || target.password) {
-    throw new ExportAssetProxyError("INVALID_URL", 400, "Remote image URLs cannot contain credentials.");
+    throw new ExportAssetProxyError("INVALID_URL", 400, "Remote asset URLs cannot contain credentials.");
   }
 
   const hostname = normalizedHostname(target.hostname);
@@ -120,11 +158,11 @@ export function validateExportAssetUrl(rawUrl: string): URL {
     || hostname.endsWith(".local")
     || hostname.endsWith(".internal")
   ) {
-    throw new ExportAssetProxyError("BLOCKED_TARGET", 403, "The remote image host is not publicly routable.");
+    throw new ExportAssetProxyError("BLOCKED_TARGET", 403, "The remote asset host is not publicly routable.");
   }
   const literalFamily = isIP(hostname);
   if (literalFamily && addressIsBlocked(hostname, literalFamily)) {
-    throw new ExportAssetProxyError("BLOCKED_TARGET", 403, "The remote image host is a private or reserved address.");
+    throw new ExportAssetProxyError("BLOCKED_TARGET", 403, "The remote asset host is a private or reserved address.");
   }
 
   return target;
@@ -147,15 +185,15 @@ async function resolvePublicAddresses(target: URL): Promise<LookupAddress[]> {
     try {
       addresses = await lookup(hostname, { all: true, verbatim: true });
     } catch (cause) {
-      throw new ExportAssetProxyError("DNS_FAILED", 502, "The remote image host could not be resolved.", cause);
+      throw new ExportAssetProxyError("DNS_FAILED", 502, "The remote asset host could not be resolved.", cause);
     }
   }
 
   if (!addresses.length) {
-    throw new ExportAssetProxyError("DNS_FAILED", 502, "The remote image host did not resolve to an address.");
+    throw new ExportAssetProxyError("DNS_FAILED", 502, "The remote asset host did not resolve to an address.");
   }
   if (addresses.some(({ address, family }) => addressIsBlocked(address, family))) {
-    throw new ExportAssetProxyError("BLOCKED_TARGET", 403, "The remote image host resolves to a private or reserved address.");
+    throw new ExportAssetProxyError("BLOCKED_TARGET", 403, "The remote asset host resolves to a private or reserved address.");
   }
 
   return addresses.sort((left, right) => left.family - right.family);
@@ -185,10 +223,40 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function imageContentType(headers: IncomingHttpHeaders): string | null {
+function normalizedContentType(headers: IncomingHttpHeaders): string {
   const raw = firstHeader(headers["content-type"]);
-  const mime = raw?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-  return mime.startsWith("image/") ? mime : null;
+  return raw?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+export function isAllowedExportAssetContentType(
+  contentType: string,
+  kind: ExportProxyAssetKind
+): boolean {
+  const mime = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (kind === "image") return mime.startsWith("image/");
+  // Some CDNs serve WOFF/WOFF2 as an opaque binary download. It is safe to
+  // pass through the font decoder because the response remains attachment-only,
+  // byte-limited, and never executes in this route.
+  return FONT_CONTENT_TYPES.has(mime) || mime === "application/octet-stream";
+}
+
+export function hasRecognizedFontSignature(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 4) return false;
+  const signature = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  return signature === "wOFF"
+    || signature === "wOF2"
+    || signature === "OTTO"
+    || signature === "true"
+    || signature === "ttcf"
+    || (bytes[0] === 0 && bytes[1] === 1 && bytes[2] === 0 && bytes[3] === 0);
+}
+
+function acceptedContentType(
+  headers: IncomingHttpHeaders,
+  kind: ExportProxyAssetKind
+): string | null {
+  const mime = normalizedContentType(headers);
+  return isAllowedExportAssetContentType(mime, kind) ? mime : null;
 }
 
 function declaredLength(headers: IncomingHttpHeaders): number | null {
@@ -201,11 +269,13 @@ function declaredLength(headers: IncomingHttpHeaders): number | null {
 function requestOnce(
   target: URL,
   addresses: LookupAddress[],
+  kind: ExportProxyAssetKind,
   signal?: AbortSignal
 ): Promise<UpstreamResponse> {
   return new Promise((resolve, reject) => {
     const transport = target.protocol === "https:" ? https : http;
     let settled = false;
+    let activeResponse: http.IncomingMessage | undefined;
     // The abort handler must exist before the request is created, including
     // for an already-aborted signal, so this lifecycle reference starts empty.
     // eslint-disable-next-line prefer-const
@@ -220,13 +290,13 @@ function requestOnce(
     };
     const fail = (error: unknown) => finish(() => reject(error));
     const abortRequest = () => {
-      const error = new ExportAssetProxyError("REQUEST_ABORTED", 408, "The remote image request was canceled.");
-      request?.destroy(error);
+      const error = new ExportAssetProxyError("REQUEST_ABORTED", 408, `The remote ${kind} request was canceled.`);
+      destroyExportAssetTransfer(activeResponse, request);
       fail(error);
     };
     const totalTimeout = setTimeout(() => {
-      const error = new ExportAssetProxyError("REQUEST_TIMEOUT", 504, "The remote image request timed out.");
-      request?.destroy(error);
+      const error = new ExportAssetProxyError("REQUEST_TIMEOUT", 504, `The remote ${kind} request timed out.`);
+      destroyExportAssetTransfer(activeResponse, request);
       fail(error);
     }, REQUEST_TIMEOUT_MS);
 
@@ -239,39 +309,46 @@ function requestOnce(
     request = transport.request(target, {
       method: "GET",
       headers: {
-        accept: "image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml,image/*;q=0.8",
+        accept: kind === "font"
+          ? "font/woff2,font/woff,font/ttf,font/otf,application/font-woff2,application/font-woff,application/octet-stream;q=0.5"
+          : "image/avif,image/webp,image/png,image/jpeg,image/gif,image/svg+xml,image/*;q=0.8",
         "accept-encoding": "identity",
         "user-agent": "Manojalam-export/1.0",
       },
       lookup: pinnedLookup(addresses),
     }, (response) => {
+      activeResponse = response;
       const status = response.statusCode ?? 0;
       const headers = response.headers;
 
       if (REDIRECT_STATUSES.has(status) || status < 200 || status >= 300) {
-        response.resume();
+        destroyExportAssetTransfer(response, request);
         finish(() => resolve({ status, headers }));
         return;
       }
 
-      const contentType = imageContentType(headers);
+      const contentType = acceptedContentType(headers, kind);
       if (!contentType) {
-        response.resume();
-        fail(new ExportAssetProxyError("NOT_IMAGE", 415, "The remote server did not return an image."));
+        destroyExportAssetTransfer(response, request);
+        fail(new ExportAssetProxyError(
+          kind === "font" ? "NOT_FONT" : "NOT_IMAGE",
+          415,
+          `The remote server did not return a ${kind}.`
+        ));
         return;
       }
 
       const contentEncoding = firstHeader(headers["content-encoding"]);
       if (contentEncoding && contentEncoding.toLowerCase() !== "identity") {
-        response.resume();
-        fail(new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, "The remote image server ignored the identity encoding request."));
+        destroyExportAssetTransfer(response, request);
+        fail(new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote ${kind} server ignored the identity encoding request.`));
         return;
       }
 
       const length = declaredLength(headers);
       if (length !== null && length > MAX_RESPONSE_BYTES) {
-        response.resume();
-        fail(new ExportAssetProxyError("ASSET_TOO_LARGE", 413, "The remote image exceeds the 16 MB export limit."));
+        destroyExportAssetTransfer(response, request);
+        fail(new ExportAssetProxyError("ASSET_TOO_LARGE", 413, `The remote ${kind} exceeds the 16 MB export limit.`));
         return;
       }
 
@@ -280,8 +357,8 @@ function requestOnce(
       response.on("data", (chunk: Buffer) => {
         bytesRead += chunk.byteLength;
         if (bytesRead > MAX_RESPONSE_BYTES) {
-          const error = new ExportAssetProxyError("ASSET_TOO_LARGE", 413, "The remote image exceeds the 16 MB export limit.");
-          response.destroy(error);
+          const error = new ExportAssetProxyError("ASSET_TOO_LARGE", 413, `The remote ${kind} exceeds the 16 MB export limit.`);
+          destroyExportAssetTransfer(response, request);
           fail(error);
           return;
         }
@@ -289,20 +366,37 @@ function requestOnce(
       });
       response.on("end", () => {
         const body = Uint8Array.from(Buffer.concat(chunks, bytesRead));
+        if (
+          kind === "font"
+          && contentType === "application/octet-stream"
+          && !hasRecognizedFontSignature(body)
+        ) {
+          fail(new ExportAssetProxyError(
+            "NOT_FONT",
+            415,
+            "The remote server returned an unrecognized binary file instead of a font."
+          ));
+          return;
+        }
         finish(() => resolve({ status, headers, body, contentType }));
       });
       response.on("aborted", () => {
-        fail(new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, "The remote image response ended unexpectedly."));
+        destroyExportAssetTransfer(response, request);
+        fail(new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote ${kind} response ended unexpectedly.`));
       });
-      response.on("error", fail);
+      response.on("error", (cause) => {
+        destroyExportAssetTransfer(response, request);
+        fail(cause);
+      });
     });
 
     request.on("error", (cause) => {
+      destroyExportAssetTransfer(activeResponse, request);
       if (cause instanceof ExportAssetProxyError) {
         fail(cause);
         return;
       }
-      fail(new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, "The remote image request failed.", cause));
+      fail(new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote ${kind} request failed.`, cause));
     });
     request.end();
   });
@@ -310,6 +404,7 @@ function requestOnce(
 
 export async function fetchExportAsset(
   rawUrl: string,
+  kind: ExportProxyAssetKind = "image",
   signal?: AbortSignal
 ): Promise<ProxiedExportAsset> {
   let target = validateExportAssetUrl(rawUrl);
@@ -318,34 +413,34 @@ export async function fetchExportAsset(
     // Resolve and pin the public address for every hop. This prevents both
     // redirects to private services and DNS rebinding between validation and IO.
     const addresses = await resolvePublicAddresses(target);
-    const response = await requestOnce(target, addresses, signal);
+    const response = await requestOnce(target, addresses, kind, signal);
 
     if (REDIRECT_STATUSES.has(response.status)) {
       if (redirectCount === MAX_REDIRECTS) {
-        throw new ExportAssetProxyError("TOO_MANY_REDIRECTS", 502, "The remote image returned too many redirects.");
+        throw new ExportAssetProxyError("TOO_MANY_REDIRECTS", 502, `The remote ${kind} returned too many redirects.`);
       }
       const location = firstHeader(response.headers.location);
       if (!location) {
-        throw new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, "The remote image redirect did not include a destination.");
+        throw new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote ${kind} redirect did not include a destination.`);
       }
       try {
         target = validateExportAssetUrl(new URL(location, target).href);
       } catch (cause) {
         if (cause instanceof ExportAssetProxyError) throw cause;
-        throw new ExportAssetProxyError("INVALID_URL", 400, "The remote image redirect was invalid.", cause);
+        throw new ExportAssetProxyError("INVALID_URL", 400, `The remote ${kind} redirect was invalid.`, cause);
       }
       continue;
     }
 
     if (response.status < 200 || response.status >= 300) {
-      throw new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote image server returned HTTP ${response.status}.`);
+      throw new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote ${kind} server returned HTTP ${response.status}.`);
     }
     if (!response.body?.byteLength || !response.contentType) {
-      throw new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, "The remote image response was empty.");
+      throw new ExportAssetProxyError("UPSTREAM_RESPONSE", 502, `The remote ${kind} response was empty.`);
     }
 
     return { bytes: response.body, contentType: response.contentType };
   }
 
-  throw new ExportAssetProxyError("TOO_MANY_REDIRECTS", 502, "The remote image returned too many redirects.");
+  throw new ExportAssetProxyError("TOO_MANY_REDIRECTS", 502, `The remote ${kind} returned too many redirects.`);
 }

@@ -12,7 +12,9 @@ const USER_MESSAGES: Record<ExportErrorCode, string> = {
   FONT_LOAD_FAILED: "One or more fonts could not be prepared for export.",
   FONT_LOAD_TIMEOUT: "The chart fonts did not finish loading in time.",
   ASSET_EMBED_FAILED: "An image or font could not be embedded in the export.",
-  REMOTE_ASSET_CORS: "A remote image in this chart prevents PNG export. Remove it, embed it, or export as SVG.",
+  REMOTE_IMAGE_CORS: "A remote image in this chart prevents PNG export. Remove it, embed it, or export as SVG.",
+  REMOTE_FONT_CORS: "A remote font could not be embedded. PNG export will use a browser-safe fallback font.",
+  REMOTE_ASSET_CORS: "A remote asset in this chart could not be prepared for PNG export.",
   UNSUPPORTED_ELEMENT: "The chart renderer could not serialize one of the elements.",
   SERIALIZE_FAILED: "The chart renderer could not serialize one of the elements.",
   SVG_DECODE_FAILED: "The serialized chart could not be rendered as an image.",
@@ -88,7 +90,11 @@ export function classifyExportError(stage: ExportStage, error: unknown): ExportE
   ].some((fragment) => combined.includes(fragment));
   if (securityError || corsRelated) {
     if (stage === "initiate-download") return "DOWNLOAD_BLOCKED";
-    if (stage === "prepare-assets") return "REMOTE_ASSET_CORS";
+    if (stage === "prepare-assets") {
+      if (combined.includes("font")) return "REMOTE_FONT_CORS";
+      if (combined.includes("image")) return "REMOTE_IMAGE_CORS";
+      return "REMOTE_ASSET_CORS";
+    }
     return "CANVAS_TAINTED";
   }
 

@@ -10,10 +10,7 @@ import {
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
 } from "@/lib/style-utils";
-import {
-  MAX_AUTOFIT_NODE_HEIGHT,
-  shapeTextContentSize,
-} from "@/lib/canvas/shape-fitting";
+import { shapeTextContentSize } from "@/lib/canvas/shape-fitting";
 import type {
   ShapeNodeData,
   InternalFillRegion,
@@ -972,6 +969,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
+  const setSaveStatus  = useCanvasStore((s) => s.setSaveStatus);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const viewport = useViewport();
 
@@ -1018,10 +1016,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
   const availableTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape");
-  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
-    availableHeight: availableTextSize.height,
-    fitMultiline: !matrixCell && nodeSize.height >= MAX_AUTOFIT_NODE_HEIGHT - 1,
-  });
+  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -1101,6 +1096,14 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         isVisible={selected && !editing && !isDrawing && !matrixCell}
         keepAspectRatio={SQUARE_ASPECT_SHAPES.has(shapeType)}
         lineStyle={{ borderRadius: bRadius }}
+        onResizeStart={(_, params) => {
+          pushHistory();
+          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
+        }}
+        onResizeEnd={(_, params) => {
+          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
+          setSaveStatus("unsaved");
+        }}
       />
 
       <div
@@ -1268,22 +1271,17 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
+                  measurementWidth={dd.userSize ? availableTextSize.width : undefined}
                   measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
                   placeholder="Double-click…"
-                  className={cn(
-                    "[&_.ProseMirror]:text-center",
-                    textPresentation.singleWord && "single-word-fit",
-                    textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
-                  )}
+                  className="[&_.ProseMirror]:text-center"
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
                   onChange={(html) => {
                     captureTextHistory();
                     const plain = html.replace(/<[^>]+>/g, "").trim();
                     updateNodeData(id, { richText: html, text: plain });
                   }}
-                  onContentSizeChange={textPresentation.singleWord
-                    ? undefined
-                    : (size) => fitNodeToContent(id, size)}
+                  onContentSizeChange={(size) => fitNodeToContent(id, size)}
                   onBlur={finishEditing}
                 />
               </div>

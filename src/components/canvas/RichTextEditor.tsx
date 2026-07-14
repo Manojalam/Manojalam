@@ -56,6 +56,52 @@ const COLOR_SWATCHES = [
 
 const SIZE_PRESETS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
+const PASTED_TYPOGRAPHY_PROPERTIES = [
+  "font-size",
+  "font-family",
+  "line-height",
+  "letter-spacing",
+] as const;
+
+/**
+ * Imported rich text should adopt the node's typography. This runs only for a
+ * paste operation, so inline formatting already stored in the document is not
+ * changed. Semantic emphasis, colors, highlights and block structure remain.
+ */
+function sanitizePastedHtml(html: string): string {
+  if (typeof DOMParser === "undefined") return html;
+  // ProseMirror marks HTML copied from this editor with data-pm-slice. Keep
+  // those intentional inline marks; only normalize typography imported from
+  // an external document or website.
+  if (/\bdata-pm-slice\s*=/i.test(html)) return html;
+  const document = new DOMParser().parseFromString(html, "text/html");
+
+  document.body.querySelectorAll<HTMLElement>("*").forEach((element) => {
+    const style = element.style;
+    const fontStyle = style.fontStyle;
+    const fontWeight = style.fontWeight;
+
+    // A font shorthand may carry bold/italic as well as the properties that
+    // must not enter the board. Preserve its emphasis before removing it.
+    style.removeProperty("font");
+    for (const property of PASTED_TYPOGRAPHY_PROPERTIES) {
+      style.removeProperty(property);
+    }
+    if (fontStyle && fontStyle !== "normal") style.fontStyle = fontStyle;
+    if (fontWeight && fontWeight !== "normal" && fontWeight !== "400") {
+      style.fontWeight = fontWeight;
+    }
+
+    if (!style.cssText.trim()) element.removeAttribute("style");
+    if (element.tagName === "FONT") {
+      element.removeAttribute("face");
+      element.removeAttribute("size");
+    }
+  });
+
+  return document.body.innerHTML;
+}
+
 /** Gap in px kept between the selection and the bottom of the floating toolbar. */
 const TOOLBAR_GAP = 10;
 
@@ -111,6 +157,8 @@ interface RichTextEditorProps {
   className?: string;
   /** Changes when inherited typography changes outside TipTap's document. */
   measurementKey?: string;
+  /** Width of the node's real text interior, in canvas pixels. */
+  measurementWidth?: number;
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
   onChange: (html: string) => void;
@@ -125,6 +173,7 @@ export function RichTextEditor({
   placeholder,
   className,
   measurementKey,
+  measurementWidth,
   blockAlign,
   onChange,
   onContentSizeChange,
@@ -149,6 +198,7 @@ export function RichTextEditor({
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
+  const measurementWidthRef = useRef(measurementWidth);
   const contentReportFrameRef = useRef(0);
   const lastReportedContentSizeRef = useRef<{
     width: number;
@@ -163,6 +213,9 @@ export function RichTextEditor({
     return () => cancelAnimationFrame(frame);
   }, []);
   useEffect(() => { onContentSizeChangeRef.current = onContentSizeChange; }, [onContentSizeChange]);
+  useLayoutEffect(() => {
+    measurementWidthRef.current = measurementWidth;
+  }, [measurementWidth]);
 
   const hideToolbar = useCallback(() => {
     setAnchor(null);
@@ -178,7 +231,7 @@ export function RichTextEditor({
     if (!report) return;
     const element = activeEditor?.view.dom as HTMLElement | undefined;
     if (!element) return;
-    const measured = measureRichTextElement(element, { maxWidth: 480 });
+    const measured = measureRichTextElement(element, { maxWidth: measurementWidthRef.current });
     if (measured.height <= 0) return;
 
     const previous = lastReportedContentSizeRef.current;
@@ -205,6 +258,9 @@ export function RichTextEditor({
 
   const editor = useEditor({
     extensions: EXTENSIONS,
+    editorProps: {
+      transformPastedHTML: sanitizePastedHtml,
+    },
     content: initialContent || "",
     editable,
     immediatelyRender: false,
@@ -679,7 +735,7 @@ export function RichTextEditor({
         aria-label={placeholder}
         className={cn(
           "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
-          "[&_.ProseMirror]:leading-snug [&_.ProseMirror]:break-words",
+          "[&_.ProseMirror]:leading-snug",
           "[&_.ProseMirror_p]:m-0",
           !editable && "pointer-events-none select-none",
           className

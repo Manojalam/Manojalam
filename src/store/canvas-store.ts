@@ -53,6 +53,8 @@ import {
   legacyRadiusToPercent,
   MAX_AUTOFIT_NODE_HEIGHT,
   MAX_AUTOFIT_NODE_WIDTH,
+  MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
+  MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
   type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
 
@@ -1012,7 +1014,14 @@ function wrappedLineCount(lines: string[], maxChars: number): number {
   return Math.max(1, count);
 }
 
-function contentFitSize(node: Node, measuredContent?: ContentSize): { width: number; height: number } | null {
+function contentFitSize(
+  node: Node,
+  measuredContent?: ContentSize,
+  limits: { maxWidth: number; maxHeight: number; maxContentWidth?: number } = {
+    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+  }
+): { width: number; height: number } | null {
   if (!node.type || !AUTOFIT_NODE_TYPES.has(node.type)) return null;
   const data = node.data as Record<string, unknown>;
   const lines = nodeTextLines(data);
@@ -1043,9 +1052,10 @@ function contentFitSize(node: Node, measuredContent?: ContentSize): { width: num
     borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : 2,
     minWidth: node.type === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
     minHeight: node.type === "sticky" ? 90 : node.type === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
-    maxContentWidth: node.type === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
-    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
-    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+    maxContentWidth: limits.maxContentWidth
+      ?? (node.type === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH),
+    maxWidth: limits.maxWidth,
+    maxHeight: limits.maxHeight,
   });
   const targetWidth = fitted.width;
   const targetHeight = fitted.height;
@@ -1106,8 +1116,12 @@ function normalizeSunburstChartSizes(
   });
 }
 
-function fitNodeAfterContentChange(node: Node, measuredContent?: ContentSize): Node {
-  const fit = contentFitSize(node, measuredContent);
+function fitNodeAfterContentChange(
+  node: Node,
+  measuredContent?: ContentSize,
+  limits?: { maxWidth: number; maxHeight: number; maxContentWidth?: number }
+): Node {
+  const fit = contentFitSize(node, measuredContent, limits);
   if (!fit) return node;
   const rect = getNodeRect(node);
   const nextSize = { width: fit.width, height: fit.height };
@@ -2343,6 +2357,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       const hierarchy = buildHierarchy(state.nodes, state.edges);
       const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
+      const freeformSizing = !layoutMode || layoutMode === "freeForm";
       if (layoutMode === "matrix") {
         const data = (node.data ?? {}) as Record<string, unknown>;
         const previousIntrinsic = data.matrixIntrinsicSize as Partial<ContentSize> | undefined;
@@ -2378,13 +2393,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...node,
         data: { ...(node.data ?? {}), intrinsicContentSize: normalizedContent },
       };
-      let fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent);
-
-      if (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm") {
-        const provisional = state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate);
-        const collisionPlacement = resolveInsertedNodeCollisions(provisional, nodeId, 32, 24)[nodeId];
-        if (collisionPlacement) fitted = { ...fitted, position: collisionPlacement };
-      }
+      let fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent, freeformSizing
+        ? {
+            maxWidth: MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
+            maxHeight: MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
+            maxContentWidth: MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
+          }
+        : undefined);
 
       const prevStyle = (node.style ?? {}) as Record<string, unknown>;
       const nextStyle = (fitted.style ?? {}) as Record<string, unknown>;
@@ -2441,6 +2456,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       const hierarchy = buildHierarchy(state.nodes, state.edges);
       const layoutMode = findLayoutRoot(nodeId, state.nodes, hierarchy).mode;
+      const freeformSizing = !layoutMode || layoutMode === "freeForm";
       if (layoutMode === "matrix") {
         const data = (node.data ?? {}) as Record<string, unknown>;
         const normalSize = storedNodeSize(data.userSize) ?? getMatrixBaseSize(node);
@@ -2456,14 +2472,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
 
       const current = styleSizeOf(node);
-      let width = Math.max(current.w, Math.min(MAX_AUTOFIT_NODE_WIDTH, Math.ceil(bounds.width)));
-      let height = Math.max(current.h, Math.min(MAX_AUTOFIT_NODE_HEIGHT, Math.ceil(bounds.height)));
+      const maxWidth = freeformSizing ? MAX_FREEFORM_AUTOFIT_NODE_WIDTH : MAX_AUTOFIT_NODE_WIDTH;
+      const maxHeight = freeformSizing ? MAX_FREEFORM_AUTOFIT_NODE_HEIGHT : MAX_AUTOFIT_NODE_HEIGHT;
+      let width = Math.max(current.w, Math.min(maxWidth, Math.ceil(bounds.width)));
+      let height = Math.max(current.h, Math.min(maxHeight, Math.ceil(bounds.height)));
       const shapeType = ((node.data ?? {}) as Record<string, unknown>).shapeType as string | undefined;
       if (shapeType === "circle" || shapeType === "diamond" || shapeType === "star" || shapeType === "flower") {
         const currentSquareSize = Math.max(current.w, current.h);
         const size = Math.max(
           currentSquareSize,
-          Math.min(Math.max(width, height), MAX_AUTOFIT_NODE_HEIGHT, MAX_AUTOFIT_NODE_WIDTH)
+          Math.min(Math.max(width, height), maxHeight, maxWidth)
         );
         width = size;
         height = size;
@@ -2471,12 +2489,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       if (width <= current.w + 1 && height <= current.h + 1) return {};
 
-      let fitted = resetNodeDimensions({ ...node, position: node.position }, width, height);
-      if (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm") {
-        const provisional = state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate);
-        const collisionPlacement = resolveInsertedNodeCollisions(provisional, nodeId, 32, 24)[nodeId];
-        if (collisionPlacement) fitted = { ...fitted, position: collisionPlacement };
-      }
+      const nextSize = { width, height };
+      const topLeft = resizeAroundAnchor(getNodeRect(node), nextSize, "top-left");
+      const fitted = resetNodeDimensions({
+        ...node,
+        position: nodePositionFromTopLeft(node, topLeft, nextSize),
+      }, width, height);
 
       return {
         nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),

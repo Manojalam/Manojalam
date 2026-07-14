@@ -5,6 +5,12 @@ export const MIN_AUTOFIT_HEIGHT = 56;
 export const MAX_AUTOFIT_WIDTH = 560;
 export const MAX_AUTOFIT_NODE_WIDTH = 640;
 export const MAX_AUTOFIT_NODE_HEIGHT = 480;
+/**
+ * Free-form nodes may expand to preserve the user's chosen typography.
+ * Keep this separate from the compact generated-layout ceiling above.
+ */
+export const MAX_FREEFORM_AUTOFIT_NODE_WIDTH = 4096;
+export const MAX_FREEFORM_AUTOFIT_NODE_HEIGHT = 4096;
 
 export interface ContentMeasurement extends Size {
   lineCount?: number;
