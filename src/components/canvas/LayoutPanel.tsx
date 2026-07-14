@@ -101,12 +101,22 @@ export function LayoutPanel() {
       toast.error("Select one parent node first to apply a branch layout.");
       return;
     }
-    applyLayout(mode);
-    // Ask the canvas (inside the ReactFlow provider) to fit the view.
-    setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
-      detail: { nodeIds: branchIds },
-    })), 60);
+    if (mode === "list") {
+      // React Flow owns the authoritative rendered measurements. Ask the canvas
+      // to refresh them, then apply the outline on the following frames.
+      window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+        detail: { mode, rootId: selectedNode.id, nodeIds: branchIds },
+      }));
+    } else {
+      applyLayout(mode, selectedNode.id);
+      setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+        detail: { nodeIds: branchIds, mode, rootId: selectedNode.id },
+      })), 60);
+    }
     toast.success(`Applied ${layoutLabel(mode)} to ${affectedCount} node${affectedCount === 1 ? "" : "s"}.`, {
+      description: mode === "list" && affectedCount > 30
+        ? "The branch is long, so a readable zoom is preserved."
+        : undefined,
       action: {
         label: "Undo",
         onClick: () => useCanvasStore.getState().undo(),

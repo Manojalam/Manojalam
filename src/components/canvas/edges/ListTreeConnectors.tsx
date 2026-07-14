@@ -1,0 +1,220 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { EdgeLabelRenderer, ViewportPortal, type Edge } from "@xyflow/react";
+import { Trash2 } from "lucide-react";
+import type { VidyaEdgeData } from "@/lib/types";
+import {
+  buildListConnectorModel,
+  type ListConnectorGroup,
+  type ListConnectorModel,
+} from "@/lib/layout/list-layout";
+import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
+
+function edgeData(edge: Edge): VidyaEdgeData {
+  return (edge.data ?? {}) as VidyaEdgeData;
+}
+
+function edgeColor(edge: Edge, selected = edge.selected): string {
+  return selected ? "#4f46e5" : edgeData(edge).color ?? "#94a3b8";
+}
+
+function edgeWidth(edge: Edge): number {
+  const configured = edgeData(edge).width;
+  return typeof configured === "number" && Number.isFinite(configured) ? configured : 1.35;
+}
+
+function markerId(edgeId: string): string {
+  return `list-arrow-${edgeId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function segmentPath(segment: { x1: number; y1: number; x2: number; y2: number }): string {
+  return `M ${segment.x1} ${segment.y1} L ${segment.x2} ${segment.y2}`;
+}
+
+function visibleGroup(group: ListConnectorGroup, manualIds: Set<string>): ListConnectorGroup | null {
+  if (manualIds.has(group.parentId)) return null;
+  const branches = group.branches.filter((branch) => !manualIds.has(branch.childId));
+  if (!branches.length) return null;
+  const branchYs = branches.map((branch) => branch.segment.y1);
+  return {
+    ...group,
+    branches,
+    bus: {
+      ...group.bus,
+      y1: Math.min(group.lead.y1, ...branchYs),
+      y2: Math.max(group.lead.y1, ...branchYs),
+    },
+  };
+}
+
+function selectEdge(edgeId: string): void {
+  useCanvasStore.setState((state) => ({
+    nodes: state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
+    edges: state.edges.map((edge) => ({ ...edge, selected: edge.id === edgeId })),
+    selectedNodeIds: [],
+    selectedEdgeIds: [edgeId],
+  }));
+}
+
+/**
+ * Paints List hierarchy edges as shared outline buses. The logical React Flow
+ * edges remain in state for persistence and reconnection, but their normal
+ * edge components intentionally render nothing while represented here.
+ */
+export function ListTreeConnectors() {
+  const nodes = useCanvasStore((state) => state.nodes);
+  const edges = useCanvasStore((state) => state.edges);
+  const deleteEdges = useCanvasStore((state) => state.deleteEdges);
+  const relationshipSelection = useUIStore((state) => state.relationshipSelection);
+  const canvasDragging = useUIStore((state) => state.canvasDragging);
+  const [model, setModel] = useState<ListConnectorModel>(() => buildListConnectorModel(nodes, edges));
+
+  useEffect(() => {
+    // Standard buses stay frozen during drag. The dragged node's connected
+    // edges are removed below and use SmartBranchEdge's live obstacle router.
+    if (canvasDragging) return;
+    const frame = requestAnimationFrame(() => setModel(buildListConnectorModel(nodes, edges)));
+    return () => cancelAnimationFrame(frame);
+  }, [canvasDragging, edges, nodes]);
+
+  const manualIds = useMemo(() => new Set(nodes
+    .filter((node) => (node.data as Record<string, unknown>).listManualOverride === true)
+    .map((node) => node.id)), [nodes]);
+  const groups = useMemo(() => model.groups
+    .map((group) => visibleGroup(group, manualIds))
+    .filter((group): group is ListConnectorGroup => group !== null), [manualIds, model.groups]);
+
+  if (relationshipSelection || !groups.length) return null;
+
+  const branches = groups.flatMap((group) => group.branches);
+  const selectedBranches = branches.filter((branch) => branch.edge.selected);
+
+  return (
+    <>
+      <ViewportPortal>
+        <svg
+          aria-hidden="true"
+          className="absolute left-0 top-0 h-px w-px overflow-visible"
+          style={{ zIndex: 0 }}
+        >
+          <defs>
+            {branches.map(({ edge }) => {
+              const data = edgeData(edge);
+              if (data.arrowEnd === false) return null;
+              const color = edgeColor(edge);
+              return (
+                <marker
+                  key={markerId(edge.id)}
+                  id={markerId(edge.id)}
+                  viewBox="0 0 8 8"
+                  refX="7"
+                  refY="4"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                  markerUnits="strokeWidth"
+                >
+                  <path d="M 0 0 L 8 4 L 0 8 z" fill={color} />
+                </marker>
+              );
+            })}
+          </defs>
+
+          {groups.map((group) => {
+            const baseEdge = group.branches[0].edge;
+            const data = edgeData(baseEdge);
+            const commonStyle = {
+              fill: "none",
+              stroke: edgeColor(baseEdge, false),
+              strokeWidth: edgeWidth(baseEdge),
+              strokeDasharray: data.dashed ? "6 4" : undefined,
+              strokeLinecap: "round" as const,
+              strokeLinejoin: "round" as const,
+              vectorEffect: "non-scaling-stroke" as const,
+            };
+            return (
+              <g key={group.parentId}>
+                <path d={`${segmentPath(group.lead)} ${segmentPath(group.bus)}`} {...commonStyle} />
+                {group.branches.map(({ edge, segment }) => {
+                  const branchData = edgeData(edge);
+                  const color = edgeColor(edge);
+                  const path = segmentPath(segment);
+                  return (
+                    <g key={edge.id}>
+                      <path
+                        d={path}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth={edgeWidth(edge)}
+                        strokeDasharray={branchData.dashed ? "6 4" : undefined}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                        markerEnd={branchData.arrowEnd === false ? undefined : `url(#${markerId(edge.id)})`}
+                      />
+                      <path
+                        d={path}
+                        fill="none"
+                        stroke="transparent"
+                        strokeWidth={18}
+                        pointerEvents="stroke"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          selectEdge(edge.id);
+                        }}
+                      />
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })}
+        </svg>
+      </ViewportPortal>
+
+      <EdgeLabelRenderer>
+        {selectedBranches.map(({ edge, segment }) => (
+          <button
+            key={edge.id}
+            type="button"
+            title="Delete connection"
+            aria-label="Delete connection"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              deleteEdges([edge.id]);
+            }}
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${(segment.x1 + segment.x2) / 2}px,${segment.y1 - 20}px)`,
+              pointerEvents: "all",
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full border bg-background text-destructive shadow-md"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        ))}
+        {branches.map(({ edge, segment }) => {
+          const label = edgeData(edge).label;
+          if (!label) return null;
+          return (
+            <div
+              key={`label-${edge.id}`}
+              style={{
+                position: "absolute",
+                transform: `translate(-50%, -50%) translate(${(segment.x1 + segment.x2) / 2}px,${segment.y1}px)`,
+                pointerEvents: "all",
+              }}
+              className="rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium shadow-sm"
+            >
+              {label}
+            </div>
+          );
+        })}
+      </EdgeLabelRenderer>
+    </>
+  );
+}
