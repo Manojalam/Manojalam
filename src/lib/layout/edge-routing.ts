@@ -1,8 +1,9 @@
 import { inflateRect, type NodeRect } from "./geometry";
-import type { LayoutMode } from "@/lib/types";
+import type { LayoutMode } from "../types";
 
 export type Side = "top" | "right" | "bottom" | "left";
-type Pt = { x: number; y: number };
+export type RoutePoint = { x: number; y: number };
+type Pt = RoutePoint;
 export type Segment = { a: Pt; b: Pt };
 
 export const EDGE_OBSTACLE_PADDING = 24;
@@ -169,12 +170,24 @@ function toRoundedPath(points: Pt[], radius = 8): string {
   return d;
 }
 
-export interface RouteResult { path: string; labelX: number; labelY: number }
+export interface RouteResult {
+  path: string;
+  labelX: number;
+  labelY: number;
+  points: RoutePoint[];
+}
+
+export interface LayoutRouteOptions {
+  sourceFraction?: number;
+  targetFraction?: number;
+  laneOffset?: number;
+  peerSegments?: Segment[];
+}
 
 function makeRoute(points: Pt[]): RouteResult {
-  if (!points.length) return { path: "", labelX: 0, labelY: 0 };
+  if (!points.length) return { path: "", labelX: 0, labelY: 0, points: [] };
   const mid = points[Math.floor(points.length / 2)];
-  return { path: toRoundedPath(points), labelX: mid.x, labelY: mid.y };
+  return { path: toRoundedPath(points), labelX: mid.x, labelY: mid.y, points };
 }
 
 /**
@@ -205,7 +218,7 @@ export function routeOrthogonalEdge(
   }
 
   const mid = best[Math.floor(best.length / 2)];
-  return { path: toRoundedPath(best), labelX: mid.x, labelY: mid.y };
+  return { path: toRoundedPath(best), labelX: mid.x, labelY: mid.y, points: best };
 }
 
 function sidePoint(rect: NodeRect, side: Side, fraction: number): Pt {
@@ -244,25 +257,28 @@ export function routeRectilinearEdge(
   sourceRect: NodeRect,
   targetRect: NodeRect,
   obstacles: NodeRect[],
-  peerSegments: Segment[] = []
+  options: LayoutRouteOptions = {}
 ): RouteResult {
   const inflated = obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING));
-  const fractions = [0.25, 0.5, 0.75];
+  const sourcePreferred = Math.max(0.12, Math.min(0.88, options.sourceFraction ?? 0.5));
+  const targetPreferred = Math.max(0.12, Math.min(0.88, options.targetFraction ?? 0.5));
+  const sourceFractions = [...new Set([sourcePreferred, 0.5, 0.25, 0.75])];
+  const targetFractions = [...new Set([targetPreferred, 0.5, 0.25, 0.75])];
   let best: Pt[] | null = null;
   let bestScore = Infinity;
 
   for (const sides of preferredSides(sourceRect, targetRect)) {
-    for (const sf of fractions) {
-      for (const tf of fractions) {
+    for (const sf of sourceFractions) {
+      for (const tf of targetFractions) {
         const source = sidePoint(sourceRect, sides.sourceSide, sf);
         const target = sidePoint(targetRect, sides.targetSide, tf);
         for (const candidate of buildCandidates(source, target, sides.sourceSide, sides.targetSide, inflated)) {
           const score =
             pathIntersections(candidate, inflated) * 100000 +
-            edgeCrossings(candidate, peerSegments) * 5000 +
+            edgeCrossings(candidate, options.peerSegments ?? []) * 5000 +
             pathLength(candidate) +
-            Math.abs(sf - 0.5) * 80 +
-            Math.abs(tf - 0.5) * 80 +
+            Math.abs(sf - sourcePreferred) * 120 +
+            Math.abs(tf - targetPreferred) * 120 +
             (candidate.length - 2) * 40;
           if (score < bestScore) {
             bestScore = score;
@@ -277,9 +293,14 @@ export function routeRectilinearEdge(
   return makeRoute(points);
 }
 
-function routeListEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
+function routeListEdge(
+  sourceRect: NodeRect,
+  targetRect: NodeRect,
+  obstacles: NodeRect[],
+  options: LayoutRouteOptions
+): RouteResult {
   if (targetRect.left <= sourceRect.right) {
-    return routeRectilinearEdge(sourceRect, targetRect, obstacles);
+    return routeRectilinearEdge(sourceRect, targetRect, obstacles, options);
   }
 
   const source = sidePoint(sourceRect, "right", 0.5);
@@ -287,39 +308,53 @@ function routeListEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: No
   const laneX = source.x + Math.max(24, Math.min(40, (target.x - source.x) * 0.45));
   const points = [source, { x: laneX, y: source.y }, { x: laneX, y: target.y }, target];
   return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
-    ? routeRectilinearEdge(sourceRect, targetRect, obstacles)
+    ? routeRectilinearEdge(sourceRect, targetRect, obstacles, options)
     : makeRoute(points);
 }
 
-function routeHorizontalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
+function routeHorizontalEdge(
+  sourceRect: NodeRect,
+  targetRect: NodeRect,
+  obstacles: NodeRect[],
+  options: LayoutRouteOptions
+): RouteResult {
   const sourceSide: Side = targetRect.x >= sourceRect.x ? "right" : "left";
   const targetSide: Side = sourceSide === "right" ? "left" : "right";
   const targetCenterY = targetRect.y + targetRect.height / 2;
   const sourceCenterY = sourceRect.y + sourceRect.height / 2;
-  const sourceFraction = Math.max(0.2, Math.min(0.8, (targetCenterY - sourceRect.y) / Math.max(1, sourceRect.height)));
-  const targetFraction = Math.max(0.2, Math.min(0.8, (sourceCenterY - targetRect.y) / Math.max(1, targetRect.height)));
+  const sourceFraction = Math.max(0.12, Math.min(0.88,
+    options.sourceFraction ?? (targetCenterY - sourceRect.y) / Math.max(1, sourceRect.height)));
+  const targetFraction = Math.max(0.12, Math.min(0.88,
+    options.targetFraction ?? (sourceCenterY - targetRect.y) / Math.max(1, targetRect.height)));
   const source = sidePoint(sourceRect, sourceSide, sourceFraction);
   const target = sidePoint(targetRect, targetSide, targetFraction);
-  const midX = (source.x + target.x) / 2;
+  const midX = (source.x + target.x) / 2 + (options.laneOffset ?? 0);
   const points = [source, { x: midX, y: source.y }, { x: midX, y: target.y }, target];
   return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
-    ? routeRectilinearEdge(sourceRect, targetRect, obstacles)
+    ? routeRectilinearEdge(sourceRect, targetRect, obstacles, options)
     : makeRoute(points);
 }
 
-function routeVerticalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
+function routeVerticalEdge(
+  sourceRect: NodeRect,
+  targetRect: NodeRect,
+  obstacles: NodeRect[],
+  options: LayoutRouteOptions
+): RouteResult {
   const sourceSide: Side = targetRect.y >= sourceRect.y ? "bottom" : "top";
   const targetSide: Side = sourceSide === "bottom" ? "top" : "bottom";
   const targetCenterX = targetRect.x + targetRect.width / 2;
   const sourceCenterX = sourceRect.x + sourceRect.width / 2;
-  const sourceFraction = Math.max(0.2, Math.min(0.8, (targetCenterX - sourceRect.x) / Math.max(1, sourceRect.width)));
-  const targetFraction = Math.max(0.2, Math.min(0.8, (sourceCenterX - targetRect.x) / Math.max(1, targetRect.width)));
+  const sourceFraction = Math.max(0.12, Math.min(0.88,
+    options.sourceFraction ?? (targetCenterX - sourceRect.x) / Math.max(1, sourceRect.width)));
+  const targetFraction = Math.max(0.12, Math.min(0.88,
+    options.targetFraction ?? (sourceCenterX - targetRect.x) / Math.max(1, targetRect.width)));
   const source = sidePoint(sourceRect, sourceSide, sourceFraction);
   const target = sidePoint(targetRect, targetSide, targetFraction);
-  const midY = (source.y + target.y) / 2;
+  const midY = (source.y + target.y) / 2 + (options.laneOffset ?? 0);
   const points = [source, { x: source.x, y: midY }, { x: target.x, y: midY }, target];
   return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
-    ? routeRectilinearEdge(sourceRect, targetRect, obstacles)
+    ? routeRectilinearEdge(sourceRect, targetRect, obstacles, options)
     : makeRoute(points);
 }
 
@@ -327,25 +362,26 @@ export function routeLayoutEdge(
   sourceRect: NodeRect,
   targetRect: NodeRect,
   layoutMode: LayoutMode | undefined,
-  obstacles: NodeRect[]
+  obstacles: NodeRect[],
+  options: LayoutRouteOptions = {}
 ): RouteResult {
   switch (layoutMode) {
     case "list":
-      return routeListEdge(sourceRect, targetRect, obstacles);
+      return routeListEdge(sourceRect, targetRect, obstacles, options);
     case "horizontal":
     case "linear":
-      return routeHorizontalEdge(sourceRect, targetRect, obstacles);
+      return routeHorizontalEdge(sourceRect, targetRect, obstacles, options);
     case "vertical":
     case "topDown":
-      return routeVerticalEdge(sourceRect, targetRect, obstacles);
+      return routeVerticalEdge(sourceRect, targetRect, obstacles, options);
     case "matrix":
       // Structural Matrix edges are hidden by edge metadata. Any remaining
       // edge is a useful cross-link and should route around the table cells.
-      return routeRectilinearEdge(sourceRect, targetRect, obstacles);
+      return routeRectilinearEdge(sourceRect, targetRect, obstacles, options);
     case "radial":
     case "fromParentFreeForm":
     case "freeForm":
     default:
-      return routeRectilinearEdge(sourceRect, targetRect, obstacles);
+      return routeRectilinearEdge(sourceRect, targetRect, obstacles, options);
   }
 }
