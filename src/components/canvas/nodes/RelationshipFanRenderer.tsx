@@ -47,6 +47,7 @@ export function RelationshipFanRenderer({
   borderWidth = 1.25,
 }: RelationshipFanRendererProps) {
   if (!fans.length) return null;
+  const visibleFans = fans.filter((fan) => fan.visible);
 
   return (
     <g
@@ -55,62 +56,113 @@ export function RelationshipFanRenderer({
       pointerEvents="none"
       opacity={opacity}
     >
-      {fans.map((fan) => (
-        <g
-          key={fan.id}
-          data-relationship-fan={fan.id}
-          data-source-node-id={fan.sourceNodeId}
-          data-relation-type={fan.relationType}
-          role="group"
-          aria-label={`${fan.count} related ${fan.relationType} nodes`}
-        >
-          {layer !== "badges" && fan.visible && fan.attachmentPath && (
-            <path
-              d={fan.attachmentPath}
-              fill={fan.attachmentFill}
-              stroke={fan.attachmentStroke}
-              strokeWidth={borderWidth}
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-
-          {layer !== "badges" && fan.visible && fan.cells.map((cell) => (
-            <g key={cell.targetNodeId} data-relationship-target-id={cell.targetNodeId}>
-              <path
-                d={cell.path}
-                fill={cell.fill}
-                stroke={cell.stroke}
-                strokeWidth={borderWidth}
-                vectorEffect="non-scaling-stroke"
-              />
-              <title>{cell.label}</title>
-              {!cell.labelBox.hidden && (
-                <text
-                  x={cell.labelBox.x}
-                  y={cell.labelBox.y}
-                  transform={`rotate(${cell.labelBox.rotation} ${cell.labelBox.x} ${cell.labelBox.y})`}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fill="#0f172a"
-                  fontFamily={containsDevanagari(cell.label) ? devanagariFontFamily : fontFamily}
-                  fontSize={cell.labelBox.fontSize}
-                  fontWeight={fontWeight}
-                  style={{
-                    fontKerning: "normal",
-                    fontSynthesis: "style weight",
-                    fontVariantLigatures: "common-ligatures contextual",
-                    letterSpacing: "normal",
-                    textRendering: "geometricPrecision",
-                  }}
-                >
-                  {cell.label}
-                </text>
-              )}
+      {layer !== "badges" && (
+        <>
+          {/* Every connector is painted first, so it can never cover a panel or label. */}
+          <g data-relationship-connector-layer>
+            <g data-relationship-connector-halo-layer aria-hidden="true">
+              {visibleFans.map((fan) => fan.attachmentPath && (
+                <path
+                  key={fan.id}
+                  data-relationship-connector-halo={fan.id}
+                  d={fan.attachmentPath}
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeOpacity={0.9}
+                  strokeWidth={Math.max(4, borderWidth + 3.5)}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
             </g>
-          ))}
+            <g data-relationship-connector-stroke-layer aria-hidden="true">
+              {visibleFans.map((fan) => fan.attachmentPath && (
+                <path
+                  key={fan.id}
+                  data-relationship-connector={fan.id}
+                  data-source-node-id={fan.sourceNodeId}
+                  data-relation-type={fan.relationType}
+                  d={fan.attachmentPath}
+                  fill="none"
+                  stroke={fan.attachmentStroke}
+                  strokeOpacity={0.92}
+                  strokeWidth={Math.max(1.5, borderWidth + 0.5)}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </g>
+          </g>
 
-          {layer !== "panels" && fan.countBadge && (
-            <g data-relationship-count-badge={fan.sourceNodeId}>
+          <g data-relationship-panel-layer>
+            {visibleFans.map((fan) => (
+              <g
+                key={fan.id}
+                data-relationship-fan={fan.id}
+                data-source-node-id={fan.sourceNodeId}
+                data-relation-type={fan.relationType}
+                role="group"
+                aria-label={`${fan.count} related ${fan.relationType} nodes`}
+              >
+                {fan.cells.map((cell) => (
+                  <g key={cell.targetNodeId} data-relationship-target-id={cell.targetNodeId}>
+                    <path
+                      d={cell.path}
+                      fill={cell.fill}
+                      stroke={cell.stroke}
+                      strokeWidth={borderWidth}
+                      vectorEffect="non-scaling-stroke"
+                    >
+                      <title>{cell.label}</title>
+                    </path>
+                  </g>
+                ))}
+              </g>
+            ))}
+          </g>
+
+          <g data-relationship-label-layer>
+            {visibleFans.map((fan) => (
+              <g key={fan.id} data-relationship-fan-labels={fan.id}>
+                {fan.cells.map((cell) => !cell.labelBox.hidden && (
+                  <text
+                    key={cell.targetNodeId}
+                    x={cell.labelBox.x}
+                    y={cell.labelBox.y}
+                    transform={`rotate(${cell.labelBox.rotation} ${cell.labelBox.x} ${cell.labelBox.y})`}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="#0f172a"
+                    fontFamily={containsDevanagari(cell.label) ? devanagariFontFamily : fontFamily}
+                    fontSize={cell.labelBox.fontSize}
+                    fontWeight={fontWeight}
+                    style={{
+                      fontKerning: "normal",
+                      fontSynthesis: "style weight",
+                      fontVariantLigatures: "common-ligatures contextual",
+                      letterSpacing: "normal",
+                      textRendering: "geometricPrecision",
+                    }}
+                  >
+                    {cell.label}
+                  </text>
+                ))}
+              </g>
+            ))}
+          </g>
+        </>
+      )}
+
+      {layer !== "panels" && (
+        <g data-relationship-badge-layer>
+          {fans.map((fan) => fan.countBadge && (
+            <g
+              key={fan.id}
+              data-relationship-count-badge={fan.sourceNodeId}
+              data-relation-type={fan.relationType}
+            >
               <circle
                 cx={fan.countBadge.x}
                 cy={fan.countBadge.y}
@@ -134,9 +186,9 @@ export function RelationshipFanRenderer({
                 {fan.countBadge.count}
               </text>
             </g>
-          )}
+          ))}
         </g>
-      ))}
+      )}
     </g>
   );
 }

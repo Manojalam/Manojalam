@@ -1012,7 +1012,12 @@ function SunburstNodeComponent({ data, id }: NodeProps) {
     chartBounds: { minX: 0, minY: 0, maxX: model.size, maxY: model.size },
     fanFontSize: RELATIONSHIP_FAN_FONT_SIZE,
     minimumFanFontSize: 11,
-    fanThickness: 44,
+    fanThickness: 42,
+    attachmentGap: 14,
+    angularCollisionGap: 0.75,
+    cellPaddingX: 6,
+    cellPaddingY: 5,
+    minimumCellArcWidth: 28,
   });
 
   const beginRelationshipSelection = (relationType = DEFAULT_RELATIONSHIP_TYPE) => {
