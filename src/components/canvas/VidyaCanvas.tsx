@@ -920,15 +920,18 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
           break;
         case "sanskrit":
           newNode = { id, type: "sanskrit", position,
-            data: { title: "Sanskrit Card", devanagari: "", iast: "", displayMode: "both-stacked", tags: [] } };
+            data: { title: "Sanskrit Card", devanagari: "", iast: "", displayMode: "both-stacked", tags: [] },
+            style: { width: 320 } };
           break;
         case "shloka":
           newNode = { id, type: "shloka", position,
-            data: { title: "Śloka", devanagari: "", iast: "", memorizationStatus: "new", tags: [] } };
+            data: { title: "Śloka", devanagari: "", iast: "", memorizationStatus: "new", tags: [] },
+            style: { width: 360 } };
           break;
         case "grammar":
           newNode = { id, type: "grammar", position,
-            data: { topic: "Grammar Rule", category: "sandhi", rule: "", examples: [], tags: ["सन्धिः"] } };
+            data: { topic: "Grammar Rule", category: "sandhi", rule: "", examples: [], tags: ["सन्धिः"] },
+            style: { width: 300 } };
           break;
       }
 

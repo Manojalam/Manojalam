@@ -1041,7 +1041,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
   const beginRequestedEdit = useCallback(() => {
     if (!matrixCell && !isDrawing) setEditing(true);
-  }, [isDrawing, matrixCell]);
+  }, [isDrawing, matrixCell, setEditing]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -1051,7 +1051,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     }
     editHistoryCaptured.current = false;
     setEditing(false);
-  }, [pushHistory]);
+  }, [pushHistory, setEditing]);
 
   useEffect(() => {
     if (!selected && editing) {
@@ -1098,7 +1098,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       : updateRadialSegmentText(chart, activeChartTextEdit.ringIndex, activeChartTextEdit.segmentIndex, value);
     setChartTextEdit({ ...activeChartTextEdit, value } as ChartTextEdit);
     updateNodeData(id, { radialChart: nextChart });
-  }, [activeChartTextEdit, id, radialChart, updateNodeData]);
+  }, [activeChartTextEdit, id, radialChart, setChartTextEdit, updateNodeData]);
 
   return (
     <>
@@ -1281,7 +1281,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
-                  measurementKey={`${textMeasurementKey(dd)}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
+                  measurementKey={textMeasurementKey(dd)}
                   measurementWidth={availableTextSize.width}
                   measurementFontSize={textPresentation.authoredFontSize}
                   contentScale={textPresentation.scale}

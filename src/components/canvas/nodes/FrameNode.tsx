@@ -5,14 +5,22 @@ import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import type { FrameNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { useNodeManualResize } from "./useNodeManualResize";
 
 function FrameNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as FrameNodeData;
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
+  const resizeControls = useNodeManualResize(id);
 
   return (
     <>
-      <NodeResizer minWidth={200} minHeight={150} isVisible={selected} />
+      <NodeResizer
+        minWidth={200}
+        minHeight={150}
+        isVisible={selected}
+        onResizeStart={resizeControls.onResizeStart}
+        onResizeEnd={resizeControls.onResizeEnd}
+      />
       <div
         className={cn(
           "relative h-full w-full border-2",

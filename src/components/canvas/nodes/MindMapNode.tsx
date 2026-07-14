@@ -79,9 +79,6 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
 
   const startEditing = () => {
     if (d.locked || isDrawing) return;
-    useCanvasStore.setState((s) => ({
-      nodes: s.nodes.map((n) => n.id === id ? { ...n, style: { ...(n.style ?? {}), height: undefined } } : n),
-    }));
     editHistoryCaptured.current = false;
     editDirty.current = false;
     setEditing(true);
@@ -172,7 +169,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
               textPresentation.singleWord && "single-word-fit",
               textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
             )}
-            measurementKey={`${textMeasurementKey(dd)}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
+            measurementKey={textMeasurementKey(dd)}
             measurementWidth={availableTextSize.width}
             measurementFontSize={textPresentation.authoredFontSize}
             contentScale={textPresentation.scale}

@@ -69,6 +69,7 @@ import {
   resolveHydratedSunburstGeometry,
   viewportsEqual,
 } from "@/lib/canvas/hydration";
+import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -847,6 +848,20 @@ function migrateNodes(nodes: Node[]): Node[] {
         data: { ...data, locked },
       };
     }
+    const defaultCardWidth = n.type === "sanskrit"
+      ? 320
+      : n.type === "shloka"
+        ? 360
+        : n.type === "grammar"
+          ? 300
+          : null;
+    if (defaultCardWidth) {
+      return {
+        ...n,
+        data,
+        style: { ...(n.style ?? {}), width: n.style?.width ?? defaultCardWidth },
+      };
+    }
     if (n.type !== "mindmap") return { ...n, data };
     return {
       ...n,
@@ -1495,7 +1510,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setBoard: (board) => {
     cancelPendingLayoutReflows();
-    const migrated = migrateNodes(board.content.nodes);
+    const persistedNodes = normalizePersistedNodes(board.content.nodes);
+    const migrated = migrateNodes(persistedNodes);
     // Infer + persist parentId from directed edges (for old boards).
     const hierarchy = buildHierarchy(migrated, board.content.edges);
     const parentedNodes = migrated.map((n) => {

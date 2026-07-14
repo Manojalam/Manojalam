@@ -202,7 +202,30 @@ test("smart sizing uses hysteresis while editing and shrinks on explicit fit", (
   assert.ok(explicitFit.height < activeEdit.height);
 });
 
-test("fixed-box rich text scales down as one unit without enlarging authored text", () => {
+test("passive hydration measurements preserve the saved node rectangle", () => {
+  const savedSize = { width: 420, height: 180 };
+  const muchSmallerContent = computeAutoSize({
+    mode: "smart",
+    currentSize: savedSize,
+    content: { width: 60, naturalWidth: 60, height: 22, lineCount: 1 },
+    nodeType: "shape",
+    shapeType: "rectangle",
+    reason: "layout",
+  });
+  const overflowingContent = computeAutoSize({
+    mode: "smart",
+    currentSize: savedSize,
+    content: { width: 900, naturalWidth: 1_200, height: 700, lineCount: 20 },
+    nodeType: "shape",
+    shapeType: "rectangle",
+    reason: "layout",
+  });
+
+  assert.deepEqual(muchSmallerContent, { ...savedSize, changed: false });
+  assert.deepEqual(overflowingContent, { ...savedSize, changed: false });
+});
+
+test("fixed-box rich text only scales down and restores authored size when space returns", () => {
   const content = { width: 300, naturalWidth: 300, height: 180, lineCount: 6 };
   const constrained = fittedContentScale(content, { width: 150, height: 90 });
   const roomy = fittedContentScale(content, { width: 500, height: 300 });

@@ -171,6 +171,9 @@ export function RichTextEditor({
   const contentReportFrameRef = useRef(0);
   const lastReportedContentSizeRef = useRef<ContentMeasurement | null>(null);
   const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const previousEditableRef = useRef(editable);
+  const previousMeasurementKeyRef = useRef(measurementKey);
+  const hasMeasuredPresentationRef = useRef(false);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -364,6 +367,8 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (!editor) return;
+    const wasEditable = previousEditableRef.current;
+    previousEditableRef.current = editable;
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
     if (editable) {
       requestAnimationFrame(() => {
@@ -372,7 +377,9 @@ export function RichTextEditor({
       });
     } else {
       requestAnimationFrame(() => {
-        reportContentSize(editor, "blur");
+        // The first non-editable render is board hydration, not a user blur.
+        // Only a true editable -> non-editable transition may settle/shrink.
+        reportContentSize(editor, wasEditable ? "blur" : "layout");
         hideToolbar();
       });
     }
@@ -408,15 +415,20 @@ export function RichTextEditor({
 
   useLayoutEffect(() => {
     if (!editor) return;
-    const frame = requestAnimationFrame(() => reportContentSize(editor, "format"));
+    const measurementKeyChanged = hasMeasuredPresentationRef.current
+      && previousMeasurementKeyRef.current !== measurementKey;
+    previousMeasurementKeyRef.current = measurementKey;
+    hasMeasuredPresentationRef.current = true;
+    const reason: ContentResizeReason = measurementKeyChanged ? "format" : "layout";
+    const frame = requestAnimationFrame(() => reportContentSize(editor, reason));
     return () => cancelAnimationFrame(frame);
-  }, [editor, editable, measurementKey, reportContentSize]);
+  }, [editor, editable, measurementKey, measurementWidth, reportContentSize]);
 
   useEffect(() => {
     if (!editor) return;
     let active = true;
     void textMeasurementFontsReady().then(() => {
-      if (active) scheduleContentReport(editor, "format");
+      if (active) scheduleContentReport(editor, "layout");
     });
     return () => { active = false; };
   }, [editor, scheduleContentReport]);
