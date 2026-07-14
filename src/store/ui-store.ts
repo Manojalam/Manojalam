@@ -20,6 +20,14 @@ export interface RelationshipDiagramRequest {
   diagramNodeId?: string;
 }
 
+export interface BoardExportRequest {
+  scope?: "board" | "selection" | "frame" | "node";
+  nodeIds?: string[];
+  frameId?: string;
+  format?: "png" | "svg";
+  title?: string;
+}
+
 interface UIState {
   activeTool: CanvasTool;
   setActiveTool: (tool: CanvasTool) => void;
@@ -35,6 +43,9 @@ interface UIState {
   relationshipDiagramRequest: RelationshipDiagramRequest | null;
   openRelationshipDiagram: (request: RelationshipDiagramRequest) => void;
   closeRelationshipDiagram: () => void;
+  boardExportRequest: BoardExportRequest | null;
+  openBoardExport: (request?: BoardExportRequest) => void;
+  closeBoardExport: () => void;
   activeTextSelection: ActiveTextSelection | null;
   setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
   shapeVariant: ShapeVariant;
@@ -117,6 +128,16 @@ export const useUIStore = create<UIState>((set, get) => ({
     },
   }),
   closeRelationshipDiagram: () => set({ relationshipDiagramRequest: null }),
+  boardExportRequest: null,
+  openBoardExport: (request = {}) => set({
+    boardExportRequest: {
+      ...request,
+      nodeIds: request.nodeIds
+        ? Array.from(new Set(request.nodeIds))
+        : undefined,
+    },
+  }),
+  closeBoardExport: () => set({ boardExportRequest: null }),
   activeTextSelection: null,
   setActiveTextSelection: (selection) => set({ activeTextSelection: selection }),
   shapeVariant: "rounded",

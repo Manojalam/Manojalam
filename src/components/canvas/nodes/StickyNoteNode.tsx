@@ -115,6 +115,7 @@ function StickyNoteNodeComponent({ id, data, selected }: NodeProps) {
         {/* Add connected child */}
         {!isDrawing && (
           <button
+            data-export-ignore
             className="absolute -right-3.5 -bottom-3.5 z-20 hidden h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 group-hover:flex"
             style={{ backgroundColor: border }}
             onClick={(e) => { e.stopPropagation(); createChildNode(id); }}

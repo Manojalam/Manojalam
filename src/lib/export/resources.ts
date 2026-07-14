@@ -1,0 +1,557 @@
+import { ExportError } from "./errors";
+
+const DEFAULT_FONT_TIMEOUT_MS = 15_000;
+const URL_FUNCTION_PATTERN = /url\(\s*(?:(['"])(.*?)\1|([^)]*?))\s*\)/gi;
+
+export type ExportAssetKind = "image" | "style" | "font";
+
+export interface ExportAssetWarning {
+  kind: "stylesheet" | "font-face" | "font-resource";
+  message: string;
+  url?: string;
+}
+
+export interface ExportAssetReport {
+  embeddedImageCount: number;
+  embeddedStyleAssetCount: number;
+  embeddedFontCount: number;
+  fontFaceCss: string;
+  warnings: ExportAssetWarning[];
+}
+
+export interface ExportAssetOptions {
+  baseUrl?: string;
+  signal?: AbortSignal;
+  fontTimeoutMs?: number;
+  /** Fail instead of falling back when an accessible font resource cannot be embedded. */
+  strictFontEmbedding?: boolean;
+  /** Keep unresolved remote URLs in vector SVG exports instead of failing raster-style. */
+  preserveRemoteReferences?: boolean;
+}
+
+interface FontFaceSource {
+  cssText: string;
+  family: string;
+  baseUrl: string;
+  stylesheetUrl?: string;
+}
+
+interface AssetContext {
+  baseUrl: string;
+  signal?: AbortSignal;
+  preserveRemoteReferences: boolean;
+  cache: Map<string, Promise<string>>;
+  embeddedByKind: Record<ExportAssetKind, Set<string>>;
+}
+
+function canPreserveRemoteReference(cause: unknown, context: AssetContext): boolean {
+  return context.preserveRemoteReferences
+    && cause instanceof ExportError
+    && cause.code === "REMOTE_ASSET_CORS";
+}
+
+function abortIfRequested(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throw new DOMException("The export was canceled.", "AbortError");
+}
+
+function elementDescription(element: Element): string {
+  const id = element.id ? `#${element.id}` : "";
+  const classes = Array.from(element.classList).slice(0, 4);
+  const className = classes.length ? `.${classes.join(".")}` : "";
+  const dataId = element.getAttribute("data-id");
+  return `${element.tagName.toLowerCase()}${id}${className}${dataId ? `[data-id=\"${dataId}\"]` : ""}`;
+}
+
+function resolvedAssetUrl(value: string, baseUrl: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("data:")) return null;
+  try {
+    return new URL(trimmed, baseUrl).href;
+  } catch (cause) {
+    throw new ExportError({
+      stage: "prepare-assets",
+      code: "ASSET_EMBED_FAILED",
+      cause,
+      message: `The export contains an invalid asset URL: ${trimmed}`,
+      diagnostics: { offendingUrl: trimmed, renderer: "dom-foreign-object" },
+    });
+  }
+}
+
+function isRemoteUrl(url: string): boolean {
+  try {
+    return new URL(url).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("The fetched asset could not be converted to a data URL."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("The fetched asset could not be read."));
+    reader.onabort = () => reject(new DOMException("The export was canceled.", "AbortError"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function assetFetchError(url: string, cause: unknown): ExportError {
+  if (isAbortError(cause)) {
+    return new ExportError({
+      stage: "prepare-assets",
+      code: "ABORTED",
+      cause,
+      diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+    });
+  }
+  // With mode:"cors", a browser CORS rejection is deliberately exposed as a
+  // TypeError. HTTP failures remain ordinary embedding failures below.
+  const remote = isRemoteUrl(url) && cause instanceof TypeError;
+  return new ExportError({
+    stage: "prepare-assets",
+    code: remote ? "REMOTE_ASSET_CORS" : "ASSET_EMBED_FAILED",
+    cause,
+    message: remote
+      ? `A cross-origin asset could not be embedded: ${url}`
+      : `An export asset could not be embedded: ${url}`,
+    diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+  });
+}
+
+async function fetchDataUrl(url: string, context: AssetContext): Promise<string> {
+  abortIfRequested(context.signal);
+  const cached = context.cache.get(url);
+  if (cached) return cached;
+
+  const pending = (async () => {
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:", "blob:"].includes(parsed.protocol)) {
+        throw new Error(`Unsupported asset protocol: ${parsed.protocol}`);
+      }
+      const sameOrigin = parsed.protocol === "blob:" || parsed.origin === window.location.origin;
+      const response = await fetch(url, {
+        mode: "cors",
+        credentials: sameOrigin ? "same-origin" : "omit",
+        signal: context.signal,
+      });
+      if (response.type === "opaque") {
+        throw new ExportError({
+          stage: "prepare-assets",
+          code: "REMOTE_ASSET_CORS",
+          message: `The browser returned an opaque response for export asset: ${url}`,
+          diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+        });
+      }
+      if (!response.ok) {
+        throw new ExportError({
+          stage: "prepare-assets",
+          code: "ASSET_EMBED_FAILED",
+          message: `Export asset request failed with HTTP ${response.status}: ${url}`,
+          diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+        });
+      }
+      let blob = await response.blob();
+      if (!blob.type) {
+        blob = new Blob([await blob.arrayBuffer()], { type: "application/octet-stream" });
+      }
+      abortIfRequested(context.signal);
+      return await blobToDataUrl(blob);
+    } catch (cause) {
+      if (cause instanceof ExportError) throw cause;
+      throw assetFetchError(url, cause);
+    }
+  })();
+
+  context.cache.set(url, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    context.cache.delete(url);
+    throw error;
+  }
+}
+
+async function embedUrl(
+  rawUrl: string,
+  kind: ExportAssetKind,
+  context: AssetContext
+): Promise<string> {
+  const resolved = resolvedAssetUrl(rawUrl, context.baseUrl);
+  if (!resolved) return rawUrl;
+  const dataUrl = await fetchDataUrl(resolved, context);
+  context.embeddedByKind[kind].add(resolved);
+  return dataUrl;
+}
+
+async function replaceCssUrls(
+  cssText: string,
+  kind: ExportAssetKind,
+  context: AssetContext
+): Promise<string> {
+  const matches = Array.from(cssText.matchAll(URL_FUNCTION_PATTERN));
+  if (!matches.length) return cssText;
+
+  let result = "";
+  let cursor = 0;
+  for (const match of matches) {
+    abortIfRequested(context.signal);
+    const index = match.index ?? cursor;
+    result += cssText.slice(cursor, index);
+    const rawUrl = (match[2] ?? match[3] ?? "").trim();
+    const embedded = await embedUrl(rawUrl, kind, context);
+    result += embedded === rawUrl ? match[0] : `url(\"${embedded}\")`;
+    cursor = index + match[0].length;
+  }
+  return result + cssText.slice(cursor);
+}
+
+function assetElementError(element: Element, url: string, cause: unknown): ExportError {
+  const inheritedCode = cause instanceof ExportError ? cause.code : undefined;
+  return new ExportError({
+    stage: "prepare-assets",
+    code: inheritedCode,
+    cause,
+    message: `Could not embed ${elementDescription(element)} asset: ${url}`,
+    diagnostics: {
+      offendingElement: elementDescription(element),
+      offendingUrl: url,
+      renderer: "dom-foreign-object",
+    },
+  });
+}
+
+async function embedHtmlImages(root: Element, context: AssetContext): Promise<void> {
+  for (const image of Array.from(root.querySelectorAll<HTMLImageElement>("img"))) {
+    abortIfRequested(context.signal);
+    const source = image.getAttribute("src") ?? "";
+    if (!source || source.startsWith("data:")) {
+      image.removeAttribute("srcset");
+      image.removeAttribute("sizes");
+      continue;
+    }
+    try {
+      image.setAttribute("src", await embedUrl(source, "image", context));
+      image.removeAttribute("srcset");
+      image.removeAttribute("sizes");
+      image.removeAttribute("crossorigin");
+    } catch (cause) {
+      if (canPreserveRemoteReference(cause, context)) {
+        image.removeAttribute("srcset");
+        image.removeAttribute("sizes");
+        continue;
+      }
+      throw assetElementError(image, source, cause);
+    }
+  }
+
+  // A <picture> source can override the now-embedded <img> source.
+  for (const source of Array.from(root.querySelectorAll("picture source"))) {
+    source.removeAttribute("srcset");
+    source.removeAttribute("sizes");
+  }
+}
+
+async function embedSvgImages(root: Element, context: AssetContext): Promise<void> {
+  for (const image of Array.from(root.querySelectorAll<SVGImageElement>("image"))) {
+    abortIfRequested(context.signal);
+    const href = image.getAttribute("href")
+      ?? image.getAttributeNS("http://www.w3.org/1999/xlink", "href")
+      ?? "";
+    if (!href || href.startsWith("data:") || href.startsWith("#")) continue;
+    try {
+      const embedded = await embedUrl(href, "image", context);
+      image.setAttribute("href", embedded);
+      image.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+    } catch (cause) {
+      if (canPreserveRemoteReference(cause, context)) continue;
+      throw assetElementError(image, href, cause);
+    }
+  }
+}
+
+async function embedInlineStyleAssets(root: Element, context: AssetContext): Promise<void> {
+  for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
+    abortIfRequested(context.signal);
+    if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+    const properties = Array.from({ length: element.style.length }, (_, index) => element.style.item(index));
+    for (const property of properties) {
+      if (!property) continue;
+      const value = element.style.getPropertyValue(property);
+      if (!value.toLowerCase().includes("url(")) continue;
+      try {
+        element.style.setProperty(
+          property,
+          await replaceCssUrls(value, "style", context),
+          element.style.getPropertyPriority(property)
+        );
+      } catch (cause) {
+        if (canPreserveRemoteReference(cause, context)) continue;
+        throw assetElementError(element, value, cause);
+      }
+    }
+  }
+
+  for (const style of Array.from(root.querySelectorAll<HTMLStyleElement>("style"))) {
+    const cssText = style.textContent ?? "";
+    if (!cssText.toLowerCase().includes("url(")) continue;
+    try {
+      style.textContent = await replaceCssUrls(cssText, "style", context);
+    } catch (cause) {
+      if (canPreserveRemoteReference(cause, context)) continue;
+      throw assetElementError(style, cssText.slice(0, 160), cause);
+    }
+  }
+}
+
+function normalizeFontFamily(value: string): string {
+  return value.trim().replace(/^['"]|['"]$/g, "").toLowerCase();
+}
+
+function usedFontFamilies(root: Element): Set<string> {
+  const families = new Set<string>();
+  for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
+    if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+    const value = element.style.getPropertyValue("font-family");
+    for (const family of value.split(",")) {
+      const normalized = normalizeFontFamily(family);
+      if (normalized) families.add(normalized);
+    }
+  }
+  return families;
+}
+
+function collectFontFaceRules(
+  rules: CSSRuleList,
+  fallbackBaseUrl: string,
+  output: FontFaceSource[],
+  warnings: ExportAssetWarning[],
+  visitedSheets: Set<CSSStyleSheet>
+): void {
+  for (const rule of Array.from(rules)) {
+    if (rule.type === CSSRule.FONT_FACE_RULE) {
+      const face = rule as CSSFontFaceRule;
+      output.push({
+        cssText: face.cssText,
+        family: normalizeFontFamily(face.style.getPropertyValue("font-family")),
+        baseUrl: face.parentStyleSheet?.href ?? fallbackBaseUrl,
+        ...(face.parentStyleSheet?.href ? { stylesheetUrl: face.parentStyleSheet.href } : {}),
+      });
+      continue;
+    }
+
+    if (rule.type === CSSRule.IMPORT_RULE) {
+      const imported = (rule as CSSImportRule).styleSheet;
+      if (!imported || visitedSheets.has(imported)) continue;
+      visitedSheets.add(imported);
+      try {
+        collectFontFaceRules(
+          imported.cssRules,
+          imported.href ?? fallbackBaseUrl,
+          output,
+          warnings,
+          visitedSheets
+        );
+      } catch (cause) {
+        warnings.push({
+          kind: "stylesheet",
+          message: cause instanceof Error ? cause.message : "An imported stylesheet was inaccessible.",
+          ...(imported.href ? { url: imported.href } : {}),
+        });
+      }
+      continue;
+    }
+
+    if ("cssRules" in rule) {
+      try {
+        collectFontFaceRules(
+          (rule as CSSGroupingRule).cssRules,
+          rule.parentStyleSheet?.href ?? fallbackBaseUrl,
+          output,
+          warnings,
+          visitedSheets
+        );
+      } catch (cause) {
+        warnings.push({
+          kind: "stylesheet",
+          message: cause instanceof Error ? cause.message : "A nested stylesheet rule was inaccessible.",
+          ...(rule.parentStyleSheet?.href ? { url: rule.parentStyleSheet.href } : {}),
+        });
+      }
+    }
+  }
+}
+
+function documentFontFaces(warnings: ExportAssetWarning[]): FontFaceSource[] {
+  const output: FontFaceSource[] = [];
+  const visitedSheets = new Set<CSSStyleSheet>();
+  for (const sheet of Array.from(document.styleSheets)) {
+    if (visitedSheets.has(sheet)) continue;
+    visitedSheets.add(sheet);
+    try {
+      collectFontFaceRules(
+        sheet.cssRules,
+        sheet.href ?? document.baseURI,
+        output,
+        warnings,
+        visitedSheets
+      );
+    } catch (cause) {
+      warnings.push({
+        kind: "stylesheet",
+        message: cause instanceof Error ? cause.message : "A stylesheet was inaccessible.",
+        ...(sheet.href ? { url: sheet.href } : {}),
+      });
+    }
+  }
+  return output;
+}
+
+async function embeddedFontCss(
+  root: Element,
+  context: AssetContext,
+  strict: boolean,
+  warnings: ExportAssetWarning[]
+): Promise<string> {
+  const usedFamilies = usedFontFamilies(root);
+  const faces = documentFontFaces(warnings).filter((face) =>
+    !usedFamilies.size || !face.family || usedFamilies.has(face.family)
+  );
+  const embedded = new Set<string>();
+
+  for (const face of faces) {
+    abortIfRequested(context.signal);
+    try {
+      const cssText = await replaceCssUrls(face.cssText, "font", {
+        ...context,
+        baseUrl: face.baseUrl,
+      });
+      embedded.add(cssText);
+    } catch (cause) {
+      if (cause instanceof ExportError && cause.code === "ABORTED") throw cause;
+      const warning: ExportAssetWarning = {
+        kind: "font-resource",
+        message: cause instanceof Error ? cause.message : "A font resource could not be embedded.",
+        ...(face.stylesheetUrl ? { url: face.stylesheetUrl } : {}),
+      };
+      warnings.push(warning);
+      if (strict) {
+        throw new ExportError({
+          stage: "prepare-assets",
+          code: cause instanceof ExportError ? cause.code : "FONT_LOAD_FAILED",
+          cause,
+          message: warning.message,
+          diagnostics: {
+            offendingUrl: warning.url,
+            renderer: "dom-foreign-object",
+          },
+        });
+      }
+    }
+  }
+  return Array.from(embedded).join("\n");
+}
+
+export async function waitForExportFonts(
+  options: Pick<ExportAssetOptions, "fontTimeoutMs" | "signal"> = {}
+): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  const timeoutMs = Math.max(1, options.fontTimeoutMs ?? DEFAULT_FONT_TIMEOUT_MS);
+  abortIfRequested(options.signal);
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let abortListener: (() => void) | undefined;
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new ExportError({
+        stage: "prepare-assets",
+        code: "FONT_LOAD_TIMEOUT",
+        message: `Fonts did not finish loading within ${timeoutMs} ms.`,
+        diagnostics: { renderer: "dom-foreign-object" },
+      })), timeoutMs);
+    });
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (!options.signal) return;
+      abortListener = () => reject(new DOMException("The export was canceled.", "AbortError"));
+      options.signal.addEventListener("abort", abortListener, { once: true });
+    });
+    await Promise.race([document.fonts.ready, timeoutPromise, abortPromise]);
+  } catch (cause) {
+    if (cause instanceof ExportError) throw cause;
+    throw new ExportError({
+      stage: "prepare-assets",
+      code: cause instanceof DOMException && cause.name === "AbortError" ? "ABORTED" : "FONT_LOAD_FAILED",
+      cause,
+      diagnostics: { renderer: "dom-foreign-object" },
+    });
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    if (abortListener && options.signal) options.signal.removeEventListener("abort", abortListener);
+  }
+}
+
+/**
+ * Makes all URL-backed resources in a detached export clone self-contained.
+ * The function mutates only the supplied clone, never the live board.
+ */
+export async function embedDomExportAssets(
+  root: Element,
+  options: ExportAssetOptions = {}
+): Promise<ExportAssetReport> {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    throw new ExportError({
+      stage: "prepare-assets",
+      code: "ASSET_EMBED_FAILED",
+      message: "DOM asset embedding is only available in the browser.",
+      diagnostics: { renderer: "dom-foreign-object" },
+    });
+  }
+
+  const context: AssetContext = {
+    baseUrl: options.baseUrl ?? document.baseURI,
+    signal: options.signal,
+    preserveRemoteReferences: options.preserveRemoteReferences ?? false,
+    cache: new Map(),
+    embeddedByKind: {
+      image: new Set(),
+      style: new Set(),
+      font: new Set(),
+    },
+  };
+  const warnings: ExportAssetWarning[] = [];
+
+  try {
+    await embedHtmlImages(root, context);
+    await embedSvgImages(root, context);
+    await embedInlineStyleAssets(root, context);
+    const fontFaceCss = await embeddedFontCss(
+      root,
+      context,
+      options.strictFontEmbedding ?? false,
+      warnings
+    );
+    return {
+      embeddedImageCount: context.embeddedByKind.image.size,
+      embeddedStyleAssetCount: context.embeddedByKind.style.size,
+      embeddedFontCount: context.embeddedByKind.font.size,
+      fontFaceCss,
+      warnings,
+    };
+  } catch (cause) {
+    if (cause instanceof ExportError) throw cause;
+    throw new ExportError({
+      stage: "prepare-assets",
+      cause,
+      diagnostics: { renderer: "dom-foreign-object" },
+    });
+  }
+}

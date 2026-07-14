@@ -1,5 +1,13 @@
 import type { VidyaBoard, VidyaNode } from "@/lib/types";
 import { BOARD_CONTENT_VERSION } from "@/lib/config";
+import { ExportError } from "./errors";
+import { createPngExportPlan } from "./limits";
+import { initiateBlobDownload } from "./pipeline";
+
+export * from "./errors";
+export * from "./limits";
+export * from "./types";
+export * from "./pipeline";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -28,15 +36,7 @@ function safeFilename(
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  initiateBlobDownload(blob, filename);
 }
 
 function isVisibleSvg(svg: SVGSVGElement): boolean {
@@ -311,25 +311,66 @@ function canvasPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
     try {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
-        else reject(new Error("The browser could not create the PNG file."));
+        else reject(new ExportError({
+          stage: "encode-png",
+          code: "PNG_BLOB_CREATION_FAILED",
+          message: "Canvas encoding returned an empty PNG Blob.",
+          diagnostics: { blobCreated: false, renderer: "canvas-2d" },
+        }));
       }, "image/png");
-    } catch {
-      reject(new Error("The browser blocked PNG creation for this chart."));
+    } catch (cause) {
+      reject(new ExportError({
+        stage: "encode-png",
+        cause,
+        diagnostics: { blobCreated: false, renderer: "canvas-2d" },
+      }));
     }
   });
 }
 
 async function preparedSvgPngBlob(prepared: PreparedSvg): Promise<Blob> {
+  const plan = createPngExportPlan(
+    { x: 0, y: 0, width: prepared.width, height: prepared.height },
+    EXPORT_SCALE
+  );
   const { image, url } = await loadSvgImage(prepared.source);
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.ceil(prepared.width * EXPORT_SCALE));
-    canvas.height = Math.max(1, Math.ceil(prepared.height * EXPORT_SCALE));
+    canvas.width = plan.outputWidth;
+    canvas.height = plan.outputHeight;
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("The browser could not initialize PNG rendering.");
+    if (!context) {
+      throw new ExportError({
+        stage: "create-canvas",
+        code: "CANVAS_CONTEXT_FAILED",
+        message: "Canvas 2D context creation returned null.",
+        diagnostics: {
+          outputWidth: plan.outputWidth,
+          outputHeight: plan.outputHeight,
+          totalPixels: plan.totalPixels,
+          canvasCreated: true,
+          canvasContextCreated: false,
+          renderer: "canvas-2d",
+        },
+      });
+    }
 
-    context.setTransform(EXPORT_SCALE, 0, 0, EXPORT_SCALE, 0, 0);
-    context.drawImage(image, 0, 0, prepared.width, prepared.height);
+    try {
+      context.drawImage(image, 0, 0, plan.outputWidth, plan.outputHeight);
+    } catch (cause) {
+      throw new ExportError({
+        stage: "draw-canvas",
+        cause,
+        diagnostics: {
+          outputWidth: plan.outputWidth,
+          outputHeight: plan.outputHeight,
+          totalPixels: plan.totalPixels,
+          canvasCreated: true,
+          canvasContextCreated: true,
+          renderer: "canvas-2d",
+        },
+      });
+    }
     return canvasPngBlob(canvas);
   } finally {
     URL.revokeObjectURL(url);

@@ -256,7 +256,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
 
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-h-[92vh] max-w-4xl overflow-hidden p-0">
+      <DialogContent className="h-[min(92dvh,920px)] max-h-[calc(100dvh-1rem)] w-[min(96vw,72rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-6 py-5 pr-12">
           <DialogTitle>
             {request?.mode === "edit" ? "Relationship diagram options" : "Generate relationship diagram"}
@@ -266,8 +266,8 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-0 flex-1 gap-0 overflow-y-auto md:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-6 border-r p-6">
+        <div className="grid min-h-0 gap-0 overflow-y-auto overscroll-contain touch-pan-y md:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-6 border-b p-6 md:border-b-0 md:border-r">
             <div className="space-y-3">
               <SectionTitle>Layout preset</SectionTitle>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -550,13 +550,13 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t bg-background px-6 py-4">
+        <div className="z-10 flex shrink-0 flex-col gap-3 border-t bg-background px-6 py-4 shadow-[0_-8px_20px_-18px_rgba(15,23,42,0.6)] sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[10px] text-muted-foreground">
             The generated diagram is movable, resizable, and independently exportable.
           </p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={close}>Cancel</Button>
-            <Button onClick={submit}>
+          <div className="flex justify-end gap-2">
+            <Button className="max-sm:flex-1" variant="outline" onClick={close}>Cancel</Button>
+            <Button className="max-sm:flex-1" onClick={submit}>
               {request?.mode === "edit" ? "Regenerate diagram" : "Generate diagram"}
             </Button>
           </div>

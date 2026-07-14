@@ -91,6 +91,7 @@ function RoutedSmartBranchEdge({
   return (
     <>
       <BaseEdge
+        data-export-normal-stroke={d.color ?? "#94a3b8"}
         id={id}
         path={path}
         markerEnd={markerEnd}
@@ -104,6 +105,7 @@ function RoutedSmartBranchEdge({
       {selected && (
         <EdgeLabelRenderer>
           <button
+            data-export-ignore
             type="button"
             title="Delete connection"
             aria-label="Delete connection"
@@ -126,6 +128,7 @@ function RoutedSmartBranchEdge({
       {d.label && (
         <EdgeLabelRenderer>
           <div
+            data-export-edge-id={id}
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
