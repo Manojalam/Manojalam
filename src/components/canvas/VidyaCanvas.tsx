@@ -15,6 +15,7 @@ import {
   type Edge,
   type Viewport,
   type OnNodesChange,
+  type NodeChange,
   type OnEdgesChange,
   applyNodeChanges,
   applyEdgeChanges,
@@ -33,10 +34,16 @@ import { generateId } from "@/lib/utils";
 import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent } from "@/lib/types";
-import { resolveInsertedNodeCollisions, routeForMode, type LayoutMode } from "@/lib/layout";
+import {
+  resolveInsertedNodeCollisions,
+  routeForMode,
+  synchronizeNodeDimensions,
+  type LayoutMode,
+} from "@/lib/layout";
 import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
+import { RelationshipDiagramDialog } from "./RelationshipDiagramDialog";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -56,6 +63,25 @@ function initialShapeSize(shapeType: string): { width: number; height: number } 
     return { width: 170, height: 96 };
   }
   return { width: 140, height: 80 };
+}
+
+function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]): Node[] {
+  const nextNodes = applyNodeChanges(changes, nodes);
+  const resizedRelationshipDiagrams = new Map(
+    changes.flatMap((change) =>
+      change.type === "dimensions" && change.dimensions
+        ? [[change.id, change.dimensions] as const]
+        : []
+    )
+  );
+  if (!resizedRelationshipDiagrams.size) return nextNodes;
+
+  return nextNodes.map((node) => {
+    const dimensions = resizedRelationshipDiagrams.get(node.id);
+    return node.type === "relationshipDiagram" && dimensions
+      ? synchronizeNodeDimensions(node, dimensions.width, dimensions.height)
+      : node;
+  });
 }
 
 function escapeHtml(value: string): string {
@@ -346,7 +372,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         const dimensionChanges = changes.filter((change) => change.type === "dimensions");
         if (dimensionChanges.length) {
           useCanvasStore.setState((state) => ({
-            nodes: applyNodeChanges(dimensionChanges, state.nodes),
+            nodes: applySynchronizedNodeChanges(dimensionChanges, state.nodes),
           }));
         }
         return;
@@ -360,7 +386,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       } else {
         // Dimension / position / select — update nodes WITHOUT touching saveStatus
         useCanvasStore.setState((state) => ({
-          nodes: applyNodeChanges(changes, state.nodes),
+          nodes: applySynchronizedNodeChanges(changes, state.nodes),
         }));
       }
 
@@ -770,9 +796,19 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       else if (mod && e.key === "v")           { e.preventDefault(); void pasteClipboard(); }
       else if (mod && e.key === "d")           { e.preventDefault(); cs.duplicateSelected(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && !mod) { cs.deleteSelected(); }
-      else if (e.key === "Tab")                { e.preventDefault(); if (cs.selectedNodeIds[0]) cs.createChildNode(cs.selectedNodeIds[0]); }
+      else if (e.key === "Tab") {
+        const selectedNode = cs.nodes.find((node) => node.id === cs.selectedNodeIds[0]);
+        if (selectedNode && !["relationshipDiagram", "sunburst", "frame"].includes(selectedNode.type ?? "")) {
+          e.preventDefault();
+          cs.createChildNode(selectedNode.id);
+        }
+      }
       else if (e.key === "Enter" && !e.shiftKey) {
-        if (cs.selectedNodeIds[0]) { e.preventDefault(); cs.createSiblingNode(cs.selectedNodeIds[0]); }
+        const selectedNode = cs.nodes.find((node) => node.id === cs.selectedNodeIds[0]);
+        if (selectedNode && !["relationshipDiagram", "sunburst", "frame"].includes(selectedNode.type ?? "")) {
+          e.preventDefault();
+          cs.createSiblingNode(selectedNode.id);
+        }
       }
       else if (e.key === "f" || e.key === "F") { fitView({ padding: 0.2 }); }
       else if (e.key === "+" || e.key === "=") { zoomIn(); }
@@ -925,6 +961,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   }, [getViewport, setStoredViewport]);
 
   return (
+    <>
     <ReactFlow
       nodes={displayNodes}
       edges={displayEdges}
@@ -996,6 +1033,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}
         maskColor="rgba(0,0,0,0.06)" position="bottom-right" pannable zoomable />
     </ReactFlow>
+    <RelationshipDiagramDialog />
+    </>
   );
 }
 

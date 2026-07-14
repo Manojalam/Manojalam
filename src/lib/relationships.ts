@@ -215,7 +215,15 @@ export function orderRelationshipsByChart(
 }
 
 export function relationshipDefinition(relationType: string): RelationshipTypeDefinition | null {
-  return RELATIONSHIP_TYPE_DEFINITIONS[canonicalRelationshipType(relationType)] ?? null;
+  const canonical = canonicalRelationshipType(relationType);
+  if (!canonical) return null;
+  return RELATIONSHIP_TYPE_DEFINITIONS[canonical] ?? {
+    relationType: canonical,
+    label: canonical,
+    sourceBranchLabels: [],
+    targetBranchLabels: [],
+    includeTargetBranchRoot: true,
+  };
 }
 
 function emptyResolution(

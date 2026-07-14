@@ -6,6 +6,7 @@ import type { Node, Edge, Viewport } from "@xyflow/react";
 import type {
   BoardSettings,
   NodeRelationship,
+  RelationshipDiagramSpec,
   RelationshipFanState,
   SaveStatus,
   VidyaBoard,
@@ -20,11 +21,13 @@ import {
   resolveInsertedNodeCollisions,
   getNodeRect,
   rectsOverlap,
+  resetNodeDimensions,
   sizeOf,
   type LayoutPlacement,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { canonicalRelationshipType } from "@/lib/relationships";
+import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
 import type { LayoutMode } from "@/lib/types";
 
 interface HistoryEntry {
@@ -35,6 +38,7 @@ interface HistoryEntry {
 }
 
 type ContentSize = { width: number; height: number; lineCount?: number; lineHeight?: number };
+type RelationshipDiagramFrameSize = { width: number; height: number };
 
 interface CanvasState {
   board: VidyaBoard | null;
@@ -78,6 +82,16 @@ interface CanvasState {
   paste: () => void;
   duplicateNode: (nodeId: string) => void;
   duplicateSelected: () => void;
+  createRelationshipDiagram: (
+    spec: RelationshipDiagramSpec,
+    anchorSunburstId?: string,
+    frameSize?: RelationshipDiagramFrameSize
+  ) => string | null;
+  updateRelationshipDiagramSpec: (
+    nodeId: string,
+    patch: Partial<RelationshipDiagramSpec>,
+    frameSize?: RelationshipDiagramFrameSize
+  ) => void;
   deleteSelected: () => void;
   deleteEdges: (ids: string[]) => void;
   createChildNode: (parentId: string) => void;
@@ -122,7 +136,11 @@ function normalizeRelationshipState(
 ): { relationships: NodeRelationship[]; relationshipFans: RelationshipFanState[] } {
   const validNodeIds = new Set(
     nodes
-      .filter((node) => node.type !== "sunburst" && node.type !== "frame")
+      .filter((node) =>
+        node.type !== "sunburst" &&
+        node.type !== "frame" &&
+        node.type !== "relationshipDiagram"
+      )
       .map((node) => node.id)
   );
   const relationships: NodeRelationship[] = [];
@@ -399,6 +417,17 @@ function migrateNodes(nodes: Node[]): Node[] {
     const data = { ...((n.data ?? {}) as Record<string, unknown>) };
     delete data.radialChartDiameter;
     delete data.radialRingWidth;
+    if (n.type === "relationshipDiagram") {
+      return {
+        ...n,
+        data: {
+          ...data,
+          relationshipDiagramSpec: normalizeRelationshipDiagramSpec(
+            data.relationshipDiagramSpec ?? data.spec
+          ),
+        },
+      };
+    }
     if (n.type !== "mindmap") return { ...n, data };
     return {
       ...n,
@@ -755,15 +784,14 @@ function normalizeSunburstChartSizes(
       : visualBounds ? nextSize : current.w;
     const normalizedData: Record<string, unknown> = { ...data, chartSize: nextSize };
     delete normalizedData.relationshipVisualBounds;
-    return {
+    return resetNodeDimensions({
       ...node,
       position: {
         x: node.position.x - visualMinX - (nextSize - previousChartSize) / 2,
         y: node.position.y - visualMinY - (nextSize - previousChartSize) / 2,
       },
       data: normalizedData,
-      style: { ...(node.style ?? {}), width: nextSize, height: nextSize },
-    };
+    }, nextSize, nextSize);
   });
 }
 
@@ -805,19 +833,145 @@ function groupBounds(nodes: Node[]) {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-function clearDuplicatedContent(data: Record<string, unknown>, originalId: string, idMap: Map<string, string>) {
+const RELATIONSHIP_DIAGRAM_PLACEMENT_GAP = 80;
+
+function relationshipDiagramDefaultSize(
+  spec: RelationshipDiagramSpec,
+  preferred?: RelationshipDiagramFrameSize
+) {
+  if (
+    preferred
+    && Number.isFinite(preferred.width)
+    && Number.isFinite(preferred.height)
+    && preferred.width > 0
+    && preferred.height > 0
+  ) {
+    return {
+      width: Math.max(420, Math.round(preferred.width)),
+      height: Math.max(360, Math.round(preferred.height)),
+    };
+  }
+  if (spec.layout === "arc-fan" || spec.layout === "flower" || spec.layout === "radial-hub") {
+    return { width: 980, height: 920 };
+  }
+  if (spec.layout === "matrix") return { width: 1120, height: 720 };
+  return { width: 960, height: 720 };
+}
+
+/**
+ * A sunburst node can temporarily retain the expanded bounds of the legacy
+ * relationship fan. New diagrams must be placed beside the compact hierarchy
+ * chart, not beside (or inside) that stale halo.
+ */
+function baseVisualRect(node: Node) {
+  if (node.type !== "sunburst") return getNodeRect(node);
+
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const visualBounds = data.relationshipVisualBounds && typeof data.relationshipVisualBounds === "object"
+    ? data.relationshipVisualBounds as Partial<{ minX: number; minY: number }>
+    : null;
+  const minX = typeof visualBounds?.minX === "number" && Number.isFinite(visualBounds.minX)
+    ? visualBounds.minX
+    : 0;
+  const minY = typeof visualBounds?.minY === "number" && Number.isFinite(visualBounds.minY)
+    ? visualBounds.minY
+    : 0;
+  const current = sizeOf(node);
+  const chartSize = numericDimension(data.chartSize, Math.min(current.w, current.h));
+  return {
+    id: node.id,
+    x: node.position.x - minX,
+    y: node.position.y - minY,
+    width: chartSize,
+    height: chartSize,
+  };
+}
+
+function relationshipDiagramAnchor(
+  nodes: Node[],
+  spec: RelationshipDiagramSpec,
+  anchorSunburstId?: string
+) {
+  const explicit = anchorSunburstId
+    ? nodes.find((node) => node.id === anchorSunburstId && node.type === "sunburst" && !node.hidden)
+    : null;
+  if (explicit) return baseVisualRect(explicit);
+
+  const chartRootId = spec.scope.chartRootNodeId;
+  const chart = chartRootId
+    ? nodes.find((node) => {
+        if (node.type !== "sunburst" || node.hidden) return false;
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        return data.rootId === chartRootId;
+      })
+    : null;
+  if (chart) return baseVisualRect(chart);
+
+  const sourceIds = new Set(spec.scope.sourceNodeIds);
+  const sources = nodes.filter((node) => sourceIds.has(node.id));
+  if (sources.length) return { id: "relationship-diagram-sources", ...groupBounds(sources) };
+
+  return { id: "relationship-diagram-origin", x: 0, y: 0, width: 0, height: 0 };
+}
+
+/** Keep the original hierarchy fixed and search outward for a free diagram slot. */
+function relationshipDiagramPosition(
+  nodes: Node[],
+  spec: RelationshipDiagramSpec,
+  width: number,
+  height: number,
+  anchorSunburstId?: string
+) {
+  const anchor = relationshipDiagramAnchor(nodes, spec, anchorSunburstId);
+  const origin = {
+    x: anchor.x + anchor.width + RELATIONSHIP_DIAGRAM_PLACEMENT_GAP,
+    y: anchor.y + (anchor.height - height) / 2,
+  };
+  const obstacles = nodes
+    .filter((node) => !node.hidden)
+    .map(baseVisualRect);
+  const rowStep = height + RELATIONSHIP_DIAGRAM_PLACEMENT_GAP;
+  const columnStep = width + RELATIONSHIP_DIAGRAM_PLACEMENT_GAP;
+  const rowOffsets = [0, 1, -1, 2, -2, 3, -3, 4, -4];
+
+  for (let column = 0; column < 8; column += 1) {
+    for (const row of rowOffsets) {
+      const candidate = {
+        id: "relationship-diagram-candidate",
+        x: origin.x + column * columnStep,
+        y: origin.y + row * rowStep,
+        width,
+        height,
+      };
+      if (obstacles.every((obstacle) => !rectsOverlap(candidate, obstacle, 28))) {
+        return { x: candidate.x, y: candidate.y };
+      }
+    }
+  }
+
+  return { x: origin.x + 8 * columnStep, y: origin.y };
+}
+
+function clearDuplicatedContent(
+  data: Record<string, unknown>,
+  originalId: string,
+  idMap: Map<string, string>,
+  preserveContent = false
+) {
   const next = structuredClone(data);
   const textFields = [
     "text", "richText", "label", "title", "topic", "devanagari", "iast", "translation",
     "rule", "source", "sourceText", "padaccheda", "anvaya", "padartha", "chandas",
     "grammarNotes", "exceptions", "notes",
   ];
-  for (const field of textFields) {
-    if (field in next) next[field] = "";
+  if (!preserveContent) {
+    for (const field of textFields) {
+      if (field in next) next[field] = "";
+    }
+    if (Array.isArray(next.examples)) next.examples = [];
+    if (Array.isArray(next.tags)) next.tags = [];
+    if (Array.isArray(next.collapsedSections)) next.collapsedSections = [];
   }
-  if (Array.isArray(next.examples)) next.examples = [];
-  if (Array.isArray(next.tags)) next.tags = [];
-  if (Array.isArray(next.collapsedSections)) next.collapsedSections = [];
 
   const parentId = typeof next.parentId === "string" ? next.parentId : null;
   next.parentId = parentId && idMap.has(parentId) ? idMap.get(parentId)! : null;
@@ -896,7 +1050,12 @@ function buildDuplicateSelection(selectedNodes: Node[], selectedEdges: Edge[], a
 
   const nodes = selectedNodes.map((node) => {
     const newId = idMap.get(node.id)!;
-    const data = clearDuplicatedContent(node.data as Record<string, unknown>, node.id, idMap);
+    const data = clearDuplicatedContent(
+      node.data as Record<string, unknown>,
+      node.id,
+      idMap,
+      node.type === "relationshipDiagram"
+    );
     return {
       ...structuredClone(node),
       id: newId,
@@ -957,11 +1116,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const relationshipMigrationRequired =
       JSON.stringify(board.content.relationships ?? []) !== JSON.stringify(relationships) ||
       JSON.stringify(board.content.relationshipFans ?? []) !== JSON.stringify(relationshipFans);
+    const structuralMigrationRequired =
+      JSON.stringify(board.content.nodes ?? []) !== JSON.stringify(nodes)
+      || JSON.stringify(board.content.edges ?? []) !== JSON.stringify(edges);
     const normalizedBoard: VidyaBoard = {
       ...board,
       content: {
         ...board.content,
         version: BOARD_CONTENT_VERSION,
+        nodes: nodes as VidyaBoard["content"]["nodes"],
+        edges,
         relationships,
         relationshipFans,
       },
@@ -974,7 +1138,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       relationshipFans,
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings: board.content.settings ?? DEFAULT_BOARD_SETTINGS,
-      saveStatus: relationshipMigrationRequired ? "unsaved" : "saved",
+      saveStatus: relationshipMigrationRequired || structuralMigrationRequired ? "unsaved" : "saved",
       history: [],
       historyIndex: -1,
     });
@@ -1028,7 +1192,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const state = get();
     const validNodeIds = new Set(
       state.nodes
-        .filter((node) => node.type !== "sunburst" && node.type !== "frame")
+        .filter((node) =>
+          node.type !== "sunburst" &&
+          node.type !== "frame" &&
+          node.type !== "relationshipDiagram"
+        )
         .map((node) => node.id)
     );
     if (!validNodeIds.has(sourceNodeId)) return;
@@ -1175,11 +1343,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const nextHistory = history.slice();
     nextHistory[targetIndex + 1] = current;
     const entry = nextHistory[targetIndex];
+    const restoredNodes = structuredClone(entry.nodes);
+    const restoredEdges = structuredClone(entry.edges);
     set({
-      nodes: structuredClone(entry.nodes),
-      edges: structuredClone(entry.edges),
+      nodes: restoredNodes,
+      edges: restoredEdges,
       relationships: structuredClone(entry.relationships),
       relationshipFans: structuredClone(entry.relationshipFans),
+      selectedNodeIds: restoredNodes.filter((node) => node.selected).map((node) => node.id),
+      selectedEdgeIds: restoredEdges.filter((edge) => edge.selected).map((edge) => edge.id),
       history: nextHistory,
       historyIndex: targetIndex,
       saveStatus: "unsaved",
@@ -1191,11 +1363,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (historyIndex >= history.length - 1) return;
     const newIndex = historyIndex + 1;
     const entry = history[newIndex];
+    const restoredNodes = structuredClone(entry.nodes);
+    const restoredEdges = structuredClone(entry.edges);
     set({
-      nodes: structuredClone(entry.nodes),
-      edges: structuredClone(entry.edges),
+      nodes: restoredNodes,
+      edges: restoredEdges,
       relationships: structuredClone(entry.relationships),
       relationshipFans: structuredClone(entry.relationshipFans),
+      selectedNodeIds: restoredNodes.filter((node) => node.selected).map((node) => node.id),
+      selectedEdgeIds: restoredEdges.filter((edge) => edge.selected).map((edge) => edge.id),
       historyIndex: newIndex,
       saveStatus: "unsaved",
     });
@@ -1284,6 +1460,102 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
+  createRelationshipDiagram: (spec, anchorSunburstId, frameSize) => {
+    const state = get();
+    if (!spec || !spec.scope || !Array.isArray(spec.scope.sourceNodeIds)) return null;
+
+    const id = generateId();
+    const relationshipDiagramSpec = normalizeRelationshipDiagramSpec(spec, spec.scope);
+    const { width, height } = relationshipDiagramDefaultSize(relationshipDiagramSpec, frameSize);
+    const position = relationshipDiagramPosition(
+      state.nodes,
+      relationshipDiagramSpec,
+      width,
+      height,
+      anchorSunburstId
+    );
+    const diagramNode: Node = {
+      id,
+      type: "relationshipDiagram",
+      position,
+      data: {
+        title: relationshipDiagramSpec.title || "Relationship Diagram",
+        background: relationshipDiagramSpec.background,
+        relationshipDiagramSpec,
+        tags: [],
+      },
+      style: { width, height },
+      zIndex: 10,
+      selected: true,
+    };
+
+    state.pushHistory();
+    set({
+      nodes: [
+        ...state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
+        diagramNode,
+      ],
+      edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
+      selectedNodeIds: [id],
+      selectedEdgeIds: [],
+      saveStatus: "unsaved",
+    });
+    return id;
+  },
+
+  updateRelationshipDiagramSpec: (nodeId, patch, frameSize) => {
+    const state = get();
+    const node = state.nodes.find((candidate) =>
+      candidate.id === nodeId && candidate.type === "relationshipDiagram"
+    );
+    if (!node) return;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const currentSpec = data.relationshipDiagramSpec;
+    if (!currentSpec || typeof currentSpec !== "object") return;
+
+    const current = normalizeRelationshipDiagramSpec(currentSpec);
+    const nextSpec = normalizeRelationshipDiagramSpec({
+      ...current,
+      ...structuredClone(patch),
+      scope: patch.scope
+        ? { ...current.scope, ...structuredClone(patch.scope) }
+        : current.scope,
+    }, current.scope);
+    const specChanged = JSON.stringify(currentSpec) !== JSON.stringify(nextSpec);
+    const requestedSize = frameSize
+      ? relationshipDiagramDefaultSize(nextSpec, frameSize)
+      : null;
+    const currentSize = sizeOf(node);
+    const frameChanged = !!requestedSize && (
+      Math.abs(currentSize.w - requestedSize.width) >= 0.5
+      || Math.abs(currentSize.h - requestedSize.height) >= 0.5
+    );
+    if (!specChanged && !frameChanged) return;
+
+    state.pushHistory();
+    set({
+      nodes: state.nodes.map((candidate) => {
+        if (candidate.id !== nodeId) return candidate;
+        const layoutChanged = current.layout !== nextSpec.layout;
+        const shouldResize = layoutChanged || frameChanged;
+        const defaultSize = requestedSize ?? relationshipDiagramDefaultSize(nextSpec);
+        const updatedCandidate = {
+          ...candidate,
+          data: {
+            ...(candidate.data ?? {}),
+            title: nextSpec.title || "Relationship Diagram",
+            background: nextSpec.background,
+            relationshipDiagramSpec: nextSpec,
+          },
+        };
+        return shouldResize
+          ? resetNodeDimensions(updatedCandidate, defaultSize.width, defaultSize.height)
+          : updatedCandidate;
+      }),
+      saveStatus: "unsaved",
+    });
+  },
+
   deleteSelected: () => {
     const { selectedNodeIds, selectedEdgeIds, nodes, edges, relationships, relationshipFans } = get();
     if (!selectedNodeIds.length && !selectedEdgeIds.length) return;
@@ -1339,7 +1611,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   createChildNodes: (parentId, count, keepParentSelected = false) => {
     const { nodes, edges } = get();
     const parent = nodes.find((n) => n.id === parentId);
-    if (!parent) return;
+    if (!parent || ["relationshipDiagram", "sunburst", "frame"].includes(parent.type ?? "")) return;
     const safeCount = Math.max(1, Math.min(48, Math.round(count)));
     get().pushHistory();
     const currentHierarchy = buildHierarchy(nodes, edges);
@@ -1638,7 +1910,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   applyLayout: (mode) => {
     const { nodes, edges, selectedNodeIds } = get();
     if (!nodes.length) return;
-    const layoutNodes = nodes.filter((n) => !isAutoMatrixFrame(n) && !isAutoSunburstNode(n));
+    const layoutNodes = nodes.filter((n) =>
+      !isAutoMatrixFrame(n) &&
+      !isAutoSunburstNode(n) &&
+      n.type !== "relationshipDiagram"
+    );
     const selectedRootId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined;
     const rootId = selectedRootId && layoutNodes.some((n) => n.id === selectedRootId) ? selectedRootId : undefined;
     if (!rootId) return;

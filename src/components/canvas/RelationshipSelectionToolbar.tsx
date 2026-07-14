@@ -17,7 +17,11 @@ export function commitRelationshipSelection(): boolean {
   if (!session) return false;
 
   const canvas = useCanvasStore.getState();
-  const chartNodes = canvas.nodes.filter((node) => node.type !== "sunburst" && node.type !== "frame");
+  const chartNodes = canvas.nodes.filter((node) =>
+    node.type !== "sunburst"
+    && node.type !== "frame"
+    && node.type !== "relationshipDiagram"
+  );
   const hierarchy = buildHierarchy(chartNodes, canvas.edges);
   const policy = resolveRelationshipPolicy({
     relationType: session.relationType,

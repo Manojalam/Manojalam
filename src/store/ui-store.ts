@@ -13,6 +13,13 @@ import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 
 export type ShapeVariant = ShapeType;
 
+export interface RelationshipDiagramRequest {
+  mode: "create" | "edit";
+  chartRootNodeId?: string;
+  sourceNodeIds?: string[];
+  diagramNodeId?: string;
+}
+
 interface UIState {
   activeTool: CanvasTool;
   setActiveTool: (tool: CanvasTool) => void;
@@ -25,6 +32,9 @@ interface UIState {
   toggleRelationshipTarget: (nodeId: string) => void;
   clearRelationshipTargets: () => void;
   cancelRelationshipSelection: () => void;
+  relationshipDiagramRequest: RelationshipDiagramRequest | null;
+  openRelationshipDiagram: (request: RelationshipDiagramRequest) => void;
+  closeRelationshipDiagram: () => void;
   activeTextSelection: ActiveTextSelection | null;
   setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
   shapeVariant: ShapeVariant;
@@ -97,6 +107,16 @@ export const useUIStore = create<UIState>((set, get) => ({
     ? { relationshipSelection: { ...state.relationshipSelection, draftTargetIds: [] } }
     : {}),
   cancelRelationshipSelection: () => set({ relationshipSelection: null }),
+  relationshipDiagramRequest: null,
+  openRelationshipDiagram: (request) => set({
+    relationshipDiagramRequest: {
+      ...request,
+      sourceNodeIds: request.sourceNodeIds
+        ? Array.from(new Set(request.sourceNodeIds))
+        : undefined,
+    },
+  }),
+  closeRelationshipDiagram: () => set({ relationshipDiagramRequest: null }),
   activeTextSelection: null,
   setActiveTextSelection: (selection) => set({ activeTextSelection: selection }),
   shapeVariant: "rounded",

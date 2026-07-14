@@ -132,6 +132,62 @@ export interface RelationshipSelectionSession {
   draftTargetIds: string[];
 }
 
+export type RelationshipDiagramLayout =
+  | "flower"
+  | "matrix"
+  | "card-grid"
+  | "radial-hub"
+  | "arc-fan";
+
+export type RelationshipDiagramScopeMode =
+  | "selected-node"
+  | "selected-nodes"
+  | "selected-branch";
+
+export type RelationshipDiagramPalette =
+  | "source"
+  | "spectrum"
+  | "warm"
+  | "cool"
+  | "pastel"
+  | "monochrome";
+
+export type RelationshipDiagramDensity = "compact" | "comfortable" | "spacious";
+
+export type RelationshipDiagramSort = "natural" | "label-asc" | "label-desc";
+export type RelationshipDiagramSourceSort = RelationshipDiagramSort | "count-asc" | "count-desc";
+export type RelationshipDiagramTargetSort = RelationshipDiagramSort;
+
+export type RelationshipDiagramDecorativeLevel = "minimal" | "balanced" | "ornate";
+
+export interface RelationshipDiagramScope {
+  mode: RelationshipDiagramScopeMode;
+  sourceNodeIds: string[];
+  /** The hierarchy root expanded when mode is `selected-branch`. */
+  branchRootNodeId?: string;
+  /** Optional originating chart, retained so the generation dialog can reopen in context. */
+  chartRootNodeId?: string;
+}
+
+export interface RelationshipDiagramSpec {
+  version: 1;
+  layout: RelationshipDiagramLayout;
+  scope: RelationshipDiagramScope;
+  /** Empty or omitted by legacy data means all saved relationship types. */
+  relationTypes: string[];
+  title: string;
+  subtitle: string;
+  showCounts: boolean;
+  showIcons: boolean;
+  palette: RelationshipDiagramPalette;
+  textSize: number;
+  density: RelationshipDiagramDensity;
+  decorativeLevel: RelationshipDiagramDecorativeLevel;
+  background: string;
+  sortSources: RelationshipDiagramSourceSort;
+  sortTargets: RelationshipDiagramTargetSort;
+}
+
 export interface BoardContent {
   version: number;
   nodes: VidyaNode[];
@@ -352,6 +408,10 @@ export interface SunburstNodeData extends BaseNodeData {
   title?: string;
 }
 
+export interface RelationshipDiagramNodeData extends BaseNodeData {
+  relationshipDiagramSpec: RelationshipDiagramSpec;
+}
+
 export interface VidyaEdgeData extends Record<string, unknown> {
   label?: string;
   color?: string;
@@ -377,6 +437,7 @@ export type VidyaNode = Node<
   | GrammarCardNodeData
   | FrameNodeData
   | SunburstNodeData
+  | RelationshipDiagramNodeData
 >;
 export type VidyaEdge = Edge<VidyaEdgeData>;
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowLeft, ArrowRight,
+  Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowLeft, ArrowRight, Share2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { toast } from "sonner";
@@ -567,6 +567,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setDrawingRegionOpacity = useUIStore((s) => s.setDrawingRegionOpacity);
   const setLayoutPanelOpen = useUIStore((s) => s.setLayoutPanelOpen);
   const activeTextSelection = useUIStore((s) => s.activeTextSelection);
+  const openRelationshipDiagram = useUIStore((s) => s.openRelationshipDiagram);
 
   const selectedNodes = selectedNodeIds.length
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
@@ -578,6 +579,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const isRadialMultiSelection = selectedNodes.length > 1
     && radialSelectionKeys.size === 1
     && selectedNodes.every((node) => typeof ((node.data ?? {}) as Record<string, unknown>).sunburstHiddenFor === "string");
+  const multiRadialChartRootId = isRadialMultiSelection
+    ? (() => {
+        const chartKey = Array.from(radialSelectionKeys)[0];
+        const chart = nodes.find((node) =>
+          node.type === "sunburst"
+          && (node.data as Record<string, unknown>).sunburstFor === chartKey
+        );
+        const rootId = (chart?.data as Record<string, unknown> | undefined)?.rootId;
+        return typeof rootId === "string" ? rootId : undefined;
+      })()
+    : undefined;
   const selectedEdges = edges.filter((edge) => selectedEdgeIds.includes(edge.id));
   const hierarchy = buildHierarchy(nodes, edges);
   const selectedHierarchy = selectedNode ? hierarchy.get(selectedNode.id) : null;
@@ -898,6 +910,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
 
         <div className="flex-1 divide-y overflow-y-auto">
+          <div className="p-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full justify-start gap-2 text-xs"
+              onClick={() => openRelationshipDiagram({
+                mode: "create",
+                sourceNodeIds: selectedNodes.map((node) => node.id),
+                ...(multiRadialChartRootId ? { chartRootNodeId: multiRadialChartRootId } : {}),
+              })}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Generate relationship diagram
+            </Button>
+          </div>
           <Section label="Text">
             <Row label="Align">
               {([
@@ -1162,6 +1190,43 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   }
 
   // ── Node selected ──────────────────────────────────────────────────────────
+  if (selectedNode.type === "relationshipDiagram") {
+    const diagramSpec = (d.relationshipDiagramSpec ?? {}) as Record<string, unknown>;
+    return (
+      <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
+        <div className="flex items-center justify-between border-b px-3 py-2.5">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-foreground">Relationship diagram</h3>
+            <p className="truncate text-[10px] capitalize text-muted-foreground">
+              {String(diagramSpec.layout ?? "arc-fan").replace(/-/g, " ")}
+            </p>
+          </div>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        <div className="space-y-3 p-3">
+          <p className="text-[10px] leading-relaxed text-muted-foreground">
+            This is a separate, live view of saved relationships. Moving, resizing, or exporting it does not change the source chart.
+          </p>
+          <Button
+            type="button"
+            className="h-8 w-full justify-start gap-2 text-xs"
+            onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: selectedNode.id })}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            Change layout and options
+          </Button>
+        </div>
+      </aside>
+    );
+  }
+
   const nodeType      = selectedNode.type ?? "";
   const isTextNode    = ["mindmap", "sticky", "text"].includes(nodeType);
   const isShapeNode   = nodeType === "shape";
