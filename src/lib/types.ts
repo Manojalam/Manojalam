@@ -54,6 +54,7 @@ export type CanvasTool =
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
+export type AutoSizeMode = "smart" | "height-only" | "fixed";
 
 export type RadialColorScheme =
   | "spectrum"
@@ -358,12 +359,14 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixDensityUserSet?: boolean;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
+  /** Controls how authored text and manually chosen node dimensions interact. */
+  autoSizeMode?: AutoSizeMode;
   /** Render-only dimensions for the active structured layout. */
   layoutSizeOverride?: { mode: LayoutMode; width: number; height: number };
   /** Last DOM content measurement used for Matrix text wrapping and row reflow. */
-  matrixIntrinsicSize?: { width: number; height: number; lineCount?: number; lineHeight?: number };
+  matrixIntrinsicSize?: { width: number; height: number; naturalWidth?: number; lineCount?: number; lineHeight?: number };
   /** Last rendered rich-text measurement used by editing and shape conversion. */
-  intrinsicContentSize?: { width: number; height: number; lineCount?: number; lineHeight?: number };
+  intrinsicContentSize?: { width: number; height: number; naturalWidth?: number; lineCount?: number; lineHeight?: number };
   matrixCell?: boolean;
   matrixCellRole?: "header" | "category" | "cell";
   matrixRootId?: string;

@@ -2,9 +2,12 @@ import type { ContentMeasurement } from "./shape-fitting";
 
 export interface RichTextMeasureOptions {
   maxWidth?: number;
+  /** Authored whole-node font size, independent of temporary visual fit scale. */
+  fontSize?: number;
 }
 
 let measurementHost: HTMLDivElement | null = null;
+let fontsReadyPromise: Promise<unknown> | null = null;
 
 function getMeasurementHost(): HTMLDivElement {
   if (measurementHost?.isConnected) return measurementHost;
@@ -35,6 +38,45 @@ function renderedLineCount(element: HTMLElement, lineHeight: number): number {
   return Math.max(1, Math.ceil(element.scrollHeight / Math.max(1, lineHeight)));
 }
 
+/** Resolve once per page; callers can schedule one corrective measurement when fonts settle. */
+export function textMeasurementFontsReady(): Promise<unknown> {
+  if (fontsReadyPromise) return fontsReadyPromise;
+  fontsReadyPromise = typeof document !== "undefined" && document.fonts?.ready
+    ? document.fonts.ready.catch(() => undefined)
+    : Promise.resolve();
+  return fontsReadyPromise;
+}
+
+function measurementClone(
+  element: HTMLElement,
+  sourceStyle: CSSStyleDeclaration,
+  maxWidth: number | null,
+  fontSize: number | undefined,
+  singleWord: boolean
+): HTMLElement {
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("contenteditable");
+  clone.removeAttribute("tabindex");
+  clone.style.boxSizing = "content-box";
+  clone.style.width = "max-content";
+  clone.style.minWidth = "0";
+  clone.style.maxWidth = maxWidth == null ? "none" : `${maxWidth}px`;
+  clone.style.height = "auto";
+  clone.style.minHeight = "0";
+  clone.style.overflow = "visible";
+  clone.style.whiteSpace = singleWord ? "nowrap" : "pre-wrap";
+  clone.style.overflowWrap = singleWord ? "normal" : "break-word";
+  clone.style.wordBreak = singleWord ? "keep-all" : sourceStyle.wordBreak;
+  clone.style.fontFamily = sourceStyle.fontFamily;
+  clone.style.fontSize = fontSize ? `${fontSize}px` : sourceStyle.fontSize;
+  clone.style.fontWeight = sourceStyle.fontWeight;
+  clone.style.fontStyle = sourceStyle.fontStyle;
+  clone.style.lineHeight = sourceStyle.lineHeight;
+  clone.style.letterSpacing = sourceStyle.letterSpacing;
+  clone.style.textAlign = sourceStyle.textAlign;
+  return clone;
+}
+
 /** Measure cloned rendered rich text with the same classes and inline marks as TipTap. */
 export function measureRichTextElement(
   element: HTMLElement,
@@ -42,37 +84,27 @@ export function measureRichTextElement(
 ): ContentMeasurement {
   const host = getMeasurementHost();
   const sourceStyle = window.getComputedStyle(element);
-  const clone = element.cloneNode(true) as HTMLElement;
-  clone.removeAttribute("contenteditable");
-  clone.removeAttribute("tabindex");
-  clone.style.width = "max-content";
-  clone.style.minWidth = "0";
-  clone.style.maxWidth = `${Math.max(8, options.maxWidth ?? 480)}px`;
-  clone.style.height = "auto";
-  clone.style.minHeight = "0";
-  clone.style.overflow = "visible";
-  clone.style.whiteSpace = sourceStyle.whiteSpace || "pre-wrap";
-  clone.style.overflowWrap = "normal";
-  clone.style.wordBreak = "keep-all";
-  clone.style.hyphens = "none";
-  clone.style.fontFamily = sourceStyle.fontFamily;
-  clone.style.fontSize = sourceStyle.fontSize;
-  clone.style.fontWeight = sourceStyle.fontWeight;
-  clone.style.fontStyle = sourceStyle.fontStyle;
-  clone.style.lineHeight = sourceStyle.lineHeight;
-  clone.style.letterSpacing = sourceStyle.letterSpacing;
-  clone.style.textAlign = sourceStyle.textAlign;
+  const plainText = element.textContent?.trim() ?? "";
+  const singleWord = !!plainText && !/\s/u.test(plainText);
+  const maxWidth = Math.max(8, options.maxWidth ?? 480);
+  const clone = measurementClone(element, sourceStyle, maxWidth, options.fontSize, singleWord);
   host.replaceChildren(clone);
 
   const computed = window.getComputedStyle(clone);
   const fontSize = Number.parseFloat(computed.fontSize) || 14;
   const lineHeight = Number.parseFloat(computed.lineHeight) || fontSize * 1.35;
   const rect = clone.getBoundingClientRect();
-  const width = Math.ceil(Math.max(rect.width, clone.scrollWidth));
+  const width = Math.ceil(Math.min(maxWidth, Math.max(rect.width, singleWord ? 0 : clone.scrollWidth)));
   const height = Math.ceil(Math.max(rect.height, clone.scrollHeight));
   const lineCount = renderedLineCount(clone, lineHeight);
+
+  const naturalClone = measurementClone(element, sourceStyle, null, options.fontSize, true);
+  naturalClone.style.whiteSpace = "pre";
+  host.replaceChildren(naturalClone);
+  const naturalRect = naturalClone.getBoundingClientRect();
+  const naturalWidth = Math.ceil(Math.max(naturalRect.width, naturalClone.scrollWidth));
   host.replaceChildren();
-  return { width, height, lineCount, lineHeight };
+  return { width, height, lineCount, lineHeight, naturalWidth };
 }
 
 export interface PlainTextMeasureOptions extends RichTextMeasureOptions {

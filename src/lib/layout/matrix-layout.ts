@@ -175,12 +175,9 @@ function nodeText(node: Node): string {
 function fontMetrics(node: Node): { fontSize: number; charWidth: number; lineHeight: number } {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const baseSize = resolveLayoutFontSize(data) ?? 14;
-  const inlineSizes = typeof data.richText === "string"
-    ? [...data.richText.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/gi)]
-      .map((match) => Number(match[1]))
-      .filter(Number.isFinite)
-    : [];
-  const fontSize = clamp(Math.max(baseSize, ...inlineSizes, 0), 10, 96);
+  // Mixed inline sizes are represented by matrixIntrinsicSize after DOM
+  // measurement; promoting the largest span to every character over-sizes rows.
+  const fontSize = clamp(baseSize, 10, 96);
   return {
     fontSize,
     // Indic combining marks make code-unit counts conservative, which is

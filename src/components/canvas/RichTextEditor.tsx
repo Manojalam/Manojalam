@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, type Editor } from "@tiptap/core";
@@ -15,7 +15,12 @@ import { cn } from "@/lib/utils";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import type { InlineTextFormatDetail } from "@/lib/types";
 import { useUIStore } from "@/store/ui-store";
-import { measureRichTextElement } from "@/lib/canvas/text-measurement";
+import {
+  measureRichTextElement,
+  textMeasurementFontsReady,
+} from "@/lib/canvas/text-measurement";
+import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
+import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Palette } from "lucide-react";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
@@ -157,12 +162,16 @@ interface RichTextEditorProps {
   className?: string;
   /** Changes when inherited typography changes outside TipTap's document. */
   measurementKey?: string;
-  /** Width of the node's real text interior, in canvas pixels. */
+  /** Current unscaled content-box width in canvas CSS pixels. */
   measurementWidth?: number;
+  /** Whole-node authored font size, before temporary visual fitting. */
+  measurementFontSize?: number;
+  /** Visual scale used only by fixed/layout-owned boxes. */
+  contentScale?: number;
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
   onChange: (html: string) => void;
-  onContentSizeChange?: (size: { width: number; height: number; lineCount?: number; lineHeight?: number }) => void;
+  onContentSizeChange?: (size: ContentMeasurement, reason: ContentResizeReason) => void;
   onBlur?: () => void;
 }
 
@@ -174,6 +183,8 @@ export function RichTextEditor({
   className,
   measurementKey,
   measurementWidth,
+  measurementFontSize,
+  contentScale = 1,
   blockAlign,
   onChange,
   onContentSizeChange,
@@ -199,13 +210,11 @@ export function RichTextEditor({
   const customHighlightRef = useRef<HTMLInputElement>(null);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
+  const measurementFontSizeRef = useRef(measurementFontSize);
+  const pendingReportReasonRef = useRef<ContentResizeReason>("input");
+  const scheduledReportReasonRef = useRef<ContentResizeReason>("layout");
   const contentReportFrameRef = useRef(0);
-  const lastReportedContentSizeRef = useRef<{
-    width: number;
-    height: number;
-    lineCount?: number;
-    lineHeight?: number;
-  } | null>(null);
+  const lastReportedContentSizeRef = useRef<ContentMeasurement | null>(null);
   const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
 
   useEffect(() => {
@@ -215,7 +224,8 @@ export function RichTextEditor({
   useEffect(() => { onContentSizeChangeRef.current = onContentSizeChange; }, [onContentSizeChange]);
   useLayoutEffect(() => {
     measurementWidthRef.current = measurementWidth;
-  }, [measurementWidth]);
+    measurementFontSizeRef.current = measurementFontSize;
+  }, [measurementFontSize, measurementWidth]);
 
   const hideToolbar = useCallback(() => {
     setAnchor(null);
@@ -226,31 +236,56 @@ export function RichTextEditor({
     setShowSizes(false);
   }, []);
 
-  const reportContentSize = useCallback((activeEditor: Editor | null | undefined) => {
+  const reportContentSize = useCallback((
+    activeEditor: Editor | null | undefined,
+    reason: ContentResizeReason = "layout"
+  ) => {
     const report = onContentSizeChangeRef.current;
     if (!report) return;
     const element = activeEditor?.view.dom as HTMLElement | undefined;
     if (!element) return;
-    const measured = measureRichTextElement(element, { maxWidth: measurementWidthRef.current });
+    const measured = measureRichTextElement(element, {
+      maxWidth: measurementWidthRef.current ?? 480,
+      fontSize: measurementFontSizeRef.current,
+    });
     if (measured.height <= 0) return;
 
     const previous = lastReportedContentSizeRef.current;
     const changed = !previous
       || Math.abs(previous.width - measured.width) > 1
       || Math.abs(previous.height - measured.height) > 1
+      || Math.abs((previous.naturalWidth ?? 0) - (measured.naturalWidth ?? 0)) > 1
       || Math.abs((previous.lineCount ?? 0) - (measured.lineCount ?? 0)) > 0.5
       || Math.abs((previous.lineHeight ?? 0) - (measured.lineHeight ?? 0)) > 0.5;
-    if (!changed) return;
+    if (!changed && reason !== "blur" && reason !== "fit") return;
 
     lastReportedContentSizeRef.current = measured;
-    report(measured);
+    report(measured, reason);
   }, []);
 
-  const scheduleContentReport = useCallback((activeEditor: Editor | null | undefined) => {
-    cancelAnimationFrame(contentReportFrameRef.current);
+  const scheduleContentReport = useCallback((
+    activeEditor: Editor | null | undefined,
+    reason: ContentResizeReason = "layout"
+  ) => {
+    const priority: Record<ContentResizeReason, number> = {
+      layout: 0,
+      input: 1,
+      paste: 2,
+      format: 2,
+      blur: 3,
+      fit: 3,
+      conversion: 3,
+    };
+    if (contentReportFrameRef.current) {
+      if (priority[reason] > priority[scheduledReportReasonRef.current]) {
+        scheduledReportReasonRef.current = reason;
+      }
+      return;
+    }
+    scheduledReportReasonRef.current = reason;
     contentReportFrameRef.current = requestAnimationFrame(() => {
-      reportContentSize(activeEditor);
-      contentReportFrameRef.current = requestAnimationFrame(() => reportContentSize(activeEditor));
+      contentReportFrameRef.current = 0;
+      reportContentSize(activeEditor, scheduledReportReasonRef.current);
     });
   }, [reportContentSize]);
 
@@ -266,10 +301,12 @@ export function RichTextEditor({
     immediatelyRender: false,
     onUpdate({ editor }) {
       onChange(editor.getHTML());
-      scheduleContentReport(editor);
+      const reason = pendingReportReasonRef.current;
+      pendingReportReasonRef.current = "input";
+      scheduleContentReport(editor, reason);
     },
     onBlur({ editor, event }) {
-      reportContentSize(editor);
+      reportContentSize(editor, "blur");
       if (!toolbarRef.current?.contains(event.relatedTarget as globalThis.Node | null)) hideToolbar();
       onBlur?.();
     },
@@ -332,34 +369,43 @@ export function RichTextEditor({
           chain.setTextAlign(String(detail.value));
           break;
       }
+      pendingReportReasonRef.current = "format";
       chain.run();
       if (!wasEditable) editor.setEditable(false, false);
       publishTextSelection();
-      scheduleContentReport(editor);
+      scheduleContentReport(editor, "format");
     };
     window.addEventListener("vidya:apply-inline-text-format", applyFormat);
     return () => window.removeEventListener("vidya:apply-inline-text-format", applyFormat);
   }, [editor, nodeId, publishTextSelection, scheduleContentReport]);
 
   useEffect(() => {
-    if (!editor || editable) return;
+    if (!editor) return;
     const nextContent = initialContent || "";
     if (editor.getHTML() === nextContent) return;
+    const previousSelection = editor.state.selection;
+    const hadFocus = editor.isFocused;
     editor.commands.setContent(nextContent, { emitUpdate: false });
-    scheduleContentReport(editor);
+    if (editable) {
+      const maximumPosition = Math.max(1, editor.state.doc.content.size);
+      editor.commands.setTextSelection({
+        from: Math.min(previousSelection.from, maximumPosition),
+        to: Math.min(previousSelection.to, maximumPosition),
+      });
+      if (hadFocus) requestAnimationFrame(() => editor.commands.focus(undefined, { scrollIntoView: false }));
+    }
+    scheduleContentReport(editor, "layout");
   }, [editor, editable, initialContent, scheduleContentReport]);
 
   useEffect(() => {
     const element = editor?.view.dom as HTMLElement | undefined;
     if (!editor || !element) return;
-    const schedule = () => scheduleContentReport(editor);
-    element.addEventListener("paste", schedule);
-    element.addEventListener("input", schedule);
+    const markPaste = () => { pendingReportReasonRef.current = "paste"; };
+    element.addEventListener("paste", markPaste, true);
     return () => {
-      element.removeEventListener("paste", schedule);
-      element.removeEventListener("input", schedule);
+      element.removeEventListener("paste", markPaste, true);
     };
-  }, [editor, scheduleContentReport]);
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -367,11 +413,11 @@ export function RichTextEditor({
     if (editable) {
       requestAnimationFrame(() => {
         editor.commands.focus("end", { scrollIntoView: false });
-        scheduleContentReport(editor);
+        scheduleContentReport(editor, "layout");
       });
     } else {
       requestAnimationFrame(() => {
-        reportContentSize(editor);
+        reportContentSize(editor, "blur");
         hideToolbar();
       });
     }
@@ -393,6 +439,7 @@ export function RichTextEditor({
 
     const wasEditable = editor.isEditable;
     if (!wasEditable) editor.setEditable(true, false);
+    pendingReportReasonRef.current = "format";
     editor.chain().selectAll().setTextAlign(blockAlign).run();
     if (!wasEditable) {
       editor.setEditable(false, false);
@@ -401,14 +448,23 @@ export function RichTextEditor({
     }
     // Persist the change
     onChange(editor.getHTML());
-    scheduleContentReport(editor);
+    scheduleContentReport(editor, "format");
   }, [editor, blockAlign, onChange, reportContentSize, scheduleContentReport]);
 
   useLayoutEffect(() => {
     if (!editor) return;
-    const frame = requestAnimationFrame(() => reportContentSize(editor));
+    const frame = requestAnimationFrame(() => reportContentSize(editor, "format"));
     return () => cancelAnimationFrame(frame);
   }, [editor, editable, measurementKey, reportContentSize]);
+
+  useEffect(() => {
+    if (!editor) return;
+    let active = true;
+    void textMeasurementFontsReady().then(() => {
+      if (active) scheduleContentReport(editor, "format");
+    });
+    return () => { active = false; };
+  }, [editor, scheduleContentReport]);
 
   useEffect(() => {
     const element = editor?.view.dom as HTMLElement | undefined;
@@ -416,7 +472,7 @@ export function RichTextEditor({
     let frame = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => reportContentSize(editor));
+      frame = requestAnimationFrame(() => reportContentSize(editor, "layout"));
     });
     observer.observe(element);
     return () => {
@@ -529,6 +585,16 @@ export function RichTextEditor({
   const openPopoversBelow = drag
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
+  const normalizedContentScale = Number.isFinite(contentScale)
+    ? Math.max(0.2, Math.min(2.5, contentScale))
+    : 1;
+  const hasVisualScale = Math.abs(normalizedContentScale - 1) > 0.001;
+  const scaleStyle: CSSProperties | undefined = hasVisualScale
+    ? {
+        zoom: normalizedContentScale,
+        width: `${100 / normalizedContentScale}%`,
+      }
+    : undefined;
 
   return (
     <>
@@ -730,17 +796,19 @@ export function RichTextEditor({
         document.body
       )}
 
-      <EditorContent
-        editor={editor}
-        aria-label={placeholder}
-        className={cn(
-          "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
-          "[&_.ProseMirror]:leading-snug",
-          "[&_.ProseMirror_p]:m-0",
-          !editable && "pointer-events-none select-none",
-          className
-        )}
-      />
+      <div className={cn(hasVisualScale && "rich-text-scale-fit")} style={scaleStyle}>
+        <EditorContent
+          editor={editor}
+          aria-label={placeholder}
+          className={cn(
+            "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
+            "[&_.ProseMirror]:leading-snug [&_.ProseMirror]:break-words",
+            "[&_.ProseMirror_p]:m-0",
+            !editable && "pointer-events-none select-none",
+            className
+          )}
+        />
+      </div>
     </>
   );
 }

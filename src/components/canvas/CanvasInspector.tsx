@@ -38,6 +38,7 @@ import type {
   RadialColorScheme,
   RelationshipDiagramSpec,
   RelationshipDiagramPalette,
+  AutoSizeMode,
 } from "@/lib/types";
 import type { Edge, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
+import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
 import {
   alignSelection,
   compactEqualSpacing,
@@ -719,6 +721,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const updateRelationshipDiagramSpec = useCanvasStore((s) => s.updateRelationshipDiagramSpec);
   const setNodeLocked = useCanvasStore((s) => s.setNodeLocked);
   const resizeNodeToFitBounds = useCanvasStore((s) => s.resizeNodeToFitBounds);
+  const fitNodeToStoredContent = useCanvasStore((s) => s.fitNodeToStoredContent);
+  const setNodeAutoSizeMode = useCanvasStore((s) => s.setNodeAutoSizeMode);
+  const setNodeSize = useCanvasStore((s) => s.setNodeSize);
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
   const deleteEdges     = useCanvasStore((s) => s.deleteEdges);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
@@ -1685,6 +1690,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const isShapeNode   = nodeType === "shape";
   const isContentNode = isTextNode || isShapeNode;
   const isSanskrit    = ["sanskrit", "shloka", "grammar"].includes(nodeType);
+  const currentNodeSize = getNodeDimensions(selectedNode);
+  const autoSizeMode = resolveAutoSizeMode(d);
 
   const borderWidth   = typeof d.borderWidth   === "number" ? d.borderWidth   : 2;
   const borderRadius  = cornerRadiusPercentForNode(selectedNode);
@@ -2420,6 +2427,107 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 suffix="%"
               />
             </div>
+          </Section>
+        )}
+
+        {isContentNode && !isRadialLayoutSector && (
+          <Section label="Size" visible={singleNodeTab === "shape"}>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fit</p>
+              <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Text sizing mode">
+                {([
+                  ["smart", "Smart"],
+                  ["height-only", "Keep width"],
+                  ["fixed", "Fixed"],
+                ] as Array<[AutoSizeMode, string]>).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={autoSizeMode === mode}
+                    onClick={() => {
+                      if (mode === "smart") fitNodeToStoredContent(selectedNode.id);
+                      else setNodeAutoSizeMode(selectedNode.id, mode);
+                    }}
+                    className={cn(
+                      "min-h-8 rounded-md border px-1.5 py-1 text-[10px] font-medium transition-colors",
+                      autoSizeMode === mode
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
+                Smart grows with content. Keep width grows vertically. Fixed fits text inside your chosen box.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <label htmlFor={`node-width-${selectedNode.id}`} className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Width</span>
+                <Input
+                  key={`${selectedNode.id}-width-${Math.round(currentNodeSize.width)}`}
+                  id={`node-width-${selectedNode.id}`}
+                  name="node-width"
+                  type="number"
+                  min={60}
+                  defaultValue={Math.round(currentNodeSize.width)}
+                  className="h-8 text-xs"
+                  onBlur={(event) => {
+                    const width = Number(event.currentTarget.value);
+                    if (Number.isFinite(width) && width > 0 && Math.abs(width - currentNodeSize.width) > 1) {
+                      setNodeSize(selectedNode.id, {
+                        width,
+                        height: ["circle", "diamond", "star", "flower"].includes(shapeType)
+                          ? width
+                          : currentNodeSize.height,
+                      });
+                    }
+                  }}
+                />
+              </label>
+              <label htmlFor={`node-height-${selectedNode.id}`} className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Height</span>
+                <Input
+                  key={`${selectedNode.id}-height-${Math.round(currentNodeSize.height)}`}
+                  id={`node-height-${selectedNode.id}`}
+                  name="node-height"
+                  type="number"
+                  min={40}
+                  defaultValue={Math.round(currentNodeSize.height)}
+                  className="h-8 text-xs"
+                  onBlur={(event) => {
+                    const height = Number(event.currentTarget.value);
+                    if (Number.isFinite(height) && height > 0 && Math.abs(height - currentNodeSize.height) > 1) {
+                      setNodeSize(selectedNode.id, {
+                        width: ["circle", "diamond", "star", "flower"].includes(shapeType)
+                          ? height
+                          : currentNodeSize.width,
+                        height,
+                      });
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full gap-1.5 text-xs"
+              onClick={() => {
+                fitNodeToStoredContent(selectedNode.id);
+                toast.success("Fitted to content.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            >
+              <Maximize2 className="h-3.5 w-3.5" /> Fit to content
+            </Button>
           </Section>
         )}
 
