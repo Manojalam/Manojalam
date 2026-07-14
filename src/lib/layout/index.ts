@@ -1,8 +1,22 @@
 import type { Node, Edge } from "@xyflow/react";
 import type { LayoutMode, MatrixDensity } from "@/lib/types";
 import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarchy";
+import { computeListLayout } from "./list-layout";
+import {
+  createNodeRect,
+  sizeOf,
+  type NodeRect,
+} from "./geometry";
 
 export type { LayoutMode };
+export {
+  getNodeDimensions,
+  getNodeRect,
+  createNodeRect,
+  rectsOverlap,
+  sizeOf,
+  type NodeRect,
+} from "./geometry";
 
 export interface LayoutOptions {
   /** When set, only this node's subtree is arranged; the root stays fixed. */
@@ -19,14 +33,6 @@ const MIN_NODE_PADDING_X = 80;
 const MIN_NODE_PADDING_Y = 48;
 const LEVEL_GAP_X = 260;
 const LEVEL_GAP_Y = 170;
-const LIST_ROW_GAP = 24;
-const LIST_DEPTH_INDENT = 220;
-const LIST_SECTION_GAP = 40;
-const LIST_DEPTH_GAP = 72;
-const LIST_MIN_WIDTH = 220;
-const LIST_MAX_WIDTH = 420;
-const LIST_MIN_ROW_HEIGHT = 52;
-const LIST_MAX_ROW_HEIGHT = 120;
 const RADIAL_LEVEL_GAP = 280;
 const LINEAR_GAP = 120;
 
@@ -44,10 +50,6 @@ const MATRIX_MAX_NATURAL_CELL_HEIGHT = 180;
 const DEFAULT_W = 180;
 const DEFAULT_H = 80;
 
-// -- Rect / size helpers ------------------------------------------------------
-
-export interface NodeRect { id: string; x: number; y: number; width: number; height: number }
-
 function dimension(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -55,18 +57,6 @@ function dimension(value: unknown, fallback: number): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
-}
-
-export function sizeOf(node: Node): { w: number; h: number } {
-  const width = node.type === "relationshipDiagram"
-    ? node.width ?? node.measured?.width ?? node.style?.width
-    : node.style?.width ?? node.measured?.width ?? node.width;
-  const height = node.type === "relationshipDiagram"
-    ? node.height ?? node.measured?.height ?? node.style?.height
-    : node.style?.height ?? node.measured?.height ?? node.height;
-  const w = dimension(width, DEFAULT_W);
-  const h = dimension(height, DEFAULT_H);
-  return { w, h };
 }
 
 /** Keep React Flow's resizer fields and the persisted CSS size in sync. */
@@ -101,21 +91,6 @@ export function resetNodeDimensions<NodeType extends Node>(
     style: { ...(node.style ?? {}), width, height },
   };
 }
-
-export function getNodeRect(node: Node): NodeRect {
-  const { w, h } = sizeOf(node);
-  return { id: node.id, x: node.position.x, y: node.position.y, width: w, height: h };
-}
-
-export function rectsOverlap(a: NodeRect, b: NodeRect, pad = 0): boolean {
-  return (
-    a.x - pad < b.x + b.width &&
-    a.x + a.width + pad > b.x &&
-    a.y - pad < b.y + b.height &&
-    a.y + a.height + pad > b.y
-  );
-}
-
 function rectsTooClose(a: NodeRect, b: NodeRect, padX: number, padY: number): boolean {
   return (
     a.x - padX < b.x + b.width &&
@@ -195,14 +170,6 @@ function matrixNaturalHeight(node: Node, width: number, minHeight = MATRIX_MIN_R
   return textBoxHeight(node, width, minHeight, MATRIX_MAX_NATURAL_CELL_HEIGHT);
 }
 
-function listNaturalWidth(node: Node): number {
-  return textBoxWidth(node, LIST_MIN_WIDTH, LIST_MAX_WIDTH);
-}
-
-function listNaturalHeight(node: Node, width: number): number {
-  return textBoxHeight(node, width, LIST_MIN_ROW_HEIGHT, LIST_MAX_ROW_HEIGHT);
-}
-
 // -- Collision resolution (structure-preserving, axis-constrained) ------------
 // Pushes overlapping nodes apart along a single axis so the layout's primary
 // structure (rows/columns) is preserved.
@@ -218,13 +185,13 @@ function resolveCollisions(
   const ids = Object.keys(positions);
   const rect = (id: string): NodeRect => {
     const { w, h } = sizeOf(byId.get(id)!);
-    return {
+    return createNodeRect(
       id,
-      x: positions[id].x,
-      y: positions[id].y,
-      width: positions[id].width ?? w,
-      height: positions[id].height ?? h,
-    };
+      positions[id].x,
+      positions[id].y,
+      positions[id].width ?? w,
+      positions[id].height ?? h
+    );
   };
   for (let it = 0; it < iterations; it++) {
     let moved = false;
@@ -265,7 +232,7 @@ export function resolveInsertedNodeCollisions(
   const rect = (id: string): NodeRect => {
     const n = byId.get(id)!;
     const { w, h } = sizeOf(n);
-    return { id, x: positions[id].x, y: positions[id].y, width: w, height: h };
+    return createNodeRect(id, positions[id].x, positions[id].y, w, h);
   };
 
   for (let iteration = 0; iteration < 10; iteration++) {
@@ -602,37 +569,7 @@ export function computeLayout(
       resolveCollisions(pos, byId, "y");
       Object.assign(result, pos);
     } else if (mode === "list") {
-      const rows: Array<{ id: string; depth: number; sectionBreak: boolean }> = [];
-      const seen = new Set<string>();
-      const walk = (id: string, depth: number) => {
-        if (seen.has(id)) return;
-        seen.add(id);
-        const sectionBreak = depth === 1 && rows.some((row) => row.depth === 1);
-        rows.push({ id, depth, sectionBreak });
-        for (const c of hierarchy.get(id)?.childIds ?? []) walk(c, depth + 1);
-      };
-      walk(root, 0);
-
-      const maxDepth = Math.max(...rows.map((row) => row.depth), 0);
-      const depthWidth = Array.from({ length: maxDepth + 1 }, (_, depth) => {
-        const ids = rows.filter((row) => row.depth === depth).map((row) => row.id);
-        return Math.max(...ids.map((id) => listNaturalWidth(byId.get(id)!)), LIST_MIN_WIDTH);
-      });
-      const depthX: number[] = [rootNode.position.x];
-      for (let depth = 1; depth <= maxDepth; depth++) {
-        const previousWidth = depthWidth[depth - 1] ?? LIST_MIN_WIDTH;
-        depthX[depth] = depthX[depth - 1] + Math.max(LIST_DEPTH_INDENT, previousWidth + LIST_DEPTH_GAP);
-      }
-
-      let y = rootNode.position.y;
-      for (const row of rows) {
-        if (row.sectionBreak) y += LIST_SECTION_GAP;
-        const width = depthWidth[row.depth] ?? LIST_MIN_WIDTH;
-        const height = listNaturalHeight(byId.get(row.id)!, width);
-        result[row.id] = { x: depthX[row.depth], y, width, height };
-        y += height + LIST_ROW_GAP;
-      }
-      resolveCollisions(result, byId, "y", MIN_NODE_PADDING_X, LIST_ROW_GAP);
+      Object.assign(result, computeListLayout(root, hierarchy, byId));
     } else if (mode === "linear") {
       const order = getSubtree(root, hierarchy);
       let x = rootNode.position.x;
@@ -680,7 +617,7 @@ export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeR
     case "topDown":
       return { sourceHandle: "bottom", targetHandle: "top", curveStyle: "step" };
     case "list":
-      return { sourceHandle: "left", targetHandle: "left", curveStyle: "step" };
+      return { sourceHandle: "right", targetHandle: "left", curveStyle: "step" };
     case "matrix": {
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "step" };

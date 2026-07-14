@@ -1,4 +1,4 @@
-import type { NodeRect } from "./index";
+import { inflateRect, type NodeRect } from "./geometry";
 import type { LayoutMode } from "@/lib/types";
 
 export type Side = "top" | "right" | "bottom" | "left";
@@ -10,7 +10,7 @@ export const EDGE_OBSTACLE_PADDING = 24;
 // -- Geometry helpers ---------------------------------------------------------
 
 function inflate(r: NodeRect, pad: number): NodeRect {
-  return { id: r.id, x: r.x - pad, y: r.y - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
+  return inflateRect(r, pad);
 }
 
 /** Does segment (p1->p2) intersect an axis-aligned rect? (segments are orthogonal) */
@@ -198,7 +198,7 @@ export function routeOrthogonalEdge(
   for (const c of candidates) {
     const score =
       pathIntersections(c, inflated) * 100000 +
-      edgeCrossings(c, peerSegments) * 2500 +
+      edgeCrossings(c, peerSegments) * 5000 +
       pathLength(c) +
       (c.length - 2) * 40; // bend penalty
     if (score < bestScore) { bestScore = score; best = c; }
@@ -259,7 +259,7 @@ export function routeRectilinearEdge(
         for (const candidate of buildCandidates(source, target, sides.sourceSide, sides.targetSide, inflated)) {
           const score =
             pathIntersections(candidate, inflated) * 100000 +
-            edgeCrossings(candidate, peerSegments) * 2500 +
+            edgeCrossings(candidate, peerSegments) * 5000 +
             pathLength(candidate) +
             Math.abs(sf - 0.5) * 80 +
             Math.abs(tf - 0.5) * 80 +
@@ -278,19 +278,17 @@ export function routeRectilinearEdge(
 }
 
 function routeListEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {
-  const source = sidePoint(sourceRect, "left", 0.5);
-  const target = sidePoint(targetRect, "left", 0.5);
-  const minY = Math.min(source.y, target.y);
-  const maxY = Math.max(source.y, target.y);
-  let laneX = Math.min(sourceRect.x, targetRect.x) - 36;
-  for (const obstacle of obstacles) {
-    const intersectsVerticalRange = obstacle.y < maxY + EDGE_OBSTACLE_PADDING &&
-      obstacle.y + obstacle.height > minY - EDGE_OBSTACLE_PADDING;
-    if (intersectsVerticalRange && obstacle.x <= laneX + EDGE_OBSTACLE_PADDING) {
-      laneX = obstacle.x - EDGE_OBSTACLE_PADDING;
-    }
+  if (targetRect.left <= sourceRect.right) {
+    return routeRectilinearEdge(sourceRect, targetRect, obstacles);
   }
-  return makeRoute([source, { x: laneX, y: source.y }, { x: laneX, y: target.y }, target]);
+
+  const source = sidePoint(sourceRect, "right", 0.5);
+  const target = sidePoint(targetRect, "left", 0.5);
+  const laneX = source.x + Math.max(24, Math.min(40, (target.x - source.x) * 0.45));
+  const points = [source, { x: laneX, y: source.y }, { x: laneX, y: target.y }, target];
+  return pathIntersections(points, obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING)))
+    ? routeRectilinearEdge(sourceRect, targetRect, obstacles)
+    : makeRoute(points);
 }
 
 function routeHorizontalEdge(sourceRect: NodeRect, targetRect: NodeRect, obstacles: NodeRect[]): RouteResult {

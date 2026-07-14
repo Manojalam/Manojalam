@@ -1,4 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
+import { getNodeRect } from "./geometry";
 
 export interface HierarchyNode {
   id: string;
@@ -13,34 +14,48 @@ export type Hierarchy = Map<string, HierarchyNode>;
 type XY = { x: number; y: number };
 
 function centerOf(n: Node): XY {
-  const w = (n.measured?.width ?? (n.style?.width as number) ?? 180) as number;
-  const h = (n.measured?.height ?? (n.style?.height as number) ?? 80) as number;
-  return { x: n.position.x + w / 2, y: n.position.y + h / 2 };
+  const rect = getNodeRect(n);
+  return { x: rect.centerX, y: rect.centerY };
 }
 
 /**
  * Build a cycle-safe parent→child hierarchy from directed edges.
  *
- * Source of truth: directed edges (`source` = parent, `target` = child).
- * Stored `data.childOrder` on a parent is respected for sibling ordering;
- * otherwise siblings are ordered by their current geometric position.
+ * Persisted `data.parentId` is the primary source of truth. Directed edges
+ * (`source` = parent, `target` = child) fill in hierarchy only for nodes that
+ * do not yet have persisted metadata. This prevents a cross-link or a changed
+ * edge-array order from silently changing the outline structure.
  */
 export function buildHierarchy(nodes: Node[], edges: Edge[]): Hierarchy {
   const byId = new Map<string, Node>();
   for (const n of nodes) byId.set(n.id, n);
 
-  // First declared incoming edge wins as the parent (ignore extra parents).
   const parentOf = new Map<string, string>();
   const rawChildren = new Map<string, string[]>();
   for (const n of nodes) rawChildren.set(n.id, []);
 
+  for (const node of nodes) {
+    const parentId = (node.data as { parentId?: unknown } | undefined)?.parentId;
+    if (
+      typeof parentId === "string" &&
+      parentId !== node.id &&
+      byId.has(parentId)
+    ) {
+      parentOf.set(node.id, parentId);
+    }
+  }
+
+  // First valid incoming edge wins only when no persisted parent is available.
   for (const e of edges) {
     if (!byId.has(e.source) || !byId.has(e.target)) continue;
     if (e.source === e.target) continue;
     if (!parentOf.has(e.target)) {
       parentOf.set(e.target, e.source);
-      rawChildren.get(e.source)!.push(e.target);
     }
+  }
+
+  for (const [childId, parentId] of parentOf) {
+    rawChildren.get(parentId)?.push(childId);
   }
 
   // Break cycles: if following parents from a node loops back, detach it to root.

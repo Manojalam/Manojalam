@@ -8,6 +8,7 @@ import {
   MiniMap,
   BackgroundVariant,
   useReactFlow,
+  useUpdateNodeInternals,
   useViewport,
   ReactFlowProvider,
   type Connection,
@@ -35,6 +36,7 @@ import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent } from "@/lib/types";
 import {
+  getNodeRect,
   resolveInsertedNodeCollisions,
   routeForMode,
   synchronizeNodeDimensions,
@@ -44,6 +46,7 @@ import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
 import { RelationshipDiagramDialog } from "./RelationshipDiagramDialog";
+import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -51,6 +54,7 @@ interface Guides { h: number[]; v: number[] }
 const GUIDE_THRESHOLD = 6; // px in flow coords
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
+const MIN_READABLE_LIST_ZOOM = 0.5;
 const LONG_PRESS_PAN_MS = 180;
 const LONG_PRESS_CANCEL_DISTANCE = 7;
 
@@ -231,6 +235,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const isTouchDevice = device.input !== "mouse";
 
   const { screenToFlowPosition, fitView, zoomIn, zoomOut, getViewport, setViewport: setFlowViewport } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
   const pinchRef = useRef<{
@@ -247,6 +252,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     timeout: number;
   } | null>(null);
   const suppressNextContextMenuRef = useRef(false);
+  const measuredLayoutFramesRef = useRef<number[]>([]);
   const dragStartRef = useRef<{
     source: { x: number; y: number };
     positions: Map<string, { x: number; y: number }>;
@@ -341,10 +347,63 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     };
   }, [saveStatus, enqueueSave]);
 
+  // List layout waits for React Flow to refresh rendered dimensions before the
+  // store performs its one atomic placement transaction.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        mode?: LayoutMode;
+        rootId?: string;
+        nodeIds?: string[];
+      }>).detail;
+      if (detail?.mode !== "list" || !detail.rootId || !detail.nodeIds?.length) return;
+
+      measuredLayoutFramesRef.current.forEach(cancelAnimationFrame);
+      measuredLayoutFramesRef.current = [];
+      updateNodeInternals(detail.nodeIds);
+      const first = requestAnimationFrame(() => {
+        const second = requestAnimationFrame(() => {
+          useCanvasStore.getState().applyLayout("list", detail.rootId);
+          window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
+        });
+        measuredLayoutFramesRef.current = [second];
+      });
+      measuredLayoutFramesRef.current = [first];
+    };
+    window.addEventListener("vidya:apply-measured-layout", handler);
+    return () => {
+      window.removeEventListener("vidya:apply-measured-layout", handler);
+      measuredLayoutFramesRef.current.forEach(cancelAnimationFrame);
+      measuredLayoutFramesRef.current = [];
+    };
+  }, [updateNodeInternals]);
+
   // Fit the view after an auto-layout is applied (dispatched from LayoutPanel).
   useEffect(() => {
     const handler = (event: Event) => {
-      const nodeIds = (event as CustomEvent<{ nodeIds?: string[] }>).detail?.nodeIds;
+      const detail = (event as CustomEvent<{
+        nodeIds?: string[];
+        mode?: LayoutMode;
+        rootId?: string;
+      }>).detail;
+      const nodeIds = detail?.nodeIds;
+      if (detail?.mode === "list" && detail.rootId) {
+        const root = useCanvasStore.getState().nodes.find((node) => node.id === detail.rootId);
+        if (root) {
+          const rootRect = getNodeRect(root);
+          const currentZoom = getViewport().zoom;
+          const zoom = Math.max(MIN_READABLE_LIST_ZOOM, Math.min(MAX_CANVAS_ZOOM, currentZoom));
+          const canvasBounds = document.querySelector<HTMLElement>(".vidya-canvas-bg")?.getBoundingClientRect();
+          const screenX = canvasBounds ? Math.max(96, Math.min(280, canvasBounds.width * 0.24)) : 180;
+          const screenY = canvasBounds ? Math.max(88, Math.min(180, canvasBounds.height * 0.18)) : 120;
+          void setFlowViewport({
+            x: screenX - rootRect.left * zoom,
+            y: screenY - rootRect.top * zoom,
+            zoom,
+          }, { duration: 350 });
+          return;
+        }
+      }
       const targetNodes = nodeIds?.length
         ? useCanvasStore.getState().nodes.filter((node) => nodeIds.includes(node.id))
         : undefined;
@@ -356,7 +415,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     };
     window.addEventListener("vidya:fitview", handler);
     return () => window.removeEventListener("vidya:fitview", handler);
-  }, [fitView]);
+  }, [fitView, getViewport, setFlowViewport]);
 
   // ── onNodesChange ──────────────────────────────────────────────────
   // KEY DESIGN:
@@ -390,6 +449,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         }));
       }
 
+      for (const change of changes) {
+        if (change.type === "dimensions") {
+          useCanvasStore.getState().scheduleListReflow(change.id);
+        }
+      }
+
       // Keep selectedNodeIds in sync (only when selection actually changed)
       if (changes.some((c) => c.type === "select")) {
         const nodes = useCanvasStore.getState().nodes;
@@ -414,6 +479,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         .map((node) => [node.id, { ...node.position }])),
       axis: null,
     };
+    state.markListManualOverride(movingIds, true);
     useUIStore.getState().setCanvasDragging(true);
   }, []);
 
@@ -1026,6 +1092,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={settings.gridSize ?? 24} />
       )}
+      <ListTreeConnectors />
       {!relationshipSelection && <SelectionToolbar />}
       <RelationshipSelectionToolbar />
       <AlignmentGuides guides={guides} />
