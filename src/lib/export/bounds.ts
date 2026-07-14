@@ -280,8 +280,12 @@ function extentBounds(extent: Extent): ExportBounds | null {
   return { x: extent.minX, y: extent.minY, width, height };
 }
 
-function modelBounds(target: ResolvedExportTarget): ExportBounds | null {
+function modelBounds(
+  target: ResolvedExportTarget,
+  excludedNodeIds: ReadonlySet<string> = new Set()
+): ExportBounds | null {
   const normalized = target.nodes
+    .filter((node) => !excludedNodeIds.has(node.id))
     .map((node) => {
       const rect = target.modelNodeRects.get(node.id);
       if (!rect) return null;
@@ -391,9 +395,12 @@ function includeClientRect(
   element: Element,
   containerRect: Pick<ClientRectLike, "left" | "top">,
   viewport: ExportViewportTransform
-): void {
+): boolean {
   const rect = element.getBoundingClientRect();
-  includeRect(extent, clientRectToFlowBounds(rect, containerRect, viewport));
+  const flowRect = clientRectToFlowBounds(rect, containerRect, viewport);
+  if (!isFiniteRect(flowRect)) return false;
+  includeRect(extent, flowRect);
+  return true;
 }
 
 function dataIdMatches(element: Element, attribute: string, ids: ReadonlySet<string>): boolean {
@@ -407,17 +414,22 @@ function includeNodeDomBounds(
   nodeIds: ReadonlySet<string>,
   containerRect: Pick<ClientRectLike, "left" | "top">,
   viewport: ExportViewportTransform
-): void {
+): Set<string> {
+  const renderedNodeIds = new Set<string>();
   const nodeElements = elementsMatching(context.root, ".react-flow__node[data-id]")
     .filter((element) => dataIdMatches(element, "data-id", nodeIds));
 
   for (const element of nodeElements) {
-    includeClientRect(extent, element, containerRect, viewport);
+    let hasValidBounds = includeClientRect(extent, element, containerRect, viewport);
     for (const explicitBounds of Array.from(element.querySelectorAll<Element>("[data-export-bounds]"))) {
       if (explicitBounds.closest("[data-export-ignore]")) continue;
-      includeClientRect(extent, explicitBounds, containerRect, viewport);
+      hasValidBounds = includeClientRect(extent, explicitBounds, containerRect, viewport)
+        || hasValidBounds;
     }
+    const nodeId = element.getAttribute("data-id");
+    if (hasValidBounds && nodeId) renderedNodeIds.add(nodeId);
   }
+  return renderedNodeIds;
 }
 
 type SvgBoundsElement = Element & { getBBox?: () => DOMRect };
@@ -469,9 +481,9 @@ function includeDomBounds(
   extent: Extent,
   target: ResolvedExportTarget,
   context: ExportDomBoundsContext
-): void {
+): Set<string> {
   const flowContainer = context.flowContainer ?? findFlowContainer(context.root);
-  if (!flowContainer) return;
+  if (!flowContainer) return new Set();
   const viewport = context.viewport ?? viewportFromRoot(context.root);
   if (!validViewport(viewport)) {
     throw new ExportError({
@@ -485,8 +497,9 @@ function includeDomBounds(
   const containerRect = flowContainer.getBoundingClientRect();
   const nodeIds = new Set(target.nodeIds);
   const edgeIds = new Set(target.edgeIds);
-  includeNodeDomBounds(extent, context, nodeIds, containerRect, viewport);
+  const renderedNodeIds = includeNodeDomBounds(extent, context, nodeIds, containerRect, viewport);
   includeEdgeDomBounds(extent, context, edgeIds, containerRect, viewport);
+  return renderedNodeIds;
 }
 
 /**
@@ -508,9 +521,17 @@ export function computeTightExportBounds(
   }
 
   const extent = { ...EMPTY_EXTENT };
-  const fromModel = modelBounds(target);
+  // A rendered node's client rectangle is the authoritative geometry at the
+  // moment of export. React Flow's `measured` field is updated asynchronously
+  // after a resize, so unioning both rectangles can retain a stale (sometimes
+  // enormous) model box and shrink the real board content into one corner of
+  // the PNG. Keep model geometry only as a fallback for target nodes that are
+  // not currently represented by a valid DOM rectangle.
+  const renderedNodeIds = options.dom
+    ? includeDomBounds(extent, target, options.dom)
+    : new Set<string>();
+  const fromModel = modelBounds(target, renderedNodeIds);
   if (fromModel) includeRect(extent, fromModel);
-  if (options.dom) includeDomBounds(extent, target, options.dom);
 
   const unpadded = extentBounds(extent);
   if (!unpadded) {
