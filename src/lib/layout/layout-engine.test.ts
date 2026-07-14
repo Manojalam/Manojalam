@@ -4,7 +4,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMode } from "../types";
 import { getNodeRect, inflateRect, rectsOverlap, segmentIntersectsRect } from "./geometry";
 import { EDGE_OBSTACLE_PADDING, routeLayoutEdge } from "./edge-routing";
-import { computeLayout } from "./index";
+import { computeLayout, LAYOUT_OPTIONS } from "./index";
 
 function buildVariableTree(count = 31): { nodes: Node[]; edges: Edge[] } {
   const childOrder = new Map<string, string[]>();
@@ -127,4 +127,13 @@ test("structured hierarchy connectors avoid every unrelated node rectangle", () 
       }
     }
   }
+});
+
+test("Top Down is hidden from the chooser while legacy boards retain Vertical geometry", () => {
+  const tree = buildVariableTree(13);
+  const vertical = computeLayout(tree.nodes, tree.edges, "vertical", { rootId: "n0" });
+  const legacyTopDown = computeLayout(tree.nodes, tree.edges, "topDown", { rootId: "n0" });
+
+  assert.equal(LAYOUT_OPTIONS.some((option) => option.mode === "topDown"), false);
+  assert.deepEqual(legacyTopDown, vertical);
 });

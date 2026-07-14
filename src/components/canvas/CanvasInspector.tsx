@@ -430,6 +430,7 @@ function inspectorNodeTitle(node: Node | undefined | null): string {
 
 function inspectorLayoutLabel(value: unknown): string {
   if (typeof value !== "string") return "Free Form";
+  if (value === "topDown") return "Vertical";
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 

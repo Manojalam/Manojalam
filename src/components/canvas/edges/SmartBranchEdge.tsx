@@ -211,7 +211,15 @@ function SmartBranchEdgeComponent(props: EdgeProps) {
     && targetData.parentId === props.source
     && sourceData.listManualOverride !== true
     && targetData.listManualOverride !== true;
-  return isGroupedListEdge ? null : <RoutedSmartBranchEdge {...props} />;
+  const isGroupedTreeEdge = (
+    data.layoutMode === "horizontal"
+    || data.layoutMode === "vertical"
+    || data.layoutMode === "topDown"
+  )
+    && targetData.parentId === props.source
+    && sourceData.treeManualOverride !== true
+    && targetData.treeManualOverride !== true;
+  return isGroupedListEdge || isGroupedTreeEdge ? null : <RoutedSmartBranchEdge {...props} />;
 }
 
 export const SmartBranchEdge = memo(SmartBranchEdgeComponent);
