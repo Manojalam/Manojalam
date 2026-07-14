@@ -173,7 +173,9 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
               const plain = html.replace(/<[^>]+>/g, "").trim();
               updateNodeData(id, { richText: html, text: plain });
             }}
-            onContentSizeChange={(size) => fitNodeToContent(id, size)}
+            onContentSizeChange={textPresentation.singleWord
+              ? undefined
+              : (size) => fitNodeToContent(id, size)}
             onBlur={commitEdit}
           />
         </div>

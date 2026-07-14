@@ -2672,22 +2672,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           if (!placement) return node;
           const data = (node.data ?? {}) as Record<string, unknown>;
           const hasManualOverride = data.treeManualOverride === true;
+          if (hasManualOverride) return node;
           if (
             Math.abs(node.position.x - placement.x) < 0.75
             && Math.abs(node.position.y - placement.y) < 0.75
-            && !hasManualOverride
           ) return node;
           changed = true;
-          if (!hasManualOverride) {
-            return { ...node, position: { x: placement.x, y: placement.y } };
-          }
-          const { treeManualOverride: _treeManualOverride, ...nextData } = data;
-          void _treeManualOverride;
-          return {
-            ...node,
-            position: { x: placement.x, y: placement.y },
-            data: nextData,
-          };
+          return { ...node, position: { x: placement.x, y: placement.y } };
         });
       }
       if (changed || roots.size) set({ nodes, edges: nextEdges, saveStatus: "unsaved" });

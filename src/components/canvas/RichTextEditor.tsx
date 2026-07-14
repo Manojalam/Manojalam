@@ -150,6 +150,12 @@ export function RichTextEditor({
   const customHighlightRef = useRef<HTMLInputElement>(null);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const contentReportFrameRef = useRef(0);
+  const lastReportedContentSizeRef = useRef<{
+    width: number;
+    height: number;
+    lineCount?: number;
+    lineHeight?: number;
+  } | null>(null);
   const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
 
   useEffect(() => {
@@ -168,10 +174,23 @@ export function RichTextEditor({
   }, []);
 
   const reportContentSize = useCallback((activeEditor: Editor | null | undefined) => {
+    const report = onContentSizeChangeRef.current;
+    if (!report) return;
     const element = activeEditor?.view.dom as HTMLElement | undefined;
     if (!element) return;
     const measured = measureRichTextElement(element, { maxWidth: 480 });
-    if (measured.height > 0) onContentSizeChangeRef.current?.(measured);
+    if (measured.height <= 0) return;
+
+    const previous = lastReportedContentSizeRef.current;
+    const changed = !previous
+      || Math.abs(previous.width - measured.width) > 1
+      || Math.abs(previous.height - measured.height) > 1
+      || Math.abs((previous.lineCount ?? 0) - (measured.lineCount ?? 0)) > 0.5
+      || Math.abs((previous.lineHeight ?? 0) - (measured.lineHeight ?? 0)) > 0.5;
+    if (!changed) return;
+
+    lastReportedContentSizeRef.current = measured;
+    report(measured);
   }, []);
 
   const scheduleContentReport = useCallback((activeEditor: Editor | null | undefined) => {

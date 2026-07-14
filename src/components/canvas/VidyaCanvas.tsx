@@ -78,6 +78,10 @@ function initialShapeSize(shapeType: string): { width: number; height: number } 
   return { width: 140, height: 80 };
 }
 
+function isNodeLocked(node: Node | undefined): boolean {
+  return (node?.data as Record<string, unknown> | undefined)?.locked === true;
+}
+
 function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]): Node[] {
   const nextNodes = applyNodeChanges(changes, nodes);
   const resizedNodes = new Map(
@@ -314,6 +318,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     positions: Map<string, { x: number; y: number }>;
     axis: "x" | "y" | null;
     matrixRootId: string | null;
+    moveAsGroup: boolean;
   } | null>(null);
 
   const zoomByStep = useCallback((delta: number) => {
@@ -325,11 +330,14 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const displayNodes = useMemo(() => {
     const matrixAwareNodes = nodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
-      if (data.matrixCell !== true) return node;
+      const locked = data.locked === true;
+      if (data.matrixCell !== true) {
+        return locked ? { ...node, draggable: false } : node;
+      }
       const matrixRootId = typeof data.matrixRootId === "string" ? data.matrixRootId : null;
       return {
         ...node,
-        draggable: matrixRootId === node.id,
+        draggable: !locked && matrixRootId === node.id,
         resizable: false,
       };
     });
@@ -565,20 +573,27 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         }
         return;
       }
-      const isStructural = changes.some((c) => c.type === "remove" || c.type === "add");
+      const lockedIds = new Set(useCanvasStore.getState().nodes
+        .filter((node) => isNodeLocked(node))
+        .map((node) => node.id));
+      const acceptedChanges = changes.filter((change) =>
+        change.type !== "position" || !lockedIds.has(change.id)
+      );
+      if (!acceptedChanges.length) return;
+      const isStructural = acceptedChanges.some((c) => c.type === "remove" || c.type === "add");
 
       if (isStructural) {
         useCanvasStore.getState().pushHistory();
         // Structural changes mark the board dirty via setNodes
-        setNodes((nds) => applyNodeChanges(changes, nds));
+        setNodes((nds) => applyNodeChanges(acceptedChanges, nds));
       } else {
         // Dimension / position / select — update nodes WITHOUT touching saveStatus
         useCanvasStore.setState((state) => ({
-          nodes: applySynchronizedNodeChanges(changes, state.nodes),
+          nodes: applySynchronizedNodeChanges(acceptedChanges, state.nodes),
         }));
       }
 
-      for (const change of changes) {
+      for (const change of acceptedChanges) {
         if (change.type === "dimensions") {
           useCanvasStore.getState().scheduleListReflow(change.id);
           useCanvasStore.getState().scheduleMatrixReflow(change.id);
@@ -586,7 +601,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       }
 
       // Keep selectedNodeIds in sync (only when selection actually changed)
-      if (changes.some((c) => c.type === "select")) {
+      if (acceptedChanges.some((c) => c.type === "select")) {
         const state = useCanvasStore.getState();
         useCanvasStore.setState({
           selectedNodeIds: state.nodes.filter((node) => node.selected).map((node) => node.id),
@@ -600,24 +615,43 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const onNodeDragStart = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
     if (useUIStore.getState().relationshipSelection) return;
     const state = useCanvasStore.getState();
+    const storedDraggedNode = state.nodes.find((node) => node.id === draggedNode.id);
+    if (isNodeLocked(storedDraggedNode)) return;
     state.pushHistory();
     const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
     const matrixRootId = draggedData.matrixCellRole === "header"
       && draggedData.matrixRootId === draggedNode.id
       ? draggedNode.id
       : null;
-    const movingIds = matrixRootId
-      ? state.nodes
+    const byId = new Map(state.nodes.map((node) => [node.id, node]));
+    const selectedGroup = state.selectedNodeIds.length > 1
+      && state.selectedNodeIds.includes(draggedNode.id);
+    let moveAsGroup = false;
+    let movingIds: string[];
+    if (matrixRootId) {
+      movingIds = state.nodes
         .filter((node) => {
           const data = (node.data ?? {}) as Record<string, unknown>;
           return node.id === matrixRootId
             || data.matrixRootId === matrixRootId
             || data.matrixFrameFor === matrixRootId;
         })
-        .map((node) => node.id)
-      : state.selectedNodeIds.includes(draggedNode.id)
-        ? state.selectedNodeIds
-        : [draggedNode.id];
+        .map((node) => node.id);
+      moveAsGroup = true;
+    } else if (selectedGroup) {
+      movingIds = state.selectedNodeIds.filter((nodeId) => !isNodeLocked(byId.get(nodeId)));
+    } else {
+      const hierarchy = buildHierarchy(state.nodes, state.edges);
+      movingIds = [];
+      const collectMovableBranch = (nodeId: string) => {
+        const node = byId.get(nodeId);
+        if (!node || isNodeLocked(node)) return;
+        movingIds.push(nodeId);
+        for (const childId of hierarchy.get(nodeId)?.childIds ?? []) collectMovableBranch(childId);
+      };
+      collectMovableBranch(draggedNode.id);
+      moveAsGroup = movingIds.length > 1;
+    }
     dragStartRef.current = {
       source: { ...draggedNode.position },
       positions: new Map(state.nodes
@@ -625,9 +659,13 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         .map((node) => [node.id, { ...node.position }])),
       axis: null,
       matrixRootId,
+      moveAsGroup,
     };
-    state.markListManualOverride(movingIds, true);
-    state.markTreeManualOverride(movingIds, true);
+    const preservesWholeLayout = moveAsGroup && typeof draggedData.layoutMode === "string";
+    if (!matrixRootId && !preservesWholeLayout) {
+      state.markListManualOverride(movingIds, true);
+      state.markTreeManualOverride(movingIds, true);
+    }
     useUIStore.getState().setCanvasDragging(true);
   }, []);
 
@@ -640,7 +678,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (event.shiftKey && !drag.axis && Math.hypot(dx, dy) > 4) {
         drag.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
       }
-      if (drag.matrixRootId || drag.axis) {
+      if (drag.moveAsGroup || drag.axis) {
         const moveX = drag.axis === "y" ? 0 : dx;
         const moveY = drag.axis === "x" ? 0 : dy;
         useCanvasStore.setState((state) => ({
@@ -666,6 +704,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const others  = allNodes
       .filter((node) => {
         if (node.id === draggedNode.id) return false;
+        if (drag?.positions.has(node.id)) return false;
         if (!drag?.matrixRootId) return true;
         const data = (node.data ?? {}) as Record<string, unknown>;
         return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
