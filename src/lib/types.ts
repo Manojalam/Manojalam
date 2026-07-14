@@ -75,6 +75,7 @@ export interface LayoutVisualStyle {
   accentColor: string;
   borderWidth: number;
   borderStyle: "solid";
+  fontSize: number;
 }
 
 export interface ActiveTextSelection {
@@ -345,13 +346,14 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutAutoFill?: boolean;
   layoutAutoBorder?: boolean;
   layoutAutoText?: boolean;
+  layoutAutoTypography?: boolean;
   /** Keeps a manually dragged List node off generated rows until List is reapplied. */
   listManualOverride?: boolean;
   matrixDensity?: MatrixDensity;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
   /** Render-only dimensions for the active structured layout. */
-  layoutSizeOverride?: { mode: "matrix"; width: number; height: number };
+  layoutSizeOverride?: { mode: LayoutMode; width: number; height: number };
   /** Last DOM content measurement used for Matrix text wrapping and row reflow. */
   matrixIntrinsicSize?: { width: number; height: number; lineCount?: number; lineHeight?: number };
   /** Last rendered rich-text measurement used by editing and shape conversion. */

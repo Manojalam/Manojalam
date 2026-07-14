@@ -33,6 +33,10 @@ import {
   applyLayoutPalette,
   supportsAutomaticLayoutColors,
 } from "@/lib/layout/layout-palette";
+import {
+  computeLayoutNodeSizes,
+  supportsGeneratedLayoutSizing,
+} from "@/lib/layout/layout-presentation";
 import { computeListLayout } from "@/lib/layout/list-layout";
 import {
   computeMatrixLayout,
@@ -342,6 +346,61 @@ function restoreMatrixPresentation(node: Node): Node {
     ...node,
     data: clearMatrixPresentationData(data),
   }, size.width, size.height);
+}
+
+/** Restore a node's editable dimensions before calculating another layout. */
+function restoreGeneratedLayoutPresentation(node: Node): Node {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const override = data.layoutSizeOverride as { mode?: LayoutMode } | undefined;
+  if (!override?.mode || !supportsGeneratedLayoutSizing(override.mode)) return node;
+  const size = storedNodeSize(data.userSize);
+  if (!size) return node;
+  const rect = getNodeRect(node);
+  const { layoutSizeOverride: _layoutSizeOverride, ...nextData } = data;
+  void _layoutSizeOverride;
+  return resetNodeDimensions({
+    ...node,
+    position: nodePositionFromTopLeft(node, { x: rect.left, y: rect.top }, size),
+    data: nextData,
+  }, size.width, size.height);
+}
+
+function applyGeneratedLayoutPresentation(
+  nodes: Node[],
+  hierarchy: ReturnType<typeof buildHierarchy>,
+  rootId: string,
+  mode: LayoutMode
+): Node[] {
+  const sizes = computeLayoutNodeSizes(nodes, hierarchy, rootId, mode);
+  if (!sizes.size) return nodes;
+  return nodes.map((node) => {
+    const size = sizes.get(node.id);
+    if (!size) return node;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const currentOverride = data.layoutSizeOverride as Partial<{
+      mode: LayoutMode;
+      width: number;
+      height: number;
+    }> | undefined;
+    if (
+      currentOverride?.mode === mode
+      && Math.abs((currentOverride.width ?? 0) - size.width) < 0.5
+      && Math.abs((currentOverride.height ?? 0) - size.height) < 0.5
+      && Math.abs(numericDimension(node.style?.width, 0) - size.width) < 0.5
+      && Math.abs(numericDimension(node.style?.height, 0) - size.height) < 0.5
+    ) return node;
+    const normalSize = storedNodeSize(data.userSize) ?? getNodeDimensions(node);
+    const rect = getNodeRect(node);
+    return resetNodeDimensions({
+      ...node,
+      position: nodePositionFromTopLeft(node, { x: rect.left, y: rect.top }, size),
+      data: {
+        ...data,
+        userSize: normalSize,
+        layoutSizeOverride: { mode, width: size.width, height: size.height },
+      },
+    }, size.width, size.height);
+  });
 }
 
 function applyMatrixResultToNodes(
@@ -2211,7 +2270,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ...node,
         data: { ...(node.data ?? {}), intrinsicContentSize: normalizedContent },
       };
-      const fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent);
+      let fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent);
 
       const prevStyle = (node.style ?? {}) as Record<string, unknown>;
       const nextStyle = (fitted.style ?? {}) as Record<string, unknown>;
@@ -2220,6 +2279,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         node.position.y !== fitted.position.y ||
         prevStyle.width !== nextStyle.width ||
         prevStyle.height !== nextStyle.height;
+
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const override = data.layoutSizeOverride as Partial<{
+        mode: LayoutMode;
+        width: number;
+        height: number;
+      }> | undefined;
+      if (geometryChanged && override?.mode && supportsGeneratedLayoutSizing(override.mode)) {
+        const width = numericDimension(nextStyle.width, override.width ?? getNodeDimensions(fitted).width);
+        const height = numericDimension(nextStyle.height, override.height ?? getNodeDimensions(fitted).height);
+        const userSize = storedNodeSize(data.userSize) ?? getNodeDimensions(node);
+        fitted = {
+          ...fitted,
+          data: {
+            ...(fitted.data ?? {}),
+            userSize: {
+              width: Math.max(userSize.width, width),
+              height: Math.max(userSize.height, height),
+            },
+            layoutSizeOverride: { mode: override.mode, width, height },
+          },
+        };
+      }
 
       if (!geometryChanged && !intrinsicChanged) return {};
 
@@ -2357,24 +2439,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
       if (!rootIds.size) return;
 
-      const placements: Record<string, LayoutPlacement> = {};
-      for (const rootId of rootIds) {
-        Object.assign(placements, computeListLayout(rootId, hierarchy, byId, {
-          preserveManualOverrides: true,
-        }));
-      }
-
       let changed = false;
-      let nextNodes = state.nodes.map((node) => {
-        const placement = placements[node.id];
-        if (!placement) return node;
-        if (
-          Math.abs(node.position.x - placement.x) < 0.75 &&
-          Math.abs(node.position.y - placement.y) < 0.75
-        ) return node;
-        changed = true;
-        return { ...node, position: { x: placement.x, y: placement.y } };
-      });
+      let nextNodes = state.nodes;
       let nextEdges = state.edges;
       for (const rootId of rootIds) {
         const styled = applyLayoutPalette(
@@ -2387,6 +2453,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         );
         nextNodes = styled.nodes;
         nextEdges = styled.edges;
+        const sizedNodes = applyGeneratedLayoutPresentation(nextNodes, hierarchy, rootId, "list");
+        if (sizedNodes.some((node, index) => node !== nextNodes[index])) changed = true;
+        nextNodes = sizedNodes;
+        const currentById = new Map(nextNodes
+          .filter((node) => !isAutoMatrixFrame(node) && !isAutoSunburstNode(node))
+          .map((node) => [node.id, node]));
+        const placements = computeListLayout(rootId, hierarchy, currentById, {
+          preserveManualOverrides: true,
+        });
+        nextNodes = nextNodes.map((node) => {
+          const placement = placements[node.id];
+          if (!placement) return node;
+          if (
+            Math.abs(node.position.x - placement.x) < 0.75
+            && Math.abs(node.position.y - placement.y) < 0.75
+          ) return node;
+          changed = true;
+          return { ...node, position: { x: placement.x, y: placement.y } };
+        });
       }
       if (changed || rootIds.size) set({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
     }, 96);
@@ -2506,7 +2591,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const hierarchy = buildHierarchy(layoutNodes, state.edges);
       const byId = new Map(layoutNodes.map((node) => [node.id, node]));
       const roots = new Map<string, LayoutMode>();
-      const supportedModes = new Set<LayoutMode>(["horizontal", "vertical", "topDown", "linear"]);
+      const supportedModes = new Set<LayoutMode>([
+        "fromParentFreeForm",
+        "horizontal",
+        "vertical",
+        "topDown",
+        "linear",
+      ]);
       for (const requestedNodeId of requestedNodeIds) {
         if (!byId.has(requestedNodeId)) continue;
         const root = findLayoutRoot(requestedNodeId, layoutNodes, hierarchy);
@@ -2514,21 +2605,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
       if (!roots.size) return;
 
-      const placements: Record<string, LayoutPlacement> = {};
-      for (const [rootId, mode] of roots) {
-        Object.assign(placements, computeLayout(layoutNodes, state.edges, mode, { rootId }));
-      }
       let changed = false;
-      let nodes = state.nodes.map((node) => {
-        const placement = placements[node.id];
-        if (!placement) return node;
-        if (
-          Math.abs(node.position.x - placement.x) < 0.75
-          && Math.abs(node.position.y - placement.y) < 0.75
-        ) return node;
-        changed = true;
-        return { ...node, position: { x: placement.x, y: placement.y } };
-      });
+      let nodes = state.nodes;
       let nextEdges = state.edges;
       for (const [rootId, mode] of roots) {
         const styled = applyLayoutPalette(
@@ -2541,6 +2619,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         );
         nodes = styled.nodes;
         nextEdges = styled.edges;
+        const sizedNodes = applyGeneratedLayoutPresentation(nodes, hierarchy, rootId, mode);
+        if (sizedNodes.some((node, index) => node !== nodes[index])) changed = true;
+        nodes = sizedNodes;
+        const currentLayoutNodes = nodes.filter((node) =>
+          !isAutoMatrixFrame(node)
+          && !isAutoSunburstNode(node)
+          && node.type !== "relationshipDiagram"
+        );
+        const placements = computeLayout(currentLayoutNodes, nextEdges, mode, { rootId });
+        nodes = nodes.map((node) => {
+          const placement = placements[node.id];
+          if (!placement) return node;
+          if (
+            Math.abs(node.position.x - placement.x) < 0.75
+            && Math.abs(node.position.y - placement.y) < 0.75
+          ) return node;
+          changed = true;
+          return { ...node, position: { x: placement.x, y: placement.y } };
+        });
       }
       if (changed || roots.size) set({ nodes, edges: nextEdges, saveStatus: "unsaved" });
     }, 96);
@@ -2588,20 +2685,37 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const visibleLayoutNodes = mode === "radial"
       ? rawLayoutNodes
       : rawLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreSunburstPresentation(node) : node);
+    const restoredLayoutNodes = visibleLayoutNodes.map((node) => selectedScopeIds.has(node.id)
+      ? restoreGeneratedLayoutPresentation(node)
+      : node);
     const layoutNodes = mode === "matrix"
-      ? visibleLayoutNodes
-      : visibleLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreMatrixPresentation(node) : node);
+      ? restoredLayoutNodes
+      : restoredLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreMatrixPresentation(node) : node);
     const sunburstEnabled = mode === "radial" && !!rootId;
     const sunburstKey = sunburstFrameKey(rootId);
 
     const hierarchy = buildHierarchy(layoutNodes, edges);
     const scopeIds = new Set(getSubtree(rootId, hierarchy));
-    const byId = new Map(layoutNodes.map((n) => [n.id, n]));
+    const paletteSeed = applyLayoutPalette(
+      layoutNodes,
+      edges,
+      hierarchy,
+      rootId,
+      mode,
+      layoutSchemeValue(layoutNodes, rootId)
+    );
+    const preparedLayoutNodes = applyGeneratedLayoutPresentation(
+      paletteSeed.nodes,
+      hierarchy,
+      rootId,
+      mode
+    );
+    const byId = new Map(preparedLayoutNodes.map((n) => [n.id, n]));
     const matrixResult = mode === "matrix"
       ? computeMatrixLayout(rootId, hierarchy, byId)
       : null;
     const positions = matrixResult?.placements
-      ?? (sunburstEnabled ? {} : computeLayout(layoutNodes, edges, mode, { rootId }));
+      ?? (sunburstEnabled ? {} : computeLayout(preparedLayoutNodes, edges, mode, { rootId }));
 
     get().pushHistory();
 
@@ -2669,8 +2783,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
 
     const laidOutNodes = matrixResult
-      ? applyMatrixResultToNodes(layoutNodes, matrixResult, hierarchy, scopeIds)
-      : layoutNodes.map((node) => {
+      ? applyMatrixResultToNodes(preparedLayoutNodes, matrixResult, hierarchy, scopeIds)
+      : preparedLayoutNodes.map((node) => {
           if (!scopeIds.has(node.id)) return node;
           const placement = positions[node.id];
           const h = hierarchy.get(node.id);
@@ -2707,7 +2821,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       hierarchy,
       rootId,
       mode,
-      layoutSchemeValue(layoutNodes, rootId)
+      layoutSchemeValue(preparedLayoutNodes, rootId)
     );
     const existingMatrixFrames = nodes.filter(isAutoMatrixFrame);
     const frameKey = matrixFrameKey(rootId);

@@ -8,6 +8,7 @@ import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity, resolveBorderStyle,
+  textMeasurementKey,
 } from "@/lib/style-utils";
 import type { TextBlockNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -150,7 +151,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
+            measurementKey={textMeasurementKey(dd)}
             placeholder="Double-click to type…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

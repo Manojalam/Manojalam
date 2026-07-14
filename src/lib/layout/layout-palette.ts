@@ -11,6 +11,7 @@ import {
   radialSectorColors,
 } from "../radial-layout";
 import { getSubtree, type Hierarchy } from "./hierarchy";
+import { layoutFontSizeFor } from "./layout-presentation";
 
 const AUTOMATIC_COLOR_MODES = new Set<LayoutMode>([
   "fromParentFreeForm",
@@ -87,6 +88,7 @@ export function buildLayoutVisualStyles(
         accentColor: scheme.rootBorder,
         borderWidth: borderWidthFor(mode, depth),
         borderStyle: "solid",
+        fontSize: layoutFontSizeFor(mode, depth),
       });
       continue;
     }
@@ -113,6 +115,7 @@ export function buildLayoutVisualStyles(
       accentColor: colors.border,
       borderWidth: borderWidthFor(mode, depth),
       borderStyle: "solid",
+      fontSize: layoutFontSizeFor(mode, depth),
     });
   }
 
@@ -180,7 +183,11 @@ export function applyLayoutPalette(
     if (visualStyle) {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const overridePatch = resetOverrides
-        ? { layoutAutoFill: undefined, layoutAutoBorder: undefined, layoutAutoText: undefined }
+        ? {
+            layoutAutoFill: undefined,
+            layoutAutoBorder: undefined,
+            layoutAutoText: undefined,
+          }
         : {};
       return {
         ...node,

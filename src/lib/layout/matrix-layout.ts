@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
+import { resolveLayoutFontSize } from "./layout-presentation";
 import {
   createNodeRect,
   getNodeDimensions,
@@ -173,7 +174,7 @@ function nodeText(node: Node): string {
 
 function fontMetrics(node: Node): { fontSize: number; charWidth: number; lineHeight: number } {
   const data = (node.data ?? {}) as Record<string, unknown>;
-  const baseSize = positiveNumber(data.fontSize) ?? 14;
+  const baseSize = resolveLayoutFontSize(data) ?? 14;
   const inlineSizes = typeof data.richText === "string"
     ? [...data.richText.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/gi)]
       .map((match) => Number(match[1]))

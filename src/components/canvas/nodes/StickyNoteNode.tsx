@@ -14,6 +14,7 @@ import {
   resolveFillOpacity,
   resolveLayoutVisualStyle,
   resolveNodeBorderRadius,
+  textMeasurementKey,
 } from "@/lib/style-utils";
 import type { StickyNoteNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -165,7 +166,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            measurementKey={`${dd.fontFamily ?? ""}|${dd.fontSize ?? ""}|${dd.fontWeight ?? ""}|${dd.fontStyle ?? ""}`}
+            measurementKey={textMeasurementKey(dd)}
             placeholder="Double-click to write…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {

@@ -20,7 +20,8 @@ import {
   Ungroup,
 } from "lucide-react";
 import { generateId } from "@/lib/utils";
-import { sizeOf } from "@/lib/layout";
+import { getNodeRect, nodePositionFromTopLeft } from "@/lib/layout";
+import { compactEqualSpacing } from "@/lib/canvas/selection-geometry";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
@@ -87,51 +88,29 @@ export function SelectionToolbar() {
 
   const align = (mode: AlignMode) => {
     if (selected.length < 2) return;
-    const rects = selected.map((node) => {
-      const { w, h } = sizeOf(node);
-      return { node, w, h, cx: node.position.x + w / 2, cy: node.position.y + h / 2 };
-    });
-    const left = Math.min(...rects.map((rect) => rect.node.position.x));
-    const right = Math.max(...rects.map((rect) => rect.node.position.x + rect.w));
-    const top = Math.min(...rects.map((rect) => rect.node.position.y));
-    const bottom = Math.max(...rects.map((rect) => rect.node.position.y + rect.h));
+    const rects = selected.map((node) => ({ node, rect: getNodeRect(node) }));
+    const left = Math.min(...rects.map(({ rect }) => rect.left));
+    const right = Math.max(...rects.map(({ rect }) => rect.right));
+    const top = Math.min(...rects.map(({ rect }) => rect.top));
+    const bottom = Math.max(...rects.map(({ rect }) => rect.bottom));
     const centerX = (left + right) / 2;
     const centerY = (top + bottom) / 2;
     const positions = new Map<string, { x: number; y: number }>();
-    for (const rect of rects) {
-      const position = { ...rect.node.position };
-      if (mode === "left") position.x = left;
-      if (mode === "centerX") position.x = centerX - rect.w / 2;
-      if (mode === "right") position.x = right - rect.w;
-      if (mode === "top") position.y = top;
-      if (mode === "centerY") position.y = centerY - rect.h / 2;
-      if (mode === "bottom") position.y = bottom - rect.h;
-      positions.set(rect.node.id, position);
+    for (const { node, rect } of rects) {
+      const topLeft = { x: rect.left, y: rect.top };
+      if (mode === "left") topLeft.x = left;
+      if (mode === "centerX") topLeft.x = centerX - rect.width / 2;
+      if (mode === "right") topLeft.x = right - rect.width;
+      if (mode === "top") topLeft.y = top;
+      if (mode === "centerY") topLeft.y = centerY - rect.height / 2;
+      if (mode === "bottom") topLeft.y = bottom - rect.height;
+      positions.set(node.id, nodePositionFromTopLeft(node, topLeft, rect));
     }
     updateGeometry(positions);
   };
 
   const distribute = (axis: "x" | "y") => {
-    if (selected.length < 3) return;
-    const ordered = selected
-      .map((node) => ({ node, ...sizeOf(node) }))
-      .sort((a, b) => axis === "x" ? a.node.position.x - b.node.position.x : a.node.position.y - b.node.position.y);
-    const first = ordered[0];
-    const last = ordered[ordered.length - 1];
-    const start = axis === "x" ? first.node.position.x : first.node.position.y;
-    const end = axis === "x" ? last.node.position.x + last.w : last.node.position.y + last.h;
-    const occupied = ordered.reduce((sum, item) => sum + (axis === "x" ? item.w : item.h), 0);
-    const gap = Math.max(0, (end - start - occupied) / (ordered.length - 1));
-    let cursor = start;
-    const positions = new Map<string, { x: number; y: number }>();
-    for (const item of ordered) {
-      positions.set(item.node.id, {
-        x: axis === "x" ? cursor : item.node.position.x,
-        y: axis === "y" ? cursor : item.node.position.y,
-      });
-      cursor += (axis === "x" ? item.w : item.h) + gap;
-    }
-    updateGeometry(positions);
+    updateGeometry(compactEqualSpacing(selected, axis));
   };
 
   const commonGroupId = selected.length > 1
@@ -209,8 +188,8 @@ export function SelectionToolbar() {
           <ActionButton label="Align top" onClick={() => align("top")}><AlignStartHorizontal className="h-4 w-4" /></ActionButton>
           <ActionButton label="Align vertical centers" onClick={() => align("centerY")}><AlignCenterHorizontal className="h-4 w-4" /></ActionButton>
           <ActionButton label="Align bottom" onClick={() => align("bottom")}><AlignEndHorizontal className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Distribute horizontally" disabled={selected.length < 3} onClick={() => distribute("x")}><AlignVerticalDistributeCenter className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Distribute vertically" disabled={selected.length < 3} onClick={() => distribute("y")}><AlignHorizontalDistributeCenter className="h-4 w-4" /></ActionButton>
+          <ActionButton label="Pack with equal horizontal spacing" onClick={() => distribute("x")}><AlignVerticalDistributeCenter className="h-4 w-4" /></ActionButton>
+          <ActionButton label="Pack with equal vertical spacing" onClick={() => distribute("y")}><AlignHorizontalDistributeCenter className="h-4 w-4" /></ActionButton>
           <ActionButton label={grouped ? "Ungroup" : "Group"} onClick={toggleGroup}>
             {grouped ? <Ungroup className="h-4 w-4" /> : <Group className="h-4 w-4" />}
           </ActionButton>
