@@ -8,7 +8,7 @@ import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
-  colorWithOpacity,
+  colorWithOpacity, resolveBorderStyle,
 } from "@/lib/style-utils";
 import type {
   ShapeNodeData,
@@ -987,8 +987,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
-  const bWidth       = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
-  const bStyle       = (dd.borderStyle as string) ?? "solid";
+  const resolvedBorderWidth = resolveBorderWidth(dd);
+  const bWidth       = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
+  const bStyle       = resolveBorderStyle(dd);
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 180,
     height: typeof height === "number" && height > 0 ? height : 80,

@@ -1,4 +1,4 @@
-import type { RadialColorScheme } from "@/lib/types";
+import type { RadialColorScheme } from "./types";
 
 export type RadialColorSchemeDefinition = {
   id: RadialColorScheme;

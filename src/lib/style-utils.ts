@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { BorderLayer } from "./types";
+import type { BorderLayer, LayoutVisualStyle } from "./types";
 import { effectiveCornerRadius, legacyRadiusToPercent } from "./canvas/shape-fitting";
 import type { Size } from "./canvas/node-geometry";
 
@@ -7,6 +7,7 @@ import type { Size } from "./canvas/node-geometry";
  *  Always emits explicit values for inheritable properties so CSS
  *  inheritance works correctly inside TipTap's ProseMirror. */
 export function getTextStyle(d: Record<string, unknown>): CSSProperties {
+  const layoutStyle = resolveLayoutVisualStyle(d);
   return {
     // NOTE: text alignment is intentionally NOT applied here. Alignment is
     // handled purely at the paragraph level inside the editor so the right
@@ -17,7 +18,9 @@ export function getTextStyle(d: Record<string, unknown>): CSSProperties {
     // Always emit italic/bold so browsers don't need to guess defaults
     fontStyle:  d.fontStyle  === "italic" ? "italic" : "normal",
     fontWeight: d.fontWeight === "bold"   ? "700"    : undefined,
-    color:      (d.textColor as string)   ?? undefined,
+    color:      layoutStyle && d.layoutAutoText !== false
+      ? layoutStyle.textColor
+      : (d.textColor as string) ?? undefined,
   };
 }
 
@@ -57,6 +60,8 @@ export function resolveFillOpacity(d: Record<string, unknown>): number {
  * color keeps the same softness as the rest of the fill system.
  */
 export function resolveFillColor(d: Record<string, unknown>): string | undefined {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (layoutStyle && d.layoutAutoFill !== false) return layoutStyle.fillColor;
   const opacity = resolveFillOpacity(d);
   if (d.fillColor) return colorWithOpacity(d.fillColor as string, opacity);
   if (d.color)     return colorWithOpacity(d.color as string, opacity);
@@ -65,12 +70,40 @@ export function resolveFillColor(d: Record<string, unknown>): string | undefined
 
 /** Resolve a node's border color: uses explicit borderColor or accent color */
 export function resolveBorderColor(d: Record<string, unknown>): string | undefined {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderColor;
   return (d.borderColor as string) ?? (d.color as string) ?? undefined;
 }
 
 /** Resolve effective border width (default 2) */
 export function resolveBorderWidth(d: Record<string, unknown>): number {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderWidth;
   return typeof d.borderWidth === "number" ? d.borderWidth : 2;
+}
+
+export function resolveBorderStyle(d: Record<string, unknown>): "solid" | "dashed" | "dotted" {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderStyle;
+  return d.borderStyle === "dashed" || d.borderStyle === "dotted" ? d.borderStyle : "solid";
+}
+
+export function resolveLayoutVisualStyle(d: Record<string, unknown>): LayoutVisualStyle | undefined {
+  const style = d.layoutVisualStyle as Partial<LayoutVisualStyle> | undefined;
+  if (
+    !style
+    || typeof style.rootId !== "string"
+    || typeof style.fillColor !== "string"
+    || typeof style.borderColor !== "string"
+    || typeof style.textColor !== "string"
+  ) return undefined;
+  return style as LayoutVisualStyle;
+}
+
+export function resolveAccentColor(d: Record<string, unknown>): string | undefined {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.accentColor;
+  return (d.borderColor as string) ?? (d.color as string) ?? undefined;
 }
 
 export function resolveCornerRadiusPercent(

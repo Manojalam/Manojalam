@@ -7,12 +7,30 @@ import { Badge } from "@/components/ui/badge";
 import type { GrammarCardNodeData } from "@/lib/types";
 import { GRAMMAR_CATEGORY_LABELS } from "@/lib/sanskrit/transliterate";
 import { NodeQuickActions } from "./NodeQuickActions";
+import {
+  getTextStyle,
+  resolveBorderColor,
+  resolveBorderStyle,
+  resolveBorderWidth,
+  resolveFillColor,
+  resolveLayoutVisualStyle,
+} from "@/lib/style-utils";
 
 function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
   const matrixCell = d.matrixCell === true;
   const matrixGridVisible = d.matrixGridVisible !== false;
   const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
+  const dd = d as Record<string, unknown>;
+  const layoutStyle = resolveLayoutVisualStyle(dd);
+  const accentColor = resolveBorderColor(dd) ?? "#4f46e5";
+  const generatedStyle = layoutStyle ? {
+    background: resolveFillColor(dd),
+    borderColor: resolveBorderColor(dd),
+    borderStyle: resolveBorderStyle(dd),
+    borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
+    color: getTextStyle(dd).color,
+  } : {};
 
   return (
     <>
@@ -23,9 +41,9 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
           matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[300px]",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
-        style={matrixCell ? { borderWidth: matrixGridVisible ? 1 : 0, borderRadius: matrixRadius } : undefined}
+        style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}
       >
-        <NodeQuickActions nodeId={id} color="#4f46e5" selected={selected} />
+        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
 

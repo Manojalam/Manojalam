@@ -5,7 +5,16 @@ import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
-import { getTextStyle, resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius } from "@/lib/style-utils";
+import {
+  getTextStyle,
+  resolveBorderColor,
+  resolveBorderStyle,
+  resolveBorderWidth,
+  resolveFillColor,
+  resolveFillOpacity,
+  resolveLayoutVisualStyle,
+  resolveNodeBorderRadius,
+} from "@/lib/style-utils";
 import type { StickyNoteNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -38,13 +47,16 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const isDrawing           = drawingModeNodeId === id;
 
   const palette  = STICKY_PALETTES[d.color ?? "yellow"] ?? STICKY_PALETTES.yellow;
-  const bg       = (dd.fillColor as string) ?? palette.bg;
-  const border   = (dd.borderColor as string) ?? palette.border;
+  const bg       = resolveLayoutVisualStyle(dd) && dd.layoutAutoFill !== false
+    ? resolveFillColor(dd) ?? palette.bg
+    : (dd.fillColor as string) ?? palette.bg;
+  const border   = resolveBorderColor(dd) ?? palette.border;
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
-  const bWidth   = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
-  const bStyle   = (dd.borderStyle as string) ?? "solid";
+  const resolvedBorderWidth = resolveBorderWidth(dd);
+  const bWidth   = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
+  const bStyle   = resolveBorderStyle(dd);
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 180,
     height: typeof height === "number" && height > 0 ? height : 90,

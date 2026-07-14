@@ -63,6 +63,20 @@ export type RadialColorScheme =
   | "forest"
   | "scholar";
 
+export interface LayoutVisualStyle {
+  rootId: string;
+  mode: LayoutMode;
+  scheme: RadialColorScheme;
+  depth: number;
+  branchIndex: number;
+  fillColor: string;
+  borderColor: string;
+  textColor: string;
+  accentColor: string;
+  borderWidth: number;
+  borderStyle: "solid";
+}
+
 export interface ActiveTextSelection {
   nodeId: string;
   hasSelection: boolean;
@@ -323,6 +337,14 @@ export interface BaseNodeData extends Record<string, unknown> {
   childOrder?: string[];
   /** Layout mode last applied to this node's branch (set on the branch root). */
   layoutMode?: LayoutMode;
+  /** Palette selected for non-radial hierarchy layouts. */
+  layoutColorScheme?: RadialColorScheme;
+  /** Generated presentation layer. Original node styling remains untouched underneath it. */
+  layoutVisualStyle?: LayoutVisualStyle;
+  /** Per-surface opt-outs set when a user explicitly changes a generated style. */
+  layoutAutoFill?: boolean;
+  layoutAutoBorder?: boolean;
+  layoutAutoText?: boolean;
   /** Keeps a manually dragged List node off generated rows until List is reapplied. */
   listManualOverride?: boolean;
   matrixDensity?: MatrixDensity;
@@ -440,6 +462,10 @@ export interface RelationshipDiagramNodeData extends BaseNodeData {
 export interface VidyaEdgeData extends Record<string, unknown> {
   label?: string;
   color?: string;
+  /** Generated hierarchy color. Explicit `color` continues to take precedence. */
+  layoutColor?: string;
+  layoutColorRootId?: string;
+  layoutOriginalMarkerColor?: string | null;
   width?: number;
   dashed?: boolean;
   hiddenInMatrix?: boolean;

@@ -30,6 +30,7 @@ function VidyaEdgeComponent({
   markerEnd,
 }: EdgeProps) {
   const d = (data ?? {}) as VidyaEdgeData;
+  const edgeColor = d.color ?? d.layoutColor;
   const deleteEdges = useCanvasStore((s) => s.deleteEdges);
   const endpointData = useNodesData([source, target]);
   const curveStyle = d.curveStyle ?? "smooth";
@@ -71,13 +72,13 @@ function VidyaEdgeComponent({
   return (
     <>
       <BaseEdge
-        data-export-normal-stroke={d.color ?? "#94a3b8"}
+        data-export-normal-stroke={edgeColor ?? "#94a3b8"}
         id={id}
         path={path}
         markerEnd={markerEnd}
         interactionWidth={28}
         style={{
-          stroke: d.color ?? (selected ? "#6366f1" : "#94a3b8"),
+          stroke: selected ? "#6366f1" : edgeColor ?? "#94a3b8",
           strokeWidth: d.width ?? 2,
           strokeDasharray: d.dashed ? "6 4" : undefined,
         }}

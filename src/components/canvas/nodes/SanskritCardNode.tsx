@@ -10,6 +10,14 @@ import type { SanskritCardNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { toast } from "sonner";
 import { NodeQuickActions } from "./NodeQuickActions";
+import {
+  getTextStyle,
+  resolveBorderColor,
+  resolveBorderStyle,
+  resolveBorderWidth,
+  resolveFillColor,
+  resolveLayoutVisualStyle,
+} from "@/lib/style-utils";
 
 function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
@@ -18,6 +26,16 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const matrixCell = d.matrixCell === true;
   const matrixGridVisible = d.matrixGridVisible !== false;
   const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
+  const dd = d as Record<string, unknown>;
+  const layoutStyle = resolveLayoutVisualStyle(dd);
+  const accentColor = resolveBorderColor(dd) ?? "#d97706";
+  const generatedStyle = layoutStyle ? {
+    background: resolveFillColor(dd),
+    borderColor: resolveBorderColor(dd),
+    borderStyle: resolveBorderStyle(dd),
+    borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
+    color: getTextStyle(dd).color,
+  } : {};
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -39,9 +57,9 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
           matrixCell ? "h-full w-full rounded-md shadow-none" : "w-[320px]",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
-        style={matrixCell ? { borderWidth: matrixGridVisible ? 1 : 0, borderRadius: matrixRadius } : undefined}
+        style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}
       >
-        <NodeQuickActions nodeId={id} color="#d97706" selected={selected} />
+        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
 
