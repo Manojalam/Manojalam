@@ -14,10 +14,6 @@ import {
   buildRelationshipGroupsForSpec,
   normalizeRelationshipDiagramSpec,
 } from "@/lib/relationship-diagram";
-import {
-  downloadRelationshipDiagramPng,
-  downloadRelationshipDiagramSvg,
-} from "@/lib/export";
 import { resetNodeDimensions } from "@/lib/layout";
 import type { RelationshipDiagramNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -63,6 +59,7 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const setSaveStatus = useCanvasStore((state) => state.setSaveStatus);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
+  const openBoardExport = useUIStore((state) => state.openBoardExport);
   const [refreshRevision, setRefreshRevision] = useState(0);
   const [fontMetricsReady, setFontMetricsReady] = useState(false);
   const spec = useMemo(
@@ -123,21 +120,6 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
     }));
   };
 
-  const exportSvg = async () => {
-    try {
-      await downloadRelationshipDiagramSvg(id, spec.title || "relationship-diagram");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not export the diagram.");
-    }
-  };
-  const exportPng = async () => {
-    try {
-      await downloadRelationshipDiagramPng(id, spec.title || "relationship-diagram");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not export the diagram.");
-    }
-  };
-
   return (
     <>
       <NodeResizer
@@ -154,7 +136,10 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
         )}
         style={{ background: spec.background }}
       >
-        <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-3">
+        <div
+          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/95 px-3"
+          data-export-ignore
+        >
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold text-foreground">
               {spec.title || "Relationship Diagram"}
@@ -186,17 +171,27 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
               <Maximize2 className="h-3 w-3" />
               Fit
             </HeaderButton>
-            <HeaderButton title="Export SVG" onClick={() => void exportSvg()}>
+            <HeaderButton title="Export SVG" onClick={() => openBoardExport({
+              scope: "node",
+              nodeIds: [id],
+              format: "svg",
+              title: spec.title || "relationship-diagram",
+            })}>
               <FileType2 className="h-3 w-3" />
               SVG
             </HeaderButton>
-            <HeaderButton title="Export PNG" onClick={() => void exportPng()}>
+            <HeaderButton title="Export PNG" onClick={() => openBoardExport({
+              scope: "node",
+              nodeIds: [id],
+              format: "png",
+              title: spec.title || "relationship-diagram",
+            })}>
               <FileImage className="h-3 w-3" />
               PNG
             </HeaderButton>
           </div>
         </div>
-        <div className="min-h-0 flex-1 p-2">
+        <div className="min-h-0 flex-1 p-2" data-export-fill-node>
           <RelationshipDiagramSvg
             groups={groups}
             spec={spec}

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import {
   Undo2, Redo2, Download, Upload, Search,
@@ -19,8 +18,6 @@ import { useUIStore } from "@/store/ui-store";
 import {
   downloadJson,
   downloadMarkdown,
-  downloadSunburstPng,
-  downloadSunburstSvg,
 } from "@/lib/export";
 import { importBoard } from "@/lib/storage/board-store";
 import { toast } from "sonner";
@@ -104,9 +101,9 @@ export function CanvasTopbar() {
   const redo            = useCanvasStore((s) => s.redo);
   const updateBoardTitle = useCanvasStore((s) => s.updateBoardTitle);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
+  const openBoardExport = useUIStore((s) => s.openBoardExport);
   const { setSanskritPanelOpen, setSearchPanelOpen } = useUIStore();
   const router = useRouter();
-  const [exportingImage, setExportingImage] = useState<"svg" | "png" | null>(null);
 
   const currentBoardSnapshot = (): VidyaBoard | null => {
     const state = useCanvasStore.getState();
@@ -143,24 +140,6 @@ export function CanvasTopbar() {
       }
     };
     input.click();
-  };
-
-  const handleSunburstExport = async (format: "svg" | "png") => {
-    if (!board || exportingImage) return;
-    setExportingImage(format);
-    const toastId = toast.loading(`Preparing ${format.toUpperCase()} export…`);
-    try {
-      if (format === "svg") await downloadSunburstSvg(board.title);
-      else await downloadSunburstPng(board.title);
-      toast.success(`${format.toUpperCase()} exported`, { id: toastId });
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : `Unable to export ${format.toUpperCase()}.`,
-        { id: toastId }
-      );
-    } finally {
-      setExportingImage(null);
-    }
   };
 
   return (
@@ -235,16 +214,16 @@ export function CanvasTopbar() {
             }}>Markdown outline</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              disabled={!board || exportingImage !== null}
-              onClick={() => void handleSunburstExport("svg")}
+              disabled={!board || Boolean(relationshipSelection)}
+              onClick={() => openBoardExport({
+                scope: useCanvasStore.getState().selectedNodeIds.length
+                  || useCanvasStore.getState().selectedEdgeIds.length
+                  ? "selection"
+                  : "board",
+                title: board?.title,
+              })}
             >
-              Radial chart (SVG)
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!board || exportingImage !== null}
-              onClick={() => void handleSunburstExport("png")}
-            >
-              Radial chart (PNG, 2×)
+              Board or selection image…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

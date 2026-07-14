@@ -158,6 +158,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
         {!d.locked && !isDrawing && (
           <button
+            data-export-ignore
             className="absolute -right-3.5 -bottom-3.5 hidden h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 group-hover:flex"
             style={{ backgroundColor: nodeColor }}
             onClick={(e) => { e.stopPropagation(); createChildNode(id); }}>
@@ -167,6 +168,7 @@ function MindMapNodeComponent({ id, data, selected }: NodeProps) {
 
         {d.collapsed !== undefined && (
           <button
+            data-export-ignore
             className="absolute -left-3 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-muted shadow-sm"
             onClick={() => updateNodeData(id, { collapsed: !d.collapsed })}>
             {d.collapsed ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
