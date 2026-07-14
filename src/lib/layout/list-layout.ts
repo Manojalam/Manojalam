@@ -14,7 +14,7 @@ import {
 export type ListDensity = "compact" | "comfortable";
 
 export interface ListDensitySettings {
-  rootToBranchGapY: number;
+  rootToBranchGapX: number;
   branchColumnGapX: number;
   childIndentX: number;
   rowGapY: number;
@@ -25,33 +25,33 @@ export interface ListDensitySettings {
 
 export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
   compact: {
-    rootToBranchGapY: 72,
-    branchColumnGapX: 56,
-    childIndentX: 48,
-    rowGapY: 10,
-    parentChildGapY: 14,
-    siblingSubtreeGapY: 12,
-    connectorGutterX: 22,
+    rootToBranchGapX: 96,
+    branchColumnGapX: 84,
+    childIndentX: 76,
+    rowGapY: 18,
+    parentChildGapY: 26,
+    siblingSubtreeGapY: 22,
+    connectorGutterX: 30,
   },
   comfortable: {
-    rootToBranchGapY: 88,
-    branchColumnGapX: 76,
-    childIndentX: 62,
-    rowGapY: 16,
-    parentChildGapY: 20,
-    siblingSubtreeGapY: 18,
-    connectorGutterX: 26,
+    rootToBranchGapX: 128,
+    branchColumnGapX: 112,
+    childIndentX: 96,
+    rowGapY: 26,
+    parentChildGapY: 36,
+    siblingSubtreeGapY: 32,
+    connectorGutterX: 38,
   },
 };
 
 export const DEFAULT_LIST_DENSITY: ListDensity = "compact";
 export const LIST_ROW_GAP = LIST_DENSITIES.compact.rowGapY;
-export const LIST_ROOT_BRANCH_GAP = LIST_DENSITIES.compact.rootToBranchGapY;
+export const LIST_ROOT_BRANCH_GAP = LIST_DENSITIES.compact.rootToBranchGapX;
 export const LIST_COLUMN_GUTTER = LIST_DENSITIES.compact.childIndentX;
 export const LIST_MIN_COLUMN_GAP = LIST_DENSITIES.compact.branchColumnGapX;
 export const LIST_OUTER_PADDING = 24;
-export const LIST_COLLISION_PADDING_X = 12;
-export const LIST_COLLISION_PADDING_Y = 8;
+export const LIST_COLLISION_PADDING_X = 20;
+export const LIST_COLLISION_PADDING_Y = 14;
 export const LIST_CONNECTOR_OBSTACLE_PADDING = 8;
 export const DEFAULT_LIST_CONNECTOR_WIDTH = 2;
 export const MIN_LIST_CONNECTOR_WIDTH = 0.5;
@@ -292,13 +292,11 @@ export function computeListLayout(
     Object.assign(generated, branch.placements);
   }
 
-  const rowWidth = branchColumns.reduce((total, branch, index) => (
-    total + branch.width + (index === 0 ? 0 : density.branchColumnGapX)
-  ), 0);
-  const branchesTop = rootRect.bottom + density.rootToBranchGapY;
+  const branchesTop = rootRect.top;
+  const branchesLeft = rootRect.right + density.rootToBranchGapX;
   let nextBranchLeft = preserveBranchAnchors
     ? Number.NEGATIVE_INFINITY
-    : rootRect.centerX - rowWidth / 2;
+    : branchesLeft;
   const preservedTop = preserveBranchAnchors && branchColumns.length
     ? (() => {
         const first = branchColumns[0];
@@ -458,19 +456,28 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
       ? (() => {
           const busY = Math.min(...childRects.map((item) => item.rect.top)) - density.connectorGutterX;
           const childXs = childRects.map((item) => item.rect.centerX);
+          const rootExitX = parentRect.right + density.connectorGutterX;
           return {
             parentId,
             orientation: "horizontal" as const,
-            leads: [{
-              x1: parentRect.centerX,
-              y1: parentRect.bottom,
-              x2: parentRect.centerX,
-              y2: busY,
-            }],
+            leads: [
+              {
+                x1: parentRect.right,
+                y1: parentRect.centerY,
+                x2: rootExitX,
+                y2: parentRect.centerY,
+              },
+              {
+                x1: rootExitX,
+                y1: parentRect.centerY,
+                x2: rootExitX,
+                y2: busY,
+              },
+            ],
             bus: {
-              x1: Math.min(parentRect.centerX, ...childXs),
+              x1: rootExitX,
               y1: busY,
-              x2: Math.max(parentRect.centerX, ...childXs),
+              x2: Math.max(rootExitX, ...childXs),
               y2: busY,
             },
             branches: childRects.map(({ edge, rect }) => ({

@@ -129,7 +129,11 @@ test("List creates independent branch columns with recursive child-under-parent 
   assert.deepEqual(placements.root, nodes[0].position, "the selected root remains fixed");
   assert.equal(rects.get("a")!.top, rects.get("b")!.top);
   assert.equal(rects.get("b")!.top, rects.get("c")!.top);
-  assert.equal(rects.get("a")!.top, rects.get("root")!.bottom + density.rootToBranchGapY);
+  assert.equal(rects.get("a")!.top, rects.get("root")!.top);
+  assert.ok(
+    rects.get("a")!.left >= rects.get("root")!.right + density.rootToBranchGapX,
+    "the selected root stays to the left of the branch row"
+  );
 
   assert.equal(rects.get("a1")!.left - rects.get("a")!.left, density.childIndentX);
   assert.equal(rects.get("a2a")!.left - rects.get("a2")!.left, density.childIndentX);
@@ -145,6 +149,29 @@ test("List creates independent branch columns with recursive child-under-parent 
   assert.ok(bBounds.left >= aBounds.right + density.branchColumnGapX);
   assert.ok(cBounds.left >= bBounds.right + density.branchColumnGapX);
   assertNoOverlap(positionedNodes(nodes, placements));
+});
+
+test("comfortable List density increases root, branch, and row clearances", () => {
+  const { nodes, edges } = buildTree(referenceSpecs);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const compactRects = positionedRects(nodes, computeListLayout("root", hierarchy, byId, { density: "compact" }));
+  const comfortablePlacements = computeListLayout("root", hierarchy, byId, { density: "comfortable" });
+  const comfortableRects = positionedRects(nodes, comfortablePlacements);
+
+  assert.ok(
+    comfortableRects.get("a")!.left - comfortableRects.get("root")!.right
+      > compactRects.get("a")!.left - compactRects.get("root")!.right
+  );
+  assert.ok(
+    comfortableRects.get("b")!.left - comfortableRects.get("a")!.right
+      > compactRects.get("b")!.left - compactRects.get("a")!.right
+  );
+  assert.ok(
+    comfortableRects.get("a1")!.top - comfortableRects.get("a")!.bottom
+      > compactRects.get("a1")!.top - compactRects.get("a")!.bottom
+  );
+  assertNoOverlap(positionedNodes(nodes, comfortablePlacements));
 });
 
 test("wide parents do not push descendants beyond one hierarchy indent", () => {
@@ -250,7 +277,12 @@ test("connector model uses a horizontal root bus and vertical nested trunks", ()
   const hierarchy = buildHierarchy(tree.nodes, tree.edges);
   const placements = computeListLayout("root", hierarchy, new Map(tree.nodes.map((node) => [node.id, node])));
   const model = buildListConnectorModel(positionedNodes(tree.nodes, placements), tree.edges);
-  assert.equal(model.groups.find((group) => group.parentId === "root")?.orientation, "horizontal");
+  const rootGroup = model.groups.find((group) => group.parentId === "root");
+  const rects = positionedRects(tree.nodes, placements);
+  assert.equal(rootGroup?.orientation, "horizontal");
+  assert.equal(rootGroup?.leads[0].x1, rects.get("root")!.right);
+  assert.equal(rootGroup?.leads[0].y1, rects.get("root")!.centerY);
+  assert.ok((rootGroup?.bus.y1 ?? Number.POSITIVE_INFINITY) < rects.get("a")!.top);
   assert.equal(model.groups.find((group) => group.parentId === "a")?.orientation, "vertical");
   assert.deepEqual(model.obstacleIntersections, []);
 });
