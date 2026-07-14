@@ -1,6 +1,7 @@
 import { classifyExportError, ExportError, toExportError } from "./errors";
 import { createPngExportPlan } from "./limits";
 import { prepareReactFlowDomSvg } from "./dom-renderer";
+import { createSvgRasterDataUrl } from "./svg-raster-source";
 import type { ExportAssetWarning } from "./resources";
 import type {
   ExportBounds,
@@ -182,11 +183,11 @@ function sanitizedFilename(value: string, format: ExportFormat): string {
 function loadSvgImage(
   source: string,
   signal?: AbortSignal
-): Promise<{ image: HTMLImageElement; url: string }> {
+): Promise<HTMLImageElement> {
   abortIfRequested(signal, "decode-image", { renderer: "dom-foreign-object" });
-  let url: string;
+  let dataUrl: string;
   try {
-    url = URL.createObjectURL(new Blob([source], { type: SVG_MIME }));
+    dataUrl = createSvgRasterDataUrl(source);
   } catch (cause) {
     throw new ExportError({
       stage: "decode-image",
@@ -201,11 +202,10 @@ function loadSvgImage(
     const image = new Image();
     let settled = false;
     const cleanup = () => signal?.removeEventListener("abort", onAbort);
-    const rejectOnce = (error: unknown, revoke = true) => {
+    const rejectOnce = (error: unknown) => {
       if (settled) return;
       settled = true;
       cleanup();
-      if (revoke) URL.revokeObjectURL(url);
       reject(error);
     };
     const onAbort = () => {
@@ -218,7 +218,6 @@ function loadSvgImage(
     };
 
     image.decoding = "async";
-    image.crossOrigin = "anonymous";
     image.onload = () => {
       if (settled) return;
       if (signal?.aborted) {
@@ -227,7 +226,7 @@ function loadSvgImage(
       }
       settled = true;
       cleanup();
-      resolve({ image, url });
+      resolve(image);
     };
     image.onerror = () => rejectOnce(new ExportError({
       stage: "decode-image",
@@ -242,7 +241,7 @@ function loadSvgImage(
       onAbort();
       return;
     }
-    image.src = url;
+    image.src = dataUrl;
   });
 }
 
@@ -478,7 +477,7 @@ export async function exportBoardVisual(
     effectiveScale = plan.effectiveScale;
     width = plan.outputWidth;
     height = plan.outputHeight;
-    const decoded = await runStage("decode-image", baseDiagnostics, () =>
+    const decodedImage = await runStage("decode-image", baseDiagnostics, () =>
       loadSvgImage(prepared.source, options.signal), {
       signal: options.signal,
     });
@@ -543,7 +542,7 @@ export async function exportBoardVisual(
         canvasCreated: true,
         canvasContextCreated: true,
       }, () => {
-        surface.context.drawImage(decoded.image, 0, 0, plan.outputWidth, plan.outputHeight);
+        surface.context.drawImage(decodedImage, 0, 0, plan.outputWidth, plan.outputHeight);
       }, { signal: options.signal });
       blob = await runStage("encode-png", {
         ...baseDiagnostics,
@@ -555,7 +554,9 @@ export async function exportBoardVisual(
         completedDiagnostics: { blobCreated: true },
       });
     } finally {
-      URL.revokeObjectURL(decoded.url);
+      decodedImage.onload = null;
+      decodedImage.onerror = null;
+      decodedImage.removeAttribute("src");
       surface.canvas.width = 1;
       surface.canvas.height = 1;
     }

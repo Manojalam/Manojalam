@@ -23,7 +23,7 @@ const USER_MESSAGES: Record<ExportErrorCode, string> = {
   CANVAS_ALLOCATION_FAILED: "The browser could not allocate a canvas for this PNG.",
   CANVAS_CONTEXT_FAILED: "The browser could not initialize PNG rendering.",
   CANVAS_DRAW_FAILED: "The chart could not be drawn into the PNG renderer.",
-  CANVAS_TAINTED: "A remote image in this chart prevents PNG export. Remove it, embed it, or export as SVG.",
+  CANVAS_TAINTED: "The browser blocked PNG encoding after rendering this chart. Export as SVG or remove unsupported embedded content.",
   PNG_BLOB_CREATION_FAILED: "PNG encoding failed.",
   SVG_BLOB_CREATION_FAILED: "SVG encoding failed.",
   DOWNLOAD_FAILED: "The file was created, but the download could not be started.",

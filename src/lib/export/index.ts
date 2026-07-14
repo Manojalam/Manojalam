@@ -3,6 +3,7 @@ import { BOARD_CONTENT_VERSION } from "@/lib/config";
 import { ExportError } from "./errors";
 import { createPngExportPlan } from "./limits";
 import { initiateBlobDownload } from "./pipeline";
+import { createSvgRasterDataUrl } from "./svg-raster-source";
 
 export * from "./errors";
 export * from "./limits";
@@ -291,18 +292,16 @@ async function prepareRelationshipDiagramSvg(nodeId: string): Promise<PreparedSv
   return prepareSvgElement(findVisibleRelationshipDiagramSvg(nodeId));
 }
 
-function loadSvgImage(source: string): Promise<{ image: HTMLImageElement; url: string }> {
-  const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
+function loadSvgImage(source: string): Promise<HTMLImageElement> {
+  const dataUrl = createSvgRasterDataUrl(source);
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.decoding = "async";
-    image.onload = () => resolve({ image, url });
+    image.onload = () => resolve(image);
     image.onerror = () => {
-      URL.revokeObjectURL(url);
       reject(new Error("The exported SVG could not be rendered as an image."));
     };
-    image.src = url;
+    image.src = dataUrl;
   });
 }
 
@@ -333,7 +332,7 @@ async function preparedSvgPngBlob(prepared: PreparedSvg): Promise<Blob> {
     { x: 0, y: 0, width: prepared.width, height: prepared.height },
     EXPORT_SCALE
   );
-  const { image, url } = await loadSvgImage(prepared.source);
+  const image = await loadSvgImage(prepared.source);
   try {
     const canvas = document.createElement("canvas");
     canvas.width = plan.outputWidth;
@@ -373,7 +372,9 @@ async function preparedSvgPngBlob(prepared: PreparedSvg): Promise<Blob> {
     }
     return canvasPngBlob(canvas);
   } finally {
-    URL.revokeObjectURL(url);
+    image.onload = null;
+    image.onerror = null;
+    image.removeAttribute("src");
   }
 }
 
