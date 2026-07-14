@@ -156,10 +156,13 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
 
-        <div className={cn(
-          "relative z-10 text-sm font-medium",
-          editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
-        )}
+        <div
+          data-node-content-layer="true"
+          data-node-owner={id}
+          className={cn(
+            "relative z-10 text-sm font-medium",
+            editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
+          )}
           style={textPresentation.style}>
           <RichTextEditor
             nodeId={id}

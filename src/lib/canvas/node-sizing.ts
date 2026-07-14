@@ -181,7 +181,9 @@ export function fittedContentScale(
   const height = positive(content.height, 1);
   const singleLine = (content.lineCount ?? 1) <= 1.05;
   const requiredWidth = singleLine ? width : wrappedWidth;
-  const maximumScale = singleLine ? 2.5 : 1;
+  // This is an overflow fit, not an auto-fill effect. Authored text may shrink
+  // to remain visible, but a larger box must never silently enlarge it.
+  const maximumScale = 1;
   const scale = Math.min(
     maximumScale,
     positive(available.width, 1) / requiredWidth,

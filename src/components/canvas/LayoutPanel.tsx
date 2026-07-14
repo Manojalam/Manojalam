@@ -147,9 +147,6 @@ export function LayoutPanel() {
       requestMeasuredLayout(mode, selectedNode.id, branchIds);
     } else {
       applyLayout(mode, selectedNode.id);
-      setTimeout(() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
-        detail: { nodeIds: branchIds, mode, rootId: selectedNode.id },
-      })), 60);
     }
     toast.success(`Applied ${layoutLabel(mode)} to ${affectedCount} node${affectedCount === 1 ? "" : "s"}.`, {
       description: (mode === "list" || mode === "matrix") && affectedCount > 30
@@ -233,9 +230,16 @@ export function LayoutPanel() {
               </button>
               <button
                 className="rounded-md border border-border px-1.5 py-1 text-[10px] hover:bg-background"
-                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview"))}
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                  detail: {
+                    nodeIds: [`sunburst-${selectedNode.id}`],
+                    mode: "radial",
+                    rootId: selectedNode.id,
+                    forceFit: true,
+                  },
+                }))}
               >
-                Fit
+                Fit radial
               </button>
             </div>
           </div>

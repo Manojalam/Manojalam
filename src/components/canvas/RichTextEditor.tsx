@@ -21,6 +21,7 @@ import {
 } from "@/lib/canvas/text-measurement";
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
+import { sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Palette } from "lucide-react";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
@@ -60,52 +61,6 @@ const COLOR_SWATCHES = [
 ];
 
 const SIZE_PRESETS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
-
-const PASTED_TYPOGRAPHY_PROPERTIES = [
-  "font-size",
-  "font-family",
-  "line-height",
-  "letter-spacing",
-] as const;
-
-/**
- * Imported rich text should adopt the node's typography. This runs only for a
- * paste operation, so inline formatting already stored in the document is not
- * changed. Semantic emphasis, colors, highlights and block structure remain.
- */
-function sanitizePastedHtml(html: string): string {
-  if (typeof DOMParser === "undefined") return html;
-  // ProseMirror marks HTML copied from this editor with data-pm-slice. Keep
-  // those intentional inline marks; only normalize typography imported from
-  // an external document or website.
-  if (/\bdata-pm-slice\s*=/i.test(html)) return html;
-  const document = new DOMParser().parseFromString(html, "text/html");
-
-  document.body.querySelectorAll<HTMLElement>("*").forEach((element) => {
-    const style = element.style;
-    const fontStyle = style.fontStyle;
-    const fontWeight = style.fontWeight;
-
-    // A font shorthand may carry bold/italic as well as the properties that
-    // must not enter the board. Preserve its emphasis before removing it.
-    style.removeProperty("font");
-    for (const property of PASTED_TYPOGRAPHY_PROPERTIES) {
-      style.removeProperty(property);
-    }
-    if (fontStyle && fontStyle !== "normal") style.fontStyle = fontStyle;
-    if (fontWeight && fontWeight !== "normal" && fontWeight !== "400") {
-      style.fontWeight = fontWeight;
-    }
-
-    if (!style.cssText.trim()) element.removeAttribute("style");
-    if (element.tagName === "FONT") {
-      element.removeAttribute("face");
-      element.removeAttribute("size");
-    }
-  });
-
-  return document.body.innerHTML;
-}
 
 /** Gap in px kept between the selection and the bottom of the floating toolbar. */
 const TOOLBAR_GAP = 10;
@@ -796,10 +751,15 @@ export function RichTextEditor({
         document.body
       )}
 
-      <div className={cn(hasVisualScale && "rich-text-scale-fit")} style={scaleStyle}>
+      <div
+        data-rich-text-editor="true"
+        className={cn(hasVisualScale && "rich-text-scale-fit")}
+        style={scaleStyle}
+      >
         <EditorContent
           editor={editor}
           aria-label={placeholder}
+          data-rich-text-editor="true"
           className={cn(
             "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
             "[&_.ProseMirror]:leading-snug [&_.ProseMirror]:break-words",

@@ -158,10 +158,13 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
           />
         </div>}
 
-        <div className={cn(
-          "relative z-10 text-sm text-foreground",
-          editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
-        )}
+        <div
+          data-node-content-layer="true"
+          data-node-owner={id}
+          className={cn(
+            "relative z-10 text-sm text-foreground",
+            editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
+          )}
           style={textPresentation.style}>
           <RichTextEditor
             nodeId={id}

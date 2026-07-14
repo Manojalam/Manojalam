@@ -64,6 +64,11 @@ import {
   resolveAutoSizeMode,
   type ContentResizeReason,
 } from "@/lib/canvas/node-sizing";
+import type { ManojalamClipboardPayload } from "@/lib/canvas/clipboard";
+import {
+  resolveHydratedSunburstGeometry,
+  viewportsEqual,
+} from "@/lib/canvas/hydration";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -87,12 +92,17 @@ interface CanvasState {
   selectedNodeIds: string[];
   selectedEdgeIds: string[];
   saveStatus: SaveStatus;
+  isBoardLoading: boolean;
+  hasHydratedBoard: boolean;
+  hasUserChangedBoard: boolean;
+  pendingMigration: boolean;
   history: HistoryEntry[];
   historyIndex: number;
   clipboard: { nodes: Node[]; edges: Edge[] } | null;
   searchQuery: string;
   searchResults: string[];
 
+  beginBoardHydration: () => void;
   setBoard: (board: VidyaBoard) => void;
   setNodes: (nodes: Node[] | ((prev: Node[]) => Node[])) => void;
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
@@ -115,7 +125,7 @@ interface CanvasState {
   undo: () => void;
   redo: () => void;
   copySelected: () => void;
-  paste: () => void;
+  paste: (payload?: Pick<ManojalamClipboardPayload, "nodes" | "edges">) => void;
   duplicateNode: (nodeId: string) => void;
   duplicateSelected: () => void;
   createRelationshipDiagram: (
@@ -759,6 +769,7 @@ function withSunburstNode(
   const existingData = (existingChart?.data ?? {}) as Record<string, unknown>;
   const locked = existingData.locked === true;
   const chartSize = storedSunburstSize(existingData, automaticChartSize);
+  const existingRect = existingChart ? getNodeRect(existingChart) : null;
   const hiddenNodes = restored.map((node) => {
     if (!scopeIds.has(node.id)) return node;
     return {
@@ -771,10 +782,15 @@ function withSunburstNode(
   const chartNode: Node = {
     id: `sunburst-${key}`,
     type: "sunburst",
-    position: existingChart?.position ?? {
-      x: rootCenter.x - chartSize / 2,
-      y: rootCenter.y - chartSize / 2,
-    },
+    position: existingRect
+      ? {
+          x: existingRect.centerX - chartSize / 2,
+          y: existingRect.centerY - chartSize / 2,
+        }
+      : {
+          x: rootCenter.x - chartSize / 2,
+          y: rootCenter.y - chartSize / 2,
+        },
     data: {
       ...existingData,
       rootId,
@@ -1132,36 +1148,30 @@ function normalizeSunburstChartSizes(
   return nodes.map((node) => {
     const data = (node.data ?? {}) as Record<string, unknown>;
     if (node.type !== "sunburst" || typeof data.rootId !== "string" || !byId.has(data.rootId)) return node;
-    const nextSize = storedSunburstSize(data, sunburstChartSize(data.rootId, hierarchy));
     const current = styleSizeOf(node);
     const visualBounds = data.relationshipVisualBounds && typeof data.relationshipVisualBounds === "object"
       ? data.relationshipVisualBounds as Partial<{ minX: number; minY: number }>
       : null;
-    const visualMinX = typeof visualBounds?.minX === "number" && Number.isFinite(visualBounds.minX)
-      ? visualBounds.minX
-      : 0;
-    const visualMinY = typeof visualBounds?.minY === "number" && Number.isFinite(visualBounds.minY)
-      ? visualBounds.minY
-      : 0;
-    const previousChartSize = typeof data.chartSize === "number" && Number.isFinite(data.chartSize)
-      ? data.chartSize
-      : visualBounds ? nextSize : current.w;
+    const geometry = resolveHydratedSunburstGeometry({
+      position: node.position,
+      currentSize: { width: current.w, height: current.h },
+      chartSize: data.chartSize,
+      automaticSize: sunburstChartSize(data.rootId, hierarchy),
+      legacyVisualBounds: visualBounds,
+    });
     const locked = data.locked === true;
     const normalizedData: Record<string, unknown> = {
       ...data,
-      chartSize: nextSize,
+      chartSize: geometry.size,
       locked,
     };
     delete normalizedData.relationshipVisualBounds;
     return {
       ...resetNodeDimensions({
       ...node,
-      position: {
-        x: node.position.x - visualMinX - (nextSize - previousChartSize) / 2,
-        y: node.position.y - visualMinY - (nextSize - previousChartSize) / 2,
-      },
+      position: geometry.position,
       data: normalizedData,
-      }, nextSize, nextSize),
+      }, geometry.size, geometry.size),
       selectable: true,
       draggable: !locked,
     };
@@ -1462,11 +1472,26 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectedNodeIds: [],
   selectedEdgeIds: [],
   saveStatus: "saved",
+  isBoardLoading: true,
+  hasHydratedBoard: false,
+  hasUserChangedBoard: false,
+  pendingMigration: false,
   history: [],
   historyIndex: -1,
   clipboard: null,
   searchQuery: "",
   searchResults: [],
+
+  beginBoardHydration: () => {
+    cancelPendingLayoutReflows();
+    set({
+      isBoardLoading: true,
+      hasHydratedBoard: false,
+      hasUserChangedBoard: false,
+      pendingMigration: false,
+      saveStatus: "saved",
+    });
+  },
 
   setBoard: (board) => {
     cancelPendingLayoutReflows();
@@ -1529,6 +1554,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         settings,
       },
     };
+    const migrationRequired = relationshipMigrationRequired
+      || structuralMigrationRequired
+      || hierarchyMigrationRequired
+      || settingsMigrationRequired;
     set({
       board: normalizedBoard,
       nodes,
@@ -1537,10 +1566,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       relationshipFans,
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings,
-      saveStatus:
-        relationshipMigrationRequired || structuralMigrationRequired || hierarchyMigrationRequired || settingsMigrationRequired
-          ? "unsaved"
-          : "saved",
+      saveStatus: "saved",
+      isBoardLoading: false,
+      hasHydratedBoard: true,
+      hasUserChangedBoard: false,
+      pendingMigration: migrationRequired,
       history: [],
       historyIndex: -1,
     });
@@ -1567,7 +1597,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "unsaved",
     })),
 
-  setViewport: (viewport) => set({ viewport, saveStatus: "unsaved" }),
+  setViewport: (viewport) => set((state) => viewportsEqual(state.viewport, viewport)
+    ? {}
+    : { viewport, saveStatus: "unsaved" }),
 
   setSettings: (partial) =>
     set((state) => ({
@@ -1575,7 +1607,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "unsaved",
     })),
 
-  setSaveStatus: (status) => set({ saveStatus: status }),
+  setSaveStatus: (status) => set((state) => ({
+    saveStatus: status,
+    ...(status === "unsaved" && state.hasHydratedBoard ? { hasUserChangedBoard: true } : {}),
+    ...(status === "saved" && state.hasUserChangedBoard ? { pendingMigration: false } : {}),
+  })),
 
   setSelectedNodeIds: (ids) => set({ selectedNodeIds: ids }),
   setSelectedEdgeIds: (ids) => set({ selectedEdgeIds: ids }),
@@ -1793,12 +1829,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ clipboard: { nodes: structuredClone(selectedNodes), edges: structuredClone(selectedEdges) } });
   },
 
-  paste: () => {
+  paste: (payload) => {
     const { clipboard, nodes, edges } = get();
-    if (!clipboard) return;
+    const source = payload ?? clipboard;
+    if (!source) return;
     get().pushHistory();
-    const idMap = new Map(clipboard.nodes.map((node) => [node.id, generateId()]));
-    const preparedNodes = clipboard.nodes.map((n) => {
+    const idMap = new Map(source.nodes.map((node) => [node.id, generateId()]));
+    const preparedNodes = source.nodes.map((n) => {
       const newId = idMap.get(n.id)!;
       const data = structuredClone((n.data ?? {}) as Record<string, unknown>);
       if (typeof data.parentId === "string") data.parentId = idMap.get(data.parentId) ?? null;
@@ -1820,7 +1857,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ...node,
       position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
     }));
-    const newEdges = clipboard.edges.map((e) => ({
+    const newEdges = source.edges.map((e) => ({
       ...structuredClone(e),
       id: generateId(),
       source: idMap.get(e.source) ?? e.source,
@@ -2507,6 +2544,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       const normalizedContent = normalizedContentMeasurement(contentSize);
       activeLayoutMode = storedLayoutModeForNode(nodeId, state.nodes);
+      const passiveHydrationMeasurement = state.hasHydratedBoard
+        && !state.hasUserChangedBoard
+        && state.saveStatus === "saved"
+        && (reason === "layout" || reason === "format" || reason === "blur");
+      if (passiveHydrationMeasurement) {
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        const previousIntrinsic = (activeLayoutMode === "matrix"
+          ? data.matrixIntrinsicSize
+          : data.intrinsicContentSize) as Partial<ContentSize> | undefined;
+        if (!contentMeasurementChanged(previousIntrinsic, normalizedContent)) return {};
+        return {
+          nodes: state.nodes.map((candidate) => candidate.id === nodeId
+            ? {
+                ...candidate,
+                data: {
+                  ...(candidate.data ?? {}),
+                  intrinsicContentSize: normalizedContent,
+                  ...(activeLayoutMode === "matrix" ? { matrixIntrinsicSize: normalizedContent } : {}),
+                },
+              }
+            : candidate),
+        };
+      }
       if (activeLayoutMode === "matrix") {
         const data = (node.data ?? {}) as Record<string, unknown>;
         const previousIntrinsic = data.matrixIntrinsicSize as Partial<ContentSize> | undefined;

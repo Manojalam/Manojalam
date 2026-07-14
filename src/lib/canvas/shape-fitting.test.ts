@@ -202,7 +202,7 @@ test("smart sizing uses hysteresis while editing and shrinks on explicit fit", (
   assert.ok(explicitFit.height < activeEdit.height);
 });
 
-test("fixed-box rich text scales down as one unit and restores authored size when space returns", () => {
+test("fixed-box rich text scales down as one unit without enlarging authored text", () => {
   const content = { width: 300, naturalWidth: 300, height: 180, lineCount: 6 };
   const constrained = fittedContentScale(content, { width: 150, height: 90 });
   const roomy = fittedContentScale(content, { width: 500, height: 300 });
@@ -213,5 +213,14 @@ test("fixed-box rich text scales down as one unit and restores authored size whe
 
   assert.equal(constrained, 0.5);
   assert.equal(roomy, 1);
-  assert.equal(shortLabel, 2.5);
+  assert.equal(shortLabel, 1);
+});
+
+test("fixed-box fitting respects a readable minimum scale", () => {
+  const scale = fittedContentScale(
+    { width: 800, naturalWidth: 800, height: 500, lineCount: 12 },
+    { width: 100, height: 60 },
+    8 / 14
+  );
+  assert.equal(scale, 8 / 14);
 });

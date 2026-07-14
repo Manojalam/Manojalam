@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
 import { getNodeRect } from "../layout/geometry";
-import { alignSelection, compactEqualSpacing } from "./selection-geometry";
+import { alignSelection, compactEqualSpacing, distributeSelection } from "./selection-geometry";
 
 function node(id: string, x: number, y: number, width: number, height: number, origin?: [number, number]): Node {
   return { id, position: { x, y }, origin, data: {}, style: { width, height } };
@@ -61,4 +61,51 @@ test("center alignment accounts for different rendered widths", () => {
   assert.equal(after[0].centerX, after[1].centerX);
   assert.equal(after[0].top, 20);
   assert.equal(after[1].top, 100);
+});
+
+test("horizontal distribution preserves outer nodes and equalizes edge gaps", () => {
+  const nodes = [
+    node("left", 20, 40, 80, 40),
+    node("middle-a", 250, 90, 120, 60),
+    node("middle-b", 530, 15, 60, 50),
+    node("right", 900, 120, 100, 70),
+  ];
+  const beforePositions = nodes.map((item) => ({ ...item.position }));
+  const result = distributeSelection(nodes, "x");
+  const after = nodes.map((item) => getNodeRect({ ...item, position: result.positions.get(item.id)! }));
+
+  assert.equal(result.failure, null);
+  assert.deepEqual(result.positions.get("left"), beforePositions[0]);
+  assert.deepEqual(result.positions.get("right"), beforePositions[3]);
+  assert.ok(Math.abs((after[1].left - after[0].right) - (after[2].left - after[1].right)) < 1e-9);
+  assert.ok(Math.abs((after[2].left - after[1].right) - (after[3].left - after[2].right)) < 1e-9);
+  assert.deepEqual(after.map((rect) => rect.top), [40, 90, 15, 120]);
+});
+
+test("vertical distribution preserves outer nodes and supports centered origins", () => {
+  const nodes = [
+    node("top", 140, 100, 80, 40, [0.5, 0.5]),
+    node("middle", 350, 420, 130, 80, [0.5, 0.5]),
+    node("bottom", 80, 900, 90, 60, [0.5, 0.5]),
+  ];
+  const result = distributeSelection(nodes, "y");
+  const after = nodes.map((item) => getNodeRect({ ...item, position: result.positions.get(item.id)! }));
+
+  assert.equal(result.failure, null);
+  assert.deepEqual(result.positions.get("top"), nodes[0].position);
+  assert.deepEqual(result.positions.get("bottom"), nodes[2].position);
+  assert.ok(Math.abs((after[1].top - after[0].bottom) - (after[2].top - after[1].bottom)) < 1e-9);
+  assert.deepEqual(after.map((rect) => rect.left), [100, 285, 35]);
+});
+
+test("distribution refuses an insufficient outer span without moving nodes", () => {
+  const nodes = [
+    node("a", 0, 0, 120, 40),
+    node("b", 100, 80, 120, 40),
+    node("c", 220, 160, 120, 40),
+  ];
+  const result = distributeSelection(nodes, "x");
+
+  assert.equal(result.failure, "insufficient-span");
+  assert.equal(result.positions.size, 0);
 });
