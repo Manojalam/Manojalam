@@ -53,6 +53,10 @@ import { ExportDialog } from "./ExportDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
+import {
+  appendPlainTextToRichText,
+  richTextToPlainText,
+} from "@/lib/canvas/rich-text-paste";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -112,39 +116,6 @@ function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]
     }
     return node;
   });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function plainTextToRichText(value: string): string {
-  const normalized = value.replace(/\r\n/g, "\n").trimEnd();
-  if (!normalized.trim()) return "";
-  return normalized
-    .split(/\n{2,}/)
-    .map((paragraph) => {
-      const lines = paragraph.split("\n").map(escapeHtml);
-      return `<p>${lines.join("<br>")}</p>`;
-    })
-    .join("");
-}
-
-function stripRichText(html: unknown): string {
-  if (typeof html !== "string") return "";
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
 }
 
 function pasteTextFieldForNode(node: Node): "text" | "devanagari" | "rule" | null {
@@ -1049,13 +1020,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (!pasted?.trim()) return;
       const data = (node.data ?? {}) as Record<string, unknown>;
       const existing = targetField === "text"
-        ? (stripRichText(data.richText) || (typeof data.text === "string" ? data.text : ""))
+        ? (richTextToPlainText(data.richText) || (typeof data.text === "string" ? data.text : ""))
         : (typeof data[targetField] === "string" ? data[targetField] : "");
       const nextText = existing ? `${existing}\n${pasted}` : pasted;
       cs.pushHistory();
       cs.updateNodeData(node.id, {
         [targetField]: nextText,
-        ...(targetField === "text" ? { richText: plainTextToRichText(nextText) } : {}),
+        ...(targetField === "text"
+          ? { richText: appendPlainTextToRichText(data.richText, existing, pasted) }
+          : {}),
       });
       toast.success("Pasted text into selected node.", {
         action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },

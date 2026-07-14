@@ -255,7 +255,10 @@ body {
 /* ─── TipTap ─── */
 .ProseMirror {
   outline: none;
-  word-break: break-word;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  hyphens: none;
   min-height: 1em;
   /* Inherit all typographic properties from the containing node */
   font-size:   inherit;
@@ -284,19 +287,7 @@ body {
 .ProseMirror em, .ProseMirror i     { font-style:  italic !important; }
 .ProseMirror u                      { text-decoration: underline; }
 .ProseMirror s                      { text-decoration: line-through; }
-/* Inline span styles from TextStyle extension must override inherited values */
-.ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
-.single-word-fit .ProseMirror,
-.single-word-fit .ProseMirror * {
-  white-space: nowrap !important;
-  word-break: keep-all !important;
-  overflow-wrap: normal !important;
-  font-size: inherit !important;
-}
-.bounded-text-fit .ProseMirror,
-.bounded-text-fit .ProseMirror * {
-  font-size: inherit !important;
-}
+/* TextStyle marks remain local to the ranges the user explicitly formatted. */
 mark { border-radius: 2px; padding: 0 2px; }
 
 /* Radial-layout labels use one fitted font size so inline formatting can never

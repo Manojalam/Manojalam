@@ -88,6 +88,8 @@ export type ExportErrorCode =
   | "FONT_LOAD_FAILED"
   | "FONT_LOAD_TIMEOUT"
   | "ASSET_EMBED_FAILED"
+  | "REMOTE_IMAGE_CORS"
+  | "REMOTE_FONT_CORS"
   | "REMOTE_ASSET_CORS"
   | "UNSUPPORTED_ELEMENT"
   | "SERIALIZE_FAILED"
@@ -122,7 +124,10 @@ export type ExportAssetWarningKind =
   | "font-resource"
   | "remote-asset";
 
-export type ExportAssetFallbackAction = "preserved-reference" | "substituted-placeholder";
+export type ExportAssetFallbackAction =
+  | "preserved-reference"
+  | "substituted-placeholder"
+  | "font-fallback";
 
 /** A non-fatal resource issue retained in logs and export results. */
 export interface ExportAssetWarning {
@@ -169,6 +174,7 @@ export interface ExportDiagnostics {
   downloadInitiated?: boolean;
   offendingElement?: string;
   offendingUrl?: string;
+  offendingAssetKind?: "image" | "font" | "style";
   stageDurationsMs?: Partial<Record<ExportStage, number>>;
   error?: ExportErrorSnapshot;
 }

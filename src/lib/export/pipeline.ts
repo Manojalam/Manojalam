@@ -432,7 +432,10 @@ export async function exportBoardVisual(
       background: options.background,
       title: options.title,
       signal: options.signal,
-      strictFontEmbedding: options.format === "png",
+      // A cross-origin font must never make an otherwise self-contained chart
+      // impossible to export. The asset stage embeds it directly or via the
+      // safe proxy, then applies a deterministic browser-safe fallback.
+      strictFontEmbedding: false,
       preserveRemoteReferences: options.format === "svg",
       substituteInaccessibleRemoteAssets: options.format === "png",
       onStageComplete: (stage, diagnostics) => {

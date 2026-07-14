@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  destroyExportAssetTransfer,
   ExportAssetProxyError,
+  hasRecognizedFontSignature,
+  isAllowedExportAssetContentType,
   validateExportAssetUrl,
 } from "./server-asset-proxy";
 
@@ -43,4 +46,48 @@ test("rejects local hostnames and private, link-local, or loopback IP literals",
       (cause: unknown) => cause instanceof ExportAssetProxyError && cause.code === "BLOCKED_TARGET"
     );
   }
+});
+
+test("keeps image and font response MIME types separate", () => {
+  assert.equal(isAllowedExportAssetContentType("image/png", "image"), true);
+  assert.equal(isAllowedExportAssetContentType("font/woff2", "image"), false);
+  assert.equal(isAllowedExportAssetContentType("font/woff2; charset=binary", "font"), true);
+  assert.equal(isAllowedExportAssetContentType("application/font-woff", "font"), true);
+  assert.equal(isAllowedExportAssetContentType("image/svg+xml", "font"), false);
+  assert.equal(isAllowedExportAssetContentType("text/html", "font"), false);
+});
+
+test("only accepts recognizable font bytes for generic binary responses", () => {
+  assert.equal(hasRecognizedFontSignature(Uint8Array.from([0x77, 0x4f, 0x46, 0x32])), true);
+  assert.equal(hasRecognizedFontSignature(Uint8Array.from([0x00, 0x01, 0x00, 0x00])), true);
+  assert.equal(hasRecognizedFontSignature(new TextEncoder().encode("<html>not a font")), false);
+});
+
+test("destroys both halves of a rejected upstream transfer exactly once", () => {
+  const destroyed: Array<"request" | "response"> = [];
+  let requestDestroyed = false;
+  let responseDestroyed = false;
+  const request = {
+    get destroyed() {
+      return requestDestroyed;
+    },
+    destroy() {
+      requestDestroyed = true;
+      destroyed.push("request");
+    },
+  };
+  const response = {
+    get destroyed() {
+      return responseDestroyed;
+    },
+    destroy() {
+      responseDestroyed = true;
+      destroyed.push("response");
+    },
+  };
+
+  destroyExportAssetTransfer(response, request);
+  destroyExportAssetTransfer(response, request);
+
+  assert.deepEqual(destroyed, ["response", "request"]);
 });

@@ -10,10 +10,7 @@ import {
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity, resolveBorderStyle,
   textMeasurementKey,
 } from "@/lib/style-utils";
-import {
-  MAX_AUTOFIT_NODE_HEIGHT,
-  shapeTextContentSize,
-} from "@/lib/canvas/shape-fitting";
+import { shapeTextContentSize } from "@/lib/canvas/shape-fitting";
 import type { TextBlockNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -29,6 +26,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
+  const setSaveStatus  = useCanvasStore((s) => s.setSaveStatus);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
 
   const drawingModeNodeId   = useUIStore((s) => s.drawingModeNodeId);
@@ -58,10 +56,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const [editing, setEditing] = useState(false);
   const initialContent = (dd.richText as string) || d.text || "";
   const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "text");
-  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
-    availableHeight: availableTextSize.height,
-    fitMultiline: !matrixCell && nodeSize.height >= MAX_AUTOFIT_NODE_HEIGHT - 1,
-  });
+  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -98,6 +93,14 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
         minHeight={40}
         isVisible={selected && !editing && !isDrawing && !matrixCell}
         lineStyle={{ borderRadius: bRadius }}
+        onResizeStart={(_, params) => {
+          pushHistory();
+          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
+        }}
+        onResizeEnd={(_, params) => {
+          updateNodeData(id, { userSize: { width: params.width, height: params.height } });
+          setSaveStatus("unsaved");
+        }}
       />
       <div
         className={cn(
@@ -163,10 +166,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            className={cn(
-              textPresentation.singleWord && "single-word-fit",
-              textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
-            )}
+            measurementWidth={dd.userSize ? availableTextSize.width : undefined}
             measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
             placeholder="Double-click to type…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
@@ -175,9 +175,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
               const plain = html.replace(/<[^>]+>/g, "").trim();
               updateNodeData(id, { richText: html, text: plain });
             }}
-            onContentSizeChange={textPresentation.singleWord
-              ? undefined
-              : (size) => fitNodeToContent(id, size)}
+            onContentSizeChange={(size) => fitNodeToContent(id, size)}
             onBlur={finishEditing}
           />
         </div>

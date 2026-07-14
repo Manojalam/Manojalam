@@ -5,6 +5,7 @@ import {
   waitForExportFonts,
   type ExportAssetOptions,
   type ExportAssetReport,
+  type ExportAssetWarning,
 } from "./resources";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -135,6 +136,54 @@ export interface PreparedDomExportSvg {
 function abortIfRequested(signal?: AbortSignal): void {
   if (!signal?.aborted) return;
   throw new DOMException("The export was canceled.", "AbortError");
+}
+
+type WaitForExportFonts = (
+  options?: Pick<ExportAssetOptions, "fontTimeoutMs" | "signal">
+) => Promise<void>;
+
+/**
+ * Waiting for the live document's fonts improves fidelity, but it must not be
+ * a hard gate for a non-strict export. The asset pass that follows can still
+ * embed each used font or replace an unavailable family with the deterministic
+ * export fallback. Cancellation and strict exports retain fail-fast behavior.
+ *
+ * The injectable waiter keeps this policy independently regression-testable
+ * without requiring a browser FontFaceSet in the test runtime.
+ */
+export async function waitForDomExportFontReadiness(
+  options: Pick<
+    ExportAssetOptions,
+    "fontTimeoutMs" | "signal" | "strictFontEmbedding"
+  > = {},
+  waitForFonts: WaitForExportFonts = waitForExportFonts
+): Promise<ExportAssetWarning[]> {
+  try {
+    await waitForFonts(options);
+    return [];
+  } catch (cause) {
+    if (options.signal?.aborted) {
+      if (
+        (cause instanceof ExportError && cause.code === "ABORTED")
+        || (cause instanceof DOMException && cause.name === "AbortError")
+      ) {
+        throw cause;
+      }
+      throw new DOMException("The export was canceled.", "AbortError");
+    }
+    const aborted = (cause instanceof ExportError && cause.code === "ABORTED")
+      || (cause instanceof DOMException && cause.name === "AbortError");
+    if (aborted || options.strictFontEmbedding) throw cause;
+
+    const recoverableFontFailure = cause instanceof ExportError
+      && (cause.code === "FONT_LOAD_TIMEOUT" || cause.code === "FONT_LOAD_FAILED");
+    if (!recoverableFontFailure) throw cause;
+
+    return [{
+      kind: "font-resource",
+      message: `${cause.message} Export continued with embedded fonts or a browser-safe fallback.`,
+    }];
+  }
 }
 
 function finiteDimension(value: number): boolean {
@@ -712,7 +761,7 @@ export async function prepareReactFlowDomSvg(
   validateBounds(options.bounds);
   const padding = Math.max(0, Number.isFinite(options.padding) ? options.padding ?? 0 : 0);
   abortIfRequested(options.signal);
-  await waitForExportFonts(options);
+  const fontReadinessWarnings = await waitForDomExportFontReadiness(options);
 
   const cloneStartedAt = performance.now();
   const preparedClone = cloneReactFlowViewport(options.viewport, options);
@@ -727,7 +776,13 @@ export async function prepareReactFlowDomSvg(
   });
 
   const assetsStartedAt = performance.now();
-  const assets = await embedDomExportAssets(preparedClone.clone, options);
+  const embeddedAssets = await embedDomExportAssets(preparedClone.clone, options);
+  const assets: ExportAssetReport = fontReadinessWarnings.length === 0
+    ? embeddedAssets
+    : {
+        ...embeddedAssets,
+        warnings: [...fontReadinessWarnings, ...embeddedAssets.warnings],
+      };
   options.onStageComplete?.("prepare-assets", {
     renderer: "dom-foreign-object",
     embeddedImageCount: assets.embeddedImageCount,

@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import type { BorderLayer, LayoutVisualStyle } from "./types";
 import {
   effectiveCornerRadius,
-  fitSingleUnbrokenWord,
   legacyRadiusToPercent,
 } from "./canvas/shape-fitting";
 import type { Size } from "./canvas/node-geometry";
@@ -30,21 +29,6 @@ export function getTextStyle(d: Record<string, unknown>): CSSProperties {
   };
 }
 
-function plainTextForFitting(d: Record<string, unknown>): string {
-  if (typeof d.richText === "string" && d.richText.trim()) {
-    return d.richText
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .trim();
-  }
-  return typeof d.text === "string" ? d.text.trim() : "";
-}
-
 function maximumInlineFontSize(d: Record<string, unknown>): number {
   if (typeof d.richText !== "string") return 0;
   return Math.max(
@@ -57,9 +41,8 @@ function maximumInlineFontSize(d: Record<string, unknown>): number {
 
 export function getFittedTextPresentation(
   d: Record<string, unknown>,
-  availableWidth: number,
-  fallbackFontSize = 14,
-  options: { availableHeight?: number; fitMultiline?: boolean; minimumFontSize?: number } = {}
+  _availableWidth: number,
+  fallbackFontSize = 14
 ): { style: CSSProperties; singleWord: boolean; constrained: boolean; fontSize: number } {
   const style = getTextStyle(d);
   const inheritedFontSize = typeof style.fontSize === "number"
@@ -69,71 +52,14 @@ export function getFittedTextPresentation(
     Number.isFinite(inheritedFontSize) ? inheritedFontSize : fallbackFontSize,
     maximumInlineFontSize(d)
   );
-  const plainText = plainTextForFitting(d);
-  const fit = fitSingleUnbrokenWord(plainText, preferredFontSize, availableWidth);
-  if (fit.singleWord) {
-    return {
-      style: { ...style, fontSize: `${fit.fontSize}px` },
-      singleWord: true,
-      constrained: fit.fontSize < preferredFontSize - 0.05,
-      fontSize: fit.fontSize,
-    };
-  }
-
-  const availableHeight = options.availableHeight ?? Number.POSITIVE_INFINITY;
-  const minimumFontSize = Math.max(4, Math.min(preferredFontSize, options.minimumFontSize ?? 8));
-  let fittedFontSize = preferredFontSize;
-  if (options.fitMultiline && Number.isFinite(availableHeight) && plainText) {
-    const estimatedHeight = (fontSize: number) => {
-      const lineHeight = fontSize * 1.38;
-      const lines = plainText.split(/\r?\n/);
-      let wrappedLines = 0;
-      for (const line of lines) {
-        if (!line.trim()) {
-          wrappedLines += 1;
-          continue;
-        }
-        const scriptFactor = /[\u0900-\u097f]/u.test(line) ? 0.82 : 0.56;
-        const unitsPerLine = Math.max(1, Math.floor(Math.max(1, availableWidth) / (fontSize * scriptFactor)));
-        const words = line.trim().split(/\s+/u);
-        let usedUnits = 0;
-        let lineCount = 1;
-        for (const word of words) {
-          const units = Array.from(word).length;
-          const nextUnits = usedUnits === 0 ? units : usedUnits + 1 + units;
-          if (nextUnits <= unitsPerLine) {
-            usedUnits = nextUnits;
-          } else if (units <= unitsPerLine) {
-            lineCount += 1;
-            usedUnits = units;
-          } else {
-            lineCount += Math.max(1, Math.ceil(units / unitsPerLine)) - (usedUnits === 0 ? 1 : 0);
-            usedUnits = units % unitsPerLine;
-          }
-        }
-        wrappedLines += lineCount;
-      }
-      return Math.max(1, wrappedLines) * lineHeight;
-    };
-
-    if (estimatedHeight(preferredFontSize) > availableHeight) {
-      let low = minimumFontSize;
-      let high = preferredFontSize;
-      for (let iteration = 0; iteration < 12; iteration += 1) {
-        const candidate = (low + high) / 2;
-        if (estimatedHeight(candidate) <= availableHeight) low = candidate;
-        else high = candidate;
-      }
-      fittedFontSize = Math.max(minimumFontSize, Math.min(preferredFontSize, low));
-    }
-  }
+  // Node geometry follows text content; resizing a node must never silently
+  // rewrite its typography. Inline marks remain authoritative for ranges that
+  // the user explicitly formatted.
   return {
-    style: fittedFontSize < preferredFontSize - 0.05
-      ? { ...style, fontSize: `${fittedFontSize}px` }
-      : style,
+    style,
     singleWord: false,
-    constrained: fittedFontSize < preferredFontSize - 0.05,
-    fontSize: fittedFontSize,
+    constrained: false,
+    fontSize: preferredFontSize,
   };
 }
 

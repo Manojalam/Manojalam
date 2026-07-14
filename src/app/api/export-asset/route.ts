@@ -1,7 +1,12 @@
 import {
   ExportAssetProxyError,
   fetchExportAsset,
+  type ExportProxyAssetKind,
 } from "@/lib/export/server-asset-proxy";
+import {
+  isSameOriginExportRequest,
+} from "@/lib/export/route-security";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -41,7 +46,13 @@ async function readBoundedJson(request: Request): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-function errorResponse(error: ExportAssetProxyError): Response {
+interface ExportRouteError {
+  code: string;
+  message: string;
+  status: number;
+}
+
+function errorResponse(error: ExportRouteError): Response {
   return Response.json(
     { code: error.code, message: error.message },
     {
@@ -54,9 +65,46 @@ function errorResponse(error: ExportAssetProxyError): Response {
   );
 }
 
+async function cancelRequestBody(request: Request): Promise<void> {
+  try {
+    await request.body?.cancel();
+  } catch {
+    // The browser may already have aborted or locked the request stream.
+  }
+}
+
+/**
+ * Local-only installations intentionally work without Supabase. Once cloud
+ * auth is configured, the proxy is available only to a verified user.
+ */
+async function hasAuthenticatedExportUser(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    if (!supabase) return true;
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+    return !error && Boolean(user);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
+  if (!isSameOriginExportRequest(request)) {
+    await cancelRequestBody(request);
+    return errorResponse({
+      code: "FORBIDDEN_REQUEST",
+      message: "Export assets can only be requested from this application.",
+      status: 403,
+    });
+  }
+
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+    await cancelRequestBody(request);
     return errorResponse(new ExportAssetProxyError(
       "INVALID_URL",
       413,
@@ -64,7 +112,17 @@ export async function POST(request: Request): Promise<Response> {
     ));
   }
 
+  if (!(await hasAuthenticatedExportUser())) {
+    await cancelRequestBody(request);
+    return errorResponse({
+      code: "UNAUTHENTICATED",
+      message: "Sign in before exporting remote assets.",
+      status: 401,
+    });
+  }
+
   let url: string;
+  let kind: ExportProxyAssetKind = "image";
   try {
     const payload = await readBoundedJson(request);
     if (
@@ -76,17 +134,22 @@ export async function POST(request: Request): Promise<Response> {
       throw new Error("Missing URL");
     }
     url = payload.url;
+    const requestedKind = "kind" in payload ? payload.kind : "image";
+    if (requestedKind !== "image" && requestedKind !== "font") {
+      throw new Error("Invalid asset kind");
+    }
+    kind = requestedKind;
   } catch (cause) {
     if (cause instanceof ExportAssetProxyError) return errorResponse(cause);
     return errorResponse(new ExportAssetProxyError(
       "INVALID_URL",
       400,
-      "Provide a valid remote image URL."
+      "Provide a valid remote asset URL and kind."
     ));
   }
 
   try {
-    const asset = await fetchExportAsset(url, request.signal);
+    const asset = await fetchExportAsset(url, kind, request.signal);
     const body = new ArrayBuffer(asset.bytes.byteLength);
     new Uint8Array(body).set(asset.bytes);
     return new Response(body, {
@@ -105,7 +168,7 @@ export async function POST(request: Request): Promise<Response> {
     return errorResponse(new ExportAssetProxyError(
       "UPSTREAM_RESPONSE",
       502,
-      "The remote image could not be fetched."
+      `The remote ${kind} could not be fetched.`
     ));
   }
 }

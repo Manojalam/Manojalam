@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createNodeRect, resizeAroundAnchor } from "./node-geometry";
+import { createNodeRect, nodePositionFromTopLeft, resizeAroundAnchor } from "./node-geometry";
 import {
   effectiveCornerRadius,
   fitShapeToContent,
   fitSingleUnbrokenWord,
   MAX_AUTOFIT_NODE_HEIGHT,
   MAX_AUTOFIT_NODE_WIDTH,
+  MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
+  MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
   shapeTextContentSize,
   shapeTextContentWidth,
 } from "./shape-fitting";
@@ -86,4 +88,37 @@ test("automatic caps never shrink a manually enlarged node", () => {
     maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
   });
   assert.deepEqual(fitted, { width: 820, height: 620 });
+});
+
+test("free-form content can grow beyond the compact-layout cap without moving its top-left anchor", () => {
+  const original = createNodeRect("freeform", 120, 85, 220, 120);
+  const fitted = fitShapeToContent("rectangle", { width: 1_240, height: 860 }, {
+    nodeType: "shape",
+    currentSize: { width: original.width, height: original.height },
+    growOnly: true,
+    maxContentWidth: MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
+    maxWidth: MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
+  });
+
+  assert.ok(fitted.width > MAX_AUTOFIT_NODE_WIDTH);
+  assert.ok(fitted.height > MAX_AUTOFIT_NODE_HEIGHT);
+  assert.ok(fitted.width <= MAX_FREEFORM_AUTOFIT_NODE_WIDTH);
+  assert.ok(fitted.height <= MAX_FREEFORM_AUTOFIT_NODE_HEIGHT);
+  assert.deepEqual(resizeAroundAnchor(original, fitted, "top-left"), { x: 120, y: 85 });
+});
+
+test("top-left growth remains fixed for center-origin nodes", () => {
+  const node = { origin: [0.5, 0.5] as [number, number] };
+  const oldTopLeft = { x: 120, y: 85 };
+  const nextSize = { width: 640, height: 360 };
+  const nextTopLeft = resizeAroundAnchor(
+    createNodeRect("center-origin", oldTopLeft.x, oldTopLeft.y, 220, 120),
+    nextSize,
+    "top-left"
+  );
+  const nextPosition = nodePositionFromTopLeft(node, nextTopLeft, nextSize);
+
+  assert.deepEqual(nextTopLeft, oldTopLeft);
+  assert.deepEqual(nextPosition, { x: 440, y: 265 });
 });

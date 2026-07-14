@@ -42,19 +42,19 @@ export function measureRichTextElement(
 ): ContentMeasurement {
   const host = getMeasurementHost();
   const sourceStyle = window.getComputedStyle(element);
-  const singleWord = !!element.closest(".single-word-fit");
   const clone = element.cloneNode(true) as HTMLElement;
   clone.removeAttribute("contenteditable");
   clone.removeAttribute("tabindex");
   clone.style.width = "max-content";
   clone.style.minWidth = "0";
-  clone.style.maxWidth = `${Math.max(80, options.maxWidth ?? 480)}px`;
+  clone.style.maxWidth = `${Math.max(8, options.maxWidth ?? 480)}px`;
   clone.style.height = "auto";
   clone.style.minHeight = "0";
   clone.style.overflow = "visible";
-  clone.style.whiteSpace = singleWord ? "nowrap" : "pre-wrap";
-  clone.style.overflowWrap = singleWord ? "normal" : "break-word";
-  clone.style.wordBreak = singleWord ? "keep-all" : sourceStyle.wordBreak;
+  clone.style.whiteSpace = sourceStyle.whiteSpace || "pre-wrap";
+  clone.style.overflowWrap = "normal";
+  clone.style.wordBreak = "keep-all";
+  clone.style.hyphens = "none";
   clone.style.fontFamily = sourceStyle.fontFamily;
   clone.style.fontSize = sourceStyle.fontSize;
   clone.style.fontWeight = sourceStyle.fontWeight;
@@ -92,9 +92,11 @@ export function measurePlainText(options: PlainTextMeasureOptions): ContentMeasu
   Object.assign(element.style, {
     width: "max-content",
     minWidth: "0",
-    maxWidth: `${Math.max(80, options.maxWidth ?? 480)}px`,
+    maxWidth: `${Math.max(8, options.maxWidth ?? 480)}px`,
     whiteSpace: "pre-wrap",
-    overflowWrap: "break-word",
+    overflowWrap: "normal",
+    wordBreak: "keep-all",
+    hyphens: "none",
     fontFamily: options.fontFamily ?? "inherit",
     fontSize: `${options.fontSize ?? 14}px`,
     fontWeight: String(options.fontWeight ?? "normal"),

@@ -242,17 +242,191 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+const GENERIC_BINARY_MIME_TYPES = new Set([
+  "",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
+
+function normalizedContentType(contentType: string): string {
+  return contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function startsWithBytes(bytes: Uint8Array, signature: readonly number[]): boolean {
+  return signature.length <= bytes.length
+    && signature.every((value, index) => bytes[index] === value);
+}
+
+function asciiAt(bytes: Uint8Array, offset: number, value: string): boolean {
+  if (offset + value.length > bytes.length) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    if (bytes[offset + index] !== value.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function detectSvgMime(bytes: Uint8Array): string | null {
+  if (!bytes.length) return null;
+  const prefix = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.length, 16_384)));
+  const root = prefix
+    .replace(/^\uFEFF?\s*/, "")
+    .replace(/^(?:<\?xml[\s\S]*?\?>\s*)?/i, "")
+    .replace(/^(?:(?:<!--[\s\S]*?-->|<!doctype\s+svg(?:\s[^>]*)?>)\s*)*/i, "");
+  return /^<svg(?:\s|>)/i.test(root) ? "image/svg+xml" : null;
+}
+
+function detectIsoBmffImageMime(bytes: Uint8Array): string | null {
+  if (!asciiAt(bytes, 4, "ftyp") || bytes.length < 12) return null;
+  const brand = new TextDecoder("ascii").decode(bytes.subarray(8, 12)).toLowerCase();
+  if (["avif", "avis"].includes(brand)) return "image/avif";
+  if (["heic", "heix", "hevc", "hevx"].includes(brand)) return "image/heic";
+  if (["mif1", "msf1"].includes(brand)) return "image/heif";
+  return null;
+}
+
+function detectImageMime(bytes: Uint8Array): string | null {
+  if (startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return "image/png";
+  }
+  if (startsWithBytes(bytes, [0xff, 0xd8, 0xff])) return "image/jpeg";
+  if (asciiAt(bytes, 0, "GIF87a") || asciiAt(bytes, 0, "GIF89a")) return "image/gif";
+  if (asciiAt(bytes, 0, "RIFF") && asciiAt(bytes, 8, "WEBP")) return "image/webp";
+  if (asciiAt(bytes, 0, "BM")) return "image/bmp";
+  if (
+    startsWithBytes(bytes, [0x49, 0x49, 0x2a, 0x00])
+    || startsWithBytes(bytes, [0x4d, 0x4d, 0x00, 0x2a])
+  ) {
+    return "image/tiff";
+  }
+  if (
+    startsWithBytes(bytes, [0x00, 0x00, 0x01, 0x00])
+    || startsWithBytes(bytes, [0x00, 0x00, 0x02, 0x00])
+  ) {
+    return "image/x-icon";
+  }
+  if (
+    startsWithBytes(bytes, [0xff, 0x0a])
+    || startsWithBytes(bytes, [0x00, 0x00, 0x00, 0x0c, 0x4a, 0x58, 0x4c, 0x20, 0x0d, 0x0a, 0x87, 0x0a])
+  ) {
+    return "image/jxl";
+  }
+  return detectIsoBmffImageMime(bytes) ?? detectSvgMime(bytes);
+}
+
+function detectFontMime(bytes: Uint8Array): string | null {
+  if (asciiAt(bytes, 0, "wOFF")) return "font/woff";
+  if (asciiAt(bytes, 0, "wOF2")) return "font/woff2";
+  if (asciiAt(bytes, 0, "OTTO")) return "font/otf";
+  if (asciiAt(bytes, 0, "ttcf")) return "font/collection";
+  if (
+    startsWithBytes(bytes, [0x00, 0x01, 0x00, 0x00])
+    || asciiAt(bytes, 0, "true")
+    || asciiAt(bytes, 0, "typ1")
+  ) {
+    return "font/ttf";
+  }
+  // EOT stores its 0x504c magic value at byte offset 34 (little endian).
+  if (bytes.length >= 36 && bytes[34] === 0x4c && bytes[35] === 0x50) {
+    return "application/vnd.ms-fontobject";
+  }
+  return null;
+}
+
+const IMAGE_MIME_ALIASES: Record<string, string> = {
+  "image/apng": "image/png",
+  "image/x-png": "image/png",
+  "image/jpg": "image/jpeg",
+  "image/pjpeg": "image/jpeg",
+  "image/x-ms-bmp": "image/bmp",
+  "image/vnd.microsoft.icon": "image/x-icon",
+};
+
+function imageMimeMatches(declaredMime: string, detectedMime: string): boolean {
+  const declared = IMAGE_MIME_ALIASES[declaredMime] ?? declaredMime;
+  if (declared === detectedMime) return true;
+  const isoBmffMimes = new Set([
+    "image/avif",
+    "image/avif-sequence",
+    "image/heic",
+    "image/heic-sequence",
+    "image/heif",
+    "image/heif-sequence",
+  ]);
+  return isoBmffMimes.has(declared) && isoBmffMimes.has(detectedMime);
+}
+
+/**
+ * Verifies both the response declaration and its bytes before a fetched
+ * resource is allowed into an export data URL. The returned MIME is inferred
+ * from the validated bytes so generic binary responses remain renderable.
+ */
+export function validateFetchedExportAsset(
+  contentType: string,
+  bytes: Uint8Array,
+  kind: ExportAssetKind
+): string {
+  const declaredMime = normalizedContentType(contentType);
+  if (kind === "font") {
+    const declaresFont = declaredMime.startsWith("font/")
+      || declaredMime.startsWith("application/font-")
+      || declaredMime.startsWith("application/x-font-")
+      || declaredMime === "application/vnd.ms-fontobject";
+    if (!declaresFont && !GENERIC_BINARY_MIME_TYPES.has(declaredMime)) {
+      throw new Error("The export asset response did not declare a supported font MIME type.");
+    }
+    const detectedMime = detectFontMime(bytes);
+    if (!detectedMime) {
+      throw new Error("The export asset response did not contain recognizable font bytes.");
+    }
+    return detectedMime;
+  }
+
+  if (!declaredMime.startsWith("image/") && !GENERIC_BINARY_MIME_TYPES.has(declaredMime)) {
+    throw new Error("The export asset response did not declare an image MIME type.");
+  }
+  const detectedMime = detectImageMime(bytes);
+  if (!detectedMime) {
+    throw new Error("The export asset response did not contain recognizable image bytes.");
+  }
+  if (
+    !GENERIC_BINARY_MIME_TYPES.has(declaredMime)
+    && !imageMimeMatches(declaredMime, detectedMime)
+  ) {
+    throw new Error(
+      `The export asset response declared ${declaredMime} but contained ${detectedMime} bytes.`
+    );
+  }
+  return detectedMime;
+}
+
+async function validatedResponseBlob(
+  response: Response,
+  kind: ExportAssetKind
+): Promise<Blob> {
+  const buffer = await response.arrayBuffer();
+  const mime = validateFetchedExportAsset(
+    response.headers.get("content-type") ?? "",
+    new Uint8Array(buffer),
+    kind
+  );
+  return new Blob([buffer], { type: mime });
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function assetFetchError(url: string, cause: unknown): ExportError {
+function remoteCorsCode(kind: ExportAssetKind): "REMOTE_IMAGE_CORS" | "REMOTE_FONT_CORS" {
+  return kind === "font" ? "REMOTE_FONT_CORS" : "REMOTE_IMAGE_CORS";
+}
+
+function assetFetchError(url: string, kind: ExportAssetKind, cause: unknown): ExportError {
   if (isAbortError(cause)) {
     return new ExportError({
       stage: "prepare-assets",
       code: "ABORTED",
       cause,
-      diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+      diagnostics: { offendingUrl: url, offendingAssetKind: kind, renderer: "dom-foreign-object" },
     });
   }
   // With mode:"cors", a browser CORS rejection is deliberately exposed as a
@@ -260,16 +434,20 @@ function assetFetchError(url: string, cause: unknown): ExportError {
   const remote = isRemoteUrl(url) && cause instanceof TypeError;
   return new ExportError({
     stage: "prepare-assets",
-    code: remote ? "REMOTE_ASSET_CORS" : "ASSET_EMBED_FAILED",
+    code: remote ? remoteCorsCode(kind) : "ASSET_EMBED_FAILED",
     cause,
     message: remote
       ? `A cross-origin asset could not be embedded: ${url}`
       : `An export asset could not be embedded: ${url}`,
-    diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+    diagnostics: { offendingUrl: url, offendingAssetKind: kind, renderer: "dom-foreign-object" },
   });
 }
 
-async function directFetchDataUrl(url: string, context: AssetContext): Promise<string> {
+async function directFetchDataUrl(
+  url: string,
+  kind: ExportAssetKind,
+  context: AssetContext
+): Promise<string> {
   const parsed = new URL(url);
   if (!["http:", "https:", "blob:"].includes(parsed.protocol)) {
     throw new Error(`Unsupported asset protocol: ${parsed.protocol}`);
@@ -283,9 +461,9 @@ async function directFetchDataUrl(url: string, context: AssetContext): Promise<s
   if (response.type === "opaque") {
     throw new ExportError({
       stage: "prepare-assets",
-      code: "REMOTE_ASSET_CORS",
+      code: remoteCorsCode(kind),
       message: `The browser returned an opaque response for export asset: ${url}`,
-      diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+      diagnostics: { offendingUrl: url, offendingAssetKind: kind, renderer: "dom-foreign-object" },
     });
   }
   if (!response.ok) {
@@ -293,26 +471,31 @@ async function directFetchDataUrl(url: string, context: AssetContext): Promise<s
       stage: "prepare-assets",
       code: "ASSET_EMBED_FAILED",
       message: `Export asset request failed with HTTP ${response.status}: ${url}`,
-      diagnostics: { offendingUrl: url, renderer: "dom-foreign-object" },
+      diagnostics: { offendingUrl: url, offendingAssetKind: kind, renderer: "dom-foreign-object" },
     });
   }
-  let blob = await response.blob();
-  if (!blob.type) {
-    blob = new Blob([await blob.arrayBuffer()], { type: "application/octet-stream" });
-  }
+  const blob = await validatedResponseBlob(response, kind);
   abortIfRequested(context.signal);
   return blobToDataUrl(blob);
 }
 
-async function proxyFetchDataUrl(url: string, context: AssetContext): Promise<string> {
+function proxyAssetKind(kind: ExportAssetKind): "image" | "font" {
+  return kind === "font" ? "font" : "image";
+}
+
+async function proxyFetchDataUrl(
+  url: string,
+  kind: ExportAssetKind,
+  context: AssetContext
+): Promise<string> {
   const response = await fetch("/api/export-asset", {
     method: "POST",
     credentials: "same-origin",
     headers: {
-      accept: "image/*",
+      accept: kind === "font" ? "font/*,application/font-*" : "image/*",
       "content-type": "application/json",
     },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, kind: proxyAssetKind(kind) }),
     signal: context.signal,
   });
 
@@ -334,12 +517,7 @@ async function proxyFetchDataUrl(url: string, context: AssetContext): Promise<st
     throw new Error(`The export asset proxy returned HTTP ${response.status}${detail}`);
   }
 
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  if (!contentType.startsWith("image/")) {
-    throw new Error("The export asset proxy returned a non-image response.");
-  }
-
-  const blob = await response.blob();
+  const blob = await validatedResponseBlob(response, kind);
   abortIfRequested(context.signal);
   context.proxiedRemoteAssets.add(url);
   return blobToDataUrl(blob);
@@ -347,6 +525,7 @@ async function proxyFetchDataUrl(url: string, context: AssetContext): Promise<st
 
 function combinedRemoteFetchError(
   url: string,
+  kind: ExportAssetKind,
   directCause: unknown,
   proxyCause: unknown
 ): ExportError {
@@ -355,14 +534,14 @@ function combinedRemoteFetchError(
   const safeUrl = diagnosticAssetUrl(url);
   return new ExportError({
     stage: "prepare-assets",
-    code: "ASSET_EMBED_FAILED",
+    code: remoteCorsCode(kind),
     cause: proxyCause,
     message: [
-      `A remote export asset could not be embedded directly or through the safe asset proxy: ${safeUrl}`,
+      `A remote export ${kind} could not be embedded directly or through the safe asset proxy: ${safeUrl}`,
       `Direct request: ${directDetail.replaceAll(url, safeUrl)}`,
       `Proxy request: ${proxyDetail.replaceAll(url, safeUrl)}`,
     ].join(" "),
-    diagnostics: { offendingUrl: safeUrl, renderer: "dom-foreign-object" },
+    diagnostics: { offendingUrl: safeUrl, offendingAssetKind: kind, renderer: "dom-foreign-object" },
   });
 }
 
@@ -378,17 +557,17 @@ async function fetchDataUrl(
 
   const pending = (async () => {
     try {
-      return await directFetchDataUrl(url, context);
+      return await directFetchDataUrl(url, kind, context);
     } catch (cause) {
-      const directCause = cause instanceof ExportError ? cause : assetFetchError(url, cause);
+      const directCause = cause instanceof ExportError ? cause : assetFetchError(url, kind, cause);
       if (isAbortFailure(directCause)) throw directCause;
-      if (!isRemoteUrl(url) || kind === "font") throw directCause;
+      if (!isRemoteUrl(url)) throw directCause;
 
       try {
-        return await proxyFetchDataUrl(url, context);
+        return await proxyFetchDataUrl(url, kind, context);
       } catch (proxyCause) {
-        if (isAbortFailure(proxyCause)) throw assetFetchError(url, proxyCause);
-        throw combinedRemoteFetchError(url, directCause, proxyCause);
+        if (isAbortFailure(proxyCause)) throw assetFetchError(url, kind, proxyCause);
+        throw combinedRemoteFetchError(url, kind, directCause, proxyCause);
       }
     }
   })();
@@ -565,6 +744,32 @@ function usedFontFamilies(root: Element): Set<string> {
   return families;
 }
 
+const EXPORT_SAFE_FONT_STACK = [
+  '"Nirmala UI"',
+  "Mangal",
+  '"Kohinoor Devanagari"',
+  '"Devanagari Sangam MN"',
+  "Arial",
+  "Helvetica",
+  "sans-serif",
+].join(", ");
+
+function applyUnavailableFontFallback(root: Element, unavailableFamily: string): number {
+  let changed = 0;
+  for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
+    if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+    const current = element.style.getPropertyValue("font-family");
+    if (!current.split(",").some((family) => normalizeFontFamily(family) === unavailableFamily)) {
+      continue;
+    }
+    const priority = element.style.getPropertyPriority("font-family");
+    element.style.setProperty("font-family", EXPORT_SAFE_FONT_STACK, priority);
+    element.setAttribute("data-export-font-fallback", unavailableFamily);
+    changed += 1;
+  }
+  return changed;
+}
+
 function collectFontFaceRules(
   rules: CSSRuleList,
   fallbackBaseUrl: string,
@@ -662,6 +867,7 @@ async function embeddedFontCss(
     !usedFamilies.size || !face.family || usedFamilies.has(face.family)
   );
   const embedded = new Set<string>();
+  const failedFamilies = new Set<string>();
 
   for (const face of faces) {
     abortIfRequested(context.signal);
@@ -679,6 +885,7 @@ async function embeddedFontCss(
         ...(face.stylesheetUrl ? { url: face.stylesheetUrl } : {}),
       };
       warnings.push(warning);
+      if (face.family) failedFamilies.add(face.family);
       if (strict) {
         throw new ExportError({
           stage: "prepare-assets",
@@ -687,11 +894,26 @@ async function embeddedFontCss(
           message: warning.message,
           diagnostics: {
             offendingUrl: warning.url,
+            offendingAssetKind: "font",
             renderer: "dom-foreign-object",
           },
         });
       }
     }
+  }
+
+  for (const family of failedFamilies) {
+    // Families commonly use separate unicode-range or weight faces. If even
+    // one required face fails, retaining the family can silently lose its
+    // Devanagari glyphs even though another face embedded successfully.
+    const changed = applyUnavailableFontFallback(root, family);
+    warnings.push({
+      kind: "font-resource",
+      action: "font-fallback",
+      message: changed
+        ? `The unavailable font “${family}” was replaced with a browser-safe export font on ${changed} element${changed === 1 ? "" : "s"}.`
+        : `The unavailable font “${family}” was replaced with a browser-safe export font.`,
+    });
   }
   return Array.from(embedded).join("\n");
 }
