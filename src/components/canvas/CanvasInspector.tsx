@@ -346,21 +346,51 @@ function SliderControl({
 }
 
 /** Thickness control: slider + −/+ buttons */
-function ThicknessControl({ value, onChange, max = 20 }: {
-  value: number; onChange: (v: number) => void; max?: number;
+function ThicknessControl({
+  value,
+  onChange,
+  onChangeStart,
+  onChangeEnd,
+  min = 0,
+  max = 20,
+  step = 1,
+  mixed = false,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  onChangeStart?: () => void;
+  onChangeEnd?: () => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  mixed?: boolean;
 }) {
+  const precision = step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(step)));
+  const apply = (next: number) => onChange(Number(clampControlValue(next, min, max).toFixed(precision)));
+  const applyStep = (next: number) => {
+    onChangeStart?.();
+    apply(next);
+    onChangeEnd?.();
+  };
   return (
     <div className="flex items-center gap-1.5">
-      <button onClick={() => onChange(Math.max(0, value - 1))}
+      <button onClick={() => applyStep(value - step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Minus className="h-3 w-3" /></button>
-      <input type="range" min={0} max={max} step={1} value={value}
+      <input type="range" min={min} max={max} step={step} value={value}
         aria-label="Adjust thickness"
         name="thickness-control"
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => apply(Number(e.target.value))}
+        onPointerDown={onChangeStart}
+        onPointerUp={onChangeEnd}
+        onPointerCancel={onChangeEnd}
+        onKeyDown={(event) => { if (!event.repeat) onChangeStart?.(); }}
+        onKeyUp={onChangeEnd}
         className="flex-1 h-1.5 accent-primary" />
-      <button onClick={() => onChange(Math.min(max, value + 1))}
+      <button onClick={() => applyStep(value + step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
-      <span className="w-7 text-center text-[10px] text-muted-foreground">{value}px</span>
+      <span className="w-10 text-center text-[10px] text-muted-foreground">
+        {mixed ? "Mixed" : `${Number(value.toFixed(precision))}px`}
+      </span>
     </div>
   );
 }
@@ -571,16 +601,28 @@ function ConnectionInspectorSections({
   connectionEdges,
   commonValue,
   onChange,
+  onWidthChange,
+  onWidthChangeStart,
   onDelete,
   defaultOpen = false,
 }: {
   connectionEdges: Edge[];
   commonValue: (key: string) => unknown;
   onChange: (key: string, value: unknown) => void;
+  onWidthChange?: (value: number) => void;
+  onWidthChangeStart?: () => void;
   onDelete: () => void;
   defaultOpen?: boolean;
 }) {
   const edgeData = (connectionEdges[0]?.data ?? {}) as Record<string, unknown>;
+  const widths = connectionEdges.map((edge) => {
+    const width = ((edge.data ?? {}) as Record<string, unknown>).width;
+    return typeof width === "number" && Number.isFinite(width) ? width : 2;
+  });
+  const widthMixed = widths.some((width) => Math.abs(width - widths[0]) > 0.001);
+  const allListEdges = connectionEdges.every((edge) => (
+    ((edge.data ?? {}) as Record<string, unknown>).layoutMode === "list"
+  ));
   return (
     <>
       <Section label={`Connection path (${connectionEdges.length})`} defaultOpen={defaultOpen}>
@@ -611,7 +653,12 @@ function ConnectionInspectorSections({
         </div>
         <div className="flex items-center justify-between">
           <Label className="text-xs">Arrowhead</Label>
-          <Switch checked={commonValue("arrowEnd") !== false} onCheckedChange={(value) => onChange("arrowEnd", value)} />
+          <Switch
+            checked={typeof commonValue("arrowEnd") === "boolean"
+              ? commonValue("arrowEnd") === true
+              : !allListEdges}
+            onCheckedChange={(value) => onChange("arrowEnd", value)}
+          />
         </div>
       </Section>
       <Section label="Connection appearance" defaultOpen={defaultOpen}>
@@ -621,7 +668,15 @@ function ConnectionInspectorSections({
         </div>
         <div>
           <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
-          <ThicknessControl value={(commonValue("width") as number) ?? 2} onChange={(value) => onChange("width", value)} max={12} />
+          <ThicknessControl
+            value={widthMixed ? 2 : widths[0]}
+            onChange={(value) => (onWidthChange ?? ((next) => onChange("width", next)))(value)}
+            onChangeStart={onWidthChangeStart}
+            min={0.5}
+            max={12}
+            step={0.5}
+            mixed={widthMixed}
+          />
         </div>
         {connectionEdges.length === 1 && (
           <div>
@@ -960,9 +1015,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     });
   };
 
-  const setSelectedEdgeField = (key: string, value: unknown) => {
+  const setSelectedEdgeField = (key: string, value: unknown, captureHistory = true) => {
     if (!editableSelectionEdges.length) return;
-    pushHistory();
+    if (captureHistory) pushHistory();
     const selectedIds = new Set(editableSelectionEdges.map((edge) => edge.id));
     useCanvasStore.setState((state) => ({
       edges: state.edges.map((edge) => {
@@ -1230,6 +1285,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               connectionEdges={editableSelectionEdges}
               commonValue={commonEdgeValue}
               onChange={setSelectedEdgeField}
+              onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
+              onWidthChangeStart={pushHistory}
               onDelete={deleteEditableConnections}
               defaultOpen
             />
@@ -1266,6 +1323,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               connectionEdges={selectedEdges}
               commonValue={commonEdgeValue}
               onChange={setSelectedEdgeField}
+              onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
+              onWidthChangeStart={pushHistory}
               onDelete={deleteEditableConnections}
               defaultOpen
             />
@@ -1908,6 +1967,37 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   className={cn(
                     "rounded-md border px-1 py-1.5 text-[9px] capitalize",
                     ((d.matrixDensity as string) ?? "comfortable") === density
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  {density}
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {d.layoutMode === "list" && (
+          <Section label="List density" visible={singleNodeTab === "layout"}>
+            <div className="grid grid-cols-2 gap-1">
+              {(["compact", "comfortable"] as const).map((density) => (
+                <button
+                  key={density}
+                  type="button"
+                  onClick={() => {
+                    updateNodeData(selectedNode.id, { listDensity: density });
+                    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                      detail: {
+                        mode: "list",
+                        rootId: selectedNode.id,
+                        nodeIds: [selectedNode.id, ...descendantIds],
+                      },
+                    })));
+                  }}
+                  className={cn(
+                    "rounded-md border px-1 py-1.5 text-[9px] capitalize",
+                    ((d.listDensity as string) ?? "compact") === density
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}

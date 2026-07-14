@@ -10,7 +10,10 @@ import {
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
 } from "@/lib/style-utils";
-import { shapeTextContentWidth } from "@/lib/canvas/shape-fitting";
+import {
+  MAX_AUTOFIT_NODE_HEIGHT,
+  shapeTextContentSize,
+} from "@/lib/canvas/shape-fitting";
 import type {
   ShapeNodeData,
   InternalFillRegion,
@@ -1014,8 +1017,11 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
-  const availableTextWidth = shapeTextContentWidth(renderedShapeType, nodeSize.width, "shape");
-  const textPresentation = getFittedTextPresentation(dd, availableTextWidth);
+  const availableTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape");
+  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
+    availableHeight: availableTextSize.height,
+    fitMultiline: !matrixCell && nodeSize.height >= MAX_AUTOFIT_NODE_HEIGHT - 1,
+  });
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -1247,17 +1253,28 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
           {!radialChart?.enabled && (
             <div className={cn(
-              "nodrag nopan relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-sm font-medium text-foreground",
-              editing && "cursor-text"
+              "relative z-10 flex h-full w-full items-center justify-center px-3 text-center text-sm font-medium text-foreground",
+              editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
             )}>
-              <div className="w-full" style={textPresentation.style}>
+              <div
+                className="w-full"
+                style={{
+                  ...textPresentation.style,
+                  maxWidth: `${availableTextSize.width}px`,
+                  maxHeight: `${availableTextSize.height}px`,
+                }}
+              >
                 <RichTextEditor
                   nodeId={id}
                   initialContent={initialContent}
                   editable={editing}
-                  measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextWidth)}`}
+                  measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
                   placeholder="Double-click…"
-                  className={cn("[&_.ProseMirror]:text-center", textPresentation.singleWord && "single-word-fit")}
+                  className={cn(
+                    "[&_.ProseMirror]:text-center",
+                    textPresentation.singleWord && "single-word-fit",
+                    textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
+                  )}
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
                   onChange={(html) => {
                     captureTextHistory();

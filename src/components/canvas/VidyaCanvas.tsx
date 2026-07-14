@@ -435,7 +435,11 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const first = requestAnimationFrame(() => {
         const second = requestAnimationFrame(() => {
           useCanvasStore.getState().applyLayout(detail.mode!, detail.rootId);
-          window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
+          // List is intentionally allowed to grow beyond the viewport. Keep the
+          // user's pan and zoom stable; the explicit Fit action remains available.
+          if (detail.mode === "matrix") {
+            window.dispatchEvent(new CustomEvent("vidya:fitview", { detail }));
+          }
         });
         measuredLayoutFramesRef.current = [second];
       });

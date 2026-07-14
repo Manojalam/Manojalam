@@ -349,6 +349,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutAutoTypography?: boolean;
   /** Keeps a manually dragged List node off generated rows until List is reapplied. */
   listManualOverride?: boolean;
+  /** Spacing profile for the compact branch-column List layout. */
+  listDensity?: "compact" | "comfortable";
   matrixDensity?: MatrixDensity;
   matrixDensityUserSet?: boolean;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */

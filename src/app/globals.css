@@ -293,6 +293,10 @@ body {
   overflow-wrap: normal !important;
   font-size: inherit !important;
 }
+.bounded-text-fit .ProseMirror,
+.bounded-text-fit .ProseMirror * {
+  font-size: inherit !important;
+}
 mark { border-radius: 2px; padding: 0 2px; }
 
 /* Radial-layout labels use one fitted font size so inline formatting can never

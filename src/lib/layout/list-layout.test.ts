@@ -5,7 +5,7 @@ import { createNodeRect, getNodeDimensions, getNodeRect, rectsOverlap } from "./
 import { buildHierarchy } from "./hierarchy";
 import {
   LIST_COLUMN_GUTTER,
-  LIST_ROW_GAP,
+  LIST_DENSITIES,
   buildListConnectorModel,
   computeListLayout,
   diagnoseListLayout,
@@ -33,7 +33,7 @@ function buildTree(specs: TreeSpec[]): { nodes: Node[]; edges: Edge[] } {
       text: spec.id,
       parentId: spec.parentId,
       childOrder: childOrder.get(spec.id) ?? [],
-      ...(index === 0 ? { layoutMode: "list" } : {}),
+      ...(index === 0 ? { layoutMode: "list", listDensity: "compact" } : {}),
     },
   }));
   const edges = specs
@@ -43,7 +43,7 @@ function buildTree(specs: TreeSpec[]): { nodes: Node[]; edges: Edge[] } {
       source: spec.parentId,
       target: spec.id,
       type: "branch",
-      data: { layoutMode: "list", curveStyle: "step", arrowEnd: true },
+      data: { layoutMode: "list", curveStyle: "step" },
     }));
   return { nodes, edges };
 }
@@ -52,17 +52,47 @@ function positionedNodes(nodes: Node[], placements: Record<string, { x: number; 
   return nodes.map((node) => ({ ...node, position: placements[node.id] ?? node.position }));
 }
 
+function positionedRects(nodes: Node[], placements: Record<string, { x: number; y: number }>): Map<string, ReturnType<typeof getNodeRect>> {
+  return new Map(positionedNodes(nodes, placements).map((node) => [node.id, getNodeRect(node)]));
+}
+
 function assertNoOverlap(nodes: Node[]): void {
   for (let first = 0; first < nodes.length; first++) {
     for (let second = first + 1; second < nodes.length; second++) {
       assert.equal(
-        rectsOverlap(getNodeRect(nodes[first]), getNodeRect(nodes[second]), 10),
+        rectsOverlap(getNodeRect(nodes[first]), getNodeRect(nodes[second]), 7),
         false,
         `${nodes[first].id} overlaps ${nodes[second].id}`
       );
     }
   }
 }
+
+function branchBounds(rects: Map<string, ReturnType<typeof getNodeRect>>, ids: string[]) {
+  const branchRects = ids.map((id) => rects.get(id)!);
+  return {
+    left: Math.min(...branchRects.map((rect) => rect.left)),
+    right: Math.max(...branchRects.map((rect) => rect.right)),
+    top: Math.min(...branchRects.map((rect) => rect.top)),
+    bottom: Math.max(...branchRects.map((rect) => rect.bottom)),
+  };
+}
+
+const referenceSpecs: TreeSpec[] = [
+  { id: "root", parentId: null, width: 220, height: 64 },
+  { id: "a", parentId: "root", width: 180, height: 62 },
+  { id: "a1", parentId: "a", width: 180, height: 58 },
+  { id: "a2", parentId: "a", width: 200, height: 68 },
+  { id: "a2a", parentId: "a2", width: 170, height: 56 },
+  { id: "a2b", parentId: "a2", width: 210, height: 72 },
+  { id: "a3", parentId: "a", width: 180, height: 60 },
+  { id: "b", parentId: "root", width: 190, height: 62 },
+  { id: "b1", parentId: "b", width: 170, height: 58 },
+  { id: "b2", parentId: "b", width: 185, height: 64 },
+  { id: "b3", parentId: "b", width: 180, height: 58 },
+  { id: "c", parentId: "root", width: 210, height: 62 },
+  { id: "c1", parentId: "c", width: 190, height: 70 },
+];
 
 test("geometry uses measured dimensions, safe fallbacks, and node origin", () => {
   const measured: Node = {
@@ -85,53 +115,39 @@ test("geometry uses measured dimensions, safe fallbacks, and node origin", () =>
   assert.deepEqual(getNodeDimensions(fallback), { width: 320, height: 96 });
 });
 
-test("List places a basic tree in stable preorder rows and columns", () => {
-  const { nodes, edges } = buildTree([
-    { id: "root", parentId: null, width: 220, height: 56 },
-    { id: "child-a", parentId: "root", width: 180, height: 120 },
-    { id: "grandchild-a1", parentId: "child-a", width: 260, height: 72 },
-    { id: "child-b", parentId: "root", width: 190, height: 64 },
-  ]);
+test("List creates independent branch columns with recursive child-under-parent rows", () => {
+  const { nodes, edges } = buildTree(referenceSpecs);
   const hierarchy = buildHierarchy(nodes, edges);
-  const traversal = getPreorderTraversal("root", hierarchy);
-  assert.deepEqual(traversal.map((entry) => entry.nodeId), ["root", "child-a", "grandchild-a1", "child-b"]);
-  assert.deepEqual(traversal.map((entry) => entry.depth), [0, 1, 2, 1]);
+  assert.deepEqual(
+    getPreorderTraversal("root", hierarchy).map((entry) => entry.nodeId),
+    ["root", "a", "a1", "a2", "a2a", "a2b", "a3", "b", "b1", "b2", "b3", "c", "c1"]
+  );
 
   const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
-  const placed = positionedNodes(nodes, placements);
-  const rects = new Map(placed.map((node) => [node.id, getNodeRect(node)]));
-  assert.equal(rects.get("root")?.left, 320);
-  assert.ok(rects.get("child-a")!.left > rects.get("root")!.right);
-  assert.ok(rects.get("grandchild-a1")!.left > rects.get("child-a")!.right);
-  assert.equal(rects.get("child-a")!.left, rects.get("child-b")!.left);
-  assert.ok(rects.get("child-a")!.top >= rects.get("root")!.bottom + LIST_ROW_GAP);
-  assert.ok(rects.get("grandchild-a1")!.top >= rects.get("child-a")!.bottom + LIST_ROW_GAP);
-  assert.ok(rects.get("child-b")!.top > rects.get("grandchild-a1")!.bottom + LIST_ROW_GAP);
-  assertNoOverlap(placed);
+  const rects = positionedRects(nodes, placements);
+  const density = LIST_DENSITIES.compact;
+  assert.deepEqual(placements.root, nodes[0].position, "the selected root remains fixed");
+  assert.equal(rects.get("a")!.top, rects.get("b")!.top);
+  assert.equal(rects.get("b")!.top, rects.get("c")!.top);
+  assert.equal(rects.get("a")!.top, rects.get("root")!.bottom + density.rootToBranchGapY);
+
+  assert.equal(rects.get("a1")!.left - rects.get("a")!.left, density.childIndentX);
+  assert.equal(rects.get("a2a")!.left - rects.get("a2")!.left, density.childIndentX);
+  assert.ok(rects.get("a1")!.top >= rects.get("a")!.bottom + density.parentChildGapY);
+  assert.ok(rects.get("a2")!.top >= rects.get("a1")!.bottom + density.siblingSubtreeGapY);
+  assert.ok(rects.get("a2a")!.top >= rects.get("a2")!.bottom + density.parentChildGapY);
+  assert.ok(rects.get("a2b")!.top >= rects.get("a2a")!.bottom + density.siblingSubtreeGapY);
+  assert.ok(rects.get("a3")!.top >= rects.get("a2b")!.bottom + density.siblingSubtreeGapY);
+
+  const aBounds = branchBounds(rects, ["a", "a1", "a2", "a2a", "a2b", "a3"]);
+  const bBounds = branchBounds(rects, ["b", "b1", "b2", "b3"]);
+  const cBounds = branchBounds(rects, ["c", "c1"]);
+  assert.ok(bBounds.left >= aBounds.right + density.branchColumnGapX);
+  assert.ok(cBounds.left >= bBounds.right + density.branchColumnGapX);
+  assertNoOverlap(positionedNodes(nodes, placements));
 });
 
-test("List row heights follow mixed rendered heights", () => {
-  const heights = [56, 120, 72, 200, 64];
-  const specs = heights.map((height, index): TreeSpec => ({
-    id: `node-${index}`,
-    parentId: index === 0 ? null : `node-${index - 1}`,
-    width: 180,
-    height,
-  }));
-  const { nodes, edges } = buildTree(specs);
-  const hierarchy = buildHierarchy(nodes, edges);
-  const traversal = getPreorderTraversal("node-0", hierarchy);
-  const placements = computeListLayout("node-0", hierarchy, new Map(nodes.map((node) => [node.id, node])));
-  const placed = positionedNodes(nodes, placements);
-  const byId = new Map(placed.map((node) => [node.id, node]));
-  for (let index = 1; index < traversal.length; index++) {
-    const previous = getNodeRect(byId.get(traversal[index - 1].nodeId)!);
-    const current = getNodeRect(byId.get(traversal[index].nodeId)!);
-    assert.ok(current.top >= previous.bottom + LIST_ROW_GAP);
-  }
-});
-
-test("wide nodes reserve the complete connector gutter before the next depth", () => {
+test("wide parents do not push descendants beyond one hierarchy indent", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, width: 620, height: 80 },
     { id: "child", parentId: "root", width: 510, height: 80 },
@@ -139,9 +155,9 @@ test("wide nodes reserve the complete connector gutter before the next depth", (
   ]);
   const hierarchy = buildHierarchy(nodes, edges);
   const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
-  const placed = new Map(positionedNodes(nodes, placements).map((node) => [node.id, getNodeRect(node)]));
-  assert.ok(placed.get("child")!.left >= placed.get("root")!.right + LIST_COLUMN_GUTTER);
-  assert.ok(placed.get("leaf")!.left >= placed.get("child")!.right + LIST_COLUMN_GUTTER);
+  const rects = positionedRects(nodes, placements);
+  assert.equal(rects.get("leaf")!.left - rects.get("child")!.left, LIST_COLUMN_GUTTER);
+  assertNoOverlap(positionedNodes(nodes, placements));
 });
 
 test("persisted parent metadata wins over cross-links and preserves child order", () => {
@@ -151,14 +167,48 @@ test("persisted parent metadata wins over cross-links and preserves child order"
     { id: "b", parentId: "root", width: 180, height: 60 },
     { id: "leaf", parentId: "a", width: 180, height: 60 },
   ]);
-  const crossLink: Edge = { id: "cross-link", source: "b", target: "leaf", data: {} };
-  const hierarchy = buildHierarchy(nodes, [crossLink, ...edges]);
+  const hierarchy = buildHierarchy(nodes, [{ id: "cross-link", source: "b", target: "leaf", data: {} }, ...edges]);
   assert.equal(hierarchy.get("leaf")?.parentId, "a");
   assert.deepEqual(hierarchy.get("root")?.childIds, ["a", "b"]);
   assert.deepEqual(getPreorderTraversal("root", hierarchy).map((entry) => entry.nodeId), ["root", "a", "leaf", "b"]);
 });
 
-test("97-node outline has unique rows, no overlap, and clean grouped connectors", () => {
+test("child insertion shifts only the later rows in its branch", () => {
+  const beforeTree = buildTree(referenceSpecs);
+  const beforeHierarchy = buildHierarchy(beforeTree.nodes, beforeTree.edges);
+  const before = computeListLayout("root", beforeHierarchy, new Map(beforeTree.nodes.map((node) => [node.id, node])));
+
+  const insertedSpecs = referenceSpecs.flatMap((spec) => spec.id === "a2b"
+    ? [spec, { id: "a2c", parentId: "a2", width: 180, height: 60 }]
+    : [spec]);
+  const afterTree = buildTree(insertedSpecs);
+  const afterHierarchy = buildHierarchy(afterTree.nodes, afterTree.edges);
+  const after = computeListLayout("root", afterHierarchy, new Map(afterTree.nodes.map((node) => [node.id, node])));
+  const afterRects = positionedRects(afterTree.nodes, after);
+
+  assert.equal(after.a.x, before.a.x);
+  assert.equal(after.a2.x, before.a2.x);
+  assert.equal(after.a2.y, before.a2.y);
+  assert.ok(afterRects.get("a2c")!.top > afterRects.get("a2b")!.bottom);
+  assert.ok(after.a3.y > before.a3.y);
+  for (const nodeId of ["b", "b1", "b2", "b3", "c", "c1"]) {
+    assert.deepEqual(after[nodeId], before[nodeId], `${nodeId} should remain fixed`);
+  }
+});
+
+test("sibling insertion follows the selected sibling's complete subtree", () => {
+  const specs = referenceSpecs.flatMap((spec) => spec.id === "a2b"
+    ? [spec, { id: "a-new", parentId: "a", width: 180, height: 60 }]
+    : [spec]);
+  const { nodes, edges } = buildTree(specs);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const rects = positionedRects(nodes, placements);
+  assert.ok(rects.get("a-new")!.top > rects.get("a2b")!.bottom);
+  assert.ok(rects.get("a3")!.top > rects.get("a-new")!.bottom);
+});
+
+test("97-node tree has unique placements, no overlap, and clean grouped connectors", () => {
   const heights = [56, 120, 72, 200, 64];
   const specs: TreeSpec[] = Array.from({ length: 97 }, (_, index) => ({
     id: `n${index}`,
@@ -167,17 +217,15 @@ test("97-node outline has unique rows, no overlap, and clean grouped connectors"
     height: heights[index % heights.length],
   }));
   const { nodes, edges } = buildTree(specs);
-  assert.equal(edges.length, 96);
   const hierarchy = buildHierarchy(nodes, edges);
   const traversal = getPreorderTraversal("n0", hierarchy);
-  assert.equal(traversal.length, 97);
-  assert.equal(new Set(traversal.map((entry) => entry.nodeId)).size, 97);
-
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const placements = computeListLayout("n0", hierarchy, byId);
-  assert.equal(Object.keys(placements).length, 97);
-  assert.equal(new Set(Object.values(placements).map((position) => `${position.x},${position.y}`)).size, 97);
   const diagnostics = diagnoseListLayout(traversal, placements, byId);
+
+  assert.equal(traversal.length, 97);
+  assert.equal(new Set(traversal.map((entry) => entry.nodeId)).size, 97);
+  assert.equal(Object.keys(placements).length, 97);
   assert.deepEqual(diagnostics.duplicateNodeIds, []);
   assert.deepEqual(diagnostics.nodesWithIdenticalPositions, []);
   assert.deepEqual(diagnostics.overlaps, []);
@@ -190,6 +238,21 @@ test("97-node outline has unique rows, no overlap, and clean grouped connectors"
   assert.deepEqual(connectorModel.duplicateVisibleConnectorSegments, []);
   assert.deepEqual(connectorModel.obstacleIntersections, []);
   assert.equal(connectorModel.groups.reduce((sum, group) => sum + group.branches.length, 0), 96);
+  assert.ok(connectorModel.groups.every((group) => group.branches.every((branch) => (
+    branch.segments.every((segment) => (
+      Math.abs(segment.x2 - segment.x1) + Math.abs(segment.y2 - segment.y1) <= LIST_COLUMN_GUTTER
+    ))
+  ))));
+});
+
+test("connector model uses a horizontal root bus and vertical nested trunks", () => {
+  const tree = buildTree(referenceSpecs);
+  const hierarchy = buildHierarchy(tree.nodes, tree.edges);
+  const placements = computeListLayout("root", hierarchy, new Map(tree.nodes.map((node) => [node.id, node])));
+  const model = buildListConnectorModel(positionedNodes(tree.nodes, placements), tree.edges);
+  assert.equal(model.groups.find((group) => group.parentId === "root")?.orientation, "horizontal");
+  assert.equal(model.groups.find((group) => group.parentId === "a")?.orientation, "vertical");
+  assert.deepEqual(model.obstacleIntersections, []);
 });
 
 test("duplicate logical hierarchy edges produce one visible child branch", () => {
@@ -199,30 +262,48 @@ test("duplicate logical hierarchy edges produce one visible child branch", () =>
   ]);
   const hierarchy = buildHierarchy(tree.nodes, tree.edges);
   const placements = computeListLayout("root", hierarchy, new Map(tree.nodes.map((node) => [node.id, node])));
-  const nodes = positionedNodes(tree.nodes, placements);
   const duplicate = { ...tree.edges[0], id: "duplicate-relation" };
-  const model = buildListConnectorModel(nodes, [...tree.edges, duplicate]);
+  const model = buildListConnectorModel(positionedNodes(tree.nodes, placements), [...tree.edges, duplicate]);
   assert.deepEqual(model.duplicateHierarchyRelations, ["root->child"]);
   assert.equal(model.groups[0].branches.length, 1);
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
-test("growing an early row moves every following generated row down", () => {
-  const tree = buildTree([
-    { id: "root", parentId: null, width: 200, height: 56 },
-    { id: "a", parentId: "root", width: 220, height: 72 },
-    { id: "a1", parentId: "a", width: 200, height: 64 },
-    { id: "b", parentId: "root", width: 220, height: 80 },
-  ]);
+test("growing a branch row moves its later rows without moving other columns", () => {
+  const tree = buildTree(referenceSpecs);
   const hierarchy = buildHierarchy(tree.nodes, tree.edges);
   const before = computeListLayout("root", hierarchy, new Map(tree.nodes.map((node) => [node.id, node])));
-  const resizedNodes = tree.nodes.map((node) => node.id === "a"
-    ? { ...node, measured: { width: 220, height: 192 } }
+  const resizedNodes = tree.nodes.map((node) => node.id === "a2"
+    ? { ...node, measured: { width: 200, height: 188 } }
     : node);
   const after = computeListLayout("root", hierarchy, new Map(resizedNodes.map((node) => [node.id, node])));
-  assert.equal(after.root.y, before.root.y);
-  assert.equal(after.a.y, before.a.y);
-  assert.equal(after.a1.y - before.a1.y, 120);
-  assert.equal(after.b.y - before.b.y, 120);
+  assert.deepEqual(after.root, before.root);
+  assert.deepEqual(after.a2, before.a2);
+  assert.equal(after.a2a.y - before.a2a.y, 120);
+  assert.equal(after.a3.y - before.a3.y, 120);
+  for (const nodeId of ["b", "b1", "b2", "b3", "c", "c1"]) {
+    assert.deepEqual(after[nodeId], before[nodeId], `${nodeId} should remain fixed`);
+  }
   assertNoOverlap(positionedNodes(resizedNodes, after));
+});
+
+test("branch-local reflow keeps earlier headers anchored and shifts only later columns", () => {
+  const tree = buildTree(referenceSpecs);
+  const hierarchy = buildHierarchy(tree.nodes, tree.edges);
+  const initial = computeListLayout("root", hierarchy, new Map(tree.nodes.map((node) => [node.id, node])));
+  const initiallyPlaced = positionedNodes(tree.nodes, initial);
+  const resized = initiallyPlaced.map((node) => node.id === "a2a"
+    ? { ...node, measured: { width: 520, height: 56 } }
+    : node);
+  const reflowed = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(resized.map((node) => [node.id, node])),
+    { preserveBranchAnchors: true }
+  );
+
+  assert.deepEqual(reflowed.a, initial.a, "the changed branch header stays anchored");
+  assert.ok(reflowed.b.x > initial.b.x, "the next branch moves only enough to clear the wider branch");
+  assert.ok(reflowed.c.x >= initial.c.x, "later branches never move backward during local growth");
+  assertNoOverlap(positionedNodes(resized, reflowed));
 });

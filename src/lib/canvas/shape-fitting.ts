@@ -3,6 +3,8 @@ import type { Size } from "./node-geometry";
 export const MIN_AUTOFIT_WIDTH = 160;
 export const MIN_AUTOFIT_HEIGHT = 56;
 export const MAX_AUTOFIT_WIDTH = 560;
+export const MAX_AUTOFIT_NODE_WIDTH = 640;
+export const MAX_AUTOFIT_NODE_HEIGHT = 480;
 
 export interface ContentMeasurement extends Size {
   lineCount?: number;
@@ -17,6 +19,8 @@ export interface ShapeFitOptions {
   minWidth?: number;
   minHeight?: number;
   maxContentWidth?: number;
+  maxWidth?: number;
+  maxHeight?: number;
 }
 
 export interface SingleWordFit {
@@ -108,6 +112,45 @@ export function shapeTextContentWidth(
   return Math.max(8, width / scale - nodePadding(nodeType).width);
 }
 
+/** Approximate the safe text rectangle inside a rendered node shape. */
+export function shapeTextContentSize(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  nodeType = "shape"
+): Size {
+  const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
+  const height = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
+  const padding = nodePadding(nodeType);
+  const scale = (() => {
+    switch (shapeType) {
+      case "circle": return { width: Math.SQRT2, height: Math.SQRT2 };
+      case "ellipse": return { width: Math.SQRT2, height: Math.SQRT2 };
+      case "diamond": return { width: 2, height: 2 };
+      case "star":
+      case "flower": return { width: 1.8, height: 1.8 };
+      case "triangle": return { width: 1.75, height: 1.9 };
+      case "arrow": return { width: 1.55, height: 1.35 };
+      case "callout":
+      case "offPageConnector": return { width: 1.3, height: 1.42 };
+      case "parallelogram":
+      case "trapezoid": return { width: 1.35, height: 1.18 };
+      case "hexagon":
+      case "document":
+      case "database":
+      case "predefinedProcess":
+      case "delay":
+      case "cloud":
+      case "leaf": return { width: 1.26, height: 1.26 };
+      case "capsule": return { width: 1.5, height: 1 };
+      default: return { width: 1, height: 1 };
+    }
+  })();
+  return {
+    width: Math.max(8, width / scale.width - padding.width),
+    height: Math.max(8, height / scale.height - padding.height),
+  };
+}
+
 function shapeSafeSize(shapeType: string, box: Size): Size {
   switch (shapeType) {
     case "circle": {
@@ -166,8 +209,20 @@ export function fitShapeToContent(
   const fitted = shapeSafeSize(shapeType ?? "rectangle", padded);
   let width = Math.max(options.minWidth ?? MIN_AUTOFIT_WIDTH, Math.ceil(fitted.width));
   let height = Math.max(options.minHeight ?? MIN_AUTOFIT_HEIGHT, Math.ceil(fitted.height));
+  const maxWidth = finitePositive(options.maxWidth, Number.MAX_SAFE_INTEGER);
+  const maxHeight = finitePositive(options.maxHeight, Number.MAX_SAFE_INTEGER);
+
+  if (["circle", "diamond", "star", "flower"].includes(shapeType ?? "")) {
+    const size = Math.min(Math.max(width, height), maxWidth, maxHeight);
+    width = size;
+    height = size;
+  } else {
+    width = Math.min(width, maxWidth);
+    height = Math.min(height, maxHeight);
+  }
 
   if (options.growOnly && options.currentSize) {
+    // The limits govern automatic growth, not a size the user explicitly set.
     width = Math.max(width, finitePositive(options.currentSize.width, width));
     height = Math.max(height, finitePositive(options.currentSize.height, height));
   }

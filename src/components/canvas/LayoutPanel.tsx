@@ -123,6 +123,8 @@ export function LayoutPanel() {
   }
   const paletteRootData = (paletteRoot?.data ?? {}) as Record<string, unknown>;
   const paletteMode = paletteRootData.layoutMode as LayoutMode | undefined;
+  const listRoot = paletteMode === "list" ? paletteRoot : null;
+  const listBranchIds = listRoot ? getSubtree(listRoot.id, hierarchy) : [];
   const activeColorScheme = radialColorScheme(
     paletteRootData.layoutColorScheme ?? paletteRootData.radialColorScheme
   ).id;
@@ -284,6 +286,50 @@ export function LayoutPanel() {
                   <span className="truncate">{scheme.label}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {listRoot && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+            <div className="mb-2 text-xs font-medium text-foreground">List density</div>
+            <div className="grid grid-cols-2 gap-1">
+              {(["compact", "comfortable"] as const).map((density) => (
+                <button
+                  key={density}
+                  type="button"
+                  onClick={() => {
+                    updateNodeData(listRoot.id, { listDensity: density });
+                    requestAnimationFrame(() => requestMeasuredLayout("list", listRoot.id, listBranchIds));
+                  }}
+                  className={cn(
+                    "rounded-md border bg-background px-1.5 py-1.5 text-[9px] capitalize",
+                    (((listRoot.data as Record<string, unknown>).listDensity as string | undefined) ?? "compact") === density
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  {density}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => requestMeasuredLayout("list", listRoot.id, listBranchIds)}
+                className="flex items-center justify-center gap-1 rounded-md border border-border bg-background px-1 py-1.5 text-[9px] hover:bg-muted"
+              >
+                <RefreshCw className="h-3 w-3" /> Reflow
+              </button>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                  detail: { nodeIds: listBranchIds, mode: "list", rootId: listRoot.id, forceFit: true },
+                }))}
+                className="flex items-center justify-center gap-1 rounded-md border border-border bg-background px-1 py-1.5 text-[9px] hover:bg-muted"
+              >
+                <Maximize2 className="h-3 w-3" /> Fit
+              </button>
             </div>
           </div>
         )}

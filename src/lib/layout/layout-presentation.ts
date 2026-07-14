@@ -1,6 +1,11 @@
 import type { Node } from "@xyflow/react";
 import type { LayoutMode, LayoutVisualStyle } from "../types";
-import { fitShapeToContent, type ContentMeasurement } from "../canvas/shape-fitting";
+import {
+  fitShapeToContent,
+  MAX_AUTOFIT_NODE_HEIGHT,
+  MAX_AUTOFIT_NODE_WIDTH,
+  type ContentMeasurement,
+} from "../canvas/shape-fitting";
 import type { Hierarchy } from "./hierarchy";
 import { getSubtree } from "./hierarchy";
 
@@ -195,6 +200,8 @@ function nodeLayoutSize(node: Node, mode: LayoutMode, depth: number): LayoutNode
     minWidth: preset.minimumWidth,
     minHeight: preset.minimumHeight,
     maxContentWidth: preset.maximumContentWidth,
+    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
   });
   return { width: Math.ceil(fitted.width), height: Math.ceil(fitted.height) };
 }
@@ -231,18 +238,31 @@ export function computeLayoutNodeSizes(
 
   if (mode !== "list") return sizes;
 
-  const maximumWidthByDepth = new Map<number, number>();
+  const directBranchByNode = new Map<string, string>();
+  const visited = new Set<string>();
+  const assignBranch = (nodeId: string, branchId: string) => {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+    directBranchByNode.set(nodeId, branchId);
+    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) assignBranch(childId, branchId);
+  };
+  for (const branchId of hierarchy.get(rootId)?.childIds ?? []) assignBranch(branchId, branchId);
+
+  const maximumWidthByBranchDepth = new Map<string, number>();
   for (const [nodeId, size] of sizes) {
     const node = byId.get(nodeId)!;
-    if (!canShareListWidth(node)) continue;
+    const branchId = directBranchByNode.get(nodeId);
+    if (!branchId || !canShareListWidth(node)) continue;
     const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
-    maximumWidthByDepth.set(depth, Math.max(maximumWidthByDepth.get(depth) ?? 0, size.width));
+    const key = `${branchId}:${depth}`;
+    maximumWidthByBranchDepth.set(key, Math.max(maximumWidthByBranchDepth.get(key) ?? 0, size.width));
   }
   for (const [nodeId, size] of sizes) {
     const node = byId.get(nodeId)!;
-    if (!canShareListWidth(node)) continue;
+    const branchId = directBranchByNode.get(nodeId);
+    if (!branchId || !canShareListWidth(node)) continue;
     const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
-    sizes.set(nodeId, { ...size, width: maximumWidthByDepth.get(depth) ?? size.width });
+    sizes.set(nodeId, { ...size, width: maximumWidthByBranchDepth.get(`${branchId}:${depth}`) ?? size.width });
   }
   return sizes;
 }

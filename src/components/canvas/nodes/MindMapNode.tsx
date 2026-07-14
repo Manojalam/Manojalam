@@ -9,7 +9,10 @@ import {
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
   resolveBorderStyle, resolveAccentColor, textMeasurementKey,
 } from "@/lib/style-utils";
-import { shapeTextContentWidth } from "@/lib/canvas/shape-fitting";
+import {
+  MAX_AUTOFIT_NODE_HEIGHT,
+  shapeTextContentSize,
+} from "@/lib/canvas/shape-fitting";
 import type { MindMapNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -54,8 +57,11 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
 
   const [editing, setEditing] = useState(false);
   const initialContent = (dd.richText as string) || d.text || "";
-  const availableTextWidth = shapeTextContentWidth("rectangle", nodeSize.width, "mindmap");
-  const textPresentation = getFittedTextPresentation(dd, availableTextWidth);
+  const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "mindmap");
+  const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
+    availableHeight: availableTextSize.height,
+    fitMultiline: !matrixCell && nodeSize.height >= MAX_AUTOFIT_NODE_HEIGHT - 1,
+  });
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -146,14 +152,20 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
 
-        <div className={cn("relative z-10 nodrag nopan text-sm font-medium", editing && "cursor-text")}
+        <div className={cn(
+          "relative z-10 text-sm font-medium",
+          editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
+        )}
           style={textPresentation.style}>
           <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            className={cn(textPresentation.singleWord && "single-word-fit")}
-            measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextWidth)}`}
+            className={cn(
+              textPresentation.singleWord && "single-word-fit",
+              textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
+            )}
+            measurementKey={`${textMeasurementKey(dd)}|${textPresentation.fontSize}|${Math.round(availableTextSize.width)}|${Math.round(availableTextSize.height)}`}
             placeholder="Double-click to edit…"
             blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
             onChange={(html) => {
