@@ -23,3 +23,10 @@ test("does not describe a font failure as a remote image", () => {
   assert.doesNotMatch(fontMessage, /remote image/i);
   assert.match(imageMessage, /image/i);
 });
+
+test("does not assume every tainted canvas was caused by a remote image", () => {
+  const message = exportErrorUserMessage("CANVAS_TAINTED");
+
+  assert.match(message, /PNG/i);
+  assert.doesNotMatch(message, /remote image/i);
+});
