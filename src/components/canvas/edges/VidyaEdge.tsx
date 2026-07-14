@@ -42,6 +42,12 @@ function VidyaEdgeComponent({
     sourceData.listManualOverride !== true &&
     targetData.listManualOverride !== true
   ) return null;
+  if (
+    (d.layoutMode === "horizontal" || d.layoutMode === "vertical" || d.layoutMode === "topDown") &&
+    targetData.parentId === source &&
+    sourceData.treeManualOverride !== true &&
+    targetData.treeManualOverride !== true
+  ) return null;
 
   let path: string;
   let labelX: number;

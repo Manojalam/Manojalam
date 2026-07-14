@@ -3,6 +3,7 @@ import type { LayoutMode } from "../types";
 import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarchy";
 import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
+import { computeOrthogonalTreeLayout } from "./tree-layout";
 import {
   createNodeRect,
   getNodeRect,
@@ -20,6 +21,17 @@ export {
   type MatrixLayoutResult,
   type MatrixRow,
 } from "./matrix-layout";
+export {
+  buildTreeConnectorModel,
+  computeOrthogonalTreeLayout,
+  isGroupedTreeHierarchyEdge,
+  ORTHOGONAL_TREE_SPACING,
+  treeOrientationForMode,
+  type OrthogonalTreeOrientation,
+  type TreeConnectorBranch,
+  type TreeConnectorGroup,
+  type TreeConnectorModel,
+} from "./tree-layout";
 
 export type { LayoutMode };
 export {
@@ -47,13 +59,10 @@ type Side = "top" | "right" | "bottom" | "left";
 // avoiding the oversized empty bands that made structured layouts feel sparse.
 const MIN_NODE_PADDING_X = 64;
 const MIN_NODE_PADDING_Y = 40;
-const LEVEL_GAP_X = 140;
-const LEVEL_GAP_Y = 112;
 const RADIAL_LEVEL_GAP = 230;
 const LINEAR_GAP = 84;
 
 const DEFAULT_W = 180;
-const DEFAULT_H = 80;
 
 /** Keep React Flow's resizer fields and the persisted CSS size in sync. */
 export function synchronizeNodeDimensions<NodeType extends Node>(
@@ -97,8 +106,8 @@ function rectsTooClose(a: NodeRect, b: NodeRect, padX: number, padY: number): bo
 }
 
 function centerOf(node: Node): Pos {
-  const { w, h } = sizeOf(node);
-  return { x: node.position.x + w / 2, y: node.position.y + h / 2 };
+  const rect = getNodeRect(node);
+  return { x: rect.centerX, y: rect.centerY };
 }
 
 // -- Collision resolution (structure-preserving, axis-constrained) ------------
@@ -194,60 +203,6 @@ export function resolveInsertedNodeCollisions(
   // Deterministic final fallback below all existing content.
   const top = Math.max(initial.top, ...obstacles.map((obstacle) => obstacle.bottom + padY));
   return placement(initial.left, top);
-}
-
-// -- Tidy tree with adaptive, content-aware level spacing ---------------------
-// - Cross axis: leaf cursor packs siblings using real node sizes (no overlap).
-// - Main axis: each depth band is offset by the tallest/widest node at that
-//   depth + a generous level gap (prevents cross-depth overlap for tall nodes).
-
-function tidyTree(
-  rootId: string,
-  hierarchy: Hierarchy,
-  byId: Map<string, Node>,
-  axis: "v" | "h"
-): Positions {
-  const depthMaxMain = new Map<number, number>();
-  const collect = (id: string, depth: number) => {
-    const { w, h } = sizeOf(byId.get(id)!);
-    const main = axis === "v" ? h : w;
-    depthMaxMain.set(depth, Math.max(depthMaxMain.get(depth) ?? 0, main));
-    for (const c of hierarchy.get(id)?.childIds ?? []) collect(c, depth + 1);
-  };
-  collect(rootId, 0);
-
-  const levelGap = axis === "v" ? LEVEL_GAP_Y : LEVEL_GAP_X;
-  const maxDepth = Math.max(...depthMaxMain.keys());
-  const levelCenter = new Map<number, number>();
-  let acc = 0;
-  for (let d = 0; d <= maxDepth; d++) {
-    const band = depthMaxMain.get(d) ?? (axis === "v" ? DEFAULT_H : DEFAULT_W);
-    levelCenter.set(d, acc + band / 2);
-    acc += band + levelGap;
-  }
-
-  const crossGap = axis === "v" ? MIN_NODE_PADDING_X : MIN_NODE_PADDING_Y;
-  const centers: Positions = {};
-  let cursor = 0;
-
-  const walk = (id: string, depth: number): number => {
-    const { w, h } = sizeOf(byId.get(id)!);
-    const crossSize = axis === "v" ? w : h;
-    const kids = hierarchy.get(id)?.childIds ?? [];
-    let cross: number;
-    if (kids.length === 0) {
-      cross = cursor + crossSize / 2;
-      cursor += crossSize + crossGap;
-    } else {
-      const cc = kids.map((c) => walk(c, depth + 1));
-      cross = (cc[0] + cc[cc.length - 1]) / 2;
-    }
-    const main = levelCenter.get(depth)!;
-    centers[id] = axis === "v" ? { x: cross, y: main } : { x: main, y: cross };
-    return cross;
-  };
-  walk(rootId, 0);
-  return centers;
 }
 
 // -- Radial with per-depth radius sized to fit all nodes on the ring ----------
@@ -350,10 +305,12 @@ export function computeLayout(
 
     if (mode === "horizontal" || mode === "vertical" || mode === "topDown") {
       if (lone) continue;
-      const centers = tidyTree(root, hierarchy, byId, mode === "horizontal" ? "h" : "v");
-      const pos = centersToPositions(centers, root, byId);
-      // Safety: resolve residual overlaps along the cross axis (keep root fixed).
-      resolveCollisions(pos, byId, mode === "horizontal" ? "y" : "x");
+      const pos = computeOrthogonalTreeLayout(
+        root,
+        hierarchy,
+        byId,
+        mode === "horizontal" ? "horizontal" : "vertical"
+      );
       Object.assign(result, pos);
     } else if (mode === "radial" || mode === "fromParentFreeForm") {
       if (lone) continue;
@@ -453,7 +410,6 @@ export const LAYOUT_OPTIONS: LayoutOption[] = [
   { mode: "horizontal", label: "Horizontal", description: "Tree grows left to right" },
   { mode: "vertical",   label: "Vertical",   description: "Balanced tree fanning down" },
   { mode: "list",       label: "List",       description: "Indented outline" },
-  { mode: "topDown",    label: "Top Down",   description: "Hierarchy from the top" },
   { mode: "linear",     label: "Linear",     description: "Single connected line" },
   { mode: "radial",     label: "Radial",     description: "Hierarchy-aware sunburst" },
   { mode: "matrix",     label: "Matrix",     description: "Structured chart / table" },

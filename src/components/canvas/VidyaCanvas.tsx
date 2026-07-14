@@ -51,6 +51,7 @@ import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
 import { RelationshipDiagramDialog } from "./RelationshipDiagramDialog";
 import { ExportDialog } from "./ExportDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
+import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
@@ -61,6 +62,7 @@ const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
 const MIN_READABLE_LIST_ZOOM = 0.65;
 const MIN_READABLE_MATRIX_ZOOM = 0.7;
+const MIN_READABLE_TREE_ZOOM = 0.28;
 const LONG_PRESS_PAN_MS = 180;
 const LONG_PRESS_CANCEL_DISTANCE = 7;
 
@@ -471,13 +473,24 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         forceFit?: boolean;
       }>).detail;
       const nodeIds = detail?.nodeIds;
-      if (!detail?.forceFit && (detail?.mode === "list" || detail?.mode === "matrix") && detail.rootId) {
+      const isTreeLayout = detail?.mode === "horizontal"
+        || detail?.mode === "vertical"
+        || detail?.mode === "topDown";
+      if (
+        !detail?.forceFit
+        && (detail?.mode === "list" || detail?.mode === "matrix" || isTreeLayout)
+        && detail.rootId
+      ) {
         const root = useCanvasStore.getState().nodes.find((node) => node.id === detail.rootId);
         if (root) {
           const rootRect = getNodeRect(root);
           const currentViewport = getViewport();
           const currentZoom = currentViewport.zoom;
-          const minimumZoom = detail.mode === "matrix" ? MIN_READABLE_MATRIX_ZOOM : MIN_READABLE_LIST_ZOOM;
+          const minimumZoom = detail.mode === "matrix"
+            ? MIN_READABLE_MATRIX_ZOOM
+            : isTreeLayout
+              ? MIN_READABLE_TREE_ZOOM
+              : MIN_READABLE_LIST_ZOOM;
           const zoom = Math.max(minimumZoom, Math.min(MAX_CANVAS_ZOOM, currentZoom));
           if (detail.mode === "list") {
             if (Math.abs(zoom - currentZoom) < 0.001) return;
@@ -491,6 +504,23 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
             return;
           }
           const canvasBounds = document.querySelector<HTMLElement>(".vidya-canvas-bg")?.getBoundingClientRect();
+          if (isTreeLayout && canvasBounds) {
+            const horizontal = detail.mode === "horizontal";
+            const rootScreenX = horizontal
+              ? canvasBounds.width >= 900
+                ? Math.max(300, canvasBounds.width * 0.22)
+                : Math.max(96, canvasBounds.width * 0.24)
+              : canvasBounds.width / 2;
+            const rootScreenY = horizontal
+              ? canvasBounds.height / 2
+              : Math.max(150, canvasBounds.height * 0.18);
+            void setFlowViewport({
+              x: rootScreenX - rootRect.centerX * zoom,
+              y: rootScreenY - rootRect.centerY * zoom,
+              zoom,
+            }, { duration: 350 });
+            return;
+          }
           const screenX = canvasBounds
             ? Math.max(96, Math.min(detail.mode === "matrix" ? 220 : 280, canvasBounds.width * 0.2))
             : 160;
@@ -597,6 +627,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       matrixRootId,
     };
     state.markListManualOverride(movingIds, true);
+    state.markTreeManualOverride(movingIds, true);
     useUIStore.getState().setCanvasDragging(true);
   }, []);
 
@@ -1272,6 +1303,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
       )}
       <ListTreeConnectors />
+      <StructuredTreeConnectors />
       {!relationshipSelection && <SelectionToolbar />}
       <RelationshipSelectionToolbar />
       <AlignmentGuides guides={guides} />

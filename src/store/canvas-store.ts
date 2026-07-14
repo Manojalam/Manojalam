@@ -133,6 +133,7 @@ interface CanvasState {
   scheduleMatrixReflow: (nodeId: string) => void;
   scheduleStructuredReflow: (nodeId: string) => void;
   markListManualOverride: (nodeIds: string[], value: boolean) => void;
+  markTreeManualOverride: (nodeIds: string[], value: boolean) => void;
   updateBoardTitle: (title: string) => void;
   performSearch: (query: string) => void;
   applyLayout: (mode: LayoutMode, rootIdOverride?: string) => void;
@@ -2669,12 +2670,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nodes = nodes.map((node) => {
           const placement = placements[node.id];
           if (!placement) return node;
+          const data = (node.data ?? {}) as Record<string, unknown>;
+          const hasManualOverride = data.treeManualOverride === true;
           if (
             Math.abs(node.position.x - placement.x) < 0.75
             && Math.abs(node.position.y - placement.y) < 0.75
+            && !hasManualOverride
           ) return node;
           changed = true;
-          return { ...node, position: { x: placement.x, y: placement.y } };
+          if (!hasManualOverride) {
+            return { ...node, position: { x: placement.x, y: placement.y } };
+          }
+          const { treeManualOverride: _treeManualOverride, ...nextData } = data;
+          void _treeManualOverride;
+          return {
+            ...node,
+            position: { x: placement.x, y: placement.y },
+            data: nextData,
+          };
         });
       }
       if (changed || roots.size) set({ nodes, edges: nextEdges, saveStatus: "unsaved" });
@@ -2700,6 +2713,31 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         if (!("listManualOverride" in data)) return node;
         const { listManualOverride: _listManualOverride, ...rest } = data;
         void _listManualOverride;
+        return { ...node, data: rest };
+      }),
+    });
+  },
+
+  markTreeManualOverride: (nodeIds, value) => {
+    if (!nodeIds.length) return;
+    const { nodes, edges } = get();
+    const hierarchy = buildHierarchy(nodes, edges);
+    const eligible = new Set(nodeIds.filter((nodeId) => {
+      if (!value) return true;
+      const mode = findLayoutRoot(nodeId, nodes, hierarchy).mode;
+      return mode === "horizontal" || mode === "vertical" || mode === "topDown";
+    }));
+    if (!eligible.size) return;
+    set({
+      nodes: nodes.map((node) => {
+        if (!eligible.has(node.id)) return node;
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        if (value) return data.treeManualOverride === true
+          ? node
+          : { ...node, data: { ...data, treeManualOverride: true } };
+        if (!("treeManualOverride" in data)) return node;
+        const { treeManualOverride: _treeManualOverride, ...rest } = data;
+        void _treeManualOverride;
         return { ...node, data: rest };
       }),
     });
@@ -2841,6 +2879,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           if (mode === "list" && data.listManualOverride !== undefined) {
             const { listManualOverride: _listManualOverride, ...rest } = data;
             void _listManualOverride;
+            data = rest;
+          }
+          if (data.treeManualOverride !== undefined) {
+            const { treeManualOverride: _treeManualOverride, ...rest } = data;
+            void _treeManualOverride;
             data = rest;
           }
           const style = placement?.width || placement?.height

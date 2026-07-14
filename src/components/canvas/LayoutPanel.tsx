@@ -75,6 +75,7 @@ function nodeTitle(node: { data?: unknown; id: string } | null): string {
 }
 
 function layoutLabel(mode: string | undefined): string {
+  if (mode === "topDown") return "Vertical";
   return LAYOUT_OPTIONS.find((option) => option.mode === mode)?.label ?? "Free Form";
 }
 
@@ -153,7 +154,9 @@ export function LayoutPanel() {
     toast.success(`Applied ${layoutLabel(mode)} to ${affectedCount} node${affectedCount === 1 ? "" : "s"}.`, {
       description: (mode === "list" || mode === "matrix") && affectedCount > 30
         ? "The branch is large, so a readable zoom was preserved."
-        : undefined,
+        : (mode === "horizontal" || mode === "vertical") && affectedCount > 30
+          ? "The branch is large; pan to inspect it or use Fit for an overview."
+          : undefined,
       action: {
         label: "Undo",
         onClick: () => useCanvasStore.getState().undo(),
