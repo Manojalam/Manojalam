@@ -161,6 +161,7 @@ export function SelectionToolbar() {
 
   return (
     <NodeToolbar
+      data-export-ignore
       nodeId={selected.map((node) => node.id)}
       isVisible
       position={Position.Top}

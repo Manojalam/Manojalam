@@ -44,6 +44,7 @@ import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
 import { RelationshipDiagramDialog } from "./RelationshipDiagramDialog";
+import { ExportDialog } from "./ExportDialog";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -963,6 +964,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   return (
     <>
     <ReactFlow
+      data-board-export-root
       nodes={displayNodes}
       edges={displayEdges}
       onNodesChange={onNodesChange}
@@ -1034,6 +1036,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         maskColor="rgba(0,0,0,0.06)" position="bottom-right" pannable zoomable />
     </ReactFlow>
     <RelationshipDiagramDialog />
+    <ExportDialog />
     </>
   );
 }

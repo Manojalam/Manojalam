@@ -1098,6 +1098,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
         {/* Add connected child */}
         {!isDrawing && (
           <button
+            data-export-ignore
             className={cn(
               "absolute -right-3.5 -bottom-3.5 z-20 hidden h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 group-hover:flex"
             )}
@@ -1256,6 +1257,7 @@ function ShapeNodeComponent({ id, data, selected }: NodeProps) {
 
         {selected && !editing && !isDrawing && (
           <button
+            data-export-ignore
             className="nodrag nopan absolute -left-3.5 -bottom-3.5 z-30 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-50"
             style={{ backgroundColor: borderColor }}
             title="Add concentric inner shape"

@@ -26,6 +26,7 @@ export function NodeHandles({ color = "#6366f1" }: { color?: string }) {
       {SIDES.map(({ id, pos }) => (
         <Fragment key={id}>
           <Handle
+            data-export-ignore
             type="target"
             id={id}
             position={pos}
@@ -41,6 +42,7 @@ export function NodeHandles({ color = "#6366f1" }: { color?: string }) {
             }}
           />
           <Handle
+            data-export-ignore
             type="source"
             id={id}
             position={pos}
