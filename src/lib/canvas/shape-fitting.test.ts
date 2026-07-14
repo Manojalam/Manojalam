@@ -5,6 +5,9 @@ import {
   effectiveCornerRadius,
   fitShapeToContent,
   fitSingleUnbrokenWord,
+  MAX_AUTOFIT_NODE_HEIGHT,
+  MAX_AUTOFIT_NODE_WIDTH,
+  shapeTextContentSize,
   shapeTextContentWidth,
 } from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
@@ -56,4 +59,31 @@ test("one unbroken word stays on one line and shrinks to the available width", (
   assert.ok(fitted.fontSize > 0 && fitted.fontSize < 24);
   assert.deepEqual(phrase, { singleWord: false, fontSize: 24 });
   assert.ok(shapeTextContentWidth("diamond", 240) < shapeTextContentWidth("rectangle", 240));
+});
+
+test("automatic fitting caps growth and exposes each shape's safe text interior", () => {
+  const capped = fitShapeToContent("rectangle", { width: 4000, height: 3000 }, {
+    nodeType: "shape",
+    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+  });
+  const diamondInterior = shapeTextContentSize("diamond", capped, "shape");
+  const rectangleInterior = shapeTextContentSize("rectangle", capped, "shape");
+
+  assert.ok(capped.width <= MAX_AUTOFIT_NODE_WIDTH);
+  assert.ok(capped.width >= 560);
+  assert.equal(capped.height, MAX_AUTOFIT_NODE_HEIGHT);
+  assert.ok(diamondInterior.width < rectangleInterior.width);
+  assert.ok(diamondInterior.height < rectangleInterior.height);
+});
+
+test("automatic caps never shrink a manually enlarged node", () => {
+  const fitted = fitShapeToContent("rectangle", { width: 100, height: 50 }, {
+    nodeType: "shape",
+    currentSize: { width: 820, height: 620 },
+    growOnly: true,
+    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+  });
+  assert.deepEqual(fitted, { width: 820, height: 620 });
 });

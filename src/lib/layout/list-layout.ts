@@ -2,6 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy } from "./hierarchy";
 import {
+  createNodeRect,
   getNodeDimensions,
   getNodeRect,
   inflateRect,
@@ -10,14 +11,52 @@ import {
   type OrthogonalSegment,
 } from "./geometry";
 
-export const LIST_ROW_GAP = 24;
-export const LIST_ROOT_BRANCH_GAP = 48;
-export const LIST_COLUMN_GUTTER = 88;
-export const LIST_MIN_COLUMN_GAP = 72;
+export type ListDensity = "compact" | "comfortable";
+
+export interface ListDensitySettings {
+  rootToBranchGapY: number;
+  branchColumnGapX: number;
+  childIndentX: number;
+  rowGapY: number;
+  parentChildGapY: number;
+  siblingSubtreeGapY: number;
+  connectorGutterX: number;
+}
+
+export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
+  compact: {
+    rootToBranchGapY: 72,
+    branchColumnGapX: 56,
+    childIndentX: 48,
+    rowGapY: 10,
+    parentChildGapY: 14,
+    siblingSubtreeGapY: 12,
+    connectorGutterX: 22,
+  },
+  comfortable: {
+    rootToBranchGapY: 88,
+    branchColumnGapX: 76,
+    childIndentX: 62,
+    rowGapY: 16,
+    parentChildGapY: 20,
+    siblingSubtreeGapY: 18,
+    connectorGutterX: 26,
+  },
+};
+
+export const DEFAULT_LIST_DENSITY: ListDensity = "compact";
+export const LIST_ROW_GAP = LIST_DENSITIES.compact.rowGapY;
+export const LIST_ROOT_BRANCH_GAP = LIST_DENSITIES.compact.rootToBranchGapY;
+export const LIST_COLUMN_GUTTER = LIST_DENSITIES.compact.childIndentX;
+export const LIST_MIN_COLUMN_GAP = LIST_DENSITIES.compact.branchColumnGapX;
 export const LIST_OUTER_PADDING = 24;
-export const LIST_COLLISION_PADDING_X = 16;
-export const LIST_COLLISION_PADDING_Y = 12;
-export const LIST_CONNECTOR_OBSTACLE_PADDING = 12;
+export const LIST_COLLISION_PADDING_X = 12;
+export const LIST_COLLISION_PADDING_Y = 8;
+export const LIST_CONNECTOR_OBSTACLE_PADDING = 8;
+export const DEFAULT_LIST_CONNECTOR_WIDTH = 2;
+export const MIN_LIST_CONNECTOR_WIDTH = 0.5;
+export const MAX_LIST_CONNECTOR_WIDTH = 12;
+export const LIST_CONNECTOR_WIDTH_STEP = 0.5;
 
 export interface ListTraversalEntry {
   nodeId: string;
@@ -35,6 +74,14 @@ export interface ListPlacement {
 
 export type ListPlacements = Record<string, ListPlacement>;
 
+export interface BranchColumn {
+  branchRootId: string;
+  nodeIds: string[];
+  bounds: NodeRect;
+  width: number;
+  height: number;
+}
+
 export interface ListLayoutDiagnostics {
   duplicateNodeIds: string[];
   nodesWithIdenticalPositions: string[][];
@@ -44,12 +91,13 @@ export interface ListLayoutDiagnostics {
 export interface ListConnectorBranch {
   edge: Edge;
   childId: string;
-  segment: OrthogonalSegment;
+  segments: OrthogonalSegment[];
 }
 
 export interface ListConnectorGroup {
   parentId: string;
-  lead: OrthogonalSegment;
+  orientation: "horizontal" | "vertical";
+  leads: OrthogonalSegment[];
   bus: OrthogonalSegment;
   branches: ListConnectorBranch[];
 }
@@ -60,10 +108,6 @@ export interface ListConnectorModel {
   duplicateHierarchyRelations: string[];
   duplicateVisibleConnectorSegments: string[];
   obstacleIntersections: Array<{ parentId: string; obstacleId: string }>;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function topLeftPosition(node: Node, left: number, top: number): ListPlacement {
@@ -128,44 +172,6 @@ export function getPreorderTraversal(rootId: string, hierarchy: Hierarchy): List
   return traversal;
 }
 
-function resolveRowCollisions(
-  traversal: ListTraversalEntry[],
-  placements: ListPlacements,
-  byId: Map<string, Node>,
-  preserveManualOverrides: boolean
-): void {
-  const generatedRows = traversal.filter((entry) => {
-    const node = byId.get(entry.nodeId);
-    return node && !(preserveManualOverrides && (node.data as Record<string, unknown>).listManualOverride === true);
-  });
-  const safeLimit = Math.max(8, generatedRows.length * 2);
-
-  for (let index = 0; index < generatedRows.length; index++) {
-    const entry = generatedRows[index];
-    const node = byId.get(entry.nodeId)!;
-    let iterations = 0;
-    while (iterations < safeLimit) {
-      const currentRect = rectAt(node, placements[entry.nodeId]);
-      let requiredShift = 0;
-      for (let previous = 0; previous < index; previous++) {
-        const previousEntry = generatedRows[previous];
-        const previousNode = byId.get(previousEntry.nodeId)!;
-        const previousRect = rectAt(previousNode, placements[previousEntry.nodeId]);
-        if (!rectsTooClose(previousRect, currentRect)) continue;
-        requiredShift = Math.max(
-          requiredShift,
-          previousRect.bottom - currentRect.top + LIST_COLLISION_PADDING_Y
-        );
-      }
-      if (requiredShift <= 0) break;
-      for (let later = index; later < generatedRows.length; later++) {
-        placements[generatedRows[later].nodeId].y += requiredShift;
-      }
-      iterations += 1;
-    }
-  }
-}
-
 export function diagnoseListLayout(
   traversal: ListTraversalEntry[],
   placements: ListPlacements,
@@ -211,54 +217,130 @@ export function computeListLayout(
   rootId: string,
   hierarchy: Hierarchy,
   byId: Map<string, Node>,
-  options: { preserveManualOverrides?: boolean } = {}
+  options: {
+    preserveManualOverrides?: boolean;
+    preserveBranchAnchors?: boolean;
+    density?: ListDensity;
+  } = {}
 ): ListPlacements {
   const root = byId.get(rootId);
   if (!root) return {};
   const traversal = getPreorderTraversal(rootId, hierarchy).filter((entry) => byId.has(entry.nodeId));
   if (!traversal.length) return {};
   const preserveManualOverrides = options.preserveManualOverrides ?? false;
-  const maxDepth = Math.max(...traversal.map((entry) => entry.depth));
-  const maxWidthByDepth = Array.from({ length: maxDepth + 1 }, () => 0);
-  for (const entry of traversal) {
-    maxWidthByDepth[entry.depth] = Math.max(
-      maxWidthByDepth[entry.depth],
-      getNodeDimensions(byId.get(entry.nodeId)!).width
-    );
+  const preserveBranchAnchors = options.preserveBranchAnchors ?? preserveManualOverrides;
+  const rootData = (root.data ?? {}) as Record<string, unknown>;
+  const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
+  const density = LIST_DENSITIES[options.density ?? storedDensity];
+  const rootRect = getNodeRect(root);
+  const generated: ListPlacements = { [rootId]: { ...root.position } };
+  const globallyPlaced = new Set<string>([rootId]);
+
+  type CompactSubtree = {
+    placements: ListPlacements;
+    nodeIds: string[];
+    bounds: NodeRect;
+  };
+
+  const mergeBounds = (id: string, first: NodeRect, second: NodeRect): NodeRect => createNodeRect(
+    id,
+    Math.min(first.left, second.left),
+    Math.min(first.top, second.top),
+    Math.max(first.right, second.right) - Math.min(first.left, second.left),
+    Math.max(first.bottom, second.bottom) - Math.min(first.top, second.top)
+  );
+
+  const layoutCompactSubtree = (
+    nodeId: string,
+    baseX: number,
+    top: number,
+    relativeDepth: number
+  ): CompactSubtree | null => {
+    const node = byId.get(nodeId);
+    if (!node || globallyPlaced.has(nodeId)) return null;
+    globallyPlaced.add(nodeId);
+    const placement = topLeftPosition(node, baseX + relativeDepth * density.childIndentX, top);
+    const nodeRect = rectAt(node, placement);
+    const placements: ListPlacements = { [nodeId]: placement };
+    const nodeIds = [nodeId];
+    let bounds = nodeRect;
+    let cursorY = nodeRect.bottom + Math.max(density.rowGapY, density.parentChildGapY);
+    const children = hierarchy.get(nodeId)?.childIds ?? [];
+
+    for (const childId of children) {
+      const child = layoutCompactSubtree(childId, baseX, cursorY, relativeDepth + 1);
+      if (!child) continue;
+      Object.assign(placements, child.placements);
+      nodeIds.push(...child.nodeIds);
+      bounds = mergeBounds(`branch-${nodeId}`, bounds, child.bounds);
+      cursorY = child.bounds.bottom + Math.max(density.rowGapY, density.siblingSubtreeGapY);
+    }
+    return { placements, nodeIds, bounds };
+  };
+
+  const branchColumns: BranchColumn[] = [];
+  for (const branchRootId of hierarchy.get(rootId)?.childIds ?? []) {
+    const branch = layoutCompactSubtree(branchRootId, 0, 0, 0);
+    if (!branch) continue;
+    branchColumns.push({
+      branchRootId,
+      nodeIds: branch.nodeIds,
+      bounds: branch.bounds,
+      width: branch.bounds.width,
+      height: branch.bounds.height,
+    });
+    Object.assign(generated, branch.placements);
   }
 
-  const rootRect = getNodeRect(root);
-  const columnX = [rootRect.left];
-  for (let depth = 0; depth < maxDepth; depth++) {
-    columnX[depth + 1] = columnX[depth]
-      + maxWidthByDepth[depth]
-      + Math.max(LIST_COLUMN_GUTTER, LIST_MIN_COLUMN_GAP);
+  const rowWidth = branchColumns.reduce((total, branch, index) => (
+    total + branch.width + (index === 0 ? 0 : density.branchColumnGapX)
+  ), 0);
+  const branchesTop = rootRect.bottom + density.rootToBranchGapY;
+  let nextBranchLeft = preserveBranchAnchors
+    ? Number.NEGATIVE_INFINITY
+    : rootRect.centerX - rowWidth / 2;
+  const preservedTop = preserveBranchAnchors && branchColumns.length
+    ? (() => {
+        const first = branchColumns[0];
+        const node = byId.get(first.branchRootId)!;
+        const localRootRect = rectAt(node, generated[first.branchRootId]);
+        return getNodeRect(node).top - (localRootRect.top - first.bounds.top);
+      })()
+    : branchesTop;
+  for (const branch of branchColumns) {
+    const branchNode = byId.get(branch.branchRootId)!;
+    const localRootRect = rectAt(branchNode, generated[branch.branchRootId]);
+    const existingRootRect = getNodeRect(branchNode);
+    const anchoredLeft = existingRootRect.left - (localRootRect.left - branch.bounds.left);
+    const targetLeft = preserveBranchAnchors
+      ? Math.max(nextBranchLeft, anchoredLeft)
+      : nextBranchLeft;
+    const dx = targetLeft - branch.bounds.left;
+    const dy = preservedTop - branch.bounds.top;
+    for (const nodeId of branch.nodeIds) {
+      generated[nodeId] = {
+        x: generated[nodeId].x + dx,
+        y: generated[nodeId].y + dy,
+      };
+    }
+    branch.bounds = createNodeRect(
+      branch.bounds.id,
+      branch.bounds.left + dx,
+      branch.bounds.top + dy,
+      branch.bounds.width,
+      branch.bounds.height
+    );
+    nextBranchLeft = branch.bounds.right + density.branchColumnGapX;
   }
 
   const placements: ListPlacements = {};
-  let nextY = rootRect.top;
-  let previousRootBranchId: string | null = null;
   for (const entry of traversal) {
-    if (
-      entry.directRootBranchId !== null &&
-      previousRootBranchId !== null &&
-      entry.directRootBranchId !== previousRootBranchId
-    ) {
-      nextY += LIST_ROOT_BRANCH_GAP;
-    }
-    if (entry.directRootBranchId !== null) previousRootBranchId = entry.directRootBranchId;
-
     const node = byId.get(entry.nodeId)!;
-    const { height } = getNodeDimensions(node);
-    const generated = topLeftPosition(node, columnX[entry.depth], nextY);
     placements[entry.nodeId] = preserveManualOverrides
       && (node.data as Record<string, unknown>).listManualOverride === true
       ? { ...node.position }
-      : generated;
-    nextY += height + LIST_ROW_GAP;
+      : generated[entry.nodeId];
   }
-
-  resolveRowCollisions(traversal, placements, byId, preserveManualOverrides);
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
     if (
@@ -301,7 +383,11 @@ function segmentKey(segment: OrthogonalSegment): string {
 }
 
 function connectorSegments(group: ListConnectorGroup): OrthogonalSegment[] {
-  return [group.lead, group.bus, ...group.branches.map((branch) => branch.segment)];
+  return [
+    ...group.leads,
+    group.bus,
+    ...group.branches.flatMap((branch) => branch.segments),
+  ];
 }
 
 export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConnectorModel {
@@ -352,45 +438,88 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     if (!childRects.length) continue;
 
     const parentRect = getNodeRect(parent);
-    const childColumnLeft = Math.min(...childRects.map((item) => item.rect.left));
-    const corridorStart = parentRect.right + 24;
-    const corridorEnd = childColumnLeft - 24;
-    const desired = parentRect.right + clamp((childColumnLeft - parentRect.right) * 0.45, 24, 40);
-    const minimum = Math.min(corridorStart, corridorEnd);
-    const maximum = Math.max(corridorStart, corridorEnd);
-    const candidates = [clamp(desired, minimum, maximum)];
-    for (let x = minimum; x <= maximum; x += 8) candidates.push(x);
+    let root: Node = parent;
+    const ancestorIds = new Set<string>();
+    while (!ancestorIds.has(root.id)) {
+      ancestorIds.add(root.id);
+      const data = (root.data ?? {}) as Record<string, unknown>;
+      if (data.layoutMode === "list") break;
+      const parentNodeId = hierarchy.get(root.id)?.parentId;
+      const ancestor = parentNodeId ? byId.get(parentNodeId) : null;
+      if (!ancestor) break;
+      root = ancestor;
+    }
+    const rootData = (root.data ?? {}) as Record<string, unknown>;
+    const density = LIST_DENSITIES[rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY];
+    const parentData = (parent.data ?? {}) as Record<string, unknown>;
+    const isRootGroup = parent.id === root.id && parentData.layoutMode === "list";
 
-    const buildGroup = (busX: number): ListConnectorGroup => {
-      const parentY = parentRect.centerY;
-      const childYs = childRects.map((item) => item.rect.centerY);
-      return {
-        parentId,
-        lead: { x1: parentRect.right, y1: parentY, x2: busX, y2: parentY },
-        bus: { x1: busX, y1: Math.min(parentY, ...childYs), x2: busX, y2: Math.max(parentY, ...childYs) },
-        branches: childRects.map(({ edge, rect }) => ({
-          edge,
-          childId: edge.target,
-          segment: { x1: busX, y1: rect.centerY, x2: rect.left, y2: rect.centerY },
-        })),
-      };
-    };
+    const group: ListConnectorGroup = isRootGroup
+      ? (() => {
+          const busY = Math.min(...childRects.map((item) => item.rect.top)) - density.connectorGutterX;
+          const childXs = childRects.map((item) => item.rect.centerX);
+          return {
+            parentId,
+            orientation: "horizontal" as const,
+            leads: [{
+              x1: parentRect.centerX,
+              y1: parentRect.bottom,
+              x2: parentRect.centerX,
+              y2: busY,
+            }],
+            bus: {
+              x1: Math.min(parentRect.centerX, ...childXs),
+              y1: busY,
+              x2: Math.max(parentRect.centerX, ...childXs),
+              y2: busY,
+            },
+            branches: childRects.map(({ edge, rect }) => ({
+              edge,
+              childId: edge.target,
+              segments: [{ x1: rect.centerX, y1: busY, x2: rect.centerX, y2: rect.top }],
+            })),
+          };
+        })()
+      : (() => {
+          const childLeft = Math.min(...childRects.map((item) => item.rect.left));
+          const trunkX = childLeft - density.connectorGutterX;
+          const junctionY = Math.min(
+            Math.min(...childRects.map((item) => item.rect.centerY)),
+            parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
+          );
+          const parentAnchorX = parentRect.left + Math.min(14, parentRect.width / 2);
+          return {
+            parentId,
+            orientation: "vertical" as const,
+            leads: [
+              { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
+              { x1: parentAnchorX, y1: junctionY, x2: trunkX, y2: junctionY },
+            ],
+            bus: {
+              x1: trunkX,
+              y1: junctionY,
+              x2: trunkX,
+              y2: Math.max(junctionY, ...childRects.map((item) => item.rect.centerY)),
+            },
+            branches: childRects.map(({ edge, rect }) => ({
+              edge,
+              childId: edge.target,
+              segments: [{ x1: trunkX, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
+            })),
+          };
+        })();
 
     const excluded = new Set([parentId, ...childRects.map((item) => item.edge.target)]);
     const obstacles = visibleRects.filter((rect) => !excluded.has(rect.id));
-    let best = buildGroup(candidates[0]);
-    let bestHits = connectorIntersectsObstacles(connectorSegments(best), obstacles);
-    for (const candidate of candidates.slice(1)) {
-      const group = buildGroup(candidate);
-      const hits = connectorIntersectsObstacles(connectorSegments(group), obstacles);
-      if (hits.length < bestHits.length) {
-        best = group;
-        bestHits = hits;
-        if (!hits.length) break;
-      }
+    const hits = connectorIntersectsObstacles(connectorSegments(group), obstacles);
+    hits.forEach((obstacleId) => obstacleIntersections.push({ parentId, obstacleId }));
+    groups.push(group);
+
+    if (process.env.NODE_ENV !== "production") {
+      const longStubs = group.branches.flatMap((branch) => branch.segments)
+        .filter((segment) => Math.abs(segment.x2 - segment.x1) + Math.abs(segment.y2 - segment.y1) > density.childIndentX);
+      if (longStubs.length) console.warn("[list-connectors] child stub exceeds one indentation step", { parentId, longStubs });
     }
-    bestHits.forEach((obstacleId) => obstacleIntersections.push({ parentId, obstacleId }));
-    groups.push(best);
   }
 
   const segmentCounts = new Map<string, number>();

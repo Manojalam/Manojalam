@@ -49,15 +49,42 @@ test("generated typography remains readable and follows hierarchy roles", () => 
   assert.ok((resolveLayoutFontSize(childData) ?? 0) >= 17);
 });
 
-test("List uses uniform column widths while allowing long text to increase row height", () => {
+test("List keeps readable node sizes and lets long text increase row height", () => {
   const { nodes, edges } = fixture();
   const hierarchy = buildHierarchy(nodes, edges);
   const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "list", "forest");
   const sizes = computeLayoutNodeSizes(styled.nodes, hierarchy, "root", "list");
 
-  assert.equal(sizes.get("short")?.width, sizes.get("long")?.width);
   assert.ok((sizes.get("long")?.height ?? 0) > (sizes.get("short")?.height ?? 0));
   assert.ok((sizes.get("root")?.width ?? 0) >= 240);
+});
+
+test("a wide node in one List branch does not widen another branch", () => {
+  const { nodes, edges } = fixture();
+  nodes.push(
+    {
+      id: "other",
+      type: "shape",
+      position: { x: 0, y: 300 },
+      data: { text: "Other", shapeType: "rounded", parentId: "root", childOrder: ["other-child"] },
+    },
+    {
+      id: "other-child",
+      type: "shape",
+      position: { x: 0, y: 400 },
+      data: { text: "Tiny", shapeType: "rounded", parentId: "other" },
+    }
+  );
+  (nodes[0].data as Record<string, unknown>).childOrder = ["short", "long", "other"];
+  edges.push(
+    { id: "root-other", source: "root", target: "other" },
+    { id: "other-child-edge", source: "other", target: "other-child" }
+  );
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "list", "forest");
+  const sizes = computeLayoutNodeSizes(styled.nodes, hierarchy, "root", "list");
+
+  assert.ok((sizes.get("long")?.width ?? 0) > (sizes.get("other-child")?.width ?? 0));
 });
 
 test("an explicit typography override wins over generated layout text size", () => {

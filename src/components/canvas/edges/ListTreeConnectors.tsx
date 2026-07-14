@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import type { VidyaEdgeData } from "@/lib/types";
 import {
   buildListConnectorModel,
+  DEFAULT_LIST_CONNECTOR_WIDTH,
   type ListConnectorGroup,
   type ListConnectorModel,
 } from "@/lib/layout/list-layout";
@@ -23,7 +24,7 @@ function edgeColor(edge: Edge, selected = edge.selected): string {
 
 function edgeWidth(edge: Edge): number {
   const configured = edgeData(edge).width;
-  return typeof configured === "number" && Number.isFinite(configured) ? configured : 1.35;
+  return typeof configured === "number" && Number.isFinite(configured) ? configured : DEFAULT_LIST_CONNECTOR_WIDTH;
 }
 
 function markerId(edgeId: string): string {
@@ -38,25 +39,47 @@ function visibleGroup(group: ListConnectorGroup, manualIds: Set<string>): ListCo
   if (manualIds.has(group.parentId)) return null;
   const branches = group.branches.filter((branch) => !manualIds.has(branch.childId));
   if (!branches.length) return null;
-  const branchYs = branches.map((branch) => branch.segment.y1);
+  const junction = group.leads[group.leads.length - 1];
+  if (group.orientation === "horizontal") {
+    const branchXs = branches.map((branch) => branch.segments[0].x1);
+    return {
+      ...group,
+      branches,
+      bus: {
+        ...group.bus,
+        x1: Math.min(junction.x2, ...branchXs),
+        x2: Math.max(junction.x2, ...branchXs),
+      },
+    };
+  }
+  const branchYs = branches.map((branch) => branch.segments[0].y1);
   return {
     ...group,
     branches,
     bus: {
       ...group.bus,
-      y1: Math.min(group.lead.y1, ...branchYs),
-      y2: Math.max(group.lead.y1, ...branchYs),
+      y1: Math.min(junction.y2, ...branchYs),
+      y2: Math.max(junction.y2, ...branchYs),
     },
   };
 }
 
-function selectEdge(edgeId: string): void {
+function selectEdge(edgeId: string, additive: boolean): void {
   useCanvasStore.setState((state) => ({
-    nodes: state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
-    edges: state.edges.map((edge) => ({ ...edge, selected: edge.id === edgeId })),
-    selectedNodeIds: [],
-    selectedEdgeIds: [edgeId],
+    nodes: additive ? state.nodes : state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
+    edges: state.edges.map((edge) => ({
+      ...edge,
+      selected: additive ? edge.selected || edge.id === edgeId : edge.id === edgeId,
+    })),
+    selectedNodeIds: additive ? state.selectedNodeIds : [],
+    selectedEdgeIds: additive
+      ? [...new Set([...state.selectedEdgeIds, edgeId])]
+      : [edgeId],
   }));
+}
+
+function branchPath(group: { segments: Array<{ x1: number; y1: number; x2: number; y2: number }> }): string {
+  return group.segments.map(segmentPath).join(" ");
 }
 
 /**
@@ -104,7 +127,7 @@ export function ListTreeConnectors() {
           <defs>
             {branches.map(({ edge }) => {
               const data = edgeData(edge);
-              if (data.arrowEnd === false) return null;
+              if (data.arrowEnd !== true) return null;
               const color = edgeColor(edge);
               return (
                 <marker
@@ -129,10 +152,11 @@ export function ListTreeConnectors() {
             const data = edgeData(baseEdge);
             const parentData = (nodesById.get(group.parentId)?.data ?? {}) as Record<string, unknown>;
             const trunkColor = resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
+            const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
             const commonStyle = {
               fill: "none",
               stroke: trunkColor,
-              strokeWidth: edgeWidth(baseEdge),
+              strokeWidth: trunkWidth,
               strokeDasharray: data.dashed ? "6 4" : undefined,
               strokeLinecap: "round" as const,
               strokeLinejoin: "round" as const,
@@ -140,11 +164,11 @@ export function ListTreeConnectors() {
             };
             return (
               <g key={group.parentId}>
-                <path d={`${segmentPath(group.lead)} ${segmentPath(group.bus)}`} {...commonStyle} />
-                {group.branches.map(({ edge, segment }) => {
+                <path d={`${group.leads.map(segmentPath).join(" ")} ${segmentPath(group.bus)}`} {...commonStyle} />
+                {group.branches.map(({ edge, segments }) => {
                   const branchData = edgeData(edge);
                   const color = edgeColor(edge);
-                  const path = segmentPath(segment);
+                  const path = branchPath({ segments });
                   return (
                     <g key={edge.id}>
                       <path
@@ -156,7 +180,7 @@ export function ListTreeConnectors() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         vectorEffect="non-scaling-stroke"
-                        markerEnd={branchData.arrowEnd === false ? undefined : `url(#${markerId(edge.id)})`}
+                        markerEnd={branchData.arrowEnd === true ? `url(#${markerId(edge.id)})` : undefined}
                       />
                       <path
                         d={path}
@@ -167,7 +191,7 @@ export function ListTreeConnectors() {
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => {
                           event.stopPropagation();
-                          selectEdge(edge.id);
+                          selectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey);
                         }}
                       />
                     </g>
@@ -180,7 +204,9 @@ export function ListTreeConnectors() {
       </ViewportPortal>
 
       <EdgeLabelRenderer>
-        {selectedBranches.map(({ edge, segment }) => (
+        {selectedBranches.map(({ edge, segments }) => {
+          const segment = segments[segments.length - 1];
+          return (
           <button
             key={edge.id}
             type="button"
@@ -200,10 +226,12 @@ export function ListTreeConnectors() {
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        ))}
-        {branches.map(({ edge, segment }) => {
+          );
+        })}
+        {branches.map(({ edge, segments }) => {
           const label = edgeData(edge).label;
           if (!label) return null;
+          const segment = segments[segments.length - 1];
           return (
             <div
               key={`label-${edge.id}`}

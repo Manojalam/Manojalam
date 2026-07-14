@@ -51,6 +51,8 @@ import type { LayoutMode, RadialColorScheme } from "@/lib/types";
 import {
   fitShapeToContent,
   legacyRadiusToPercent,
+  MAX_AUTOFIT_NODE_HEIGHT,
+  MAX_AUTOFIT_NODE_WIDTH,
   type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
 
@@ -826,6 +828,10 @@ const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
   "collapsed", "parentId", "childOrder", "matrixDensity", "matrixGridVisible",
 ]);
+const LIST_REFLOW_FIELDS = new Set([
+  ...AUTOFIT_FIELDS,
+  "collapsed", "parentId", "childOrder", "listDensity",
+]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
 const MAX_AUTO_TEXT_WIDTH = 520;
@@ -1003,6 +1009,8 @@ function contentFitSize(node: Node, measuredContent?: ContentSize): { width: num
     minWidth: node.type === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
     minHeight: node.type === "sticky" ? 90 : node.type === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
     maxContentWidth: node.type === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
+    maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+    maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
   });
   const targetWidth = fitted.width;
   const targetHeight = fitted.height;
@@ -1013,6 +1021,10 @@ function contentFitSize(node: Node, measuredContent?: ContentSize): { width: num
 
 function patchNeedsMatrixReflow(patch: Record<string, unknown>): boolean {
   return Object.keys(patch).some((key) => MATRIX_REFLOW_FIELDS.has(key));
+}
+
+function patchNeedsListReflow(patch: Record<string, unknown>): boolean {
+  return Object.keys(patch).some((key) => LIST_REFLOW_FIELDS.has(key));
 }
 
 function normalizeSunburstChartSizes(
@@ -2021,9 +2033,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         new Set(getSubtree(layoutRoot.id, nextHierarchy))
       );
     } else if (layoutRoot.mode && !useSunburst) {
+      const placements = layoutRoot.mode === "list"
+        ? computeListLayout(
+            layoutRoot.id,
+            nextHierarchy,
+            new Map(nextNodes.map((node) => [node.id, node])),
+            { preserveBranchAnchors: true }
+          )
+        : computeLayout(nextNodes, nextEdges, layoutRoot.mode, { rootId: layoutRoot.id });
       placedNodes = applyPlacements(
         nextNodes,
-        computeLayout(nextNodes, nextEdges, layoutRoot.mode, { rootId: layoutRoot.id })
+        placements
       );
     } else if (!useSunburst) {
       for (const childId of childIds) {
@@ -2052,6 +2072,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selectedNodeIds: keepParentSelected ? [parentId] : [childIds[childIds.length - 1]],
       saveStatus: "unsaved",
     });
+    requestNodeInternalsRefresh(childIds);
+    if (!keepParentSelected && childIds.length === 1) requestNodeTextEdit(childIds[0]);
   },
 
   createSiblingNode: (nodeId) => {
@@ -2136,7 +2158,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : applyPlacements(
           nextNodes,
           nextLayoutRoot.mode && !useSunburst
-            ? computeLayout(nextNodes, newEdges, nextLayoutRoot.mode, { rootId: nextLayoutRoot.id })
+            ? nextLayoutRoot.mode === "list"
+              ? computeListLayout(
+                  nextLayoutRoot.id,
+                  nextHierarchy,
+                  new Map(nextNodes.map((candidate) => [candidate.id, candidate])),
+                  { preserveBranchAnchors: true }
+                )
+              : computeLayout(nextNodes, newEdges, nextLayoutRoot.mode, { rootId: nextLayoutRoot.id })
             : resolveInsertedNodeCollisions(nextNodes, siblingId)
         );
     const styledLayout = applyLayoutPalette(
@@ -2199,6 +2228,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const nodes = state.nodes.map((node) => node.id === nodeId && updatedNode ? updatedNode : node);
       return { nodes, saveStatus: "unsaved" };
     });
+    if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
   },
 
@@ -2254,6 +2284,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         data: { ...(node.data ?? {}), intrinsicContentSize: normalizedContent },
       };
       let fitted = fitNodeAfterContentChange(withMeasurement, normalizedContent);
+
+      if (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm") {
+        const provisional = state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate);
+        const collisionPlacement = resolveInsertedNodeCollisions(provisional, nodeId, 32, 24)[nodeId];
+        if (collisionPlacement) fitted = { ...fitted, position: collisionPlacement };
+      }
 
       const prevStyle = (node.style ?? {}) as Record<string, unknown>;
       const nextStyle = (fitted.style ?? {}) as Record<string, unknown>;
@@ -2325,18 +2361,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
 
       const current = styleSizeOf(node);
-      let width = Math.max(current.w, Math.ceil(bounds.width));
-      let height = Math.max(current.h, Math.ceil(bounds.height));
+      let width = Math.max(current.w, Math.min(MAX_AUTOFIT_NODE_WIDTH, Math.ceil(bounds.width)));
+      let height = Math.max(current.h, Math.min(MAX_AUTOFIT_NODE_HEIGHT, Math.ceil(bounds.height)));
       const shapeType = ((node.data ?? {}) as Record<string, unknown>).shapeType as string | undefined;
       if (shapeType === "circle" || shapeType === "diamond" || shapeType === "star" || shapeType === "flower") {
-        const size = Math.max(width, height);
+        const currentSquareSize = Math.max(current.w, current.h);
+        const size = Math.max(
+          currentSquareSize,
+          Math.min(Math.max(width, height), MAX_AUTOFIT_NODE_HEIGHT, MAX_AUTOFIT_NODE_WIDTH)
+        );
         width = size;
         height = size;
       }
 
       if (width <= current.w + 1 && height <= current.h + 1) return {};
 
-      const fitted = resetNodeDimensions({ ...node, position: node.position }, width, height);
+      let fitted = resetNodeDimensions({ ...node, position: node.position }, width, height);
+      if (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm") {
+        const provisional = state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate);
+        const collisionPlacement = resolveInsertedNodeCollisions(provisional, nodeId, 32, 24)[nodeId];
+        if (collisionPlacement) fitted = { ...fitted, position: collisionPlacement };
+      }
 
       return {
         nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),
@@ -2374,6 +2419,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       minWidth: newType === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
       minHeight: newType === "sticky" ? 90 : newType === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
       maxContentWidth: newType === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
+      maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+      maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
     });
 
     const convertedData = matrixMode
@@ -2384,7 +2431,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : newData;
     const oldRect = getNodeRect(node);
     const topLeft = resizeAroundAnchor(oldRect, fittedSize, "center");
-    const convertedNode = resetNodeDimensions({
+    let convertedNode = resetNodeDimensions({
       ...node,
       type: newType,
       data: convertedData,
@@ -2392,6 +2439,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ? node.position
         : nodePositionFromTopLeft(node, topLeft, fittedSize),
     }, fittedSize.width, fittedSize.height);
+    const layoutMode = findLayoutRoot(nodeId, nodes, hierarchy).mode;
+    if (!matrixMode && (!layoutMode || layoutMode === "freeForm" || layoutMode === "fromParentFreeForm")) {
+      const provisional = nodes.map((candidate) => candidate.id === nodeId ? convertedNode : candidate);
+      const collisionPlacement = resolveInsertedNodeCollisions(provisional, nodeId, 32, 24)[nodeId];
+      if (collisionPlacement) convertedNode = { ...convertedNode, position: collisionPlacement };
+    }
     set({
       nodes: nodes.map((n) => n.id === nodeId
         ? matrixMode ? { ...convertedNode, style: n.style } : convertedNode
