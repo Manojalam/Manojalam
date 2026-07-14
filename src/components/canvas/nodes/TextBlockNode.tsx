@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
-  resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
+  resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity, resolveBorderStyle,
 } from "@/lib/style-utils";
 import type { TextBlockNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -36,7 +36,8 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
-  const bWidth       = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
+  const resolvedBorderWidth = resolveBorderWidth(dd);
+  const bWidth       = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 240,
     height: typeof height === "number" && height > 0 ? height : 56,
@@ -44,7 +45,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const bRadius      = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
     : resolveNodeBorderRadius(dd, nodeSize, 32);
-  const bStyle       = (dd.borderStyle as string) ?? "solid";
+  const bStyle       = resolveBorderStyle(dd);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];

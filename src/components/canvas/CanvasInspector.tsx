@@ -503,16 +503,22 @@ function normalizeWholeTextHighlight(data: Record<string, unknown>, value: unkno
 }
 
 function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
-  if (key === "fontSize") return normalizeWholeBoxFontSize(data, value);
-  if (key === "textHighlightColor") return normalizeWholeTextHighlight(data, value);
-  if (["fontFamily", "fontWeight", "fontStyle", "textColor", "textAlign"].includes(key)) {
-    return normalizeWholeTextFormat(
+  let patch: Record<string, unknown>;
+  if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, value);
+  else if (key === "textHighlightColor") patch = normalizeWholeTextHighlight(data, value);
+  else if (["fontFamily", "fontWeight", "fontStyle", "textColor", "textAlign"].includes(key)) {
+    patch = normalizeWholeTextFormat(
       data,
       key as "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
       value
     );
-  }
-  return { [key]: value };
+  } else patch = { [key]: value };
+
+  if (!data.layoutVisualStyle) return patch;
+  if (["fillColor", "fillOpacity", "color"].includes(key)) patch.layoutAutoFill = false;
+  if (["borderColor", "borderWidth", "borderStyle", "color"].includes(key)) patch.layoutAutoBorder = false;
+  if (key === "textColor") patch.layoutAutoText = false;
+  return patch;
 }
 
 const INLINE_TEXT_FIELDS = new Set<InlineTextFormatKey>([

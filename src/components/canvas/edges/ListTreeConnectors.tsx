@@ -11,13 +11,14 @@ import {
 } from "@/lib/layout/list-layout";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
+import { resolveAccentColor } from "@/lib/style-utils";
 
 function edgeData(edge: Edge): VidyaEdgeData {
   return (edge.data ?? {}) as VidyaEdgeData;
 }
 
 function edgeColor(edge: Edge, selected = edge.selected): string {
-  return selected ? "#4f46e5" : edgeData(edge).color ?? "#94a3b8";
+  return selected ? "#4f46e5" : edgeData(edge).color ?? edgeData(edge).layoutColor ?? "#94a3b8";
 }
 
 function edgeWidth(edge: Edge): number {
@@ -85,6 +86,7 @@ export function ListTreeConnectors() {
   const groups = useMemo(() => model.groups
     .map((group) => visibleGroup(group, manualIds))
     .filter((group): group is ListConnectorGroup => group !== null), [manualIds, model.groups]);
+  const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   if (relationshipSelection || !groups.length) return null;
 
@@ -125,9 +127,11 @@ export function ListTreeConnectors() {
           {groups.map((group) => {
             const baseEdge = group.branches[0].edge;
             const data = edgeData(baseEdge);
+            const parentData = (nodesById.get(group.parentId)?.data ?? {}) as Record<string, unknown>;
+            const trunkColor = resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
             const commonStyle = {
               fill: "none",
-              stroke: edgeColor(baseEdge, false),
+              stroke: trunkColor,
               strokeWidth: edgeWidth(baseEdge),
               strokeDasharray: data.dashed ? "6 4" : undefined,
               strokeLinecap: "round" as const,

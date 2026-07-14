@@ -29,6 +29,10 @@ import {
   type LayoutPlacement,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import {
+  applyLayoutPalette,
+  supportsAutomaticLayoutColors,
+} from "@/lib/layout/layout-palette";
 import { computeListLayout } from "@/lib/layout/list-layout";
 import {
   computeMatrixLayout,
@@ -39,7 +43,7 @@ import {
 } from "@/lib/layout/matrix-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
-import type { LayoutMode } from "@/lib/types";
+import type { LayoutMode, RadialColorScheme } from "@/lib/types";
 import {
   fitShapeToContent,
   legacyRadiusToPercent,
@@ -126,6 +130,7 @@ interface CanvasState {
   updateBoardTitle: (title: string) => void;
   performSearch: (query: string) => void;
   applyLayout: (mode: LayoutMode, rootIdOverride?: string) => void;
+  applyLayoutColorScheme: (rootId: string, scheme: RadialColorScheme, resetOverrides?: boolean) => void;
 }
 
 const pendingListReflowNodeIds = new Set<string>();
@@ -470,6 +475,38 @@ function findLayoutRoot(nodeId: string, nodes: Node[], hierarchy: ReturnType<typ
   return { id: fallback };
 }
 
+function layoutSchemeValue(nodes: Node[], rootId: string): unknown {
+  const data = (nodes.find((node) => node.id === rootId)?.data ?? {}) as Record<string, unknown>;
+  return data.layoutColorScheme ?? data.radialColorScheme;
+}
+
+function applyPersistedLayoutPalettes(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
+  const hierarchyNodes = nodes.filter((node) =>
+    !isAutoMatrixFrame(node)
+    && !isAutoSunburstNode(node)
+    && node.type !== "relationshipDiagram"
+  );
+  const hierarchy = buildHierarchy(hierarchyNodes, edges);
+  let nextNodes = nodes;
+  let nextEdges = edges;
+  for (const node of hierarchyNodes) {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const mode = data.layoutMode as LayoutMode | undefined;
+    if (!supportsAutomaticLayoutColors(mode)) continue;
+    const styled = applyLayoutPalette(
+      nextNodes,
+      nextEdges,
+      hierarchy,
+      node.id,
+      mode,
+      data.layoutColorScheme ?? data.radialColorScheme
+    );
+    nextNodes = styled.nodes;
+    nextEdges = styled.edges;
+  }
+  return { nodes: nextNodes, edges: nextEdges };
+}
+
 const BOARD_MATRIX_FRAME_KEY = "__board__";
 const BOARD_SUNBURST_KEY = "__board__";
 
@@ -577,6 +614,14 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
   const maxY = Math.max(...rects.map((r) => r.y + r.height));
   const root = scopedNodes.find((node) => node.id === key);
   const rootData = (root?.data ?? {}) as Record<string, unknown>;
+  const rootVisualStyle = rootData.layoutVisualStyle as Partial<{
+    fillColor: string;
+    borderColor: string;
+  }> | undefined;
+  const frameColor = rootVisualStyle?.borderColor ?? "#334155";
+  const frameBackground = rootVisualStyle?.fillColor
+    ? `color-mix(in srgb, ${rootVisualStyle.fillColor} 8%, transparent)`
+    : "rgba(15, 23, 42, 0.015)";
   const pad = 4;
   const frame: Node = {
     id: `matrix-frame-${key}`,
@@ -584,8 +629,8 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
     position: { x: minX - pad, y: minY - pad },
     data: {
       title: "",
-      color: "#334155",
-      background: "rgba(15, 23, 42, 0.015)",
+      color: frameColor,
+      background: frameBackground,
       borderStyle: "solid",
       locked: true,
       matrixFrameFor: key,
@@ -1264,8 +1309,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         || JSON.stringify(before.childOrder ?? []) !== JSON.stringify(after.childOrder ?? []);
     });
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
-    const edges = assignDefaultHandles(parentedNodes, board.content.edges);
-    const nodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, edges));
+    const handledEdges = assignDefaultHandles(parentedNodes, board.content.edges);
+    const normalizedNodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, handledEdges));
+    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, handledEdges);
+    const nodes = styledBoard.nodes;
+    const edges = styledBoard.edges;
     const { relationships, relationshipFans } = normalizeRelationshipState(
       nodes,
       board.content.relationships,
@@ -1923,17 +1971,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         placedNodes = applyPlacements(placedNodes, resolveInsertedNodeCollisions(placedNodes, childId));
       }
     }
+    const styledLayout = applyLayoutPalette(
+      placedNodes,
+      nextEdges,
+      nextHierarchy,
+      layoutRoot.id,
+      layoutRoot.mode ?? "freeForm",
+      layoutSchemeValue(nextNodes, layoutRoot.id)
+    );
     const rootScope = new Set(getSubtree(layoutRoot.id, nextHierarchy));
     const matrixNodes = layoutRoot.mode === "matrix"
-      ? withMatrixFrame(placedNodes, rootScope, matrixFrameKey(layoutRoot.id), true)
-      : placedNodes;
+      ? withMatrixFrame(styledLayout.nodes, rootScope, matrixFrameKey(layoutRoot.id), true)
+      : styledLayout.nodes;
     const finalNodes = useSunburst
       ? withSunburstNode(matrixNodes, nextHierarchy, rootScope, sunburstFrameKey(layoutRoot.id), layoutRoot.id, true)
       : matrixNodes;
 
     set({
       nodes: finalNodes,
-      edges: nextEdges,
+      edges: styledLayout.edges,
       selectedNodeIds: keepParentSelected ? [parentId] : [childIds[childIds.length - 1]],
       saveStatus: "unsaved",
     });
@@ -2024,17 +2080,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             ? computeLayout(nextNodes, newEdges, nextLayoutRoot.mode, { rootId: nextLayoutRoot.id })
             : resolveInsertedNodeCollisions(nextNodes, siblingId)
         );
+    const styledLayout = applyLayoutPalette(
+      placedNodes,
+      newEdges,
+      nextHierarchy,
+      nextLayoutRoot.id,
+      nextLayoutRoot.mode ?? "freeForm",
+      layoutSchemeValue(nextNodes, nextLayoutRoot.id)
+    );
     const rootScope = new Set(getSubtree(nextLayoutRoot.id, nextHierarchy));
     const matrixNodes = nextLayoutRoot.mode === "matrix"
-      ? withMatrixFrame(placedNodes, rootScope, matrixFrameKey(nextLayoutRoot.id), true)
-      : placedNodes;
+      ? withMatrixFrame(styledLayout.nodes, rootScope, matrixFrameKey(nextLayoutRoot.id), true)
+      : styledLayout.nodes;
     const finalNodes = useSunburst
       ? withSunburstNode(matrixNodes, nextHierarchy, rootScope, sunburstFrameKey(nextLayoutRoot.id), nextLayoutRoot.id, true)
       : matrixNodes;
 
     set({
       nodes: finalNodes,
-      edges: newEdges,
+      edges: styledLayout.edges,
       selectedNodeIds: [siblingId],
       saveStatus: "unsaved",
     });
@@ -2064,6 +2128,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     get().scheduleListReflow(nodeId);
     get().scheduleMatrixReflow(nodeId);
+    get().scheduleStructuredReflow(nodeId);
   },
 
   updateNodeData: (nodeId, data) => {
@@ -2300,7 +2365,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
 
       let changed = false;
-      const nextNodes = state.nodes.map((node) => {
+      let nextNodes = state.nodes.map((node) => {
         const placement = placements[node.id];
         if (!placement) return node;
         if (
@@ -2310,7 +2375,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         changed = true;
         return { ...node, position: { x: placement.x, y: placement.y } };
       });
-      if (changed) set({ nodes: nextNodes, saveStatus: "unsaved" });
+      let nextEdges = state.edges;
+      for (const rootId of rootIds) {
+        const styled = applyLayoutPalette(
+          nextNodes,
+          nextEdges,
+          hierarchy,
+          rootId,
+          "list",
+          layoutSchemeValue(nextNodes, rootId)
+        );
+        nextNodes = styled.nodes;
+        nextEdges = styled.edges;
+      }
+      if (changed || rootIds.size) set({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
     }, 96);
   },
 
@@ -2363,6 +2441,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         const result = computeMatrixLayout(rootId, currentHierarchy, currentById);
         const scopeIds = new Set(getSubtree(rootId, currentHierarchy));
         nextNodes = applyMatrixResultToNodes(nextNodes, result, currentHierarchy, scopeIds);
+        const styled = applyLayoutPalette(
+          nextNodes,
+          nextEdges,
+          currentHierarchy,
+          rootId,
+          "matrix",
+          layoutSchemeValue(nextNodes, rootId)
+        );
+        nextNodes = styled.nodes;
+        nextEdges = styled.edges;
         nextNodes = withMatrixFrame(nextNodes, scopeIds, matrixFrameKey(rootId), true);
         nextEdges = nextEdges.map((edge) => {
           const data = (edge.data ?? {}) as Record<string, unknown>;
@@ -2431,7 +2519,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         Object.assign(placements, computeLayout(layoutNodes, state.edges, mode, { rootId }));
       }
       let changed = false;
-      const nodes = state.nodes.map((node) => {
+      let nodes = state.nodes.map((node) => {
         const placement = placements[node.id];
         if (!placement) return node;
         if (
@@ -2441,7 +2529,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         changed = true;
         return { ...node, position: { x: placement.x, y: placement.y } };
       });
-      if (changed) set({ nodes, saveStatus: "unsaved" });
+      let nextEdges = state.edges;
+      for (const [rootId, mode] of roots) {
+        const styled = applyLayoutPalette(
+          nodes,
+          nextEdges,
+          hierarchy,
+          rootId,
+          mode,
+          layoutSchemeValue(nodes, rootId)
+        );
+        nodes = styled.nodes;
+        nextEdges = styled.edges;
+      }
+      if (changed || roots.size) set({ nodes, edges: nextEdges, saveStatus: "unsaved" });
     }, 96);
   },
 
@@ -2600,10 +2701,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             data,
           };
         });
+    const paletteResult = applyLayoutPalette(
+      laidOutNodes,
+      newEdges,
+      hierarchy,
+      rootId,
+      mode,
+      layoutSchemeValue(layoutNodes, rootId)
+    );
     const existingMatrixFrames = nodes.filter(isAutoMatrixFrame);
     const frameKey = matrixFrameKey(rootId);
     const framedNodes = withMatrixFrame(
-      [...laidOutNodes, ...existingMatrixFrames],
+      [...paletteResult.nodes, ...existingMatrixFrames],
       scopeIds,
       frameKey,
       mode === "matrix"
@@ -2623,11 +2732,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({
       nodes: selectedNodes,
       edges: mode === "matrix"
-        ? newEdges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
-        : newEdges,
+        ? paletteResult.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
+        : paletteResult.edges,
       ...(mode === "matrix" ? { selectedNodeIds: [rootId], selectedEdgeIds: [] } : {}),
       saveStatus: "unsaved",
     });
+  },
+
+  applyLayoutColorScheme: (rootId, scheme, resetOverrides = false) => {
+    const { nodes, edges } = get();
+    const hierarchyNodes = nodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    const root = hierarchyNodes.find((node) => node.id === rootId);
+    if (!root) return;
+    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+    if (!supportsAutomaticLayoutColors(mode)) return;
+
+    const hierarchy = buildHierarchy(hierarchyNodes, edges);
+    get().pushHistory();
+    const styled = applyLayoutPalette(nodes, edges, hierarchy, rootId, mode, scheme, { resetOverrides });
+    const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    const nextNodes = mode === "matrix"
+      ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true)
+      : styled.nodes;
+    set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
   },
 
   updateBoardTitle: (title) =>

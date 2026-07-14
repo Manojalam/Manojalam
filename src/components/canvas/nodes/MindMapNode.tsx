@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   getTextStyle, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
+  resolveBorderStyle, resolveAccentColor,
 } from "@/lib/style-utils";
 import type { MindMapNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -30,13 +31,14 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const drawingRegionOpacity = useUIStore((s) => s.drawingRegionOpacity);
   const isDrawing           = drawingModeNodeId === id;
 
-  const nodeColor    = d.color ?? "#6366f1";
+  const nodeColor    = resolveAccentColor(dd) ?? d.color ?? "#6366f1";
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd);
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
-  const borderWidth  = matrixCell ? (matrixGridVisible ? 1 : 0) : resolveBorderWidth(dd);
+  const resolvedBorderWidth = resolveBorderWidth(dd);
+  const borderWidth  = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 180,
     height: typeof height === "number" && height > 0 ? height : 72,
@@ -44,7 +46,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const borderRadius = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
     : resolveNodeBorderRadius(dd, nodeSize, 40);
-  const bStyle       = (dd.borderStyle as string) ?? "solid";
+  const bStyle       = resolveBorderStyle(dd);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
@@ -164,7 +166,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
           <div className="relative z-10 mt-1.5 flex flex-wrap gap-1">
             {d.tags.slice(0, 4).map((tag) => (
               <span key={tag} className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                style={{ backgroundColor: `${nodeColor}25`, color: nodeColor }}>{tag}</span>
+                style={{ backgroundColor: `color-mix(in srgb, ${nodeColor} 15%, transparent)`, color: nodeColor }}>{tag}</span>
             ))}
           </div>
         )}

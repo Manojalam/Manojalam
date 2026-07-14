@@ -1,11 +1,13 @@
 "use client";
 
-import { Grid3X3, Maximize2, RefreshCw, Ungroup, X } from "lucide-react";
+import { Grid3X3, Maximize2, Palette, RefreshCw, RotateCcw, Ungroup, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { LAYOUT_OPTIONS, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
+import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { cn } from "@/lib/utils";
 
 // ── Schematic SVG previews (56×40) ────────────────────────────────────────────
@@ -80,6 +82,7 @@ export function LayoutPanel() {
   const open = useUIStore((s) => s.layoutPanelOpen);
   const setOpen = useUIStore((s) => s.setLayoutPanelOpen);
   const applyLayout = useCanvasStore((s) => s.applyLayout);
+  const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
@@ -102,6 +105,27 @@ export function LayoutPanel() {
     ? nodes.find((node) => node.id === matrixRootId) ?? null
     : currentMode === "matrix" ? selectedNode : null;
   const matrixBranchIds = matrixRoot ? getSubtree(matrixRoot.id, hierarchy) : [];
+  let paletteRoot = matrixRoot;
+  if (!paletteRoot && selectedNode) {
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    let ancestorId: string | null = selectedNode.id;
+    const seen = new Set<string>();
+    while (ancestorId && !seen.has(ancestorId)) {
+      seen.add(ancestorId);
+      const candidate = nodesById.get(ancestorId) ?? null;
+      const candidateMode = ((candidate?.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+      if (candidate && supportsAutomaticLayoutColors(candidateMode)) {
+        paletteRoot = candidate;
+        break;
+      }
+      ancestorId = hierarchy.get(ancestorId)?.parentId ?? null;
+    }
+  }
+  const paletteRootData = (paletteRoot?.data ?? {}) as Record<string, unknown>;
+  const paletteMode = paletteRootData.layoutMode as LayoutMode | undefined;
+  const activeColorScheme = radialColorScheme(
+    paletteRootData.layoutColorScheme ?? paletteRootData.radialColorScheme
+  ).id;
 
   const requestMeasuredLayout = (mode: "list" | "matrix", rootId: string, nodeIds: string[]) => {
     window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
@@ -208,6 +232,58 @@ export function LayoutPanel() {
               >
                 Fit
               </button>
+            </div>
+          </div>
+        )}
+
+        {paletteRoot && supportsAutomaticLayoutColors(paletteMode) && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <Palette className="h-3.5 w-3.5" /> Layout colors
+              </div>
+              <button
+                type="button"
+                title="Restore automatic colors"
+                aria-label="Restore automatic colors"
+                onClick={() => {
+                  applyLayoutColorScheme(paletteRoot!.id, activeColorScheme, true);
+                  toast.success("Restored automatic hierarchy colors.", {
+                    action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                  });
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {RADIAL_COLOR_SCHEMES.map((scheme) => (
+                <button
+                  key={scheme.id}
+                  type="button"
+                  title={`${scheme.label} hierarchy colors`}
+                  aria-label={`${scheme.label} hierarchy colors`}
+                  onClick={() => applyLayoutColorScheme(paletteRoot!.id, scheme.id)}
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 text-left text-[9px]",
+                    activeColorScheme === scheme.id
+                      ? "border-primary ring-1 ring-primary/20"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  <span className="flex shrink-0 -space-x-0.5">
+                    {scheme.swatches.slice(0, 3).map((color) => (
+                      <span
+                        key={color}
+                        className="h-3 w-3 rounded-full border border-background"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </span>
+                  <span className="truncate">{scheme.label}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}
