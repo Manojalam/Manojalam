@@ -4,6 +4,11 @@ import {
   isTransparentRelationshipDiagramBackground,
   type RelationshipGroup,
 } from "@/lib/relationship-diagram";
+import {
+  buildFlowerPetalGeometry,
+  flowerPetalGeometryBounds,
+} from "@/lib/canvas/flower-petal-geometry";
+import { layoutRelationshipFlowerPetals } from "@/lib/canvas/relationship-flower-layout";
 import type {
   RelationshipDiagramItemStyle,
   RelationshipDiagramPalette,
@@ -595,6 +600,8 @@ type FlowerPetalMetric = {
   targetFontSize: number;
   targetLineHeight: number;
   targetPlacements: FlowerTargetPlacement[];
+  angle: number;
+  layerIndex: number;
   radius: number;
   halfExtent: number;
 };
@@ -633,7 +640,6 @@ function flowerTargetColumnWidth(
 }
 
 function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpec) {
-  const count = Math.max(1, groups.length);
   const hubRadius = Math.max(104, Math.min(142, spec.textSize * 6.7));
   const itemGap = spec.density === "compact" ? 7 : spec.density === "spacious" ? 14 : 10;
   const columnGap = spec.density === "compact" ? 18 : spec.density === "spacious" ? 30 : 24;
@@ -701,32 +707,52 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
     };
   });
 
-  const maximumHalfExtent = unpositionedPetals.length
-    ? Math.max(...unpositionedPetals.map((petal) => petal.halfExtent))
-    : 220;
-  const maximumHalfWidth = unpositionedPetals.length
-    ? Math.max(...unpositionedPetals.map((petal) => petal.width / 2 + 24))
-    : 120;
-  const maximumHalfHeight = unpositionedPetals.length
-    ? Math.max(...unpositionedPetals.map((petal) => petal.height / 2 + 24))
-    : 120;
-  const angularSeparation = count > 1 ? Math.sin(Math.PI / count) : 1;
-  const petalGap = spec.density === "compact" ? 10 : spec.density === "spacious" ? 24 : 16;
-  const contentRadius = hubRadius + maximumHalfHeight * 0.72 + 36;
-  const separationRadius = count > 1
-    ? (maximumHalfWidth + petalGap / 2) / Math.max(0.1, angularSeparation)
-    : contentRadius;
-  // Petals are allowed to overlap slightly, as a real flower does. Basing the
-  // radius on the tangential width instead of the full rectangular diagonal
-  // prevents dense diagrams from turning into very long geometric spokes.
-  const radius = Math.max(contentRadius, separationRadius * 0.76);
-  const petals: FlowerPetalMetric[] = unpositionedPetals.map((petal) => ({
-    ...petal,
-    radius,
+  const layoutPetals = unpositionedPetals.map((petal, index) => {
+    const rotation = itemStyle(groups[index], spec).rotation ?? 0;
+    const radians = rotation * Math.PI / 180;
+    const cosine = Math.abs(Math.cos(radians));
+    const sine = Math.abs(Math.sin(radians));
+    return {
+      width: cosine * petal.width + sine * petal.height,
+      height: sine * petal.width + cosine * petal.height,
+    };
+  });
+  const layout = layoutRelationshipFlowerPetals(layoutPetals, {
+    hubRadius,
+    maxPerLayer: spec.flowerPetalsPerLayer,
+    density: spec.density,
+  });
+  const petals: FlowerPetalMetric[] = layout.petals.map((placement) => ({
+    ...unpositionedPetals[placement.index],
+    angle: placement.angle,
+    layerIndex: placement.layerIndex,
+    radius: placement.radius,
   }));
-  const maximumExtent = radius + maximumHalfExtent + 62;
-  const size = Math.max(720, Math.ceil(maximumExtent * 2));
-  return { count, width: size, height: size, hubRadius, petals };
+  const outlineExtent = petals.reduce((maximum, petal, index) => {
+    const point = polar(0, 0, petal.radius, petal.angle);
+    const geometry = buildFlowerPetalGeometry({
+      center: { x: 0, y: 0 },
+      contentCenter: point,
+      contentWidth: petal.width,
+      contentHeight: petal.height,
+      angleDegrees: petal.angle,
+      hubRadius,
+    });
+    const bounds = flowerPetalGeometryBounds(
+      geometry,
+      point,
+      itemStyle(groups[index], spec).rotation ?? 0
+    );
+    return Math.max(
+      maximum,
+      Math.abs(bounds.minX),
+      Math.abs(bounds.minY),
+      Math.abs(bounds.maxX),
+      Math.abs(bounds.maxY)
+    );
+  }, hubRadius);
+  const size = Math.max(720, Math.ceil((outlineExtent + 24) * 2));
+  return { width: size, height: size, hubRadius, petals };
 }
 
 function flowerPetalPath(
@@ -737,78 +763,71 @@ function flowerPetalPath(
   angle: number,
   hubRadius: number
 ): string {
-  const radians = angle * Math.PI / 180;
-  const radial = { x: Math.cos(radians), y: Math.sin(radians) };
-  const tangent = { x: -radial.y, y: radial.x };
-  const shapePadding = 26;
-  const halfWidth = petal.width / 2 + shapePadding;
-  const halfHeight = petal.height / 2 + shapePadding;
-  const radialHalfExtent = Math.abs(radial.x) * halfWidth + Math.abs(radial.y) * halfHeight;
-  const tangentHalfExtent = Math.abs(tangent.x) * halfWidth + Math.abs(tangent.y) * halfHeight;
-  const baseRadius = hubRadius * 0.7;
-  const centerRadius = Math.hypot(point.x - cx, point.y - cy);
-  const shoulderRadius = Math.max(baseRadius + 32, centerRadius - radialHalfExtent * 0.78);
-  const crownRadius = centerRadius + radialHalfExtent * 0.72;
-  const tipRadius = centerRadius + radialHalfExtent + 34;
-  const baseHalfWidth = Math.max(9, Math.min(24, hubRadius * 0.15));
-  const at = (radius: number, tangentOffset = 0): Point => ({
-    x: cx + radial.x * radius + tangent.x * tangentOffset,
-    y: cy + radial.y * radius + tangent.y * tangentOffset,
-  });
-  const baseA = at(baseRadius, baseHalfWidth);
-  const baseB = at(baseRadius, -baseHalfWidth);
-  const shoulderA = at(shoulderRadius, tangentHalfExtent * 0.92);
-  const crownA = at(crownRadius, tangentHalfExtent * 0.62);
-  const roundA = at(tipRadius - 8, tangentHalfExtent * 0.28);
-  const tip = at(tipRadius);
-  const roundB = at(tipRadius - 8, -tangentHalfExtent * 0.28);
-  const crownB = at(crownRadius, -tangentHalfExtent * 0.62);
-  const shoulderB = at(shoulderRadius, -tangentHalfExtent * 0.92);
-  const neckA = at(baseRadius + (shoulderRadius - baseRadius) * 0.36, tangentHalfExtent * 0.48);
-  const neckB = at(baseRadius + (shoulderRadius - baseRadius) * 0.36, -tangentHalfExtent * 0.48);
-  return [
-    "M", baseA.x, baseA.y,
-    "C", neckA.x, neckA.y, shoulderA.x, shoulderA.y, crownA.x, crownA.y,
-    "C", roundA.x, roundA.y, tip.x, tip.y, tip.x, tip.y,
-    "C", tip.x, tip.y, roundB.x, roundB.y, crownB.x, crownB.y,
-    "C", shoulderB.x, shoulderB.y, neckB.x, neckB.y, baseB.x, baseB.y,
-    "Q", cx + radial.x * (baseRadius * 0.84), cy + radial.y * (baseRadius * 0.84), baseA.x, baseA.y,
-    "Z",
-  ].join(" ");
+  return buildFlowerPetalGeometry({
+    center: { x: cx, y: cy },
+    contentCenter: point,
+    contentWidth: petal.width,
+    contentHeight: petal.height,
+    angleDegrees: angle,
+    hubRadius,
+  }).path;
 }
 
 function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
-  const { count, width, height, hubRadius, petals } = flowerMetrics(groups, spec);
+  const { width, height, hubRadius, petals } = flowerMetrics(groups, spec);
   const cx = width / 2;
   const cy = height / 2;
   if (!groups.length) return <><TitleBlock spec={spec} width={width} /><EmptyDiagram spec={spec} /></>;
+  const items = groups.map((group, index) => {
+    const petal = petals[index];
+    const point = polar(cx, cy, petal.radius, petal.angle);
+    const color = styledGroupColor(group, index, spec);
+    const style = itemStyle(group, spec);
+    return {
+      group,
+      index,
+      petal,
+      point,
+      color,
+      style,
+      stroke: groupStrokeColor(group, index, spec),
+      left: point.x - petal.width / 2,
+      top: point.y - petal.height / 2,
+      transform: style.rotation
+        ? `rotate(${style.rotation} ${point.x} ${point.y})`
+        : undefined,
+    };
+  });
   return (
     <>
-      {groups.map((group, index) => {
-        const petal = petals[index];
-        const angle = -90 + index * 360 / count;
-        const point = polar(cx, cy, petal.radius, angle);
-        const color = styledGroupColor(group, index, spec);
-        const style = itemStyle(group, spec);
-        const stroke = groupStrokeColor(group, index, spec);
-        const left = point.x - petal.width / 2;
-        const top = point.y - petal.height / 2;
-        return (
+      {[...items]
+        .sort((first, second) =>
+          second.petal.layerIndex - first.petal.layerIndex || first.index - second.index
+        )
+        .map(({ group, petal, point, color, stroke, transform }) => (
           <g
-            key={group.sourceNodeId}
-            role="group"
-            aria-label={group.sourceLabel}
-            transform={style.rotation ? `rotate(${style.rotation} ${point.x} ${point.y})` : undefined}
+            key={`flower-shape-${group.sourceNodeId}`}
+            transform={transform}
+            aria-hidden="true"
           >
-            <title>{group.sourceLabel + ": " + group.targets.map((target) => target.label).join(", ")}</title>
             <path
-              d={flowerPetalPath(cx, cy, point, petal, angle, hubRadius)}
+              d={flowerPetalPath(cx, cy, point, petal, petal.angle, hubRadius)}
               fill={tint(color, 0.7)}
               fillOpacity={groupFillOpacity(spec)}
               stroke={stroke}
               strokeWidth={groupStrokeWidth(spec)}
               strokeLinejoin="round"
             />
+          </g>
+        ))}
+      {items.map(({ group, petal, point, color, style, left, top, transform }) => (
+          <g
+            key={`flower-content-${group.sourceNodeId}`}
+            role="group"
+            aria-label={group.sourceLabel}
+            transform={transform}
+          >
+            <title>{group.sourceLabel + ": " + group.targets.map((target) => target.label).join(", ")}</title>
             <SvgLabel
               value={sourceDisplayLabel(group, spec) + (spec.showCounts ? " (" + group.count + ")" : "")}
               x={point.x}
@@ -851,8 +870,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               );
             })}
           </g>
-        );
-      })}
+        ))}
       <circle cx={cx} cy={cy} r={hubRadius} fill="#0f172a" stroke="#ffffff" strokeWidth="4" />
       <SvgLabel
         value={spec.title || "Relationships"}

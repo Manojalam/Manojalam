@@ -27,6 +27,8 @@ import { buildHierarchy } from "@/lib/layout/hierarchy";
 import {
   buildRelationshipGroupsForSpec,
   createRelationshipDiagramSpec,
+  MAX_FLOWER_PETALS_PER_LAYER,
+  MIN_FLOWER_PETALS_PER_LAYER,
   expandRelationshipDiagramScope,
   isTransparentRelationshipDiagramBackground,
   normalizeRelationshipDiagramSpec,
@@ -315,6 +317,33 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                   );
                 })}
               </div>
+              {draft.layout === "flower" && (
+                <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label htmlFor="relationship-diagram-petals-per-layer" className="text-xs">
+                        Maximum petals per layer
+                      </Label>
+                      <p className="text-[9px] text-muted-foreground">
+                        Extra petals continue in staggered concentric layers.
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold tabular-nums">
+                      {draft.flowerPetalsPerLayer}
+                    </span>
+                  </div>
+                  <input
+                    id="relationship-diagram-petals-per-layer"
+                    type="range"
+                    min={MIN_FLOWER_PETALS_PER_LAYER}
+                    max={MAX_FLOWER_PETALS_PER_LAYER}
+                    step="1"
+                    value={draft.flowerPetalsPerLayer}
+                    onChange={(event) => update("flowerPetalsPerLayer", Number(event.target.value))}
+                    className="w-full accent-primary"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">

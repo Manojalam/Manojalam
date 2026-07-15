@@ -51,6 +51,8 @@ import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
 import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
 import {
   buildRelationshipGroupsForSpec,
+  MAX_FLOWER_PETALS_PER_LAYER,
+  MIN_FLOWER_PETALS_PER_LAYER,
   normalizeRelationshipDiagramSpec,
 } from "@/lib/relationship-diagram";
 import {
@@ -1804,6 +1806,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       relationships,
       hierarchy,
     });
+    const flowerLayerCount = Math.ceil(
+      diagramGroups.length / diagramSpec.flowerPetalsPerLayer
+    );
     const updateItemStyle = (nodeId: string, patch: Partial<RelationshipDiagramItemStyle>) => {
       const current = diagramSpec.itemStyles?.[nodeId] ?? {};
       const nextItem = { ...current, ...patch };
@@ -1970,6 +1975,31 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
           </Section>
+
+          {diagramSpec.layout === "flower" && (
+            <Section label="Flower layout" defaultOpen>
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Maximum petals per layer
+                  </p>
+                  <span className="text-[9px] text-muted-foreground">
+                    {flowerLayerCount} {flowerLayerCount === 1 ? "layer" : "layers"}
+                  </span>
+                </div>
+                <SliderControl
+                  value={diagramSpec.flowerPetalsPerLayer}
+                  min={MIN_FLOWER_PETALS_PER_LAYER}
+                  max={MAX_FLOWER_PETALS_PER_LAYER}
+                  step={1}
+                  onChange={(value) => updateDiagram({ flowerPetalsPerLayer: value })}
+                />
+              </div>
+              <p className="text-[9px] leading-relaxed text-muted-foreground">
+                This is a maximum. Extra petals flow into balanced, staggered layers.
+              </p>
+            </Section>
+          )}
 
           <Section label="Text">
             <div>
