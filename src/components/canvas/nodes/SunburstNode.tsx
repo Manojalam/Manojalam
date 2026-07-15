@@ -27,6 +27,7 @@ import {
 } from "@/lib/canvas/radial-label-rotation";
 import {
   radialColorScheme,
+  radialHierarchyWeight,
   radialSectorColors,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
@@ -564,7 +565,12 @@ function circleLabelGeometry(
   };
 }
 
-function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<string, Node>): SunburstTreeNode {
+function buildSunburstTree(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  equalOutermostSegments = false
+): SunburstTreeNode {
   const build = (
     id: string,
     parentId: string | null,
@@ -587,10 +593,6 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
       )
     );
     const data = (byId.get(id)?.data ?? {}) as Record<string, unknown>;
-    const manualWeight = clamp(dimension(data.radialWeight, 1), 0.1, 10);
-    const automaticWeight = children.length
-      ? children.reduce((sum, child) => sum + child.weight, 0)
-      : 1;
     return {
       id,
       parentId,
@@ -599,7 +601,11 @@ function buildSunburstTree(rootId: string, hierarchy: Hierarchy, byId: Map<strin
       siblingIndex,
       siblingCount,
       branchIndex,
-      weight: Math.max(0.01, automaticWeight * manualWeight),
+      weight: radialHierarchyWeight(
+        children.map((child) => child.weight),
+        data.radialWeight,
+        equalOutermostSegments
+      ),
       startAngle: ROOT_START_ANGLE,
       endAngle: ROOT_END_ANGLE,
       innerRadius: 0,
@@ -842,7 +848,12 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     if (!root) return null;
 
     const hierarchy = buildHierarchy(chartNodes, edges);
-    const tree = buildSunburstTree(d.rootId, hierarchy, byId);
+    const tree = buildSunburstTree(
+      d.rootId,
+      hierarchy,
+      byId,
+      d.radialEqualOutermostSegments === true
+    );
     const maxDepth = Math.max(1, maxDepthOf(tree));
     const size = dimension(d.chartSize, 720);
     const outerRadius = size / 2 - CHART_PADDING;

@@ -15,6 +15,32 @@ export type RadialColorSchemeDefinition = {
 
 export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
 
+/**
+ * Resolves the angular weight of a hierarchy sector.
+ *
+ * Equal-outermost mode deliberately ignores authored weights so every terminal
+ * sector contributes exactly one unit. A parent still occupies the combined
+ * weight of all terminal sectors below it.
+ */
+export function radialHierarchyWeight(
+  childWeights: readonly number[],
+  manualWeight: unknown,
+  equalOutermostSegments = false
+): number {
+  const automaticWeight = childWeights.length
+    ? childWeights.reduce((sum, weight) => sum + Math.max(0, weight), 0)
+    : 1;
+  if (equalOutermostSegments) return Math.max(0.01, automaticWeight);
+
+  const parsedManualWeight = typeof manualWeight === "string"
+    ? Number.parseFloat(manualWeight)
+    : manualWeight;
+  const numericManualWeight = typeof parsedManualWeight === "number" && Number.isFinite(parsedManualWeight)
+    ? parsedManualWeight
+    : 1;
+  return Math.max(0.01, automaticWeight * clamp(numericManualWeight, 0.1, 10));
+}
+
 export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
   {
     id: "spectrum",

@@ -1675,6 +1675,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <p className="text-[9px] leading-relaxed text-muted-foreground">
               Radial charts stay square. Use the exact value here or the corner handles on the canvas.
             </p>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
+              <div>
+                <p className="text-[10px] font-medium">Equal outermost segments</p>
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  Give every terminal segment the same angle, at any depth. Custom sector areas return when switched off.
+                </p>
+              </div>
+              <Switch
+                aria-label="Equal outermost segments"
+                checked={chartData.radialEqualOutermostSegments === true}
+                onCheckedChange={(checked) => {
+                  pushHistory();
+                  updateNodeData(selectedNode.id, { radialEqualOutermostSegments: checked });
+                }}
+              />
+            </div>
           </Section>
 
           <Section label="Transform" defaultOpen>
@@ -3098,6 +3114,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Depth controls redistribute the chart radius without changing the diameter above.
               </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
+              <div>
+                <p className="text-[10px] font-medium">Equal outermost segments</p>
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  Give every terminal segment the same angle, at any depth. Custom sector areas return when switched off.
+                </p>
+              </div>
+              <Switch
+                aria-label="Equal outermost segments"
+                checked={radialChartData.radialEqualOutermostSegments === true}
+                onCheckedChange={(checked) => {
+                  if (!radialChartNode) return;
+                  pushHistory();
+                  updateNodeData(radialChartNode.id, { radialEqualOutermostSegments: checked });
+                }}
+              />
             </div>
 
             <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
