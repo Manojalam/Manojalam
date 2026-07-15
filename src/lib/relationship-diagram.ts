@@ -18,6 +18,16 @@ import type {
   RelationshipDiagramItemStyle,
   RelationshipDiagramTargetSort,
 } from "@/lib/types";
+import {
+  DEFAULT_FLOWER_PETALS_PER_LAYER,
+  normalizeFlowerPetalsPerLayer,
+} from "@/lib/canvas/relationship-flower-layout";
+
+export {
+  DEFAULT_FLOWER_PETALS_PER_LAYER,
+  MAX_FLOWER_PETALS_PER_LAYER,
+  MIN_FLOWER_PETALS_PER_LAYER,
+} from "@/lib/canvas/relationship-flower-layout";
 
 export const RELATIONSHIP_DIAGRAM_SPEC_VERSION = 1;
 
@@ -59,6 +69,7 @@ export const DEFAULT_RELATIONSHIP_DIAGRAM_SPEC: Readonly<RelationshipDiagramSpec
   palette: "source",
   textSize: 16,
   density: "comfortable",
+  flowerPetalsPerLayer: DEFAULT_FLOWER_PETALS_PER_LAYER,
   decorativeLevel: "balanced",
   background: "transparent",
   sortSources: "natural",
@@ -457,6 +468,9 @@ export function normalizeRelationshipDiagramSpec(
       72
     ),
     density: normalizeDensity(optionValue(raw, legacyOptions, "density", "spacingDensity")),
+    flowerPetalsPerLayer: normalizeFlowerPetalsPerLayer(
+      optionValue(raw, legacyOptions, "flowerPetalsPerLayer", "petalsPerLayer")
+    ),
     decorativeLevel: normalizeDecorativeLevel(
       optionValue(raw, legacyOptions, "decorativeLevel", "decoration")
     ),

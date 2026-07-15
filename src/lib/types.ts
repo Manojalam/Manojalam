@@ -213,6 +213,8 @@ export interface RelationshipDiagramSpec {
   palette: RelationshipDiagramPalette;
   textSize: number;
   density: RelationshipDiagramDensity;
+  /** Maximum number of source petals placed in one concentric flower layer. */
+  flowerPetalsPerLayer: number;
   decorativeLevel: RelationshipDiagramDecorativeLevel;
   /** CSS color for the diagram canvas; `transparent` preserves the board beneath it. */
   background: string;
