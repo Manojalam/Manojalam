@@ -186,6 +186,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         filename: request.title || boardTitle,
         title: request.title || boardTitle,
         background: includeBackground ? boardBackground : null,
+        appearanceBackground: boardBackground,
         signal: abortController.signal,
       });
       const adjusted = result.plan?.adjusted

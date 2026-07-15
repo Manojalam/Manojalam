@@ -15,6 +15,7 @@ import type {
   RelationshipDiagramScopeMode,
   RelationshipDiagramSourceSort,
   RelationshipDiagramSpec,
+  RelationshipDiagramItemStyle,
   RelationshipDiagramTargetSort,
 } from "@/lib/types";
 
@@ -162,6 +163,38 @@ function uniqueStrings(value: unknown): string[] {
     result.push(normalized);
   }
   return result;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeItemStyles(value: unknown): Record<string, RelationshipDiagramItemStyle> | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+  const result: Record<string, RelationshipDiagramItemStyle> = {};
+  for (const [nodeId, candidate] of Object.entries(raw)) {
+    const style = asRecord(candidate);
+    if (!nodeId.trim() || !style) continue;
+    const fillColor = optionalString(style.fillColor);
+    const borderColor = optionalString(style.borderColor);
+    const textColor = optionalString(style.textColor);
+    const fontSize = style.fontSize === undefined
+      ? undefined
+      : clamp(finiteNumber(style.fontSize, 16), 8, 72);
+    const rotation = style.rotation === undefined
+      ? undefined
+      : clamp(finiteNumber(style.rotation, 0), -180, 180);
+    const normalized: RelationshipDiagramItemStyle = {
+      ...(fillColor ? { fillColor } : {}),
+      ...(borderColor ? { borderColor } : {}),
+      ...(textColor ? { textColor } : {}),
+      ...(fontSize !== undefined ? { fontSize } : {}),
+      ...(rotation !== undefined ? { rotation } : {}),
+    };
+    if (Object.keys(normalized).length) result[nodeId] = normalized;
+  }
+  return Object.keys(result).length ? result : undefined;
 }
 
 function canonicalRelationshipTypes(value: unknown): string[] {
@@ -373,6 +406,24 @@ export function normalizeRelationshipDiagramSpec(
     chartRootNodeId: optionValue(raw, legacyOptions, "chartRootNodeId"),
   };
 
+  const itemOrder = uniqueStrings(optionValue(raw, legacyOptions, "itemOrder"));
+  const itemStyles = normalizeItemStyles(optionValue(raw, legacyOptions, "itemStyles"));
+  const fontFamily = optionalString(optionValue(raw, legacyOptions, "fontFamily"));
+  const textColor = optionalString(optionValue(raw, legacyOptions, "textColor"));
+  const borderColor = optionalString(optionValue(raw, legacyOptions, "borderColor"));
+  const fontWeight = optionValue(raw, legacyOptions, "fontWeight") === "bold"
+    ? "bold" as const
+    : optionValue(raw, legacyOptions, "fontWeight") === "normal"
+      ? "normal" as const
+      : undefined;
+  const fontStyle = optionValue(raw, legacyOptions, "fontStyle") === "italic"
+    ? "italic" as const
+    : optionValue(raw, legacyOptions, "fontStyle") === "normal"
+      ? "normal" as const
+      : undefined;
+  const borderWidthValue = optionValue(raw, legacyOptions, "borderWidth");
+  const fillOpacityValue = optionValue(raw, legacyOptions, "fillOpacity");
+
   return {
     version: RELATIONSHIP_DIAGRAM_SPEC_VERSION,
     layout: normalizeLayout(optionValue(raw, legacyOptions, "layout")),
@@ -418,6 +469,19 @@ export function normalizeRelationshipDiagramSpec(
     sortTargets: normalizeTargetSort(
       optionValue(raw, legacyOptions, "sortTargets", "targetSort")
     ),
+    ...(itemOrder.length ? { itemOrder } : {}),
+    ...(itemStyles ? { itemStyles } : {}),
+    ...(fontFamily ? { fontFamily } : {}),
+    ...(fontWeight ? { fontWeight } : {}),
+    ...(fontStyle ? { fontStyle } : {}),
+    ...(textColor ? { textColor } : {}),
+    ...(borderColor ? { borderColor } : {}),
+    ...(borderWidthValue !== undefined
+      ? { borderWidth: clamp(finiteNumber(borderWidthValue, 2), 0, 16) }
+      : {}),
+    ...(fillOpacityValue !== undefined
+      ? { fillOpacity: clamp(finiteNumber(fillOpacityValue, 1), 0, 1) }
+      : {}),
   };
 }
 
@@ -632,7 +696,7 @@ export function buildRelationshipGroupsForSpec({
     hierarchy,
     availableNodeIds
   );
-  return buildRelationshipGroups({
+  const groups = buildRelationshipGroups({
     nodes,
     relationships,
     sourceNodeIds,
@@ -641,4 +705,14 @@ export function buildRelationshipGroupsForSpec({
     sortSources: spec.sortSources,
     sortTargets: spec.sortTargets,
   });
+  const manualRank = orderRank(spec.itemOrder);
+  if (!manualRank) return groups;
+  return groups
+    .map((group, index) => ({ group, index }))
+    .sort((first, second) => {
+      const firstRank = manualRank.get(first.group.sourceNodeId) ?? Number.MAX_SAFE_INTEGER;
+      const secondRank = manualRank.get(second.group.sourceNodeId) ?? Number.MAX_SAFE_INTEGER;
+      return firstRank - secondRank || first.index - second.index;
+    })
+    .map(({ group }) => group);
 }

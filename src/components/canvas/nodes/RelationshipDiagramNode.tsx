@@ -2,12 +2,17 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
+import { Move } from "lucide-react";
 
 import {
   RelationshipDiagramSvg,
   relationshipDiagramDimensions,
 } from "@/components/canvas/RelationshipDiagramSvg";
-import { resetNodeDimensions } from "@/lib/layout";
+import {
+  CHART_NODE_MAX_SIZE,
+  RELATIONSHIP_DIAGRAM_MIN_HEIGHT,
+  RELATIONSHIP_DIAGRAM_MIN_WIDTH,
+} from "@/lib/canvas/chart-sizing";
 import { buildHierarchy } from "@/lib/layout/hierarchy";
 import {
   buildRelationshipGroupsForSpec,
@@ -16,16 +21,14 @@ import {
 import type { RelationshipDiagramNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 
-const FRAME_MIN_WIDTH = 420;
-const FRAME_MIN_HEIGHT = 360;
-
 function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as RelationshipDiagramNodeData;
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
   const relationships = useCanvasStore((state) => state.relationships);
-  const pushHistory = useCanvasStore((state) => state.pushHistory);
-  const setSaveStatus = useCanvasStore((state) => state.setSaveStatus);
+  const beginManualNodeResize = useCanvasStore((state) => state.beginManualNodeResize);
+  const finishManualNodeResize = useCanvasStore((state) => state.finishManualNodeResize);
+  const setNodeSize = useCanvasStore((state) => state.setNodeSize);
   const [fontMetricsReady, setFontMetricsReady] = useState(false);
   const spec = useMemo(
     () => normalizeRelationshipDiagramSpec(d.relationshipDiagramSpec),
@@ -65,17 +68,10 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
 
   const fitToContent = useCallback(() => {
     const intrinsic = relationshipDiagramDimensions(groups, spec);
-    const width = Math.max(FRAME_MIN_WIDTH, Math.ceil(intrinsic.width));
-    const height = Math.max(FRAME_MIN_HEIGHT, Math.ceil(intrinsic.height));
-    const store = useCanvasStore.getState();
-    store.pushHistory();
-    useCanvasStore.setState((state) => ({
-      nodes: state.nodes.map((node) => node.id === id
-        ? resetNodeDimensions(node, width, height)
-        : node),
-      saveStatus: "unsaved",
-    }));
-  }, [groups, id, spec]);
+    const width = Math.max(RELATIONSHIP_DIAGRAM_MIN_WIDTH, Math.ceil(intrinsic.width));
+    const height = Math.max(RELATIONSHIP_DIAGRAM_MIN_HEIGHT, Math.ceil(intrinsic.height));
+    setNodeSize(id, { width, height });
+  }, [groups, id, setNodeSize, spec]);
 
   useEffect(() => {
     const handleFitRequest = (event: Event) => {
@@ -88,18 +84,15 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
 
   return (
     <>
-      <NodeResizer
-        minWidth={FRAME_MIN_WIDTH}
-        minHeight={FRAME_MIN_HEIGHT}
-        isVisible={selected && d.locked !== true}
-        onResizeStart={() => pushHistory()}
-        onResizeEnd={() => setSaveStatus("unsaved")}
-      />
       <div
         className={d.locked === true
           ? "relative h-full w-full cursor-default overflow-visible"
           : "relative h-full w-full cursor-move overflow-visible"}
-        style={{ background: spec.background || "transparent" }}
+        style={{
+          background: spec.background || "transparent",
+          transform: d.rotation ? `rotate(${d.rotation}deg)` : undefined,
+          transformOrigin: "center",
+        }}
         aria-label={spec.title || "Relationship diagram"}
       >
         <div className="relative h-full w-full" data-export-fill-node>
@@ -117,6 +110,25 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
           />
         )}
       </div>
+      <NodeResizer
+        minWidth={RELATIONSHIP_DIAGRAM_MIN_WIDTH}
+        minHeight={RELATIONSHIP_DIAGRAM_MIN_HEIGHT}
+        maxWidth={CHART_NODE_MAX_SIZE}
+        maxHeight={CHART_NODE_MAX_SIZE}
+        isVisible={selected && d.locked !== true}
+        onResizeStart={() => beginManualNodeResize(id)}
+        onResizeEnd={(_, params) => finishManualNodeResize(id, params)}
+      />
+      {selected && d.locked !== true && (
+        <div
+          className="absolute -left-3 -top-3 z-[70] flex h-8 w-8 cursor-grab items-center justify-center rounded-full border-2 border-white bg-primary text-primary-foreground shadow-lg active:cursor-grabbing"
+          title="Drag to move relationship diagram"
+          aria-label="Drag to move relationship diagram"
+          data-export-ignore
+        >
+          <Move className="h-4 w-4" />
+        </div>
+      )}
     </>
   );
 }

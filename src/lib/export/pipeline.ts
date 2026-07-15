@@ -27,6 +27,8 @@ export interface ExportBoardVisualOptions {
   filename: string;
   title?: string;
   background?: string | null;
+  /** Preserve translucent object colors against this matte even when the outer export is transparent. */
+  appearanceBackground?: string | null;
   signal?: AbortSignal;
 }
 
@@ -429,6 +431,7 @@ export async function exportBoardVisual(
       edgeIds: options.edgeIds,
       padding: 0,
       background: options.background,
+      appearanceBackground: options.appearanceBackground,
       title: options.title,
       signal: options.signal,
       // A cross-origin font must never make an otherwise self-contained chart

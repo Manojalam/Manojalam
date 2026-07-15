@@ -3,7 +3,7 @@
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { NodeResizer, type Node, type NodeProps, type ResizeParams } from "@xyflow/react";
-import { ArrowLeft, ArrowRight, Link2, Plus, Rows3, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Link2, Move, Plus, Rows3, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { SunburstNodeData } from "@/lib/types";
 import {
@@ -14,6 +14,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { buildHierarchy, type Hierarchy } from "@/lib/layout/hierarchy";
+import {
+  CHART_NODE_MAX_SIZE,
+  resolveChartNodeResize,
+  SUNBURST_MIN_SIZE,
+} from "@/lib/canvas/chart-sizing";
 import {
   radialColorScheme,
   radialSectorColors,
@@ -641,7 +646,8 @@ function extendTerminalSectors(node: SunburstTreeNode, outerRadius: number): voi
 function collectSegments(
   node: SunburstTreeNode,
   byId: Map<string, Node>,
-  scheme: RadialColorSchemeDefinition
+  scheme: RadialColorSchemeDefinition,
+  chartStyle: Record<string, unknown> = {}
 ): SunburstSegment[] {
   const segments: SunburstSegment[] = [];
   const walk = (candidate: SunburstTreeNode) => {
@@ -663,21 +669,29 @@ function collectSegments(
         ...candidate,
         label,
         richText: nodeRichText(source, label),
-        fill: paletteColors.fill,
-        fillEnd: paletteColors.fillEnd,
-        textColor: (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
-        borderColor: (data.radialBorderColor as string | undefined) ?? paletteColors.border,
-        borderWidth: clamp(dimension(data.radialBorderWidth, 1.4), 0, 16),
+        fill: (chartStyle.fillColor as string | undefined) ?? paletteColors.fill,
+        fillEnd: (chartStyle.fillColor as string | undefined) ?? paletteColors.fillEnd,
+        textColor: (chartStyle.textColor as string | undefined) ?? (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
+        borderColor: (chartStyle.borderColor as string | undefined) ?? (data.radialBorderColor as string | undefined) ?? paletteColors.border,
+        borderWidth: clamp(dimension(chartStyle.borderWidth ?? data.radialBorderWidth, 1.4), 0, 16),
         borderStyle: (data.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid",
-        fontFamily: data.fontFamily as string | undefined,
-        fontWeight: data.fontWeight === "bold"
+        fontFamily: (chartStyle.fontFamily as string | undefined) ?? (data.fontFamily as string | undefined),
+        fontWeight: chartStyle.fontWeight === "bold"
           ? 700
-          : data.fontWeight === "normal"
+          : chartStyle.fontWeight === "normal"
             ? 400
-            : candidate.depth <= 1 ? 700 : 600,
-        fontStyle: data.fontStyle === "italic" ? "italic" : "normal",
+            : data.fontWeight === "bold"
+              ? 700
+              : data.fontWeight === "normal"
+                ? 400
+                : candidate.depth <= 1 ? 700 : 600,
+        fontStyle: chartStyle.fontStyle === "italic" || data.fontStyle === "italic" ? "italic" : "normal",
         textAlign: (data.textAlign as CSSProperties["textAlign"] | undefined) ?? "center",
-        preferredFontSize: typeof data.fontSize === "number" ? data.fontSize : undefined,
+        preferredFontSize: typeof chartStyle.fontSize === "number"
+          ? chartStyle.fontSize
+          : typeof data.fontSize === "number"
+            ? data.fontSize
+            : undefined,
       });
     }
     candidate.children.forEach(walk);
@@ -739,6 +753,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const moveSiblingNode = useCanvasStore((state) => state.moveSiblingNode);
   const clearRelationships = useCanvasStore((state) => state.clearRelationships);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
+  const finishManualNodeResize = useCanvasStore((state) => state.finishManualNodeResize);
   const relationshipSelection = useUIStore((state) => state.relationshipSelection);
   const startRelationshipSelection = useUIStore((state) => state.startRelationshipSelection);
   const toggleRelationshipTarget = useUIStore((state) => state.toggleRelationshipTarget);
@@ -752,18 +767,19 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const centerDragRef = useRef<CenterDrag | null>(null);
   const editHistoryCaptured = useRef(false);
 
-  const resizeChart = useCallback((params: ResizeParams) => {
-    const nextSize = Math.max(420, Math.min(4096, Math.round(Math.max(params.width, params.height))));
+  const previewChartResize = useCallback((params: ResizeParams) => {
+    const resize = resolveChartNodeResize("sunburst", params);
+    if (!resize) return;
     useCanvasStore.setState((state) => ({
       nodes: state.nodes.map((node) => node.id === id
         ? {
             ...node,
-            data: {
-              ...(node.data ?? {}),
-              chartSize: nextSize,
-              chartSizeManual: true,
+            data: { ...(node.data ?? {}), ...resize.dataPatch },
+            style: {
+              ...(node.style ?? {}),
+              width: resize.size.width,
+              height: resize.size.height,
             },
-            style: { ...(node.style ?? {}), width: nextSize, height: nextSize },
           }
         : node),
     }));
@@ -816,7 +832,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     assignGeometry(tree, centerRadius, bands);
     extendTerminalSectors(tree, outerRadius);
 
-    const segments = collectSegments(tree, byId, scheme);
+    const segments = collectSegments(tree, byId, scheme, d as unknown as Record<string, unknown>);
     return {
       root,
       byId,
@@ -831,7 +847,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       scheme,
       segments,
     };
-  }, [d.chartSize, d.rootId, edges, nodes]);
+  }, [d, edges, nodes]);
 
   const finishEditing = useCallback(() => {
     if (editHistoryCaptured.current) pushHistory();
@@ -870,13 +886,19 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     rootLabel,
     model.centerRadius,
     model.center,
-    typeof rootData.fontSize === "number" ? rootData.fontSize : undefined,
+    typeof d.fontSize === "number"
+      ? d.fontSize
+      : typeof rootData.fontSize === "number"
+        ? rootData.fontSize
+        : undefined,
     {
-      fontFamily: rootData.fontFamily as string | undefined,
+      fontFamily: d.fontFamily ?? rootData.fontFamily as string | undefined,
       fontWeight: /<(strong|b)\b/i.test(rootRichText)
         ? 700
-        : rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
-      fontStyle: /<(em|i)\b/i.test(rootRichText) || rootData.fontStyle === "italic" ? "italic" : "normal",
+        : d.fontWeight === "bold" || rootData.fontWeight === "bold"
+          ? 700
+          : d.fontWeight === "normal" || rootData.fontWeight === "normal" ? 400 : 800,
+      fontStyle: /<(em|i)\b/i.test(rootRichText) || d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
     },
     fontMetricsReady
   );
@@ -896,10 +918,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       : null;
   const selectedTextStyle = selectedId === d.rootId
     ? {
-        color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
-        fontFamily: rootData.fontFamily as string | undefined,
-        fontWeight: rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800,
-        fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
+        color: d.textColor ?? (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
+        fontFamily: d.fontFamily ?? rootData.fontFamily as string | undefined,
+        fontWeight: d.fontWeight === "bold" || rootData.fontWeight === "bold" ? 700 : d.fontWeight === "normal" || rootData.fontWeight === "normal" ? 400 : 800,
+        fontStyle: d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
         textAlign: (rootData.textAlign as CSSProperties["textAlign"] | undefined) ?? "center",
       }
     : selectedSegment
@@ -1162,20 +1184,6 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
 
   return (
     <div className="relative h-full w-full">
-      <NodeResizer
-        minWidth={420}
-        minHeight={420}
-        maxWidth={4096}
-        maxHeight={4096}
-        keepAspectRatio
-        isVisible={selected && d.locked !== true && !activeRelationshipSession}
-        onResizeStart={() => pushHistory()}
-        onResize={(_, params) => resizeChart(params)}
-        onResizeEnd={(_, params) => {
-          resizeChart(params);
-          useCanvasStore.getState().setSaveStatus("unsaved");
-        }}
-      />
       <SunburstBoundsSynchronizer
         nodeId={id}
         chartSize={model.size}
@@ -1190,6 +1198,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         style={{
           left: 0,
           top: 0,
+          transform: d.rotation ? `rotate(${d.rotation}deg)` : undefined,
+          transformOrigin: "center",
         }}
         data-sunburst-export="true"
         role="img"
@@ -1473,9 +1483,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           cx={model.center}
           cy={model.center}
           r={model.centerRadius}
-          fill={(rootData.radialFillColor as string | undefined) ?? model.scheme.rootFill}
-          stroke={(rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
-          strokeWidth={dimension(rootData.radialBorderWidth, 4)}
+          fill={d.fillColor ?? (rootData.radialFillColor as string | undefined) ?? model.scheme.rootFill}
+          stroke={d.borderColor ?? (rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
+          strokeWidth={dimension(d.borderWidth ?? rootData.radialBorderWidth, 4)}
           strokeDasharray={dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
           className={activeRelationshipSession
             ? validRelationshipTargetIds.has(d.rootId) ? "cursor-pointer" : "cursor-not-allowed"
@@ -1538,12 +1548,12 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                 overflow: "visible",
                 boxSizing: "border-box",
                 padding: isDevanagariText(rootLabel) ? "0.08em 0.08em 0.1em" : undefined,
-                color: (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
+                color: d.textColor ?? (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
                 fontSize: rootFit.fontSize,
                 lineHeight: isDevanagariText(rootLabel) ? DEVANAGARI_LINE_HEIGHT : 1.12,
-                fontFamily: labelFontFamily(rootLabel, rootData.fontFamily as string | undefined),
-                fontWeight: labelFontWeight(rootLabel, rootData.fontWeight === "bold" ? 700 : rootData.fontWeight === "normal" ? 400 : 800),
-                fontStyle: rootData.fontStyle === "italic" ? "italic" : "normal",
+                fontFamily: labelFontFamily(rootLabel, d.fontFamily ?? rootData.fontFamily as string | undefined),
+                fontWeight: labelFontWeight(rootLabel, d.fontWeight === "bold" || rootData.fontWeight === "bold" ? 700 : d.fontWeight === "normal" || rootData.fontWeight === "normal" ? 400 : 800),
+                fontStyle: d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
                 textAlign: (rootData.textAlign as CSSProperties["textAlign"] | undefined) ?? "center",
               }}
               dangerouslySetInnerHTML={{ __html: rootRichText }}
@@ -1883,6 +1893,27 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           )}
         </div>
       )}
+      {selected && d.locked !== true && !activeRelationshipSession && (
+        <div
+          className="absolute -left-3 -top-3 z-[70] flex h-8 w-8 cursor-grab items-center justify-center rounded-full border-2 border-white bg-primary text-primary-foreground shadow-lg active:cursor-grabbing"
+          title="Drag to move radial chart"
+          aria-label="Drag to move radial chart"
+          data-export-ignore
+        >
+          <Move className="h-4 w-4" />
+        </div>
+      )}
+      <NodeResizer
+        minWidth={SUNBURST_MIN_SIZE}
+        minHeight={SUNBURST_MIN_SIZE}
+        maxWidth={CHART_NODE_MAX_SIZE}
+        maxHeight={CHART_NODE_MAX_SIZE}
+        keepAspectRatio
+        isVisible={selected && d.locked !== true && !activeRelationshipSession}
+        onResizeStart={() => pushHistory()}
+        onResize={(_, params) => previewChartResize(params)}
+        onResizeEnd={(_, params) => finishManualNodeResize(id, params)}
+      />
     </div>
   );
 }

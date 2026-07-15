@@ -158,9 +158,13 @@ body {
 }
 
 /* Miro-style resize handles */
+.react-flow__resize-control {
+  z-index: 60 !important;
+  pointer-events: all !important;
+}
 .react-flow__resize-control.handle {
-  width: 9px !important;
-  height: 9px !important;
+  width: 13px !important;
+  height: 13px !important;
   background: white !important;
   border: 1.5px solid var(--primary) !important;
   border-radius: 2px !important;
@@ -174,7 +178,7 @@ body {
 .react-flow__resize-control.line {
   border-color: var(--primary) !important;
   border-width: 1.5px !important;
-  opacity: 0.6;
+  opacity: 0.9;
 }
 
 .react-flow__node.selected {

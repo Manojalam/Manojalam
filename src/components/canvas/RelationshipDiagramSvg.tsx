@@ -5,6 +5,7 @@ import {
   type RelationshipGroup,
 } from "@/lib/relationship-diagram";
 import type {
+  RelationshipDiagramItemStyle,
   RelationshipDiagramPalette,
   RelationshipDiagramSpec,
 } from "@/lib/types";
@@ -19,6 +20,10 @@ type RelationshipDiagramSvgProps = {
 type Point = { x: number; y: number };
 
 const FONT_FAMILY = "var(--font-noto-devanagari), 'Noto Sans Devanagari', Inter, sans-serif";
+const DiagramVisualStyleContext = createContext<Pick<
+  RelationshipDiagramSpec,
+  "fontFamily" | "fontWeight" | "fontStyle" | "textColor"
+>>({});
 const PALETTES: Record<Exclude<RelationshipDiagramPalette, "source">, string[]> = {
   spectrum: ["#ef4444", "#f59e0b", "#84cc16", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"],
   warm: ["#b91c1c", "#dc2626", "#ea580c", "#d97706", "#ca8a04", "#be123c"],
@@ -58,6 +63,34 @@ function groupColor(group: RelationshipGroup, index: number, palette: Relationsh
   }
   const colors = PALETTES[palette];
   return colors[index % colors.length];
+}
+
+function itemStyle(group: RelationshipGroup, spec: RelationshipDiagramSpec): RelationshipDiagramItemStyle {
+  return spec.itemStyles?.[group.sourceNodeId] ?? {};
+}
+
+function styledGroupColor(
+  group: RelationshipGroup,
+  index: number,
+  spec: RelationshipDiagramSpec
+): string {
+  return itemStyle(group, spec).fillColor ?? groupColor(group, index, spec.palette);
+}
+
+function groupStrokeColor(
+  group: RelationshipGroup,
+  index: number,
+  spec: RelationshipDiagramSpec
+): string {
+  return itemStyle(group, spec).borderColor ?? spec.borderColor ?? styledGroupColor(group, index, spec);
+}
+
+function groupStrokeWidth(spec: RelationshipDiagramSpec): number {
+  return Math.max(0, Math.min(16, spec.borderWidth ?? 2));
+}
+
+function groupFillOpacity(spec: RelationshipDiagramSpec): number {
+  return Math.max(0, Math.min(1, spec.fillOpacity ?? 1));
 }
 
 function contrastText(color: string): string {
@@ -194,6 +227,7 @@ function SvgLabel({
   maximumLines = 5,
   lineHeight = 1.35,
   transform,
+  fillOverride,
 }: {
   value: string;
   x: number;
@@ -206,22 +240,31 @@ function SvgLabel({
   maximumLines?: number;
   lineHeight?: number;
   transform?: string;
+  fillOverride?: string;
 }) {
   const measureText = useContext(TextMeasurementContext);
+  const visualStyle = useContext(DiagramVisualStyleContext);
+  const resolvedFill = fillOverride ?? visualStyle.textColor ?? fill;
+  const resolvedWeight = visualStyle.fontWeight === "bold"
+    ? 700
+    : visualStyle.fontWeight === "normal"
+      ? 400
+      : weight;
   const fit = fittedLines(value, width, fontSize, maximumLines, 9, measureText);
   const offset = -((fit.lines.length - 1) * fit.fontSize * lineHeight) / 2;
   if (fit.overflowed) {
     return (
       <g transform={transform} role="img" aria-label={value}>
         <title>{value}</title>
-        <circle cx={x} cy={y} r="9" fill="rgba(255,255,255,0.9)" stroke={fill} strokeWidth="1.5" />
+        <circle cx={x} cy={y} r="9" fill="rgba(255,255,255,0.9)" stroke={resolvedFill} strokeWidth="1.5" />
         <text
           x={x}
           y={y}
-          fill={fill}
-          fontFamily={FONT_FAMILY}
+          fill={resolvedFill}
+          fontFamily={visualStyle.fontFamily ?? FONT_FAMILY}
           fontSize="10"
-          fontWeight="800"
+          fontWeight={resolvedWeight}
+          fontStyle={visualStyle.fontStyle}
           textAnchor="middle"
           dominantBaseline="middle"
         >
@@ -236,10 +279,11 @@ function SvgLabel({
       <text
         x={x}
         y={y + offset}
-        fill={fill}
-        fontFamily={FONT_FAMILY}
+        fill={resolvedFill}
+        fontFamily={visualStyle.fontFamily ?? FONT_FAMILY}
         fontSize={fit.fontSize}
-        fontWeight={weight}
+        fontWeight={resolvedWeight}
+        fontStyle={visualStyle.fontStyle}
         textAnchor={anchor}
         dominantBaseline="middle"
         transform={transform}
@@ -421,7 +465,9 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   const pieces: ReactNode[] = [];
 
   groups.forEach((group, groupIndex) => {
-    const color = groupColor(group, groupIndex, spec.palette);
+    const color = styledGroupColor(group, groupIndex, spec);
+    const style = itemStyle(group, spec);
+    const stroke = groupStrokeColor(group, groupIndex, spec);
     const span = (ARC_FAN_END - ARC_FAN_START) * (groupWeights[groupIndex] / totalWeight);
     const gap = Math.min(groups.length > 12 ? 0.5 : 0.9, span * 0.18);
     const sourceStart = cursor + gap / 2;
@@ -432,8 +478,9 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         key={"source-" + group.sourceNodeId}
         d={annularPath(cx, cy, hubRadius, sourceRadius, sourceStart, sourceEnd)}
         fill={color}
-        stroke="#ffffff"
-        strokeWidth="2"
+        fillOpacity={groupFillOpacity(spec)}
+        stroke={spec.borderColor || style.borderColor ? stroke : "#ffffff"}
+        strokeWidth={groupStrokeWidth(spec)}
       />
     );
     const sourceLabelRadius = (hubRadius + sourceRadius) / 2;
@@ -453,8 +500,9 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={sourcePoint.x}
         y={sourcePoint.y}
         width={sourceArcWidth}
-        fontSize={sourceFontSize}
+        fontSize={style.fontSize ?? sourceFontSize}
         fill={contrastText(color)}
+        fillOverride={style.textColor}
         weight={750}
         maximumLines={sourceMaximumLines}
         transform={"rotate(" + sourceRotation + " " + sourcePoint.x + " " + sourcePoint.y + ")"}
@@ -466,8 +514,9 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         key={"target-panel-" + group.sourceNodeId}
         d={annularPath(cx, cy, sourceRadius, targetRadius, sourceStart, sourceEnd)}
         fill={tint(color, 0.76)}
-        stroke={tint(color, 0.14)}
-        strokeWidth="1.5"
+        fillOpacity={groupFillOpacity(spec)}
+        stroke={spec.borderColor || style.borderColor ? stroke : tint(color, 0.14)}
+        strokeWidth={groupStrokeWidth(spec)}
       />
     );
     const labelRadius = (sourceRadius + targetRadius) / 2;
@@ -488,7 +537,8 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={labelPoint.x}
         y={labelPoint.y}
         width={targetArcWidth}
-        fontSize={targetFontSize}
+        fontSize={style.fontSize ? Math.max(9, style.fontSize * 0.9) : targetFontSize}
+        fillOverride={style.textColor}
         weight={600}
         maximumLines={targetMaximumLines}
         transform={"rotate(" + targetRotation + " " + labelPoint.x + " " + labelPoint.y + ")"}
@@ -585,15 +635,16 @@ function flowerTargetColumnWidth(
 function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpec) {
   const count = Math.max(1, groups.length);
   const hubRadius = Math.max(104, Math.min(142, spec.textSize * 6.7));
-  const targetFontSize = Math.max(11, spec.textSize * 0.86);
-  const sourceFontSize = Math.max(14, spec.textSize * 1.08);
-  const targetLineHeight = Math.max(20, targetFontSize * 1.38);
   const itemGap = spec.density === "compact" ? 7 : spec.density === "spacious" ? 14 : 10;
   const columnGap = spec.density === "compact" ? 18 : spec.density === "spacious" ? 30 : 24;
-  const horizontalPadding = spec.density === "compact" ? 28 : 34;
-  const verticalPadding = spec.density === "compact" ? 28 : 34;
+  const horizontalPadding = spec.density === "compact" ? 22 : 28;
+  const verticalPadding = spec.density === "compact" ? 22 : 28;
 
   const unpositionedPetals = groups.map((group) => {
+    const style = itemStyle(group, spec);
+    const targetFontSize = Math.max(10, (style.fontSize ?? spec.textSize) * 0.82);
+    const sourceFontSize = Math.max(13, (style.fontSize ?? spec.textSize) * 1.04);
+    const targetLineHeight = Math.max(18, targetFontSize * 1.34);
     const columns: 1 | 2 = group.targets.length >= (spec.density === "compact" ? 6 : 7)
       ? 2
       : 1;
@@ -634,7 +685,7 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
 
     const targetHeight = Math.max(targetLineHeight, ...columnHeights) - itemGap;
     const width = innerWidth + horizontalPadding * 2;
-    const height = Math.max(190, targetsTop + targetHeight + verticalPadding);
+    const height = Math.max(168, targetsTop + targetHeight + verticalPadding);
     const halfExtent = Math.hypot(width / 2, height / 2);
     return {
       width,
@@ -652,77 +703,30 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
 
   const maximumHalfExtent = unpositionedPetals.length
     ? Math.max(...unpositionedPetals.map((petal) => petal.halfExtent))
-    : 260;
+    : 220;
+  const maximumHalfWidth = unpositionedPetals.length
+    ? Math.max(...unpositionedPetals.map((petal) => petal.width / 2 + 24))
+    : 120;
+  const maximumHalfHeight = unpositionedPetals.length
+    ? Math.max(...unpositionedPetals.map((petal) => petal.height / 2 + 24))
+    : 120;
   const angularSeparation = count > 1 ? Math.sin(Math.PI / count) : 1;
-  const petalGap = spec.density === "compact" ? 24 : spec.density === "spacious" ? 44 : 34;
-  const shapeAllowance = 54;
-  const radius = Math.max(
-    hubRadius + maximumHalfExtent + shapeAllowance + 82,
-    count > 1
-      ? (maximumHalfExtent + shapeAllowance + petalGap / 2) / Math.max(0.08, angularSeparation)
-      : 0
-  );
+  const petalGap = spec.density === "compact" ? 10 : spec.density === "spacious" ? 24 : 16;
+  const contentRadius = hubRadius + maximumHalfHeight * 0.72 + 36;
+  const separationRadius = count > 1
+    ? (maximumHalfWidth + petalGap / 2) / Math.max(0.1, angularSeparation)
+    : contentRadius;
+  // Petals are allowed to overlap slightly, as a real flower does. Basing the
+  // radius on the tangential width instead of the full rectangular diagonal
+  // prevents dense diagrams from turning into very long geometric spokes.
+  const radius = Math.max(contentRadius, separationRadius * 0.76);
   const petals: FlowerPetalMetric[] = unpositionedPetals.map((petal) => ({
     ...petal,
     radius,
   }));
-  const maximumExtent = radius + maximumHalfExtent + 128;
-  const size = Math.max(820, Math.ceil(maximumExtent * 2));
+  const maximumExtent = radius + maximumHalfExtent + 62;
+  const size = Math.max(720, Math.ceil(maximumExtent * 2));
   return { count, width: size, height: size, hubRadius, petals };
-}
-
-function convexHull(points: Point[]): Point[] {
-  if (points.length <= 3) return points;
-  const sorted = [...points].sort((first, second) => first.x - second.x || first.y - second.y);
-  const cross = (origin: Point, first: Point, second: Point) =>
-    (first.x - origin.x) * (second.y - origin.y)
-    - (first.y - origin.y) * (second.x - origin.x);
-  const half = (values: Point[]) => {
-    const result: Point[] = [];
-    for (const point of values) {
-      while (result.length >= 2 && cross(result[result.length - 2], result[result.length - 1], point) <= 0) {
-        result.pop();
-      }
-      result.push(point);
-    }
-    return result;
-  };
-  const lower = half(sorted);
-  const upper = half([...sorted].reverse());
-  lower.pop();
-  upper.pop();
-  return [...lower, ...upper];
-}
-
-function roundedPolygonPath(points: Point[], radius = 22): string {
-  if (!points.length) return "";
-  const corners = points.map((point, index) => {
-    const previous = points[(index - 1 + points.length) % points.length];
-    const next = points[(index + 1) % points.length];
-    const previousLength = Math.hypot(previous.x - point.x, previous.y - point.y);
-    const nextLength = Math.hypot(next.x - point.x, next.y - point.y);
-    const previousTrim = Math.min(radius, previousLength / 3);
-    const nextTrim = Math.min(radius, nextLength / 3);
-    return {
-      point,
-      entry: {
-        x: point.x + (previous.x - point.x) * previousTrim / Math.max(1, previousLength),
-        y: point.y + (previous.y - point.y) * previousTrim / Math.max(1, previousLength),
-      },
-      exit: {
-        x: point.x + (next.x - point.x) * nextTrim / Math.max(1, nextLength),
-        y: point.y + (next.y - point.y) * nextTrim / Math.max(1, nextLength),
-      },
-    };
-  });
-  const commands = ["M", corners[0].entry.x, corners[0].entry.y];
-  corners.forEach((corner, index) => {
-    const next = corners[(index + 1) % corners.length];
-    commands.push("Q", corner.point.x, corner.point.y, corner.exit.x, corner.exit.y);
-    commands.push("L", next.entry.x, next.entry.y);
-  });
-  commands.push("Z");
-  return commands.join(" ");
 }
 
 function flowerPetalPath(
@@ -736,29 +740,41 @@ function flowerPetalPath(
   const radians = angle * Math.PI / 180;
   const radial = { x: Math.cos(radians), y: Math.sin(radians) };
   const tangent = { x: -radial.y, y: radial.x };
-  const shapePadding = 34;
+  const shapePadding = 26;
   const halfWidth = petal.width / 2 + shapePadding;
   const halfHeight = petal.height / 2 + shapePadding;
   const radialHalfExtent = Math.abs(radial.x) * halfWidth + Math.abs(radial.y) * halfHeight;
+  const tangentHalfExtent = Math.abs(tangent.x) * halfWidth + Math.abs(tangent.y) * halfHeight;
   const baseRadius = hubRadius * 0.7;
-  const base = {
-    x: cx + radial.x * baseRadius,
-    y: cy + radial.y * baseRadius,
-  };
-  const baseHalfWidth = Math.max(10, Math.min(22, hubRadius * 0.14));
-  const points = [
-    { x: base.x + tangent.x * baseHalfWidth, y: base.y + tangent.y * baseHalfWidth },
-    { x: point.x - halfWidth, y: point.y - halfHeight },
-    { x: point.x + halfWidth, y: point.y - halfHeight },
-    { x: point.x + halfWidth, y: point.y + halfHeight },
-    { x: point.x - halfWidth, y: point.y + halfHeight },
-    {
-      x: point.x + radial.x * (radialHalfExtent + 48),
-      y: point.y + radial.y * (radialHalfExtent + 48),
-    },
-    { x: base.x - tangent.x * baseHalfWidth, y: base.y - tangent.y * baseHalfWidth },
-  ];
-  return roundedPolygonPath(convexHull(points));
+  const centerRadius = Math.hypot(point.x - cx, point.y - cy);
+  const shoulderRadius = Math.max(baseRadius + 32, centerRadius - radialHalfExtent * 0.78);
+  const crownRadius = centerRadius + radialHalfExtent * 0.72;
+  const tipRadius = centerRadius + radialHalfExtent + 34;
+  const baseHalfWidth = Math.max(9, Math.min(24, hubRadius * 0.15));
+  const at = (radius: number, tangentOffset = 0): Point => ({
+    x: cx + radial.x * radius + tangent.x * tangentOffset,
+    y: cy + radial.y * radius + tangent.y * tangentOffset,
+  });
+  const baseA = at(baseRadius, baseHalfWidth);
+  const baseB = at(baseRadius, -baseHalfWidth);
+  const shoulderA = at(shoulderRadius, tangentHalfExtent * 0.92);
+  const crownA = at(crownRadius, tangentHalfExtent * 0.62);
+  const roundA = at(tipRadius - 8, tangentHalfExtent * 0.28);
+  const tip = at(tipRadius);
+  const roundB = at(tipRadius - 8, -tangentHalfExtent * 0.28);
+  const crownB = at(crownRadius, -tangentHalfExtent * 0.62);
+  const shoulderB = at(shoulderRadius, -tangentHalfExtent * 0.92);
+  const neckA = at(baseRadius + (shoulderRadius - baseRadius) * 0.36, tangentHalfExtent * 0.48);
+  const neckB = at(baseRadius + (shoulderRadius - baseRadius) * 0.36, -tangentHalfExtent * 0.48);
+  return [
+    "M", baseA.x, baseA.y,
+    "C", neckA.x, neckA.y, shoulderA.x, shoulderA.y, crownA.x, crownA.y,
+    "C", roundA.x, roundA.y, tip.x, tip.y, tip.x, tip.y,
+    "C", tip.x, tip.y, roundB.x, roundB.y, crownB.x, crownB.y,
+    "C", shoulderB.x, shoulderB.y, neckB.x, neckB.y, baseB.x, baseB.y,
+    "Q", cx + radial.x * (baseRadius * 0.84), cy + radial.y * (baseRadius * 0.84), baseA.x, baseA.y,
+    "Z",
+  ].join(" ");
 }
 
 function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
@@ -772,17 +788,25 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         const petal = petals[index];
         const angle = -90 + index * 360 / count;
         const point = polar(cx, cy, petal.radius, angle);
-        const color = groupColor(group, index, spec.palette);
+        const color = styledGroupColor(group, index, spec);
+        const style = itemStyle(group, spec);
+        const stroke = groupStrokeColor(group, index, spec);
         const left = point.x - petal.width / 2;
         const top = point.y - petal.height / 2;
         return (
-          <g key={group.sourceNodeId} role="group" aria-label={group.sourceLabel}>
+          <g
+            key={group.sourceNodeId}
+            role="group"
+            aria-label={group.sourceLabel}
+            transform={style.rotation ? `rotate(${style.rotation} ${point.x} ${point.y})` : undefined}
+          >
             <title>{group.sourceLabel + ": " + group.targets.map((target) => target.label).join(", ")}</title>
             <path
               d={flowerPetalPath(cx, cy, point, petal, angle, hubRadius)}
               fill={tint(color, 0.7)}
-              stroke={color}
-              strokeWidth="2.5"
+              fillOpacity={groupFillOpacity(spec)}
+              stroke={stroke}
+              strokeWidth={groupStrokeWidth(spec)}
               strokeLinejoin="round"
             />
             <SvgLabel
@@ -791,6 +815,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               y={top + petal.sourceY}
               width={petal.sourceWidth}
               fontSize={petal.sourceFontSize}
+              fillOverride={style.textColor}
               weight={800}
               maximumLines={2}
             />
@@ -816,6 +841,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                     y={labelY}
                     width={placement.width}
                     fontSize={petal.targetFontSize}
+                    fillOverride={style.textColor}
                     weight={600}
                     anchor="start"
                     maximumLines={placement.lineCount}
@@ -864,19 +890,25 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         const row = Math.floor(index / columns);
         const x = gap + column * (cardWidth + gap);
         const y = 82 + gap + row * (cardHeight + gap);
-        const color = groupColor(group, index, spec.palette);
+        const color = styledGroupColor(group, index, spec);
+        const style = itemStyle(group, spec);
+        const stroke = groupStrokeColor(group, index, spec);
         return (
-          <g key={group.sourceNodeId}>
-            <rect x={x} y={y} width={cardWidth} height={cardHeight} rx="18" fill={tint(color, 0.84)} stroke={color} strokeWidth="2" />
-            <rect x={x} y={y} width={cardWidth} height="52" rx="18" fill={color} />
-            <rect x={x} y={y + 35} width={cardWidth} height="17" fill={color} />
+          <g
+            key={group.sourceNodeId}
+            transform={style.rotation ? `rotate(${style.rotation} ${x + cardWidth / 2} ${y + cardHeight / 2})` : undefined}
+          >
+            <rect x={x} y={y} width={cardWidth} height={cardHeight} rx="18" fill={tint(color, 0.84)} fillOpacity={groupFillOpacity(spec)} stroke={stroke} strokeWidth={groupStrokeWidth(spec)} />
+            <rect x={x} y={y} width={cardWidth} height="52" rx="18" fill={color} fillOpacity={groupFillOpacity(spec)} />
+            <rect x={x} y={y + 35} width={cardWidth} height="17" fill={color} fillOpacity={groupFillOpacity(spec)} />
             <SvgLabel
               value={sourceDisplayLabel(group, spec)}
               x={x + 18}
               y={y + 26}
               width={cardWidth - 72}
-              fontSize={Math.max(12, spec.textSize)}
+              fontSize={Math.max(12, style.fontSize ?? spec.textSize)}
               fill="#ffffff"
+              fillOverride={style.textColor}
               weight={750}
               anchor="start"
               maximumLines={1}
@@ -895,7 +927,8 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                   x={x + 32}
                   y={y + 75 + targetIndex * targetLineHeight}
                   width={cardWidth - 48}
-                  fontSize={Math.max(10, spec.textSize * 0.82)}
+                  fontSize={Math.max(10, (style.fontSize ?? spec.textSize) * 0.82)}
+                  fillOverride={style.textColor}
                   weight={550}
                   anchor="start"
                   maximumLines={1}
@@ -947,18 +980,33 @@ function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       })}
       {groups.map((group, rowIndex) => {
         const y = headerHeight + rowIndex * rowHeight;
-        const color = groupColor(group, rowIndex, spec.palette);
+        const color = styledGroupColor(group, rowIndex, spec);
+        const style = itemStyle(group, spec);
+        const stroke = groupStrokeColor(group, rowIndex, spec);
         const related = new Set(group.targets.map((target) => target.id));
         return (
-          <g key={group.sourceNodeId}>
-            <rect x="24" y={y - rowHeight / 2} width={width - 48} height={rowHeight} fill={rowIndex % 2 ? "#f8fafc" : "#ffffff"} />
+          <g
+            key={group.sourceNodeId}
+            transform={style.rotation ? `rotate(${style.rotation} ${width / 2} ${y})` : undefined}
+          >
+            <rect
+              x="24"
+              y={y - rowHeight / 2}
+              width={width - 48}
+              height={rowHeight}
+              fill={style.fillColor ? tint(color, 0.88) : rowIndex % 2 ? "#f8fafc" : "#ffffff"}
+              fillOpacity={groupFillOpacity(spec)}
+              stroke={style.borderColor || spec.borderColor ? stroke : "none"}
+              strokeWidth={groupStrokeWidth(spec)}
+            />
             <rect x="24" y={y - rowHeight / 2} width="7" height={rowHeight} fill={color} />
             <SvgLabel
               value={sourceDisplayLabel(group, spec) + (spec.showCounts ? " (" + group.count + ")" : "")}
               x={42}
               y={y}
               width={labelWidth - 42}
-              fontSize={Math.max(10, spec.textSize * 0.86)}
+              fontSize={Math.max(10, (style.fontSize ?? spec.textSize) * 0.86)}
+              fillOverride={style.textColor}
               weight={650}
               anchor="start"
               maximumLines={2}
@@ -1004,14 +1052,19 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       {groups.map((group, index) => {
         const angle = -90 + index * 360 / count;
         const point = polar(cx, cy, radius, angle);
-        const color = groupColor(group, index, spec.palette);
+        const color = styledGroupColor(group, index, spec);
+        const style = itemStyle(group, spec);
+        const stroke = groupStrokeColor(group, index, spec);
         return (
-          <g key={group.sourceNodeId}>
+          <g
+            key={group.sourceNodeId}
+            transform={style.rotation ? `rotate(${style.rotation} ${point.x} ${point.y})` : undefined}
+          >
             <path
               d={"M " + cx + " " + cy + " Q " + ((cx + point.x) / 2) + " " + ((cy + point.y) / 2) + " " + point.x + " " + point.y}
               fill="none"
-              stroke={tint(color, 0.32)}
-              strokeWidth="4"
+              stroke={style.borderColor || spec.borderColor ? stroke : tint(color, 0.32)}
+              strokeWidth={Math.max(2, groupStrokeWidth(spec))}
             />
             <rect
               x={point.x - panelWidth / 2}
@@ -1020,15 +1073,17 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               height={panelHeight}
               rx="26"
               fill={tint(color, 0.78)}
-              stroke={color}
-              strokeWidth="2.5"
+              fillOpacity={groupFillOpacity(spec)}
+              stroke={stroke}
+              strokeWidth={groupStrokeWidth(spec)}
             />
             <SvgLabel
               value={sourceDisplayLabel(group, spec) + (spec.showCounts ? " (" + group.count + ")" : "")}
               x={point.x}
               y={point.y - panelHeight / 2 + 32}
               width={panelWidth - 38}
-              fontSize={Math.max(12, spec.textSize)}
+              fontSize={Math.max(12, style.fontSize ?? spec.textSize)}
+              fillOverride={style.textColor}
               weight={780}
               maximumLines={2}
             />
@@ -1039,7 +1094,8 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                 x={point.x}
                 y={point.y - panelHeight / 2 + 72 + targetIndex * Math.max(21, spec.textSize * 1.42)}
                 width={panelWidth - 38}
-                fontSize={Math.max(10, spec.textSize * 0.78)}
+                fontSize={Math.max(10, (style.fontSize ?? spec.textSize) * 0.78)}
+                fillOverride={style.textColor}
                 weight={550}
                 maximumLines={1}
               />
@@ -1111,6 +1167,12 @@ export function RelationshipDiagramSvg({
   else content = <ArcFanLayout groups={groups} spec={spec} />;
 
   return (
+    <DiagramVisualStyleContext.Provider value={{
+      fontFamily: spec.fontFamily,
+      fontWeight: spec.fontWeight,
+      fontStyle: spec.fontStyle,
+      textColor: spec.textColor,
+    }}>
     <TextMeasurementContext.Provider value={measureText}>
     <svg
       viewBox={"0 0 " + width + " " + height}
@@ -1140,5 +1202,6 @@ export function RelationshipDiagramSvg({
       {content}
     </svg>
     </TextMeasurementContext.Provider>
+    </DiagramVisualStyleContext.Provider>
   );
 }
