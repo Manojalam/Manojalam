@@ -102,7 +102,107 @@ function convexSeparation(
   return maximumSeparation;
 }
 
-function assertClearBodiesAndFullBounds(
+function pointInsideConvexBody(
+  candidate: FlowerPetalPoint,
+  polygon: readonly FlowerPetalPoint[]
+): boolean {
+  let direction = 0;
+  for (let index = 0; index < polygon.length; index += 1) {
+    const side = turn(polygon[index], polygon[(index + 1) % polygon.length], candidate);
+    if (Math.abs(side) <= 0.001) continue;
+    const nextDirection = Math.sign(side);
+    if (direction !== 0 && direction !== nextDirection) return false;
+    direction = nextDirection;
+  }
+  return polygon.length >= 3;
+}
+
+function pointToSegmentDistance(
+  candidate: FlowerPetalPoint,
+  start: FlowerPetalPoint,
+  end: FlowerPetalPoint
+): number {
+  const edgeX = end.x - start.x;
+  const edgeY = end.y - start.y;
+  const squaredLength = edgeX * edgeX + edgeY * edgeY;
+  if (squaredLength <= Number.EPSILON) {
+    return Math.hypot(candidate.x - start.x, candidate.y - start.y);
+  }
+  const progress = Math.max(0, Math.min(1,
+    ((candidate.x - start.x) * edgeX + (candidate.y - start.y) * edgeY)
+      / squaredLength
+  ));
+  return Math.hypot(
+    candidate.x - (start.x + edgeX * progress),
+    candidate.y - (start.y + edgeY * progress)
+  );
+}
+
+function pointToConvexBodyDistance(
+  candidate: FlowerPetalPoint,
+  polygon: readonly FlowerPetalPoint[]
+): number {
+  if (pointInsideConvexBody(candidate, polygon)) return 0;
+  return polygon.reduce((minimum, start, index) => Math.min(
+    minimum,
+    pointToSegmentDistance(candidate, start, polygon[(index + 1) % polygon.length])
+  ), Number.POSITIVE_INFINITY);
+}
+
+function cubicPoint(
+  segment: FlowerPetalGeometry["segments"][number],
+  progress: number
+): FlowerPetalPoint {
+  const remainder = 1 - progress;
+  return {
+    x: remainder ** 3 * segment.start.x
+      + 3 * remainder ** 2 * progress * segment.control1.x
+      + 3 * remainder * progress ** 2 * segment.control2.x
+      + progress ** 3 * segment.end.x,
+    y: remainder ** 3 * segment.start.y
+      + 3 * remainder ** 2 * progress * segment.control1.y
+      + 3 * remainder * progress ** 2 * segment.control2.y
+      + progress ** 3 * segment.end.y,
+  };
+}
+
+function pointInsidePolygon(
+  candidate: FlowerPetalPoint,
+  polygon: readonly FlowerPetalPoint[]
+): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const start = polygon[index];
+    const end = polygon[previous];
+    if (
+      (start.y > candidate.y) !== (end.y > candidate.y)
+      && candidate.x < (end.x - start.x) * (candidate.y - start.y)
+        / (end.y - start.y) + start.x
+    ) inside = !inside;
+  }
+  return inside;
+}
+
+function assertSafeLabelCircleInside(petal: RelationshipFlowerPetalPlacement): void {
+  const geometry = geometryFor(petal);
+  const outline = geometry.segments.flatMap((segment) =>
+    Array.from({ length: 193 }, (_, index) => cubicPoint(segment, index / 192))
+  );
+  const radius = petal.labelRegionRadius;
+  for (let index = 0; index < 360; index += 1) {
+    const angle = index * Math.PI / 180;
+    const candidate = {
+      x: geometry.profile.labelCenter.x + Math.cos(angle) * radius,
+      y: geometry.profile.labelCenter.y + Math.sin(angle) * radius,
+    };
+    assert.ok(
+      pointInsidePolygon(candidate, outline),
+      `label circle leaves layer ${petal.layerIndex} petal at ${index} degrees`
+    );
+  }
+}
+
+function assertSameLayerBodiesAndFullBounds(
   flower: RelationshipFlowerLayout,
   minimumClearance: number
 ): void {
@@ -117,6 +217,7 @@ function assertClearBodiesAndFullBounds(
   ));
   for (let first = 0; first < hulls.length; first += 1) {
     for (let second = first + 1; second < hulls.length; second += 1) {
+      if (flower.petals[first].layerIndex !== flower.petals[second].layerIndex) continue;
       const clearance = convexSeparation(hulls[first], hulls[second]);
       assert.ok(
         clearance + 0.001 >= minimumClearance,
@@ -174,7 +275,7 @@ test("all petals use one canonical size regardless of source content", () => {
   assert.ok(result.petals.every((petal) => petal.rootRadius <= 88 * 0.68 + 0.001));
   assert.ok(result.petals[0].sectorHalfAngleDegrees * 2 <= 360 / 9 - 1.4);
   assert.deepEqual(result.petals.map((petal) => petal.index), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-  assertClearBodiesAndFullBounds(result, 1);
+  assertSameLayerBodiesAndFullBounds(result, 1);
 });
 
 test("the production safe circle fits representative Sanskrit counts at readable line heights", () => {
@@ -236,7 +337,7 @@ test("the production safe circle fits representative Sanskrit counts at readable
   }
 });
 
-test("dense flowers form staggered interleaved canonical layers", () => {
+test("dense flowers form compact alternating nested layers", () => {
   const result = layoutRelationshipFlowerPetals(
     Array.from({ length: 24 }, () => ({})),
     { hubRadius: 88, maxPerLayer: 9, density: "comfortable" }
@@ -246,14 +347,83 @@ test("dense flowers form staggered interleaved canonical layers", () => {
     result.petals.filter((petal) => petal.layerIndex === layerIndex)
   );
   assert.equal(layers[0][0].angle, -90);
-  assert.equal(layers[1][0].angle, -75);
-  assert.equal(layers[2][0].angle, -60);
+  assert.equal(layers[1][0].angle, -67.5);
+  assert.equal(layers[2][0].angle, -90);
   assert.ok(layers[1][0].rootRadius > layers[0][0].rootRadius);
   assert.ok(layers[2][0].rootRadius > layers[1][0].rootRadius);
-  assert.equal(new Set(result.petals.map((petal) => petal.length)).size, 1);
+  assert.ok(layers[1][0].length < layers[0][0].length);
+  assert.equal(layers[1][0].length, layers[2][0].length);
+  for (let layerIndex = 1; layerIndex < layers.length; layerIndex += 1) {
+    const foreground = layers[layerIndex - 1][0];
+    const nested = layers[layerIndex][0];
+    assert.ok(
+      nested.rootRadius < foreground.rootRadius + foreground.length,
+      `layer ${layerIndex} does not begin behind its foreground layer`
+    );
+    assert.ok(
+      nested.rootRadius + nested.length > foreground.rootRadius + foreground.length,
+      `layer ${layerIndex} does not reveal a tip beyond its foreground layer`
+    );
+  }
   assert.equal(new Set(result.petals.map((petal) => petal.halfWidth)).size, 1);
+  assert.equal(new Set(result.petals.map((petal) => petal.labelRegionRadius)).size, 1);
   assert.equal(new Set(result.petals.map((petal) => petal.sectorHalfAngleDegrees)).size, 1);
-  assertClearBodiesAndFullBounds(result, 1);
+  assert.ok(result.maximumExtent < 650, `nested flower extent is ${result.maximumExtent}px`);
+  result.petals.forEach(assertSafeLabelCircleInside);
+  assertSameLayerBodiesAndFullBounds(result, 1);
+});
+
+test("back-layer labels clear every foreground body while petal bodies overlap", () => {
+  const result = layoutRelationshipFlowerPetals(
+    Array.from({ length: 24 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable" }
+  );
+  const geometries = result.petals.map(geometryFor);
+  const hulls = geometries.map((geometry) => convexHull(
+    geometry.segments.flatMap((segment) => [
+      segment.start,
+      segment.control1,
+      segment.control2,
+      segment.end,
+    ])
+  ));
+  let overlappingLayerPairs = 0;
+  for (let back = 0; back < result.petals.length; back += 1) {
+    const backPetal = result.petals[back];
+    if (backPetal.layerIndex === 0) continue;
+    const center = point(backPetal.labelCenterRadius, backPetal.angle);
+    for (let front = 0; front < result.petals.length; front += 1) {
+      const frontPetal = result.petals[front];
+      if (frontPetal.layerIndex >= backPetal.layerIndex) continue;
+      const distance = pointToConvexBodyDistance(center, hulls[front]);
+      assert.ok(
+        distance + 0.001 >= backPetal.labelRegionRadius,
+        `layer ${backPetal.layerIndex} label intersects foreground petal ${front}`
+      );
+      if (
+        frontPetal.layerIndex === backPetal.layerIndex - 1
+        && convexSeparation(hulls[back], hulls[front]) < 0
+      ) overlappingLayerPairs += 1;
+    }
+  }
+  assert.ok(overlappingLayerPairs > 0, "nested layer bodies never overlap");
+});
+
+test("shortened nested petals contain the full safe circle at every density", () => {
+  for (const density of ["compact", "comfortable", "spacious"] as const) {
+    const result = layoutRelationshipFlowerPetals(
+      Array.from({ length: 24 }, () => ({})),
+      { hubRadius: 88, maxPerLayer: 9, density }
+    );
+    result.petals.forEach((petal) => {
+      assertSafeLabelCircleInside(petal);
+      assert.equal(
+        geometryFor(petal).profile.labelRegionRadius,
+        result.labelRegionRadius,
+        `${density} layer ${petal.layerIndex} reduced its fixed label region`
+      );
+    });
+  }
 });
 
 test("a requested 24-petal ring preserves slot gaps and complete bounds", () => {
@@ -264,7 +434,7 @@ test("a requested 24-petal ring preserves slot gaps and complete bounds", () => 
 
   assert.deepEqual(result.layerCounts, [24]);
   assert.ok(result.petals[0].sectorHalfAngleDegrees * 2 <= 360 / 24 - 1.4);
-  assertClearBodiesAndFullBounds(result, 1);
+  assertSameLayerBodiesAndFullBounds(result, 1);
 });
 
 test("fixed circular label regions do not overlap", () => {

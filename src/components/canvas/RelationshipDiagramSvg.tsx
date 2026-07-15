@@ -753,9 +753,12 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   });
   const layerIndexes = [...new Set(items.map((item) => item.petal.layerIndex))]
     .sort((first, second) => second - first);
-  const orderedItems = layerIndexes.flatMap((layerIndex) =>
-    items.filter((item) => item.petal.layerIndex === layerIndex)
-  );
+  // Finish each back layer (shape and content) before painting the next
+  // foreground layer, so tucked petals and their labels are occluded together.
+  const orderedLayers = layerIndexes.map((layerIndex) => ({
+    layerIndex,
+    items: items.filter((item) => item.petal.layerIndex === layerIndex),
+  }));
   const renderContent = ({ group, petal, geometry, color, style, transform }: typeof items[number]) => {
     const center = geometry.profile.labelCenter;
     const sourceText = sourceDisplayLabel(group, spec)
@@ -823,24 +826,28 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   };
   return (
     <>
-      {orderedItems.map(({ group, geometry, color, stroke, transform }) => (
-        <g
-          key={`flower-shape-${group.sourceNodeId}`}
-          transform={transform}
-          aria-hidden="true"
-        >
-          <path
-            d={geometry.path}
-            fill={tint(color, 0.7)}
-            fillOpacity={groupFillOpacity(spec)}
-            stroke={stroke}
-            strokeWidth={groupStrokeWidth(spec)}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
+      {orderedLayers.map(({ layerIndex, items: layerItems }) => (
+        <g key={`flower-layer-${layerIndex}`}>
+          {layerItems.map(({ group, geometry, color, stroke, transform }) => (
+            <g
+              key={`flower-shape-${group.sourceNodeId}`}
+              transform={transform}
+              aria-hidden="true"
+            >
+              <path
+                d={geometry.path}
+                fill={tint(color, 0.7)}
+                fillOpacity={groupFillOpacity(spec)}
+                stroke={stroke}
+                strokeWidth={groupStrokeWidth(spec)}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </g>
+          ))}
+          {layerItems.map(renderContent)}
         </g>
       ))}
-      {orderedItems.map(renderContent)}
       <circle cx={cx} cy={cy} r={hubRadius} fill="#0f172a" stroke="#ffffff" strokeWidth="4" />
       <SvgLabel
         value={spec.title || "Relationships"}

@@ -61,6 +61,9 @@ const DENSITY_SCALE: Record<RelationshipFlowerDensity, number> = {
 const SLOT_GAP_DEGREES = 1.5;
 const MAX_SECTOR_HALF_ANGLE_DEGREES = 68;
 const COLLISION_EPSILON = 0.01;
+const NESTED_LABEL_CENTER_RATIO = 0.62;
+const MINIMUM_NESTED_LENGTH_TO_LABEL_RADIUS = 3.5;
+const NESTED_LENGTH_REDUCTION_PER_LAYER = 0.08;
 
 type ConvexBody = {
   placement: RelationshipFlowerPetalPlacement;
@@ -211,6 +214,58 @@ function convexBodiesHaveClearance(
   return false;
 }
 
+function pointInsideConvexBody(
+  point: FlowerPetalPoint,
+  polygon: readonly FlowerPetalPoint[]
+): boolean {
+  let direction = 0;
+  for (let index = 0; index < polygon.length; index += 1) {
+    const side = cross(polygon[index], polygon[(index + 1) % polygon.length], point);
+    if (Math.abs(side) <= COLLISION_EPSILON) continue;
+    const nextDirection = Math.sign(side);
+    if (direction !== 0 && direction !== nextDirection) return false;
+    direction = nextDirection;
+  }
+  return polygon.length >= 3;
+}
+
+function pointToSegmentDistance(
+  point: FlowerPetalPoint,
+  start: FlowerPetalPoint,
+  end: FlowerPetalPoint
+): number {
+  const edgeX = end.x - start.x;
+  const edgeY = end.y - start.y;
+  const magnitudeSquared = edgeX * edgeX + edgeY * edgeY;
+  if (magnitudeSquared <= Number.EPSILON) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+  const progress = Math.max(0, Math.min(1,
+    ((point.x - start.x) * edgeX + (point.y - start.y) * edgeY) / magnitudeSquared
+  ));
+  return Math.hypot(
+    point.x - (start.x + edgeX * progress),
+    point.y - (start.y + edgeY * progress)
+  );
+}
+
+function pointToConvexBodyDistance(
+  point: FlowerPetalPoint,
+  polygon: readonly FlowerPetalPoint[]
+): number {
+  if (polygon.length < 2) return Number.POSITIVE_INFINITY;
+  if (pointInsideConvexBody(point, polygon)) return 0;
+  return polygon.reduce((minimum, start, index) => Math.min(
+    minimum,
+    pointToSegmentDistance(point, start, polygon[(index + 1) % polygon.length])
+  ), Number.POSITIVE_INFINITY);
+}
+
+function pointOnRadius(radius: number, angleDegrees: number): FlowerPetalPoint {
+  const angle = radians(angleDegrees);
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
 type SectorGeometryInput = FlowerPetalGeometryInput & {
   sectorHalfAngleDegrees: number;
   edgeClearance: number;
@@ -288,12 +343,97 @@ function bodiesAreClear(
   return true;
 }
 
-function collisionFreeLayerBodies(
+function labelCirclesAreClear(
+  candidates: readonly ConvexBody[],
+  positioned: readonly ConvexBody[],
+  clearance: number
+): boolean {
+  for (let first = 0; first < candidates.length; first += 1) {
+    const firstPlacement = candidates[first].placement;
+    const firstCenter = pointOnRadius(
+      firstPlacement.labelCenterRadius,
+      firstPlacement.angle
+    );
+    for (let second = first + 1; second < candidates.length; second += 1) {
+      const secondPlacement = candidates[second].placement;
+      const secondCenter = pointOnRadius(
+        secondPlacement.labelCenterRadius,
+        secondPlacement.angle
+      );
+      if (
+        Math.hypot(firstCenter.x - secondCenter.x, firstCenter.y - secondCenter.y)
+        + COLLISION_EPSILON
+        < firstPlacement.labelRegionRadius + secondPlacement.labelRegionRadius + clearance
+      ) return false;
+    }
+    for (const existing of positioned) {
+      const existingPlacement = existing.placement;
+      const existingCenter = pointOnRadius(
+        existingPlacement.labelCenterRadius,
+        existingPlacement.angle
+      );
+      if (
+        Math.hypot(firstCenter.x - existingCenter.x, firstCenter.y - existingCenter.y)
+        + COLLISION_EPSILON
+        < firstPlacement.labelRegionRadius + existingPlacement.labelRegionRadius + clearance
+      ) return false;
+    }
+  }
+  return true;
+}
+
+function labelsClearForegroundBodies(
+  candidates: readonly ConvexBody[],
+  positioned: readonly ConvexBody[],
+  clearance: number
+): boolean {
+  for (const candidate of candidates) {
+    const placement = candidate.placement;
+    const center = pointOnRadius(placement.labelCenterRadius, placement.angle);
+    for (const foreground of positioned) {
+      if (
+        pointToConvexBodyDistance(center, foreground.hull) + COLLISION_EPSILON
+        < placement.labelRegionRadius + clearance
+      ) return false;
+    }
+  }
+  return true;
+}
+
+function collisionFreeLabelCenterRadius(
+  angles: readonly number[],
+  positioned: readonly ConvexBody[],
+  labelRegionRadius: number,
+  clearance: number,
+  minimumRadius: number
+): number {
+  let radius = minimumRadius;
+  for (const angle of angles) {
+    const angleRadians = radians(angle);
+    for (const existing of positioned) {
+      const placement = existing.placement;
+      const requiredDistance = labelRegionRadius
+        + placement.labelRegionRadius
+        + clearance;
+      const delta = angleRadians - radians(placement.angle);
+      const transverse = placement.labelCenterRadius * Math.sin(delta);
+      if (Math.abs(transverse) >= requiredDistance) continue;
+      const axial = placement.labelCenterRadius * Math.cos(delta);
+      radius = Math.max(
+        radius,
+        axial + Math.sqrt(Math.max(0, requiredDistance ** 2 - transverse ** 2))
+      );
+    }
+  }
+  return radius;
+}
+
+function compactNestedLayerBodies(
   itemIndexes: readonly number[],
   layerIndex: number,
   angles: readonly number[],
-  minimumRootRadius: number,
-  guaranteedRootRadius: number,
+  minimumLabelCenterRadius: number,
+  guaranteedLabelCenterRadius: number,
   length: number,
   halfWidth: number,
   labelCenterOffset: number,
@@ -301,13 +441,14 @@ function collisionFreeLayerBodies(
   sectorHalfAngleDegrees: number,
   edgeClearance: number,
   positioned: readonly ConvexBody[],
-  bodyGap: number
+  bodyGap: number,
+  labelGap: number
 ): ConvexBody[] {
-  const at = (rootRadius: number) => candidateLayerBodies(
+  const at = (labelCenterRadius: number) => candidateLayerBodies(
     itemIndexes,
     layerIndex,
     angles,
-    rootRadius,
+    Math.max(0, labelCenterRadius - labelCenterOffset),
     length,
     halfWidth,
     labelCenterOffset,
@@ -315,33 +456,51 @@ function collisionFreeLayerBodies(
     sectorHalfAngleDegrees,
     edgeClearance
   );
-  let bodies = at(minimumRootRadius);
-  if (bodiesAreClear(bodies, positioned, bodyGap)) return bodies;
+  const clear = (bodies: readonly ConvexBody[]) =>
+    // Sectors within one layer must remain separate, but flower layers are
+    // deliberately allowed to overlap so that later layers tuck behind the
+    // preceding flower instead of starting beyond it.
+    bodiesAreClear(bodies, [], bodyGap)
+    && labelCirclesAreClear(bodies, positioned, labelGap)
+    && labelsClearForegroundBodies(bodies, positioned, labelGap / 2);
+  const analyticMinimum = collisionFreeLabelCenterRadius(
+    angles,
+    positioned,
+    labelRegionRadius,
+    labelGap,
+    minimumLabelCenterRadius
+  );
+  let bodies = at(analyticMinimum);
+  if (clear(bodies)) return bodies;
 
-  const step = Math.max(3, bodyGap, halfWidth * 0.04);
-  let collidingRoot = minimumRootRadius;
-  let clearRoot = minimumRootRadius;
-  while (clearRoot < guaranteedRootRadius - COLLISION_EPSILON) {
-    collidingRoot = clearRoot;
-    clearRoot = Math.min(guaranteedRootRadius, clearRoot + step);
-    bodies = at(clearRoot);
-    if (bodiesAreClear(bodies, positioned, bodyGap)) break;
+  const step = Math.max(3, labelGap, labelRegionRadius * 0.04);
+  let collidingRadius = analyticMinimum;
+  let clearRadius = analyticMinimum;
+  while (clearRadius < guaranteedLabelCenterRadius - COLLISION_EPSILON) {
+    collidingRadius = clearRadius;
+    clearRadius = Math.min(guaranteedLabelCenterRadius, clearRadius + step);
+    bodies = at(clearRadius);
+    if (clear(bodies)) break;
   }
-  if (!bodiesAreClear(bodies, positioned, bodyGap)) {
-    clearRoot = guaranteedRootRadius + halfWidth + bodyGap;
-    bodies = at(clearRoot);
+  // The guaranteed radius places the complete label circle outside the
+  // foregrounds' radial extent. Keep a deterministic finite fallback for a
+  // custom geometry whose same-layer controls are wider than its sector.
+  if (!clear(bodies)) {
+    collidingRadius = clearRadius;
+    clearRadius = guaranteedLabelCenterRadius + length + halfWidth + labelGap;
+    bodies = at(clearRadius);
   }
 
   // Refine the first deterministic clear interval without relying on a
   // content-dependent size or a platform-specific physics solver.
   for (let iteration = 0; iteration < 12; iteration += 1) {
-    const midpoint = (collidingRoot + clearRoot) / 2;
+    const midpoint = (collidingRadius + clearRadius) / 2;
     const midpointBodies = at(midpoint);
-    if (bodiesAreClear(midpointBodies, positioned, bodyGap)) {
-      clearRoot = midpoint;
+    if (clear(midpointBodies)) {
+      clearRadius = midpoint;
       bodies = midpointBodies;
     } else {
-      collidingRoot = midpoint;
+      collidingRadius = midpoint;
     }
   }
   return bodies;
@@ -390,7 +549,7 @@ export function layoutRelationshipFlowerPetals(
     hubRadius * 0.95 * densityScale
   );
   const outlinePadding = hubRadius * (
-    options.density === "compact" ? 0.045 : options.density === "spacious" ? 0.075 : 0.06
+    options.density === "spacious" ? 0.075 : 0.065
   );
   const halfWidth = labelRegionRadius + outlinePadding;
 
@@ -418,6 +577,7 @@ export function layoutRelationshipFlowerPetals(
   const bodyGap = hubRadius * (
     options.density === "compact" ? 0.02 : options.density === "spacious" ? 0.05 : 0.035
   );
+  const labelGap = bodyGap;
   const layerGap = options.density === "compact" ? 6 : options.density === "spacious" ? 12 : 8;
   const attachmentRootRadius = hubRadius * 0.68;
   const baseLabelCenterOffset = baseLength * 0.58;
@@ -430,47 +590,71 @@ export function layoutRelationshipFlowerPetals(
   const length = baseLength + attachmentInset;
   const labelCenterOffset = baseLabelCenterOffset + attachmentInset;
   const positioned: ConvexBody[] = [];
-  let previousRootRadius = attachmentRootRadius;
+  let previousLabelCenterRadius = attachmentRootRadius + labelCenterOffset;
 
   nonemptyLayers.forEach((itemIndexes, visualLayerIndex) => {
     const count = itemIndexes.length;
-    const stagger = visualLayerIndex / Math.max(1, nonemptyLayers.length)
-      * (360 / count);
+    // Each back flower alternates into the gaps of the flower immediately in
+    // front of it. Equal balanced layers therefore use 0, half-slot, 0...
+    // rather than dividing one slot by the total number of layers.
+    const stagger = visualLayerIndex % 2 === 0 ? 0 : 180 / count;
     const angles = itemIndexes.map((_, slotIndex) =>
       -90 + stagger + slotIndex * 360 / count
     );
-    const minimumRootRadius = visualLayerIndex === 0
-      ? attachmentRootRadius
-      : previousRootRadius + layerGap;
+    const layerLength = visualLayerIndex === 0
+      ? length
+      : Math.max(
+        labelRegionRadius * MINIMUM_NESTED_LENGTH_TO_LABEL_RADIUS,
+        length * (
+          1 - NESTED_LENGTH_REDUCTION_PER_LAYER * Math.min(visualLayerIndex, 2)
+        )
+      );
+    const layerLabelCenterOffset = visualLayerIndex === 0
+      ? labelCenterOffset
+      : layerLength * NESTED_LABEL_CENTER_RATIO;
+    const sameLayerLabelCenterRadius = count > 1
+      ? (labelRegionRadius + labelGap / 2) / Math.max(0.01, Math.sin(Math.PI / count))
+      : attachmentRootRadius + layerLabelCenterOffset;
+    const minimumLabelCenterRadius = Math.max(
+      attachmentRootRadius + layerLabelCenterOffset,
+      minimumBodyCenterRadius,
+      sameLayerLabelCenterRadius,
+      visualLayerIndex === 0 ? 0 : previousLabelCenterRadius + layerGap
+    );
     const positionedOuterRadius = positioned.reduce((maximum, body) =>
       Math.max(
         maximum,
         ...body.hull.map((point) => Math.hypot(point.x, point.y))
       ), 0
     );
-    // At this radius the candidate hull starts outside every already placed
-    // hull. For the first layer the extra interval is a finite fallback for
-    // legacy/custom geometry that has not opted into sector-safe controls.
-    const guaranteedRootRadius = positioned.length
-      ? Math.max(minimumRootRadius, positionedOuterRadius + bodyGap)
-      : minimumRootRadius + length + halfWidth + bodyGap;
-    const bodies = collisionFreeLayerBodies(
+    // At this center radius the complete safe label circle is outside the
+    // radial extent of every foreground hull. The actual placement is refined
+    // inward to the first radius that clears those hulls and all label circles.
+    const guaranteedLabelCenterRadius = positioned.length
+      ? Math.max(
+        minimumLabelCenterRadius,
+        positionedOuterRadius + labelRegionRadius + labelGap / 2
+      )
+      : minimumLabelCenterRadius + layerLength + halfWidth + labelGap;
+    const bodies = compactNestedLayerBodies(
       itemIndexes,
       visualLayerIndex,
       angles,
-      minimumRootRadius,
-      guaranteedRootRadius,
-      length,
+      minimumLabelCenterRadius,
+      guaranteedLabelCenterRadius,
+      layerLength,
       halfWidth,
-      labelCenterOffset,
+      layerLabelCenterOffset,
       labelRegionRadius,
       sectorHalfAngleDegrees,
       edgeClearance,
       positioned,
-      bodyGap
+      bodyGap,
+      labelGap
     );
     positioned.push(...bodies);
-    previousRootRadius = bodies[0]?.placement.rootRadius ?? minimumRootRadius;
+    previousLabelCenterRadius = bodies[0]?.placement.labelCenterRadius
+      ?? minimumLabelCenterRadius;
   });
 
   const petals = positioned.map((body) => body.placement);
