@@ -291,21 +291,33 @@ test("all petals use one canonical size regardless of source content", () => {
   assertSameLayerBodiesAndFullBounds(result, 0);
 });
 
-test("sparse slot grids use shorter broader petals without reducing the safe label region", () => {
-  const flowers = [4, 8, 12].map((slotCount) => layoutRelationshipFlowerPetals(
+test("sparse slot grids use materially shorter broader petals without geometry flattening", () => {
+  const slotCounts = [3, 4, 8, 12];
+  const flowers = slotCounts.map((slotCount) => layoutRelationshipFlowerPetals(
     Array.from({ length: slotCount }, () => ({})),
     { hubRadius: 88, maxPerLayer: 24, density: "comfortable", layerCount: 1 }
   ));
   const basePetals = flowers.map((flower) => flower.petals[0]);
+  const renderedProfiles = basePetals.map((petal) => geometryFor(petal).profile);
 
   assert.ok(basePetals[0].length < basePetals[1].length);
   assert.ok(basePetals[1].length < basePetals[2].length);
+  assert.ok(basePetals[2].length < basePetals[3].length);
   assert.ok(basePetals[0].halfWidth > basePetals[1].halfWidth);
   assert.ok(basePetals[1].halfWidth > basePetals[2].halfWidth);
+  assert.ok(basePetals[2].halfWidth > basePetals[3].halfWidth);
+  assert.ok(renderedProfiles[0].halfWidth > renderedProfiles[1].halfWidth * 1.05);
+  assert.ok(basePetals[0].length < basePetals[1].length * 0.98);
+  renderedProfiles.forEach((profile, index) => {
+    assert.ok(
+      Math.abs(profile.halfWidth - basePetals[index].halfWidth) <= 0.001,
+      `${slotCounts[index]}-slot petal width was flattened by geometry`
+    );
+  });
   assert.equal(new Set(flowers.map((flower) => flower.labelRegionRadius)).size, 1);
 
   flowers.forEach((flower, index) => {
-    assert.equal(flower.layerSlotCount, [4, 8, 12][index]);
+    assert.equal(flower.layerSlotCount, slotCounts[index]);
     assert.equal(new Set(flower.petals.map((petal) => petal.length)).size, 1);
     assert.equal(new Set(flower.petals.map((petal) => petal.halfWidth)).size, 1);
     flower.petals.forEach(assertSafeLabelCircleInside);
@@ -395,7 +407,7 @@ test("partial last layers keep a complete shared slot grid with placeholders", (
     .sort((first, second) => first.slotIndex - second.slotIndex)
     .map((petal) => petal.angle));
   assert.deepEqual(layerAngles[0], [-90, 0, 90, 180]);
-  assert.deepEqual(layerAngles[1], [-45, 45, 135, 225]);
+  assert.deepEqual(layerAngles[1], [-135, -45, 45, 135]);
   assert.ok(placements.every((petal) =>
     petal.baseContact.halfAngleDegrees === 45
     && petal.baseContact.startRadius === 88 * 0.94
@@ -412,6 +424,13 @@ test("partial last layers keep a complete shared slot grid with placeholders", (
   assert.deepEqual(twentyTwoAcrossFour.layerCounts, [6, 6, 6, 4]);
   assert.equal(twentyTwoAcrossFour.layerSlotCount, 6);
   assert.deepEqual(
+    Array.from({ length: 4 }, (_, layerIndex) =>
+      [...twentyTwoAcrossFour.petals, ...twentyTwoAcrossFour.emptyPetals]
+        .find((petal) => petal.layerIndex === layerIndex && petal.slotIndex === 0)!.angle + 90
+    ),
+    [0, -45, -90, -135]
+  );
+  assert.deepEqual(
     twentyTwoAcrossFour.emptyPetals.map((petal) => [petal.layerIndex, petal.slotIndex]),
     [[3, 4], [3, 5]]
   );
@@ -427,8 +446,8 @@ test("dense flowers attach every compact nested layer beneath the hub", () => {
     result.petals.filter((petal) => petal.layerIndex === layerIndex)
   );
   assert.equal(layers[0][0].angle, -90);
-  assert.equal(layers[1][0].angle, -67.5);
-  assert.equal(layers[2][0].angle, -90);
+  assert.equal(layers[1][0].angle, -120);
+  assert.equal(layers[2][0].angle, -150);
   const attachmentRootRadius = 88 * 0.68;
   assert.ok(result.petals.every((petal) =>
     Math.abs(petal.rootRadius - attachmentRootRadius) <= 0.001
@@ -452,9 +471,84 @@ test("dense flowers attach every compact nested layer beneath the hub", () => {
   assert.ok(layers[2][0].halfWidth > layers[1][0].halfWidth);
   assert.equal(new Set(result.petals.map((petal) => petal.labelRegionRadius)).size, 1);
   assert.equal(new Set(result.petals.map((petal) => petal.sectorHalfAngleDegrees)).size, 1);
-  assert.ok(result.maximumExtent < 700, `nested flower extent is ${result.maximumExtent}px`);
+  assert.ok(result.maximumExtent < 720, `nested flower extent is ${result.maximumExtent}px`);
   result.petals.forEach(assertSafeLabelCircleInside);
   assertSameLayerBodiesAndFullBounds(result, 0);
+});
+
+test("source order advances by one layer-share through each wraparound gap", () => {
+  const result = layoutRelationshipFlowerPetals(
+    Array.from({ length: 9 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable", layerCount: 3 }
+  );
+  assert.deepEqual(result.layerCounts, [3, 3, 3]);
+  assert.equal(result.layerSlotCount, 3);
+  assert.deepEqual(
+    Array.from({ length: 3 }, (_, layerIndex) =>
+      result.petals.find((petal) =>
+        petal.layerIndex === layerIndex && petal.slotIndex === 0
+      )!.angle + 90
+    ),
+    [0, -80, -160]
+  );
+  assert.deepEqual(
+    result.petals.map((petal) => [petal.index, petal.layerIndex, petal.slotIndex, petal.angle]),
+    [
+      [0, 0, 0, -90],
+      [1, 0, 1, 30],
+      [2, 0, 2, 150],
+      [3, 1, 0, -170],
+      [4, 1, 1, -50],
+      [5, 1, 2, 70],
+      [6, 2, 0, -250],
+      [7, 2, 1, -130],
+      [8, 2, 2, -10],
+    ]
+  );
+  const clockwiseDelta = (first: number, second: number) =>
+    ((second - first) % 360 + 360) % 360;
+  assert.deepEqual(
+    result.petals.slice(1).map((petal, index) =>
+      clockwiseDelta(result.petals[index].angle, petal.angle)
+    ),
+    [120, 120, 40, 120, 120, 40, 120, 120]
+  );
+  assert.deepEqual(
+    Array.from({ length: 3 }, (_, layerIndex) => {
+      const angle = result.petals.find((petal) =>
+        petal.layerIndex === layerIndex && petal.slotIndex === 0
+      )!.angle + 90;
+      return ((angle % 120) + 120) % 120;
+    }),
+    [0, 40, 80]
+  );
+});
+
+test("five-slot layers continue through the final-to-first gap with trailing blanks", () => {
+  const result = layoutRelationshipFlowerPetals(
+    Array.from({ length: 9 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable", layerCount: 2 }
+  );
+  assert.deepEqual(result.layerCounts, [5, 4]);
+  assert.equal(result.layerSlotCount, 5);
+  assert.deepEqual(
+    result.petals.map((petal) => [petal.index, petal.layerIndex, petal.slotIndex, petal.angle]),
+    [
+      [0, 0, 0, -90],
+      [1, 0, 1, -18],
+      [2, 0, 2, 54],
+      [3, 0, 3, 126],
+      [4, 0, 4, 198],
+      [5, 1, 0, -126],
+      [6, 1, 1, -54],
+      [7, 1, 2, 18],
+      [8, 1, 3, 90],
+    ]
+  );
+  assert.deepEqual(
+    result.emptyPetals.map((petal) => [petal.layerIndex, petal.slotIndex, petal.angle]),
+    [[1, 4, 162]]
+  );
 });
 
 test("an explicit layer count is exact even when automatic density would add a layer", () => {
@@ -468,7 +562,7 @@ test("an explicit layer count is exact even when automatic density would add a l
   assert.equal(result.petals.length, 24);
   assert.deepEqual(result.emptyPetals, []);
   assert.equal(result.petals.find((petal) => petal.layerIndex === 0)?.angle, -90);
-  assert.equal(result.petals.find((petal) => petal.layerIndex === 1)?.angle, -75);
+  assert.equal(result.petals.find((petal) => petal.layerIndex === 1)?.angle, -105);
   assertSameLayerBodiesAndFullBounds(result, 0);
 });
 
