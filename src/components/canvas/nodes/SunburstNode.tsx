@@ -22,7 +22,8 @@ import {
 import { isHierarchyRadialChartActive } from "@/lib/canvas/chart-selection";
 import {
   normalizeRadialLabelRotation,
-  resolveRadialLabelRotation,
+  resolveChartAwareCenterLabelRotation,
+  resolveChartAwareSectorLabelRotation,
 } from "@/lib/canvas/radial-label-rotation";
 import {
   radialColorScheme,
@@ -503,7 +504,12 @@ function fitLabel(
   return { lines: [], fontSize: minimumReadableFont, width, height };
 }
 
-function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowserMetrics: boolean): LabelGeometry {
+function sectorLabelGeometry(
+  segment: SunburstSegment,
+  center: number,
+  useBrowserMetrics: boolean,
+  chartRotation: unknown
+): LabelGeometry {
   const midAngle = (segment.startAngle + segment.endAngle) / 2;
   const textRadius = (segment.innerRadius + segment.outerRadius) / 2;
   const point = pointOnCircle(center, center, textRadius, midAngle);
@@ -527,9 +533,11 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowse
     fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
   }, useBrowserMetrics, minimumReadable);
   const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
-  const normalized = ((baseRotation % 360) + 360) % 360;
-  const automaticRotation = normalized > 90 && normalized < 270 ? baseRotation + 180 : baseRotation;
-  const rotation = resolveRadialLabelRotation(automaticRotation, segment.textRotation);
+  const rotation = resolveChartAwareSectorLabelRotation(
+    baseRotation,
+    chartRotation,
+    segment.textRotation
+  );
   return { ...fit, x: point.x, y: point.y, rotation };
 }
 
@@ -540,7 +548,8 @@ function circleLabelGeometry(
   preferredFontSize: number | undefined,
   style: LabelTextStyle,
   useBrowserMetrics: boolean,
-  manualRotation: unknown = 0
+  manualRotation: unknown = 0,
+  chartRotation: unknown = 0
 ): LabelGeometry {
   const width = Math.max(24, radius * 1.55);
   const height = Math.max(24, radius * 1.5);
@@ -551,7 +560,7 @@ function circleLabelGeometry(
     ...fitLabel(label, width, height, preferred, style, useBrowserMetrics, minimumReadable),
     x: center,
     y: center,
-    rotation: resolveRadialLabelRotation(0, manualRotation),
+    rotation: resolveChartAwareCenterLabelRotation(chartRotation, manualRotation),
   };
 }
 
@@ -923,14 +932,15 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       fontStyle: /<(em|i)\b/i.test(rootRichText) || d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
     },
     fontMetricsReady,
-    rootData.radialTextRotation
+    rootData.radialTextRotation,
+    d.rotation,
   );
   const rootClipId = `${clipPrefix}-root`;
 
   const selectedGeometry = selectedId === d.rootId
     ? rootFit
     : selectedSegment
-      ? sectorLabelGeometry(selectedSegment, model.center, fontMetricsReady)
+      ? sectorLabelGeometry(selectedSegment, model.center, fontMetricsReady, d.rotation)
       : null;
   const selectedRichText = selectedId === d.rootId ? rootRichText : selectedSegment?.richText ?? "";
   const selectedLabel = selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "";
@@ -1364,7 +1374,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             segment.outerRadius,
             (segment.startAngle + segment.endAngle) / 2
           );
-          const labelGeometry = sectorLabelGeometry(segment, model.center, fontMetricsReady);
+          const labelGeometry = sectorLabelGeometry(segment, model.center, fontMetricsReady, d.rotation);
           const relationshipMarkerPoint = pointOnCircle(
             model.center,
             model.center,

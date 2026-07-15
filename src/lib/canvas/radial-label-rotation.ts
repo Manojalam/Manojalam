@@ -18,3 +18,37 @@ export function resolveRadialLabelRotation(
 ): number {
   return automaticRotation + normalizeRadialLabelRotation(manualRotation);
 }
+
+function uprightWorldRotation(baseWorldRotation: number): number {
+  const normalized = ((baseWorldRotation % 360) + 360) % 360;
+  return normalized > 90 && normalized < 270
+    ? baseWorldRotation + 180
+    : baseWorldRotation;
+}
+
+/**
+ * Resolve the SVG-local angle for a sector label. Readability is decided in
+ * screen space after whole-chart rotation, then converted back to local space.
+ */
+export function resolveChartAwareSectorLabelRotation(
+  baseLocalRotation: number,
+  chartRotation: unknown,
+  manualRotation: unknown
+): number {
+  const chart = normalizeRadialLabelRotation(chartRotation);
+  const uprightWorld = uprightWorldRotation(baseLocalRotation + chart);
+  return normalizeRadialLabelRotation(
+    uprightWorld - chart + normalizeRadialLabelRotation(manualRotation)
+  );
+}
+
+/** Keep the center label screen-upright while retaining its manual angle. */
+export function resolveChartAwareCenterLabelRotation(
+  chartRotation: unknown,
+  manualRotation: unknown
+): number {
+  return normalizeRadialLabelRotation(
+    normalizeRadialLabelRotation(manualRotation)
+      - normalizeRadialLabelRotation(chartRotation)
+  );
+}
