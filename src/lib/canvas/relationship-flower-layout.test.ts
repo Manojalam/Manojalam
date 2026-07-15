@@ -1,171 +1,184 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { layoutFlowerLabels } from "./flower-label-flow";
 import {
   balancedFlowerLayerCounts,
   layoutRelationshipFlowerPetals,
+  normalizeFlowerLayerCount,
   normalizeFlowerPetalsPerLayer,
 } from "./relationship-flower-layout";
 
-const anglePoint = (radius: number, angle: number) => {
+function point(radius: number, angle: number) {
   const radians = angle * Math.PI / 180;
-  return {
-    x: radius * Math.cos(radians),
-    y: radius * Math.sin(radians),
-  };
-};
+  return { x: Math.cos(radians) * radius, y: Math.sin(radians) * radius };
+}
 
-test("layer counts are balanced with remainders assigned to outer layers", () => {
+test("automatic and requested layer counts stay balanced", () => {
   assert.deepEqual(balancedFlowerLayerCounts(17, 8), [5, 6, 6]);
   assert.deepEqual(balancedFlowerLayerCounts(15, 8), [7, 8]);
-  assert.deepEqual(balancedFlowerLayerCounts(8, 8), [8]);
-  assert.deepEqual(balancedFlowerLayerCounts(0, 8), []);
+  assert.deepEqual(balancedFlowerLayerCounts(9, 9, 2), [4, 5]);
+  assert.deepEqual(balancedFlowerLayerCounts(8, 9), [8]);
+  assert.deepEqual(balancedFlowerLayerCounts(0, 9), []);
 });
 
-test("petals-per-layer values default, round, and clamp for persisted specs", () => {
+test("persisted flower controls default, round, and clamp", () => {
   assert.equal(normalizeFlowerPetalsPerLayer(undefined), 9);
-  assert.equal(normalizeFlowerPetalsPerLayer(Number.NaN), 9);
   assert.equal(normalizeFlowerPetalsPerLayer(2), 3);
   assert.equal(normalizeFlowerPetalsPerLayer(7.6), 8);
   assert.equal(normalizeFlowerPetalsPerLayer("11"), 11);
   assert.equal(normalizeFlowerPetalsPerLayer(30), 24);
+  assert.equal(normalizeFlowerLayerCount(undefined), 0);
+  assert.equal(normalizeFlowerLayerCount(2.4), 2);
+  assert.equal(normalizeFlowerLayerCount(99), 6);
 });
 
-test("layers preserve order and never exceed the normalized maximum", () => {
-  const inputs = Array.from({ length: 53 }, (_, index) => ({
-    width: 90 + index,
-    height: 120 + index,
-  }));
-  const result = layoutRelationshipFlowerPetals(inputs, {
-    hubRadius: 110,
-    maxPerLayer: 10,
-    density: "comfortable",
-  });
-
-  assert.deepEqual(result.petals.map((petal) => petal.index), inputs.map((_, index) => index));
-  assert.equal(result.layerCounts.reduce((sum, count) => sum + count, 0), inputs.length);
-  assert.ok(result.layerCounts.every((count) => count <= 10));
-  assert.ok(result.layerCounts.every((count, index, counts) => index === 0 || count >= counts[index - 1]));
-  result.petals.forEach((petal, index) => {
-    const expectedLayer = result.layerCounts.findIndex((_, layerIndex) =>
-      index < result.layerCounts.slice(0, layerIndex + 1).reduce((sum, count) => sum + count, 0)
-    );
-    assert.equal(petal.layerIndex, expectedLayer);
-  });
-});
-
-test("alternate layers use half-slot angular staggering from negative ninety degrees", () => {
+test("all petals use one canonical size regardless of source content", () => {
   const result = layoutRelationshipFlowerPetals(
-    Array.from({ length: 17 }, () => ({ width: 120, height: 150 })),
-    { hubRadius: 104, maxPerLayer: 8, density: "compact" }
+    Array.from({ length: 9 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable" }
   );
 
-  assert.deepEqual(result.layerCounts, [5, 6, 6]);
+  assert.deepEqual(result.layerCounts, [9]);
+  assert.equal(new Set(result.petals.map((petal) => petal.length)).size, 1);
+  assert.equal(new Set(result.petals.map((petal) => petal.halfWidth)).size, 1);
+  assert.equal(new Set(result.petals.map((petal) => petal.rootRadius)).size, 1);
+  assert.equal(new Set(result.petals.map((petal) => petal.labelRegionRadius)).size, 1);
+  assert.ok(result.petals.every((petal) => petal.rootRadius <= 88 * 0.68 + 0.001));
+  assert.deepEqual(result.petals.map((petal) => petal.index), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+test("the production safe circle fits representative Sanskrit counts at readable line heights", () => {
+  const labels = [
+    "पृथ्वी",
+    "जलम्",
+    "तेजः",
+    "वायुः",
+    "आकाशः",
+    "मनः",
+    "आत्मा",
+    "कालः",
+    "दिक्",
+    "शब्दः",
+    "स्पर्शः",
+    "रूपम्",
+    "रसः",
+    "गन्धः",
+  ];
+  const flower = layoutRelationshipFlowerPetals(
+    Array.from({ length: 9 }, () => ({})),
+    { hubRadius: 92, maxPerLayer: 9, density: "comfortable" }
+  );
+  const safeDiameter = flower.labelRegionRadius * 2;
+  assert.ok(safeDiameter >= 174, `safe circle is only ${safeDiameter}px`);
+
+  // Deliberately more conservative than the SSR estimate: every visible
+  // Devanagari base receives a full em, while combining marks are zero-width.
+  const conservativeSanskritMeasure = (value: string, fontSize: number) =>
+    Array.from(value).filter((character) => !/\p{Mark}/u.test(character)).length * fontSize;
+
+  for (const count of [1, 5, 9, 11, 14]) {
+    const result = layoutFlowerLabels({
+      sourceText: `पृथ्वी (${count})`,
+      targetLabels: labels.slice(0, count),
+      regionWidth: safeDiameter,
+      regionHeight: safeDiameter,
+      sourceFontSize: 14,
+      targetFontSize: 10,
+      minimumSourceFontSize: 10,
+      minimumTargetFontSize: 9,
+      density: "compact",
+      measureText: conservativeSanskritMeasure,
+    });
+
+    assert.equal(result.overflowed, false, `${count} targets overflowed`);
+    assert.ok(result.source.fontSize >= 10, `${count} targets made the source unreadable`);
+    assert.ok(result.source.lineHeight >= 14, `${count} targets compressed the source lines`);
+    assert.ok(result.targetFontSize >= 9, `${count} targets made labels unreadable`);
+    assert.ok(result.targets.every((target) => target.lineHeight >= 11));
+    assert.equal(result.targets.length, count);
+    assert.deepEqual(
+      result.targets.map((target) => target.targetIndex),
+      Array.from({ length: count }, (_, index) => index)
+    );
+    result.rows.forEach((row) => {
+      assert.ok(row.width <= row.availableWidth + 0.001);
+    });
+  }
+});
+
+test("dense flowers form staggered interleaved canonical layers", () => {
+  const result = layoutRelationshipFlowerPetals(
+    Array.from({ length: 24 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable" }
+  );
+  assert.deepEqual(result.layerCounts, [8, 8, 8]);
   const layers = result.layerCounts.map((_, layerIndex) =>
     result.petals.filter((petal) => petal.layerIndex === layerIndex)
   );
   assert.equal(layers[0][0].angle, -90);
-  assert.equal(layers[1][0].angle, -60);
-  assert.equal(layers[2][0].angle, -90);
-  layers.forEach((layer, layerIndex) => {
-    const slot = 360 / layer.length;
-    layer.slice(1).forEach((petal, itemIndex) => {
-      assert.equal(petal.angle - layer[itemIndex].angle, slot);
-    });
-    const expectedStart = -90 + (layerIndex % 2 ? slot / 2 : 0);
-    assert.equal(layer[0].angle, expectedStart);
-  });
+  assert.equal(layers[1][0].angle, -75);
+  assert.equal(layers[2][0].angle, -60);
+  assert.ok(layers[1][0].rootRadius > layers[0][0].rootRadius);
+  assert.ok(layers[2][0].rootRadius > layers[1][0].rootRadius);
+  assert.equal(new Set(result.petals.map((petal) => petal.length)).size, 1);
+  assert.equal(new Set(result.petals.map((petal) => petal.halfWidth)).size, 1);
 });
 
-test("radii increase outward and keep every axis-aligned content box disjoint", () => {
-  const inputs = Array.from({ length: 17 }, (_, index) => ({
-    width: 110 + index % 4 * 23,
-    height: 145 + index % 3 * 31,
-  }));
-  const result = layoutRelationshipFlowerPetals(inputs, {
-    hubRadius: 108,
-    maxPerLayer: 8,
-    density: "comfortable",
-  });
-  const radii = result.layerCounts.map((_, layerIndex) =>
-    result.petals.find((petal) => petal.layerIndex === layerIndex)!.radius
+test("fixed circular label regions do not overlap", () => {
+  const result = layoutRelationshipFlowerPetals(
+    Array.from({ length: 24 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable" }
   );
-  radii.slice(1).forEach((radius, index) => assert.ok(radius > radii[index]));
-
-  const boxes = result.petals.map((petal) => {
-    const point = anglePoint(petal.radius, petal.angle);
-    return {
-      left: point.x - inputs[petal.index].width / 2,
-      right: point.x + inputs[petal.index].width / 2,
-      top: point.y - inputs[petal.index].height / 2,
-      bottom: point.y + inputs[petal.index].height / 2,
-    };
-  });
-  for (let first = 0; first < boxes.length; first += 1) {
-    for (let second = first + 1; second < boxes.length; second += 1) {
-      const overlap =
-        boxes[first].left < boxes[second].right
-        && boxes[first].right > boxes[second].left
-        && boxes[first].top < boxes[second].bottom
-        && boxes[first].bottom > boxes[second].top;
-      assert.equal(overlap, false, `content boxes ${first} and ${second} overlap`);
+  const centers = result.petals.map((petal) => ({
+    ...point(petal.labelCenterRadius, petal.angle),
+    radius: petal.labelRegionRadius,
+  }));
+  for (let first = 0; first < centers.length; first += 1) {
+    for (let second = first + 1; second < centers.length; second += 1) {
+      const distance = Math.hypot(
+        centers[first].x - centers[second].x,
+        centers[first].y - centers[second].y
+      );
+      assert.ok(
+        distance + 0.001 >= centers[first].radius + centers[second].radius,
+        `label regions ${first}/${second} overlap`
+      );
     }
   }
 });
 
-test("maximum extent conservatively bounds every petal content box", () => {
-  const inputs = [
-    { width: 360, height: 80 },
-    { width: 80, height: 300 },
-    { width: 210, height: 170 },
-    { width: 130, height: 220 },
-  ];
-  const result = layoutRelationshipFlowerPetals(inputs, {
-    hubRadius: 120,
-    maxPerLayer: 3,
-    density: "spacious",
-  });
-
-  result.petals.forEach((petal) => {
-    const point = anglePoint(petal.radius, petal.angle);
-    const input = inputs[petal.index];
-    assert.ok(Math.abs(point.x) + input.width / 2 < result.maximumExtent);
-    assert.ok(Math.abs(point.y) + input.height / 2 < result.maximumExtent);
-    assert.equal(petal.halfExtent, Math.hypot(input.width / 2, input.height / 2));
-  });
-});
-
-test("layering a dense flower is more compact than one oversized ring", () => {
-  const inputs = Array.from({ length: 24 }, () => ({ width: 180, height: 150 }));
-  const singleRing = layoutRelationshipFlowerPetals(inputs, {
-    hubRadius: 104,
-    maxPerLayer: 24,
-    density: "comfortable",
-  });
-  const layered = layoutRelationshipFlowerPetals(inputs, {
-    hubRadius: 104,
-    maxPerLayer: 9,
-    density: "comfortable",
-  });
-
-  assert.deepEqual(layered.layerCounts, [8, 8, 8]);
-  assert.ok(layered.maximumExtent < singleRing.maximumExtent * 0.8);
-});
-
-test("invalid dimensions and limits normalize to finite layout values", () => {
+test("manual per-item layer assignments apply across every petal", () => {
   const result = layoutRelationshipFlowerPetals(
     [
-      { width: Number.NaN, height: -10 },
-      { width: Number.POSITIVE_INFINITY, height: 0 },
-      { width: 120, height: 150 },
-      { width: 120, height: 150 },
+      { preferredLayer: 1 },
+      { preferredLayer: 1 },
+      { preferredLayer: 2 },
+      { preferredLayer: 2 },
+      { preferredLayer: 2 },
     ],
-    { hubRadius: Number.NaN, maxPerLayer: 1, density: "comfortable" }
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable", layerCount: 2 }
   );
+  assert.deepEqual(result.layerCounts, [2, 3]);
+  assert.deepEqual(result.petals.map((petal) => petal.layerIndex), [0, 0, 1, 1, 1]);
+});
 
-  assert.deepEqual(result.layerCounts, [2, 2]);
-  assert.ok(Number.isFinite(result.maximumExtent));
-  result.petals.forEach((petal) => {
-    assert.ok(Number.isFinite(petal.radius));
-    assert.ok(Number.isFinite(petal.halfExtent));
+test("bounds remain finite for empty and invalid input", () => {
+  const empty = layoutRelationshipFlowerPetals([], {
+    hubRadius: Number.NaN,
+    maxPerLayer: Number.NaN,
+    density: "comfortable",
   });
+  assert.deepEqual(empty.petals, []);
+  assert.deepEqual(empty.layerCounts, []);
+  assert.ok(Number.isFinite(empty.maximumExtent));
+
+  const populated = layoutRelationshipFlowerPetals(Array.from({ length: 3 }, () => ({})), {
+    hubRadius: Number.NaN,
+    maxPerLayer: Number.NaN,
+    density: "spacious",
+  });
+  assert.ok(populated.petals.every((petal) =>
+    [petal.angle, petal.rootRadius, petal.length, petal.halfWidth]
+      .every(Number.isFinite)
+  ));
 });

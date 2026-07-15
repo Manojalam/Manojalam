@@ -20,12 +20,14 @@ import type {
 } from "@/lib/types";
 import {
   DEFAULT_FLOWER_PETALS_PER_LAYER,
+  normalizeFlowerLayerCount,
   normalizeFlowerPetalsPerLayer,
 } from "@/lib/canvas/relationship-flower-layout";
 
 export {
   DEFAULT_FLOWER_PETALS_PER_LAYER,
   MAX_FLOWER_PETALS_PER_LAYER,
+  MAX_FLOWER_LAYERS,
   MIN_FLOWER_PETALS_PER_LAYER,
 } from "@/lib/canvas/relationship-flower-layout";
 
@@ -70,6 +72,7 @@ export const DEFAULT_RELATIONSHIP_DIAGRAM_SPEC: Readonly<RelationshipDiagramSpec
   textSize: 16,
   density: "comfortable",
   flowerPetalsPerLayer: DEFAULT_FLOWER_PETALS_PER_LAYER,
+  flowerLayerCount: 0,
   decorativeLevel: "balanced",
   background: "transparent",
   sortSources: "natural",
@@ -196,12 +199,16 @@ function normalizeItemStyles(value: unknown): Record<string, RelationshipDiagram
     const rotation = style.rotation === undefined
       ? undefined
       : clamp(finiteNumber(style.rotation, 0), -180, 180);
+    const flowerLayer = style.flowerLayer === undefined
+      ? undefined
+      : normalizeFlowerLayerCount(style.flowerLayer) || undefined;
     const normalized: RelationshipDiagramItemStyle = {
       ...(fillColor ? { fillColor } : {}),
       ...(borderColor ? { borderColor } : {}),
       ...(textColor ? { textColor } : {}),
       ...(fontSize !== undefined ? { fontSize } : {}),
       ...(rotation !== undefined ? { rotation } : {}),
+      ...(flowerLayer !== undefined ? { flowerLayer } : {}),
     };
     if (Object.keys(normalized).length) result[nodeId] = normalized;
   }
@@ -470,6 +477,9 @@ export function normalizeRelationshipDiagramSpec(
     density: normalizeDensity(optionValue(raw, legacyOptions, "density", "spacingDensity")),
     flowerPetalsPerLayer: normalizeFlowerPetalsPerLayer(
       optionValue(raw, legacyOptions, "flowerPetalsPerLayer", "petalsPerLayer")
+    ),
+    flowerLayerCount: normalizeFlowerLayerCount(
+      optionValue(raw, legacyOptions, "flowerLayerCount", "flowerLayers")
     ),
     decorativeLevel: normalizeDecorativeLevel(
       optionValue(raw, legacyOptions, "decorativeLevel", "decoration")
