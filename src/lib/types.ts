@@ -181,6 +181,14 @@ export type RelationshipDiagramTargetSort = RelationshipDiagramSort;
 
 export type RelationshipDiagramDecorativeLevel = "minimal" | "balanced" | "ornate";
 
+export interface RelationshipDiagramItemStyle {
+  fillColor?: string;
+  borderColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  rotation?: number;
+}
+
 export interface RelationshipDiagramScope {
   mode: RelationshipDiagramScopeMode;
   sourceNodeIds: string[];
@@ -210,6 +218,17 @@ export interface RelationshipDiagramSpec {
   background: string;
   sortSources: RelationshipDiagramSourceSort;
   sortTargets: RelationshipDiagramTargetSort;
+  /** Stable user-authored source order shared by every relationship layout. */
+  itemOrder?: string[];
+  /** Per-source presentation overrides shared by petals, cards, rows, and sectors. */
+  itemStyles?: Record<string, RelationshipDiagramItemStyle>;
+  fontFamily?: string;
+  fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
+  textColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  fillOpacity?: number;
 }
 
 export interface BoardContent {

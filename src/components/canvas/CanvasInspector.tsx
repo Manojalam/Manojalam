@@ -38,6 +38,7 @@ import type {
   RadialColorScheme,
   RelationshipDiagramSpec,
   RelationshipDiagramPalette,
+  RelationshipDiagramItemStyle,
   AutoSizeMode,
 } from "@/lib/types";
 import type { Edge, Node } from "@xyflow/react";
@@ -48,6 +49,10 @@ import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
 import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
+import {
+  buildRelationshipGroupsForSpec,
+  normalizeRelationshipDiagramSpec,
+} from "@/lib/relationship-diagram";
 import {
   alignSelection,
   compactEqualSpacing,
@@ -713,6 +718,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [bulkChildCount, setBulkChildCount] = useState(3);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
+  const relationships   = useCanvasStore((s) => s.relationships);
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
   const selectedEdgeIds = useCanvasStore((s) => s.selectedEdgeIds);
   const settings        = useCanvasStore((s) => s.settings);
@@ -1739,12 +1745,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   }
 
   if (selectedNode.type === "relationshipDiagram") {
-    const diagramSpec = (d.relationshipDiagramSpec ?? {}) as Record<string, unknown>;
-    const diagramTitle = typeof diagramSpec.title === "string" ? diagramSpec.title : "Relationship Diagram";
-    const diagramSubtitle = typeof diagramSpec.subtitle === "string" ? diagramSpec.subtitle : "";
-    const diagramBackground = typeof diagramSpec.background === "string"
-      ? diagramSpec.background
-      : "transparent";
+    const diagramSpec = normalizeRelationshipDiagramSpec(d.relationshipDiagramSpec);
+    const diagramTitle = diagramSpec.title || "Relationship Diagram";
+    const diagramSubtitle = diagramSpec.subtitle;
+    const diagramBackground = diagramSpec.background || "transparent";
     const transparentBackground = ["", "transparent", "none", "rgba(0,0,0,0)", "#00000000"]
       .includes(diagramBackground.trim().toLowerCase());
     const frameDimensions = getNodeDimensions(selectedNode);
@@ -1752,6 +1756,27 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const frameHeight = Math.round(frameDimensions.height);
     const updateDiagram = (patch: Partial<RelationshipDiagramSpec>) => {
       updateRelationshipDiagramSpec(selectedNode.id, patch);
+    };
+    const diagramGroups = buildRelationshipGroupsForSpec({
+      spec: diagramSpec,
+      nodes,
+      relationships,
+      hierarchy,
+    });
+    const updateItemStyle = (nodeId: string, patch: Partial<RelationshipDiagramItemStyle>) => {
+      const current = diagramSpec.itemStyles?.[nodeId] ?? {};
+      const nextItem = { ...current, ...patch };
+      const nextStyles = { ...(diagramSpec.itemStyles ?? {}) };
+      if (Object.values(nextItem).every((value) => value === undefined)) delete nextStyles[nodeId];
+      else nextStyles[nodeId] = nextItem;
+      updateDiagram({ itemStyles: nextStyles });
+    };
+    const moveDiagramItem = (index: number, direction: -1 | 1) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= diagramGroups.length) return;
+      const order = diagramGroups.map((group) => group.sourceNodeId);
+      [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+      updateDiagram({ itemOrder: order, sortSources: "natural" });
     };
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
@@ -1927,12 +1952,61 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text size</p>
               <SliderControl
-                value={typeof diagramSpec.textSize === "number" ? diagramSpec.textSize : 14}
+                value={diagramSpec.textSize}
                 min={8}
-                max={36}
+                max={72}
                 step={1}
                 suffix="px"
                 onChange={(value) => updateDiagram({ textSize: value })}
+              />
+            </div>
+            <Select
+              value={diagramSpec.fontFamily ?? "__default_font__"}
+              onValueChange={(value) => updateDiagram({
+                fontFamily: value === "__default_font__" ? undefined : value,
+              })}
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Default font" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__default_font__">Default font</SelectItem>
+                {[...groupFontsByCategory(FONT_OPTIONS).entries()].map(([category, fonts]) => (
+                  <div key={category}>
+                    <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">{category}</div>
+                    {fonts.map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.label}</span>
+                      </SelectItem>
+                    ))}
+                  </div>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                type="button"
+                variant={diagramSpec.fontWeight === "bold" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={() => updateDiagram({ fontWeight: diagramSpec.fontWeight === "bold" ? "normal" : "bold" })}
+              >
+                <Bold className="mr-1 h-3.5 w-3.5" /> Bold
+              </Button>
+              <Button
+                type="button"
+                variant={diagramSpec.fontStyle === "italic" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={() => updateDiagram({ fontStyle: diagramSpec.fontStyle === "italic" ? "normal" : "italic" })}
+              >
+                <Italic className="mr-1 h-3.5 w-3.5" /> Italic
+              </Button>
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
+              <ColorSwatchPicker
+                value={diagramSpec.textColor ?? ""}
+                onChange={(value) => updateDiagram({ textColor: value || undefined })}
+                size="sm"
               />
             </div>
             <div className="flex items-center justify-between gap-3">
@@ -1969,6 +2043,39 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="mb-1 text-[9px] uppercase tracking-wider text-muted-foreground">Border</p>
+                <ColorSwatchPicker
+                  value={diagramSpec.borderColor ?? ""}
+                  onChange={(value) => updateDiagram({ borderColor: value || undefined })}
+                  size="sm"
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-[9px] uppercase tracking-wider text-muted-foreground">Border width</p>
+                <Input
+                  type="number"
+                  min={0}
+                  max={16}
+                  step={0.5}
+                  value={diagramSpec.borderWidth ?? 2}
+                  className="h-8 text-xs"
+                  onChange={(event) => updateDiagram({ borderWidth: Number(event.target.value) })}
+                />
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Item opacity</p>
+              <SliderControl
+                value={Math.round((diagramSpec.fillOpacity ?? 1) * 100)}
+                min={10}
+                max={100}
+                step={5}
+                suffix="%"
+                onChange={(value) => updateDiagram({ fillOpacity: value / 100 })}
+              />
+            </div>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <Label className="text-xs">Transparent background</Label>
@@ -1998,6 +2105,115 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 />
               </div>
             )}
+          </Section>
+
+          <Section label={`Arrange & style items (${diagramGroups.length})`} defaultOpen>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              The order and overrides below follow each item across flower, cards, matrix, hub, and fan layouts.
+            </p>
+            <div className="space-y-2">
+              {diagramGroups.map((group, index) => {
+                const style = diagramSpec.itemStyles?.[group.sourceNodeId] ?? {};
+                const sourceColor = hexInputColor(style.fillColor ?? group.sourceColor, "#6366f1");
+                return (
+                  <div key={group.sourceNodeId} className="space-y-2 rounded-lg border border-border p-2">
+                    <div className="flex items-center gap-1">
+                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium" title={group.sourceLabel}>
+                        {index + 1}. {group.sourceLabel}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Move earlier"
+                        disabled={index === 0}
+                        onClick={() => moveDiagramItem(index, -1)}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Move later"
+                        disabled={index === diagramGroups.length - 1}
+                        onClick={() => moveDiagramItem(index, 1)}
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Fill
+                        <input
+                          type="color"
+                          value={sourceColor}
+                          className="h-7 w-full rounded border border-border bg-background"
+                          onChange={(event) => updateItemStyle(group.sourceNodeId, { fillColor: event.target.value })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Border
+                        <input
+                          type="color"
+                          value={hexInputColor(style.borderColor ?? diagramSpec.borderColor, sourceColor)}
+                          className="h-7 w-full rounded border border-border bg-background"
+                          onChange={(event) => updateItemStyle(group.sourceNodeId, { borderColor: event.target.value })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Text
+                        <input
+                          type="color"
+                          value={hexInputColor(style.textColor ?? diagramSpec.textColor, "#0f172a")}
+                          className="h-7 w-full rounded border border-border bg-background"
+                          onChange={(event) => updateItemStyle(group.sourceNodeId, { textColor: event.target.value })}
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Font size
+                        <Input
+                          type="number"
+                          min={8}
+                          max={72}
+                          value={style.fontSize ?? diagramSpec.textSize}
+                          className="h-7 text-xs"
+                          onChange={(event) => updateItemStyle(group.sourceNodeId, { fontSize: Number(event.target.value) })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Rotation
+                        <Input
+                          type="number"
+                          min={-180}
+                          max={180}
+                          value={style.rotation ?? 0}
+                          className="h-7 text-xs"
+                          onChange={(event) => updateItemStyle(group.sourceNodeId, { rotation: Number(event.target.value) })}
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[9px] text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={() => updateItemStyle(group.sourceNodeId, {
+                        fillColor: undefined,
+                        borderColor: undefined,
+                        textColor: undefined,
+                        fontSize: undefined,
+                        rotation: undefined,
+                      })}
+                    >
+                      Reset item styling
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </Section>
         </div>
       </aside>
