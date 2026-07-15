@@ -496,6 +496,8 @@ export interface SunburstNodeData extends BaseNodeData {
   sunburstFor: string;
   chartSize?: number;
   title?: string;
+  /** Gives every terminal sector the same angle, regardless of hierarchy depth. */
+  radialEqualOutermostSegments?: boolean;
 }
 
 export interface RelationshipDiagramNodeData extends BaseNodeData {
