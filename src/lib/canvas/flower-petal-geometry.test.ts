@@ -100,6 +100,20 @@ function productionGeometry(angleDegrees = 0): FlowerPetalGeometry {
   });
 }
 
+function extendedRootGeometry(angleDegrees = 0): FlowerPetalGeometry {
+  return buildFlowerPetalGeometry({
+    center: CENTER,
+    angleDegrees,
+    rootRadius: 59.84,
+    length: 508.9880505358643,
+    halfWidth: 89.32,
+    labelCenterOffset: 397.80005053586436,
+    labelRegionRadius: 83.6,
+    sectorHalfAngleDegrees: 21.75,
+    edgeClearance: 3.52,
+  });
+}
+
 function pointInPolygon(point: FlowerPetalPoint, polygon: readonly FlowerPetalPoint[]): boolean {
   let inside = false;
   for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current++) {
@@ -177,6 +191,7 @@ test("the centered safe label circle stays inside generic and production petals"
   assertLabelCircleInside(geometry(0));
   const production = productionGeometry(0);
   assertLabelCircleInside(production);
+  assertLabelCircleInside(extendedRootGeometry(0));
 
   const localShoulder = localPoint(production, production.segments[0].end);
   const localLabel = localPoint(production, production.profile.labelCenter);
@@ -186,8 +201,21 @@ test("the centered safe label circle stays inside generic and production petals"
   );
 });
 
+test("a nested petal preserves its compact label and tip beyond the old offset cap", () => {
+  const result = extendedRootGeometry(0);
+  const requestedOffset = 397.80005053586436;
+  assert.ok(requestedOffset > result.profile.length * 0.75);
+  close(result.profile.labelCenterOffset, requestedOffset, "extended label center offset");
+  close(
+    result.profile.labelCenter.x,
+    CENTER.x + result.profile.rootRadius + requestedOffset,
+    "extended label center x"
+  );
+  close(result.profile.tipRadius, 568.8280505358643, "extended tip radius");
+});
+
 test("every cubic anchor and control stays inside the inset angular sector", () => {
-  for (const result of [geometry(37), productionGeometry(37)]) {
+  for (const result of [geometry(37), productionGeometry(37), extendedRootGeometry(37)]) {
     const halfAngle = result.profile.sectorHalfAngleDegrees * Math.PI / 180;
     const sine = Math.sin(halfAngle);
     const cosine = Math.cos(halfAngle);

@@ -337,7 +337,7 @@ test("the production safe circle fits representative Sanskrit counts at readable
   }
 });
 
-test("dense flowers form compact alternating nested layers", () => {
+test("dense flowers attach every compact nested layer beneath the hub", () => {
   const result = layoutRelationshipFlowerPetals(
     Array.from({ length: 24 }, () => ({})),
     { hubRadius: 88, maxPerLayer: 9, density: "comfortable" }
@@ -349,17 +349,28 @@ test("dense flowers form compact alternating nested layers", () => {
   assert.equal(layers[0][0].angle, -90);
   assert.equal(layers[1][0].angle, -67.5);
   assert.equal(layers[2][0].angle, -90);
-  assert.ok(layers[1][0].rootRadius > layers[0][0].rootRadius);
-  assert.ok(layers[2][0].rootRadius > layers[1][0].rootRadius);
-  assert.ok(layers[1][0].length < layers[0][0].length);
-  assert.equal(layers[1][0].length, layers[2][0].length);
+  const attachmentRootRadius = 88 * 0.68;
+  assert.ok(result.petals.every((petal) =>
+    Math.abs(petal.rootRadius - attachmentRootRadius) <= 0.001
+  ));
+  assert.ok(result.petals.every((petal) => petal.rootRadius < 88));
+  const labels = layers.map((layer) => layer[0].labelCenterRadius);
+  const tips = layers.map((layer) => layer[0].rootRadius + layer[0].length);
+  const visibleTails = tips.map((tip, layerIndex) => tip - labels[layerIndex]);
+  assert.ok(visibleTails[1] < visibleTails[0]);
+  assert.equal(visibleTails[2], visibleTails[1]);
+  assert.deepEqual(
+    labels.map((radius) => Number(radius.toFixed(3))),
+    [250.541, 386.611, 457.64]
+  );
+  assert.deepEqual(
+    tips.map((radius) => Number(radius.toFixed(3))),
+    [372.509, 497.799, 568.828]
+  );
   for (let layerIndex = 1; layerIndex < layers.length; layerIndex += 1) {
     const foreground = layers[layerIndex - 1][0];
     const nested = layers[layerIndex][0];
-    assert.ok(
-      nested.rootRadius < foreground.rootRadius + foreground.length,
-      `layer ${layerIndex} does not begin behind its foreground layer`
-    );
+    assert.equal(nested.rootRadius, foreground.rootRadius);
     assert.ok(
       nested.rootRadius + nested.length > foreground.rootRadius + foreground.length,
       `layer ${layerIndex} does not reveal a tip beyond its foreground layer`
@@ -409,18 +420,30 @@ test("back-layer labels clear every foreground body while petal bodies overlap",
   assert.ok(overlappingLayerPairs > 0, "nested layer bodies never overlap");
 });
 
-test("shortened nested petals contain the full safe circle at every density", () => {
+test("six attached layers preserve their full safe circles at every density", () => {
   for (const density of ["compact", "comfortable", "spacious"] as const) {
     const result = layoutRelationshipFlowerPetals(
-      Array.from({ length: 24 }, () => ({})),
+      Array.from({ length: 54 }, () => ({})),
       { hubRadius: 88, maxPerLayer: 9, density }
     );
+    assert.equal(result.layerCounts.length, 6);
     result.petals.forEach((petal) => {
+      assert.ok(Math.abs(petal.rootRadius - 88 * 0.68) <= 0.001);
       assertSafeLabelCircleInside(petal);
+      const geometry = geometryFor(petal);
       assert.equal(
-        geometryFor(petal).profile.labelRegionRadius,
+        geometry.profile.labelRegionRadius,
         result.labelRegionRadius,
         `${density} layer ${petal.layerIndex} reduced its fixed label region`
+      );
+      assert.ok(
+        Math.abs(Math.hypot(geometry.profile.labelCenter.x, geometry.profile.labelCenter.y)
+          - petal.labelCenterRadius) <= 0.001,
+        `${density} layer ${petal.layerIndex} moved its label center`
+      );
+      assert.ok(
+        (petal.labelCenterRadius - petal.rootRadius) / petal.length < 0.9,
+        `${density} layer ${petal.layerIndex} exceeds the structural offset range`
       );
     });
   }
