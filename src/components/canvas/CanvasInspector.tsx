@@ -1490,6 +1490,254 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   }
 
   // ── Node selected ──────────────────────────────────────────────────────────
+  if (selectedNode.type === "sunburst") {
+    const chartData = (selectedNode.data ?? {}) as Record<string, unknown>;
+    const chartDimensions = getNodeDimensions(selectedNode);
+    const chartDiameter = Math.round(Math.max(chartDimensions.width, chartDimensions.height));
+    const chartTitle = typeof chartData.title === "string" && chartData.title.trim()
+      ? chartData.title
+      : "Radial chart";
+    const chartRootId = typeof chartData.rootId === "string" ? chartData.rootId : null;
+    const resizeChart = (diameter: number) => {
+      const nextDiameter = Math.max(RADIAL_CHART_MIN_SIZE, Math.min(4096, Math.round(diameter)));
+      if (Math.abs(nextDiameter - chartDiameter) < 1) return;
+      setNodeSize(selectedNode.id, { width: nextDiameter, height: nextDiameter });
+    };
+
+    return (
+      <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
+        <div className="flex items-center justify-between border-b px-3 py-2.5">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-foreground">Radial chart</h3>
+            <p className="truncate text-[10px] text-muted-foreground">{chartTitle}</p>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title={chartData.locked ? "Unlock chart" : "Lock chart"}
+              onClick={() => setNodeLocked(selectedNode.id, chartData.locked !== true)}
+            >
+              {chartData.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:bg-destructive/10"
+              title="Delete chart"
+              onClick={deleteSelected}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 divide-y overflow-y-auto">
+          <div className="space-y-2 p-3">
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              Drag the chart to move it. Drag any corner handle to resize it; the saved diameter stays the same after refresh.
+            </p>
+            <div className="grid grid-cols-3 gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                disabled={!chartRootId}
+                onClick={() => chartRootId && selectNodesById([chartRootId])}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Sectors
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => openBoardExport({
+                  scope: "node",
+                  nodeIds: [selectedNode.id],
+                  format: "png",
+                  title: chartTitle,
+                })}
+              >
+                <FileImage className="h-3.5 w-3.5" /> PNG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => openBoardExport({
+                  scope: "node",
+                  nodeIds: [selectedNode.id],
+                  format: "svg",
+                  title: chartTitle,
+                })}
+              >
+                <FileType2 className="h-3.5 w-3.5" /> SVG
+              </Button>
+            </div>
+          </div>
+
+          <Section label="Size" defaultOpen>
+            <label htmlFor={`sunburst-diameter-${selectedNode.id}`} className="space-y-1">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Diameter</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  key={`${selectedNode.id}-diameter-${chartDiameter}`}
+                  id={`sunburst-diameter-${selectedNode.id}`}
+                  name="sunburst-diameter"
+                  type="number"
+                  min={RADIAL_CHART_MIN_SIZE}
+                  max={4096}
+                  step={10}
+                  defaultValue={chartDiameter}
+                  className="h-8 text-xs"
+                  onBlur={(event) => {
+                    const diameter = Number(event.currentTarget.value);
+                    if (Number.isFinite(diameter)) resizeChart(diameter);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+                <span className="text-[10px] text-muted-foreground">px</span>
+              </div>
+            </label>
+            <div className="grid grid-cols-3 gap-1">
+              <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => resizeChart(chartDiameter * 0.9)}>
+                Smaller
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => resizeChart(chartDiameter * 1.1)}>
+                Larger
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                  detail: { nodeIds: [selectedNode.id] },
+                }))}
+              >
+                Fit view
+              </Button>
+            </div>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Radial charts stay square. Use the exact value here or the corner handles on the canvas.
+            </p>
+          </Section>
+
+          <Section label="Transform" defaultOpen>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
+              <SliderControl
+                value={typeof chartData.rotation === "number" ? chartData.rotation : 0}
+                min={-180}
+                max={180}
+                step={1}
+                suffix="deg"
+                onChange={(value) => updateNodeData(selectedNode.id, { rotation: value })}
+              />
+            </div>
+          </Section>
+
+          <Section label="Typography">
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font size</p>
+              <SliderControl
+                value={typeof chartData.fontSize === "number" ? chartData.fontSize : 18}
+                min={8}
+                max={72}
+                step={1}
+                suffix="px"
+                onChange={(value) => updateNodeData(selectedNode.id, { fontSize: value })}
+              />
+            </div>
+            <Select
+              value={typeof chartData.fontFamily === "string" ? chartData.fontFamily : "__default_font__"}
+              onValueChange={(value) => updateNodeData(selectedNode.id, {
+                fontFamily: value === "__default_font__" ? undefined : value,
+              })}
+            >
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Default font" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__default_font__">Default font</SelectItem>
+                {[...groupFontsByCategory(FONT_OPTIONS).entries()].map(([category, fonts]) => (
+                  <div key={category}>
+                    <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">{category}</div>
+                    {fonts.map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.label}</span>
+                      </SelectItem>
+                    ))}
+                  </div>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                type="button"
+                variant={chartData.fontWeight === "bold" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={() => updateNodeData(selectedNode.id, { fontWeight: chartData.fontWeight === "bold" ? "normal" : "bold" })}
+              >
+                <Bold className="mr-1 h-3.5 w-3.5" /> Bold
+              </Button>
+              <Button
+                type="button"
+                variant={chartData.fontStyle === "italic" ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={() => updateNodeData(selectedNode.id, { fontStyle: chartData.fontStyle === "italic" ? "normal" : "italic" })}
+              >
+                <Italic className="mr-1 h-3.5 w-3.5" /> Italic
+              </Button>
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
+              <ColorSwatchPicker
+                value={typeof chartData.textColor === "string" ? chartData.textColor : ""}
+                onChange={(value) => updateNodeData(selectedNode.id, { textColor: value || undefined })}
+                size="sm"
+              />
+            </div>
+          </Section>
+
+          <Section label="Appearance">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <p className="mb-1 text-[9px] uppercase text-muted-foreground">Fill</p>
+                <ColorSwatchPicker value={typeof chartData.fillColor === "string" ? chartData.fillColor : ""} onChange={(value) => updateNodeData(selectedNode.id, { fillColor: value || undefined })} size="sm" />
+              </div>
+              <div>
+                <p className="mb-1 text-[9px] uppercase text-muted-foreground">Border</p>
+                <ColorSwatchPicker value={typeof chartData.borderColor === "string" ? chartData.borderColor : ""} onChange={(value) => updateNodeData(selectedNode.id, { borderColor: value || undefined })} size="sm" />
+              </div>
+              <div>
+                <p className="mb-1 text-[9px] uppercase text-muted-foreground">Width</p>
+                <Input
+                  type="number"
+                  min={0}
+                  max={16}
+                  step={0.5}
+                  value={typeof chartData.borderWidth === "number" ? chartData.borderWidth : 2}
+                  className="h-8 text-xs"
+                  onChange={(event) => updateNodeData(selectedNode.id, { borderWidth: Number(event.target.value) })}
+                />
+              </div>
+            </div>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              These chart-level choices override every sector. Select Sectors to style or rearrange individual sections.
+            </p>
+          </Section>
+        </div>
+      </aside>
+    );
+  }
+
   if (selectedNode.type === "relationshipDiagram") {
     const diagramSpec = (d.relationshipDiagramSpec ?? {}) as Record<string, unknown>;
     const diagramTitle = typeof diagramSpec.title === "string" ? diagramSpec.title : "Relationship Diagram";
@@ -1499,6 +1747,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       : "transparent";
     const transparentBackground = ["", "transparent", "none", "rgba(0,0,0,0)", "#00000000"]
       .includes(diagramBackground.trim().toLowerCase());
+    const frameDimensions = getNodeDimensions(selectedNode);
+    const frameWidth = Math.round(frameDimensions.width);
+    const frameHeight = Math.round(frameDimensions.height);
     const updateDiagram = (patch: Partial<RelationshipDiagramSpec>) => {
       updateRelationshipDiagramSpec(selectedNode.id, patch);
     };
@@ -1585,6 +1836,74 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </Button>
             </div>
           </div>
+
+          <Section label="Size" defaultOpen>
+            <div className="grid grid-cols-2 gap-2">
+              <label htmlFor={`relationship-width-${selectedNode.id}`} className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Width</span>
+                <Input
+                  key={`${selectedNode.id}-relationship-width-${frameWidth}`}
+                  id={`relationship-width-${selectedNode.id}`}
+                  name="relationship-width"
+                  type="number"
+                  min={420}
+                  max={4096}
+                  step={10}
+                  defaultValue={frameWidth}
+                  className="h-8 text-xs"
+                  onBlur={(event) => {
+                    const width = Number(event.currentTarget.value);
+                    if (Number.isFinite(width) && Math.abs(width - frameWidth) >= 1) {
+                      setNodeSize(selectedNode.id, { width, height: frameHeight });
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+              </label>
+              <label htmlFor={`relationship-height-${selectedNode.id}`} className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Height</span>
+                <Input
+                  key={`${selectedNode.id}-relationship-height-${frameHeight}`}
+                  id={`relationship-height-${selectedNode.id}`}
+                  name="relationship-height"
+                  type="number"
+                  min={360}
+                  max={4096}
+                  step={10}
+                  defaultValue={frameHeight}
+                  className="h-8 text-xs"
+                  onBlur={(event) => {
+                    const height = Number(event.currentTarget.value);
+                    if (Number.isFinite(height) && Math.abs(height - frameHeight) >= 1) {
+                      setNodeSize(selectedNode.id, { width: frameWidth, height });
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+              </label>
+            </div>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Drag a corner or edge handle on the canvas, or enter the exact frame size here.
+            </p>
+          </Section>
+
+          <Section label="Transform" defaultOpen>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
+              <SliderControl
+                value={typeof d.rotation === "number" ? d.rotation : 0}
+                min={-180}
+                max={180}
+                step={1}
+                suffix="deg"
+                onChange={(value) => updateNodeData(selectedNode.id, { rotation: value })}
+              />
+            </div>
+          </Section>
 
           <Section label="Text">
             <div>
@@ -1821,7 +2140,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-4 gap-1 border-b bg-muted/25 p-2">
+      <div className={cn("grid gap-1 border-b bg-muted/25 p-2", isRadialLayoutSector ? "grid-cols-5" : "grid-cols-4")}>
         <Button
           variant="outline"
           size="sm"
@@ -1859,6 +2178,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         >
           Layout
         </Button>
+        {isRadialLayoutSector && radialChartNode && (
+          <Button
+            variant="default"
+            size="sm"
+            className="h-7 px-1 text-[10px]"
+            title="Select and resize the whole radial chart"
+            onClick={() => selectNodesById([radialChartNode.id])}
+          >
+            <Maximize2 className="mr-1 h-3 w-3" /> Chart
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 divide-y overflow-y-auto">

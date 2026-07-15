@@ -70,6 +70,7 @@ import {
   viewportsEqual,
 } from "@/lib/canvas/hydration";
 import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
+import { resolveChartNodeResize } from "@/lib/canvas/chart-sizing";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -1946,6 +1947,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       style: { width, height },
       zIndex: 10,
       selected: true,
+      selectable: true,
+      draggable: true,
     };
 
     state.pushHistory();
@@ -2492,6 +2495,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   finishManualNodeResize: (nodeId, size) => {
     const node = get().nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
+    const chartResize = resolveChartNodeResize(node.type, size);
+    if (chartResize) {
+      const { width, height } = chartResize.size;
+      set((state) => ({
+        nodes: state.nodes.map((candidate) => candidate.id === nodeId
+          ? resetNodeDimensions({
+              ...candidate,
+              data: {
+                ...(candidate.data ?? {}),
+                ...chartResize.dataPatch,
+              },
+            }, width, height)
+          : candidate),
+        saveStatus: "unsaved",
+      }));
+      requestNodeInternalsRefresh([nodeId]);
+      return;
+    }
     const data = (node.data ?? {}) as Record<string, unknown>;
     let width = Math.max(60, Math.round(size.width));
     let height = Math.max(40, Math.round(size.height));

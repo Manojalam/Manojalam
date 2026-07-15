@@ -92,6 +92,10 @@ export interface DomCloneSelection {
 
 export interface CloneReactFlowViewportOptions extends DomCloneSelection {
   signal?: AbortSignal;
+  /** The visible board color used to preserve translucent node paint when the output itself is transparent. */
+  appearanceBackground?: string | null;
+  /** The actual exported background. Null means the area outside objects remains transparent. */
+  background?: string | null;
 }
 
 export interface SanitizedViewportClone {
@@ -188,6 +192,139 @@ export async function waitForDomExportFontReadiness(
 
 function finiteDimension(value: number): boolean {
   return Number.isFinite(value) && value > 0;
+}
+
+type ExportRgba = { r: number; g: number; b: number; a: number };
+
+function colorChannel(value: string, normalized = false): number | null {
+  const input = value.trim();
+  if (!input) return null;
+  const parsed = Number.parseFloat(input);
+  if (!Number.isFinite(parsed)) return null;
+  if (input.endsWith("%")) return Math.max(0, Math.min(255, parsed * 2.55));
+  return Math.max(0, Math.min(255, normalized ? parsed * 255 : parsed));
+}
+
+function alphaChannel(value: string | undefined): number {
+  if (!value) return 1;
+  const input = value.trim();
+  const parsed = Number.parseFloat(input);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(0, Math.min(1, input.endsWith("%") ? parsed / 100 : parsed));
+}
+
+/** Parse the normalized color syntaxes returned by browser computed styles. */
+export function parseExportCssColor(value: string): ExportRgba | null {
+  const input = value.trim().toLowerCase();
+  if (!input || input === "none") return null;
+  if (input === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
+
+  const hex = input.match(/^#([0-9a-f]{3,8})$/i)?.[1];
+  if (hex) {
+    const expanded = hex.length === 3 || hex.length === 4
+      ? hex.split("").map((part) => part + part).join("")
+      : hex;
+    if (expanded.length === 6 || expanded.length === 8) {
+      return {
+        r: Number.parseInt(expanded.slice(0, 2), 16),
+        g: Number.parseInt(expanded.slice(2, 4), 16),
+        b: Number.parseInt(expanded.slice(4, 6), 16),
+        a: expanded.length === 8 ? Number.parseInt(expanded.slice(6, 8), 16) / 255 : 1,
+      };
+    }
+  }
+
+  const rgb = input.match(/^rgba?\((.*)\)$/i)?.[1];
+  if (rgb) {
+    const [channelsPart, slashAlpha] = rgb.split("/").map((part) => part.trim());
+    const channels = channelsPart.split(/[\s,]+/).filter(Boolean);
+    const r = colorChannel(channels[0] ?? "");
+    const g = colorChannel(channels[1] ?? "");
+    const b = colorChannel(channels[2] ?? "");
+    if (r == null || g == null || b == null) return null;
+    return { r, g, b, a: alphaChannel(slashAlpha ?? channels[3]) };
+  }
+
+  const srgb = input.match(/^color\(srgb\s+(.*)\)$/i)?.[1];
+  if (srgb) {
+    const [channelsPart, slashAlpha] = srgb.split("/").map((part) => part.trim());
+    const channels = channelsPart.split(/\s+/).filter(Boolean);
+    const r = colorChannel(channels[0] ?? "", true);
+    const g = colorChannel(channels[1] ?? "", true);
+    const b = colorChannel(channels[2] ?? "", true);
+    if (r == null || g == null || b == null) return null;
+    return { r, g, b, a: alphaChannel(slashAlpha) };
+  }
+
+  return null;
+}
+
+/** Return the opaque color that looks like `foreground` painted over `matte`. */
+export function compositeExportColor(
+  foreground: string,
+  matte: string,
+  opacity = 1
+): string | null {
+  const source = parseExportCssColor(foreground);
+  const backdrop = parseExportCssColor(matte);
+  if (!source || !backdrop) return null;
+  const alpha = Math.max(0, Math.min(1, source.a * opacity));
+  if (alpha <= 0) return null;
+  const backdropAlpha = Math.max(0, Math.min(1, backdrop.a));
+  const matteR = backdrop.r * backdropAlpha + 255 * (1 - backdropAlpha);
+  const matteG = backdrop.g * backdropAlpha + 255 * (1 - backdropAlpha);
+  const matteB = backdrop.b * backdropAlpha + 255 * (1 - backdropAlpha);
+  const mix = (front: number, back: number) => Math.round(front * alpha + back * (1 - alpha));
+  return `rgb(${mix(source.r, matteR)}, ${mix(source.g, matteG)}, ${mix(source.b, matteB)})`;
+}
+
+function flattenTransparentNodePaint(clone: HTMLElement, matte: string): void {
+  if (!parseExportCssColor(matte)) return;
+  const nodeElements = Array.from(clone.querySelectorAll<HTMLElement>(".react-flow__node"));
+  for (const node of nodeElements) {
+    const elements: Element[] = [node, ...Array.from(node.querySelectorAll("*"))];
+    for (const element of elements) {
+      if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+
+      if (element instanceof HTMLElement) {
+        const background = element.style.getPropertyValue("background-color");
+        const parsedBackground = parseExportCssColor(background);
+        if (parsedBackground && parsedBackground.a > 0 && parsedBackground.a < 1) {
+          const flattened = compositeExportColor(background, matte);
+          if (flattened) element.style.setProperty("background-color", flattened, "important");
+        }
+        for (const side of ["top", "right", "bottom", "left"] as const) {
+          const property = `border-${side}-color`;
+          const border = element.style.getPropertyValue(property);
+          const parsedBorder = parseExportCssColor(border);
+          if (!parsedBorder || parsedBorder.a <= 0 || parsedBorder.a >= 1) continue;
+          const flattened = compositeExportColor(border, matte);
+          if (flattened) element.style.setProperty(property, flattened, "important");
+        }
+      }
+
+      if (element instanceof SVGElement) {
+        for (const property of ["fill", "stroke"] as const) {
+          const color = element.style.getPropertyValue(property) || element.getAttribute(property) || "";
+          const parsed = parseExportCssColor(color);
+          if (!parsed || parsed.a <= 0) continue;
+          const opacityProperty = `${property}-opacity`;
+          const opacityValue = element.style.getPropertyValue(opacityProperty)
+            || element.getAttribute(opacityProperty)
+            || "1";
+          const paintOpacity = alphaChannel(opacityValue);
+          const effectiveAlpha = parsed.a * paintOpacity;
+          if (effectiveAlpha >= 1) continue;
+          const flattened = compositeExportColor(color, matte, paintOpacity);
+          if (!flattened) continue;
+          element.style.setProperty(property, flattened, "important");
+          element.style.setProperty(opacityProperty, "1", "important");
+          element.setAttribute(property, flattened);
+          element.setAttribute(opacityProperty, "1");
+        }
+      }
+    }
+  }
 }
 
 function validateBounds(bounds: ExportBounds): void {
@@ -623,6 +760,12 @@ export function cloneReactFlowViewport(
       fill.removeAttribute("data-export-fill-node");
     }
     const removedSelectionElementCount = removeEditorSelectionChrome(clone);
+    if (!options.background && options.appearanceBackground) {
+      // A transparent PNG may be viewed on black or another arbitrary color.
+      // Preserve how translucent cards looked on the board without filling the
+      // transparent area outside those cards.
+      flattenTransparentNodePaint(clone, options.appearanceBackground);
+    }
     sanitizeAttributes(clone);
 
     if (!includedNodeIds.length && !includedEdgeIds.length) {

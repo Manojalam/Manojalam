@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { waitForDomExportFontReadiness } from "./dom-renderer";
+import {
+  compositeExportColor,
+  parseExportCssColor,
+  waitForDomExportFontReadiness,
+} from "./dom-renderer";
 import { ExportError } from "./errors";
 
 function fontFailure(code: "FONT_LOAD_TIMEOUT" | "FONT_LOAD_FAILED"): ExportError {
@@ -83,4 +87,31 @@ test("does not hide unrelated font preflight bugs", async () => {
     ),
     (cause: unknown) => cause === unexpected
   );
+});
+
+test("precomposites translucent node paint against the visible board matte", () => {
+  assert.equal(
+    compositeExportColor("rgba(239, 68, 68, 0.18)", "rgb(240, 238, 234)"),
+    "rgb(240, 207, 204)"
+  );
+});
+
+test("combines SVG paint opacity with the color alpha", () => {
+  assert.equal(
+    compositeExportColor("rgba(0, 100, 200, 0.4)", "#ffffff", 0.5),
+    "rgb(204, 224, 244)"
+  );
+});
+
+test("keeps fully transparent paint transparent instead of adding a rectangular matte", () => {
+  assert.equal(compositeExportColor("transparent", "#ffffff"), null);
+});
+
+test("parses modern computed color syntax used by color-mix", () => {
+  assert.deepEqual(parseExportCssColor("color(srgb 0.2 0.4 0.6 / 25%)"), {
+    r: 51,
+    g: 102,
+    b: 153,
+    a: 0.25,
+  });
 });
