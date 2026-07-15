@@ -68,6 +68,8 @@ const GEOMETRY_EPSILON = 1e-7;
 const SHOULDER_OFFSET_RATIO = 0.13;
 const SHOULDER_HANDLE_RATIO = 0.37;
 const END_HANDLE_RATIO = 0.19;
+const MINIMUM_LABEL_CENTER_OFFSET_RATIO = 0.35;
+const MAXIMUM_LABEL_CENTER_OFFSET_RATIO = 0.9;
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -158,8 +160,8 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
   const requestedHalfWidth = positiveOr(input.halfWidth, 100);
   const labelCenterOffset = clamp(
     finiteOr(input.labelCenterOffset ?? length * 0.58, length * 0.58),
-    length * 0.35,
-    length * 0.75
+    length * MINIMUM_LABEL_CENTER_OFFSET_RATIO,
+    length * MAXIMUM_LABEL_CENTER_OFFSET_RATIO
   );
   const labelCenterRadius = rootRadius + labelCenterOffset;
   const sectorHalfAngleDegrees = clamp(

@@ -434,9 +434,10 @@ function compactNestedLayerBodies(
   angles: readonly number[],
   minimumLabelCenterRadius: number,
   guaranteedLabelCenterRadius: number,
-  length: number,
+  attachmentRootRadius: number,
+  profileLength: number,
   halfWidth: number,
-  labelCenterOffset: number,
+  profileLabelCenterOffset: number,
   labelRegionRadius: number,
   sectorHalfAngleDegrees: number,
   edgeClearance: number,
@@ -444,18 +445,27 @@ function compactNestedLayerBodies(
   bodyGap: number,
   labelGap: number
 ): ConvexBody[] {
-  const at = (labelCenterRadius: number) => candidateLayerBodies(
-    itemIndexes,
-    layerIndex,
-    angles,
-    Math.max(0, labelCenterRadius - labelCenterOffset),
-    length,
-    halfWidth,
-    labelCenterOffset,
-    labelRegionRadius,
-    sectorHalfAngleDegrees,
-    edgeClearance
-  );
+  const tailLength = profileLength - profileLabelCenterOffset;
+  const at = (labelCenterRadius: number) => {
+    // The compact profile decides only where the label and visible tip sit.
+    // Extend its hidden inner side back to one common point beneath the hub so
+    // every back layer structurally fills the gaps between foreground petals.
+    const tipRadius = labelCenterRadius + tailLength;
+    const structuralLength = tipRadius - attachmentRootRadius;
+    const structuralLabelCenterOffset = labelCenterRadius - attachmentRootRadius;
+    return candidateLayerBodies(
+      itemIndexes,
+      layerIndex,
+      angles,
+      attachmentRootRadius,
+      structuralLength,
+      halfWidth,
+      structuralLabelCenterOffset,
+      labelRegionRadius,
+      sectorHalfAngleDegrees,
+      edgeClearance
+    );
+  };
   const clear = (bodies: readonly ConvexBody[]) =>
     // Sectors within one layer must remain separate, but flower layers are
     // deliberately allowed to overlap so that later layers tuck behind the
@@ -487,7 +497,7 @@ function compactNestedLayerBodies(
   // custom geometry whose same-layer controls are wider than its sector.
   if (!clear(bodies)) {
     collidingRadius = clearRadius;
-    clearRadius = guaranteedLabelCenterRadius + length + halfWidth + labelGap;
+    clearRadius = guaranteedLabelCenterRadius + profileLength + halfWidth + labelGap;
     bodies = at(clearRadius);
   }
 
@@ -642,6 +652,7 @@ export function layoutRelationshipFlowerPetals(
       angles,
       minimumLabelCenterRadius,
       guaranteedLabelCenterRadius,
+      attachmentRootRadius,
       layerLength,
       halfWidth,
       layerLabelCenterOffset,
