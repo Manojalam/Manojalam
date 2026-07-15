@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  estimateFlowerLabelTextWidth,
   flowerLabelAvailableWidth,
   layoutFlowerLabels,
 } from "./flower-label-flow";
@@ -92,6 +93,48 @@ test("font size adapts when the preferred size does not fit", () => {
   assert.equal(result.overflowed, false);
   assert.ok(result.targetFontSize < 16);
   assert.ok(result.targetFontSize >= 9);
+  assert.ok(result.source.fontSize >= result.targetFontSize * 1.12 - 0.001);
+});
+
+test("a huge preferred font safely down-fits fourteen Sanskrit labels", () => {
+  const targets = [
+    "\u092a\u0943\u0925\u094d\u0935\u0940",
+    "\u091c\u0932\u092e\u094d",
+    "\u0924\u0947\u091c\u0903",
+    "\u0935\u093e\u092f\u0941\u0903",
+    "\u0906\u0915\u093e\u0936\u0903",
+    "\u092e\u0928\u0903",
+    "\u0906\u0924\u094d\u092e\u093e",
+    "\u0915\u093e\u0932\u0903",
+    "\u0926\u093f\u0915\u094d",
+    "\u0936\u092c\u094d\u0926\u0903",
+    "\u0938\u094d\u092a\u0930\u094d\u0936\u0903",
+    "\u0930\u0942\u092a\u092e\u094d",
+    "\u0930\u0938\u0903",
+    "\u0917\u0928\u094d\u0927\u0903",
+  ];
+  const result = layoutFlowerLabels({
+    sourceText: "\u092a\u0943\u0925\u094d\u0935\u0940 (14)",
+    targetLabels: targets,
+    regionWidth: 174,
+    regionHeight: 174,
+    sourceFontSize: 64.8,
+    targetFontSize: 48.96,
+    minimumSourceFontSize: 8.5,
+    minimumTargetFontSize: 7,
+    density: "compact",
+  });
+
+  assert.equal(result.overflowed, false);
+  assert.equal(result.targets.length, targets.length);
+  assert.ok(result.source.fontSize < 64.8);
+  assert.ok(result.targetFontSize < 48.96);
+  assert.ok(result.source.fontSize >= result.targetFontSize * 1.12 - 0.001);
+  assert.ok(result.bounds.top >= -73 - 0.001);
+  assert.ok(result.bounds.bottom <= 73 + 0.001);
+  result.rows.forEach((row) => {
+    assert.ok(row.width <= row.availableWidth + 0.001);
+  });
 });
 
 test("every row respects the petal width available across its full height", () => {
@@ -126,6 +169,7 @@ test("a too-small region returns finite fallback placements and reports overflow
   });
 
   assert.equal(result.overflowed, true);
+  assert.ok(result.source.fontSize >= result.targetFontSize * 1.12 - 0.001);
   assert.ok(Number.isFinite(result.bounds.top));
   assert.ok(Number.isFinite(result.bounds.bottom));
   result.targets.forEach((target) => {
@@ -149,4 +193,8 @@ test("Devanagari conjuncts use grapheme-aware width estimates", () => {
   assert.equal(conjunct.overflowed, false);
   assert.equal(conjunct.targets.length, 5);
   assert.ok(conjunct.rows.some((row) => row.targetIndexes.length > 1));
+  assert.ok(
+    estimateFlowerLabelTextWidth("\u092a\u0943\u0925\u094d\u0935\u0940", 10)
+      > 2 * 10 * 0.62
+  );
 });
