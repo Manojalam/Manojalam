@@ -395,7 +395,7 @@ test("partial last layers keep a complete shared slot grid with placeholders", (
     .sort((first, second) => first.slotIndex - second.slotIndex)
     .map((petal) => petal.angle));
   assert.deepEqual(layerAngles[0], [-90, 0, 90, 180]);
-  assert.deepEqual(layerAngles[1], [-45, 45, 135, 225]);
+  assert.deepEqual(layerAngles[1], [-135, -45, 45, 135]);
   assert.ok(placements.every((petal) =>
     petal.baseContact.halfAngleDegrees === 45
     && petal.baseContact.startRadius === 88 * 0.94
@@ -415,6 +415,50 @@ test("partial last layers keep a complete shared slot grid with placeholders", (
     twentyTwoAcrossFour.emptyPetals.map((petal) => [petal.layerIndex, petal.slotIndex]),
     [[3, 4], [3, 5]]
   );
+  assert.deepEqual(
+    Array.from({ length: 4 }, (_, layerIndex) =>
+      twentyTwoAcrossFour.petals.find((petal) => petal.layerIndex === layerIndex)?.angle
+    ),
+    [-90, -105, -120, -135]
+  );
+});
+
+test("successive layers continue clockwise through the closing petal gap", () => {
+  const fiveByTwo = layoutRelationshipFlowerPetals(
+    Array.from({ length: 9 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable", layerCount: 2 }
+  );
+  const fiveByTwoPlacements = [...fiveByTwo.petals, ...fiveByTwo.emptyPetals];
+
+  assert.deepEqual(fiveByTwo.layerCounts, [5, 4]);
+  assert.deepEqual(
+    [0, 1].map((layerIndex) => fiveByTwoPlacements
+      .filter((petal) => petal.layerIndex === layerIndex)
+      .sort((first, second) => first.slotIndex - second.slotIndex)
+      .map((petal) => petal.angle)),
+    [
+      [-90, -18, 54, 126, 198],
+      [-126, -54, 18, 90, 162],
+    ]
+  );
+  assert.equal(fiveByTwo.petals.find((petal) => petal.index === 5)?.angle, -126);
+
+  const threeByThree = layoutRelationshipFlowerPetals(
+    Array.from({ length: 9 }, () => ({})),
+    { hubRadius: 88, maxPerLayer: 9, density: "comfortable", layerCount: 3 }
+  );
+  assert.deepEqual(threeByThree.layerCounts, [3, 3, 3]);
+  assert.deepEqual(
+    [0, 1, 2].map((layerIndex) => threeByThree.petals
+      .filter((petal) => petal.layerIndex === layerIndex)
+      .sort((first, second) => first.slotIndex - second.slotIndex)
+      .map((petal) => petal.angle)),
+    [
+      [-90, 30, 150],
+      [-130, -10, 110],
+      [-170, -50, 70],
+    ]
+  );
 });
 
 test("dense flowers attach every compact nested layer beneath the hub", () => {
@@ -427,8 +471,8 @@ test("dense flowers attach every compact nested layer beneath the hub", () => {
     result.petals.filter((petal) => petal.layerIndex === layerIndex)
   );
   assert.equal(layers[0][0].angle, -90);
-  assert.equal(layers[1][0].angle, -67.5);
-  assert.equal(layers[2][0].angle, -90);
+  assert.equal(layers[1][0].angle, -105);
+  assert.equal(layers[2][0].angle, -120);
   const attachmentRootRadius = 88 * 0.68;
   assert.ok(result.petals.every((petal) =>
     Math.abs(petal.rootRadius - attachmentRootRadius) <= 0.001
@@ -452,7 +496,7 @@ test("dense flowers attach every compact nested layer beneath the hub", () => {
   assert.ok(layers[2][0].halfWidth > layers[1][0].halfWidth);
   assert.equal(new Set(result.petals.map((petal) => petal.labelRegionRadius)).size, 1);
   assert.equal(new Set(result.petals.map((petal) => petal.sectorHalfAngleDegrees)).size, 1);
-  assert.ok(result.maximumExtent < 700, `nested flower extent is ${result.maximumExtent}px`);
+  assert.ok(result.maximumExtent < 720, `nested flower extent is ${result.maximumExtent}px`);
   result.petals.forEach(assertSafeLabelCircleInside);
   assertSameLayerBodiesAndFullBounds(result, 0);
 });
@@ -468,7 +512,7 @@ test("an explicit layer count is exact even when automatic density would add a l
   assert.equal(result.petals.length, 24);
   assert.deepEqual(result.emptyPetals, []);
   assert.equal(result.petals.find((petal) => petal.layerIndex === 0)?.angle, -90);
-  assert.equal(result.petals.find((petal) => petal.layerIndex === 1)?.angle, -75);
+  assert.equal(result.petals.find((petal) => petal.layerIndex === 1)?.angle, -105);
   assertSameLayerBodiesAndFullBounds(result, 0);
 });
 
