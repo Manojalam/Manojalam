@@ -21,8 +21,13 @@ export interface RelationshipFlowerLayoutOptions {
   layerCount?: number;
 }
 
-export interface RelationshipFlowerPetalPlacement {
-  index: number;
+export interface RelationshipFlowerBaseContact {
+  startRadius: number;
+  endRadius: number;
+  halfAngleDegrees: number;
+}
+
+export interface RelationshipFlowerGeometricPlacement {
   layerIndex: number;
   slotIndex: number;
   angle: number;
@@ -35,11 +40,22 @@ export interface RelationshipFlowerPetalPlacement {
   sectorHalfAngleDegrees: number;
   /** Perpendicular inset from both sector edges, in canvas units. */
   edgeClearance: number;
+  baseContact: RelationshipFlowerBaseContact;
+}
+
+export interface RelationshipFlowerPetalPlacement extends RelationshipFlowerGeometricPlacement {
+  index: number;
+}
+
+export interface RelationshipFlowerEmptyPetalPlacement extends RelationshipFlowerGeometricPlacement {
+  index: null;
 }
 
 export interface RelationshipFlowerLayout {
   petals: RelationshipFlowerPetalPlacement[];
+  emptyPetals: RelationshipFlowerEmptyPetalPlacement[];
   layerCounts: number[];
+  layerSlotCount: number;
   length: number;
   halfWidth: number;
   labelCenterOffset: number;
@@ -61,18 +77,35 @@ const DENSITY_SCALE: Record<RelationshipFlowerDensity, number> = {
 const SLOT_GAP_DEGREES = 1.5;
 const MAX_SECTOR_HALF_ANGLE_DEGREES = 68;
 const COLLISION_EPSILON = 0.01;
-const NESTED_LABEL_CENTER_RATIO = 0.62;
-const MINIMUM_NESTED_LENGTH_TO_LABEL_RADIUS = 3.5;
-const NESTED_LENGTH_REDUCTION_PER_LAYER = 0.08;
+const LAYER_PROFILE_GROWTH_RATIO = 0.04;
+const SPARSE_LENGTH_PROPORTION = 0.72;
+const SPARSE_WIDTH_PROPORTION = 1.28;
+const BASE_CONTACT_START_RATIO = 0.94;
+const BASE_CONTACT_END_RATIO = 1.28;
 
 type ConvexBody = {
-  placement: RelationshipFlowerPetalPlacement;
+  placement: RelationshipFlowerPetalPlacement | RelationshipFlowerEmptyPetalPlacement;
   hull: FlowerPetalPoint[];
   bounds: FlowerPetalBounds;
 };
 
 function finitePositive(value: number, fallback: number): number {
   return Number.isFinite(value) ? Math.max(1, value) : fallback;
+}
+
+function flowerSlotProportions(slotCount: number): { length: number; width: number } {
+  // Logarithmic density gives the largest visual correction to very sparse
+  // flowers and then eases continuously toward the canonical dense profile.
+  const normalizedDensity = Math.max(0, Math.min(
+    1,
+    Math.log(Math.max(1, slotCount)) / Math.log(MAX_FLOWER_PETALS_PER_LAYER)
+  ));
+  return {
+    length: SPARSE_LENGTH_PROPORTION
+      + (1 - SPARSE_LENGTH_PROPORTION) * normalizedDensity,
+    width: SPARSE_WIDTH_PROPORTION
+      - (SPARSE_WIDTH_PROPORTION - 1) * normalizedDensity,
+  };
 }
 
 export function normalizeFlowerPetalsPerLayer(value: unknown): number {
@@ -102,11 +135,9 @@ export function normalizeFlowerLayerCount(value: unknown): number {
 
 function balancedCountsForLayers(petalCount: number, layerCount: number): number[] {
   if (petalCount <= 0 || layerCount <= 0) return [];
-  const usableLayers = Math.min(petalCount, layerCount);
-  const baseCount = Math.floor(petalCount / usableLayers);
-  const remainder = petalCount - baseCount * usableLayers;
-  return Array.from({ length: usableLayers }, (_, layerIndex) =>
-    layerIndex >= usableLayers - remainder ? baseCount + 1 : baseCount
+  const capacity = Math.ceil(petalCount / layerCount);
+  return Array.from({ length: layerCount }, (_, layerIndex) =>
+    Math.max(0, Math.min(capacity, petalCount - layerIndex * capacity))
   );
 }
 
@@ -118,14 +149,9 @@ export function balancedFlowerLayerCounts(
   const count = Number.isFinite(petalCount) ? Math.max(0, Math.floor(petalCount)) : 0;
   if (count === 0) return [];
   const automaticLayers = Math.ceil(count / normalizeFlowerPetalsPerLayer(maxPerLayer));
-  const layers = Math.max(automaticLayers, normalizeFlowerLayerCount(requestedLayerCount));
+  const requestedLayers = normalizeFlowerLayerCount(requestedLayerCount);
+  const layers = requestedLayers > 0 ? requestedLayers : automaticLayers;
   return balancedCountsForLayers(count, layers);
-}
-
-function automaticAssignments(layerCounts: readonly number[]): number[] {
-  return layerCounts.flatMap((count, layerIndex) =>
-    Array.from({ length: count }, () => layerIndex)
-  );
 }
 
 function radians(angle: number): number {
@@ -269,9 +295,12 @@ function pointOnRadius(radius: number, angleDegrees: number): FlowerPetalPoint {
 type SectorGeometryInput = FlowerPetalGeometryInput & {
   sectorHalfAngleDegrees: number;
   edgeClearance: number;
+  baseContact: RelationshipFlowerBaseContact;
 };
 
-function placementBody(placement: RelationshipFlowerPetalPlacement): ConvexBody {
+function placementBody(
+  placement: RelationshipFlowerPetalPlacement | RelationshipFlowerEmptyPetalPlacement
+): ConvexBody {
   const input: SectorGeometryInput = {
     center: { x: 0, y: 0 },
     angleDegrees: placement.angle,
@@ -282,6 +311,7 @@ function placementBody(placement: RelationshipFlowerPetalPlacement): ConvexBody 
     labelRegionRadius: placement.labelRegionRadius,
     sectorHalfAngleDegrees: placement.sectorHalfAngleDegrees,
     edgeClearance: placement.edgeClearance,
+    baseContact: placement.baseContact,
   };
   const geometry = buildFlowerPetalGeometry(input);
   return {
@@ -296,31 +326,42 @@ function placementBody(placement: RelationshipFlowerPetalPlacement): ConvexBody 
   };
 }
 
+type CandidateSlot = {
+  itemIndex: number | null;
+  slotIndex: number;
+  angle: number;
+};
+
 function candidateLayerBodies(
-  itemIndexes: readonly number[],
+  slots: readonly CandidateSlot[],
   layerIndex: number,
-  angles: readonly number[],
   rootRadius: number,
   length: number,
   halfWidth: number,
   labelCenterOffset: number,
   labelRegionRadius: number,
   sectorHalfAngleDegrees: number,
-  edgeClearance: number
+  edgeClearance: number,
+  baseContact: RelationshipFlowerBaseContact
 ): ConvexBody[] {
-  return itemIndexes.map((itemIndex, slotIndex) => placementBody({
-    index: itemIndex,
-    layerIndex,
-    slotIndex,
-    angle: angles[slotIndex],
-    rootRadius,
-    length,
-    halfWidth,
-    labelCenterRadius: rootRadius + labelCenterOffset,
-    labelRegionRadius,
-    sectorHalfAngleDegrees,
-    edgeClearance,
-  }));
+  return slots.map((slot) => {
+    const common: RelationshipFlowerGeometricPlacement = {
+      layerIndex,
+      slotIndex: slot.slotIndex,
+      angle: slot.angle,
+      rootRadius,
+      length,
+      halfWidth,
+      labelCenterRadius: rootRadius + labelCenterOffset,
+      labelRegionRadius,
+      sectorHalfAngleDegrees,
+      edgeClearance,
+      baseContact,
+    };
+    return placementBody(slot.itemIndex === null
+      ? { ...common, index: null }
+      : { ...common, index: slot.itemIndex });
+  });
 }
 
 function bodiesAreClear(
@@ -350,12 +391,14 @@ function labelCirclesAreClear(
 ): boolean {
   for (let first = 0; first < candidates.length; first += 1) {
     const firstPlacement = candidates[first].placement;
+    if (firstPlacement.index === null) continue;
     const firstCenter = pointOnRadius(
       firstPlacement.labelCenterRadius,
       firstPlacement.angle
     );
     for (let second = first + 1; second < candidates.length; second += 1) {
       const secondPlacement = candidates[second].placement;
+      if (secondPlacement.index === null) continue;
       const secondCenter = pointOnRadius(
         secondPlacement.labelCenterRadius,
         secondPlacement.angle
@@ -368,6 +411,7 @@ function labelCirclesAreClear(
     }
     for (const existing of positioned) {
       const existingPlacement = existing.placement;
+      if (existingPlacement.index === null) continue;
       const existingCenter = pointOnRadius(
         existingPlacement.labelCenterRadius,
         existingPlacement.angle
@@ -389,6 +433,7 @@ function labelsClearForegroundBodies(
 ): boolean {
   for (const candidate of candidates) {
     const placement = candidate.placement;
+    if (placement.index === null) continue;
     const center = pointOnRadius(placement.labelCenterRadius, placement.angle);
     for (const foreground of positioned) {
       if (
@@ -412,6 +457,7 @@ function collisionFreeLabelCenterRadius(
     const angleRadians = radians(angle);
     for (const existing of positioned) {
       const placement = existing.placement;
+      if (placement.index === null) continue;
       const requiredDistance = labelRegionRadius
         + placement.labelRegionRadius
         + clearance;
@@ -429,23 +475,20 @@ function collisionFreeLabelCenterRadius(
 }
 
 function compactNestedLayerBodies(
-  itemIndexes: readonly number[],
+  slots: readonly CandidateSlot[],
   layerIndex: number,
-  angles: readonly number[],
   minimumLabelCenterRadius: number,
   guaranteedLabelCenterRadius: number,
   attachmentRootRadius: number,
-  profileLength: number,
+  tailLength: number,
   halfWidth: number,
-  profileLabelCenterOffset: number,
   labelRegionRadius: number,
   sectorHalfAngleDegrees: number,
   edgeClearance: number,
+  baseContact: RelationshipFlowerBaseContact,
   positioned: readonly ConvexBody[],
-  bodyGap: number,
   labelGap: number
 ): ConvexBody[] {
-  const tailLength = profileLength - profileLabelCenterOffset;
   const at = (labelCenterRadius: number) => {
     // The compact profile decides only where the label and visible tip sit.
     // Extend its hidden inner side back to one common point beneath the hub so
@@ -454,27 +497,27 @@ function compactNestedLayerBodies(
     const structuralLength = tipRadius - attachmentRootRadius;
     const structuralLabelCenterOffset = labelCenterRadius - attachmentRootRadius;
     return candidateLayerBodies(
-      itemIndexes,
+      slots,
       layerIndex,
-      angles,
       attachmentRootRadius,
       structuralLength,
       halfWidth,
       structuralLabelCenterOffset,
       labelRegionRadius,
       sectorHalfAngleDegrees,
-      edgeClearance
+      edgeClearance,
+      baseContact
     );
   };
   const clear = (bodies: readonly ConvexBody[]) =>
     // Sectors within one layer must remain separate, but flower layers are
     // deliberately allowed to overlap so that later layers tuck behind the
     // preceding flower instead of starting beyond it.
-    bodiesAreClear(bodies, [], bodyGap)
+    bodiesAreClear(bodies, [], 0)
     && labelCirclesAreClear(bodies, positioned, labelGap)
     && labelsClearForegroundBodies(bodies, positioned, labelGap / 2);
   const analyticMinimum = collisionFreeLabelCenterRadius(
-    angles,
+    slots.filter((slot) => slot.itemIndex !== null).map((slot) => slot.angle),
     positioned,
     labelRegionRadius,
     labelGap,
@@ -497,7 +540,7 @@ function compactNestedLayerBodies(
   // custom geometry whose same-layer controls are wider than its sector.
   if (!clear(bodies)) {
     collidingRadius = clearRadius;
-    clearRadius = guaranteedLabelCenterRadius + profileLength + halfWidth + labelGap;
+    clearRadius = guaranteedLabelCenterRadius + tailLength + halfWidth + labelGap;
     bodies = at(clearRadius);
   }
 
@@ -529,65 +572,88 @@ export function layoutRelationshipFlowerPetals(
   const manualMaximum = inputs.reduce((maximum, input) =>
     Math.max(maximum, normalizeFlowerLayerCount(input.preferredLayer)), 0
   );
-  const requestedLayers = Math.max(
-    normalizeFlowerLayerCount(options.layerCount),
+  const automaticLayerCount = inputs.length
+    ? Math.ceil(inputs.length / normalizeFlowerPetalsPerLayer(options.maxPerLayer))
+    : 0;
+  const requestedLayerCount = normalizeFlowerLayerCount(options.layerCount);
+  const configuredLayerCount = requestedLayerCount > 0
+    ? requestedLayerCount
+    : automaticLayerCount;
+  const layerCount = Math.max(
+    configuredLayerCount,
     manualMaximum
   );
-  const initialCounts = balancedFlowerLayerCounts(
-    inputs.length,
-    options.maxPerLayer,
-    requestedLayers
-  );
-  const assignments = automaticAssignments(initialCounts);
+  const pinnedCounts = Array.from({ length: layerCount }, () => 0);
+  const assignments = Array.from({ length: inputs.length }, () => -1);
   inputs.forEach((input, index) => {
     const preferred = normalizeFlowerLayerCount(input.preferredLayer);
-    if (preferred > 0) assignments[index] = preferred - 1;
+    if (preferred <= 0) return;
+    assignments[index] = preferred - 1;
+    pinnedCounts[preferred - 1] += 1;
   });
-  const layerCount = assignments.length
-    ? Math.max(...assignments) + 1
+  const automaticSlotCapacity = layerCount > 0
+    ? Math.ceil(inputs.length / layerCount)
     : 0;
+  const assignmentCapacity = Math.max(automaticSlotCapacity, ...pinnedCounts, 0);
+  let nextUnpinnedIndex = 0;
+  const unpinnedIndexes = assignments
+    .map((layerIndex, itemIndex) => ({ layerIndex, itemIndex }))
+    .filter(({ layerIndex }) => layerIndex < 0)
+    .map(({ itemIndex }) => itemIndex);
+  for (let layerIndex = 0; layerIndex < layerCount; layerIndex += 1) {
+    let count = pinnedCounts[layerIndex];
+    while (count < assignmentCapacity && nextUnpinnedIndex < unpinnedIndexes.length) {
+      assignments[unpinnedIndexes[nextUnpinnedIndex]] = layerIndex;
+      nextUnpinnedIndex += 1;
+      count += 1;
+    }
+  }
   const layerIndexes = Array.from({ length: layerCount }, () => [] as number[]);
   assignments.forEach((layerIndex, itemIndex) => {
     layerIndexes[layerIndex]?.push(itemIndex);
   });
-  const nonemptyLayers = layerIndexes.filter((indexes) => indexes.length > 0);
-  const layerCounts = nonemptyLayers.map((indexes) => indexes.length);
+  const layerCounts = layerIndexes.map((indexes) => indexes.length);
+  const layerSlotCount = Math.max(1, ...layerCounts);
 
-  const baseLength = hubRadius * 3.3 * densityScale;
+  const canonicalLength = hubRadius * 3.3 * densityScale;
   const labelRegionRadius = Math.min(
-    baseLength * 0.29,
+    canonicalLength * 0.29,
     hubRadius * 0.95 * densityScale
   );
   const outlinePadding = hubRadius * (
     options.density === "spacious" ? 0.075 : 0.065
   );
-  const halfWidth = labelRegionRadius + outlinePadding;
+  const canonicalHalfWidth = labelRegionRadius + outlinePadding;
 
   if (!inputs.length) {
     return {
       petals: [],
+      emptyPetals: [],
       layerCounts: [],
-      length: baseLength,
-      halfWidth,
-      labelCenterOffset: baseLength * 0.58,
+      layerSlotCount: 0,
+      length: canonicalLength,
+      halfWidth: canonicalHalfWidth,
+      labelCenterOffset: canonicalLength * 0.58,
       labelRegionRadius,
       maximumExtent: hubRadius + 48,
     };
   }
 
-  const maximumLayerCount = Math.max(1, ...layerCounts);
+  const slotProportions = flowerSlotProportions(layerSlotCount);
+  const baseLength = canonicalLength * slotProportions.length;
+  const halfWidth = canonicalHalfWidth * slotProportions.width;
+
   const sectorHalfAngleDegrees = Math.min(
     MAX_SECTOR_HALF_ANGLE_DEGREES,
-    Math.max(2, 180 / maximumLayerCount - SLOT_GAP_DEGREES / 2)
+    Math.max(2, 180 / layerSlotCount - SLOT_GAP_DEGREES / 2)
   );
   const sectorHalfAngleRadians = radians(sectorHalfAngleDegrees);
   const edgeClearance = hubRadius * (
     options.density === "compact" ? 0.025 : options.density === "spacious" ? 0.055 : 0.04
   );
-  const bodyGap = hubRadius * (
+  const labelGap = hubRadius * (
     options.density === "compact" ? 0.02 : options.density === "spacious" ? 0.05 : 0.035
   );
-  const labelGap = bodyGap;
   const layerGap = options.density === "compact" ? 6 : options.density === "spacious" ? 12 : 8;
   const attachmentRootRadius = hubRadius * 0.68;
   const baseLabelCenterOffset = baseLength * 0.58;
@@ -599,35 +665,39 @@ export function layoutRelationshipFlowerPetals(
   );
   const length = baseLength + attachmentInset;
   const labelCenterOffset = baseLabelCenterOffset + attachmentInset;
+  const baseTailLength = length - labelCenterOffset;
+  const baseContact: RelationshipFlowerBaseContact = {
+    startRadius: hubRadius * BASE_CONTACT_START_RATIO,
+    endRadius: hubRadius * BASE_CONTACT_END_RATIO,
+    halfAngleDegrees: 180 / layerSlotCount,
+  };
   const positioned: ConvexBody[] = [];
   let previousLabelCenterRadius = attachmentRootRadius + labelCenterOffset;
 
-  nonemptyLayers.forEach((itemIndexes, visualLayerIndex) => {
-    const count = itemIndexes.length;
+  layerIndexes.forEach((itemIndexes, visualLayerIndex) => {
     // Each back flower alternates into the gaps of the flower immediately in
-    // front of it. Equal balanced layers therefore use 0, half-slot, 0...
-    // rather than dividing one slot by the total number of layers.
-    const stagger = visualLayerIndex % 2 === 0 ? 0 : 180 / count;
-    const angles = itemIndexes.map((_, slotIndex) =>
-      -90 + stagger + slotIndex * 360 / count
-    );
-    const layerLength = visualLayerIndex === 0
-      ? length
-      : Math.max(
-        labelRegionRadius * MINIMUM_NESTED_LENGTH_TO_LABEL_RADIUS,
-        length * (
-          1 - NESTED_LENGTH_REDUCTION_PER_LAYER * Math.min(visualLayerIndex, 2)
-        )
-      );
-    const layerLabelCenterOffset = visualLayerIndex === 0
-      ? labelCenterOffset
-      : layerLength * NESTED_LABEL_CENTER_RATIO;
-    const sameLayerLabelCenterRadius = count > 1
-      ? (labelRegionRadius + labelGap / 2) / Math.max(0.01, Math.sin(Math.PI / count))
-      : attachmentRootRadius + layerLabelCenterOffset;
+    // front of it. Empty slots remain real geometry so every layer shares one
+    // complete angular grid even when its content count is lower.
+    const stagger = visualLayerIndex % 2 === 0 ? 0 : 180 / layerSlotCount;
+    const slots: CandidateSlot[] = Array.from({ length: layerSlotCount }, (_, slotIndex) => ({
+      itemIndex: itemIndexes[slotIndex] ?? null,
+      slotIndex,
+      angle: -90 + stagger + slotIndex * 360 / layerSlotCount,
+    }));
+    const profileGrowth = visualLayerIndex
+      * labelRegionRadius
+      * LAYER_PROFILE_GROWTH_RATIO;
+    const layerHalfWidth = halfWidth + profileGrowth;
+    const layerTailLength = baseTailLength + profileGrowth;
+    const layerMinimumBodyCenterRadius = (layerHalfWidth + edgeClearance)
+      / Math.max(0.01, Math.sin(sectorHalfAngleRadians));
+    const sameLayerLabelCenterRadius = itemIndexes.length > 1
+      ? (labelRegionRadius + labelGap / 2)
+        / Math.max(0.01, Math.sin(Math.PI / layerSlotCount))
+      : attachmentRootRadius + labelCenterOffset;
     const minimumLabelCenterRadius = Math.max(
-      attachmentRootRadius + layerLabelCenterOffset,
-      minimumBodyCenterRadius,
+      attachmentRootRadius + labelCenterOffset,
+      layerMinimumBodyCenterRadius,
       sameLayerLabelCenterRadius,
       visualLayerIndex === 0 ? 0 : previousLabelCenterRadius + layerGap
     );
@@ -645,22 +715,24 @@ export function layoutRelationshipFlowerPetals(
         minimumLabelCenterRadius,
         positionedOuterRadius + labelRegionRadius + labelGap / 2
       )
-      : minimumLabelCenterRadius + layerLength + halfWidth + labelGap;
+      : minimumLabelCenterRadius
+        + labelCenterOffset
+        + layerTailLength
+        + layerHalfWidth
+        + labelGap;
     const bodies = compactNestedLayerBodies(
-      itemIndexes,
+      slots,
       visualLayerIndex,
-      angles,
       minimumLabelCenterRadius,
       guaranteedLabelCenterRadius,
       attachmentRootRadius,
-      layerLength,
-      halfWidth,
-      layerLabelCenterOffset,
+      layerTailLength,
+      layerHalfWidth,
       labelRegionRadius,
       sectorHalfAngleDegrees,
       edgeClearance,
+      baseContact,
       positioned,
-      bodyGap,
       labelGap
     );
     positioned.push(...bodies);
@@ -668,8 +740,16 @@ export function layoutRelationshipFlowerPetals(
       ?? minimumLabelCenterRadius;
   });
 
-  const petals = positioned.map((body) => body.placement);
+  const petals = positioned
+    .map((body) => body.placement)
+    .filter((placement): placement is RelationshipFlowerPetalPlacement => placement.index !== null);
+  const emptyPetals = positioned
+    .map((body) => body.placement)
+    .filter((placement): placement is RelationshipFlowerEmptyPetalPlacement => placement.index === null);
   petals.sort((first, second) => first.index - second.index);
+  emptyPetals.sort((first, second) =>
+    first.layerIndex - second.layerIndex || first.slotIndex - second.slotIndex
+  );
   const maximumGeometryExtent = positioned.reduce((maximum, body) => {
     const { bounds } = body;
     return Math.max(
@@ -684,7 +764,9 @@ export function layoutRelationshipFlowerPetals(
 
   return {
     petals,
+    emptyPetals,
     layerCounts,
+    layerSlotCount,
     length,
     halfWidth,
     labelCenterOffset,

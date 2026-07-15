@@ -28,8 +28,6 @@ import {
   buildRelationshipGroupsForSpec,
   createRelationshipDiagramSpec,
   MAX_FLOWER_LAYERS,
-  MAX_FLOWER_PETALS_PER_LAYER,
-  MIN_FLOWER_PETALS_PER_LAYER,
   expandRelationshipDiagramScope,
   isTransparentRelationshipDiagramBackground,
   normalizeRelationshipDiagramSpec,
@@ -188,6 +186,21 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
     [contentNodes, hierarchy, previewSpec, relationshipFilter, relationships, selectedAvailableRelationTypes.length]
   );
   const transparentBackground = isTransparentRelationshipDiagramBackground(draft.background);
+  const legacyAutomaticLayerCount = Math.max(
+    1,
+    Math.ceil(groups.length / Math.max(1, draft.flowerPetalsPerLayer))
+  );
+  const preferredLayerCount = Math.max(
+    0,
+    ...Object.values(draft.itemStyles ?? {}).map((style) => style.flowerLayer ?? 0)
+  );
+  const displayedFlowerLayerCount = Math.min(
+    MAX_FLOWER_LAYERS,
+    Math.max(
+      draft.flowerLayerCount > 0 ? draft.flowerLayerCount : legacyAutomaticLayerCount,
+      preferredLayerCount
+    )
+  );
 
   const update = <Key extends keyof RelationshipDiagramSpec>(
     key: Key,
@@ -228,6 +241,9 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
   const submit = () => {
     const normalized = normalizeRelationshipDiagramSpec({
       ...draft,
+      ...(draft.layout === "flower" && draft.flowerLayerCount <= 0
+        ? { flowerLayerCount: displayedFlowerLayerCount }
+        : {}),
       relationTypes: relationshipFilter === "all" ? [] : selectedAvailableRelationTypes,
     }, draft.scope);
     if (
@@ -294,7 +310,13 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                       key={option.value}
                       type="button"
                       aria-pressed={active}
-                      onClick={() => update("layout", option.value)}
+                      onClick={() => setDraft((current) => ({
+                        ...current,
+                        layout: option.value,
+                        ...(option.value === "flower" && current.flowerLayerCount <= 0
+                          ? { flowerLayerCount: displayedFlowerLayerCount }
+                          : {}),
+                      }))}
                       className={cn(
                         "flex items-start gap-3 rounded-xl border p-3 text-left transition-colors",
                         active
@@ -321,41 +343,15 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
               {draft.layout === "flower" && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <Label htmlFor="relationship-diagram-petals-per-layer" className="text-xs">
-                          Maximum petals per layer
-                        </Label>
-                        <p className="text-[9px] text-muted-foreground">
-                          Extra petals continue in staggered concentric layers.
-                        </p>
-                      </div>
-                      <span className="text-xs font-semibold tabular-nums">
-                        {draft.flowerPetalsPerLayer}
-                      </span>
-                    </div>
-                    <input
-                      id="relationship-diagram-petals-per-layer"
-                      type="range"
-                      min={MIN_FLOWER_PETALS_PER_LAYER}
-                      max={MAX_FLOWER_PETALS_PER_LAYER}
-                      step="1"
-                      value={draft.flowerPetalsPerLayer}
-                      onChange={(event) => update("flowerPetalsPerLayer", Number(event.target.value))}
-                      className="w-full accent-primary"
-                    />
-                  </div>
-                  <div className="space-y-1.5 border-t pt-3">
                     <Label className="text-xs">Layer count</Label>
                     <Select
-                      value={String(draft.flowerLayerCount)}
+                      value={String(displayedFlowerLayerCount)}
                       onValueChange={(value) => update("flowerLayerCount", Number(value))}
                     >
                       <SelectTrigger className="h-9 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="0">Auto</SelectItem>
                         {Array.from({ length: MAX_FLOWER_LAYERS }, (_, index) => {
                           const layer = index + 1;
                           return (
@@ -367,7 +363,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                       </SelectContent>
                     </Select>
                     <p className="text-[9px] leading-relaxed text-muted-foreground">
-                      Auto balances the flower from the petal limit. Choose a number to request at least that many layers.
+                      Relationships are balanced into equal petal slots. Blank petals complete the outer layer when needed.
                     </p>
                   </div>
                 </div>
@@ -537,6 +533,43 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                   </SelectContent>
                 </Select>
               </div>
+              {["flower", "arc-fan", "radial-hub"].includes(draft.layout) && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  <Label className="text-xs">Center styling</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ["centerFillColor", "Fill", "#0f172a"],
+                      ["centerBorderColor", "Border", "#ffffff"],
+                      ["centerTextColor", "Text", "#ffffff"],
+                    ] as const).map(([key, label, fallback]) => {
+                      const value = draft[key];
+                      return (
+                        <label key={key} className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                          {label}
+                          <input
+                            type="color"
+                            value={typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback}
+                            onChange={(event) => update(key, event.target.value)}
+                            className="h-8 w-full rounded border bg-background p-1"
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Border width
+                    <Input
+                      type="number"
+                      min={0}
+                      max={16}
+                      step={0.5}
+                      value={draft.centerBorderWidth ?? 4}
+                      className="h-8 text-xs"
+                      onChange={(event) => update("centerBorderWidth", Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Density</Label>

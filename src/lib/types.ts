@@ -215,9 +215,9 @@ export interface RelationshipDiagramSpec {
   palette: RelationshipDiagramPalette;
   textSize: number;
   density: RelationshipDiagramDensity;
-  /** Maximum number of source petals placed in one concentric flower layer. */
+  /** Legacy automatic-layer capacity retained for diagrams saved before layer-only controls. */
   flowerPetalsPerLayer: number;
-  /** Zero selects automatic layering; positive values request at least this many layers. */
+  /** Global flower layer count. Legacy zero values are migrated when the flower is edited. */
   flowerLayerCount: number;
   decorativeLevel: RelationshipDiagramDecorativeLevel;
   /** CSS color for the diagram canvas; `transparent` preserves the board beneath it. */
@@ -235,6 +235,11 @@ export interface RelationshipDiagramSpec {
   borderColor?: string;
   borderWidth?: number;
   fillOpacity?: number;
+  /** Optional styling for the central hub used by flower and radial layouts. */
+  centerFillColor?: string;
+  centerBorderColor?: string;
+  centerTextColor?: string;
+  centerBorderWidth?: number;
 }
 
 export interface BoardContent {
