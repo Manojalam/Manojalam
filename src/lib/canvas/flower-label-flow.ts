@@ -116,6 +116,8 @@ const DENSITY_METRICS: Record<FlowerLabelFlowDensity, DensityMetrics> = {
 };
 
 const EPSILON = 0.001;
+/** Source headings must remain visually dominant over their flowed targets. */
+const MINIMUM_SOURCE_TARGET_RATIO = 1.12;
 
 function finitePositive(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) ? Math.max(1, value as number) : fallback;
@@ -142,9 +144,11 @@ function graphemeCount(value: string): number {
   return Array.from(value).length;
 }
 
-/** Deterministic SSR-safe estimate matching the diagram's SVG fallback. */
+/** Deterministic SSR-safe estimate, with extra room for Devanagari shaping. */
 export function estimateFlowerLabelTextWidth(value: string, fontSize: number): number {
-  return graphemeCount(value) * finitePositive(fontSize, 12) * 0.62;
+  const hasDevanagari = /[\u0900-\u097f]/u.test(value);
+  const widthFactor = hasDevanagari ? 0.72 : 0.62;
+  return graphemeCount(value) * finitePositive(fontSize, 12) * widthFactor;
 }
 
 function measuredWidth(
@@ -305,11 +309,15 @@ function partitionIntoRows(
 }
 
 function fontSizes(preferred: number, minimum: number): number[] {
-  const start = Math.max(minimum, Math.round(preferred * 2) / 2);
+  const safeMinimum = Math.min(preferred, minimum);
+  const start = Math.max(safeMinimum, Math.floor((preferred + EPSILON) * 2) / 2);
   const values: number[] = [];
-  for (let value = start; value >= minimum - EPSILON; value -= 0.5) {
-    values.push(Math.max(minimum, Math.round(value * 2) / 2));
+  for (let value = start; value >= safeMinimum - EPSILON;) {
+    values.push(Math.max(safeMinimum, Math.round(value * 2) / 2));
+    const step = value > 28 ? 2 : value > 18 ? 1 : 0.5;
+    value -= step;
   }
+  values.push(safeMinimum);
   return [...new Set(values)];
 }
 
@@ -426,8 +434,17 @@ export function layoutFlowerLabels(input: FlowerLabelFlowInput): FlowerLabelFlow
   const regionHeight = finitePositive(input.regionHeight, 180);
   const innerWidth = Math.max(1, regionWidth - metrics.horizontalPadding * 2);
   const innerHeight = Math.max(1, regionHeight - metrics.verticalPadding * 2);
-  const preferredSourceSize = finitePositive(input.sourceFontSize, 15);
-  const preferredTargetSize = finitePositive(input.targetFontSize, 12);
+  const safeRegionScale = Math.min(innerWidth, innerHeight);
+  // Very large style overrides are still preferences. Values that cannot
+  // possibly fit a fixed safe region only multiply failed layout searches.
+  const preferredSourceSize = Math.min(
+    finitePositive(input.sourceFontSize, 15),
+    Math.max(10, safeRegionScale * 0.3)
+  );
+  const preferredTargetSize = Math.min(
+    finitePositive(input.targetFontSize, 12),
+    Math.max(8, safeRegionScale * 0.22)
+  );
   const minimumSourceSize = Math.min(
     preferredSourceSize,
     finitePositive(input.minimumSourceFontSize, 10)
@@ -439,14 +456,17 @@ export function layoutFlowerLabels(input: FlowerLabelFlowInput): FlowerLabelFlow
   const measureText = input.measureText ?? estimateFlowerLabelTextWidth;
 
   let attempt: LayoutAttempt | null = null;
-  for (const targetSize of fontSizes(preferredTargetSize, minimumTargetSize)) {
-    // Keep the source visually dominant, but allow it to adapt independently
-    // when a long source name competes with a dense target cluster.
-    const desiredSourceSize = Math.min(
-      preferredSourceSize,
-      Math.max(minimumSourceSize, targetSize * 1.24)
+  const maximumHierarchicalTargetSize = Math.min(
+    preferredTargetSize,
+    preferredSourceSize / MINIMUM_SOURCE_TARGET_RATIO
+  );
+  for (const targetSize of fontSizes(maximumHierarchicalTargetSize, minimumTargetSize)) {
+    const hierarchicalSourceFloor = Math.max(
+      minimumSourceSize,
+      targetSize * MINIMUM_SOURCE_TARGET_RATIO
     );
-    for (const sourceSize of fontSizes(desiredSourceSize, minimumSourceSize)) {
+    if (hierarchicalSourceFloor > preferredSourceSize + EPSILON) continue;
+    for (const sourceSize of fontSizes(preferredSourceSize, hierarchicalSourceFloor)) {
       attempt = attemptFlow(
         input,
         innerWidth,
@@ -463,16 +483,24 @@ export function layoutFlowerLabels(input: FlowerLabelFlowInput): FlowerLabelFlow
 
   // Give the caller finite placements even when the fixed canonical region is
   // too small. The petal remains unchanged and `overflowed` is explicit.
-  attempt ??= attemptFlow(
-    input,
-    innerWidth,
-    Number.POSITIVE_INFINITY,
-    metrics,
-    minimumSourceSize,
-    minimumTargetSize,
-    measureText,
-    true
-  );
+  let usedOverflowFallback = false;
+  if (!attempt) {
+    usedOverflowFallback = true;
+    const fallbackTargetSize = Math.min(
+      minimumTargetSize,
+      minimumSourceSize / MINIMUM_SOURCE_TARGET_RATIO
+    );
+    attempt = attemptFlow(
+      input,
+      innerWidth,
+      Number.POSITIVE_INFINITY,
+      metrics,
+      minimumSourceSize,
+      fallbackTargetSize,
+      measureText,
+      true
+    );
+  }
 
   // The fallback above always succeeds for finite labels and positive width.
   if (!attempt) {
@@ -530,7 +558,8 @@ export function layoutFlowerLabels(input: FlowerLabelFlowInput): FlowerLabelFlow
     bottom: attempt.clusterHeight / 2,
   };
   const dividerWidth = Math.min(innerWidth * 0.72, Math.max(sourceWidth + 12, widest * 0.7));
-  const overflowed = attempt.overflowed
+  const overflowed = usedOverflowFallback
+    || attempt.overflowed
     || bounds.top < -innerHeight / 2 - EPSILON
     || bounds.bottom > innerHeight / 2 + EPSILON
     || rows.some((row) => row.width > row.availableWidth + EPSILON);

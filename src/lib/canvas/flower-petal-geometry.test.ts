@@ -50,10 +50,12 @@ function geometry(angleDegrees: number): FlowerPetalGeometry {
     center: CENTER,
     angleDegrees,
     rootRadius: 84,
-    length: 255,
-    halfWidth: 104,
-    labelCenterOffset: 148,
-    labelRegionRadius: 80,
+    length: 360,
+    halfWidth: 82,
+    labelCenterOffset: 215,
+    labelRegionRadius: 70,
+    sectorHalfAngleDegrees: 22,
+    edgeClearance: 4,
   });
 }
 
@@ -70,9 +72,10 @@ function pointInPolygon(point: FlowerPetalPoint, polygon: readonly FlowerPetalPo
   return inside;
 }
 
-test("the canonical petal is regular C1 at every join", () => {
+test("the five-disc envelope is regular C1 at every join", () => {
   const result = geometry(-90);
-  assert.equal(result.segments.length, 4);
+  assert.equal(result.profile.discs.length, 5);
+  assert.ok(result.segments.length > 12);
   result.segments.forEach((segment, index) => {
     const next = result.segments[(index + 1) % result.segments.length];
     close(segment.end.x, next.start.x, `join ${index} x`);
@@ -81,7 +84,74 @@ test("the canonical petal is regular C1 at every join", () => {
     const outgoing = subtract(next.control1, next.start);
     close(incoming.x, outgoing.x, `join ${index} dx`);
     close(incoming.y, outgoing.y, `join ${index} dy`);
-    assert.ok(magnitude(incoming) > EPSILON);
+    assert.ok(magnitude(incoming) > EPSILON, `join ${index} has a zero tangent`);
+  });
+});
+
+test("the main disc is centered on the label and owns its safe circle", () => {
+  const result = geometry(0);
+  const mainDisc = result.profile.discs[2];
+  close(mainDisc.center.x, result.profile.labelCenter.x, "main disc center x");
+  close(mainDisc.center.y, result.profile.labelCenter.y, "main disc center y");
+  close(mainDisc.radius, result.profile.halfWidth, "main disc radius");
+  assert.ok(result.profile.labelRegionRadius <= mainDisc.radius);
+});
+
+test("all five source circles and the label circle stay inside the envelope", () => {
+  const result = geometry(0);
+  const outline = result.segments.flatMap((segment) =>
+    Array.from({ length: 97 }, (_, index) => cubicPoint(segment, index / 96))
+  );
+  const circles = [
+    ...result.profile.discs.map((disc) => ({
+      center: disc.center,
+      radius: disc.radius * (1 - 1e-5),
+    })),
+    {
+      center: result.profile.labelCenter,
+      radius: result.profile.labelRegionRadius,
+    },
+  ];
+
+  circles.forEach((circle, circleIndex) => {
+    for (let index = 0; index < 128; index += 1) {
+      const angle = index * Math.PI * 2 / 128;
+      const point = {
+        x: circle.center.x + Math.cos(angle) * circle.radius,
+        y: circle.center.y + Math.sin(angle) * circle.radius,
+      };
+      assert.ok(
+        pointInPolygon(point, outline),
+        `circle ${circleIndex} point ${index} leaves the envelope`
+      );
+    }
+  });
+});
+
+test("every cubic anchor and control stays inside the inset angular sector", () => {
+  const result = geometry(37);
+  const halfAngle = result.profile.sectorHalfAngleDegrees * Math.PI / 180;
+  const sine = Math.sin(halfAngle);
+  const cosine = Math.cos(halfAngle);
+  const points = result.segments.flatMap((segment) => [
+    segment.start,
+    segment.control1,
+    segment.control2,
+    segment.end,
+  ]);
+
+  points.forEach((point, index) => {
+    const local = localPoint(result, point);
+    const upperDistance = local.x * sine - local.y * cosine;
+    const lowerDistance = local.x * sine + local.y * cosine;
+    assert.ok(
+      upperDistance >= result.profile.edgeClearance - EPSILON,
+      `point ${index} crosses the upper sector inset`
+    );
+    assert.ok(
+      lowerDistance >= result.profile.edgeClearance - EPSILON,
+      `point ${index} crosses the lower sector inset`
+    );
   });
 });
 
@@ -102,6 +172,7 @@ test("all angles have the same local silhouette and dimensions", () => {
       segment.control2,
       segment.end,
     ]).map((point) => localPoint(result, point));
+    assert.equal(local.length, reference.length);
     local.forEach((point, index) => {
       close(point.x, reference[index].x, `point ${index} radial`);
       close(point.y, reference[index].y, `point ${index} tangent`);
@@ -111,25 +182,13 @@ test("all angles have the same local silhouette and dimensions", () => {
   });
 });
 
-test("the fixed centered label circle stays inside the petal", () => {
-  const result = geometry(0);
-  const outline = result.segments.flatMap((segment) =>
-    Array.from({ length: 81 }, (_, index) => cubicPoint(segment, index / 80))
-  );
-  const { labelCenter, labelRegionRadius } = result.profile;
-  for (let index = 0; index < 96; index += 1) {
-    const angle = index * Math.PI * 2 / 96;
-    const point = {
-      x: labelCenter.x + Math.cos(angle) * labelRegionRadius,
-      y: labelCenter.y + Math.sin(angle) * labelRegionRadius,
-    };
-    assert.ok(pointInPolygon(point, outline), `label circle point ${index} leaves petal`);
-  }
-});
-
-test("root and outer tip have smooth nonzero tangents", () => {
+test("root and outer tip are smooth anchors on the outline", () => {
   const result = geometry(-90);
-  for (const joinIndex of [1, 3]) {
+  for (const expected of [result.profile.root, result.profile.tip]) {
+    const joinIndex = result.segments.findIndex((segment) =>
+      magnitude(subtract(segment.end, expected)) <= EPSILON
+    );
+    assert.notEqual(joinIndex, -1);
     const segment = result.segments[joinIndex];
     const next = result.segments[(joinIndex + 1) % result.segments.length];
     const incoming = subtract(segment.end, segment.control2);
@@ -154,7 +213,7 @@ test("bounds contain canonical petals after item rotation", () => {
 test("path output is finite and cubic-only", () => {
   for (const angle of [-90, 0, 37, 180]) {
     const result = geometry(angle);
-    assert.equal(result.path.match(/\bC\b/g)?.length, 4);
+    assert.equal(result.path.match(/\bC\b/g)?.length, result.segments.length);
     assert.equal(/\b[QLA]\b/.test(result.path), false);
     assert.equal(/NaN|Infinity/.test(result.path), false);
     assert.match(result.path, /^M\s/);

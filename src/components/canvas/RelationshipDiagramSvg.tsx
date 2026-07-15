@@ -591,6 +591,8 @@ type FlowerPetalMetric = {
   halfWidth: number;
   labelCenterRadius: number;
   labelRegionRadius: number;
+  sectorHalfAngleDegrees?: number;
+  edgeClearance?: number;
   flow: FlowerLabelFlowResult;
 };
 
@@ -621,8 +623,8 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
         regionHeight: placement.labelRegionRadius * 2,
         sourceFontSize,
         targetFontSize,
-        minimumSourceFontSize: style.fontSize == null ? 8.5 : sourceFontSize,
-        minimumTargetFontSize: style.fontSize == null ? 7 : targetFontSize,
+        minimumSourceFontSize: 8.5,
+        minimumTargetFontSize: 7,
         density: flowDensity,
       }),
     };
@@ -636,6 +638,10 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
       halfWidth: petal.halfWidth,
       labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
       labelRegionRadius: petal.labelRegionRadius,
+      ...(petal.sectorHalfAngleDegrees == null
+        ? {}
+        : { sectorHalfAngleDegrees: petal.sectorHalfAngleDegrees }),
+      ...(petal.edgeClearance == null ? {} : { edgeClearance: petal.edgeClearance }),
     });
     const bounds = flowerPetalGeometryBounds(
       geometry,
@@ -725,6 +731,10 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       halfWidth: petal.halfWidth,
       labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
       labelRegionRadius: petal.labelRegionRadius,
+      ...(petal.sectorHalfAngleDegrees == null
+        ? {}
+        : { sectorHalfAngleDegrees: petal.sectorHalfAngleDegrees }),
+      ...(petal.edgeClearance == null ? {} : { edgeClearance: petal.edgeClearance }),
     });
     const color = styledGroupColor(group, index, spec);
     const style = itemStyle(group, spec);
@@ -743,10 +753,27 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   });
   const layerIndexes = [...new Set(items.map((item) => item.petal.layerIndex))]
     .sort((first, second) => second - first);
+  const orderedItems = layerIndexes.flatMap((layerIndex) =>
+    items.filter((item) => item.petal.layerIndex === layerIndex)
+  );
   const renderContent = ({ group, petal, geometry, color, style, transform }: typeof items[number]) => {
     const center = geometry.profile.labelCenter;
     const sourceText = sourceDisplayLabel(group, spec)
       + (spec.showCounts ? " (" + group.count + ")" : "");
+    const accessibleLabel = group.sourceLabel + ": "
+      + group.targets.map((target) => target.label).join(", ");
+    if (petal.flow.overflowed) {
+      return (
+        <g
+          key={`flower-content-${group.sourceNodeId}`}
+          role="img"
+          aria-label={accessibleLabel}
+          transform={transform}
+        >
+          <title>{accessibleLabel}</title>
+        </g>
+      );
+    }
     return (
       <g
         key={`flower-content-${group.sourceNodeId}`}
@@ -774,7 +801,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               <circle
                 cx={bulletX}
                 cy={labelY}
-                r={Math.max(1.8, placement.fontSize * 0.2)}
+                r={Math.max(1.8, Math.min(3, placement.fontSize * 0.2))}
                 fill={color}
               />
               <SvgTextLines
@@ -796,31 +823,24 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   };
   return (
     <>
-      {layerIndexes.map((layerIndex) => {
-        const layerItems = items.filter((item) => item.petal.layerIndex === layerIndex);
-        return (
-          <g key={`flower-layer-${layerIndex}`}>
-            {layerItems.map(({ group, geometry, color, stroke, transform }) => (
-              <g
-                key={`flower-shape-${group.sourceNodeId}`}
-                transform={transform}
-                aria-hidden="true"
-              >
-                <path
-                  d={geometry.path}
-                  fill={tint(color, 0.7)}
-                  fillOpacity={groupFillOpacity(spec)}
-                  stroke={stroke}
-                  strokeWidth={groupStrokeWidth(spec)}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
-              </g>
-            ))}
-            {layerItems.map(renderContent)}
-          </g>
-        );
-      })}
+      {orderedItems.map(({ group, geometry, color, stroke, transform }) => (
+        <g
+          key={`flower-shape-${group.sourceNodeId}`}
+          transform={transform}
+          aria-hidden="true"
+        >
+          <path
+            d={geometry.path}
+            fill={tint(color, 0.7)}
+            fillOpacity={groupFillOpacity(spec)}
+            stroke={stroke}
+            strokeWidth={groupStrokeWidth(spec)}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </g>
+      ))}
+      {orderedItems.map(renderContent)}
       <circle cx={cx} cy={cy} r={hubRadius} fill="#0f172a" stroke="#ffffff" strokeWidth="4" />
       <SvgLabel
         value={spec.title || "Relationships"}
