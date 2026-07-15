@@ -47,7 +47,7 @@ export type FlowerPetalProfile = {
   labelRegionRadius: number;
   sectorHalfAngleDegrees: number;
   edgeClearance: number;
-  /** The five collinear circles whose convex envelope forms the petal. */
+  /** Compatibility construction guides; the outline is a smooth spline. */
   discs: FlowerPetalDisc[];
 };
 
@@ -64,32 +64,10 @@ export type FlowerPetalBounds = {
   maxY: number;
 };
 
-type LocalDisc = {
-  x: number;
-  radius: number;
-};
-
-type LocalPrimitive = {
-  kind: "arc" | "tangent";
-  start: FlowerPetalPoint;
-  end: FlowerPetalPoint;
-  startTangent: FlowerPetalPoint;
-  endTangent: FlowerPetalPoint;
-  startHandle: number;
-  endHandle: number;
-};
-
-type DiscTangent = {
-  angle: number;
-  upperLeft: FlowerPetalPoint;
-  upperRight: FlowerPetalPoint;
-  lowerLeft: FlowerPetalPoint;
-  lowerRight: FlowerPetalPoint;
-};
-
-const TAU = Math.PI * 2;
-const MAX_ARC_RADIANS = Math.PI / 8;
 const GEOMETRY_EPSILON = 1e-7;
+const SHOULDER_OFFSET_RATIO = 0.13;
+const SHOULDER_HANDLE_RATIO = 0.37;
+const END_HANDLE_RATIO = 0.19;
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -120,249 +98,6 @@ function pathForSegments(segments: readonly FlowerPetalCubicSegment[]): string {
     ]),
     "Z",
   ].join(" ");
-}
-
-function pointOnDisc(disc: LocalDisc, angle: number): FlowerPetalPoint {
-  return {
-    x: disc.x + Math.cos(angle) * disc.radius,
-    y: Math.sin(angle) * disc.radius,
-  };
-}
-
-function clockwiseTangent(angle: number): FlowerPetalPoint {
-  return { x: Math.sin(angle), y: -Math.cos(angle) };
-}
-
-function tangentPrimitive(
-  start: FlowerPetalPoint,
-  end: FlowerPetalPoint,
-  tangent: FlowerPetalPoint
-): LocalPrimitive {
-  return {
-    kind: "tangent",
-    start,
-    end,
-    startTangent: tangent,
-    endTangent: tangent,
-    startHandle: 0,
-    endHandle: 0,
-  };
-}
-
-/** Add clockwise circular arcs, split finely enough for a stable cubic hull. */
-function appendClockwiseArc(
-  primitives: LocalPrimitive[],
-  disc: LocalDisc,
-  startAngle: number,
-  endAngle: number,
-  forcedStart?: FlowerPetalPoint,
-  forcedEnd?: FlowerPetalPoint,
-  breakAngles: readonly number[] = []
-): void {
-  const breaks: number[] = [];
-  for (const candidate of breakAngles) {
-    for (let turn = -2; turn <= 2; turn += 1) {
-      const angle = candidate + turn * TAU;
-      if (angle < startAngle - GEOMETRY_EPSILON && angle > endAngle + GEOMETRY_EPSILON) {
-        breaks.push(angle);
-      }
-    }
-  }
-  breaks.sort((first, second) => second - first);
-  const boundaries = [startAngle, ...breaks, endAngle];
-
-  boundaries.slice(0, -1).forEach((boundary, boundaryIndex) => {
-    const nextBoundary = boundaries[boundaryIndex + 1];
-    const count = Math.max(1, Math.ceil((boundary - nextBoundary) / MAX_ARC_RADIANS));
-    const step = (nextBoundary - boundary) / count;
-    const handle = 4 * disc.radius * Math.tan(Math.abs(step) / 4) / 3;
-
-    for (let index = 0; index < count; index += 1) {
-      const firstAngle = boundary + step * index;
-      const secondAngle = boundary + step * (index + 1);
-      const isFirst = boundaryIndex === 0 && index === 0;
-      const isLast = boundaryIndex === boundaries.length - 2 && index === count - 1;
-      primitives.push({
-        kind: "arc",
-        start: isFirst && forcedStart ? forcedStart : pointOnDisc(disc, firstAngle),
-        end: isLast && forcedEnd ? forcedEnd : pointOnDisc(disc, secondAngle),
-        startTangent: clockwiseTangent(firstAngle),
-        endTangent: clockwiseTangent(secondAngle),
-        startHandle: handle,
-        endHandle: handle,
-      });
-    }
-  });
-}
-
-/** Keep only circles that contribute to the upper convex envelope. */
-function exposedDiscs(discs: readonly LocalDisc[]): LocalDisc[] {
-  const envelope: LocalDisc[] = [];
-  for (const disc of discs) {
-    let contained = false;
-    while (envelope.length) {
-      const previous = envelope[envelope.length - 1];
-      const distance = disc.x - previous.x;
-      if (disc.radius >= previous.radius + distance - GEOMETRY_EPSILON) {
-        envelope.pop();
-        continue;
-      }
-      if (previous.radius >= disc.radius + distance - GEOMETRY_EPSILON) {
-        contained = true;
-      }
-      break;
-    }
-    if (contained) continue;
-
-    while (envelope.length >= 2) {
-      const first = envelope[envelope.length - 2];
-      const second = envelope[envelope.length - 1];
-      const firstSlope = (second.radius - first.radius) / (second.x - first.x);
-      const secondSlope = (disc.radius - second.radius) / (disc.x - second.x);
-      if (firstSlope > secondSlope + GEOMETRY_EPSILON) break;
-      envelope.pop();
-    }
-    envelope.push(disc);
-  }
-  return envelope;
-}
-
-function fitJoinHandleToSector(
-  point: FlowerPetalPoint,
-  tangent: FlowerPetalPoint,
-  requestedHandle: number,
-  sine: number,
-  cosine: number,
-  edgeClearance: number
-): number {
-  let maximum = Number.POSITIVE_INFINITY;
-  for (const normal of [{ x: sine, y: -cosine }, { x: sine, y: cosine }]) {
-    const slack = normal.x * point.x + normal.y * point.y - edgeClearance;
-    const change = Math.abs(normal.x * tangent.x + normal.y * tangent.y);
-    if (change > 1e-12) maximum = Math.min(maximum, Math.max(0, slack) / change);
-  }
-  if (maximum >= requestedHandle) return requestedHandle;
-  return Math.max(0, maximum * (1 - 1e-9));
-}
-
-function localEnvelopeSegments(
-  discs: readonly LocalDisc[],
-  sectorHalfAngleRadians: number,
-  edgeClearance: number
-): FlowerPetalCubicSegment[] {
-  const envelope = exposedDiscs(discs);
-  if (envelope.length < 2) return [];
-
-  const tangents: DiscTangent[] = envelope.slice(0, -1).map((left, index) => {
-    const right = envelope[index + 1];
-    const cosine = clamp((left.radius - right.radius) / (right.x - left.x), -1, 1);
-    const angle = Math.acos(cosine);
-    return {
-      angle,
-      upperLeft: pointOnDisc(left, angle),
-      upperRight: pointOnDisc(right, angle),
-      lowerLeft: pointOnDisc(left, -angle),
-      lowerRight: pointOnDisc(right, -angle),
-    };
-  });
-  const primitives: LocalPrimitive[] = [];
-
-  tangents.forEach((tangent, index) => {
-    primitives.push(tangentPrimitive(
-      tangent.upperLeft,
-      tangent.upperRight,
-      clockwiseTangent(tangent.angle)
-    ));
-    if (index < tangents.length - 1) {
-      appendClockwiseArc(
-        primitives,
-        envelope[index + 1],
-        tangent.angle,
-        tangents[index + 1].angle,
-        tangent.upperRight,
-        tangents[index + 1].upperLeft
-      );
-    } else {
-      appendClockwiseArc(
-        primitives,
-        envelope[envelope.length - 1],
-        tangent.angle,
-        -tangent.angle,
-        tangent.upperRight,
-        tangent.lowerRight,
-        [0]
-      );
-    }
-  });
-
-  for (let index = tangents.length - 1; index >= 0; index -= 1) {
-    const tangent = tangents[index];
-    primitives.push(tangentPrimitive(
-      tangent.lowerRight,
-      tangent.lowerLeft,
-      clockwiseTangent(-tangent.angle)
-    ));
-    if (index > 0) {
-      appendClockwiseArc(
-        primitives,
-        envelope[index],
-        -tangent.angle,
-        -tangents[index - 1].angle,
-        tangent.lowerLeft,
-        tangents[index - 1].lowerRight
-      );
-    } else {
-      appendClockwiseArc(
-        primitives,
-        envelope[0],
-        -tangent.angle,
-        tangent.angle - TAU,
-        tangent.lowerLeft,
-        tangent.upperLeft,
-        [-Math.PI]
-      );
-    }
-  }
-
-  const sine = Math.sin(sectorHalfAngleRadians);
-  const cosine = Math.cos(sectorHalfAngleRadians);
-  const joins = primitives.map((primitive, index) => {
-    const previous = primitives[(index + primitives.length - 1) % primitives.length];
-    const adjacentArcs = [previous, primitive].filter((item) => item.kind === "arc");
-    const tangent = primitive.kind === "arc" ? primitive.startTangent : previous.endTangent;
-    const requestedHandle = adjacentArcs.length
-      ? Math.min(...adjacentArcs.map((item) => item === primitive ? item.startHandle : item.endHandle))
-      : 0;
-    return {
-      point: primitive.start,
-      tangent,
-      handle: fitJoinHandleToSector(
-        primitive.start,
-        tangent,
-        requestedHandle,
-        sine,
-        cosine,
-        edgeClearance
-      ),
-    };
-  });
-
-  return primitives.map((_, index) => {
-    const start = joins[index];
-    const end = joins[(index + 1) % joins.length];
-    return {
-      start: start.point,
-      control1: {
-        x: start.point.x + start.tangent.x * start.handle,
-        y: start.point.y + start.tangent.y * start.handle,
-      },
-      control2: {
-        x: end.point.x - end.tangent.x * end.handle,
-        y: end.point.y - end.tangent.y * end.handle,
-      },
-      end: end.point,
-    };
-  });
 }
 
 /**
@@ -408,9 +143,9 @@ export function flowerPetalGeometryBounds(
 }
 
 /**
- * Build a rounded lotus petal as the convex envelope of five collinear discs.
- * The central disc owns the label region; the four smaller discs taper the
- * silhouette toward its root and tip without introducing polygonal corners.
+ * Build one soft lotus petal from four cubic spans. Opposite joins share the
+ * same handle magnitudes: this gives exact C1 continuity and matching signed
+ * curvature at the root, belly, and tip without any straight tangent facets.
  */
 export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): FlowerPetalGeometry {
   const center = {
@@ -419,12 +154,14 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
   };
   const rootRadius = Math.max(0, finiteOr(input.rootRadius, 0));
   const length = positiveOr(input.length, 240);
+  const tipRadius = rootRadius + length;
   const requestedHalfWidth = positiveOr(input.halfWidth, 100);
   const labelCenterOffset = clamp(
     finiteOr(input.labelCenterOffset ?? length * 0.58, length * 0.58),
     length * 0.35,
     length * 0.75
   );
+  const labelCenterRadius = rootRadius + labelCenterOffset;
   const sectorHalfAngleDegrees = clamp(
     finiteOr(input.sectorHalfAngleDegrees ?? 89.5, 89.5),
     1,
@@ -432,19 +169,19 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
   );
   const sectorHalfAngleRadians = sectorHalfAngleDegrees * Math.PI / 180;
   const sectorSine = Math.sin(sectorHalfAngleRadians);
+  const sectorCosine = Math.cos(sectorHalfAngleRadians);
   const requestedClearance = Math.max(0, finiteOr(input.edgeClearance ?? 0, 0));
   const edgeClearance = Math.min(
     requestedClearance,
     Math.max(0, rootRadius * sectorSine - GEOMETRY_EPSILON)
   );
-  const labelRadiusFromCenter = rootRadius + labelCenterOffset;
   const radialRoom = Math.max(
     GEOMETRY_EPSILON,
     Math.min(labelCenterOffset, length - labelCenterOffset) - GEOMETRY_EPSILON
   );
   const sectorRoom = Math.max(
     GEOMETRY_EPSILON,
-    labelRadiusFromCenter * sectorSine - edgeClearance
+    labelCenterRadius * sectorSine - edgeClearance
   );
   const halfWidth = Math.max(
     GEOMETRY_EPSILON,
@@ -461,76 +198,80 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
     )
   );
 
-  const preferredEndRadius = Math.max(
+  // The upper-left belly control is the only non-endpoint control that can
+  // approach a sector edge. Move the belly outward just enough to retain the
+  // requested perpendicular gap; its mirrored control is then safe as well.
+  let shoulderHandle = Math.max(
     GEOMETRY_EPSILON,
-    Math.min(halfWidth * 0.16, length * 0.045)
+    labelRegionRadius * SHOULDER_HANDLE_RATIO
   );
-  const rootRadiusLimit = sectorSine < 1 - GEOMETRY_EPSILON
-    ? (rootRadius * sectorSine - edgeClearance) / (1 - sectorSine)
-    : preferredEndRadius;
-  const tipRadius = rootRadius + length;
-  const tipDiscRadiusLimit = (tipRadius * sectorSine - edgeClearance) / (1 + sectorSine);
-  const rootDiscRadius = Math.max(
-    GEOMETRY_EPSILON,
-    Math.min(preferredEndRadius, Math.max(GEOMETRY_EPSILON, rootRadiusLimit))
+  const minimumUpperControlRadius = sectorSine > GEOMETRY_EPSILON
+    ? (halfWidth * sectorCosine + edgeClearance) / sectorSine
+    : labelCenterRadius;
+  const preferredShoulderRadius = labelCenterRadius
+    + labelRegionRadius * SHOULDER_OFFSET_RATIO;
+  const maximumShoulderRadius = Math.max(
+    labelCenterRadius + GEOMETRY_EPSILON,
+    tipRadius - shoulderHandle - GEOMETRY_EPSILON
   );
-  const tipDiscRadius = Math.max(
+  const shoulderRadius = Math.min(
+    maximumShoulderRadius,
+    Math.max(
+      preferredShoulderRadius,
+      minimumUpperControlRadius + shoulderHandle + GEOMETRY_EPSILON
+    )
+  );
+  if (shoulderRadius - shoulderHandle < minimumUpperControlRadius) {
+    shoulderHandle = Math.max(
+      GEOMETRY_EPSILON,
+      shoulderRadius - minimumUpperControlRadius
+    );
+  }
+
+  // One shared end handle makes the curvature on both sides of each belly
+  // identical. It is capped against both sector edges at root and tip.
+  const tangentCapacity = (radius: number): number => sectorCosine > GEOMETRY_EPSILON
+    ? Math.max(0, (radius * sectorSine - edgeClearance) / sectorCosine)
+    : halfWidth;
+  const endHandle = Math.max(
     GEOMETRY_EPSILON,
-    Math.min(preferredEndRadius, Math.max(GEOMETRY_EPSILON, tipDiscRadiusLimit))
+    Math.min(
+      halfWidth * END_HANDLE_RATIO,
+      tangentCapacity(rootRadius),
+      tangentCapacity(tipRadius)
+    )
   );
 
-  const rootDisc: LocalDisc = { x: rootRadius + rootDiscRadius, radius: rootDiscRadius };
-  const mainDisc: LocalDisc = { x: labelRadiusFromCenter, radius: halfWidth };
-  const tipDisc: LocalDisc = { x: tipRadius - tipDiscRadius, radius: tipDiscRadius };
-  const radiusCapacity = (x: number): number => Math.max(
-    GEOMETRY_EPSILON,
-    x * sectorSine - edgeClearance
-  );
-
-  const firstShoulderX = rootDisc.x + (mainDisc.x - rootDisc.x) * 0.52;
-  const firstChordRadius = rootDisc.radius + (mainDisc.radius - rootDisc.radius) * 0.52;
-  const firstShoulderMinimum = Math.max(
-    firstChordRadius + GEOMETRY_EPSILON,
-    mainDisc.radius - (mainDisc.x - firstShoulderX) * 0.98
-  );
-  const firstShoulderMaximum = Math.min(
-    mainDisc.radius - GEOMETRY_EPSILON,
-    rootDisc.radius + (firstShoulderX - rootDisc.x) * 0.98,
-    radiusCapacity(firstShoulderX)
-  );
-  const firstDesiredRadius = firstChordRadius + (mainDisc.radius - rootDisc.radius) * 0.12;
-  const firstShoulderRadius = firstShoulderMaximum > firstShoulderMinimum
-    ? clamp(firstDesiredRadius, firstShoulderMinimum, firstShoulderMaximum)
-    : firstChordRadius;
-
-  const secondShoulderX = mainDisc.x + (tipDisc.x - mainDisc.x) * 0.48;
-  const secondChordRadius = mainDisc.radius + (tipDisc.radius - mainDisc.radius) * 0.48;
-  const secondShoulderMinimum = Math.max(
-    secondChordRadius + GEOMETRY_EPSILON,
-    mainDisc.radius - (secondShoulderX - mainDisc.x) * 0.98
-  );
-  const secondShoulderMaximum = Math.min(
-    mainDisc.radius - GEOMETRY_EPSILON,
-    tipDisc.radius + (tipDisc.x - secondShoulderX) * 0.98,
-    radiusCapacity(secondShoulderX)
-  );
-  const secondDesiredRadius = secondChordRadius + (mainDisc.radius - tipDisc.radius) * 0.12;
-  const secondShoulderRadius = secondShoulderMaximum > secondShoulderMinimum
-    ? clamp(secondDesiredRadius, secondShoulderMinimum, secondShoulderMaximum)
-    : secondChordRadius;
-
-  const localDiscs: LocalDisc[] = [
-    rootDisc,
-    { x: firstShoulderX, radius: firstShoulderRadius },
-    mainDisc,
-    { x: secondShoulderX, radius: secondShoulderRadius },
-    tipDisc,
+  const root = { x: rootRadius, y: 0 };
+  const upper = { x: shoulderRadius, y: halfWidth };
+  const tip = { x: tipRadius, y: 0 };
+  const lower = { x: shoulderRadius, y: -halfWidth };
+  const localSegments: FlowerPetalCubicSegment[] = [
+    {
+      start: root,
+      control1: { x: rootRadius, y: endHandle },
+      control2: { x: shoulderRadius - shoulderHandle, y: halfWidth },
+      end: upper,
+    },
+    {
+      start: upper,
+      control1: { x: shoulderRadius + shoulderHandle, y: halfWidth },
+      control2: { x: tipRadius, y: endHandle },
+      end: tip,
+    },
+    {
+      start: tip,
+      control1: { x: tipRadius, y: -endHandle },
+      control2: { x: shoulderRadius + shoulderHandle, y: -halfWidth },
+      end: lower,
+    },
+    {
+      start: lower,
+      control1: { x: shoulderRadius - shoulderHandle, y: -halfWidth },
+      control2: { x: rootRadius, y: -endHandle },
+      end: root,
+    },
   ];
-  const localSegments = localEnvelopeSegments(
-    localDiscs,
-    sectorHalfAngleRadians,
-    edgeClearance
-  );
 
   const angleRadians = finiteOr(input.angleDegrees, -90) * Math.PI / 180;
   const radialAxis = {
@@ -551,13 +292,25 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
     control2: toWorld(segment.control2),
     end: toWorld(segment.end),
   }));
-  const discs = localDiscs.map((disc) => ({
-    center: toWorld({ x: disc.x, y: 0 }),
-    radius: disc.radius,
-  }));
-  const root = toWorld({ x: rootRadius, y: 0 });
-  const tip = toWorld({ x: tipRadius, y: 0 });
-  const labelCenter = toWorld({ x: labelRadiusFromCenter, y: 0 });
+  const labelCenter = toWorld({ x: labelCenterRadius, y: 0 });
+  const guideEndRadius = Math.max(GEOMETRY_EPSILON, endHandle);
+  const guideShoulderRadius = Math.max(
+    guideEndRadius,
+    Math.min(halfWidth, labelRegionRadius * 0.68)
+  );
+  const guideDiscs = [
+    { x: rootRadius + guideEndRadius, radius: guideEndRadius },
+    {
+      x: rootRadius + (labelCenterRadius - rootRadius) * 0.55,
+      radius: guideShoulderRadius,
+    },
+    { x: labelCenterRadius, radius: halfWidth },
+    {
+      x: labelCenterRadius + (tipRadius - labelCenterRadius) * 0.50,
+      radius: guideShoulderRadius,
+    },
+    { x: tipRadius - guideEndRadius, radius: guideEndRadius },
+  ];
 
   return {
     segments,
@@ -565,8 +318,8 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
     profile: {
       radialAxis,
       tangentAxis,
-      root,
-      tip,
+      root: toWorld(root),
+      tip: toWorld(tip),
       labelCenter,
       rootRadius,
       tipRadius,
@@ -576,7 +329,10 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
       labelRegionRadius,
       sectorHalfAngleDegrees,
       edgeClearance,
-      discs,
+      discs: guideDiscs.map((disc) => ({
+        center: toWorld({ x: disc.x, y: 0 }),
+        radius: disc.radius,
+      })),
     },
   };
 }
