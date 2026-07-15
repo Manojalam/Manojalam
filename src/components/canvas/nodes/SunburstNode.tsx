@@ -19,6 +19,11 @@ import {
   resolveChartNodeResize,
   SUNBURST_MIN_SIZE,
 } from "@/lib/canvas/chart-sizing";
+import { isHierarchyRadialChartActive } from "@/lib/canvas/chart-selection";
+import {
+  normalizeRadialLabelRotation,
+  resolveRadialLabelRotation,
+} from "@/lib/canvas/radial-label-rotation";
 import {
   radialColorScheme,
   radialSectorColors,
@@ -66,6 +71,7 @@ type SunburstSegment = SunburstTreeNode & {
   fontStyle: CSSProperties["fontStyle"];
   textAlign: CSSProperties["textAlign"];
   preferredFontSize?: number;
+  textRotation?: number;
 };
 
 type LabelFit = {
@@ -101,6 +107,15 @@ type BoundaryDrag = {
 type CenterDrag = {
   pointerId: number;
   rootId: string;
+};
+
+type LabelRotationDrag = {
+  pointerId: number;
+  nodeId: string;
+  centerX: number;
+  centerY: number;
+  startPointerAngle: number;
+  startRotation: number;
 };
 
 type SunburstVisualBounds = {
@@ -513,7 +528,8 @@ function sectorLabelGeometry(segment: SunburstSegment, center: number, useBrowse
   }, useBrowserMetrics, minimumReadable);
   const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
   const normalized = ((baseRotation % 360) + 360) % 360;
-  const rotation = normalized > 90 && normalized < 270 ? baseRotation + 180 : baseRotation;
+  const automaticRotation = normalized > 90 && normalized < 270 ? baseRotation + 180 : baseRotation;
+  const rotation = resolveRadialLabelRotation(automaticRotation, segment.textRotation);
   return { ...fit, x: point.x, y: point.y, rotation };
 }
 
@@ -523,7 +539,8 @@ function circleLabelGeometry(
   center: number,
   preferredFontSize: number | undefined,
   style: LabelTextStyle,
-  useBrowserMetrics: boolean
+  useBrowserMetrics: boolean,
+  manualRotation: unknown = 0
 ): LabelGeometry {
   const width = Math.max(24, radius * 1.55);
   const height = Math.max(24, radius * 1.5);
@@ -534,7 +551,7 @@ function circleLabelGeometry(
     ...fitLabel(label, width, height, preferred, style, useBrowserMetrics, minimumReadable),
     x: center,
     y: center,
-    rotation: 0,
+    rotation: resolveRadialLabelRotation(0, manualRotation),
   };
 }
 
@@ -692,6 +709,9 @@ function collectSegments(
           : typeof data.fontSize === "number"
             ? data.fontSize
             : undefined,
+        textRotation: typeof data.radialTextRotation === "number"
+          ? data.radialTextRotation
+          : undefined,
       });
     }
     candidate.children.forEach(walk);
@@ -765,6 +785,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
   const centerDragRef = useRef<CenterDrag | null>(null);
+  const labelRotationDragRef = useRef<LabelRotationDrag | null>(null);
   const editHistoryCaptured = useRef(false);
 
   const previewChartResize = useCallback((params: ResizeParams) => {
@@ -877,6 +898,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     ? selectedNodeIds[0]
     : null;
   const selectedSectorIds = new Set(selectedNodeIds.filter((nodeId) => model.chartNodeIds.has(nodeId)));
+  const chartActive = isHierarchyRadialChartActive(selected, selectedNodeIds, model.chartNodeIds);
   const selectedSegment = selectedId ? model.segments.find((segment) => segment.id === selectedId) ?? null : null;
   const selectedNode = selectedId ? model.byId.get(selectedId) ?? null : null;
   const rootData = (model.root.data ?? {}) as Record<string, unknown>;
@@ -900,7 +922,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           : d.fontWeight === "normal" || rootData.fontWeight === "normal" ? 400 : 800,
       fontStyle: /<(em|i)\b/i.test(rootRichText) || d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
     },
-    fontMetricsReady
+    fontMetricsReady,
+    rootData.radialTextRotation
   );
   const rootClipId = `${clipPrefix}-root`;
 
@@ -1108,12 +1131,39 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     svgRef.current?.setPointerCapture(event.pointerId);
   };
 
+  const beginLabelRotationDrag = (event: ReactPointerEvent<SVGElement>) => {
+    if (!selectedId || !selectedGeometry) return;
+    const svg = svgRef.current;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishEditing();
+    pushHistory();
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    const sourceData = (model.byId.get(selectedId)?.data ?? {}) as Record<string, unknown>;
+    labelRotationDragRef.current = {
+      pointerId: event.pointerId,
+      nodeId: selectedId,
+      centerX: selectedGeometry.x,
+      centerY: selectedGeometry.y,
+      startPointerAngle: (Math.atan2(point.y - selectedGeometry.y, point.x - selectedGeometry.x) * 180) / Math.PI,
+      startRotation: normalizeRadialLabelRotation(sourceData.radialTextRotation),
+    };
+    svg.setPointerCapture(event.pointerId);
+  };
+
   const moveDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
     const centerDrag = centerDragRef.current;
     const drag = boundaryDragRef.current;
+    const labelRotationDrag = labelRotationDragRef.current;
     const svg = svgRef.current;
     if (!svg) return;
-    if ((!drag || drag.pointerId !== event.pointerId) && (!centerDrag || centerDrag.pointerId !== event.pointerId)) return;
+    if (
+      (!drag || drag.pointerId !== event.pointerId)
+      && (!centerDrag || centerDrag.pointerId !== event.pointerId)
+      && (!labelRotationDrag || labelRotationDrag.pointerId !== event.pointerId)
+    ) return;
     event.preventDefault();
     event.stopPropagation();
     const matrix = svg.getScreenCTM();
@@ -1121,6 +1171,19 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
     const x = point.x;
     const y = point.y;
+    if (labelRotationDrag && labelRotationDrag.pointerId === event.pointerId) {
+      const rawAngle = (Math.atan2(y - labelRotationDrag.centerY, x - labelRotationDrag.centerX) * 180) / Math.PI;
+      const pointerAngle = unwrapAngle(rawAngle, labelRotationDrag.startPointerAngle);
+      const rotation = normalizeRadialLabelRotation(
+        labelRotationDrag.startRotation + pointerAngle - labelRotationDrag.startPointerAngle
+      );
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => node.id === labelRotationDrag.nodeId
+          ? { ...node, data: { ...(node.data ?? {}), radialTextRotation: rotation } }
+          : node),
+      }));
+      return;
+    }
     if (centerDrag && centerDrag.pointerId === event.pointerId) {
       const radius = Math.hypot(x - model.center, y - model.center);
       const ratio = clamp((radius / Math.max(1, model.outerRadius)) * 100, MIN_CENTER_RATIO, MAX_CENTER_RATIO);
@@ -1153,8 +1216,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const endDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
     const centerDrag = centerDragRef.current;
     const drag = boundaryDragRef.current;
-    const activePointerId = drag?.pointerId ?? centerDrag?.pointerId;
+    const labelRotationDrag = labelRotationDragRef.current;
+    const activePointerId = labelRotationDrag?.pointerId ?? drag?.pointerId ?? centerDrag?.pointerId;
     if (activePointerId !== event.pointerId) return;
+    if (labelRotationDrag?.pointerId === event.pointerId) labelRotationDragRef.current = null;
     if (drag?.pointerId === event.pointerId) boundaryDragRef.current = null;
     if (centerDrag?.pointerId === event.pointerId) {
       centerDragRef.current = null;
@@ -1181,6 +1246,22 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     Math.max(12, model.centerRadius - 15),
     -45
   );
+  const labelRotationStemStart = selectedGeometry
+    ? pointOnCircle(
+        selectedGeometry.x,
+        selectedGeometry.y,
+        selectedGeometry.height / 2 + 4,
+        selectedGeometry.rotation - 90
+      )
+    : null;
+  const labelRotationHandlePoint = selectedGeometry
+    ? pointOnCircle(
+        selectedGeometry.x,
+        selectedGeometry.y,
+        selectedGeometry.height / 2 + 30,
+        selectedGeometry.rotation - 90
+      )
+    : null;
 
   return (
     <div className="relative h-full w-full">
@@ -1239,7 +1320,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           pointerEvents="none"
           data-export-bounds
         />
-        {selected && !activeRelationshipSession && (
+        {chartActive && !activeRelationshipSession && (
           <circle
             cx={model.center}
             cy={model.center}
@@ -1515,6 +1596,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             y={rootFit.y - rootFit.height / 2}
             width={rootFit.width}
             height={rootFit.height}
+            transform={`rotate(${rootFit.rotation} ${rootFit.x} ${rootFit.y})`}
             fill="rgba(236,72,153,0.08)"
             stroke="#db2777"
             strokeWidth="2"
@@ -1529,6 +1611,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             y={rootFit.y - rootFit.height / 2}
             width={rootFit.width}
             height={rootFit.height}
+            transform={`rotate(${rootFit.rotation} ${rootFit.x} ${rootFit.y})`}
             clipPath={`url(#${rootClipId})`}
             pointerEvents="none"
             overflow="visible"
@@ -1675,6 +1758,45 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
               />
             </div>
           </foreignObject>
+        )}
+
+        {!activeRelationshipSession
+          && selectedId
+          && selectedGeometry
+          && labelRotationStemStart
+          && labelRotationHandlePoint && (
+          <g data-export-ignore>
+            <line
+              x1={labelRotationStemStart.x}
+              y1={labelRotationStemStart.y}
+              x2={labelRotationHandlePoint.x}
+              y2={labelRotationHandlePoint.y}
+              stroke="#2563eb"
+              strokeWidth="2.5"
+              pointerEvents="none"
+            />
+            <circle
+              cx={labelRotationHandlePoint.x}
+              cy={labelRotationHandlePoint.y}
+              r="9"
+              fill="#ffffff"
+              stroke="#2563eb"
+              strokeWidth="3"
+              className="cursor-grab"
+              aria-label="Rotate radial label"
+              onPointerDown={beginLabelRotationDrag}
+            >
+              <title>Drag to rotate this label</title>
+            </circle>
+            <path
+              d={`M ${labelRotationHandlePoint.x - 4.5} ${labelRotationHandlePoint.y + 0.5} A 4.5 4.5 0 1 1 ${labelRotationHandlePoint.x + 2.5} ${labelRotationHandlePoint.y + 3.5}`}
+              fill="none"
+              stroke="#2563eb"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              pointerEvents="none"
+            />
+          </g>
         )}
 
         {!activeRelationshipSession && boundaryPairs.map(({ first, second, key }) => {
@@ -1893,7 +2015,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           )}
         </div>
       )}
-      {selected && d.locked !== true && !activeRelationshipSession && (
+      {chartActive && d.locked !== true && !activeRelationshipSession && (
         <div
           className="absolute -left-3 -top-3 z-[70] flex h-8 w-8 cursor-grab items-center justify-center rounded-full border-2 border-white bg-primary text-primary-foreground shadow-lg active:cursor-grabbing"
           title="Drag to move radial chart"
@@ -1904,12 +2026,13 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         </div>
       )}
       <NodeResizer
+        nodeId={id}
         minWidth={SUNBURST_MIN_SIZE}
         minHeight={SUNBURST_MIN_SIZE}
         maxWidth={CHART_NODE_MAX_SIZE}
         maxHeight={CHART_NODE_MAX_SIZE}
         keepAspectRatio
-        isVisible={selected && d.locked !== true && !activeRelationshipSession}
+        isVisible={chartActive && d.locked !== true && !activeRelationshipSession}
         onResizeStart={() => pushHistory()}
         onResize={(_, params) => previewChartResize(params)}
         onResizeEnd={(_, params) => finishManualNodeResize(id, params)}

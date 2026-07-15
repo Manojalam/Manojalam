@@ -397,6 +397,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** Radial-layout-only presentation overrides. */
   radialFillColor?: string;
   radialTextColor?: string;
+  /** Relative rotation applied after the hierarchy radial label's automatic orientation. */
+  radialTextRotation?: number;
   radialBorderColor?: string;
   radialBorderWidth?: number;
   radialBorderStyle?: "solid" | "dashed" | "dotted";

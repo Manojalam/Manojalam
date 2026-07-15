@@ -843,6 +843,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const selectedRingWeight = selectedRadialDepth > 0 ? radialRingWeights[selectedRadialDepth - 1] ?? 1 : 1;
   const radialRingWeightTotal = radialRingWeights.reduce((sum, weight) => sum + weight, 0);
   const radialChartSize = typeof radialChartData.chartSize === "number" ? radialChartData.chartSize : 1000;
+  const resizeHierarchyRadialChart = (diameter: number) => {
+    if (!radialChartNode || !Number.isFinite(diameter)) return;
+    const nextDiameter = Math.max(RADIAL_CHART_MIN_SIZE, Math.min(4096, Math.round(diameter)));
+    if (Math.abs(nextDiameter - radialChartSize) < 1) return;
+    setNodeSize(radialChartNode.id, { width: nextDiameter, height: nextDiameter });
+  };
   const radialOuterRadius = Math.max(1, radialChartSize / 2 - 22);
   const radialCenterRatio = clampControlValue(
     typeof radialRootData.radialCenterRatio === "number" ? radialRootData.radialCenterRatio : 28,
@@ -1227,6 +1233,41 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
               <ThicknessControl value={commonFontSize} onChange={(v) => setSelectedField("fontSize", v)} max={96} />
             </div>
+            {isRadialMultiSelection && (
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Label angle</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[9px]"
+                    onClick={() => setSelectedField("radialTextRotation", undefined)}
+                  >
+                    Auto
+                  </Button>
+                </div>
+                <SliderControl
+                  value={typeof commonValue("radialTextRotation") === "number"
+                    ? commonValue("radialTextRotation") as number
+                    : 0}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  suffix="deg"
+                  onChangeStart={pushHistory}
+                  onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                  onChange={(value) => {
+                    for (const node of selectedNodes) {
+                      updateNodeData(node.id, { radialTextRotation: value });
+                    }
+                  }}
+                />
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  Relative to each label&apos;s automatic sector angle.
+                </p>
+              </div>
+            )}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
               <Select
@@ -2627,6 +2668,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
+            {isRadialLayoutSector && (
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Label angle</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[9px]"
+                    onClick={() => setField("radialTextRotation", undefined)}
+                  >
+                    Auto
+                  </Button>
+                </div>
+                <SliderControl
+                  value={typeof d.radialTextRotation === "number" ? d.radialTextRotation : 0}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  suffix="deg"
+                  onChangeStart={pushHistory}
+                  onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                  onChange={(value) => updateNodeData(selectedNode.id, { radialTextRotation: value })}
+                />
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  Drag the round handle on the label for direct rotation.
+                </p>
+              </div>
+            )}
+
             {/* Font family */}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
@@ -2830,6 +2901,53 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Radial sizing" visible={singleNodeTab === "layout"}>
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Chart diameter</p>
+                <span className="text-[9px] text-muted-foreground">Whole chart</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  key={`${radialChartNode?.id ?? "radial"}-diameter-${Math.round(radialChartSize)}`}
+                  name="radial-chart-diameter"
+                  type="number"
+                  min={RADIAL_CHART_MIN_SIZE}
+                  max={4096}
+                  step={10}
+                  defaultValue={Math.round(radialChartSize)}
+                  className="h-8 text-xs"
+                  onBlur={(event) => resizeHierarchyRadialChart(Number(event.currentTarget.value))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+                <span className="text-[10px] text-muted-foreground">px</span>
+              </div>
+              <div className="mt-1.5 grid grid-cols-2 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => resizeHierarchyRadialChart(radialChartSize * 0.9)}
+                >
+                  Smaller
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => resizeHierarchyRadialChart(radialChartSize * 1.1)}
+                >
+                  Larger
+                </Button>
+              </div>
+              <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                Canvas corner handles remain available while this sector is selected.
+              </p>
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Center size</p>
                 <span className="text-[9px] text-muted-foreground">Fixed chart share</span>
               </div>
@@ -2850,7 +2968,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <p className="text-[10px] font-medium">Compact one-page sizing</p>
               <p className="text-[9px] leading-snug text-muted-foreground">
-                Overall size stays automatic. Depth controls redistribute the fixed chart radius.
+                Depth controls redistribute the chart radius without changing the diameter above.
               </p>
             </div>
 
