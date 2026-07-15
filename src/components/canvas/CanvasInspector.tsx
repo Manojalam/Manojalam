@@ -52,8 +52,6 @@ import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
 import {
   buildRelationshipGroupsForSpec,
   MAX_FLOWER_LAYERS,
-  MAX_FLOWER_PETALS_PER_LAYER,
-  MIN_FLOWER_PETALS_PER_LAYER,
   normalizeRelationshipDiagramSpec,
 } from "@/lib/relationship-diagram";
 import {
@@ -1807,7 +1805,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       relationships,
       hierarchy,
     });
-    const automaticFlowerLayerCount = Math.ceil(
+    const legacyAutomaticFlowerLayerCount = Math.ceil(
       diagramGroups.length / diagramSpec.flowerPetalsPerLayer
     );
     const preferredFlowerLayerCount = Math.max(
@@ -1815,10 +1813,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       ...Object.values(diagramSpec.itemStyles ?? {}).map((style) => style.flowerLayer ?? 0)
     );
     const flowerLayerCount = Math.min(
-      diagramGroups.length,
+      MAX_FLOWER_LAYERS,
       Math.max(
-        automaticFlowerLayerCount,
-        diagramSpec.flowerLayerCount,
+        diagramSpec.flowerLayerCount > 0
+          ? diagramSpec.flowerLayerCount
+          : legacyAutomaticFlowerLayerCount,
         preferredFlowerLayerCount
       )
     );
@@ -1992,35 +1991,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           {diagramSpec.layout === "flower" && (
             <Section label="Flower layout" defaultOpen>
               <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Maximum petals per layer
-                  </p>
-                  <span className="text-[9px] text-muted-foreground">
-                    {flowerLayerCount} {flowerLayerCount === 1 ? "layer" : "layers"}
-                  </span>
-                </div>
-                <SliderControl
-                  value={diagramSpec.flowerPetalsPerLayer}
-                  min={MIN_FLOWER_PETALS_PER_LAYER}
-                  max={MAX_FLOWER_PETALS_PER_LAYER}
-                  step={1}
-                  onChange={(value) => updateDiagram({ flowerPetalsPerLayer: value })}
-                />
-              </div>
-              <div>
                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   Layer count
                 </p>
                 <Select
-                  value={String(diagramSpec.flowerLayerCount)}
+                  value={String(Math.max(1, flowerLayerCount))}
                   onValueChange={(value) => updateDiagram({ flowerLayerCount: Number(value) })}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">Auto</SelectItem>
                     {Array.from({ length: MAX_FLOWER_LAYERS }, (_, index) => {
                       const layer = index + 1;
                       return (
@@ -2033,7 +2014,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </Select>
               </div>
               <p className="text-[9px] leading-relaxed text-muted-foreground">
-                Auto balances the flower from the petal limit. Choose a number to request at least that many staggered layers.
+                Relationships are balanced into equal petal slots. Blank petals complete the outer layer when needed.
               </p>
             </Section>
           )}
@@ -2173,6 +2154,54 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 />
               </div>
             </div>
+            {["flower", "arc-fan", "radial-hub"].includes(diagramSpec.layout) && (
+              <div className="space-y-2 rounded-lg border border-border p-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Center
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Fill
+                    <input
+                      type="color"
+                      value={hexInputColor(diagramSpec.centerFillColor, "#0f172a")}
+                      className="h-7 w-full rounded border border-border bg-background"
+                      onChange={(event) => updateDiagram({ centerFillColor: event.target.value })}
+                    />
+                  </label>
+                  <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Border
+                    <input
+                      type="color"
+                      value={hexInputColor(diagramSpec.centerBorderColor, "#ffffff")}
+                      className="h-7 w-full rounded border border-border bg-background"
+                      onChange={(event) => updateDiagram({ centerBorderColor: event.target.value })}
+                    />
+                  </label>
+                  <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                    Text
+                    <input
+                      type="color"
+                      value={hexInputColor(diagramSpec.centerTextColor, "#ffffff")}
+                      className="h-7 w-full rounded border border-border bg-background"
+                      onChange={(event) => updateDiagram({ centerTextColor: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                  Center border width
+                  <Input
+                    type="number"
+                    min={0}
+                    max={16}
+                    step={0.5}
+                    value={diagramSpec.centerBorderWidth ?? 4}
+                    className="h-7 text-xs"
+                    onChange={(event) => updateDiagram({ centerBorderWidth: Number(event.target.value) })}
+                  />
+                </label>
+              </div>
+            )}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Item opacity</p>
               <SliderControl

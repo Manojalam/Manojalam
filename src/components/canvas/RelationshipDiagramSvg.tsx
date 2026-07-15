@@ -9,7 +9,11 @@ import {
   flowerPetalGeometryBounds,
 } from "@/lib/canvas/flower-petal-geometry";
 import { layoutFlowerLabels, type FlowerLabelFlowResult } from "@/lib/canvas/flower-label-flow";
-import { layoutRelationshipFlowerPetals } from "@/lib/canvas/relationship-flower-layout";
+import {
+  layoutRelationshipFlowerPetals,
+  type RelationshipFlowerGeometricPlacement,
+  type RelationshipFlowerPetalPlacement,
+} from "@/lib/canvas/relationship-flower-layout";
 import type {
   RelationshipDiagramItemStyle,
   RelationshipDiagramPalette,
@@ -63,12 +67,16 @@ function tint(color: string, amount: number): string {
     .join("");
 }
 
+function paletteColor(index: number, palette: RelationshipDiagramPalette): string {
+  const colors = palette === "source" ? PALETTES.spectrum : PALETTES[palette];
+  return colors[index % colors.length];
+}
+
 function groupColor(group: RelationshipGroup, index: number, palette: RelationshipDiagramPalette): string {
   if (palette === "source") {
-    return group.sourceColor?.trim() || PALETTES.spectrum[index % PALETTES.spectrum.length];
+    return group.sourceColor?.trim() || paletteColor(index, palette);
   }
-  const colors = PALETTES[palette];
-  return colors[index % colors.length];
+  return paletteColor(index, palette);
 }
 
 function itemStyle(group: RelationshipGroup, spec: RelationshipDiagramSpec): RelationshipDiagramItemStyle {
@@ -556,14 +564,21 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   return (
     <>
       {pieces}
-      <circle cx={cx} cy={cy} r={hubRadius} fill="#0f172a" stroke="#ffffff" strokeWidth="3" />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={hubRadius}
+        fill={spec.centerFillColor ?? "#0f172a"}
+        stroke={spec.centerBorderColor ?? "#ffffff"}
+        strokeWidth={spec.centerBorderWidth ?? 4}
+      />
       <SvgLabel
         value={spec.title || "Relationships"}
         x={cx}
         y={cy}
         width={hubRadius * 1.55}
         fontSize={Math.max(12, spec.textSize * 0.9)}
-        fill="#ffffff"
+        fillOverride={spec.centerTextColor ?? "#ffffff"}
         weight={750}
         maximumLines={3}
       />
@@ -583,18 +598,27 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   );
 }
 
-type FlowerPetalMetric = {
-  angle: number;
-  layerIndex: number;
-  rootRadius: number;
-  length: number;
-  halfWidth: number;
-  labelCenterRadius: number;
-  labelRegionRadius: number;
-  sectorHalfAngleDegrees?: number;
-  edgeClearance?: number;
+type FlowerPetalMetric = RelationshipFlowerPetalPlacement & {
   flow: FlowerLabelFlowResult;
 };
+
+function flowerPetalGeometry(
+  petal: RelationshipFlowerGeometricPlacement,
+  center: Point
+) {
+  return buildFlowerPetalGeometry({
+    center,
+    angleDegrees: petal.angle,
+    rootRadius: petal.rootRadius,
+    length: petal.length,
+    halfWidth: petal.halfWidth,
+    labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
+    labelRegionRadius: petal.labelRegionRadius,
+    sectorHalfAngleDegrees: petal.sectorHalfAngleDegrees,
+    edgeClearance: petal.edgeClearance,
+    baseContact: petal.baseContact,
+  });
+}
 
 function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpec) {
   const hubRadius = Math.max(92, Math.min(112, spec.textSize * 5.4));
@@ -629,20 +653,8 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
       }),
     };
   });
-  const outlineExtent = petals.reduce((maximum, petal, index) => {
-    const geometry = buildFlowerPetalGeometry({
-      center: { x: 0, y: 0 },
-      angleDegrees: petal.angle,
-      rootRadius: petal.rootRadius,
-      length: petal.length,
-      halfWidth: petal.halfWidth,
-      labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
-      labelRegionRadius: petal.labelRegionRadius,
-      ...(petal.sectorHalfAngleDegrees == null
-        ? {}
-        : { sectorHalfAngleDegrees: petal.sectorHalfAngleDegrees }),
-      ...(petal.edgeClearance == null ? {} : { edgeClearance: petal.edgeClearance }),
-    });
+  const actualExtent = petals.reduce((maximum, petal, index) => {
+    const geometry = flowerPetalGeometry(petal, { x: 0, y: 0 });
     const bounds = flowerPetalGeometryBounds(
       geometry,
       geometry.profile.root,
@@ -656,8 +668,26 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
       Math.abs(bounds.maxY)
     );
   }, hubRadius);
+  const outlineExtent = layout.emptyPetals.reduce((maximum, petal) => {
+    const geometry = flowerPetalGeometry(petal, { x: 0, y: 0 });
+    const bounds = flowerPetalGeometryBounds(geometry, geometry.profile.root);
+    return Math.max(
+      maximum,
+      Math.abs(bounds.minX),
+      Math.abs(bounds.minY),
+      Math.abs(bounds.maxX),
+      Math.abs(bounds.maxY)
+    );
+  }, actualExtent);
   const size = Math.max(640, Math.ceil((outlineExtent + 36) * 2));
-  return { width: size, height: size, hubRadius, petals };
+  return {
+    width: size,
+    height: size,
+    hubRadius,
+    petals,
+    emptyPetals: layout.emptyPetals,
+    layerSlotCount: layout.layerSlotCount,
+  };
 }
 
 function SvgTextLines({
@@ -717,25 +747,13 @@ function SvgTextLines({
 }
 
 function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
-  const { width, height, hubRadius, petals } = flowerMetrics(groups, spec);
+  const { width, height, hubRadius, petals, emptyPetals, layerSlotCount } = flowerMetrics(groups, spec);
   const cx = width / 2;
   const cy = height / 2;
   if (!groups.length) return <><TitleBlock spec={spec} width={width} /><EmptyDiagram spec={spec} /></>;
   const items = groups.map((group, index) => {
     const petal = petals[index];
-    const geometry = buildFlowerPetalGeometry({
-      center: { x: cx, y: cy },
-      angleDegrees: petal.angle,
-      rootRadius: petal.rootRadius,
-      length: petal.length,
-      halfWidth: petal.halfWidth,
-      labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
-      labelRegionRadius: petal.labelRegionRadius,
-      ...(petal.sectorHalfAngleDegrees == null
-        ? {}
-        : { sectorHalfAngleDegrees: petal.sectorHalfAngleDegrees }),
-      ...(petal.edgeClearance == null ? {} : { edgeClearance: petal.edgeClearance }),
-    });
+    const geometry = flowerPetalGeometry(petal, { x: cx, y: cy });
     const color = styledGroupColor(group, index, spec);
     const style = itemStyle(group, spec);
     return {
@@ -751,13 +769,38 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         : undefined,
     };
   });
-  const layerIndexes = [...new Set(items.map((item) => item.petal.layerIndex))]
+  const emptyItems = emptyPetals.map((petal, index) => {
+    const geometry = flowerPetalGeometry(petal, { x: cx, y: cy });
+    const paletteIndex = petal.layerIndex * Math.max(1, layerSlotCount) + petal.slotIndex;
+    const color = paletteColor(paletteIndex, spec.palette);
+    return {
+      key: `flower-empty-${petal.layerIndex}-${petal.slotIndex}-${index}`,
+      petal,
+      geometry,
+      color,
+      stroke: spec.borderColor ?? color,
+      transform: undefined,
+    };
+  });
+  const shapeItems = [
+    ...items.map((item) => ({
+      key: `flower-shape-${item.group.sourceNodeId}`,
+      petal: item.petal,
+      geometry: item.geometry,
+      color: item.color,
+      stroke: item.stroke,
+      transform: item.transform,
+    })),
+    ...emptyItems,
+  ];
+  const layerIndexes = [...new Set(shapeItems.map((item) => item.petal.layerIndex))]
     .sort((first, second) => second - first);
   // Finish each back layer (shape and content) before painting the next
   // foreground layer, so tucked petals and their labels are occluded together.
   const orderedLayers = layerIndexes.map((layerIndex) => ({
     layerIndex,
-    items: items.filter((item) => item.petal.layerIndex === layerIndex),
+    shapes: shapeItems.filter((item) => item.petal.layerIndex === layerIndex),
+    content: items.filter((item) => item.petal.layerIndex === layerIndex),
   }));
   const renderContent = ({ group, petal, geometry, color, style, transform }: typeof items[number]) => {
     const center = geometry.profile.labelCenter;
@@ -826,11 +869,11 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   };
   return (
     <>
-      {orderedLayers.map(({ layerIndex, items: layerItems }) => (
+      {orderedLayers.map(({ layerIndex, shapes, content }) => (
         <g key={`flower-layer-${layerIndex}`}>
-          {layerItems.map(({ group, geometry, color, stroke, transform }) => (
+          {shapes.map(({ key, geometry, color, stroke, transform }) => (
             <g
-              key={`flower-shape-${group.sourceNodeId}`}
+              key={key}
               transform={transform}
               aria-hidden="true"
             >
@@ -845,17 +888,24 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               />
             </g>
           ))}
-          {layerItems.map(renderContent)}
+          {content.map(renderContent)}
         </g>
       ))}
-      <circle cx={cx} cy={cy} r={hubRadius} fill="#0f172a" stroke="#ffffff" strokeWidth="4" />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={hubRadius}
+        fill={spec.centerFillColor ?? "#0f172a"}
+        stroke={spec.centerBorderColor ?? "#ffffff"}
+        strokeWidth={spec.centerBorderWidth ?? 4}
+      />
       <SvgLabel
         value={spec.title || "Relationships"}
         x={cx}
         y={cy}
         width={hubRadius * 1.55}
         fontSize={Math.max(16, spec.textSize * 1.15)}
-        fill="#ffffff"
+        fillOverride={spec.centerTextColor ?? "#ffffff"}
         weight={800}
         maximumLines={3}
       />
@@ -1098,8 +1148,24 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
           </g>
         );
       })}
-      <circle cx={cx} cy={cy} r="122" fill="#0f172a" stroke="#ffffff" strokeWidth="4" />
-      <SvgLabel value={spec.title || "Relationships"} x={cx} y={cy} width={190} fontSize={Math.max(16, spec.textSize * 1.15)} fill="#ffffff" weight={800} maximumLines={3} />
+      <circle
+        cx={cx}
+        cy={cy}
+        r="122"
+        fill={spec.centerFillColor ?? "#0f172a"}
+        stroke={spec.centerBorderColor ?? "#ffffff"}
+        strokeWidth={spec.centerBorderWidth ?? 4}
+      />
+      <SvgLabel
+        value={spec.title || "Relationships"}
+        x={cx}
+        y={cy}
+        width={190}
+        fontSize={Math.max(16, spec.textSize * 1.15)}
+        fillOverride={spec.centerTextColor ?? "#ffffff"}
+        weight={800}
+        maximumLines={3}
+      />
     </>
   );
 }

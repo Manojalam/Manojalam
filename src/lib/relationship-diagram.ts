@@ -429,6 +429,9 @@ export function normalizeRelationshipDiagramSpec(
   const fontFamily = optionalString(optionValue(raw, legacyOptions, "fontFamily"));
   const textColor = optionalString(optionValue(raw, legacyOptions, "textColor"));
   const borderColor = optionalString(optionValue(raw, legacyOptions, "borderColor"));
+  const centerFillColor = optionalString(optionValue(raw, legacyOptions, "centerFillColor"));
+  const centerBorderColor = optionalString(optionValue(raw, legacyOptions, "centerBorderColor"));
+  const centerTextColor = optionalString(optionValue(raw, legacyOptions, "centerTextColor"));
   const fontWeight = optionValue(raw, legacyOptions, "fontWeight") === "bold"
     ? "bold" as const
     : optionValue(raw, legacyOptions, "fontWeight") === "normal"
@@ -441,6 +444,13 @@ export function normalizeRelationshipDiagramSpec(
       : undefined;
   const borderWidthValue = optionValue(raw, legacyOptions, "borderWidth");
   const fillOpacityValue = optionValue(raw, legacyOptions, "fillOpacity");
+  const centerBorderWidthValue = optionValue(raw, legacyOptions, "centerBorderWidth");
+  const flowerLayerCountValue = optionValue(
+    raw,
+    legacyOptions,
+    "flowerLayerCount",
+    "flowerLayers"
+  );
 
   return {
     version: RELATIONSHIP_DIAGRAM_SPEC_VERSION,
@@ -478,9 +488,9 @@ export function normalizeRelationshipDiagramSpec(
     flowerPetalsPerLayer: normalizeFlowerPetalsPerLayer(
       optionValue(raw, legacyOptions, "flowerPetalsPerLayer", "petalsPerLayer")
     ),
-    flowerLayerCount: normalizeFlowerLayerCount(
-      optionValue(raw, legacyOptions, "flowerLayerCount", "flowerLayers")
-    ),
+    flowerLayerCount: flowerLayerCountValue === undefined
+      ? DEFAULT_RELATIONSHIP_DIAGRAM_SPEC.flowerLayerCount
+      : normalizeFlowerLayerCount(flowerLayerCountValue),
     decorativeLevel: normalizeDecorativeLevel(
       optionValue(raw, legacyOptions, "decorativeLevel", "decoration")
     ),
@@ -505,6 +515,12 @@ export function normalizeRelationshipDiagramSpec(
       : {}),
     ...(fillOpacityValue !== undefined
       ? { fillOpacity: clamp(finiteNumber(fillOpacityValue, 1), 0, 1) }
+      : {}),
+    ...(centerFillColor ? { centerFillColor } : {}),
+    ...(centerBorderColor ? { centerBorderColor } : {}),
+    ...(centerTextColor ? { centerTextColor } : {}),
+    ...(centerBorderWidthValue !== undefined
+      ? { centerBorderWidth: clamp(finiteNumber(centerBorderWidthValue, 4), 0, 16) }
       : {}),
   };
 }

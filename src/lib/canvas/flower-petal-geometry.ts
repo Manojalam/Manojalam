@@ -10,6 +10,15 @@ export type FlowerPetalCubicSegment = {
   end: FlowerPetalPoint;
 };
 
+export type FlowerPetalBaseContact = {
+  /** Inner radius of the shared boundary, normally hidden below the hub. */
+  startRadius: number;
+  /** Outer radius where the collar begins transitioning into the petal body. */
+  endRadius: number;
+  /** Half the angular separation between adjacent petal axes. */
+  halfAngleDegrees: number;
+};
+
 /**
  * A canonical petal is defined only by flower geometry. Label measurements
  * are deliberately absent: content is fitted after the flower is drawn.
@@ -26,6 +35,8 @@ export type FlowerPetalGeometryInput = {
   sectorHalfAngleDegrees?: number;
   /** Perpendicular inset, in canvas units, from both edges of the slot. */
   edgeClearance?: number;
+  /** Optional joined collar used by innermost petals. */
+  baseContact?: FlowerPetalBaseContact;
 };
 
 export type FlowerPetalDisc = {
@@ -47,6 +58,7 @@ export type FlowerPetalProfile = {
   labelRegionRadius: number;
   sectorHalfAngleDegrees: number;
   edgeClearance: number;
+  baseContact?: FlowerPetalBaseContact;
   /** Compatibility construction guides; the outline is a smooth spline. */
   discs: FlowerPetalDisc[];
 };
@@ -145,9 +157,9 @@ export function flowerPetalGeometryBounds(
 }
 
 /**
- * Build one soft lotus petal from four cubic spans. Opposite joins share the
- * same handle magnitudes: this gives exact C1 continuity and matching signed
- * curvature at the root, belly, and tip without any straight tangent facets.
+ * Build one soft lotus petal. The canonical body uses four cubic spans; an
+ * optional joined collar replaces its two root-to-shoulder spans with three
+ * spans apiece while leaving the shoulder, label belly, and tip unchanged.
  */
 export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): FlowerPetalGeometry {
   const center = {
@@ -248,32 +260,141 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
   const upper = { x: shoulderRadius, y: halfWidth };
   const tip = { x: tipRadius, y: 0 };
   const lower = { x: shoulderRadius, y: -halfWidth };
-  const localSegments: FlowerPetalCubicSegment[] = [
-    {
-      start: root,
-      control1: { x: rootRadius, y: endHandle },
-      control2: { x: shoulderRadius - shoulderHandle, y: halfWidth },
-      end: upper,
-    },
-    {
-      start: upper,
-      control1: { x: shoulderRadius + shoulderHandle, y: halfWidth },
-      control2: { x: tipRadius, y: endHandle },
-      end: tip,
-    },
-    {
-      start: tip,
-      control1: { x: tipRadius, y: -endHandle },
-      control2: { x: shoulderRadius + shoulderHandle, y: -halfWidth },
-      end: lower,
-    },
-    {
-      start: lower,
-      control1: { x: shoulderRadius - shoulderHandle, y: -halfWidth },
-      control2: { x: rootRadius, y: -endHandle },
-      end: root,
-    },
-  ];
+  const normalizedBaseContact = input.baseContact
+    ? {
+        startRadius: Math.max(
+          GEOMETRY_EPSILON,
+          finiteOr(input.baseContact.startRadius, rootRadius)
+        ),
+        endRadius: 0,
+        halfAngleDegrees: clamp(
+          finiteOr(input.baseContact.halfAngleDegrees, sectorHalfAngleDegrees),
+          sectorHalfAngleDegrees,
+          89.5
+        ),
+      }
+    : undefined;
+  if (normalizedBaseContact) {
+    normalizedBaseContact.endRadius = Math.max(
+      normalizedBaseContact.startRadius + GEOMETRY_EPSILON,
+      finiteOr(input.baseContact?.endRadius ?? normalizedBaseContact.startRadius + 1, 1)
+    );
+  }
+
+  let localSegments: FlowerPetalCubicSegment[];
+  if (normalizedBaseContact) {
+    const baseHalfAngleRadians = normalizedBaseContact.halfAngleDegrees * Math.PI / 180;
+    const baseCosine = Math.cos(baseHalfAngleRadians);
+    const baseSine = Math.sin(baseHalfAngleRadians);
+    const atBaseRay = (radius: number, side: 1 | -1): FlowerPetalPoint => ({
+      x: radius * baseCosine,
+      y: side * radius * baseSine,
+    });
+    const upperStart = atBaseRay(normalizedBaseContact.startRadius, 1);
+    const upperEnd = atBaseRay(normalizedBaseContact.endRadius, 1);
+    const lowerEnd = atBaseRay(normalizedBaseContact.endRadius, -1);
+    const lowerStart = atBaseRay(normalizedBaseContact.startRadius, -1);
+    const contactSpan = normalizedBaseContact.endRadius - normalizedBaseContact.startRadius;
+    const contactHandle = Math.max(
+      GEOMETRY_EPSILON,
+      Math.min(contactSpan / 3, normalizedBaseContact.startRadius / 2)
+    );
+    const baseTangentCapacity = baseCosine > GEOMETRY_EPSILON
+      ? rootRadius * baseSine / baseCosine
+      : endHandle;
+    const rootHandle = Math.max(
+      GEOMETRY_EPSILON,
+      Math.min(endHandle, baseTangentCapacity)
+    );
+    const upperRay = { x: baseCosine, y: baseSine };
+    const lowerRay = { x: baseCosine, y: -baseSine };
+    const along = (
+      point: FlowerPetalPoint,
+      direction: FlowerPetalPoint,
+      distance: number
+    ): FlowerPetalPoint => ({
+      x: point.x + direction.x * distance,
+      y: point.y + direction.y * distance,
+    });
+
+    localSegments = [
+      {
+        start: root,
+        control1: { x: rootRadius, y: rootHandle },
+        control2: along(upperStart, upperRay, -contactHandle),
+        end: upperStart,
+      },
+      {
+        start: upperStart,
+        control1: along(upperStart, upperRay, contactHandle),
+        control2: along(upperEnd, upperRay, -contactHandle),
+        end: upperEnd,
+      },
+      {
+        start: upperEnd,
+        control1: along(upperEnd, upperRay, contactHandle),
+        control2: { x: shoulderRadius - shoulderHandle, y: halfWidth },
+        end: upper,
+      },
+      {
+        start: upper,
+        control1: { x: shoulderRadius + shoulderHandle, y: halfWidth },
+        control2: { x: tipRadius, y: endHandle },
+        end: tip,
+      },
+      {
+        start: tip,
+        control1: { x: tipRadius, y: -endHandle },
+        control2: { x: shoulderRadius + shoulderHandle, y: -halfWidth },
+        end: lower,
+      },
+      {
+        start: lower,
+        control1: { x: shoulderRadius - shoulderHandle, y: -halfWidth },
+        control2: along(lowerEnd, lowerRay, contactHandle),
+        end: lowerEnd,
+      },
+      {
+        start: lowerEnd,
+        control1: along(lowerEnd, lowerRay, -contactHandle),
+        control2: along(lowerStart, lowerRay, contactHandle),
+        end: lowerStart,
+      },
+      {
+        start: lowerStart,
+        control1: along(lowerStart, lowerRay, -contactHandle),
+        control2: { x: rootRadius, y: -rootHandle },
+        end: root,
+      },
+    ];
+  } else {
+    localSegments = [
+      {
+        start: root,
+        control1: { x: rootRadius, y: endHandle },
+        control2: { x: shoulderRadius - shoulderHandle, y: halfWidth },
+        end: upper,
+      },
+      {
+        start: upper,
+        control1: { x: shoulderRadius + shoulderHandle, y: halfWidth },
+        control2: { x: tipRadius, y: endHandle },
+        end: tip,
+      },
+      {
+        start: tip,
+        control1: { x: tipRadius, y: -endHandle },
+        control2: { x: shoulderRadius + shoulderHandle, y: -halfWidth },
+        end: lower,
+      },
+      {
+        start: lower,
+        control1: { x: shoulderRadius - shoulderHandle, y: -halfWidth },
+        control2: { x: rootRadius, y: -endHandle },
+        end: root,
+      },
+    ];
+  }
 
   const angleRadians = finiteOr(input.angleDegrees, -90) * Math.PI / 180;
   const radialAxis = {
@@ -331,6 +452,7 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
       labelRegionRadius,
       sectorHalfAngleDegrees,
       edgeClearance,
+      ...(normalizedBaseContact ? { baseContact: normalizedBaseContact } : {}),
       discs: guideDiscs.map((disc) => ({
         center: toWorld({ x: disc.x, y: 0 }),
         radius: disc.radius,

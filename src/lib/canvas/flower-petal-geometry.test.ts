@@ -114,6 +114,87 @@ function extendedRootGeometry(angleDegrees = 0): FlowerPetalGeometry {
   });
 }
 
+function collaredGeometry(slotCount: number, angleDegrees = 0): FlowerPetalGeometry {
+  const slotHalfAngleDegrees = 180 / slotCount;
+  return buildFlowerPetalGeometry({
+    center: CENTER,
+    angleDegrees,
+    rootRadius: 62,
+    length: 900,
+    halfWidth: 82,
+    labelCenterOffset: 700,
+    labelRegionRadius: 70,
+    sectorHalfAngleDegrees: slotHalfAngleDegrees - 0.75,
+    edgeClearance: 4,
+    baseContact: {
+      startRadius: 78,
+      endRadius: 100,
+      halfAngleDegrees: slotHalfAngleDegrees,
+    },
+  });
+}
+
+function plainCollarProfileGeometry(slotCount: number): FlowerPetalGeometry {
+  const slotHalfAngleDegrees = 180 / slotCount;
+  return buildFlowerPetalGeometry({
+    center: CENTER,
+    angleDegrees: 0,
+    rootRadius: 62,
+    length: 900,
+    halfWidth: 82,
+    labelCenterOffset: 700,
+    labelRegionRadius: 70,
+    sectorHalfAngleDegrees: slotHalfAngleDegrees - 0.75,
+    edgeClearance: 4,
+  });
+}
+
+function serializedPath(result: FlowerPetalGeometry): string {
+  return [
+    "M",
+    result.segments[0].start.x,
+    result.segments[0].start.y,
+    ...result.segments.flatMap((segment) => [
+      "C",
+      segment.control1.x,
+      segment.control1.y,
+      segment.control2.x,
+      segment.control2.y,
+      segment.end.x,
+      segment.end.y,
+    ]),
+    "Z",
+  ].join(" ");
+}
+
+function assertRegularC1(result: FlowerPetalGeometry): void {
+  const minimumTangent = 1e-6 * Math.max(
+    1,
+    result.profile.length,
+    result.profile.halfWidth
+  );
+  result.segments.forEach((segment, index) => {
+    const next = result.segments[(index + 1) % result.segments.length];
+    close(segment.end.x, next.start.x, `join ${index} x`);
+    close(segment.end.y, next.start.y, `join ${index} y`);
+    const incoming = subtract(segment.end, segment.control2);
+    const outgoing = subtract(next.control1, next.start);
+    close(incoming.x, outgoing.x, `join ${index} dx`);
+    close(incoming.y, outgoing.y, `join ${index} dy`);
+    assert.ok(magnitude(incoming) > minimumTangent, `join ${index} has a zero tangent`);
+  });
+}
+
+function closePoint(
+  actual: FlowerPetalPoint,
+  expected: FlowerPetalPoint,
+  message: string,
+  epsilon = EPSILON
+): void {
+  close(actual.x, expected.x, `${message} x`, epsilon);
+  close(actual.y, expected.y, `${message} y`, epsilon);
+}
+
 function pointInPolygon(point: FlowerPetalPoint, polygon: readonly FlowerPetalPoint[]): boolean {
   let inside = false;
   for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current++) {
@@ -288,6 +369,168 @@ test("root and outer tip are smooth rounded-point anchors", () => {
     close(incoming.x, outgoing.x, `join ${joinIndex} dx`);
     close(incoming.y, outgoing.y, `join ${joinIndex} dy`);
     assert.ok(magnitude(incoming) > EPSILON);
+  }
+});
+
+test("the optional joined collar follows its eight-span semantic path and stays regular C1", () => {
+  for (const slotCount of [3, 4, 8, 9, 24]) {
+    const result = collaredGeometry(slotCount, 37);
+    assert.equal(result.segments.length, 8);
+    assert.deepEqual(result.profile.baseContact, {
+      startRadius: 78,
+      endRadius: 100,
+      halfAngleDegrees: 180 / slotCount,
+    });
+    assertRegularC1(result);
+    assert.equal(result.path.match(/\bC\b/g)?.length, 8);
+    assert.equal(result.path, serializedPath(result));
+    assert.equal(/NaN|Infinity/.test(result.path), false);
+
+    const upperSpan = result.segments[1];
+    const localStart = localPoint(result, upperSpan.start);
+    const localEnd = localPoint(result, upperSpan.end);
+    close(Math.hypot(localStart.x, localStart.y), 78, `${slotCount} start radius`, 1e-7);
+    close(Math.hypot(localEnd.x, localEnd.y), 100, `${slotCount} end radius`, 1e-7);
+    for (const point of [
+      upperSpan.start,
+      upperSpan.control1,
+      upperSpan.control2,
+      upperSpan.end,
+    ]) {
+      const local = localPoint(result, point);
+      const radius = Math.hypot(local.x, local.y);
+      assert.ok(radius >= 78 - 1e-7 && radius <= 100 + 1e-7);
+    }
+  }
+});
+
+test("adjacent collar spans share the exact same radial boundary", () => {
+  for (const slotCount of [3, 4, 8, 9, 24]) {
+    const petals = Array.from({ length: slotCount }, (_, index) =>
+      collaredGeometry(slotCount, -90 + index * 360 / slotCount)
+    );
+    petals.forEach((result, index) => {
+      const next = petals[(index + 1) % petals.length];
+      const upperSpan = result.segments[1];
+      const nextLowerSpan = next.segments[6];
+      closePoint(upperSpan.start, nextLowerSpan.end, `${slotCount}/${index} inner`, 1e-7);
+      closePoint(upperSpan.end, nextLowerSpan.start, `${slotCount}/${index} outer`, 1e-7);
+      closePoint(
+        upperSpan.control1,
+        nextLowerSpan.control2,
+        `${slotCount}/${index} inner control`,
+        1e-7
+      );
+      closePoint(
+        upperSpan.control2,
+        nextLowerSpan.control1,
+        `${slotCount}/${index} outer control`,
+        1e-7
+      );
+    });
+  }
+});
+
+test("the joined collar is mirror-symmetric and transitions into the inset body sector", () => {
+  for (const slotCount of [3, 4, 8, 9, 24]) {
+    const result = collaredGeometry(slotCount, 0);
+    for (let upperIndex = 0; upperIndex < 4; upperIndex += 1) {
+      const upper = result.segments[upperIndex];
+      const lower = result.segments[7 - upperIndex];
+      const upperPoints = [upper.start, upper.control1, upper.control2, upper.end]
+        .map((point) => localPoint(result, point));
+      const reflectedReverse = [lower.end, lower.control2, lower.control1, lower.start]
+        .map((point) => localPoint(result, point))
+        .map((point) => ({ x: point.x, y: -point.y }));
+      upperPoints.forEach((point, pointIndex) => {
+        closePoint(point, reflectedReverse[pointIndex], `${slotCount}/${upperIndex}/${pointIndex}`);
+      });
+    }
+
+    const contact = result.profile.baseContact;
+    assert.ok(contact);
+    const contactRadians = contact.halfAngleDegrees * Math.PI / 180;
+    const contactSine = Math.sin(contactRadians);
+    const contactCosine = Math.cos(contactRadians);
+    result.segments.flatMap((segment) => [
+      segment.start,
+      segment.control1,
+      segment.control2,
+      segment.end,
+    ]).forEach((point, pointIndex) => {
+      const local = localPoint(result, point);
+      assert.ok(
+        local.x * contactSine - local.y * contactCosine >= -1e-7,
+        `${slotCount} point ${pointIndex} leaves the upper slot edge`
+      );
+      assert.ok(
+        local.x * contactSine + local.y * contactCosine >= -1e-7,
+        `${slotCount} point ${pointIndex} leaves the lower slot edge`
+      );
+    });
+    for (const segment of [result.segments[1], result.segments[6]]) {
+      for (let index = 0; index <= 32; index += 1) {
+        const local = localPoint(result, cubicPoint(segment, index / 32));
+        close(
+          Math.abs(local.x * contactSine) - Math.abs(local.y * contactCosine),
+          0,
+          `${slotCount} shared ray ${index}`,
+          1e-7
+        );
+      }
+    }
+
+    const bodyRadians = result.profile.sectorHalfAngleDegrees * Math.PI / 180;
+    const bodySine = Math.sin(bodyRadians);
+    const bodyCosine = Math.cos(bodyRadians);
+    const transition = result.segments[2];
+    const insetDistances = Array.from({ length: 101 }, (_, index) => {
+      const local = localPoint(result, cubicPoint(transition, index / 100));
+      return local.x * bodySine - local.y * bodyCosine;
+    });
+    assert.ok(insetDistances[0] < result.profile.edgeClearance);
+    const firstSafe = insetDistances.findIndex((distance) =>
+      distance >= result.profile.edgeClearance - 1e-7
+    );
+    assert.ok(firstSafe > 0 && firstSafe < insetDistances.length);
+    assert.ok(insetDistances.slice(firstSafe).every((distance) =>
+      distance >= result.profile.edgeClearance - 1e-7
+    ));
+  }
+});
+
+test("the collar preserves the logical petal, shoulder, tip, and safe label circle", () => {
+  for (const slotCount of [3, 4, 8, 9, 24]) {
+    const plain = plainCollarProfileGeometry(slotCount);
+    const collared = collaredGeometry(slotCount, 0);
+    closePoint(collared.profile.root, plain.profile.root, `${slotCount} root`);
+    closePoint(collared.profile.tip, plain.profile.tip, `${slotCount} tip`);
+    closePoint(collared.profile.labelCenter, plain.profile.labelCenter, `${slotCount} label center`);
+    close(collared.profile.rootRadius, plain.profile.rootRadius, `${slotCount} root radius`);
+    close(collared.profile.tipRadius, plain.profile.tipRadius, `${slotCount} tip radius`);
+    close(collared.profile.length, plain.profile.length, `${slotCount} length`);
+    close(collared.profile.halfWidth, plain.profile.halfWidth, `${slotCount} half width`);
+    close(
+      collared.profile.labelRegionRadius,
+      plain.profile.labelRegionRadius,
+      `${slotCount} label radius`
+    );
+    closePoint(collared.segments[2].end, plain.segments[0].end, `${slotCount} upper shoulder`);
+    closePoint(collared.segments[3].end, plain.segments[1].end, `${slotCount} outer tip`);
+    assert.deepEqual(collared.profile.discs, plain.profile.discs);
+    assertLabelCircleInside(collared);
+  }
+});
+
+test("joined collar bounds remain finite under item rotation", () => {
+  for (const slotCount of [3, 4, 8, 9, 24]) {
+    const result = collaredGeometry(slotCount, 37);
+    for (const rotation of [0, 45, 90, 180]) {
+      const bounds = flowerPetalGeometryBounds(result, result.profile.root, rotation);
+      assert.ok(Object.values(bounds).every(Number.isFinite));
+      assert.ok(bounds.minX < bounds.maxX);
+      assert.ok(bounds.minY < bounds.maxY);
+    }
   }
 });
 
