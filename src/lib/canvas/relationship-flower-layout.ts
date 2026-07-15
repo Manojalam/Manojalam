@@ -79,7 +79,7 @@ const MAX_SECTOR_HALF_ANGLE_DEGREES = 68;
 const COLLISION_EPSILON = 0.01;
 const LAYER_PROFILE_GROWTH_RATIO = 0.04;
 const SPARSE_LENGTH_PROPORTION = 0.72;
-const SPARSE_WIDTH_PROPORTION = 1.75;
+const SPARSE_WIDTH_PROPORTION = 1.28;
 const BASE_CONTACT_START_RATIO = 0.94;
 const BASE_CONTACT_END_RATIO = 1.28;
 
@@ -100,11 +100,11 @@ function flowerSlotProportions(slotCount: number): { length: number; width: numb
     1,
     Math.log(Math.max(1, slotCount)) / Math.log(MAX_FLOWER_PETALS_PER_LAYER)
   ));
-  const sparseWidthWeight = (1 - normalizedDensity) ** 2;
   return {
     length: SPARSE_LENGTH_PROPORTION
       + (1 - SPARSE_LENGTH_PROPORTION) * normalizedDensity,
-    width: 1 + (SPARSE_WIDTH_PROPORTION - 1) * sparseWidthWeight,
+    width: SPARSE_WIDTH_PROPORTION
+      - (SPARSE_WIDTH_PROPORTION - 1) * normalizedDensity,
   };
 }
 
@@ -641,13 +641,7 @@ export function layoutRelationshipFlowerPetals(
 
   const slotProportions = flowerSlotProportions(layerSlotCount);
   const baseLength = canonicalLength * slotProportions.length;
-  // A petal needs its requested half-width on both radial sides of the label
-  // center. Cap only at half the available length, then derive the center
-  // split below so the geometry does not silently flatten sparse petals.
-  const halfWidth = Math.min(
-    canonicalHalfWidth * slotProportions.width,
-    baseLength / 2
-  );
+  const halfWidth = canonicalHalfWidth * slotProportions.width;
 
   const sectorHalfAngleDegrees = Math.min(
     MAX_SECTOR_HALF_ANGLE_DEGREES,
@@ -662,10 +656,7 @@ export function layoutRelationshipFlowerPetals(
   );
   const layerGap = options.density === "compact" ? 6 : options.density === "spacious" ? 12 : 8;
   const attachmentRootRadius = hubRadius * 0.68;
-  const baseLabelCenterOffset = Math.max(
-    halfWidth,
-    Math.min(baseLength * 0.58, baseLength - halfWidth)
-  );
+  const baseLabelCenterOffset = baseLength * 0.58;
   const minimumBodyCenterRadius = (halfWidth + edgeClearance)
     / Math.max(0.01, Math.sin(sectorHalfAngleRadians));
   const attachmentInset = Math.max(
@@ -684,18 +675,14 @@ export function layoutRelationshipFlowerPetals(
   let previousLabelCenterRadius = attachmentRootRadius + labelCenterOffset;
 
   layerIndexes.forEach((itemIndexes, visualLayerIndex) => {
-    // Continue source order as a spiral: the next layer begins inside the
-    // wraparound gap after the preceding layer's last slot, then proceeds in
-    // the same angular direction. Leave one layer-share of a slot after the
-    // preceding last item; the complementary negative phase keeps every
-    // layer distinct while making the visible phases advance clockwise.
-    const slotStep = 360 / layerSlotCount;
-    const wrapStep = slotStep / layerCount;
-    const layerOffset = -visualLayerIndex * (slotStep - wrapStep);
+    // Each back flower alternates into the gaps of the flower immediately in
+    // front of it. Empty slots remain real geometry so every layer shares one
+    // complete angular grid even when its content count is lower.
+    const stagger = visualLayerIndex % 2 === 0 ? 0 : 180 / layerSlotCount;
     const slots: CandidateSlot[] = Array.from({ length: layerSlotCount }, (_, slotIndex) => ({
       itemIndex: itemIndexes[slotIndex] ?? null,
       slotIndex,
-      angle: -90 + layerOffset + slotIndex * slotStep,
+      angle: -90 + stagger + slotIndex * 360 / layerSlotCount,
     }));
     const profileGrowth = visualLayerIndex
       * labelRegionRadius
