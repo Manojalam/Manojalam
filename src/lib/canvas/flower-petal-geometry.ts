@@ -10,29 +10,32 @@ export type FlowerPetalCubicSegment = {
   end: FlowerPetalPoint;
 };
 
+/**
+ * A canonical petal is defined only by flower geometry. Label measurements
+ * are deliberately absent: content is fitted after the flower is drawn.
+ */
 export type FlowerPetalGeometryInput = {
   center: FlowerPetalPoint;
-  contentCenter: FlowerPetalPoint;
-  contentWidth: number;
-  contentHeight: number;
   angleDegrees: number;
-  hubRadius: number;
-  shapePadding?: number;
+  rootRadius: number;
+  length: number;
+  halfWidth: number;
+  labelCenterOffset?: number;
+  labelRegionRadius?: number;
 };
 
 export type FlowerPetalProfile = {
   radialAxis: FlowerPetalPoint;
   tangentAxis: FlowerPetalPoint;
-  contentNearRadius: number;
-  contentFarRadius: number;
-  contentHalfWidth: number;
-  baseRadius: number;
-  shoulderRadius: number;
-  crownRadius: number;
+  root: FlowerPetalPoint;
+  tip: FlowerPetalPoint;
+  labelCenter: FlowerPetalPoint;
+  rootRadius: number;
   tipRadius: number;
-  baseHalfWidth: number;
-  shoulderHalfWidth: number;
-  crownHalfWidth: number;
+  length: number;
+  halfWidth: number;
+  labelCenterOffset: number;
+  labelRegionRadius: number;
 };
 
 export type FlowerPetalGeometry = {
@@ -47,13 +50,6 @@ export type FlowerPetalBounds = {
   maxX: number;
   maxY: number;
 };
-
-/** Cubic approximation constant for one quarter of an ellipse. */
-export const FLOWER_PETAL_ELLIPSE_KAPPA = 0.5522847498307936;
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.max(minimum, Math.min(maximum, value));
-}
 
 function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -125,23 +121,30 @@ export function flowerPetalGeometryBounds(
 }
 
 /**
- * Build a closed, regular C1-continuous petal around an axis-aligned content
- * box. The body has a gentle shoulder while the outer and inner ends use
- * cubic half-ellipses, so neither end relies on a zero-length cusp control.
+ * Build one smooth lotus-like petal. Every petal using the same profile is
+ * byte-for-byte identical in local space; only its root position and angle
+ * change around the flower.
  */
 export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): FlowerPetalGeometry {
   const center = {
     x: finiteOr(input.center.x, 0),
     y: finiteOr(input.center.y, 0),
   };
-  const contentCenter = {
-    x: finiteOr(input.contentCenter.x, center.x),
-    y: finiteOr(input.contentCenter.y, center.y),
-  };
-  const contentWidth = positiveOr(input.contentWidth, 1);
-  const contentHeight = positiveOr(input.contentHeight, 1);
-  const hubRadius = positiveOr(input.hubRadius, 1);
-  const shapePadding = Math.max(0, finiteOr(input.shapePadding ?? 26, 26));
+  const rootRadius = Math.max(0, finiteOr(input.rootRadius, 0));
+  const length = positiveOr(input.length, 240);
+  const halfWidth = positiveOr(input.halfWidth, 100);
+  const labelCenterOffset = Math.max(
+    length * 0.35,
+    Math.min(length * 0.75, finiteOr(input.labelCenterOffset ?? length * 0.58, length * 0.58))
+  );
+  const labelRegionRadius = Math.max(
+    1,
+    Math.min(
+      halfWidth * 0.82,
+      length * 0.34,
+      finiteOr(input.labelRegionRadius ?? Math.min(halfWidth * 0.72, length * 0.29), halfWidth * 0.72)
+    )
+  );
   const angleRadians = finiteOr(input.angleDegrees, -90) * Math.PI / 180;
   const radialAxis = {
     x: Math.cos(angleRadians),
@@ -151,133 +154,39 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
     x: -radialAxis.y,
     y: radialAxis.x,
   };
-  const contentHalfWidthX = contentWidth / 2 + shapePadding;
-  const contentHalfHeightY = contentHeight / 2 + shapePadding;
-  const radialHalfExtent =
-    Math.abs(radialAxis.x) * contentHalfWidthX
-    + Math.abs(radialAxis.y) * contentHalfHeightY;
-  const contentHalfWidth =
-    Math.abs(tangentAxis.x) * contentHalfWidthX
-    + Math.abs(tangentAxis.y) * contentHalfHeightY;
-  const contentCenterRadius = Math.hypot(
-    contentCenter.x - center.x,
-    contentCenter.y - center.y
-  );
-  const contentNearRadius = contentCenterRadius - radialHalfExtent;
-  const contentFarRadius = contentCenterRadius + radialHalfExtent;
-
-  // Keep the root under the hub while leaving enough radial room for a
-  // gradual waist even when an unusually large content box reaches inward.
-  const preferredBaseRadius = hubRadius * 0.7;
-  const baseRadius = Math.max(
-    hubRadius * 0.2,
-    Math.min(preferredBaseRadius, contentNearRadius - 18)
-  );
-  const shoulderRadius = Math.max(baseRadius + 18, contentNearRadius - 12);
-  const crownRadius = Math.max(contentFarRadius + 6, shoulderRadius + 48);
-  const baseToShoulder = shoulderRadius - baseRadius;
-  const shoulderToCrown = crownRadius - shoulderRadius;
-
-  const baseHalfWidth = clamp(hubRadius * 0.15, 9, 24);
-  const shoulderHalfWidth = contentHalfWidth + clamp(contentHalfWidth * 0.08, 6, 20);
-  const crownHalfWidth = contentHalfWidth;
-  // A deeper cap tapers the body into a soft botanical tip instead of the
-  // shallow, rounded-rectangle end produced by a wide, flat half-ellipse.
-  const desiredCapRadius = clamp(crownHalfWidth * 0.68, 30, 88);
-  const capRadius = Math.max(
-    6,
-    Math.min(
-      desiredCapRadius,
-      shoulderToCrown * 0.55 / FLOWER_PETAL_ELLIPSE_KAPPA
-    )
-  );
-  const tipRadius = crownRadius + capRadius;
-
-  // Reuse each join handle on both adjacent cubics. That makes the first
-  // derivative exactly equal, rather than only visually similar, at joins.
-  const desiredBaseDepth = clamp(hubRadius * 0.14, 12, 26);
-  const baseDepth = Math.min(
-    desiredBaseDepth,
-    baseToShoulder * 0.45 / FLOWER_PETAL_ELLIPSE_KAPPA
-  );
-  const baseHandle = baseDepth * FLOWER_PETAL_ELLIPSE_KAPPA;
-  const shoulderHandle = Math.max(
-    2,
-    Math.min(baseToShoulder * 0.28, shoulderToCrown * 0.22)
-  );
-  const crownHandle = capRadius * FLOWER_PETAL_ELLIPSE_KAPPA;
-  const tipHandle = Math.max(
-    8,
-    Math.min(
-      crownHalfWidth * FLOWER_PETAL_ELLIPSE_KAPPA,
-      capRadius * 0.55
-    )
-  );
-  const baseCapHandle = baseHalfWidth * FLOWER_PETAL_ELLIPSE_KAPPA;
-  const innerBaseRadius = baseRadius - baseDepth;
-
-  const at = (radius: number, tangentOffset = 0): FlowerPetalPoint => ({
-    x: center.x + radialAxis.x * radius + tangentAxis.x * tangentOffset,
-    y: center.y + radialAxis.y * radius + tangentAxis.y * tangentOffset,
+  const at = (outward: number, tangent = 0): FlowerPetalPoint => ({
+    x: center.x + radialAxis.x * (rootRadius + outward) + tangentAxis.x * tangent,
+    y: center.y + radialAxis.y * (rootRadius + outward) + tangentAxis.y * tangent,
   });
 
-  const baseA = at(baseRadius, baseHalfWidth);
-  const shoulderA = at(shoulderRadius, shoulderHalfWidth);
-  const crownA = at(crownRadius, crownHalfWidth);
-  const tip = at(tipRadius);
-  const crownB = at(crownRadius, -crownHalfWidth);
-  const shoulderB = at(shoulderRadius, -shoulderHalfWidth);
-  const baseB = at(baseRadius, -baseHalfWidth);
-  const innerBase = at(innerBaseRadius);
-
+  const root = at(0);
+  const upper = at(length * 0.47, halfWidth);
+  const tip = at(length);
+  const lower = at(length * 0.47, -halfWidth);
   const segments: FlowerPetalCubicSegment[] = [
     {
-      start: baseA,
-      control1: at(baseRadius + baseHandle, baseHalfWidth),
-      control2: at(shoulderRadius - shoulderHandle, shoulderHalfWidth),
-      end: shoulderA,
+      start: root,
+      control1: at(0, halfWidth * 0.28),
+      control2: at(length * 0.30, halfWidth),
+      end: upper,
     },
     {
-      start: shoulderA,
-      control1: at(shoulderRadius + shoulderHandle, shoulderHalfWidth),
-      control2: at(crownRadius - crownHandle, crownHalfWidth),
-      end: crownA,
-    },
-    {
-      start: crownA,
-      control1: at(crownRadius + crownHandle, crownHalfWidth),
-      control2: at(tipRadius, tipHandle),
+      start: upper,
+      control1: at(length * 0.64, halfWidth),
+      control2: at(length, halfWidth * 0.18),
       end: tip,
     },
     {
       start: tip,
-      control1: at(tipRadius, -tipHandle),
-      control2: at(crownRadius + crownHandle, -crownHalfWidth),
-      end: crownB,
+      control1: at(length, -halfWidth * 0.18),
+      control2: at(length * 0.64, -halfWidth),
+      end: lower,
     },
     {
-      start: crownB,
-      control1: at(crownRadius - crownHandle, -crownHalfWidth),
-      control2: at(shoulderRadius + shoulderHandle, -shoulderHalfWidth),
-      end: shoulderB,
-    },
-    {
-      start: shoulderB,
-      control1: at(shoulderRadius - shoulderHandle, -shoulderHalfWidth),
-      control2: at(baseRadius + baseHandle, -baseHalfWidth),
-      end: baseB,
-    },
-    {
-      start: baseB,
-      control1: at(baseRadius - baseHandle, -baseHalfWidth),
-      control2: at(innerBaseRadius, -baseCapHandle),
-      end: innerBase,
-    },
-    {
-      start: innerBase,
-      control1: at(innerBaseRadius, baseCapHandle),
-      control2: at(baseRadius - baseHandle, baseHalfWidth),
-      end: baseA,
+      start: lower,
+      control1: at(length * 0.30, -halfWidth),
+      control2: at(0, -halfWidth * 0.28),
+      end: root,
     },
   ];
 
@@ -287,16 +196,15 @@ export function buildFlowerPetalGeometry(input: FlowerPetalGeometryInput): Flowe
     profile: {
       radialAxis,
       tangentAxis,
-      contentNearRadius,
-      contentFarRadius,
-      contentHalfWidth,
-      baseRadius,
-      shoulderRadius,
-      crownRadius,
-      tipRadius,
-      baseHalfWidth,
-      shoulderHalfWidth,
-      crownHalfWidth,
+      root,
+      tip,
+      labelCenter: at(labelCenterOffset),
+      rootRadius,
+      tipRadius: rootRadius + length,
+      length,
+      halfWidth,
+      labelCenterOffset,
+      labelRegionRadius,
     },
   };
 }

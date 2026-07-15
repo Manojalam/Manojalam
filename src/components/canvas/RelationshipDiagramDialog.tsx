@@ -27,6 +27,7 @@ import { buildHierarchy } from "@/lib/layout/hierarchy";
 import {
   buildRelationshipGroupsForSpec,
   createRelationshipDiagramSpec,
+  MAX_FLOWER_LAYERS,
   MAX_FLOWER_PETALS_PER_LAYER,
   MIN_FLOWER_PETALS_PER_LAYER,
   expandRelationshipDiagramScope,
@@ -318,30 +319,57 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                 })}
               </div>
               {draft.layout === "flower" && (
-                <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Label htmlFor="relationship-diagram-petals-per-layer" className="text-xs">
-                        Maximum petals per layer
-                      </Label>
-                      <p className="text-[9px] text-muted-foreground">
-                        Extra petals continue in staggered concentric layers.
-                      </p>
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label htmlFor="relationship-diagram-petals-per-layer" className="text-xs">
+                          Maximum petals per layer
+                        </Label>
+                        <p className="text-[9px] text-muted-foreground">
+                          Extra petals continue in staggered concentric layers.
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold tabular-nums">
+                        {draft.flowerPetalsPerLayer}
+                      </span>
                     </div>
-                    <span className="text-xs font-semibold tabular-nums">
-                      {draft.flowerPetalsPerLayer}
-                    </span>
+                    <input
+                      id="relationship-diagram-petals-per-layer"
+                      type="range"
+                      min={MIN_FLOWER_PETALS_PER_LAYER}
+                      max={MAX_FLOWER_PETALS_PER_LAYER}
+                      step="1"
+                      value={draft.flowerPetalsPerLayer}
+                      onChange={(event) => update("flowerPetalsPerLayer", Number(event.target.value))}
+                      className="w-full accent-primary"
+                    />
                   </div>
-                  <input
-                    id="relationship-diagram-petals-per-layer"
-                    type="range"
-                    min={MIN_FLOWER_PETALS_PER_LAYER}
-                    max={MAX_FLOWER_PETALS_PER_LAYER}
-                    step="1"
-                    value={draft.flowerPetalsPerLayer}
-                    onChange={(event) => update("flowerPetalsPerLayer", Number(event.target.value))}
-                    className="w-full accent-primary"
-                  />
+                  <div className="space-y-1.5 border-t pt-3">
+                    <Label className="text-xs">Layer count</Label>
+                    <Select
+                      value={String(draft.flowerLayerCount)}
+                      onValueChange={(value) => update("flowerLayerCount", Number(value))}
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Auto</SelectItem>
+                        {Array.from({ length: MAX_FLOWER_LAYERS }, (_, index) => {
+                          const layer = index + 1;
+                          return (
+                            <SelectItem key={layer} value={String(layer)}>
+                              {layer} {layer === 1 ? "layer" : "layers"}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[9px] leading-relaxed text-muted-foreground">
+                      Auto balances the flower from the petal limit. Choose a number to request at least that many layers.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

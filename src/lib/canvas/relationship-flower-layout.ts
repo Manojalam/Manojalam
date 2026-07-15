@@ -1,66 +1,50 @@
 export type RelationshipFlowerDensity = "compact" | "comfortable" | "spacious";
 
 export interface RelationshipFlowerPetalInput {
-  width: number;
-  height: number;
+  /** Optional one-based manual layer assignment. */
+  preferredLayer?: number;
 }
 
 export interface RelationshipFlowerLayoutOptions {
   hubRadius: number;
   maxPerLayer: number;
   density: RelationshipFlowerDensity;
+  /** Zero means automatic; otherwise forces this many concentric layers. */
+  layerCount?: number;
 }
 
 export interface RelationshipFlowerPetalPlacement {
-  /** Original index in the caller's ordered petal list. */
   index: number;
-  /** Zero-based layer number, from the hub outward. */
   layerIndex: number;
+  slotIndex: number;
   angle: number;
-  radius: number;
-  /** Circumradius of the axis-aligned content box. */
-  halfExtent: number;
+  rootRadius: number;
+  length: number;
+  halfWidth: number;
+  labelCenterRadius: number;
+  labelRegionRadius: number;
 }
 
 export interface RelationshipFlowerLayout {
   petals: RelationshipFlowerPetalPlacement[];
-  /** Petal counts ordered from the innermost layer to the outermost layer. */
   layerCounts: number[];
-  /** Half-side required by a square SVG, including the petal outline margin. */
+  length: number;
+  halfWidth: number;
+  labelCenterOffset: number;
+  labelRegionRadius: number;
   maximumExtent: number;
 }
 
 export const MIN_FLOWER_PETALS_PER_LAYER = 3;
 export const MAX_FLOWER_PETALS_PER_LAYER = 24;
 export const DEFAULT_FLOWER_PETALS_PER_LAYER = 9;
+export const MAX_FLOWER_LAYERS = 6;
 
-const START_ANGLE = -90;
-const COLLISION_EPSILON = 0.01;
-
-const DENSITY_METRICS: Record<
-  RelationshipFlowerDensity,
-  { contentGap: number; layerStep: number; outerPadding: number }
-> = {
-  compact: { contentGap: 10, layerStep: 14, outerPadding: 48 },
-  comfortable: { contentGap: 16, layerStep: 20, outerPadding: 62 },
-  spacious: { contentGap: 24, layerStep: 28, outerPadding: 76 },
+const DENSITY_SCALE: Record<RelationshipFlowerDensity, number> = {
+  compact: 0.9,
+  comfortable: 1,
+  spacious: 1.12,
 };
-
-interface NormalizedPetal extends RelationshipFlowerPetalInput {
-  halfExtent: number;
-}
-
-interface PositionedPetal extends NormalizedPetal {
-  index: number;
-  layerIndex: number;
-  angle: number;
-  radius: number;
-}
-
-interface CollisionInterval {
-  start: number;
-  end: number;
-}
 
 function finitePositive(value: number, fallback: number): number {
   return Number.isFinite(value) ? Math.max(1, value) : fallback;
@@ -81,29 +65,41 @@ export function normalizeFlowerPetalsPerLayer(value: unknown): number {
   );
 }
 
-function densityMetrics(density: RelationshipFlowerDensity) {
-  return DENSITY_METRICS[density] ?? DENSITY_METRICS.comfortable;
+export function normalizeFlowerLayerCount(value: unknown): number {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim()
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(MAX_FLOWER_LAYERS, Math.round(numeric)));
 }
 
-/**
- * Split petals into the fewest possible layers, balancing the result while
- * assigning any extra petals to the outside layers. This keeps the visual
- * weight toward the outside without changing source order.
- */
+function balancedCountsForLayers(petalCount: number, layerCount: number): number[] {
+  if (petalCount <= 0 || layerCount <= 0) return [];
+  const usableLayers = Math.min(petalCount, layerCount);
+  const baseCount = Math.floor(petalCount / usableLayers);
+  const remainder = petalCount - baseCount * usableLayers;
+  return Array.from({ length: usableLayers }, (_, layerIndex) =>
+    layerIndex >= usableLayers - remainder ? baseCount + 1 : baseCount
+  );
+}
+
 export function balancedFlowerLayerCounts(
   petalCount: number,
-  maxPerLayer: number
+  maxPerLayer: number,
+  requestedLayerCount = 0
 ): number[] {
   const count = Number.isFinite(petalCount) ? Math.max(0, Math.floor(petalCount)) : 0;
   if (count === 0) return [];
+  const automaticLayers = Math.ceil(count / normalizeFlowerPetalsPerLayer(maxPerLayer));
+  const layers = Math.max(automaticLayers, normalizeFlowerLayerCount(requestedLayerCount));
+  return balancedCountsForLayers(count, layers);
+}
 
-  const maximum = normalizeFlowerPetalsPerLayer(maxPerLayer);
-  const layerCount = Math.ceil(count / maximum);
-  const baseCount = Math.floor(count / layerCount);
-  const remainder = count - baseCount * layerCount;
-
-  return Array.from({ length: layerCount }, (_, layerIndex) =>
-    layerIndex >= layerCount - remainder ? baseCount + 1 : baseCount
+function automaticAssignments(layerCounts: readonly number[]): number[] {
+  return layerCounts.flatMap((count, layerIndex) =>
+    Array.from({ length: count }, () => layerIndex)
   );
 }
 
@@ -111,188 +107,166 @@ function radians(angle: number): number {
   return angle * Math.PI / 180;
 }
 
-function sameLayerRadius(
-  petals: readonly NormalizedPetal[],
+function collisionFreeLabelCenterRadius(
   angles: readonly number[],
-  hubRadius: number,
-  gap: number
+  positioned: readonly RelationshipFlowerPetalPlacement[],
+  labelRegionRadius: number,
+  gap: number,
+  minimumRadius: number
 ): number {
-  let radius = hubRadius + gap;
-
-  petals.forEach((petal, index) => {
-    const angle = radians(angles[index]);
-    const radialHalfExtent =
-      Math.abs(Math.cos(angle)) * petal.width / 2
-      + Math.abs(Math.sin(angle)) * petal.height / 2;
-    radius = Math.max(radius, hubRadius + gap + radialHalfExtent);
-  });
-
-  for (let firstIndex = 0; firstIndex < petals.length; firstIndex += 1) {
-    const firstAngle = radians(angles[firstIndex]);
-    const first = petals[firstIndex];
-    for (let secondIndex = firstIndex + 1; secondIndex < petals.length; secondIndex += 1) {
-      const secondAngle = radians(angles[secondIndex]);
-      const second = petals[secondIndex];
-      const deltaX = Math.abs(Math.cos(firstAngle) - Math.cos(secondAngle));
-      const deltaY = Math.abs(Math.sin(firstAngle) - Math.sin(secondAngle));
-      const requiredX = deltaX > Number.EPSILON
-        ? ((first.width + second.width) / 2 + gap) / deltaX
-        : Number.POSITIVE_INFINITY;
-      const requiredY = deltaY > Number.EPSILON
-        ? ((first.height + second.height) / 2 + gap) / deltaY
-        : Number.POSITIVE_INFINITY;
-
-      // Axis-aligned boxes are disjoint once either axis has enough clearance.
-      radius = Math.max(radius, Math.min(requiredX, requiredY));
+  const requiredDistance = labelRegionRadius * 2 + gap;
+  let radius = minimumRadius;
+  for (const angle of angles) {
+    const angleRadians = radians(angle);
+    for (const inner of positioned) {
+      const delta = angleRadians - radians(inner.angle);
+      const transverse = inner.labelCenterRadius * Math.sin(delta);
+      if (Math.abs(transverse) >= requiredDistance) continue;
+      const axial = inner.labelCenterRadius * Math.cos(delta);
+      const exitRadius = axial + Math.sqrt(
+        Math.max(0, requiredDistance ** 2 - transverse ** 2)
+      );
+      radius = Math.max(radius, exitRadius);
     }
   }
-
   return radius;
 }
 
 /**
- * Return the radii for which a point travelling outward on `angle` intersects
- * the inner petal's content box expanded by the outer petal and desired gap.
- */
-function collisionInterval(
-  inner: PositionedPetal,
-  outer: NormalizedPetal,
-  angle: number,
-  gap: number
-): CollisionInterval | null {
-  const outerAngle = radians(angle);
-  const innerAngle = radians(inner.angle);
-  const direction = { x: Math.cos(outerAngle), y: Math.sin(outerAngle) };
-  const innerCenter = {
-    x: inner.radius * Math.cos(innerAngle),
-    y: inner.radius * Math.sin(innerAngle),
-  };
-  const halfWidth = (inner.width + outer.width) / 2 + gap;
-  const halfHeight = (inner.height + outer.height) / 2 + gap;
-  const bounds = [
-    { direction: direction.x, minimum: innerCenter.x - halfWidth, maximum: innerCenter.x + halfWidth },
-    { direction: direction.y, minimum: innerCenter.y - halfHeight, maximum: innerCenter.y + halfHeight },
-  ];
-
-  let start = 0;
-  let end = Number.POSITIVE_INFINITY;
-  for (const bound of bounds) {
-    if (Math.abs(bound.direction) <= Number.EPSILON) {
-      if (0 < bound.minimum || 0 > bound.maximum) return null;
-      continue;
-    }
-
-    const first = bound.minimum / bound.direction;
-    const second = bound.maximum / bound.direction;
-    start = Math.max(start, Math.min(first, second));
-    end = Math.min(end, Math.max(first, second));
-    if (start > end) return null;
-  }
-
-  return end >= 0 && Number.isFinite(end)
-    ? { start: Math.max(0, start), end }
-    : null;
-}
-
-function firstCollisionFreeRadius(
-  minimumRadius: number,
-  intervals: readonly CollisionInterval[]
-): number {
-  const sorted = [...intervals].sort((first, second) =>
-    first.start - second.start || first.end - second.end
-  );
-  let candidate = minimumRadius;
-
-  for (const interval of sorted) {
-    if (candidate < interval.start) break;
-    if (candidate <= interval.end) {
-      candidate = interval.end + COLLISION_EPSILON;
-    }
-  }
-
-  return candidate;
-}
-
-/**
- * Lay out ordered flower petals in balanced, concentric layers. Content boxes
- * remain screen-aligned, so spacing is computed against their axis-aligned
- * bounds rather than treating their width as if it rotated with the petal.
+ * Draw-first relationship flower layout. Geometry depends only on flower
+ * count/layers/density, never on label count, length, wrapping, or font size.
  */
 export function layoutRelationshipFlowerPetals(
-  inputPetals: readonly RelationshipFlowerPetalInput[],
+  inputs: readonly RelationshipFlowerPetalInput[],
   options: RelationshipFlowerLayoutOptions
 ): RelationshipFlowerLayout {
-  const metrics = densityMetrics(options.density);
-  const hubRadius = finitePositive(options.hubRadius, 104);
-  const petals: NormalizedPetal[] = inputPetals.map((petal) => {
-    const width = finitePositive(petal.width, 1);
-    const height = finitePositive(petal.height, 1);
-    return {
-      width,
-      height,
-      halfExtent: Math.hypot(width / 2, height / 2),
-    };
+  const hubRadius = finitePositive(options.hubRadius, 88);
+  const densityScale = DENSITY_SCALE[options.density] ?? DENSITY_SCALE.comfortable;
+  const manualMaximum = inputs.reduce((maximum, input) =>
+    Math.max(maximum, normalizeFlowerLayerCount(input.preferredLayer)), 0
+  );
+  const requestedLayers = Math.max(
+    normalizeFlowerLayerCount(options.layerCount),
+    manualMaximum
+  );
+  const initialCounts = balancedFlowerLayerCounts(
+    inputs.length,
+    options.maxPerLayer,
+    requestedLayers
+  );
+  const assignments = automaticAssignments(initialCounts);
+  inputs.forEach((input, index) => {
+    const preferred = normalizeFlowerLayerCount(input.preferredLayer);
+    if (preferred > 0) assignments[index] = preferred - 1;
   });
-  const layerCounts = balancedFlowerLayerCounts(petals.length, options.maxPerLayer);
-  const positioned: PositionedPetal[] = [];
-  let nextIndex = 0;
-  let previousRadius = hubRadius;
+  const layerCount = assignments.length
+    ? Math.max(...assignments) + 1
+    : 0;
+  const layerIndexes = Array.from({ length: layerCount }, () => [] as number[]);
+  assignments.forEach((layerIndex, itemIndex) => {
+    layerIndexes[layerIndex]?.push(itemIndex);
+  });
+  const nonemptyLayers = layerIndexes.filter((indexes) => indexes.length > 0);
+  const layerCounts = nonemptyLayers.map((indexes) => indexes.length);
 
-  layerCounts.forEach((count, layerIndex) => {
-    const layerPetals = petals.slice(nextIndex, nextIndex + count);
-    const stagger = layerIndex % 2 === 1 ? 180 / count : 0;
-    const angles = layerPetals.map((_, itemIndex) =>
-      START_ANGLE + stagger + itemIndex * 360 / count
+  if (!inputs.length) {
+    return {
+      petals: [],
+      layerCounts: [],
+      length: hubRadius * 3.3 * densityScale,
+      halfWidth: hubRadius * 1.32 * densityScale,
+      labelCenterOffset: hubRadius * 1.98 * densityScale,
+      labelRegionRadius: hubRadius * 0.95 * densityScale,
+      maximumExtent: hubRadius + 48,
+    };
+  }
+
+  const maximumLayerCount = Math.max(1, ...layerCounts);
+  const length = hubRadius * 3.3 * densityScale;
+  const halfWidth = Math.max(
+    hubRadius * 0.92,
+    Math.min(
+      hubRadius * 1.46,
+      hubRadius * 1.32 * Math.sqrt(9 / maximumLayerCount)
+    )
+  ) * densityScale;
+  const labelCenterOffset = length * 0.58;
+  const labelRegionRadius = Math.min(halfWidth * 0.72, length * 0.29);
+  const contentGap = options.density === "compact" ? 8 : options.density === "spacious" ? 18 : 12;
+  const sameLayerGap = options.density === "compact" ? 2 : options.density === "spacious" ? 8 : 4;
+  const layerGap = options.density === "compact" ? 6 : options.density === "spacious" ? 12 : 8;
+  const petals: RelationshipFlowerPetalPlacement[] = [];
+  let previousRootRadius = Number.NEGATIVE_INFINITY;
+
+  nonemptyLayers.forEach((itemIndexes, visualLayerIndex) => {
+    const count = itemIndexes.length;
+    const stagger = visualLayerIndex / Math.max(1, nonemptyLayers.length)
+      * (360 / count);
+    const angles = itemIndexes.map((_, slotIndex) =>
+      -90 + stagger + slotIndex * 360 / count
     );
-    const ownLayerRadius = sameLayerRadius(
-      layerPetals,
-      angles,
-      hubRadius,
-      metrics.contentGap
+    const minimumContentRadius = count > 1
+      ? (labelRegionRadius + sameLayerGap / 2) / Math.max(0.1, Math.sin(Math.PI / count))
+      : hubRadius + labelCenterOffset;
+    const sameLayerRoot = Math.max(
+      hubRadius * 0.68,
+      minimumContentRadius - labelCenterOffset
     );
-    const minimumRadius = layerIndex === 0
-      ? ownLayerRadius
-      : Math.max(ownLayerRadius, previousRadius + metrics.layerStep);
-    const collisionIntervals = layerPetals.flatMap((petal, itemIndex) =>
-      positioned.flatMap((inner) => {
-        const interval = collisionInterval(
-          inner,
-          petal,
-          angles[itemIndex],
-          metrics.contentGap
+    const rootRadius = visualLayerIndex === 0
+      ? sameLayerRoot
+      : Math.max(
+          sameLayerRoot,
+          previousRootRadius + layerGap,
+          collisionFreeLabelCenterRadius(
+            angles,
+            petals,
+            labelRegionRadius,
+            contentGap,
+            sameLayerRoot + labelCenterOffset
+          ) - labelCenterOffset
         );
-        return interval ? [interval] : [];
-      })
-    );
-    const radius = firstCollisionFreeRadius(minimumRadius, collisionIntervals);
-
-    layerPetals.forEach((petal, itemIndex) => {
-      positioned.push({
-        ...petal,
-        index: nextIndex + itemIndex,
-        layerIndex,
-        angle: angles[itemIndex],
-        radius,
+    itemIndexes.forEach((itemIndex, slotIndex) => {
+      petals.push({
+        index: itemIndex,
+        layerIndex: visualLayerIndex,
+        slotIndex,
+        angle: angles[slotIndex],
+        rootRadius,
+        length,
+        halfWidth,
+        labelCenterRadius: rootRadius + labelCenterOffset,
+        labelRegionRadius,
       });
     });
-    nextIndex += count;
-    previousRadius = radius;
+    previousRootRadius = rootRadius;
   });
 
-  const contentExtent = positioned.reduce(
-    (maximum, petal) => Math.max(maximum, petal.radius + petal.halfExtent),
-    hubRadius
-  );
+  // Keep the collision-safe label rings where they are, but extend the same
+  // canonical outline inward for every petal when the innermost roots would
+  // otherwise leave a visible moat around the hub. Applying one shared inset
+  // preserves equal petal dimensions across all layers and keeps every outer
+  // tip unchanged.
+  const innermostRootRadius = Math.min(...petals.map((petal) => petal.rootRadius));
+  const attachmentInset = Math.max(0, innermostRootRadius - hubRadius * 0.68);
+  const attachedLength = length + attachmentInset;
+  petals.forEach((petal) => {
+    petal.rootRadius -= attachmentInset;
+    petal.length = attachedLength;
+  });
+
+  petals.sort((first, second) => first.index - second.index);
+  const maximumExtent = Math.max(
+    hubRadius,
+    ...petals.map((petal) => petal.rootRadius + length + halfWidth * 0.15)
+  ) + hubRadius * 0.5;
 
   return {
-    petals: positioned.map(({ index, layerIndex, angle, radius, halfExtent }) => ({
-      index,
-      layerIndex,
-      angle,
-      radius,
-      halfExtent,
-    })),
+    petals,
     layerCounts,
-    maximumExtent: contentExtent + metrics.outerPadding,
+    length: attachedLength,
+    halfWidth,
+    labelCenterOffset: labelCenterOffset + attachmentInset,
+    labelRegionRadius,
+    maximumExtent,
   };
 }

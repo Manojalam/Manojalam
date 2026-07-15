@@ -8,6 +8,7 @@ import {
   buildFlowerPetalGeometry,
   flowerPetalGeometryBounds,
 } from "@/lib/canvas/flower-petal-geometry";
+import { layoutFlowerLabels, type FlowerLabelFlowResult } from "@/lib/canvas/flower-label-flow";
 import { layoutRelationshipFlowerPetals } from "@/lib/canvas/relationship-flower-layout";
 import type {
   RelationshipDiagramItemStyle,
@@ -582,165 +583,63 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   );
 }
 
-type FlowerTargetPlacement = {
-  targetIndex: number;
-  x: number;
-  y: number;
-  width: number;
-  lineCount: number;
-};
-
 type FlowerPetalMetric = {
-  width: number;
-  height: number;
-  sourceY: number;
-  sourceWidth: number;
-  sourceFontSize: number;
-  dividerY: number;
-  targetFontSize: number;
-  targetLineHeight: number;
-  targetPlacements: FlowerTargetPlacement[];
   angle: number;
   layerIndex: number;
-  radius: number;
-  halfExtent: number;
+  rootRadius: number;
+  length: number;
+  halfWidth: number;
+  labelCenterRadius: number;
+  labelRegionRadius: number;
+  flow: FlowerLabelFlowResult;
 };
 
-function flowerTargetColumnWidth(
-  group: RelationshipGroup,
-  fontSize: number,
-  density: RelationshipDiagramSpec["density"]
-): number {
-  const minimum = density === "compact" ? 150 : density === "spacious" ? 190 : 170;
-  const maximum = density === "compact" ? 320 : density === "spacious" ? 440 : 380;
-  const bulletAllowance = 18;
-  let width = minimum;
-  for (const target of group.targets) {
-    const fullWidth = estimatedTextWidth(target.label, fontSize);
-    width = Math.max(
-      width,
-      Math.min(
-        maximum,
-        Math.max(
-          longestWordWidth(target.label, fontSize) + bulletAllowance + 12,
-          fullWidth / 2 + bulletAllowance + 12
-        )
-      )
-    );
-  }
-  while (
-    width < maximum
-    && group.targets.some((target) =>
-      wrapWords(target.label, width - bulletAllowance, fontSize).length > 2
-    )
-  ) {
-    width = Math.min(maximum, width + 18);
-  }
-  return Math.ceil(width);
-}
-
 function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpec) {
-  const hubRadius = Math.max(104, Math.min(142, spec.textSize * 6.7));
-  const itemGap = spec.density === "compact" ? 7 : spec.density === "spacious" ? 14 : 10;
-  const columnGap = spec.density === "compact" ? 18 : spec.density === "spacious" ? 30 : 24;
-  const horizontalPadding = spec.density === "compact" ? 22 : 28;
-  const verticalPadding = spec.density === "compact" ? 22 : 28;
-
-  const unpositionedPetals = groups.map((group) => {
-    const style = itemStyle(group, spec);
-    const targetFontSize = Math.max(10, (style.fontSize ?? spec.textSize) * 0.82);
-    const sourceFontSize = Math.max(13, (style.fontSize ?? spec.textSize) * 1.04);
-    const targetLineHeight = Math.max(18, targetFontSize * 1.34);
-    const columns: 1 | 2 = group.targets.length >= (spec.density === "compact" ? 6 : 7)
-      ? 2
-      : 1;
-    const rows = Math.max(1, Math.ceil(group.targets.length / columns));
-    const columnWidth = flowerTargetColumnWidth(group, targetFontSize, spec.density);
-    const targetPlacements: FlowerTargetPlacement[] = [];
-    const columnHeights = Array.from({ length: columns }, () => 0);
-    const sourceText = sourceDisplayLabel(group, spec)
-      + (spec.showCounts ? " (" + group.count + ")" : "");
-    const targetColumnsWidth = columns * columnWidth + (columns - 1) * columnGap;
-    const sourceDesiredWidth = Math.min(
-      520,
-      Math.max(
-        longestWordWidth(sourceText, sourceFontSize) + 12,
-        estimatedTextWidth(sourceText, sourceFontSize) / 2 + 12
-      )
-    );
-    const innerWidth = Math.max(targetColumnsWidth, sourceDesiredWidth);
-    const targetColumnsOffset = (innerWidth - targetColumnsWidth) / 2;
-    const sourceLineCount = Math.max(1, Math.min(2, wrapWords(sourceText, innerWidth, sourceFontSize).length));
-    const sourceHeight = Math.max(sourceFontSize * 1.45, sourceLineCount * sourceFontSize * 1.35);
-    const dividerY = verticalPadding + sourceHeight + 10;
-    const targetsTop = dividerY + 17;
-
-    group.targets.forEach((target, targetIndex) => {
-      const column = Math.min(columns - 1, Math.floor(targetIndex / rows));
-      const lineCount = Math.max(1, Math.min(2, wrapWords(target.label, columnWidth - 18, targetFontSize).length));
-      const itemHeight = lineCount * targetLineHeight;
-      targetPlacements.push({
-        targetIndex,
-        x: horizontalPadding + targetColumnsOffset + column * (columnWidth + columnGap) + 18,
-        y: targetsTop + columnHeights[column] + itemHeight / 2,
-        width: columnWidth - 18,
-        lineCount,
-      });
-      columnHeights[column] += itemHeight + itemGap;
-    });
-
-    const targetHeight = Math.max(targetLineHeight, ...columnHeights) - itemGap;
-    const width = innerWidth + horizontalPadding * 2;
-    const height = Math.max(168, targetsTop + targetHeight + verticalPadding);
-    const halfExtent = Math.hypot(width / 2, height / 2);
-    return {
-      width,
-      height,
-      sourceY: verticalPadding + sourceHeight / 2,
-      sourceWidth: innerWidth,
-      sourceFontSize,
-      dividerY,
-      targetFontSize,
-      targetLineHeight,
-      targetPlacements,
-      halfExtent,
-    };
-  });
-
-  const layoutPetals = unpositionedPetals.map((petal, index) => {
-    const rotation = itemStyle(groups[index], spec).rotation ?? 0;
-    const radians = rotation * Math.PI / 180;
-    const cosine = Math.abs(Math.cos(radians));
-    const sine = Math.abs(Math.sin(radians));
-    return {
-      width: cosine * petal.width + sine * petal.height,
-      height: sine * petal.width + cosine * petal.height,
-    };
-  });
-  const layout = layoutRelationshipFlowerPetals(layoutPetals, {
+  const hubRadius = Math.max(92, Math.min(112, spec.textSize * 5.4));
+  const layout = layoutRelationshipFlowerPetals(groups.map((group) => ({
+    preferredLayer: itemStyle(group, spec).flowerLayer,
+  })), {
     hubRadius,
     maxPerLayer: spec.flowerPetalsPerLayer,
     density: spec.density,
+    layerCount: spec.flowerLayerCount,
   });
-  const petals: FlowerPetalMetric[] = layout.petals.map((placement) => ({
-    ...unpositionedPetals[placement.index],
-    angle: placement.angle,
-    layerIndex: placement.layerIndex,
-    radius: placement.radius,
-  }));
+  const flowDensity = spec.density === "spacious" ? "comfortable" : "compact";
+  const petals: FlowerPetalMetric[] = layout.petals.map((placement) => {
+    const group = groups[placement.index];
+    const style = itemStyle(group, spec);
+    const baseFontSize = style.fontSize ?? spec.textSize;
+    const sourceFontSize = Math.max(10, baseFontSize * 0.9);
+    const targetFontSize = Math.max(8, baseFontSize * 0.68);
+    return {
+      ...placement,
+      flow: layoutFlowerLabels({
+        sourceText: sourceDisplayLabel(group, spec)
+          + (spec.showCounts ? " (" + group.count + ")" : ""),
+        targetLabels: group.targets.map((target) => target.label),
+        regionWidth: placement.labelRegionRadius * 2,
+        regionHeight: placement.labelRegionRadius * 2,
+        sourceFontSize,
+        targetFontSize,
+        minimumSourceFontSize: style.fontSize == null ? 8.5 : sourceFontSize,
+        minimumTargetFontSize: style.fontSize == null ? 7 : targetFontSize,
+        density: flowDensity,
+      }),
+    };
+  });
   const outlineExtent = petals.reduce((maximum, petal, index) => {
-    const point = polar(0, 0, petal.radius, petal.angle);
     const geometry = buildFlowerPetalGeometry({
       center: { x: 0, y: 0 },
-      contentCenter: point,
-      contentWidth: petal.width,
-      contentHeight: petal.height,
       angleDegrees: petal.angle,
-      hubRadius,
+      rootRadius: petal.rootRadius,
+      length: petal.length,
+      halfWidth: petal.halfWidth,
+      labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
+      labelRegionRadius: petal.labelRegionRadius,
     });
     const bounds = flowerPetalGeometryBounds(
       geometry,
-      point,
+      geometry.profile.root,
       itemStyle(groups[index], spec).rotation ?? 0
     );
     return Math.max(
@@ -751,26 +650,64 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
       Math.abs(bounds.maxY)
     );
   }, hubRadius);
-  const size = Math.max(720, Math.ceil((outlineExtent + 24) * 2));
+  const size = Math.max(640, Math.ceil((outlineExtent + 36) * 2));
   return { width: size, height: size, hubRadius, petals };
 }
 
-function flowerPetalPath(
-  cx: number,
-  cy: number,
-  point: Point,
-  petal: FlowerPetalMetric,
-  angle: number,
-  hubRadius: number
-): string {
-  return buildFlowerPetalGeometry({
-    center: { x: cx, y: cy },
-    contentCenter: point,
-    contentWidth: petal.width,
-    contentHeight: petal.height,
-    angleDegrees: angle,
-    hubRadius,
-  }).path;
+function SvgTextLines({
+  value,
+  lines,
+  x,
+  y,
+  fontSize,
+  lineHeight,
+  fill = "#0f172a",
+  weight = 600,
+  anchor = "middle",
+  fillOverride,
+}: {
+  value: string;
+  lines: readonly string[];
+  x: number;
+  y: number;
+  fontSize: number;
+  lineHeight: number;
+  fill?: string;
+  weight?: number;
+  anchor?: "start" | "middle" | "end";
+  fillOverride?: string;
+}) {
+  const visualStyle = useContext(DiagramVisualStyleContext);
+  const resolvedFill = fillOverride ?? visualStyle.textColor ?? fill;
+  const resolvedWeight = visualStyle.fontWeight === "bold"
+    ? 700
+    : visualStyle.fontWeight === "normal"
+      ? 400
+      : weight;
+  const offset = -((lines.length - 1) * lineHeight) / 2;
+  return (
+    <g role="img" aria-label={value}>
+      <title>{value}</title>
+      <text
+        x={x}
+        y={y + offset}
+        fill={resolvedFill}
+        fontFamily={visualStyle.fontFamily ?? FONT_FAMILY}
+        fontSize={fontSize}
+        fontWeight={resolvedWeight}
+        fontStyle={visualStyle.fontStyle}
+        textAnchor={anchor}
+        dominantBaseline="middle"
+        style={{ whiteSpace: "pre", wordBreak: "keep-all", overflowWrap: "normal" }}
+      >
+        {lines.map((line, index) => (
+          <tspan key={index} x={x} dy={index === 0 ? 0 : lineHeight}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
 }
 
 function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
@@ -780,97 +717,110 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   if (!groups.length) return <><TitleBlock spec={spec} width={width} /><EmptyDiagram spec={spec} /></>;
   const items = groups.map((group, index) => {
     const petal = petals[index];
-    const point = polar(cx, cy, petal.radius, petal.angle);
+    const geometry = buildFlowerPetalGeometry({
+      center: { x: cx, y: cy },
+      angleDegrees: petal.angle,
+      rootRadius: petal.rootRadius,
+      length: petal.length,
+      halfWidth: petal.halfWidth,
+      labelCenterOffset: petal.labelCenterRadius - petal.rootRadius,
+      labelRegionRadius: petal.labelRegionRadius,
+    });
     const color = styledGroupColor(group, index, spec);
     const style = itemStyle(group, spec);
     return {
       group,
       index,
       petal,
-      point,
+      geometry,
       color,
       style,
       stroke: groupStrokeColor(group, index, spec),
-      left: point.x - petal.width / 2,
-      top: point.y - petal.height / 2,
       transform: style.rotation
-        ? `rotate(${style.rotation} ${point.x} ${point.y})`
+        ? `rotate(${style.rotation} ${geometry.profile.root.x} ${geometry.profile.root.y})`
         : undefined,
     };
   });
+  const layerIndexes = [...new Set(items.map((item) => item.petal.layerIndex))]
+    .sort((first, second) => second - first);
+  const renderContent = ({ group, petal, geometry, color, style, transform }: typeof items[number]) => {
+    const center = geometry.profile.labelCenter;
+    const sourceText = sourceDisplayLabel(group, spec)
+      + (spec.showCounts ? " (" + group.count + ")" : "");
+    return (
+      <g
+        key={`flower-content-${group.sourceNodeId}`}
+        role="group"
+        aria-label={group.sourceLabel}
+        transform={transform}
+      >
+        <title>{group.sourceLabel + ": " + group.targets.map((target) => target.label).join(", ")}</title>
+        <SvgTextLines
+          value={sourceText}
+          lines={petal.flow.source.lines}
+          x={center.x + petal.flow.source.x}
+          y={center.y + petal.flow.source.y}
+          fontSize={petal.flow.source.fontSize}
+          lineHeight={petal.flow.source.lineHeight}
+          fillOverride={style.textColor}
+          weight={800}
+        />
+        {petal.flow.targets.map((placement) => {
+          const target = group.targets[placement.targetIndex];
+          const bulletX = center.x + placement.bulletX;
+          const labelY = center.y + placement.y;
+          return (
+            <g key={target.id}>
+              <circle
+                cx={bulletX}
+                cy={labelY}
+                r={Math.max(1.8, placement.fontSize * 0.2)}
+                fill={color}
+              />
+              <SvgTextLines
+                value={target.label}
+                lines={placement.lines}
+                x={center.x + placement.labelX}
+                y={labelY}
+                fontSize={placement.fontSize}
+                lineHeight={placement.lineHeight}
+                fillOverride={style.textColor}
+                weight={600}
+                anchor="start"
+              />
+            </g>
+          );
+        })}
+      </g>
+    );
+  };
   return (
     <>
-      {[...items]
-        .sort((first, second) =>
-          second.petal.layerIndex - first.petal.layerIndex || first.index - second.index
-        )
-        .map(({ group, petal, point, color, stroke, transform }) => (
-          <g
-            key={`flower-shape-${group.sourceNodeId}`}
-            transform={transform}
-            aria-hidden="true"
-          >
-            <path
-              d={flowerPetalPath(cx, cy, point, petal, petal.angle, hubRadius)}
-              fill={tint(color, 0.7)}
-              fillOpacity={groupFillOpacity(spec)}
-              stroke={stroke}
-              strokeWidth={groupStrokeWidth(spec)}
-              strokeLinejoin="round"
-            />
+      {layerIndexes.map((layerIndex) => {
+        const layerItems = items.filter((item) => item.petal.layerIndex === layerIndex);
+        return (
+          <g key={`flower-layer-${layerIndex}`}>
+            {layerItems.map(({ group, geometry, color, stroke, transform }) => (
+              <g
+                key={`flower-shape-${group.sourceNodeId}`}
+                transform={transform}
+                aria-hidden="true"
+              >
+                <path
+                  d={geometry.path}
+                  fill={tint(color, 0.7)}
+                  fillOpacity={groupFillOpacity(spec)}
+                  stroke={stroke}
+                  strokeWidth={groupStrokeWidth(spec)}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </g>
+            ))}
+            {layerItems.map(renderContent)}
           </g>
-        ))}
-      {items.map(({ group, petal, point, color, style, left, top, transform }) => (
-          <g
-            key={`flower-content-${group.sourceNodeId}`}
-            role="group"
-            aria-label={group.sourceLabel}
-            transform={transform}
-          >
-            <title>{group.sourceLabel + ": " + group.targets.map((target) => target.label).join(", ")}</title>
-            <SvgLabel
-              value={sourceDisplayLabel(group, spec) + (spec.showCounts ? " (" + group.count + ")" : "")}
-              x={point.x}
-              y={top + petal.sourceY}
-              width={petal.sourceWidth}
-              fontSize={petal.sourceFontSize}
-              fillOverride={style.textColor}
-              weight={800}
-              maximumLines={2}
-            />
-            <line
-              x1={left + 28}
-              y1={top + petal.dividerY}
-              x2={left + petal.width - 28}
-              y2={top + petal.dividerY}
-              stroke={tint(color, 0.2)}
-              strokeWidth="1.5"
-              opacity="0.7"
-            />
-            {petal.targetPlacements.map((placement) => {
-              const target = group.targets[placement.targetIndex];
-              const bulletX = left + placement.x - 11;
-              const labelY = top + placement.y;
-              return (
-                <g key={target.id}>
-                  <circle cx={bulletX} cy={labelY} r="3.5" fill={color} />
-                  <SvgLabel
-                    value={target.label}
-                    x={left + placement.x}
-                    y={labelY}
-                    width={placement.width}
-                    fontSize={petal.targetFontSize}
-                    fillOverride={style.textColor}
-                    weight={600}
-                    anchor="start"
-                    maximumLines={placement.lineCount}
-                    lineHeight={petal.targetLineHeight / petal.targetFontSize}
-                  />
-                </g>
-              );
-            })}
-          </g>
-        ))}
+        );
+      })}
       <circle cx={cx} cy={cy} r={hubRadius} fill="#0f172a" stroke="#ffffff" strokeWidth="4" />
       <SvgLabel
         value={spec.title || "Relationships"}

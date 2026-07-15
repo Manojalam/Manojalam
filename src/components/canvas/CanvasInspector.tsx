@@ -51,6 +51,7 @@ import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
 import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
 import {
   buildRelationshipGroupsForSpec,
+  MAX_FLOWER_LAYERS,
   MAX_FLOWER_PETALS_PER_LAYER,
   MIN_FLOWER_PETALS_PER_LAYER,
   normalizeRelationshipDiagramSpec,
@@ -1806,8 +1807,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       relationships,
       hierarchy,
     });
-    const flowerLayerCount = Math.ceil(
+    const automaticFlowerLayerCount = Math.ceil(
       diagramGroups.length / diagramSpec.flowerPetalsPerLayer
+    );
+    const preferredFlowerLayerCount = Math.max(
+      0,
+      ...Object.values(diagramSpec.itemStyles ?? {}).map((style) => style.flowerLayer ?? 0)
+    );
+    const flowerLayerCount = Math.min(
+      diagramGroups.length,
+      Math.max(
+        automaticFlowerLayerCount,
+        diagramSpec.flowerLayerCount,
+        preferredFlowerLayerCount
+      )
     );
     const updateItemStyle = (nodeId: string, patch: Partial<RelationshipDiagramItemStyle>) => {
       const current = diagramSpec.itemStyles?.[nodeId] ?? {};
@@ -1995,8 +2008,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   onChange={(value) => updateDiagram({ flowerPetalsPerLayer: value })}
                 />
               </div>
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Layer count
+                </p>
+                <Select
+                  value={String(diagramSpec.flowerLayerCount)}
+                  onValueChange={(value) => updateDiagram({ flowerLayerCount: Number(value) })}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Auto</SelectItem>
+                    {Array.from({ length: MAX_FLOWER_LAYERS }, (_, index) => {
+                      const layer = index + 1;
+                      return (
+                        <SelectItem key={layer} value={String(layer)}>
+                          {layer} {layer === 1 ? "layer" : "layers"}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
               <p className="text-[9px] leading-relaxed text-muted-foreground">
-                This is a maximum. Extra petals flow into balanced, staggered layers.
+                Auto balances the flower from the petal limit. Choose a number to request at least that many staggered layers.
               </p>
             </Section>
           )}
@@ -2268,6 +2305,37 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         />
                       </label>
                     </div>
+                    {diagramSpec.layout === "flower" && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                          Preferred flower layer
+                        </p>
+                        <Select
+                          value={style.flowerLayer ? String(style.flowerLayer) : "0"}
+                          onValueChange={(value) => updateItemStyle(group.sourceNodeId, {
+                            flowerLayer: value === "0" ? undefined : Number(value),
+                          })}
+                        >
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Auto</SelectItem>
+                            {Array.from({ length: MAX_FLOWER_LAYERS }, (_, layerIndex) => {
+                              const layer = layerIndex + 1;
+                              return (
+                                <SelectItem key={layer} value={String(layer)}>
+                                  Layer {layer}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[9px] leading-relaxed text-muted-foreground">
+                          Auto follows the item order. A chosen layer can expand the flower when needed.
+                        </p>
+                      </div>
+                    )}
                     <button
                       type="button"
                       className="text-[9px] text-muted-foreground hover:text-foreground hover:underline"
@@ -2277,6 +2345,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         textColor: undefined,
                         fontSize: undefined,
                         rotation: undefined,
+                        flowerLayer: undefined,
                       })}
                     >
                       Reset item styling

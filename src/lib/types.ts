@@ -187,6 +187,8 @@ export interface RelationshipDiagramItemStyle {
   textColor?: string;
   fontSize?: number;
   rotation?: number;
+  /** Optional one-based manual petal layer used by the flower layout. */
+  flowerLayer?: number;
 }
 
 export interface RelationshipDiagramScope {
@@ -215,6 +217,8 @@ export interface RelationshipDiagramSpec {
   density: RelationshipDiagramDensity;
   /** Maximum number of source petals placed in one concentric flower layer. */
   flowerPetalsPerLayer: number;
+  /** Zero selects automatic layering; positive values request at least this many layers. */
+  flowerLayerCount: number;
   decorativeLevel: RelationshipDiagramDecorativeLevel;
   /** CSS color for the diagram canvas; `transparent` preserves the board beneath it. */
   background: string;
