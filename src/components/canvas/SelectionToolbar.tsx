@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { NodeToolbar, Position } from "@xyflow/react";
+import { NodeToolbar, Position, type Node } from "@xyflow/react";
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
@@ -17,6 +17,7 @@ import {
   FileType2,
   Group,
   Lock,
+  Link2,
   Maximize2,
   MessageSquarePlus,
   Network,
@@ -74,6 +75,17 @@ function ActionButton({
 
 function Divider() {
   return <div className="mx-0.5 h-5 w-px bg-border" />;
+}
+
+function nodeDisplayLabel(node: Node | undefined): string {
+  if (!node) return "source removed";
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const raw = data.text ?? data.title ?? data.label ?? "canvas object";
+  const label = String(raw)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return label || "canvas object";
 }
 
 function ShapeChanger({
@@ -236,6 +248,13 @@ export function SelectionToolbar() {
   const singleIsSunburst = selected.length === 1 && selected[0].type === "sunburst";
   const singleIsJunction = selected.length === 1 && selected[0].type === "junction";
   const singleIsExternalNote = selected.length === 1 && isExternalNoteNode(selected[0]);
+  const noteSourceId = singleIsExternalNote
+    ? ((selected[0].data ?? {}) as Record<string, unknown>).noteForNodeId
+    : undefined;
+  const noteSource = typeof noteSourceId === "string"
+    ? nodes.find((node) => node.id === noteSourceId)
+    : undefined;
+  const noteSourceLabel = nodeDisplayLabel(noteSource);
   const singleLocked = selected.length === 1
     && ((selected[0].data ?? {}) as Record<string, unknown>).locked === true;
   const singleShapeData = selected.length === 1 && selected[0].type === "shape"
@@ -267,6 +286,28 @@ export function SelectionToolbar() {
       offset={14}
       className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
+      {singleIsExternalNote && (
+        <>
+          <div
+            role="status"
+            title={`Attached to ${noteSourceLabel}`}
+            className="flex h-9 max-w-44 items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-muted-foreground"
+          >
+            <Link2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Attached to {noteSourceLabel}</span>
+          </div>
+          {typeof noteSourceId === "string" && noteSource && (
+            <ActionButton
+              label={`Add another note to ${noteSourceLabel}`}
+              onClick={() => createNodeNote(noteSourceId)}
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+            </ActionButton>
+          )}
+          <Divider />
+        </>
+      )}
+
       {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && !singleIsExternalNote && (
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>

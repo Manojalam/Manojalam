@@ -58,7 +58,10 @@ import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
-import { isExternalNoteNode } from "@/lib/canvas/node-note";
+import {
+  includeAttachedExternalNoteIds,
+  isExternalNoteNode,
+} from "@/lib/canvas/node-note";
 import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
 import {
   findLogicalConnectorEdgeIds,
@@ -560,6 +563,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       collectMovableBranch(draggedNode.id);
       moveAsGroup = movingIds.length > 1;
     }
+    movingIds = includeAttachedExternalNoteIds(state.nodes, movingIds);
     dragStartRef.current = {
       source: { ...draggedNode.position },
       positions: new Map(state.nodes

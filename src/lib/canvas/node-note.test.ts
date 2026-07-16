@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
-import { createExternalNoteNode, EXTERNAL_NOTE_SIZE, isExternalNoteNode } from "./node-note";
+import {
+  createExternalNoteNode,
+  EXTERNAL_NOTE_SIZE,
+  includeAttachedExternalNoteIds,
+  isExternalNoteNode,
+} from "./node-note";
 
 const source: Node = {
   id: "source",
@@ -34,4 +39,31 @@ test("external notes choose another side when the preferred position is occupied
 
   assert.deepEqual(note.position, { x: 100, y: 202 });
   assert.equal(note.data.scriptMode, "iast");
+});
+
+test("a source can have multiple independently positioned notes", () => {
+  const first = createExternalNoteNode(source, [source], "first-note", "plain");
+  const second = createExternalNoteNode(source, [source, first], "second-note", "plain");
+
+  assert.equal(first.data.noteForNodeId, source.id);
+  assert.equal(second.data.noteForNodeId, source.id);
+  assert.notDeepEqual(second.position, first.position);
+});
+
+test("moving a source includes every attached note without moving the source when a note moves", () => {
+  const note = createExternalNoteNode(source, [source], "note", "plain");
+  const secondNote = createExternalNoteNode(source, [source, note], "second-note", "plain");
+  const lockedNote: Node = {
+    ...createExternalNoteNode(source, [source, note, secondNote], "locked-note", "plain"),
+    data: { ...note.data, locked: true },
+  };
+
+  assert.deepEqual(
+    includeAttachedExternalNoteIds([source, note, secondNote, lockedNote], [source.id]),
+    [source.id, note.id, secondNote.id, lockedNote.id]
+  );
+  assert.deepEqual(
+    includeAttachedExternalNoteIds([source, note, secondNote, lockedNote], [note.id]),
+    [note.id]
+  );
 });

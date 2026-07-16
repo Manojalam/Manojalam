@@ -10,6 +10,18 @@ export function isExternalNoteNode(node: Node | undefined): boolean {
   return (node?.data as { externalNote?: unknown } | undefined)?.externalNote === true;
 }
 
+/** Keep freely positioned notes at the same relative offset when their source moves. */
+export function includeAttachedExternalNoteIds(nodes: Node[], movingIds: string[]): string[] {
+  const included = new Set(movingIds);
+  for (const node of nodes) {
+    if (!isExternalNoteNode(node) || included.has(node.id)) continue;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (typeof data.noteForNodeId !== "string") continue;
+    if (included.has(data.noteForNodeId)) included.add(node.id);
+  }
+  return Array.from(included);
+}
+
 function candidateIsFree(
   candidate: { x: number; y: number },
   sourceId: string,
