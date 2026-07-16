@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createNodeRect, nodePositionFromTopLeft, resizeAroundAnchor } from "./node-geometry";
 import {
+  diamondTextFlowBox,
+  diamondTextFlowCapacity,
   effectiveCornerRadius,
   fitShapeToContent,
   fitSingleUnbrokenWord,
@@ -13,6 +15,7 @@ import {
   nodeContentPadding,
   shapeTextContentSize,
   shapeTextContentWidth,
+  shouldUseDiamondTextFlow,
 } from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
 import {
@@ -122,6 +125,49 @@ test("diamond text width does not shrink because of previous soft wrapping", () 
   assert.ok(correctedInterior.width >= 90);
   assert.ok(correctedInterior.width > feedbackInterior.width + 20);
   assert.ok(correctedInterior.height < feedbackInterior.height);
+});
+
+test("dense diamond labels use the whole shape instead of one center rectangle", () => {
+  const nodeSize = { width: 160, height: 160 };
+  const centered = shapeTextContentSize("diamond", nodeSize, "shape", {
+    contentSize: { width: 86, naturalWidth: 420, height: 112, lineCount: 6 },
+  });
+  const flowBox = diamondTextFlowBox(nodeSize);
+  const capacity = diamondTextFlowCapacity(nodeSize);
+
+  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
+    width: 86,
+    naturalWidth: 420,
+    height: 112,
+    lineCount: 6,
+  }), true);
+  assert.ok(flowBox.width > centered.width);
+  assert.ok(flowBox.height > centered.height * 3);
+  assert.ok(capacity.width * capacity.height < flowBox.width * flowBox.height / 2);
+  assert.ok(capacity.width * capacity.height > flowBox.width * flowBox.height * 0.4);
+});
+
+test("short diamond labels remain centered", () => {
+  const nodeSize = { width: 160, height: 160 };
+
+  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
+    width: 70,
+    naturalWidth: 70,
+    height: 20,
+    lineCount: 1,
+  }), false);
+  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
+    width: 120,
+    naturalWidth: 420,
+    height: 20,
+    lineCount: 1,
+  }), false);
+  assert.equal(shouldUseDiamondTextFlow("rectangle", nodeSize, {
+    width: 300,
+    naturalWidth: 300,
+    height: 80,
+    lineCount: 4,
+  }), false);
 });
 
 test("maximum text fitting fills the corrected diamond interior", () => {
@@ -431,6 +477,30 @@ test("fill available space never shrinks the normal rendered fit", () => {
   assert.ok(ordinary.scale < 1);
   assert.ok(maximized.scale >= ordinary.scale);
   assert.ok(maximized.fontSize >= ordinary.fontSize);
+});
+
+test("fill available space maximizes the actual compact rich-text measurement", () => {
+  const available = { width: 72, height: 28 };
+  const presentation = getFittedTextPresentation(
+    {
+      text: "अहन् + सुप ?",
+      fontSize: 14,
+      maximizeText: true,
+      intrinsicContentSize: {
+        width: 32,
+        naturalWidth: 32,
+        height: 9,
+        naturalHeight: 9,
+        lineCount: 1,
+      },
+    },
+    available.width,
+    14,
+    { availableHeight: available.height, constrain: true }
+  );
+
+  assert.equal(presentation.scale, 2.25);
+  assert.equal(32 * presentation.scale, available.width);
 });
 
 test("fixed-box fitting respects a readable minimum scale", () => {
