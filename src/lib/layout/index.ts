@@ -359,9 +359,9 @@ function nearestSides(a: Node, b: Node): { source: Side; target: Side } {
 }
 
 /**
- * Free-form flowcharts keep parent/child levels stable while nodes are moved.
- * A connector changes to side-to-side only when the node centers are close
- * enough to read as the same row; otherwise vertical order takes precedence.
+ * Free-form flowcharts favor vertical parent/child levels, but a predominantly
+ * lateral move should still attach side-to-side. This avoids a short vertical
+ * stub when the target is only slightly lower but much farther left or right.
  */
 function levelAwareFreeFormSides(a: Node, b: Node): { source: Side; target: Side } {
   const aRect = getNodeRect(a);
@@ -369,9 +369,11 @@ function levelAwareFreeFormSides(a: Node, b: Node): { source: Side; target: Side
   const dx = bRect.centerX - aRect.centerX;
   const dy = bRect.centerY - aRect.centerY;
   const sameLevelTolerance = Math.max(24, Math.min(aRect.height, bRect.height) * 0.35);
-  const source: Side = Math.abs(dy) <= sameLevelTolerance
-    ? (dx >= 0 ? "right" : "left")
-    : (dy >= 0 ? "bottom" : "top");
+  const verticalLevel = Math.abs(dy) > sameLevelTolerance
+    && Math.abs(dy) >= Math.abs(dx) * 0.55;
+  const source: Side = verticalLevel
+    ? (dy >= 0 ? "bottom" : "top")
+    : (dx >= 0 ? "right" : "left");
   return { source, target: opposite(source) };
 }
 
