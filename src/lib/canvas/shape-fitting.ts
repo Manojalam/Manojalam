@@ -65,7 +65,9 @@ export function nodeContentPadding(nodeType: string | undefined): Size {
   if (nodeType === "sticky") return { width: 36, height: 30 };
   if (nodeType === "text") return { width: 36, height: 26 };
   if (nodeType === "mindmap") return { width: 44, height: 30 };
-  return { width: 52, height: 42 };
+  // Shape geometry already restricts text to each visible interior. Keep only
+  // four pixels per side here so the fitted label can use that safe area.
+  return { width: 8, height: 8 };
 }
 
 function shapeContentPadding(shapeType: string | undefined, nodeType: string | undefined): Size {
