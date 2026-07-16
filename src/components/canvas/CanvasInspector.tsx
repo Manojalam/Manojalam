@@ -49,6 +49,7 @@ import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
 import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
+import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import {
   buildRelationshipGroupsForSpec,
   MAX_FLOWER_LAYERS,
@@ -760,6 +761,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
     : [];
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  const selectedRelationshipSourceIds = relationshipDiagramSourceIds(
+    selectedNodes
+      .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
+      .map((node) => node.id),
+    relationships
+  );
   const radialSelectionKeys = new Set(selectedNodes.map((node) =>
     ((node.data ?? {}) as Record<string, unknown>).sunburstHiddenFor
   ).filter((value): value is string => typeof value === "string"));
@@ -1159,7 +1166,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
 
         <div className="flex-1 divide-y overflow-y-auto">
-          {selectedNodes.length > 1 && <div className="p-3">
+          {selectedRelationshipSourceIds.length > 0 && <div className="p-3">
             <Button
               type="button"
               variant="outline"
@@ -1167,7 +1174,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               className="h-8 w-full justify-start gap-2 text-xs"
               onClick={() => openRelationshipDiagram({
                 mode: "create",
-                sourceNodeIds: selectedNodes.map((node) => node.id),
+                sourceNodeIds: selectedRelationshipSourceIds,
                 ...(multiRadialChartRootId ? { chartRootNodeId: multiRadialChartRootId } : {}),
               })}
             >
@@ -2637,6 +2644,25 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Button>
         )}
       </div>
+
+      {isRadialLayoutSector && selectedRelationshipSourceIds.length > 0 && (
+        <div className="border-b bg-muted/25 p-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 w-full justify-start gap-2 text-xs"
+            onClick={() => openRelationshipDiagram({
+              mode: "create",
+              sourceNodeIds: selectedRelationshipSourceIds,
+              ...(radialRootId ? { chartRootNodeId: radialRootId } : {}),
+            })}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            Generate relationship diagram
+          </Button>
+        </div>
+      )}
 
       <div className="flex-1 divide-y overflow-y-auto">
 
