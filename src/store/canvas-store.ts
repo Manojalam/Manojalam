@@ -82,6 +82,11 @@ import {
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import { createExternalNoteNode } from "@/lib/canvas/node-note";
+import {
+  applyBoardFontSize,
+  normalizeBoardFontSize,
+  supportsBoardTypography,
+} from "@/lib/canvas/board-typography";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -121,6 +126,7 @@ interface CanvasState {
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   setViewport: (viewport: Viewport) => void;
   setSettings: (settings: Partial<BoardSettings>) => void;
+  setBoardFontSize: (fontSize: number) => void;
   setSaveStatus: (status: SaveStatus) => void;
   setSelectedNodeIds: (ids: string[]) => void;
   setSelectedEdgeIds: (ids: string[]) => void;
@@ -1578,6 +1584,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         rawSettings.gridSpacing ?? rawSettings.gridSize,
         DEFAULT_BOARD_SETTINGS.gridSpacing ?? 32
       ),
+      defaultFontSize: normalizeBoardFontSize(
+        typeof rawSettings.defaultFontSize === "number"
+          ? rawSettings.defaultFontSize
+          : DEFAULT_BOARD_SETTINGS.defaultFontSize
+      ),
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
     };
     const settingsMigrationRequired = JSON.stringify(rawSettings) !== JSON.stringify(settings);
@@ -1645,6 +1656,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       settings: { ...state.settings, ...partial },
       saveStatus: "unsaved",
     })),
+
+  setBoardFontSize: (value) => {
+    const fontSize = normalizeBoardFontSize(value);
+    const targetIds = get().nodes.filter(supportsBoardTypography).map((node) => node.id);
+    set((state) => ({
+      nodes: applyBoardFontSize(state.nodes, fontSize),
+      settings: { ...state.settings, defaultFontSize: fontSize },
+      saveStatus: "unsaved",
+    }));
+    requestNodeInternalsRefresh(targetIds);
+    targetIds.forEach((nodeId) => {
+      get().scheduleListReflow(nodeId);
+      get().scheduleMatrixReflow(nodeId);
+    });
+  },
 
   setSaveStatus: (status) => set((state) => ({
     saveStatus: status,
@@ -2233,7 +2259,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       nodes,
       noteId,
       settings.defaultScriptMode,
-      nearPoint
+      nearPoint,
+      settings.defaultFontSize
     );
     set({
       nodes: [...nodes.map((node) => ({ ...node, selected: false })), note],
@@ -2249,7 +2276,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   createChildNode: (parentId) => get().createChildNodes(parentId, 1),
 
   createChildNodes: (parentId, count, keepParentSelected = false) => {
-    const { nodes, edges } = get();
+    const { nodes, edges, settings } = get();
     const parent = nodes.find((n) => n.id === parentId);
     if (!parent || ["relationshipDiagram", "sunburst", "frame", "junction"].includes(parent.type ?? "")) return;
     const safeCount = Math.max(1, Math.min(48, Math.round(count)));
@@ -2276,6 +2303,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       },
       data: {
         ...inheritStyle(parentData),
+        fontSize: typeof parentData.fontSize === "number" ? parentData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],
         parentId,
@@ -2397,7 +2425,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   createSiblingNode: (nodeId) => {
-    const { nodes, edges } = get();
+    const { nodes, edges, settings } = get();
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) return null;
     const currentHierarchy = buildHierarchy(nodes, edges);
@@ -2424,6 +2452,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       position: nodePositionFromTopLeft(node, siblingTopLeft, siblingSize),
       data: {
         ...inheritStyle(nodeData),
+        fontSize: typeof nodeData.fontSize === "number" ? nodeData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],
         parentId,

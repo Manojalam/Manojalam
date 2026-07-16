@@ -76,6 +76,12 @@ import {
   findLogicalConnectorEdgeIds,
   reverseLogicalConnectors,
 } from "@/lib/canvas/connector-junction";
+import {
+  MAX_BOARD_FONT_SIZE,
+  MIN_BOARD_FONT_SIZE,
+  normalizeWholeBoxFontSize,
+  supportsBoardTypography,
+} from "@/lib/canvas/board-typography";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -462,26 +468,6 @@ function inspectorLayoutLabel(value: unknown): string {
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 
-function normalizeWholeBoxFontSize(data: Record<string, unknown>, value: unknown): Record<string, unknown> {
-  const patch: Record<string, unknown> = { fontSize: value };
-  if (typeof data.richText !== "string") return patch;
-
-  const fallback = data.richText.replace(/font-size\s*:\s*[^;"']+;?/gi, "");
-  if (typeof document === "undefined") {
-    patch.richText = fallback;
-    return patch;
-  }
-
-  const container = document.createElement("div");
-  container.innerHTML = data.richText;
-  container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
-    element.style.removeProperty("font-size");
-    if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
-  });
-  patch.richText = container.innerHTML || fallback;
-  return patch;
-}
-
 function normalizeWholeTextFormat(
   data: Record<string, unknown>,
   key: "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
@@ -571,7 +557,7 @@ function normalizeWholeTextHighlight(data: Record<string, unknown>, value: unkno
 
 function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   let patch: Record<string, unknown>;
-  if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, value);
+  if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, Number(value));
   else if (key === "textHighlightColor") patch = normalizeWholeTextHighlight(data, value);
   else if (["fontFamily", "fontWeight", "fontStyle", "textColor", "textAlign"].includes(key)) {
     patch = normalizeWholeTextFormat(
@@ -817,6 +803,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const selectedEdgeIds = useCanvasStore((s) => s.selectedEdgeIds);
   const settings        = useCanvasStore((s) => s.settings);
   const setSettings     = useCanvasStore((s) => s.setSettings);
+  const setBoardFontSize = useCanvasStore((s) => s.setBoardFontSize);
   const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
   const updateRelationshipDiagramSpec = useCanvasStore((s) => s.updateRelationshipDiagramSpec);
   const setNodeLocked = useCanvasStore((s) => s.setNodeLocked);
@@ -837,6 +824,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setBoardSettings = (patch: Parameters<typeof setSettings>[0]) => {
     pushHistory();
     setSettings(patch);
+  };
+  const setBoardFontSizeWithHistory = (fontSize: number) => {
+    pushHistory();
+    setBoardFontSize(fontSize);
   };
 
   const drawingModeNodeId  = useUIStore((s) => s.drawingModeNodeId);
@@ -1635,6 +1626,53 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </div>
               </div>
             )}
+          </Section>
+          <Separator />
+          <Section label="Typography" defaultOpen>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Board font size
+                </p>
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setBoardFontSizeWithHistory(DEFAULT_BOARD_SETTINGS.defaultFontSize)}
+                >
+                  Reset
+                </button>
+              </div>
+              <SliderControl
+                value={settings.defaultFontSize}
+                onChange={setBoardFontSize}
+                onChangeStart={pushHistory}
+                min={MIN_BOARD_FONT_SIZE}
+                max={MAX_BOARD_FONT_SIZE}
+                step={1}
+                suffix="px"
+              />
+              <div className="mt-1.5 grid grid-cols-4 gap-1">
+                {([['Small', 12], ['Default', 14], ['Large', 18], ['XL', 24]] as const).map(([label, value]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className={cn(
+                      "rounded border px-1.5 py-1 text-[10px] transition-colors hover:bg-muted",
+                      settings.defaultFontSize === value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground"
+                    )}
+                    onClick={() => setBoardFontSizeWithHistory(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Updates {nodes.filter(supportsBoardTypography).length} shapes, sticky notes, text blocks,
+              mind-map nodes, and attached notes. Each object can still be adjusted individually.
+            </p>
           </Section>
           <Separator />
           <Section label="Behavior">

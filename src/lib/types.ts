@@ -126,6 +126,8 @@ export interface BoardSettings {
   defaultScriptMode: ScriptMode;
   defaultNodeColor: string;
   defaultFont: string;
+  /** Board-wide default applied to shapes, notes, text blocks, and mind-map nodes. */
+  defaultFontSize: number;
   canvasBackgroundColor?: string;
   gridColor?: string;
   gridSpacing?: number;
@@ -597,6 +599,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   defaultScriptMode: "plain",
   defaultNodeColor: "#6366f1",
   defaultFont: "Inter",
+  defaultFontSize: 14,
   canvasBackgroundColor: "#f0eeea",
   gridColor: "#d5d2cb",
   gridSpacing: 32,
