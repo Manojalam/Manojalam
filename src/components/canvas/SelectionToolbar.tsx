@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { NodeToolbar, Position } from "@xyflow/react";
 import {
   AlignCenterHorizontal,
@@ -11,6 +12,7 @@ import {
   AlignStartVertical,
   AlignVerticalDistributeCenter,
   Copy,
+  ChevronDown,
   FileImage,
   FileType2,
   Group,
@@ -25,7 +27,7 @@ import {
   Ungroup,
   Unlock,
 } from "lucide-react";
-import { generateId } from "@/lib/utils";
+import { cn, generateId } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   alignSelection,
@@ -35,6 +37,9 @@ import {
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { FLOWCHART_SHAPES } from "@/components/canvas/flowchart-shapes";
+import type { ShapeType } from "@/lib/types";
 
 function ActionButton({
   label,
@@ -67,6 +72,94 @@ function ActionButton({
 
 function Divider() {
   return <div className="mx-0.5 h-5 w-px bg-border" />;
+}
+
+function ShapeChanger({
+  nodeId,
+  shapeType,
+  cornerRadiusPercent,
+  petalCount,
+}: {
+  nodeId: string;
+  shapeType: ShapeType;
+  cornerRadiusPercent?: number;
+  petalCount?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const convertNode = useCanvasStore((state) => state.convertNode);
+  const currentShape = FLOWCHART_SHAPES.find((shape) => shape.variant === shapeType)
+    ?? FLOWCHART_SHAPES[1];
+
+  const changeShape = (nextShape: ShapeType) => {
+    if (nextShape !== shapeType) {
+      convertNode(nodeId, "shape", {
+        shapeType: nextShape,
+        borderRadius: undefined,
+        ...(nextShape === "rectangle" ? { cornerRadiusPercent: 0 } : {}),
+        ...(nextShape === "rounded"
+          ? { cornerRadiusPercent: Math.max(40, cornerRadiusPercent ?? 0) }
+          : {}),
+        ...(nextShape === "flower" ? { petalCount: petalCount ?? 8 } : {}),
+      });
+    }
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={`Change shape (currently ${currentShape.label})`}
+          aria-label={`Change shape. Current shape: ${currentShape.label}`}
+          aria-expanded={open}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          className="relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {currentShape.icon}
+          <ChevronDown className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 opacity-60" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        data-export-ignore
+        side="top"
+        align="start"
+        sideOffset={10}
+        className="nodrag nopan max-h-[min(60vh,28rem)] w-[18rem] overflow-y-auto p-2"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Change shape
+        </p>
+        <div className="grid grid-cols-4 gap-1" role="listbox" aria-label="Flowchart shapes">
+          {FLOWCHART_SHAPES.map((shape) => {
+            const active = shape.variant === shapeType;
+            return (
+              <button
+                key={shape.variant}
+                type="button"
+                role="option"
+                aria-selected={active}
+                title={shape.label}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  changeShape(shape.variant);
+                }}
+                className={cn(
+                  "flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  active && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
+                )}
+              >
+                {shape.icon}
+                <span className="w-full truncate text-center text-[9px] leading-tight">{shape.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function SelectionToolbar() {
@@ -140,6 +233,9 @@ export function SelectionToolbar() {
   const singleIsSunburst = selected.length === 1 && selected[0].type === "sunburst";
   const singleLocked = selected.length === 1
     && ((selected[0].data ?? {}) as Record<string, unknown>).locked === true;
+  const singleShapeData = selected.length === 1 && selected[0].type === "shape"
+    ? ((selected[0].data ?? {}) as Record<string, unknown>)
+    : null;
   const exportTitle = selected.length === 1
     ? String(
         ((selected[0].data ?? {}) as Record<string, unknown>).title
@@ -168,6 +264,16 @@ export function SelectionToolbar() {
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
+          {singleShapeData && (
+            <ShapeChanger
+              nodeId={singleId}
+              shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
+              cornerRadiusPercent={typeof singleShapeData.cornerRadiusPercent === "number"
+                ? singleShapeData.cornerRadiusPercent
+                : undefined}
+              petalCount={typeof singleShapeData.petalCount === "number" ? singleShapeData.petalCount : undefined}
+            />
+          )}
           <Divider />
         </>
       )}
