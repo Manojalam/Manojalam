@@ -553,6 +553,14 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   waypointOrigin?: "bend" | "segment-drag";
   /** User-positioned offset from the connector route's natural label anchor. */
   labelOffset?: { x: number; y: number };
+  /** Independent text color for the connector label. */
+  labelColor?: string;
+  /** Keep label and logical connector colors matched. */
+  labelColorSynced?: boolean;
+  labelFontFamily?: string;
+  labelFontSize?: number;
+  labelFontWeight?: "normal" | "bold";
+  labelFontStyle?: "normal" | "italic";
   /** User-positioned offset for the selected connector's editing toolbar. */
   toolbarOffset?: { x: number; y: number };
   /** Internal route anchors retained only until a newly inserted junction moves. */
