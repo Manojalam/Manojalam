@@ -226,9 +226,9 @@ export interface RelationshipDiagramSpec {
   background: string;
   sortSources: RelationshipDiagramSourceSort;
   sortTargets: RelationshipDiagramTargetSort;
-  /** Stable user-authored source order shared by every relationship layout. */
+  /** Stable user-authored item order shared by every relationship layout. */
   itemOrder?: string[];
-  /** Per-source presentation overrides shared by petals, cards, rows, and sectors. */
+  /** Per-item presentation overrides shared by petals, cards, rows, and sectors. */
   itemStyles?: Record<string, RelationshipDiagramItemStyle>;
   fontFamily?: string;
   fontWeight?: "normal" | "bold";
