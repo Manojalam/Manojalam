@@ -8,7 +8,7 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
-  FileImage, FileType2, Maximize2,
+  ArrowLeftRight, FileImage, FileType2, Maximize2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { toast } from "sonner";
@@ -40,6 +40,7 @@ import type {
   RelationshipDiagramPalette,
   RelationshipDiagramItemStyle,
   AutoSizeMode,
+  VidyaEdgeData,
 } from "@/lib/types";
 import type { Edge, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -65,7 +66,16 @@ import {
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
+import { ConnectorPathStylePreview } from "./edges/ConnectorPathStylePicker";
 import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
+import {
+  CONNECTOR_PATH_STYLES,
+  resolveConnectorPathStyle,
+} from "@/lib/canvas/connector-path-style";
+import {
+  findLogicalConnectorEdgeIds,
+  reverseLogicalConnectors,
+} from "@/lib/canvas/connector-junction";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -622,6 +632,7 @@ function ConnectionInspectorSections({
   onChange,
   onWidthChange,
   onWidthChangeStart,
+  onReverse,
   onDelete,
   defaultOpen = false,
 }: {
@@ -630,6 +641,7 @@ function ConnectionInspectorSections({
   onChange: (key: string, value: unknown, captureHistory?: boolean) => void;
   onWidthChange?: (value: number) => void;
   onWidthChangeStart?: () => void;
+  onReverse: () => void;
   onDelete: () => void;
   defaultOpen?: boolean;
 }) {
@@ -656,6 +668,12 @@ function ConnectionInspectorSections({
       ? arrowEnds[0] ? "both" : "start"
       : arrowEnds[0] ? "end" : "none"
     : "mixed";
+  const pathStyles = connectionEdges.map((edge) => (
+    resolveConnectorPathStyle((edge.data ?? {}) as VidyaEdgeData)
+  ));
+  const pathStyle = pathStyles.every((value) => value === pathStyles[0])
+    ? pathStyles[0]
+    : undefined;
   return (
     <>
       <Section label={`Connection path (${connectionEdges.length})`} defaultOpen={defaultOpen}>
@@ -680,9 +698,29 @@ function ConnectionInspectorSections({
             </button>
           ))}
         </div>
-        <div className="flex items-center justify-between">
-          <Label className="text-xs">Dashed</Label>
-          <Switch checked={!!commonValue("dashed")} onCheckedChange={(value) => onChange("dashed", value)} />
+        <div>
+          <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Line style</p>
+          <div className="grid grid-cols-4 gap-1">
+            {CONNECTOR_PATH_STYLES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                title={option.label}
+                aria-label={`${option.label} connection path`}
+                aria-pressed={pathStyle === option.value}
+                onClick={() => onChange("pathStyle", option.value)}
+                className={cn(
+                  "flex h-11 flex-col items-center justify-center gap-1 rounded-md border text-[9px] transition-colors",
+                  pathStyle === option.value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:bg-muted"
+                )}
+              >
+                <ConnectorPathStylePreview style={option.value} />
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Endpoints</p>
@@ -712,6 +750,10 @@ function ConnectionInspectorSections({
             ))}
           </div>
         </div>
+        <Button type="button" variant="outline" size="sm" className="h-8 w-full text-[10px]" onClick={onReverse}>
+          <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" />
+          Reverse {connectionEdges.length === 1 ? "direction" : `${connectionEdges.length} directions`}
+        </Button>
       </Section>
       <Section label="Connection appearance" defaultOpen={defaultOpen}>
         <div>
@@ -1105,7 +1147,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setSelectedEdgeField = (key: string, value: unknown, captureHistory = true) => {
     if (!editableSelectionEdges.length) return;
     if (captureHistory) pushHistory();
-    const selectedIds = new Set(editableSelectionEdges.map((edge) => edge.id));
+    const selectedIds = new Set(key === "pathStyle"
+      ? editableSelectionEdges.flatMap((edge) => findLogicalConnectorEdgeIds(edges, edge.id))
+      : editableSelectionEdges.map((edge) => edge.id));
     useCanvasStore.setState((state) => ({
       edges: state.edges.map((edge) => {
         if (!selectedIds.has(edge.id)) return edge;
@@ -1145,6 +1189,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             data: { ...(edge.data ?? {}), color: value },
           };
         }
+        if (key === "pathStyle") {
+          const data = { ...(edge.data ?? {}), pathStyle: value } as Record<string, unknown>;
+          delete data.dashed;
+          return { ...edge, data };
+        }
         return { ...edge, data: { ...(edge.data ?? {}), [key]: value } };
       }),
       saveStatus: "unsaved",
@@ -1160,6 +1209,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   const deleteEditableConnections = () => {
     deleteEdges(editableSelectionEdges.map((edge) => edge.id));
+  };
+
+  const reverseEditableConnections = () => {
+    const state = useCanvasStore.getState();
+    const reversed = reverseLogicalConnectors(
+      state.edges,
+      editableSelectionEdges.map((edge) => edge.id)
+    );
+    if (reversed === state.edges) return;
+    state.pushHistory();
+    useCanvasStore.setState({ edges: reversed, saveStatus: "unsaved" });
   };
 
   if (selectedNodes.length > 1 || (selectedNodes.length > 0 && selectedEdges.length > 0)) {
@@ -1441,6 +1501,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={setSelectedEdgeField}
               onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
               onWidthChangeStart={pushHistory}
+              onReverse={reverseEditableConnections}
               onDelete={deleteEditableConnections}
               defaultOpen
             />
@@ -1479,6 +1540,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={setSelectedEdgeField}
               onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
               onWidthChangeStart={pushHistory}
+              onReverse={reverseEditableConnections}
               onDelete={deleteEditableConnections}
               defaultOpen
             />

@@ -12,6 +12,7 @@ import { resolveAccentColor } from "@/lib/style-utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
+import { ConnectorSvgPath } from "./ConnectorPath";
 
 function edgeData(edge: Edge): VidyaEdgeData {
   return (edge.data ?? {}) as VidyaEdgeData;
@@ -120,23 +121,20 @@ export function StructuredTreeConnectors() {
             const trunkColor = group.branches.length === 1
               ? edgeColor(baseEdge)
               : resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
+            const trunkNormalColor = group.branches.length === 1
+              ? edgeColor(baseEdge, false)
+              : resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
             const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
-            const commonStyle = {
-              fill: "none",
-              stroke: trunkColor,
-              strokeWidth: trunkWidth,
-              strokeDasharray: data.dashed ? "6 4" : undefined,
-              strokeLinecap: "round" as const,
-              strokeLinejoin: "round" as const,
-              vectorEffect: "non-scaling-stroke" as const,
-            };
             return (
               <g key={group.parentId}>
                 {group.sharedSegments.map((segment, index) => (
-                  <path
+                  <ConnectorSvgPath
                     key={`shared-${index}`}
                     d={segmentPath(segment)}
-                    {...commonStyle}
+                    edgeData={data}
+                    color={trunkColor}
+                    normalColor={trunkNormalColor}
+                    width={trunkWidth}
                     markerStart={index === 0 && group.branches.length === 1 && hasArrowStart(baseEdge)
                       ? `url(#${markerId(baseEdge.id)})`
                       : undefined}
@@ -145,17 +143,15 @@ export function StructuredTreeConnectors() {
                 {group.branches.map(({ edge, segments }) => {
                   const data = edgeData(edge);
                   const path = branchPath(segments);
+                  const normalColor = data.color ?? data.layoutColor ?? "#94a3b8";
                   return (
                     <g key={edge.id}>
-                      <path
+                      <ConnectorSvgPath
                         d={path}
-                        fill="none"
-                        stroke={edgeColor(edge)}
-                        strokeWidth={edgeWidth(edge)}
-                        strokeDasharray={data.dashed ? "6 4" : undefined}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        vectorEffect="non-scaling-stroke"
+                        edgeData={data}
+                        color={edgeColor(edge)}
+                        normalColor={normalColor}
+                        width={edgeWidth(edge)}
                         markerEnd={hasArrowEnd(edge) ? `url(#${markerId(edge.id)})` : undefined}
                       />
                       <path

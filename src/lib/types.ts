@@ -53,6 +53,7 @@ export type CanvasTool =
   | "grammar";
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
+export type ConnectorPathStyle = "solid" | "dashed" | "dotted" | "double";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
@@ -528,6 +529,8 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   layoutColorRootId?: string;
   layoutOriginalMarkerColor?: string | null;
   width?: number;
+  /** Visual treatment for the connector path. `dashed` remains as a legacy fallback. */
+  pathStyle?: ConnectorPathStyle;
   dashed?: boolean;
   hiddenInMatrix?: boolean;
   /** Matrix root that temporarily owns the hidden hierarchy edge. */

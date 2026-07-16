@@ -2,7 +2,6 @@
 
 import { memo } from "react";
 import {
-  BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
   getSmoothStepPath,
@@ -35,6 +34,7 @@ import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connect
 import { isConnectorRoutingObstacle } from "@/lib/canvas/connector-obstacles";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
+import { ConnectorPath } from "./ConnectorPath";
 
 const ROUTING_CORRIDOR_PAD = 360;
 const MAX_ROUTING_OBSTACLES = 160;
@@ -232,18 +232,16 @@ function RoutedSmartBranchEdge({
 
   return (
     <>
-      <BaseEdge
-        data-export-normal-stroke={edgeColor ?? "#94a3b8"}
+      <ConnectorPath
         id={id}
         path={path}
+        edgeData={d}
+        color={logicalSelected ? "#6366f1" : edgeColor ?? "#94a3b8"}
+        normalColor={edgeColor ?? "#94a3b8"}
+        width={d.width ?? 2}
         markerStart={sourceNode?.type === "junction" ? undefined : markerStart}
         markerEnd={targetNode?.type === "junction" ? undefined : markerEnd}
         interactionWidth={48}
-        style={{
-          stroke: logicalSelected ? "#6366f1" : edgeColor ?? "#94a3b8",
-          strokeWidth: d.width ?? 2,
-          strokeDasharray: d.dashed ? "6 4" : undefined,
-        }}
       />
       {(logicalSelected || (labelOwnerId === id && connectionLabel)) && (
         <EdgeLabelRenderer>

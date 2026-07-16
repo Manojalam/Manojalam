@@ -2,7 +2,6 @@
 
 import { memo } from "react";
 import {
-  BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
   getSmoothStepPath,
@@ -12,6 +11,7 @@ import {
 } from "@xyflow/react";
 import type { VidyaEdgeData } from "@/lib/types";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
+import { ConnectorPath } from "./ConnectorPath";
 import { SmartBranchEdge } from "./SmartBranchEdge";
 
 function VidyaEdgeComponent({
@@ -71,18 +71,16 @@ function VidyaEdgeComponent({
 
   return (
     <>
-      <BaseEdge
-        data-export-normal-stroke={edgeColor ?? "#94a3b8"}
+      <ConnectorPath
         id={id}
         path={path}
+        edgeData={d}
+        color={selected ? "#6366f1" : edgeColor ?? "#94a3b8"}
+        normalColor={edgeColor ?? "#94a3b8"}
+        width={d.width ?? 2}
         markerStart={markerStart}
         markerEnd={markerEnd}
         interactionWidth={28}
-        style={{
-          stroke: selected ? "#6366f1" : edgeColor ?? "#94a3b8",
-          strokeWidth: d.width ?? 2,
-          strokeDasharray: d.dashed ? "6 4" : undefined,
-        }}
       />
       {(selected || d.label) && (
         <EdgeLabelRenderer>

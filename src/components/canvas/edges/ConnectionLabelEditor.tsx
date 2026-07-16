@@ -2,10 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
+import { reverseLogicalConnectors } from "@/lib/canvas/connector-junction";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
+import { ConnectorPathStylePicker } from "./ConnectorPathStylePicker";
 
 interface ConnectionLabelEditorProps {
   edgeId: string;
@@ -118,6 +120,14 @@ export function ConnectionLabelEditor({
     updateLabel(edgeId, nextLabel);
   };
 
+  const reverseConnection = () => {
+    const state = useCanvasStore.getState();
+    const edges = reverseLogicalConnectors(state.edges, [toolbarEdgeId]);
+    if (edges === state.edges) return;
+    state.pushHistory();
+    useCanvasStore.setState({ edges, saveStatus: "unsaved" });
+  };
+
   return (
     <>
       {showLabel && label && (
@@ -210,6 +220,16 @@ export function ConnectionLabelEditor({
             }}
           />
           <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
+          <ConnectorPathStylePicker edgeId={toolbarEdgeId} />
+          <button
+            type="button"
+            title="Reverse connection direction"
+            aria-label="Reverse connection direction"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={reverseConnection}
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" />
+          </button>
           <button
             type="button"
             title={hasMovableLabel ? "Drag to move the label" : "Enter a label before moving it"}
