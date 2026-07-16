@@ -22,6 +22,17 @@ interface AlignmentSnapOptions {
   threshold?: number;
   allowX?: boolean;
   allowY?: boolean;
+  centersOnly?: boolean;
+}
+
+/** Keep the magnetic alignment target a usable screen size at every zoom. */
+export function alignmentSnapThreshold(
+  zoom: number,
+  screenPixels = 12,
+  maxFlowDistance = 48
+): number {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return Math.min(maxFlowDistance, Math.max(2, screenPixels / safeZoom));
 }
 
 /** Find the nearest edge, center, or touching-edge alignment for a dragged box. */
@@ -56,18 +67,26 @@ export function snapRectToAlignment(
 
   for (const other of others) {
     if (options.allowX !== false) {
-      considerX(dragged.left, other.left);
-      considerX(dragged.centerX, other.centerX);
-      considerX(dragged.right, other.right);
-      considerX(dragged.right, other.left);
-      considerX(dragged.left, other.right);
+      if (options.centersOnly) {
+        considerX(dragged.centerX, other.centerX);
+      } else {
+        considerX(dragged.left, other.left);
+        considerX(dragged.centerX, other.centerX);
+        considerX(dragged.right, other.right);
+        considerX(dragged.right, other.left);
+        considerX(dragged.left, other.right);
+      }
     }
     if (options.allowY !== false) {
-      considerY(dragged.top, other.top);
-      considerY(dragged.centerY, other.centerY);
-      considerY(dragged.bottom, other.bottom);
-      considerY(dragged.bottom, other.top);
-      considerY(dragged.top, other.bottom);
+      if (options.centersOnly) {
+        considerY(dragged.centerY, other.centerY);
+      } else {
+        considerY(dragged.top, other.top);
+        considerY(dragged.centerY, other.centerY);
+        considerY(dragged.bottom, other.bottom);
+        considerY(dragged.bottom, other.top);
+        considerY(dragged.top, other.bottom);
+      }
     }
   }
 
