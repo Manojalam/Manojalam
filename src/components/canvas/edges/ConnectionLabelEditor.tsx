@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Trash2, X } from "lucide-react";
+import { CircleDot, GitBranch, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 
 interface ConnectionLabelEditorProps {
   edgeId: string;
@@ -10,6 +11,9 @@ interface ConnectionLabelEditorProps {
   y: number;
   label?: string;
   selected?: boolean;
+  onAddBend?: () => void;
+  onResetRoute?: () => void;
+  onAddJunction?: () => void;
 }
 
 function updateLabel(edgeId: string, label: string): void {
@@ -28,6 +32,9 @@ export function ConnectionLabelEditor({
   y,
   label = "",
   selected = false,
+  onAddBend,
+  onResetRoute,
+  onAddJunction,
 }: ConnectionLabelEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const historyCaptured = useRef(false);
@@ -86,7 +93,7 @@ export function ConnectionLabelEditor({
             ref={inputRef}
             aria-label="Connection label"
             value={label}
-            placeholder="Label (Yes / No)"
+            placeholder="Connection label"
             className="h-7 w-28 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
             onChange={(event) => setLabel(event.target.value)}
             onKeyDown={(event) => {
@@ -95,16 +102,40 @@ export function ConnectionLabelEditor({
               if (event.key === "Escape") inputRef.current?.blur();
             }}
           />
-          {(["Yes", "No"] as const).map((preset) => (
+          <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
+          {onAddBend && (
             <button
-              key={preset}
               type="button"
-              className="h-7 rounded-md border px-2 text-[10px] font-medium hover:bg-muted"
-              onClick={() => setLabel(preset)}
+              title="Add a movable bend point"
+              aria-label="Add connector bend point"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={onAddBend}
             >
-              {preset}
+              <GitBranch className="h-3.5 w-3.5" />
             </button>
-          ))}
+          )}
+          {onResetRoute && (
+            <button
+              type="button"
+              title="Reset to automatic routing"
+              aria-label="Reset connector to automatic routing"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={onResetRoute}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onAddJunction && (
+            <button
+              type="button"
+              title="Add a connector junction"
+              aria-label="Add connector junction"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={onAddJunction}
+            >
+              <CircleDot className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             type="button"
             title="Clear label"

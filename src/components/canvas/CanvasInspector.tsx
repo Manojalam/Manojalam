@@ -64,6 +64,7 @@ import {
   compactEqualSpacing,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
+import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -741,16 +742,12 @@ function ConnectionInspectorSections({
               className="mt-1 h-8 text-xs"
             />
             <div className="mt-1.5 grid grid-cols-4 gap-1">
-              {["Yes", "No", "True", "False"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  className="rounded-md border px-1 py-1 text-[9px] hover:bg-muted"
-                  onClick={() => onChange("label", label)}
-                >
-                  {label}
-                </button>
-              ))}
+              <ConnectorLabelPresets
+                variant="grid"
+                maxVisible={7}
+                currentLabel={(edgeData.label as string) ?? ""}
+                onSelect={(label) => onChange("label", label)}
+              />
             </div>
           </div>
         )}
@@ -814,7 +811,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
   const selectedRelationshipSourceIds = relationshipDiagramSourceIds(
     selectedNodes
-      .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
+      .filter((node) => !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? ""))
       .map((node) => node.id),
     relationships
   );
@@ -1628,6 +1625,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   }
 
   // ── Node selected ──────────────────────────────────────────────────────────
+  if (selectedNode.type === "junction") {
+    return (
+      <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
+        <div className="flex items-center justify-between border-b px-3 py-2.5">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Connector junction</h3>
+            <p className="text-[10px] text-muted-foreground">A movable branch point between connectors</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={deleteSelected}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <div className="space-y-2 p-3 text-[11px] leading-relaxed text-muted-foreground">
+          <p>Drag the dot to reroute the connected lines.</p>
+          <p>Select the Connector tool, then drag from any junction handle to a shape or another junction.</p>
+        </div>
+      </aside>
+    );
+  }
+
   if (selectedNode.type === "sunburst") {
     const chartData = (selectedNode.data ?? {}) as Record<string, unknown>;
     const chartDimensions = getNodeDimensions(selectedNode);

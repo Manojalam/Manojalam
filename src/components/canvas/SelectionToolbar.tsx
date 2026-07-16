@@ -231,6 +231,7 @@ export function SelectionToolbar() {
   const singleId = selected.length === 1 ? selected[0].id : null;
   const singleIsRelationshipDiagram = selected.length === 1 && selected[0].type === "relationshipDiagram";
   const singleIsSunburst = selected.length === 1 && selected[0].type === "sunburst";
+  const singleIsJunction = selected.length === 1 && selected[0].type === "junction";
   const singleLocked = selected.length === 1
     && ((selected[0].data ?? {}) as Record<string, unknown>).locked === true;
   const singleShapeData = selected.length === 1 && selected[0].type === "shape"
@@ -245,7 +246,7 @@ export function SelectionToolbar() {
     : "canvas-selection";
   const relationshipSourceIds = relationshipDiagramSourceIds(
     selected
-      .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
+      .filter((node) => !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? ""))
       .map((node) => node.id),
     relationships
   );
@@ -259,7 +260,7 @@ export function SelectionToolbar() {
       offset={14}
       className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
-      {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && (
+      {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && (
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>

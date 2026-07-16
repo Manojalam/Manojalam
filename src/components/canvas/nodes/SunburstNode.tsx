@@ -879,6 +879,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       node.type !== "sunburst"
       && node.type !== "frame"
       && node.type !== "relationshipDiagram"
+      && node.type !== "junction"
     );
     const byId = new Map(chartNodes.map((node) => [node.id, node]));
     const root = byId.get(d.rootId);

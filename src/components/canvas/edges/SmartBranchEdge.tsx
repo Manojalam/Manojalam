@@ -10,16 +10,53 @@ import {
   useNodesData,
   useNodes,
   useEdges,
+  Position,
   type EdgeProps,
 } from "@xyflow/react";
 import type { VidyaEdgeData } from "@/lib/types";
 import { getNodeRect, type NodeRect } from "@/lib/layout";
-import { routeLayoutEdge, type LayoutRouteOptions } from "@/lib/layout/edge-routing";
+import {
+  routeLayoutEdge,
+  routeManualOrthogonalEdge,
+  routeOrthogonalEdge,
+  type LayoutRouteOptions,
+  type RoutePoint,
+  type Side,
+} from "@/lib/layout/edge-routing";
 import { useUIStore } from "@/store/ui-store";
+import { useCanvasStore } from "@/store/canvas-store";
+import { generateId } from "@/lib/utils";
+import { splitConnectorAtJunction } from "@/lib/canvas/connector-junction";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
+import { ConnectorBendHandles } from "./ConnectorBendHandles";
 
 const ROUTING_CORRIDOR_PAD = 360;
 const MAX_ROUTING_OBSTACLES = 160;
+
+function positionSide(position: Position): Side {
+  switch (position) {
+    case Position.Top: return "top";
+    case Position.Bottom: return "bottom";
+    case Position.Left: return "left";
+    case Position.Right: return "right";
+  }
+}
+
+function edgeWaypoints(data: VidyaEdgeData): RoutePoint[] {
+  if (!Array.isArray(data.waypoints)) return [];
+  return data.waypoints.filter((point) => (
+    !!point && Number.isFinite(point.x) && Number.isFinite(point.y)
+  ));
+}
+
+function setEdgeWaypoints(edgeId: string, waypoints: RoutePoint[] | undefined): void {
+  useCanvasStore.setState((state) => ({
+    edges: state.edges.map((edge) => edge.id === edgeId
+      ? { ...edge, data: { ...(edge.data ?? {}), waypoints } }
+      : edge),
+    saveStatus: "unsaved",
+  }));
+}
 
 function nearRouteCorridor(rect: NodeRect, source: NodeRect, target: NodeRect): boolean {
   const minX = Math.min(source.x, target.x) - ROUTING_CORRIDOR_PAD;
@@ -95,6 +132,7 @@ function RoutedSmartBranchEdge({
   const edgeColor = d.color ?? d.layoutColor;
   const nodes = useNodes();
   const edges = useEdges();
+  const pushHistory = useCanvasStore((state) => state.pushHistory);
   const canvasDragging = useUIStore((s) => s.canvasDragging);
   if (d.hiddenInMatrix || d.hiddenInSunburst) return null;
 
@@ -106,10 +144,11 @@ function RoutedSmartBranchEdge({
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
   const manualRoute = d.manualRoute === true;
+  const waypoints = edgeWaypoints(d);
 
   // Keep every connector inexpensive while nodes are moving. The obstacle-aware
   // route is recalculated from the final node geometry as soon as dragging ends.
-  if (canvasDragging || curveStyle !== "step" || manualRoute) {
+  if (curveStyle !== "step" || (canvasDragging && !waypoints.length)) {
     const routed = curveStyle === "straight"
       ? getStraightPath({ sourceX, sourceY, targetX, targetY })
       : curveStyle === "smooth"
@@ -129,13 +168,29 @@ function RoutedSmartBranchEdge({
       if (obstacles.length >= MAX_ROUTING_OBSTACLES) break;
     }
 
-    const routed = routeLayoutEdge(
-      sourceRect,
-      targetRect,
-      d.layoutMode,
-      obstacles,
-      routeOptionsForEdge(id, source, target, d.layoutMode, nodes, edges)
-    );
+    const routed = waypoints.length
+      ? routeManualOrthogonalEdge(
+          { x: sourceX, y: sourceY },
+          { x: targetX, y: targetY },
+          positionSide(sourcePosition),
+          positionSide(targetPosition),
+          waypoints
+        )
+      : manualRoute
+        ? routeOrthogonalEdge(
+            { x: sourceX, y: sourceY },
+            { x: targetX, y: targetY },
+            positionSide(sourcePosition),
+            positionSide(targetPosition),
+            obstacles
+          )
+        : routeLayoutEdge(
+            sourceRect,
+            targetRect,
+            d.layoutMode,
+            obstacles,
+            routeOptionsForEdge(id, source, target, d.layoutMode, nodes, edges)
+          );
     if (!routed.path) return null;
     path = routed.path;
     labelX = routed.labelX;
@@ -169,7 +224,67 @@ function RoutedSmartBranchEdge({
             y={labelY}
             label={d.label}
             selected={selected}
+            onAddBend={curveStyle === "step" ? () => {
+              pushHistory();
+              const previous = waypoints[waypoints.length - 1];
+              const next = previous
+                ? { x: Math.round((previous.x + targetX) / 2), y: Math.round((previous.y + targetY) / 2) }
+                : { x: Math.round(labelX), y: Math.round(labelY) };
+              setEdgeWaypoints(id, [...waypoints, next]);
+            } : undefined}
+            onResetRoute={waypoints.length ? () => {
+              pushHistory();
+              setEdgeWaypoints(id, undefined);
+            } : undefined}
+            onAddJunction={curveStyle === "step" ? () => {
+              const state = useCanvasStore.getState();
+              const edge = state.edges.find((candidate) => candidate.id === id);
+              if (!edge) return;
+              state.pushHistory();
+              const split = splitConnectorAtJunction(
+                edge,
+                { x: labelX, y: labelY },
+                { x: sourceX, y: sourceY },
+                { x: targetX, y: targetY },
+                {
+                  junctionId: generateId(),
+                  firstEdgeId: generateId(),
+                  secondEdgeId: generateId(),
+                }
+              );
+              useCanvasStore.setState((current) => ({
+                nodes: [
+                  ...current.nodes.map((node) => {
+                    const nodeData = (node.data ?? {}) as Record<string, unknown>;
+                    let nextData = nodeData;
+                    if (node.id === source && Array.isArray(nodeData.childOrder)) {
+                      nextData = {
+                        ...nextData,
+                        childOrder: (nodeData.childOrder as string[]).filter((childId) => childId !== target),
+                      };
+                    }
+                    if (node.id === target && nodeData.parentId === source) {
+                      nextData = { ...nextData, parentId: null };
+                    }
+                    return { ...node, selected: false, data: nextData };
+                  }),
+                  split.junction,
+                ],
+                edges: [
+                  ...current.edges.filter((candidate) => candidate.id !== id).map((candidate) => (
+                    candidate.selected ? { ...candidate, selected: false } : candidate
+                  )),
+                  ...split.edges,
+                ],
+                selectedNodeIds: [split.junction.id],
+                selectedEdgeIds: [],
+                saveStatus: "unsaved",
+              }));
+            } : undefined}
           />
+          {selected && curveStyle === "step" && waypoints.length > 0 && (
+            <ConnectorBendHandles edgeId={id} waypoints={waypoints} />
+          )}
         </EdgeLabelRenderer>
       )}
     </>

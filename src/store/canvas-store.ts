@@ -77,6 +77,7 @@ import {
   placeFlowchartInsertions,
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
+import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -240,7 +241,8 @@ function normalizeRelationshipState(
       .filter((node) =>
         node.type !== "sunburst" &&
         node.type !== "frame" &&
-        node.type !== "relationshipDiagram"
+        node.type !== "relationshipDiagram" &&
+        node.type !== "junction"
       )
       .map((node) => node.id)
   );
@@ -1564,6 +1566,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         rawSettings.gridSpacing ?? rawSettings.gridSize,
         DEFAULT_BOARD_SETTINGS.gridSpacing ?? 32
       ),
+      connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
     };
     const settingsMigrationRequired = JSON.stringify(rawSettings) !== JSON.stringify(settings);
     const normalizedBoard: VidyaBoard = {
@@ -1657,7 +1660,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         .filter((node) =>
           node.type !== "sunburst" &&
           node.type !== "frame" &&
-          node.type !== "relationshipDiagram"
+          node.type !== "relationshipDiagram" &&
+          node.type !== "junction"
         )
         .map((node) => node.id)
     );
@@ -2192,7 +2196,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   createChildNodes: (parentId, count, keepParentSelected = false) => {
     const { nodes, edges } = get();
     const parent = nodes.find((n) => n.id === parentId);
-    if (!parent || ["relationshipDiagram", "sunburst", "frame"].includes(parent.type ?? "")) return;
+    if (!parent || ["relationshipDiagram", "sunburst", "frame", "junction"].includes(parent.type ?? "")) return;
     const safeCount = Math.max(1, Math.min(48, Math.round(count)));
     get().pushHistory();
     const currentHierarchy = buildHierarchy(nodes, edges);

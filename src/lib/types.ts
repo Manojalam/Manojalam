@@ -127,6 +127,8 @@ export interface BoardSettings {
   canvasBackgroundColor?: string;
   gridColor?: string;
   gridSpacing?: number;
+  /** Reusable connector-label shortcuts saved with this board. */
+  connectorLabelPresets?: string[];
   /** @deprecated Legacy alias retained while old boards migrate. */
   gridSize?: number;
 }
@@ -510,6 +512,11 @@ export interface RelationshipDiagramNodeData extends BaseNodeData {
   relationshipDiagramSpec: RelationshipDiagramSpec;
 }
 
+export interface ConnectorJunctionNodeData extends BaseNodeData {
+  connectorJunction: true;
+  color?: string;
+}
+
 export interface VidyaEdgeData extends Record<string, unknown> {
   label?: string;
   color?: string;
@@ -532,6 +539,8 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   manualRoute?: boolean;
   /** Keep the exact user-selected source and target handles when nodes move. */
   preserveHandles?: boolean;
+  /** User-positioned anchors that turn the automatic route into an editable path. */
+  waypoints?: Array<{ x: number; y: number }>;
   edgeType?: "normal" | "arrow" | "labeled" | "branch" | "dashed" | "sanskrit";
 }
 
@@ -546,6 +555,7 @@ export type VidyaNode = Node<
   | FrameNodeData
   | SunburstNodeData
   | RelationshipDiagramNodeData
+  | ConnectorJunctionNodeData
 >;
 export type VidyaEdge = Edge<VidyaEdgeData>;
 
@@ -577,6 +587,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   gridColor: "#d5d2cb",
   gridSpacing: 32,
   gridSize: 32,
+  connectorLabelPresets: ["Yes", "No"],
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

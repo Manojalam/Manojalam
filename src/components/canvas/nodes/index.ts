@@ -7,6 +7,7 @@ import { GrammarCardNode } from "./GrammarCardNode";
 import { FrameNode } from "./FrameNode";
 import { SunburstNode } from "./SunburstNode";
 import { RelationshipDiagramNode } from "./RelationshipDiagramNode";
+import { ConnectorJunctionNode } from "./ConnectorJunctionNode";
 
 export const nodeTypes = {
   // Legacy "mindmap" nodes are migrated to shapes on load; alias to ShapeNode
@@ -21,6 +22,7 @@ export const nodeTypes = {
   frame: FrameNode,
   sunburst: SunburstNode,
   relationshipDiagram: RelationshipDiagramNode,
+  junction: ConnectorJunctionNode,
 };
 
 export {
@@ -33,4 +35,5 @@ export {
   FrameNode,
   SunburstNode,
   RelationshipDiagramNode,
+  ConnectorJunctionNode,
 };

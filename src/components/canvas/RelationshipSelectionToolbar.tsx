@@ -21,6 +21,7 @@ export function commitRelationshipSelection(): boolean {
     node.type !== "sunburst"
     && node.type !== "frame"
     && node.type !== "relationshipDiagram"
+    && node.type !== "junction"
   );
   const hierarchy = buildHierarchy(chartNodes, canvas.edges);
   const policy = resolveRelationshipPolicy({

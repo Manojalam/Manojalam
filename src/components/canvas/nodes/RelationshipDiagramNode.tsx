@@ -37,6 +37,7 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
   const hierarchy = useMemo(() => buildHierarchy(
     nodes.filter((node) =>
       node.type !== "relationshipDiagram"
+      && node.type !== "junction"
       && node.type !== "sunburst"
       && node.type !== "frame"
     ),

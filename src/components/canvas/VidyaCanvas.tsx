@@ -742,11 +742,13 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const flowchartEndpoint = source?.type === "shape"
         ? source
         : targetNode?.type === "shape" ? targetNode : null;
-      const flowchartConnection = !!flowchartEndpoint
-        && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode);
+      const junctionConnection = source?.type === "junction" || targetNode?.type === "junction";
+      const flowchartConnection = junctionConnection || (!!flowchartEndpoint
+        && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode));
       const mode: LayoutMode = flowchartConnection ? "freeForm" : configuredMode;
       const route = source && targetNode ? routeForMode(mode, source, targetNode) : null;
       const hasParent = targetNode && (targetNode.data as { parentId?: string | null }).parentId;
+      const recordHierarchy = !!targetNode && !hasParent && !junctionConnection;
       const hiddenInMatrix = mode === "matrix" && !hasParent;
       const hiddenInSunburst = mode === "radial";
       const newEdge: Edge = {
@@ -778,10 +780,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       useCanvasStore.setState((state) => ({
         nodes: state.nodes.map((node) => {
           const data = (node.data ?? {}) as Record<string, unknown>;
-          if (targetNode && !hasParent && node.id === connection.target) {
+          if (recordHierarchy && node.id === connection.target) {
             return { ...node, selected: false, data: { ...data, parentId: connection.source } };
           }
-          if (targetNode && !hasParent && node.id === connection.source) {
+          if (recordHierarchy && node.id === connection.source) {
             const childOrder = Array.isArray(data.childOrder) ? data.childOrder as string[] : [];
             return {
               ...node,
@@ -831,32 +833,37 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       ?? sourceData.layoutMode
       ?? "freeForm") as LayoutMode);
     const flowchartEndpoint = source.type === "shape" ? source : target.type === "shape" ? target : null;
-    const flowchartConnection = !!flowchartEndpoint
-      && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode);
+    const junctionConnection = source.type === "junction" || target.type === "junction";
+    const flowchartConnection = junctionConnection || (!!flowchartEndpoint
+      && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode));
     const mode: LayoutMode = flowchartConnection ? "freeForm" : configuredMode;
     const route = routeForMode(mode, source, target);
     // Reconnecting a cross-link must not silently rewrite the canonical tree.
     // Only an edge that was already structural transfers parent metadata.
+    const transferHierarchy = wasHierarchyEdge && !junctionConnection;
     const nextNodes = wasHierarchyEdge ? cs.nodes.map((node) => {
       const data = node.data as Record<string, unknown>;
-      if (node.id === oldEdge.target && oldEdge.target !== connection.target) {
-        return { ...node, data: { ...data, parentId: null } };
+      let nextData = data;
+      if (node.id === oldEdge.target && data.parentId === oldEdge.source) {
+        nextData = { ...nextData, parentId: null };
       }
-      if (node.id === oldEdge.source || node.id === connection.source) {
-        const withoutOldTarget = ((data.childOrder as string[] | undefined) ?? []).filter((id) => id !== oldEdge.target);
-        if (node.id !== connection.source) return { ...node, data: { ...data, childOrder: withoutOldTarget } };
-        return {
-          ...node,
-          data: {
-            ...data,
-            childOrder: withoutOldTarget.includes(connection.target) ? withoutOldTarget : [...withoutOldTarget, connection.target],
-          },
+      if (node.id === oldEdge.source) {
+        nextData = {
+          ...nextData,
+          childOrder: ((nextData.childOrder as string[] | undefined) ?? []).filter((id) => id !== oldEdge.target),
         };
       }
-      if (node.id === connection.target) {
-        return { ...node, data: { ...data, parentId: connection.source } };
+      if (transferHierarchy && node.id === connection.source) {
+        const childOrder = (nextData.childOrder as string[] | undefined) ?? [];
+        nextData = {
+          ...nextData,
+          childOrder: childOrder.includes(connection.target) ? childOrder : [...childOrder, connection.target],
+        };
       }
-      return node;
+      if (transferHierarchy && node.id === connection.target) {
+        nextData = { ...nextData, parentId: connection.source };
+      }
+      return nextData === data ? node : { ...node, data: nextData };
     }) : cs.nodes;
     const nextHierarchy = buildHierarchy(nextNodes, cs.edges.map((edge) => edge.id === oldEdge.id
       ? { ...edge, source: connection.source, target: connection.target }
@@ -889,6 +896,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: {
           ...edgeData,
+          waypoints: undefined,
           edgeType: "branch",
           curveStyle: flowchartConnection ? "step" : route.curveStyle,
           manualRoute: flowchartConnection || edgeData.manualRoute === true,
@@ -1129,14 +1137,14 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       else if ((e.key === "Delete" || e.key === "Backspace") && !mod) { cs.deleteSelected(); }
       else if (e.key === "Tab") {
         const selectedNode = cs.nodes.find((node) => node.id === cs.selectedNodeIds[0]);
-        if (selectedNode && !["relationshipDiagram", "sunburst", "frame"].includes(selectedNode.type ?? "")) {
+        if (selectedNode && !["relationshipDiagram", "sunburst", "frame", "junction"].includes(selectedNode.type ?? "")) {
           e.preventDefault();
           cs.createChildNode(selectedNode.id);
         }
       }
       else if (e.key === "Enter" && !e.shiftKey) {
         const selectedNode = cs.nodes.find((node) => node.id === cs.selectedNodeIds[0]);
-        if (selectedNode && !["relationshipDiagram", "sunburst", "frame"].includes(selectedNode.type ?? "")) {
+        if (selectedNode && !["relationshipDiagram", "sunburst", "frame", "junction"].includes(selectedNode.type ?? "")) {
           e.preventDefault();
           cs.createSiblingNode(selectedNode.id);
         }

@@ -104,7 +104,7 @@ function relationshipDiagramDraft(
     : selectedNodeIds;
   const sourceNodeIds = Array.from(new Set(candidates)).filter((nodeId) => {
     const node = nodes.find((candidate) => candidate.id === nodeId);
-    return !!node && !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? "");
+    return !!node && !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? "");
   });
   return createRelationshipDiagramSpec({
     mode: sourceNodeIds.length === 1 ? "selected-node" : "selected-nodes",
@@ -137,7 +137,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
   const [availableSourceNodeIds] = useState(() => [...draft.scope.sourceNodeIds]);
 
   const contentNodes = useMemo(() => nodes.filter((node) =>
-    !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? "")
+    !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? "")
   ), [nodes]);
   const hierarchy = useMemo(
     () => buildHierarchy(contentNodes, edges),

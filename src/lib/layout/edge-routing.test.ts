@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createNodeRect, type NodeRect } from "./geometry";
-import { EDGE_OBSTACLE_PADDING, routeLayoutEdge, routeRectilinearEdge } from "./edge-routing";
+import {
+  EDGE_OBSTACLE_PADDING,
+  routeLayoutEdge,
+  routeManualOrthogonalEdge,
+  routeRectilinearEdge,
+} from "./edge-routing";
 
 function segmentIntersectsRect(
   first: { x: number; y: number },
@@ -26,6 +31,22 @@ function assertAvoids(route: ReturnType<typeof routeLayoutEdge>, obstacle: NodeR
   for (let index = 0; index < route.points.length - 1; index++) {
     assert.equal(segmentIntersectsRect(route.points[index], route.points[index + 1], obstacle), false);
   }
+}
+
+function routeContainsPoint(
+  points: Array<{ x: number; y: number }>,
+  target: { x: number; y: number }
+): boolean {
+  return points.slice(0, -1).some((first, index) => {
+    const second = points[index + 1];
+    if (first.x === second.x && target.x === first.x) {
+      return target.y >= Math.min(first.y, second.y) && target.y <= Math.max(first.y, second.y);
+    }
+    if (first.y === second.y && target.y === first.y) {
+      return target.x >= Math.min(first.x, second.x) && target.x <= Math.max(first.x, second.x);
+    }
+    return false;
+  });
 }
 
 test("structured sibling routes use distinct ordered ports and lanes", () => {
@@ -55,4 +76,38 @@ test("orthogonal routes detour around intervening boxes", () => {
 
   assert.ok(route.points.length >= 5);
   assertAvoids(route, obstacle);
+});
+
+test("manual bend anchors keep every connector segment orthogonal", () => {
+  const route = routeManualOrthogonalEdge(
+    { x: 100, y: 100 },
+    { x: 600, y: 280 },
+    "right",
+    "left",
+    [{ x: 260, y: 40 }, { x: 430, y: 360 }]
+  );
+
+  assert.ok(routeContainsPoint(route.points, { x: 260, y: 40 }));
+  assert.ok(routeContainsPoint(route.points, { x: 430, y: 360 }));
+  for (let index = 0; index < route.points.length - 1; index++) {
+    const first = route.points[index];
+    const second = route.points[index + 1];
+    assert.ok(first.x === second.x || first.y === second.y, "manual segments must stay orthogonal");
+  }
+});
+
+test("manual bend routes preserve clean handle stubs", () => {
+  const route = routeManualOrthogonalEdge(
+    { x: 100, y: 100 },
+    { x: 400, y: 300 },
+    "bottom",
+    "top",
+    [{ x: 260, y: 180 }]
+  );
+
+  assert.equal(route.points[1].x, 100);
+  assert.ok(route.points[1].y > 100);
+  const beforeTarget = route.points[route.points.length - 2];
+  assert.equal(beforeTarget.x, 400);
+  assert.ok(beforeTarget.y < 300);
 });

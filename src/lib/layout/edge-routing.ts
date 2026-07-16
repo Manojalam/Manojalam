@@ -145,7 +145,7 @@ function buildCandidates(s: Pt, t: Pt, ss: Side, ts: Side, obstacles: NodeRect[]
   return candidates;
 }
 
-function toRoundedPath(points: Pt[], radius = 8): string {
+export function routePointsToRoundedPath(points: Pt[], radius = 8): string {
   if (points.length < 2) return "";
   // Dedupe consecutive identical points
   const pts = points.filter((p, i) => i === 0 || p.x !== points[i - 1].x || p.y !== points[i - 1].y);
@@ -184,10 +184,122 @@ export interface LayoutRouteOptions {
   peerSegments?: Segment[];
 }
 
-function makeRoute(points: Pt[]): RouteResult {
+function routeMidpoint(points: Pt[]): Pt {
+  if (!points.length) return { x: 0, y: 0 };
+  const lengths = points.slice(0, -1).map((point, index) => (
+    Math.abs(points[index + 1].x - point.x) + Math.abs(points[index + 1].y - point.y)
+  ));
+  const half = lengths.reduce((sum, length) => sum + length, 0) / 2;
+  let traversed = 0;
+  for (let index = 0; index < lengths.length; index++) {
+    const length = lengths[index];
+    if (traversed + length < half) {
+      traversed += length;
+      continue;
+    }
+    const start = points[index];
+    const end = points[index + 1];
+    const ratio = length ? (half - traversed) / length : 0;
+    return {
+      x: start.x + (end.x - start.x) * ratio,
+      y: start.y + (end.y - start.y) * ratio,
+    };
+  }
+  return points[points.length - 1];
+}
+
+function simplifyOrthogonalPoints(points: Pt[]): Pt[] {
+  const unique = points.filter((point, index) => (
+    index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y
+  ));
+  return unique.filter((point, index) => {
+    if (index === 0 || index === unique.length - 1) return true;
+    const previous = unique[index - 1];
+    const next = unique[index + 1];
+    return !(previous.x === point.x && point.x === next.x)
+      && !(previous.y === point.y && point.y === next.y);
+  });
+}
+
+function makeRoute(rawPoints: Pt[]): RouteResult {
+  const points = simplifyOrthogonalPoints(rawPoints);
   if (!points.length) return { path: "", labelX: 0, labelY: 0, points: [] };
-  const mid = points[Math.floor(points.length / 2)];
-  return { path: toRoundedPath(points), labelX: mid.x, labelY: mid.y, points };
+  const mid = routeMidpoint(points);
+  return { path: routePointsToRoundedPath(points), labelX: mid.x, labelY: mid.y, points };
+}
+
+function appendOrthogonal(points: Pt[], target: Pt, horizontalFirst: boolean): void {
+  const current = points[points.length - 1];
+  if (current.x === target.x || current.y === target.y) {
+    points.push(target);
+    return;
+  }
+  points.push(horizontalFirst
+    ? { x: target.x, y: current.y }
+    : { x: current.x, y: target.y });
+  points.push(target);
+}
+
+function appendOrthogonalWithArrival(
+  points: Pt[],
+  target: Pt,
+  departHorizontal: boolean,
+  arriveHorizontal: boolean
+): void {
+  const current = points[points.length - 1];
+  if (departHorizontal !== arriveHorizontal) {
+    appendOrthogonal(points, target, departHorizontal);
+    return;
+  }
+  if (departHorizontal) {
+    const midX = current.x === target.x ? current.x + 40 : (current.x + target.x) / 2;
+    points.push({ x: midX, y: current.y }, { x: midX, y: target.y }, target);
+    return;
+  }
+  const midY = current.y === target.y ? current.y + 40 : (current.y + target.y) / 2;
+  points.push({ x: current.x, y: midY }, { x: target.x, y: midY }, target);
+}
+
+/**
+ * Builds a movable orthogonal path through user anchors. End stubs keep the
+ * connector attached cleanly even after either node is moved.
+ */
+export function routeManualOrthogonalEdge(
+  source: Pt,
+  target: Pt,
+  sourceSide: Side,
+  targetSide: Side,
+  waypoints: readonly RoutePoint[]
+): RouteResult {
+  const validWaypoints = waypoints.filter((point) => (
+    Number.isFinite(point.x) && Number.isFinite(point.y)
+  ));
+  if (!validWaypoints.length) {
+    return makeRoute([source, target]);
+  }
+
+  const sourceStub = stub(source, sourceSide);
+  const targetStub = stub(target, targetSide);
+  const points: Pt[] = [source, sourceStub];
+
+  validWaypoints.forEach((waypoint, index) => {
+    const current = points[points.length - 1];
+    const previous = points[points.length - 2];
+    const horizontalFirst = index === 0
+      ? sourceSide === "left" || sourceSide === "right"
+      : previous.x === current.x;
+    appendOrthogonal(points, waypoint, horizontalFirst);
+  });
+
+  // Leave the final user anchor as a real bend and still arrive at the target
+  // stub on the same axis as its handle.
+  const current = points[points.length - 1];
+  const previous = points[points.length - 2];
+  const departHorizontal = previous.x === current.x;
+  const arriveHorizontal = targetSide === "left" || targetSide === "right";
+  appendOrthogonalWithArrival(points, targetStub, departHorizontal, arriveHorizontal);
+  points.push(target);
+  return makeRoute(points);
 }
 
 /**
@@ -218,7 +330,7 @@ export function routeOrthogonalEdge(
   }
 
   const mid = best[Math.floor(best.length / 2)];
-  return { path: toRoundedPath(best), labelX: mid.x, labelY: mid.y, points: best };
+  return { path: routePointsToRoundedPath(best), labelX: mid.x, labelY: mid.y, points: best };
 }
 
 function sidePoint(rect: NodeRect, side: Side, fraction: number): Pt {
