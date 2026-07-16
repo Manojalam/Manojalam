@@ -27,7 +27,7 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { generateId } from "@/lib/utils";
 import { splitConnectorAtJunction } from "@/lib/canvas/connector-junction";
-import { insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
+import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
 
@@ -135,6 +135,7 @@ function RoutedSmartBranchEdge({
   const edges = useEdges();
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const canvasDragging = useUIStore((s) => s.canvasDragging);
+  const connectorClickPoint = useUIStore((s) => s.connectorClickPoint);
   if (d.hiddenInMatrix || d.hiddenInSunburst) return null;
 
   let path: string;
@@ -241,10 +242,13 @@ function RoutedSmartBranchEdge({
               const state = useCanvasStore.getState();
               const edge = state.edges.find((candidate) => candidate.id === id);
               if (!edge) return;
+              const junctionPoint = connectorClickPoint?.edgeId === id
+                ? closestPointOnRoute(routePoints, connectorClickPoint)
+                : { x: labelX, y: labelY };
               state.pushHistory();
               const split = splitConnectorAtJunction(
                 edge,
-                { x: labelX, y: labelY },
+                junctionPoint,
                 { x: sourceX, y: sourceY },
                 { x: targetX, y: targetY },
                 {
@@ -282,6 +286,7 @@ function RoutedSmartBranchEdge({
                 selectedEdgeIds: [],
                 saveStatus: "unsaved",
               }));
+              useUIStore.getState().setConnectorClickPoint(null);
             } : undefined}
           />
           {selected && curveStyle === "step" && waypoints.length > 0 && (

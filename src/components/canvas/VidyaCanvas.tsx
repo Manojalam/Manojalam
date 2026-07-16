@@ -723,6 +723,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     if (useUIStore.getState().relationshipSelection) return;
     event.stopPropagation();
+    const clickPoint = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    useUIStore.getState().setConnectorClickPoint({ edgeId: edge.id, ...clickPoint });
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
     useCanvasStore.setState((state) => {
       const selectedEdgeIds = new Set(additive ? state.selectedEdgeIds : []);
@@ -737,7 +739,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         selectedEdgeIds: Array.from(selectedEdgeIds),
       };
     });
-  }, []);
+  }, [screenToFlowPosition]);
 
   const onConnect = useCallback(
     (connection: {

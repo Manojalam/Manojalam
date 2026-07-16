@@ -38,6 +38,35 @@ function progressAlongRoute(routePoints: readonly RoutePoint[], point: RoutePoin
   return null;
 }
 
+/** Projects an arbitrary canvas click onto the closest location on a routed connector. */
+export function closestPointOnRoute(
+  routePoints: readonly RoutePoint[],
+  point: RoutePoint
+): RoutePoint {
+  let closest = { ...point };
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < routePoints.length - 1; index++) {
+    const first = routePoints[index];
+    const second = routePoints[index + 1];
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    const squaredLength = dx * dx + dy * dy;
+    if (!squaredLength) continue;
+    const ratio = Math.max(0, Math.min(1, (
+      (point.x - first.x) * dx + (point.y - first.y) * dy
+    ) / squaredLength));
+    const projected = {
+      x: first.x + dx * ratio,
+      y: first.y + dy * ratio,
+    };
+    const distance = (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2;
+    if (distance >= closestDistance) continue;
+    closest = projected;
+    closestDistance = distance;
+  }
+  return closest;
+}
+
 /**
  * Adds a bend anchor on the longest visible route segment and inserts it in
  * traversal order. Because the point starts on the existing path, adding it is

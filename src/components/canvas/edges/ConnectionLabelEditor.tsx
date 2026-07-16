@@ -278,8 +278,8 @@ export function ConnectionLabelEditor({
           {onAddJunction && (
             <button
               type="button"
-              title="Add a connector junction"
-              aria-label="Add connector junction"
+              title="Add a connector junction where the line was clicked"
+              aria-label="Add connector junction at clicked position"
               className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={onAddJunction}
             >
