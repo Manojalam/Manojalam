@@ -1691,6 +1691,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 }}
               />
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
+              <div>
+                <p className="text-[10px] font-medium">Smart equal label sizes</p>
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  Use one readable size for all terminal labels. Font size is the maximum.
+                </p>
+              </div>
+              <Switch
+                aria-label="Smart equal outermost label sizes"
+                checked={chartData.radialEqualOutermostLabelSizes === true}
+                onCheckedChange={(checked) => {
+                  pushHistory();
+                  updateNodeData(selectedNode.id, { radialEqualOutermostLabelSizes: checked });
+                }}
+              />
+            </div>
           </Section>
 
           <Section label="Transform" defaultOpen>
@@ -3130,6 +3146,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   if (!radialChartNode) return;
                   pushHistory();
                   updateNodeData(radialChartNode.id, { radialEqualOutermostSegments: checked });
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
+              <div>
+                <p className="text-[10px] font-medium">Smart equal label sizes</p>
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  Use one readable size for all terminal labels. Chart font size is the maximum.
+                </p>
+              </div>
+              <Switch
+                aria-label="Smart equal outermost label sizes"
+                checked={radialChartData.radialEqualOutermostLabelSizes === true}
+                onCheckedChange={(checked) => {
+                  if (!radialChartNode) return;
+                  pushHistory();
+                  updateNodeData(radialChartNode.id, { radialEqualOutermostLabelSizes: checked });
                 }}
               />
             </div>

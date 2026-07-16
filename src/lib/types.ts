@@ -498,6 +498,8 @@ export interface SunburstNodeData extends BaseNodeData {
   title?: string;
   /** Gives every terminal sector the same angle, regardless of hierarchy depth. */
   radialEqualOutermostSegments?: boolean;
+  /** Uses one intelligently fitted font size for all terminal sector labels. */
+  radialEqualOutermostLabelSizes?: boolean;
 }
 
 export interface RelationshipDiagramNodeData extends BaseNodeData {
