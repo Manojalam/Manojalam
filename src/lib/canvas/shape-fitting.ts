@@ -79,12 +79,20 @@ export function diamondTextFlowBox(renderedSize: Size): Size {
 export function shouldUseDiamondTextFlow(
   shapeType: string | undefined,
   renderedSize: Size,
-  contentSize?: Partial<ContentMeasurement>
+  contentSize?: Partial<ContentMeasurement>,
+  text?: string
 ): boolean {
   if (shapeType !== "diamond" || !contentSize) return false;
   const lineCount = finitePositive(contentSize.lineCount, 0);
-  void renderedSize;
-  return lineCount >= 3;
+  if (lineCount >= 3) return true;
+
+  const normalizedText = text?.replace(/\s+/gu, " ").trim() ?? "";
+  const hasWordBoundary = /\S\s+\S/u.test(normalizedText);
+  const naturalWidth = finitePositive(contentSize.naturalWidth, contentSize.width ?? 0);
+  // The flow capacity is the diamond's average horizontal cross-section. Once
+  // a phrase is wider than that, letting shape-outside wrap at its spaces uses
+  // the upper and lower halves instead of shrinking one shallow center line.
+  return hasWordBoundary && naturalWidth > diamondTextFlowCapacity(renderedSize).width;
 }
 
 /** Editing stays rectangular so visual soft wraps match caret navigation. */
@@ -92,9 +100,10 @@ export function shouldRenderDiamondTextFlow(
   shapeType: string | undefined,
   renderedSize: Size,
   contentSize: Partial<ContentMeasurement> | undefined,
-  editing: boolean
+  editing: boolean,
+  text?: string
 ): boolean {
-  return !editing && shouldUseDiamondTextFlow(shapeType, renderedSize, contentSize);
+  return !editing && shouldUseDiamondTextFlow(shapeType, renderedSize, contentSize, text);
 }
 
 interface GraphemeSegmenter {

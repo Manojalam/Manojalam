@@ -1048,7 +1048,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     renderedShapeType,
     nodeSize,
     intrinsicContentSize,
-    editing
+    editing,
+    typeof d.text === "string" ? d.text : undefined
   );
   const availableTextSize = diamondTextFlow
     ? diamondTextFlowCapacity(nodeSize)
