@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import { getNodeRect } from "../layout/geometry";
 import type { RoutePoint, Side } from "../layout/edge-routing";
 
 export const CONNECTOR_JUNCTION_SIZE = 28;
@@ -33,6 +34,48 @@ function pointOnSegment(point: RoutePoint, first: RoutePoint, second: RoutePoint
       && point.x <= Math.max(first.x, second.x) + epsilon;
   }
   return false;
+}
+
+function segmentLength(first: RoutePoint, second: RoutePoint): number {
+  return Math.abs(second.x - first.x) + Math.abs(second.y - first.y);
+}
+
+function progressAlongRoute(routePoints: readonly RoutePoint[], point: RoutePoint): number | null {
+  let progress = 0;
+  for (let index = 0; index < routePoints.length - 1; index++) {
+    const first = routePoints[index];
+    const second = routePoints[index + 1];
+    if (pointOnSegment(point, first, second)) return progress + segmentLength(first, point);
+    progress += segmentLength(first, second);
+  }
+  return null;
+}
+
+function storedRoutePoints(value: unknown): RoutePoint[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((point): point is RoutePoint => (
+    !!point
+    && typeof point === "object"
+    && typeof (point as { x?: unknown }).x === "number"
+    && typeof (point as { y?: unknown }).y === "number"
+  ));
+}
+
+function splitStoredWaypoints(
+  routePoints: readonly RoutePoint[],
+  splitPoint: RoutePoint,
+  waypoints: readonly RoutePoint[]
+): [RoutePoint[], RoutePoint[]] {
+  const splitProgress = progressAlongRoute(routePoints, splitPoint);
+  if (splitProgress === null) return [[], []];
+  const first: RoutePoint[] = [];
+  const second: RoutePoint[] = [];
+  for (const waypoint of waypoints) {
+    const progress = progressAlongRoute(routePoints, waypoint);
+    if (progress === null || samePoint(waypoint, splitPoint)) continue;
+    (progress < splitProgress ? first : second).push(waypoint);
+  }
+  return [first, second];
 }
 
 function simplifyRoutePoints(points: RoutePoint[]): RoutePoint[] {
@@ -94,6 +137,11 @@ export function splitConnectorAtJunction(
     connectorJunctionId: ids.junctionId,
   };
   const [firstWaypoints, secondWaypoints] = splitRouteWaypoints(routePoints, point);
+  const [firstUserWaypoints, secondUserWaypoints] = splitStoredWaypoints(
+    routePoints,
+    point,
+    storedRoutePoints(data.waypoints)
+  );
   const junctionCenter = { x: point.x, y: point.y };
   const first: Edge = {
     ...edge,
@@ -107,6 +155,8 @@ export function splitConnectorAtJunction(
       label: undefined,
       arrowEnd: false,
       waypoints: firstWaypoints.length ? firstWaypoints : undefined,
+      junctionPreservedWaypoints: firstWaypoints.length > 0 || undefined,
+      junctionUserWaypoints: firstUserWaypoints.length ? firstUserWaypoints : undefined,
       connectorJunctionSegment: "incoming",
     },
   };
@@ -121,6 +171,8 @@ export function splitConnectorAtJunction(
       ...commonData,
       arrowStart: false,
       waypoints: secondWaypoints.length ? secondWaypoints : undefined,
+      junctionPreservedWaypoints: secondWaypoints.length > 0 || undefined,
+      junctionUserWaypoints: secondUserWaypoints.length ? secondUserWaypoints : undefined,
       connectorJunctionSegment: "outgoing",
     },
   };
@@ -143,6 +195,54 @@ export function splitConnectorAtJunction(
     draggable: true,
   };
   return { junction, edges: [first, second] };
+}
+
+/** Releases only the temporary anchors used to make junction insertion visually neutral. */
+export function releaseConnectorJunctionRouteAnchors(
+  edges: Edge[],
+  junctionIds: ReadonlySet<string>
+): Edge[] {
+  if (!junctionIds.size) return edges;
+  return edges.map((edge) => {
+    const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
+    const junctionId = typeof data.connectorJunctionId === "string" ? data.connectorJunctionId : null;
+    if (!junctionId || !junctionIds.has(junctionId) || data.junctionPreservedWaypoints !== true) {
+      return edge;
+    }
+    const userWaypoints = storedRoutePoints(data.junctionUserWaypoints);
+    if (userWaypoints.length) data.waypoints = userWaypoints;
+    else delete data.waypoints;
+    delete data.junctionPreservedWaypoints;
+    delete data.junctionUserWaypoints;
+    return { ...edge, data };
+  });
+}
+
+/** Keeps each junction port facing the node at the other end while it moves. */
+export function refreshConnectorJunctionHandles(
+  nodes: Node[],
+  edges: Edge[],
+  junctionIds: ReadonlySet<string>
+): Edge[] {
+  if (!junctionIds.size) return edges;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return edges.map((edge) => {
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) return edge;
+    const sourceRect = getNodeRect(source);
+    const targetRect = getNodeRect(target);
+    const sourceCenter = { x: sourceRect.centerX, y: sourceRect.centerY };
+    const targetCenter = { x: targetRect.centerX, y: targetRect.centerY };
+    const sourceHandle = junctionIds.has(source.id) && source.type === "junction"
+      ? sideToward(sourceCenter, targetCenter)
+      : edge.sourceHandle;
+    const targetHandle = junctionIds.has(target.id) && target.type === "junction"
+      ? sideToward(targetCenter, sourceCenter)
+      : edge.targetHandle;
+    if (sourceHandle === edge.sourceHandle && targetHandle === edge.targetHandle) return edge;
+    return { ...edge, sourceHandle, targetHandle };
+  });
 }
 
 export interface ClearConnectorJunctionResult {
@@ -210,6 +310,8 @@ export function clearConnectorJunctionGraph(
   };
   delete data.connectorJunctionId;
   delete data.connectorJunctionSegment;
+  delete data.junctionPreservedWaypoints;
+  delete data.junctionUserWaypoints;
   if (waypoints.length) data.waypoints = waypoints;
   else delete data.waypoints;
 

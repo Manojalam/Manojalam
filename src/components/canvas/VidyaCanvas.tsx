@@ -57,6 +57,10 @@ import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
 import {
+  refreshConnectorJunctionHandles,
+  releaseConnectorJunctionRouteAnchors,
+} from "@/lib/canvas/connector-junction";
+import {
   createManojalamClipboardPayload,
   MANOJALAM_NODES_MIME,
   parseManojalamClipboard,
@@ -557,6 +561,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       matrixRootId,
       moveAsGroup,
     };
+    const movingJunctionIds = new Set(movingIds.filter((nodeId) => byId.get(nodeId)?.type === "junction"));
+    if (movingJunctionIds.size) {
+      useCanvasStore.setState((current) => ({
+        edges: releaseConnectorJunctionRouteAnchors(current.edges, movingJunctionIds),
+      }));
+    }
     const preservesWholeLayout = moveAsGroup && typeof draggedData.layoutMode === "string";
     if (!matrixRootId && !preservesWholeLayout) {
       state.markListManualOverride(movingIds, true);
@@ -587,6 +597,9 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       ? { x: draggedStart.x + moveX, y: draggedStart.y + moveY }
       : draggedNode.position;
     const movingIds = new Set(drag?.positions.keys() ?? [draggedNode.id]);
+    const movingJunctionIds = new Set(Array.from(movingIds).filter((nodeId) => (
+      state.nodes.find((node) => node.id === nodeId)?.type === "junction"
+    )));
     const snap = snapRectToAlignment(
       getNodeRect({ ...storedDragged, position: unsnappedPosition }),
       state.nodes
@@ -604,8 +617,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       }
     );
 
-    useCanvasStore.setState((current) => ({
-      nodes: current.nodes.map((node) => {
+    useCanvasStore.setState((current) => {
+      const nextNodes = current.nodes.map((node) => {
         const start = drag?.positions.get(node.id);
         if (start) {
           return {
@@ -626,8 +639,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
           };
         }
         return node;
-      }),
-    }));
+      });
+      return {
+        nodes: nextNodes,
+        edges: refreshConnectorJunctionHandles(nextNodes, current.edges, movingJunctionIds),
+      };
+    });
     setGuides({ h: snap.horizontalGuides, v: snap.verticalGuides });
   }, []);
 

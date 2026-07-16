@@ -545,6 +545,10 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   labelOffset?: { x: number; y: number };
   /** User-positioned offset for the selected connector's editing toolbar. */
   toolbarOffset?: { x: number; y: number };
+  /** Internal route anchors retained only until a newly inserted junction moves. */
+  junctionPreservedWaypoints?: boolean;
+  /** User-authored bends to restore when temporary junction route anchors are released. */
+  junctionUserWaypoints?: Array<{ x: number; y: number }>;
   edgeType?: "normal" | "arrow" | "labeled" | "branch" | "dashed" | "sanskrit";
 }
 

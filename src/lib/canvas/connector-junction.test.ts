@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MarkerType, type Edge } from "@xyflow/react";
-import { clearConnectorJunctionGraph, splitConnectorAtJunction } from "./connector-junction";
+import { MarkerType, type Edge, type Node } from "@xyflow/react";
+import {
+  clearConnectorJunctionGraph,
+  refreshConnectorJunctionHandles,
+  releaseConnectorJunctionRouteAnchors,
+  splitConnectorAtJunction,
+} from "./connector-junction";
 
 test("a connector junction preserves the line endpoints and terminal arrow", () => {
   const edge: Edge = {
@@ -105,4 +110,74 @@ test("adding a junction preserves the existing route on both split edges", () =>
 
   assert.deepEqual(result.edges[0].data?.waypoints, [{ x: 100, y: 20 }]);
   assert.deepEqual(result.edges[1].data?.waypoints, [{ x: 500, y: 20 }]);
+});
+
+test("moving a junction releases its temporary route anchors", () => {
+  const split = splitConnectorAtJunction(
+    { id: "edge", source: "source", target: "target", data: {} },
+    { x: 300, y: 20 },
+    { x: 100, y: 100 },
+    { x: 500, y: 100 },
+    { junctionId: "junction", firstEdgeId: "first", secondEdgeId: "second" },
+    [
+      { x: 100, y: 100 },
+      { x: 100, y: 20 },
+      { x: 500, y: 20 },
+      { x: 500, y: 100 },
+    ]
+  );
+  const released = releaseConnectorJunctionRouteAnchors(split.edges, new Set(["junction"]));
+
+  assert.equal(released[0].data?.waypoints, undefined);
+  assert.equal(released[1].data?.waypoints, undefined);
+  assert.equal(released[0].data?.junctionPreservedWaypoints, undefined);
+  assert.equal(released[1].data?.junctionPreservedWaypoints, undefined);
+});
+
+test("moving a junction retains user-created bends while dropping preservation anchors", () => {
+  const split = splitConnectorAtJunction(
+    {
+      id: "edge",
+      source: "source",
+      target: "target",
+      data: { waypoints: [{ x: 100, y: 20 }] },
+    },
+    { x: 300, y: 20 },
+    { x: 100, y: 100 },
+    { x: 500, y: 100 },
+    { junctionId: "junction", firstEdgeId: "first", secondEdgeId: "second" },
+    [
+      { x: 100, y: 100 },
+      { x: 100, y: 20 },
+      { x: 500, y: 20 },
+      { x: 500, y: 100 },
+    ]
+  );
+  const released = releaseConnectorJunctionRouteAnchors(split.edges, new Set(["junction"]));
+
+  assert.deepEqual(released[0].data?.waypoints, [{ x: 100, y: 20 }]);
+  assert.equal(released[1].data?.waypoints, undefined);
+});
+
+test("a moved junction keeps its handles facing connected nodes", () => {
+  const junction: Node = {
+    id: "junction",
+    type: "junction",
+    position: { x: 300, y: 100 },
+    style: { width: 28, height: 28 },
+    data: {},
+  };
+  const target: Node = {
+    id: "target",
+    position: { x: 100, y: 100 },
+    style: { width: 120, height: 80 },
+    data: {},
+  };
+  const edges = refreshConnectorJunctionHandles(
+    [junction, target],
+    [{ id: "edge", source: "junction", target: "target", sourceHandle: "top" }],
+    new Set(["junction"])
+  );
+
+  assert.equal(edges[0].sourceHandle, "left");
 });
