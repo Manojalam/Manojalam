@@ -625,7 +625,7 @@ function ConnectionInspectorSections({
 }: {
   connectionEdges: Edge[];
   commonValue: (key: string) => unknown;
-  onChange: (key: string, value: unknown) => void;
+  onChange: (key: string, value: unknown, captureHistory?: boolean) => void;
   onWidthChange?: (value: number) => void;
   onWidthChangeStart?: () => void;
   onDelete: () => void;
@@ -640,6 +640,20 @@ function ConnectionInspectorSections({
   const allListEdges = connectionEdges.every((edge) => (
     ((edge.data ?? {}) as Record<string, unknown>).layoutMode === "list"
   ));
+  const arrowStarts = connectionEdges.map((edge) => {
+    const configured = ((edge.data ?? {}) as Record<string, unknown>).arrowStart;
+    return typeof configured === "boolean" ? configured : edge.markerStart !== undefined;
+  });
+  const arrowEnds = connectionEdges.map((edge) => {
+    const configured = ((edge.data ?? {}) as Record<string, unknown>).arrowEnd;
+    return typeof configured === "boolean" ? configured : allListEdges ? false : edge.markerEnd !== undefined;
+  });
+  const endpointMode = arrowStarts.every((value) => value === arrowStarts[0])
+    && arrowEnds.every((value) => value === arrowEnds[0])
+    ? arrowStarts[0]
+      ? arrowEnds[0] ? "both" : "start"
+      : arrowEnds[0] ? "end" : "none"
+    : "mixed";
   return (
     <>
       <Section label={`Connection path (${connectionEdges.length})`} defaultOpen={defaultOpen}>
@@ -668,14 +682,33 @@ function ConnectionInspectorSections({
           <Label className="text-xs">Dashed</Label>
           <Switch checked={!!commonValue("dashed")} onCheckedChange={(value) => onChange("dashed", value)} />
         </div>
-        <div className="flex items-center justify-between">
-          <Label className="text-xs">Arrowhead</Label>
-          <Switch
-            checked={typeof commonValue("arrowEnd") === "boolean"
-              ? commonValue("arrowEnd") === true
-              : !allListEdges}
-            onCheckedChange={(value) => onChange("arrowEnd", value)}
-          />
+        <div>
+          <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Endpoints</p>
+          <div className="grid grid-cols-4 gap-1">
+            {([[
+              "none", "Line",
+            ], [
+              "start", "Start",
+            ], [
+              "end", "End",
+            ], [
+              "both", "Both",
+            ]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onChange("arrowMode", value)}
+                className={cn(
+                  "rounded-md border px-1 py-1.5 text-[9px] transition-colors",
+                  endpointMode === value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:bg-muted"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </Section>
       <Section label="Connection appearance" defaultOpen={defaultOpen}>
@@ -702,9 +735,23 @@ function ConnectionInspectorSections({
               id="connection-label"
               name="connection-label"
               value={(edgeData.label as string) ?? ""}
-              onChange={(event) => onChange("label", event.target.value)}
+              placeholder="e.g. Yes, No, Approved"
+              onFocus={onWidthChangeStart}
+              onChange={(event) => onChange("label", event.target.value, false)}
               className="mt-1 h-8 text-xs"
             />
+            <div className="mt-1.5 grid grid-cols-4 gap-1">
+              {["Yes", "No", "True", "False"].map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  className="rounded-md border px-1 py-1 text-[9px] hover:bg-muted"
+                  onClick={() => onChange("label", label)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <Button type="button" variant="outline" size="sm" className="h-7 w-full text-[10px] text-destructive hover:text-destructive" onClick={onDelete}>
@@ -1062,20 +1109,39 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     useCanvasStore.setState((state) => ({
       edges: state.edges.map((edge) => {
         if (!selectedIds.has(edge.id)) return edge;
+        const markerColor = ((((edge.data ?? {}) as Record<string, unknown>).color as string | undefined) ?? "#6366f1");
+        if (key === "arrowMode") {
+          const start = value === "start" || value === "both";
+          const end = value === "end" || value === "both";
+          return {
+            ...edge,
+            markerStart: start ? { type: MarkerType.ArrowClosed, color: markerColor } : undefined,
+            markerEnd: end ? { type: MarkerType.ArrowClosed, color: markerColor } : undefined,
+            data: { ...(edge.data ?? {}), arrowStart: start, arrowEnd: end },
+          };
+        }
+        if (key === "arrowStart") {
+          return {
+            ...edge,
+            markerStart: value ? { type: MarkerType.ArrowClosed, color: markerColor } : undefined,
+            data: { ...(edge.data ?? {}), arrowStart: value },
+          };
+        }
         if (key === "arrowEnd") {
           return {
             ...edge,
             markerEnd: value ? {
               type: MarkerType.ArrowClosed,
-              color: ((((edge.data ?? {}) as Record<string, unknown>).color as string | undefined) ?? "#6366f1"),
+              color: markerColor,
             } : undefined,
             data: { ...(edge.data ?? {}), arrowEnd: value },
           };
         }
-        if (key === "color" && edge.markerEnd) {
+        if (key === "color" && (edge.markerStart || edge.markerEnd)) {
           return {
             ...edge,
-            markerEnd: { type: MarkerType.ArrowClosed, color: String(value) },
+            markerStart: edge.markerStart ? { type: MarkerType.ArrowClosed, color: String(value) } : undefined,
+            markerEnd: edge.markerEnd ? { type: MarkerType.ArrowClosed, color: String(value) } : undefined,
             data: { ...(edge.data ?? {}), color: value },
           };
         }

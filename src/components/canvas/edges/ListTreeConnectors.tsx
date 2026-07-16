@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { EdgeLabelRenderer, ViewportPortal, type Edge } from "@xyflow/react";
-import { Trash2 } from "lucide-react";
 import type { VidyaEdgeData } from "@/lib/types";
 import {
   buildListConnectorModel,
@@ -12,6 +11,7 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { resolveAccentColor } from "@/lib/style-utils";
+import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 
 function edgeData(edge: Edge): VidyaEdgeData {
   return (edge.data ?? {}) as VidyaEdgeData;
@@ -60,7 +60,6 @@ function branchPath(group: { segments: Array<{ x1: number; y1: number; x2: numbe
 export function ListTreeConnectors() {
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
-  const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const relationshipSelection = useUIStore((state) => state.relationshipSelection);
   const [model, setModel] = useState<ListConnectorModel>(() => buildListConnectorModel(nodes, edges));
 
@@ -75,7 +74,6 @@ export function ListTreeConnectors() {
   if (relationshipSelection || !groups.length) return null;
 
   const branches = groups.flatMap((group) => group.branches);
-  const selectedBranches = branches.filter((branch) => branch.edge.selected);
 
   return (
     <>
@@ -88,7 +86,7 @@ export function ListTreeConnectors() {
           <defs>
             {branches.map(({ edge }) => {
               const data = edgeData(edge);
-              if (data.arrowEnd !== true) return null;
+              if (data.arrowEnd !== true && data.arrowStart !== true) return null;
               const color = edgeColor(edge);
               return (
                 <marker
@@ -112,7 +110,9 @@ export function ListTreeConnectors() {
             const baseEdge = group.branches[0].edge;
             const data = edgeData(baseEdge);
             const parentData = (nodesById.get(group.parentId)?.data ?? {}) as Record<string, unknown>;
-            const trunkColor = resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
+            const trunkColor = group.branches.length === 1
+              ? edgeColor(baseEdge)
+              : resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
             const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
             const commonStyle = {
               fill: "none",
@@ -125,7 +125,16 @@ export function ListTreeConnectors() {
             };
             return (
               <g key={group.parentId}>
-                <path d={group.sharedSegments.map(segmentPath).join(" ")} {...commonStyle} />
+                {group.sharedSegments.map((segment, index) => (
+                  <path
+                    key={`shared-${index}`}
+                    d={segmentPath(segment)}
+                    {...commonStyle}
+                    markerStart={index === 0 && group.branches.length === 1 && data.arrowStart === true
+                      ? `url(#${markerId(baseEdge.id)})`
+                      : undefined}
+                  />
+                ))}
                 {group.branches.map(({ edge, segments }) => {
                   const branchData = edgeData(edge);
                   const color = edgeColor(edge);
@@ -165,46 +174,19 @@ export function ListTreeConnectors() {
       </ViewportPortal>
 
       <EdgeLabelRenderer>
-        {selectedBranches.map(({ edge, segments }) => {
-          const segment = segments[segments.length - 1];
-          return (
-          <button
-            key={edge.id}
-            type="button"
-            title="Delete connection"
-            aria-label="Delete connection"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              deleteEdges([edge.id]);
-            }}
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${(segment.x1 + segment.x2) / 2}px,${segment.y1 - 20}px)`,
-              pointerEvents: "all",
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded-full border bg-background text-destructive shadow-md"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-          );
-        })}
         {branches.map(({ edge, segments }) => {
-          const label = edgeData(edge).label;
-          if (!label) return null;
+          const data = edgeData(edge);
+          if (!edge.selected && !data.label) return null;
           const segment = segments[segments.length - 1];
           return (
-            <div
+            <ConnectionLabelEditor
               key={`label-${edge.id}`}
-              style={{
-                position: "absolute",
-                transform: `translate(-50%, -50%) translate(${(segment.x1 + segment.x2) / 2}px,${segment.y1}px)`,
-                pointerEvents: "all",
-              }}
-              className="rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium shadow-sm"
-            >
-              {label}
-            </div>
+              edgeId={edge.id}
+              x={(segment.x1 + segment.x2) / 2}
+              y={segment.y1}
+              label={data.label}
+              selected={edge.selected}
+            />
           );
         })}
       </EdgeLabelRenderer>

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
-import { getNodeRect } from "../layout/geometry";
-import { alignSelection, compactEqualSpacing, distributeSelection } from "./selection-geometry";
+import { createNodeRect, getNodeRect } from "../layout/geometry";
+import { alignSelection, compactEqualSpacing, distributeSelection, snapRectToAlignment } from "./selection-geometry";
 
 function node(id: string, x: number, y: number, width: number, height: number, origin?: [number, number]): Node {
   return { id, position: { x, y }, origin, data: {}, style: { width, height } };
@@ -108,4 +108,26 @@ test("distribution refuses an insufficient outer span without moving nodes", () 
 
   assert.equal(result.failure, "insufficient-span");
   assert.equal(result.positions.size, 0);
+});
+
+test("drag snapping aligns nearest centers and reports visible guides", () => {
+  const dragged = createNodeRect("dragged", 96, 204, 100, 50);
+  const other = createNodeRect("other", 200, 200, 100, 50);
+  const snap = snapRectToAlignment(dragged, [other]);
+
+  assert.equal(snap.dx, 4, "right edge should snap to the other node's left edge");
+  assert.equal(snap.dy, -4, "top edges should align");
+  assert.deepEqual(snap.verticalGuides, [200]);
+  assert.deepEqual(snap.horizontalGuides, [200]);
+});
+
+test("drag snapping respects axis locks and ignores distant candidates", () => {
+  const dragged = createNodeRect("dragged", 10, 10, 80, 40);
+  const nearby = createNodeRect("nearby", 94, 15, 80, 40);
+  const snap = snapRectToAlignment(dragged, [nearby], { allowX: false, threshold: 6 });
+
+  assert.equal(snap.dx, 0);
+  assert.equal(snap.dy, 5);
+  assert.deepEqual(snap.verticalGuides, []);
+  assert.deepEqual(snap.horizontalGuides, [15]);
 });

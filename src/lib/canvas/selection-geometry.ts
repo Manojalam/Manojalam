@@ -1,5 +1,5 @@
 import type { Node } from "@xyflow/react";
-import { getNodeRect, nodePositionFromTopLeft, type Point } from "../layout/geometry";
+import { getNodeRect, nodePositionFromTopLeft, type NodeRect, type Point } from "../layout/geometry";
 
 export const COMPACT_SELECTION_GAP = 28;
 export type SelectionAlignment = "left" | "centerX" | "right" | "top" | "centerY" | "bottom";
@@ -9,6 +9,74 @@ export interface DistributionResult {
   positions: Map<string, Point>;
   gap: number | null;
   failure: DistributionFailure | null;
+}
+
+export interface AlignmentSnap {
+  dx: number;
+  dy: number;
+  horizontalGuides: number[];
+  verticalGuides: number[];
+}
+
+interface AlignmentSnapOptions {
+  threshold?: number;
+  allowX?: boolean;
+  allowY?: boolean;
+}
+
+/** Find the nearest edge, center, or touching-edge alignment for a dragged box. */
+export function snapRectToAlignment(
+  dragged: NodeRect,
+  others: NodeRect[],
+  options: AlignmentSnapOptions = {}
+): AlignmentSnap {
+  const threshold = Math.max(0, options.threshold ?? 6);
+  let bestXDelta = 0;
+  let bestYDelta = 0;
+  let bestXDistance = Number.POSITIVE_INFINITY;
+  let bestYDistance = Number.POSITIVE_INFINITY;
+  let bestXGuide: number | undefined;
+  let bestYGuide: number | undefined;
+  const considerX = (current: number, target: number) => {
+    const delta = target - current;
+    const distance = Math.abs(delta);
+    if (distance > threshold || distance >= bestXDistance) return;
+    bestXDelta = delta;
+    bestXDistance = distance;
+    bestXGuide = target;
+  };
+  const considerY = (current: number, target: number) => {
+    const delta = target - current;
+    const distance = Math.abs(delta);
+    if (distance > threshold || distance >= bestYDistance) return;
+    bestYDelta = delta;
+    bestYDistance = distance;
+    bestYGuide = target;
+  };
+
+  for (const other of others) {
+    if (options.allowX !== false) {
+      considerX(dragged.left, other.left);
+      considerX(dragged.centerX, other.centerX);
+      considerX(dragged.right, other.right);
+      considerX(dragged.right, other.left);
+      considerX(dragged.left, other.right);
+    }
+    if (options.allowY !== false) {
+      considerY(dragged.top, other.top);
+      considerY(dragged.centerY, other.centerY);
+      considerY(dragged.bottom, other.bottom);
+      considerY(dragged.bottom, other.top);
+      considerY(dragged.top, other.bottom);
+    }
+  }
+
+  return {
+    dx: bestXDelta,
+    dy: bestYDelta,
+    horizontalGuides: bestYGuide === undefined ? [] : [bestYGuide],
+    verticalGuides: bestXGuide === undefined ? [] : [bestXGuide],
+  };
 }
 
 /** Align arbitrary selected nodes by their rendered bounds, including centered origins. */
