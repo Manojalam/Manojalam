@@ -9,6 +9,7 @@ import {
   flowerPetalGeometryBounds,
 } from "@/lib/canvas/flower-petal-geometry";
 import { layoutFlowerLabels, type FlowerLabelFlowResult } from "@/lib/canvas/flower-label-flow";
+import { fitRelationshipLabel } from "@/lib/canvas/relationship-label-fit";
 import {
   layoutRelationshipFlowerPetals,
   type RelationshipFlowerGeometricPlacement,
@@ -32,8 +33,8 @@ type Point = { x: number; y: number };
 const FONT_FAMILY = "var(--font-noto-devanagari), 'Noto Sans Devanagari', Inter, sans-serif";
 const DiagramVisualStyleContext = createContext<Pick<
   RelationshipDiagramSpec,
-  "fontFamily" | "fontWeight" | "fontStyle" | "textColor"
->>({});
+  "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "maximizeLabelText"
+>>({ maximizeLabelText: false });
 const PALETTES: Record<Exclude<RelationshipDiagramPalette, "source">, string[]> = {
   spectrum: ["#ef4444", "#f59e0b", "#84cc16", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"],
   warm: ["#b91c1c", "#dc2626", "#ea580c", "#d97706", "#ca8a04", "#be123c"],
@@ -181,65 +182,19 @@ function longestWordWidth(value: string, fontSize: number): number {
   );
 }
 
-function wrapWords(value: string, maxWidth: number, fontSize: number, measureText = false): string[] {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-  if (!normalized) return [];
-  if (estimatedTextWidth(normalized, fontSize, measureText) <= maxWidth) return [normalized];
-  const words = normalized.split(" ");
-  if (words.length === 1) return [normalized];
-  const lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    const candidate = line ? line + " " + word : word;
-    if (line && estimatedTextWidth(candidate, fontSize, measureText) > maxWidth) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = candidate;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-}
-
-function fittedLines(
-  value: string,
-  maxWidth: number,
-  preferredSize: number,
-  maximumLines = 5,
-  minimumSize = 9,
-  measureText = false
-): { lines: string[]; fontSize: number; overflowed: boolean } {
-  const safeMaximumLines = Math.max(1, maximumLines);
-  const safeWidth = Math.max(1, maxWidth);
-  let fontSize = Math.max(minimumSize, preferredSize);
-  let lines = wrapWords(value, safeWidth, fontSize, measureText);
-  while (
-    fontSize > minimumSize
-    && (
-      lines.length > safeMaximumLines
-      || lines.some((line) => estimatedTextWidth(line, fontSize, measureText) > safeWidth)
-    )
-  ) {
-    fontSize = Math.max(minimumSize, fontSize - 1);
-    lines = wrapWords(value, safeWidth, fontSize, measureText);
-  }
-  const overflowed = lines.length > safeMaximumLines
-    || lines.some((line) => estimatedTextWidth(line, fontSize, measureText) > safeWidth);
-  return { lines, fontSize, overflowed };
-}
-
 function SvgLabel({
   value,
   x,
   y,
   width,
+  height,
   fontSize,
   fill = "#0f172a",
   weight = 600,
   anchor = "middle",
   maximumLines = 5,
   lineHeight = 1.35,
+  maximumFontSize = 72,
   transform,
   fillOverride,
 }: {
@@ -247,12 +202,14 @@ function SvgLabel({
   x: number;
   y: number;
   width: number;
+  height?: number;
   fontSize: number;
   fill?: string;
   weight?: number;
   anchor?: "start" | "middle" | "end";
   maximumLines?: number;
   lineHeight?: number;
+  maximumFontSize?: number;
   transform?: string;
   fillOverride?: string;
 }) {
@@ -264,7 +221,18 @@ function SvgLabel({
     : visualStyle.fontWeight === "normal"
       ? 400
       : weight;
-  const fit = fittedLines(value, width, fontSize, maximumLines, 9, measureText);
+  const fit = fitRelationshipLabel({
+    value,
+    maximumWidth: width,
+    maximumHeight: height,
+    preferredFontSize: fontSize,
+    maximumFontSize,
+    maximumLines,
+    minimumFontSize: 9,
+    lineHeight,
+    maximize: visualStyle.maximizeLabelText === true,
+    measureText: (label, size) => estimatedTextWidth(label, size, measureText),
+  });
   const offset = -((fit.lines.length - 1) * fit.fontSize * lineHeight) / 2;
   if (fit.overflowed) {
     return (
@@ -332,6 +300,7 @@ function TitleBlock({
           x={width / 2}
           y={30}
           width={width - 64}
+          height={36}
           fontSize={Math.max(20, spec.textSize * 1.55)}
           weight={750}
           maximumLines={2}
@@ -343,6 +312,7 @@ function TitleBlock({
           x={width / 2}
           y={title ? 60 : 30}
           width={width - 72}
+          height={28}
           fontSize={Math.max(11, spec.textSize * 0.82)}
           fill="#64748b"
           weight={500}
@@ -362,6 +332,7 @@ function EmptyDiagram({ spec }: { spec: RelationshipDiagramSpec }) {
         x={380}
         y={280}
         width={620}
+        height={80}
         fontSize={Math.max(16, spec.textSize)}
         fill="#64748b"
       />
@@ -514,6 +485,7 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={sourcePoint.x}
         y={sourcePoint.y}
         width={sourceArcWidth}
+        height={sourceRadius - hubRadius - 24}
         fontSize={style.fontSize ?? sourceFontSize}
         fill={contrastText(color)}
         fillOverride={style.textColor}
@@ -551,6 +523,7 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={labelPoint.x}
         y={labelPoint.y}
         width={targetArcWidth}
+        height={targetRadius - sourceRadius - 30}
         fontSize={style.fontSize ? Math.max(9, style.fontSize * 0.9) : targetFontSize}
         fillOverride={style.textColor}
         weight={600}
@@ -577,6 +550,7 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={cx}
         y={cy}
         width={hubRadius * 1.55}
+        height={hubRadius * 1.45}
         fontSize={Math.max(12, spec.textSize * 0.9)}
         fillOverride={spec.centerTextColor ?? "#ffffff"}
         weight={750}
@@ -588,6 +562,7 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
           x={cx}
           y={cy + hubRadius + 26}
           width={Math.max(220, hubRadius * 3)}
+          height={32}
           fontSize={Math.max(10, spec.textSize * 0.72)}
           fill="#64748b"
           weight={500}
@@ -650,6 +625,7 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
         minimumSourceFontSize: 8.5,
         minimumTargetFontSize: 7,
         density: flowDensity,
+        maximizeFontSize: spec.maximizeLabelText,
       }),
     };
   });
@@ -904,6 +880,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={cx}
         y={cy}
         width={hubRadius * 1.55}
+        height={hubRadius * 1.45}
         fontSize={Math.max(16, spec.textSize * 1.15)}
         fillOverride={spec.centerTextColor ?? "#ffffff"}
         weight={800}
@@ -951,6 +928,7 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               x={x + 18}
               y={y + 26}
               width={cardWidth - 72}
+              height={40}
               fontSize={Math.max(12, style.fontSize ?? spec.textSize)}
               fill="#ffffff"
               fillOverride={style.textColor}
@@ -961,7 +939,7 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
             {spec.showCounts && (
               <g>
                 <circle cx={x + cardWidth - 27} cy={y + 26} r="16" fill="rgba(255,255,255,0.92)" />
-                <SvgLabel value={String(group.count)} x={x + cardWidth - 27} y={y + 26} width={26} fontSize={11} weight={800} maximumLines={1} />
+                <SvgLabel value={String(group.count)} x={x + cardWidth - 27} y={y + 26} width={26} height={24} fontSize={11} weight={800} maximumLines={1} />
               </g>
             )}
             {group.targets.map((target, targetIndex) => (
@@ -972,6 +950,7 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                   x={x + 32}
                   y={y + 75 + targetIndex * targetLineHeight}
                   width={cardWidth - 48}
+                  height={targetLineHeight - 4}
                   fontSize={Math.max(10, (style.fontSize ?? spec.textSize) * 0.82)}
                   fillOverride={style.textColor}
                   weight={550}
@@ -1015,6 +994,7 @@ function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
             x={x}
             y={headerHeight - 20}
             width={140}
+            height={columnWidth - 10}
             fontSize={Math.max(9, spec.textSize * 0.72)}
             weight={600}
             anchor="start"
@@ -1050,6 +1030,7 @@ function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               x={42}
               y={y}
               width={labelWidth - 42}
+              height={rowHeight - 8}
               fontSize={Math.max(10, (style.fontSize ?? spec.textSize) * 0.86)}
               fillOverride={style.textColor}
               weight={650}
@@ -1127,6 +1108,7 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               x={point.x}
               y={point.y - panelHeight / 2 + 32}
               width={panelWidth - 38}
+              height={50}
               fontSize={Math.max(12, style.fontSize ?? spec.textSize)}
               fillOverride={style.textColor}
               weight={780}
@@ -1139,6 +1121,7 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                 x={point.x}
                 y={point.y - panelHeight / 2 + 72 + targetIndex * Math.max(21, spec.textSize * 1.42)}
                 width={panelWidth - 38}
+                height={Math.max(17, spec.textSize * 1.42 - 4)}
                 fontSize={Math.max(10, (style.fontSize ?? spec.textSize) * 0.78)}
                 fillOverride={style.textColor}
                 weight={550}
@@ -1161,6 +1144,7 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         x={cx}
         y={cy}
         width={190}
+        height={180}
         fontSize={Math.max(16, spec.textSize * 1.15)}
         fillOverride={spec.centerTextColor ?? "#ffffff"}
         weight={800}
@@ -1233,6 +1217,7 @@ export function RelationshipDiagramSvg({
       fontWeight: spec.fontWeight,
       fontStyle: spec.fontStyle,
       textColor: spec.textColor,
+      maximizeLabelText: spec.maximizeLabelText,
     }}>
     <TextMeasurementContext.Provider value={measureText}>
     <svg

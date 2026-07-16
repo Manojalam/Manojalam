@@ -13,6 +13,8 @@ export interface FlowerLabelFlowInput {
   minimumSourceFontSize?: number;
   minimumTargetFontSize?: number;
   density?: FlowerLabelFlowDensity;
+  /** Grow the source and targets to the largest balanced sizes that fit. */
+  maximizeFontSize?: boolean;
   /** Optional browser-backed measurer. The deterministic fallback is suitable for SSR. */
   measureText?: FlowerLabelMeasureText;
 }
@@ -437,14 +439,16 @@ export function layoutFlowerLabels(input: FlowerLabelFlowInput): FlowerLabelFlow
   const safeRegionScale = Math.min(innerWidth, innerHeight);
   // Very large style overrides are still preferences. Values that cannot
   // possibly fit a fixed safe region only multiply failed layout searches.
-  const preferredSourceSize = Math.min(
-    finitePositive(input.sourceFontSize, 15),
-    Math.max(10, safeRegionScale * 0.3)
-  );
-  const preferredTargetSize = Math.min(
-    finitePositive(input.targetFontSize, 12),
-    Math.max(8, safeRegionScale * 0.22)
-  );
+  const requestedSourceSize = finitePositive(input.sourceFontSize, 15);
+  const requestedTargetSize = finitePositive(input.targetFontSize, 12);
+  const automaticSourceLimit = Math.max(10, safeRegionScale * 0.3);
+  const automaticTargetLimit = Math.max(8, safeRegionScale * 0.22);
+  const preferredSourceSize = input.maximizeFontSize
+    ? Math.min(72, Math.max(requestedSourceSize, automaticSourceLimit))
+    : Math.min(requestedSourceSize, automaticSourceLimit);
+  const preferredTargetSize = input.maximizeFontSize
+    ? Math.min(72, Math.max(requestedTargetSize, automaticTargetLimit))
+    : Math.min(requestedTargetSize, automaticTargetLimit);
   const minimumSourceSize = Math.min(
     preferredSourceSize,
     finitePositive(input.minimumSourceFontSize, 10)

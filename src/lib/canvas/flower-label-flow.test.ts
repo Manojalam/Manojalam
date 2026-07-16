@@ -96,6 +96,29 @@ test("font size adapts when the preferred size does not fit", () => {
   assert.ok(result.source.fontSize >= result.targetFontSize * 1.12 - 0.001);
 });
 
+test("maximize mode grows short petal labels while keeping them inside the safe region", () => {
+  const input = {
+    sourceText: "Earth",
+    targetLabels: ["form", "touch"],
+    regionWidth: 300,
+    regionHeight: 220,
+    sourceFontSize: 14,
+    targetFontSize: 10,
+    density: "compact" as const,
+  };
+  const normal = layoutFlowerLabels(input);
+  const maximized = layoutFlowerLabels({ ...input, maximizeFontSize: true });
+
+  assert.equal(maximized.overflowed, false);
+  assert.ok(maximized.source.fontSize > normal.source.fontSize);
+  assert.ok(maximized.targetFontSize > normal.targetFontSize);
+  assert.ok(maximized.bounds.top >= -98 - 0.001);
+  assert.ok(maximized.bounds.bottom <= 98 + 0.001);
+  maximized.rows.forEach((row) => {
+    assert.ok(row.width <= row.availableWidth + 0.001);
+  });
+});
+
 test("a huge preferred font safely down-fits fourteen Sanskrit labels", () => {
   const targets = [
     "\u092a\u0943\u0925\u094d\u0935\u0940",
