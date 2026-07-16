@@ -35,6 +35,8 @@ interface UIState {
   setTouchSelectionMode: (active: boolean) => void;
   canvasDragging: boolean;
   setCanvasDragging: (active: boolean) => void;
+  connectorClickPoint: { edgeId: string; x: number; y: number } | null;
+  setConnectorClickPoint: (point: { edgeId: string; x: number; y: number } | null) => void;
   relationshipSelection: RelationshipSelectionSession | null;
   startRelationshipSelection: (session: RelationshipSelectionSession) => void;
   toggleRelationshipTarget: (nodeId: string) => void;
@@ -89,6 +91,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   canvasDragging: false,
   setCanvasDragging: (active) => set({ canvasDragging: active }),
+  connectorClickPoint: null,
+  setConnectorClickPoint: (point) => set({ connectorClickPoint: point }),
   relationshipSelection: null,
   startRelationshipSelection: (session) => set({
     activeTool: "select",
