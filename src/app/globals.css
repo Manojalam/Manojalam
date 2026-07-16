@@ -305,6 +305,15 @@ body {
   pointer-events: none;
   shape-margin: 4px;
 }
+.diamond-text-flow-editor .ProseMirror {
+  box-sizing: border-box;
+  padding-block: 8%;
+  text-wrap: pretty;
+  text-wrap: balance;
+}
+.diamond-text-flow-editor .ProseMirror > * {
+  text-wrap: inherit;
+}
 .diamond-text-flow-editor .diamond-text-flow-guide-left-top {
   float: left;
   shape-outside: polygon(0 0, 100% 0, 0 100%);

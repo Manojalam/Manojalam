@@ -88,6 +88,16 @@ export function shouldUseDiamondTextFlow(
   return lineCount >= 3;
 }
 
+/** Editing stays rectangular so visual soft wraps match caret navigation. */
+export function shouldRenderDiamondTextFlow(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  contentSize: Partial<ContentMeasurement> | undefined,
+  editing: boolean
+): boolean {
+  return !editing && shouldUseDiamondTextFlow(shapeType, renderedSize, contentSize);
+}
+
 interface GraphemeSegmenter {
   segment(value: string): Iterable<unknown>;
 }
