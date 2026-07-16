@@ -798,7 +798,8 @@ export function RichTextEditor({
           data-rich-text-editor="true"
           className={cn(
             "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
-            "[&_.ProseMirror]:leading-snug [&_.ProseMirror]:break-words",
+            "[&_.ProseMirror]:leading-snug",
+            shapeTextFlow !== "diamond" && "[&_.ProseMirror]:break-words",
             "[&_.ProseMirror_p]:m-0",
             shapeTextFlow === "diamond" && "h-full w-full [&_.ProseMirror]:h-full [&_.ProseMirror]:min-h-full [&_.ProseMirror]:overflow-hidden",
             !editable && "pointer-events-none select-none",

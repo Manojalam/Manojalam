@@ -310,6 +310,9 @@ body {
   box-sizing: border-box;
   padding: 0;
   text-wrap: pretty;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
 }
 .diamond-text-flow-editor .ProseMirror > * {
   text-wrap: inherit;

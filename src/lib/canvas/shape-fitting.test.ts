@@ -171,6 +171,34 @@ test("short diamond labels remain centered", () => {
   }), false);
 });
 
+test("wide diamond phrases wrap at spaces before they are scaled down", () => {
+  const nodeSize = { width: 126, height: 126 };
+  const compactMeasurement = {
+    width: 90,
+    naturalWidth: 96,
+    naturalHeight: 20,
+    height: 20,
+    lineCount: 1,
+  };
+
+  assert.equal(
+    shouldUseDiamondTextFlow("diamond", nodeSize, compactMeasurement, "+ अथ पदार्थण"),
+    true
+  );
+  assert.equal(
+    shouldUseDiamondTextFlow("diamond", nodeSize, {
+      ...compactMeasurement,
+      width: 36,
+      naturalWidth: 36,
+    }, "+ हल"),
+    false
+  );
+  assert.equal(
+    shouldUseDiamondTextFlow("diamond", nodeSize, compactMeasurement, "अतिदीर्घसंस्कृतसमासपदम्"),
+    false
+  );
+});
+
 test("diamond flow is disabled while the caret is editing soft-wrapped text", () => {
   const size = { width: 160, height: 160 };
   const dense = {
