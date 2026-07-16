@@ -43,7 +43,7 @@ export interface MaximumTextFitOptions {
 }
 
 export interface ShapeTextContentOptions {
-  contentSize?: Partial<Size>;
+  contentSize?: Partial<ContentMeasurement>;
 }
 
 interface GraphemeSegmenter {
@@ -66,6 +66,15 @@ export function nodeContentPadding(nodeType: string | undefined): Size {
   if (nodeType === "text") return { width: 36, height: 26 };
   if (nodeType === "mindmap") return { width: 44, height: 30 };
   return { width: 52, height: 42 };
+}
+
+function shapeContentPadding(shapeType: string | undefined, nodeType: string | undefined): Size {
+  if (shapeType === "diamond" && nodeType === "shape") {
+    // Four pixels per side keeps text clear of the sloped border without
+    // consuming most of the diamond's inscribed text rectangle.
+    return { width: 8, height: 8 };
+  }
+  return nodeContentPadding(nodeType);
 }
 
 function graphemeCount(value: string): number {
@@ -200,7 +209,7 @@ export function shapeTextContentWidth(
       default: return 1;
     }
   })();
-  return Math.max(8, width / scale - nodeContentPadding(nodeType).width);
+  return Math.max(8, width / scale - shapeContentPadding(shapeType, nodeType).width);
 }
 
 /** Approximate the safe text rectangle inside a rendered node shape. */
@@ -212,8 +221,14 @@ export function shapeTextContentSize(
 ): Size {
   const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
   const height = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
-  const padding = nodeContentPadding(nodeType);
-  const contentWidth = finitePositive(options.contentSize?.width, 180);
+  const padding = shapeContentPadding(shapeType, nodeType);
+  // Prefer the unwrapped width. Using an already-constrained rendered width
+  // feeds a narrow diamond editor back into this aspect calculation and can
+  // collapse the text area to a one-character column.
+  const contentWidth = finitePositive(
+    options.contentSize?.naturalWidth,
+    finitePositive(options.contentSize?.width, 180)
+  );
   const contentHeight = finitePositive(options.contentSize?.height, 80);
   const paddedAspect = Math.max(
     0.35,
@@ -296,8 +311,13 @@ function shapeSafeSize(shapeType: string, box: Size, cornerRadius = 0): Size {
           candidate.width * candidate.height < best.width * best.height ? candidate : best
         ));
     }
-    case "diamond":
-      return { width: box.width * 2, height: box.height * 2 };
+    case "diamond": {
+      // For a square diamond, an axis-aligned box fits when its width and
+      // height add up to the diamond's side length. Doubling both dimensions
+      // and then forcing a square leaves a large amount of usable area empty.
+      const side = box.width + box.height;
+      return { width: side, height: side };
+    }
     case "star":
     case "flower": {
       const diameter = Math.max(box.width, box.height) * 1.8;
@@ -338,7 +358,7 @@ export function fitShapeToContent(
   contentSize: ContentMeasurement,
   options: ShapeFitOptions = {}
 ): Size {
-  const padding = nodeContentPadding(options.nodeType);
+  const padding = shapeContentPadding(shapeType, options.nodeType);
   const borderAllowance = Math.max(0, finitePositive(options.borderWidth, 0)) * 2;
   const maxContentWidth = finitePositive(options.maxContentWidth, MAX_AUTOFIT_WIDTH - padding.width);
   const contentWidth = Math.min(maxContentWidth, finitePositive(contentSize.width, MIN_AUTOFIT_WIDTH - padding.width));
