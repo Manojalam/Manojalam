@@ -119,6 +119,14 @@ export type LayoutMode =
   | "radial"
   | "matrix";
 
+export interface ConnectorLabelPreset {
+  label: string;
+  /** Default text color copied to a connector when this shortcut is applied. */
+  color?: string;
+  /** Also copy the preset color to the connector path when applied. */
+  syncConnectorColor?: boolean;
+}
+
 export interface BoardSettings {
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
@@ -131,8 +139,8 @@ export interface BoardSettings {
   canvasBackgroundColor?: string;
   gridColor?: string;
   gridSpacing?: number;
-  /** Reusable connector-label shortcuts saved with this board. */
-  connectorLabelPresets?: string[];
+  /** Reusable connector-label shortcuts and their default styles, saved with this board. */
+  connectorLabelPresets?: Array<string | ConnectorLabelPreset>;
   /** @deprecated Legacy alias retained while old boards migrate. */
   gridSize?: number;
 }
@@ -621,7 +629,10 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   gridColor: "#d5d2cb",
   gridSpacing: 32,
   gridSize: 32,
-  connectorLabelPresets: ["Yes", "No"],
+  connectorLabelPresets: [
+    { label: "Yes", color: "#22c55e", syncConnectorColor: true },
+    { label: "No", color: "#ef4444", syncConnectorColor: true },
+  ],
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

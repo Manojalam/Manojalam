@@ -66,6 +66,7 @@ import {
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
+import { connectorLabelPresetUpdate } from "@/lib/canvas/connector-label-presets";
 import { ConnectorPathStylePreview } from "./edges/ConnectorPathStylePicker";
 import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
 import {
@@ -816,7 +817,7 @@ function ConnectionInspectorSections({
                 variant="grid"
                 maxVisible={7}
                 currentLabel={label}
-                onSelect={(nextLabel) => onLabelStyleChange({ label: nextLabel })}
+                onSelect={(preset) => onLabelStyleChange(connectorLabelPresetUpdate(preset))}
               />
             </div>
           </div>
