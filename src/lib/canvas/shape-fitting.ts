@@ -74,8 +74,8 @@ export function diamondTextFlowBox(renderedSize: Size): Size {
 
 /**
  * Keep compact labels centered, and switch genuinely dense labels to the
- * shape-aware flow path. Natural width also makes this work on first render,
- * before a wrapped line count has been persisted.
+ * shape-aware flow path. Width alone is not density: a single long line can
+ * still be maximized safely inside the centered diamond interior.
  */
 export function shouldUseDiamondTextFlow(
   shapeType: string | undefined,
@@ -84,10 +84,8 @@ export function shouldUseDiamondTextFlow(
 ): boolean {
   if (shapeType !== "diamond" || !contentSize) return false;
   const lineCount = finitePositive(contentSize.lineCount, 0);
-  if (lineCount >= 3) return true;
-  const naturalWidth = finitePositive(contentSize.naturalWidth, 0);
-  const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
-  return naturalWidth > width * 0.9;
+  void renderedSize;
+  return lineCount >= 3;
 }
 
 interface GraphemeSegmenter {

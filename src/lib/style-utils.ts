@@ -47,6 +47,26 @@ function plainTextForFitting(d: Record<string, unknown>): string {
   return typeof d.text === "string" ? d.text.trim() : "";
 }
 
+function measuredCompactFillScale(
+  measurement: Partial<{
+    width: number;
+    height: number;
+    lineCount: number;
+    naturalWidth: number;
+    naturalHeight: number;
+  }> | undefined,
+  available: Size
+): number | null {
+  if (!measurement || (measurement.lineCount ?? 1) > 2) return null;
+  const width = measurement.naturalWidth ?? measurement.width;
+  const height = measurement.naturalHeight ?? measurement.height;
+  if (
+    typeof width !== "number" || !Number.isFinite(width) || width <= 0
+    || typeof height !== "number" || !Number.isFinite(height) || height <= 0
+  ) return null;
+  return Math.min(available.width / width, available.height / height);
+}
+
 export function getFittedTextPresentation(
   d: Record<string, unknown>,
   availableWidth: number,
@@ -79,7 +99,14 @@ export function getFittedTextPresentation(
   const shouldMaximize = d.maximizeText === true && Number.isFinite(availableHeight) && !!plainText;
   let scale = 1;
   const storedMeasurement = (d.intrinsicContentSize ?? d.matrixIntrinsicSize) as
-    | Partial<{ width: number; height: number; lineCount: number; lineHeight: number; naturalWidth: number }>
+    | Partial<{
+        width: number;
+        height: number;
+        lineCount: number;
+        lineHeight: number;
+        naturalWidth: number;
+        naturalHeight: number;
+      }>
     | undefined;
 
   if (shouldMaximize) {
@@ -94,9 +121,18 @@ export function getFittedTextPresentation(
       { width: availableWidth, height: availableHeight },
       { preferredFontSize, minimumFontSize, maximumFontSize: 96 }
     );
+    const measuredScale = measuredCompactFillScale(storedMeasurement, {
+      width: availableWidth,
+      height: availableHeight,
+    });
     // Fill-space is monotonic across every shared consumer: it can enlarge the
     // normal rendered fit, but enabling it must never make that text smaller.
-    scale = Math.max(normalScale, maximumFontSize / preferredFontSize);
+    // Compact rich text uses its real authored dimensions so inline font marks
+    // cannot make one same-sized node look arbitrarily smaller than another.
+    scale = Math.max(
+      normalScale,
+      measuredScale ?? maximumFontSize / preferredFontSize
+    );
     scale = Math.max(minimumFontSize / preferredFontSize, Math.min(96 / preferredFontSize, scale));
   } else if (shouldConstrain && storedMeasurement) {
     scale = fittedContentScale(

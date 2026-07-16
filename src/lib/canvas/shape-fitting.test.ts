@@ -156,6 +156,12 @@ test("short diamond labels remain centered", () => {
     height: 20,
     lineCount: 1,
   }), false);
+  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
+    width: 120,
+    naturalWidth: 420,
+    height: 20,
+    lineCount: 1,
+  }), false);
   assert.equal(shouldUseDiamondTextFlow("rectangle", nodeSize, {
     width: 300,
     naturalWidth: 300,
@@ -471,6 +477,30 @@ test("fill available space never shrinks the normal rendered fit", () => {
   assert.ok(ordinary.scale < 1);
   assert.ok(maximized.scale >= ordinary.scale);
   assert.ok(maximized.fontSize >= ordinary.fontSize);
+});
+
+test("fill available space maximizes the actual compact rich-text measurement", () => {
+  const available = { width: 72, height: 28 };
+  const presentation = getFittedTextPresentation(
+    {
+      text: "अहन् + सुप ?",
+      fontSize: 14,
+      maximizeText: true,
+      intrinsicContentSize: {
+        width: 32,
+        naturalWidth: 32,
+        height: 9,
+        naturalHeight: 9,
+        lineCount: 1,
+      },
+    },
+    available.width,
+    14,
+    { availableHeight: available.height, constrain: true }
+  );
+
+  assert.equal(presentation.scale, 2.25);
+  assert.equal(32 * presentation.scale, available.width);
 });
 
 test("fixed-box fitting respects a readable minimum scale", () => {
