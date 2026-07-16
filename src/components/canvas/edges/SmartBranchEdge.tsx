@@ -315,8 +315,8 @@ function RoutedSmartBranchEdge({
               useUIStore.getState().setConnectorClickPoint(null);
             } : undefined}
           />
-          {editorSelected && curveStyle === "step" && waypoints.length > 0 && (
-            <ConnectorBendHandles edgeId={id} waypoints={waypoints} />
+          {editorSelected && curveStyle === "step" && (
+            <ConnectorBendHandles edgeId={id} routePoints={routePoints} waypoints={waypoints} />
           )}
         </EdgeLabelRenderer>
       )}

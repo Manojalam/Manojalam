@@ -86,6 +86,15 @@ function stub(p: Pt, side: Side, d = 20): Pt {
   }
 }
 
+function liesBeyondSide(origin: Pt, point: Pt, side: Side): boolean {
+  switch (side) {
+    case "top": return point.x === origin.x && point.y < origin.y;
+    case "bottom": return point.x === origin.x && point.y > origin.y;
+    case "left": return point.y === origin.y && point.x < origin.x;
+    case "right": return point.y === origin.y && point.x > origin.x;
+  }
+}
+
 // -- Candidate orthogonal paths -----------------------------------------------
 
 function buildCandidates(
@@ -99,6 +108,21 @@ function buildCandidates(
   const s1 = stub(s, ss, endpointOptions.sourceStubDistance ?? 20);
   const t1 = stub(t, ts, endpointOptions.targetStubDistance ?? 20);
   const candidates: Pt[][] = [];
+
+  // Perpendicular handles often need only one elbow. Keeping both endpoint
+  // stubs in that case creates a conspicuous short dogleg even when the clean
+  // elbow leaves and enters the requested sides and crosses no obstacle.
+  if (s.x !== t.x && s.y !== t.y) {
+    const directElbows = [
+      { x: s.x, y: t.y },
+      { x: t.x, y: s.y },
+    ];
+    for (const elbow of directElbows) {
+      if (liesBeyondSide(s, elbow, ss) && liesBeyondSide(t, elbow, ts)) {
+        candidates.push([s, elbow, t]);
+      }
+    }
+  }
 
   // HV and VH elbows between the stubs
   candidates.push([s, s1, { x: t1.x, y: s1.y }, t1, t]);
