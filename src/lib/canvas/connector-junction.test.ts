@@ -4,6 +4,7 @@ import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import {
   clearConnectorJunctionGraph,
   findConnectorLabelOwnerEdge,
+  findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
   releaseConnectorJunctionRouteAnchors,
   splitConnectorAtJunction,
@@ -36,6 +37,8 @@ test("a connector junction preserves the line endpoints and terminal arrow", () 
   assert.deepEqual(result.edges[1].markerEnd, edge.markerEnd);
   assert.equal(result.edges[1].data?.label, "Approved");
   assert.equal(result.edges[1].data?.waypoints, undefined);
+  assert.equal(result.edges[0].data?.connectorGroupId, "edge");
+  assert.equal(result.edges[1].data?.connectorGroupId, "edge");
 });
 
 test("clearing a junction restores the original through-connection", () => {
@@ -195,4 +198,56 @@ test("either junction segment resolves to the outgoing label owner", () => {
   assert.equal(findConnectorLabelOwnerEdge(split.edges, "incoming")?.id, "outgoing");
   assert.equal(findConnectorLabelOwnerEdge(split.edges, "outgoing")?.id, "outgoing");
   assert.equal(findConnectorLabelOwnerEdge(split.edges, "incoming")?.data?.label, "Yes");
+  assert.deepEqual(findLogicalConnectorEdgeIds(split.edges, "incoming"), ["incoming", "outgoing"]);
+});
+
+test("a connector split more than once keeps one label owner and logical selection", () => {
+  const firstSplit = splitConnectorAtJunction(
+    { id: "edge", source: "source", target: "target", data: { label: "Yes" } },
+    { x: 300, y: 100 },
+    { x: 100, y: 100 },
+    { x: 700, y: 100 },
+    { junctionId: "junction-a", firstEdgeId: "first", secondEdgeId: "remainder" }
+  );
+  const secondSplit = splitConnectorAtJunction(
+    firstSplit.edges[1],
+    { x: 500, y: 100 },
+    { x: 300, y: 100 },
+    { x: 700, y: 100 },
+    { junctionId: "junction-b", firstEdgeId: "middle", secondEdgeId: "last" }
+  );
+  const edges = [firstSplit.edges[0], ...secondSplit.edges];
+
+  assert.deepEqual(findLogicalConnectorEdgeIds(edges, "first"), ["first", "middle", "last"]);
+  assert.deepEqual(findLogicalConnectorEdgeIds(edges, "middle"), ["first", "middle", "last"]);
+  assert.equal(findConnectorLabelOwnerEdge(edges, "first")?.id, "last");
+  assert.equal(findConnectorLabelOwnerEdge(edges, "middle")?.data?.label, "Yes");
+});
+
+test("legacy chained junction segments associate by topology", () => {
+  const edges: Edge[] = [
+    {
+      id: "first",
+      source: "source",
+      target: "junction-a",
+      data: { connectorJunctionId: "junction-a", connectorJunctionSegment: "incoming" },
+    },
+    {
+      id: "middle",
+      source: "junction-a",
+      target: "junction-b",
+      data: { connectorJunctionId: "junction-b", connectorJunctionSegment: "incoming" },
+    },
+    {
+      id: "last",
+      source: "junction-b",
+      target: "target",
+      data: { connectorJunctionId: "junction-b", connectorJunctionSegment: "outgoing", label: "Yes" },
+    },
+    { id: "branch", source: "junction-a", target: "other", data: { label: "No" } },
+  ];
+
+  assert.deepEqual(findLogicalConnectorEdgeIds(edges, "first"), ["first", "middle", "last"]);
+  assert.equal(findConnectorLabelOwnerEdge(edges, "first")?.id, "last");
+  assert.deepEqual(findLogicalConnectorEdgeIds(edges, "branch"), ["branch"]);
 });
