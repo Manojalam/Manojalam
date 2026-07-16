@@ -2331,7 +2331,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const placementMode = layoutRoot.mode ?? mode;
     const useSunburst = placementMode === "radial";
     let placedNodes = manualFlowchart
-      ? placeFlowchartInsertions(nextNodes, childIds)
+      ? placeFlowchartInsertions(nextNodes, nextEdges, childIds)
       : nextNodes;
     if (manualFlowchart) {
       nextEdges = rerouteFlowchartInsertionEdges(placedNodes, nextEdges, childIds);
@@ -2476,7 +2476,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const placementMode = nextLayoutRoot.mode ?? edgeMode;
     const useSunburst = placementMode === "radial";
     const placedNodes = manualFlowchart
-      ? placeFlowchartInsertions(nextNodes, [siblingId])
+      ? placeFlowchartInsertions(nextNodes, nextEdges, [siblingId])
       : placementMode === "matrix"
       ? applyMatrixResultToNodes(
           nextNodes,
