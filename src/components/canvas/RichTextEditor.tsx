@@ -22,6 +22,7 @@ import {
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
+import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Palette } from "lucide-react";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
@@ -552,16 +553,7 @@ export function RichTextEditor({
   const openPopoversBelow = drag
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
-  const normalizedContentScale = Number.isFinite(contentScale)
-    ? Math.max(0.2, Math.min(12, contentScale))
-    : 1;
-  const hasVisualScale = Math.abs(normalizedContentScale - 1) > 0.001;
-  const scaleStyle: CSSProperties | undefined = hasVisualScale
-    ? {
-        zoom: normalizedContentScale,
-        width: `${100 / normalizedContentScale}%`,
-      }
-    : undefined;
+  const scaleStyle: CSSProperties | undefined = getRichTextScaleStyle(contentScale);
 
   return (
     <>
@@ -765,7 +757,6 @@ export function RichTextEditor({
 
       <div
         data-rich-text-editor="true"
-        className={cn(hasVisualScale && "rich-text-scale-fit")}
         style={scaleStyle}
       >
         <EditorContent
