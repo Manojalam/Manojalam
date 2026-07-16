@@ -144,8 +144,8 @@ test("dense diamond labels use the whole shape instead of one center rectangle",
   }), true);
   assert.ok(flowBox.width > centered.width);
   assert.ok(flowBox.height > centered.height * 3);
-  assert.ok(capacity.width * capacity.height < flowBox.width * flowBox.height / 2);
-  assert.ok(capacity.width * capacity.height > flowBox.width * flowBox.height * 0.4);
+  assert.equal(capacity.height, flowBox.height);
+  assert.equal(capacity.width * capacity.height, flowBox.width * flowBox.height / 2);
 });
 
 test("short diamond labels remain centered", () => {

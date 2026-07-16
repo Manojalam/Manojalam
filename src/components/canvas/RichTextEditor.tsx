@@ -61,10 +61,8 @@ const DiamondTextFlowGuides = Extension.create({
       props: {
         decorations(state) {
           return DecorationSet.create(state.doc, [
-            guide("diamond-text-flow-guide-left-top", -4),
-            guide("diamond-text-flow-guide-right-top", -3),
-            guide("diamond-text-flow-guide-left-bottom", -2),
-            guide("diamond-text-flow-guide-right-bottom", -1),
+            guide("diamond-text-flow-guide-left", -2),
+            guide("diamond-text-flow-guide-right", -1),
           ]);
         },
       },
