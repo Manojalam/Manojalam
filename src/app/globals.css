@@ -299,7 +299,6 @@ body {
   word-break: keep-all !important;
   overflow-wrap: normal !important;
 }
-.rich-text-scale-fit { transform-origin: top left; }
 mark { border-radius: 2px; padding: 0 2px; }
 
 /* Radial-layout labels use one fitted font size so inline formatting can never
