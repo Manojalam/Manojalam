@@ -42,7 +42,8 @@ export function createExternalNoteNode(
   nodes: Node[],
   id: string,
   scriptMode: ScriptMode,
-  nearPoint?: { x: number; y: number }
+  nearPoint?: { x: number; y: number },
+  fontSize = 14
 ): Node {
   const sourceRect = getNodeRect(source);
   const candidates = [
@@ -75,7 +76,7 @@ export function createExternalNoteNode(
       fillColor: "transparent",
       fillOpacity: 0,
       borderWidth: 0,
-      fontSize: 14,
+      fontSize,
       textColor: "#475569",
       textAlign: "left",
     },

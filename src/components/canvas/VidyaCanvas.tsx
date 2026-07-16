@@ -1026,28 +1026,29 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
 
       let newNode: Node | null = null;
       const id = generateId();
+      const defaultFontSize = useCanvasStore.getState().settings.defaultFontSize;
 
       switch (tool) {
         case "mindmap":
           newNode = { id, type: "shape", position,
-            data: { shapeType: "rounded", text: "New Idea", scriptMode: "plain", color: "#818cf8", tags: [] },
+            data: { shapeType: "rounded", text: "New Idea", scriptMode: "plain", color: "#818cf8", fontSize: defaultFontSize, tags: [] },
             style: { width: 180 } };
           break;
         case "sticky":
           newNode = { id, type: "sticky", position,
-            data: { text: "", color: "yellow", tags: [] },
+            data: { text: "", color: "yellow", fontSize: defaultFontSize, tags: [] },
             style: { width: 180 } };
           break;
         case "text":
           newNode = { id, type: "text", position,
-            data: { text: "", scriptMode: "plain", tags: [] },
+            data: { text: "", scriptMode: "plain", fontSize: defaultFontSize, tags: [] },
             style: { width: 240 } };
           break;
         case "shape": {
           const sv = useUIStore.getState().shapeVariant ?? "rounded";
           const size = initialShapeSize(sv);
           newNode = { id, type: "shape", position,
-            data: { shapeType: sv, text: "", color: "#4262ff", tags: [], ...(sv === "flower" && { petalCount: 8 }) },
+            data: { shapeType: sv, text: "", color: "#4262ff", fontSize: defaultFontSize, tags: [], ...(sv === "flower" && { petalCount: 8 }) },
             style: size };
           break;
         }
@@ -1100,6 +1101,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     const flowPoint = screenToFlowPosition(screenPoint);
     const id = generateId();
+    const store = useCanvasStore.getState();
     const newNode: Node = {
       id,
       type: "text",
@@ -1107,6 +1109,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       data: {
         text,
         richText: plainTextToRichText(text),
+        fontSize: store.settings.defaultFontSize,
         autoSizeMode: "smart",
         scriptMode: "plain",
         tags: [],
@@ -1115,7 +1118,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       selected: true,
     };
 
-    const store = useCanvasStore.getState();
     store.pushHistory();
     useCanvasStore.setState((state) => {
       const candidateNodes = [...state.nodes, newNode];

@@ -59,6 +59,12 @@ test("a toolbar click places its note immediately beside the clicked canvas poin
   assert.deepEqual(note.position, { x: 432, y: 272 });
 });
 
+test("external notes use the board font-size default", () => {
+  const note = createExternalNoteNode(source, [source], "note", "plain", undefined, 19);
+
+  assert.equal(note.data.fontSize, 19);
+});
+
 test("a source can have multiple independently positioned notes", () => {
   const first = createExternalNoteNode(source, [source], "first-note", "plain");
   const second = createExternalNoteNode(source, [source, first], "second-note", "plain");
