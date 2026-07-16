@@ -52,6 +52,28 @@ function samePoint(first: RoutePoint, second: RoutePoint): boolean {
   return Math.abs(first.x - second.x) < 0.5 && Math.abs(first.y - second.y) < 0.5;
 }
 
+const DEFAULT_SEGMENT_ALIGNMENT_SNAP_DISTANCE = 8;
+
+export function snapDraggedSegmentCoordinate(
+  routePoints: readonly RoutePoint[],
+  segmentIndex: number,
+  coordinate: number,
+  snapDistance = DEFAULT_SEGMENT_ALIGNMENT_SNAP_DISTANCE
+): number {
+  const segment = draggableRouteSegments(routePoints).find(({ index }) => index === segmentIndex);
+  if (!segment || !Number.isFinite(coordinate)) return coordinate;
+  let snapped = coordinate;
+  let closestDistance = Math.max(0, snapDistance);
+  for (const point of routePoints) {
+    const candidate = segment.orientation === "horizontal" ? point.y : point.x;
+    const distance = Math.abs(candidate - coordinate);
+    if (distance > closestDistance) continue;
+    snapped = candidate;
+    closestDistance = distance;
+  }
+  return snapped;
+}
+
 /** Returns every non-zero orthogonal segment that can be dragged directly. */
 export function draggableRouteSegments(routePoints: readonly RoutePoint[]): DraggableRouteSegment[] {
   const segments: DraggableRouteSegment[] = [];
@@ -84,7 +106,8 @@ export function dragRouteSegmentToWaypoints(
   coordinate: number,
   sourceSide: Side,
   targetSide: Side,
-  endpointOptions: { sourceStubDistance?: number; targetStubDistance?: number } = {}
+  endpointOptions: { sourceStubDistance?: number; targetStubDistance?: number } = {},
+  snapDistance = DEFAULT_SEGMENT_ALIGNMENT_SNAP_DISTANCE
 ): RoutePoint[] {
   const segment = draggableRouteSegments(routePoints).find(({ index }) => index === segmentIndex);
   const lastIndex = routePoints.length - 1;
@@ -102,14 +125,20 @@ export function dragRouteSegmentToWaypoints(
   );
   const startsAtSource = segmentIndex === 0;
   const endsAtTarget = segmentIndex + 1 === lastIndex;
+  const snappedCoordinate = snapDraggedSegmentCoordinate(
+    routePoints,
+    segmentIndex,
+    coordinate,
+    snapDistance
+  );
   const firstBase = startsAtSource ? sourceStub : segment.start;
   const secondBase = endsAtTarget ? targetStub : segment.end;
   const translatedStart = segment.orientation === "horizontal"
-    ? { x: firstBase.x, y: coordinate }
-    : { x: coordinate, y: firstBase.y };
+    ? { x: firstBase.x, y: snappedCoordinate }
+    : { x: snappedCoordinate, y: firstBase.y };
   const translatedEnd = segment.orientation === "horizontal"
-    ? { x: secondBase.x, y: coordinate }
-    : { x: coordinate, y: secondBase.y };
+    ? { x: secondBase.x, y: snappedCoordinate }
+    : { x: snappedCoordinate, y: secondBase.y };
   const prefix = startsAtSource
     ? [routePoints[0], sourceStub]
     : routePoints.slice(0, segmentIndex);
@@ -158,12 +187,15 @@ function progressAlongRoute(routePoints: readonly RoutePoint[], point: RoutePoin
 
 /** Returns only real internal corners, excluding endpoints and collinear points. */
 export function routeBendPoints(routePoints: readonly RoutePoint[]): RoutePoint[] {
-  return routePoints.slice(1, -1).filter((point, index) => {
-    const previous = routePoints[index];
-    const next = routePoints[index + 2];
+  const unique = routePoints.filter((point, index) => (
+    index === 0 || !samePoint(point, routePoints[index - 1])
+  ));
+  return unique.slice(1, -1).filter((point, index) => {
+    const previous = unique[index];
+    const next = unique[index + 2];
     return !(
-      (previous.x === point.x && point.x === next.x)
-      || (previous.y === point.y && point.y === next.y)
+      (Math.abs(previous.x - point.x) < 0.5 && Math.abs(point.x - next.x) < 0.5)
+      || (Math.abs(previous.y - point.y) < 0.5 && Math.abs(point.y - next.y) < 0.5)
     );
   }).map((point) => ({ ...point }));
 }
