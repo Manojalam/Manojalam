@@ -122,7 +122,7 @@ test("Month/Year becomes a merged hierarchy table", () => {
   assertClean(result);
 });
 
-test("uneven branches create blank later columns instead of stretched cells", () => {
+test("uneven horizontal branches stretch terminal cells through later columns", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },
     { id: "short", parentId: "root" },
@@ -140,8 +140,8 @@ test("uneven branches create blank later columns instead of stretched cells", ()
   assert.equal(result.rows.length, 2);
   assert.equal(result.columnWidths.length, 5);
   assert.equal(short.column, 0);
-  assert.equal(short.width, result.columnWidths[0]);
-  assert.ok(short.width < result.bounds.width);
+  assert.equal(short.width, result.bounds.width);
+  assert.equal(short.x + short.width, result.bounds.right);
   assertClean(result);
 });
 
@@ -296,15 +296,34 @@ test("a vertical Matrix grows hierarchy levels downward", () => {
   assertClean(result);
 });
 
+test("vertical Matrix branches stretch shallow siblings to the body edge", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, orientation: "vertical" },
+    { id: "short", parentId: "root" },
+    { id: "deep", parentId: "root" },
+    { id: "deep-child", parentId: "deep" },
+    { id: "deepest", parentId: "deep-child" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(cells.get("short")!.y + cells.get("short")!.height, result.bounds.bottom);
+  assert.equal(cells.get("deepest")!.y + cells.get("deepest")!.height, result.bounds.bottom);
+  assertClean(result);
+});
+
 test("a child Matrix orientation overrides only its own descendants", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },
     { id: "vertical-branch", parentId: "root", orientation: "vertical" },
     { id: "vertical-1", parentId: "vertical-branch" },
     { id: "vertical-2", parentId: "vertical-branch" },
+    { id: "vertical-2-deep", parentId: "vertical-2" },
     { id: "horizontal-branch", parentId: "root" },
     { id: "horizontal-1", parentId: "horizontal-branch" },
     { id: "horizontal-2", parentId: "horizontal-branch" },
+    { id: "horizontal-2-deep", parentId: "horizontal-2" },
   ]);
   const hierarchy = buildHierarchy(nodes, edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
@@ -315,5 +334,13 @@ test("a child Matrix orientation overrides only its own descendants", () => {
   assert.ok(cells.get("vertical-1")!.x < cells.get("vertical-2")!.x);
   assert.ok(cells.get("horizontal-1")!.x > cells.get("horizontal-branch")!.x);
   assert.ok(cells.get("horizontal-1")!.y < cells.get("horizontal-2")!.y);
+  assert.equal(
+    cells.get("vertical-1")!.y + cells.get("vertical-1")!.height,
+    cells.get("vertical-2-deep")!.y + cells.get("vertical-2-deep")!.height
+  );
+  assert.equal(
+    cells.get("horizontal-1")!.x + cells.get("horizontal-1")!.width,
+    cells.get("horizontal-2-deep")!.x + cells.get("horizontal-2-deep")!.width
+  );
   assertClean(result);
 });

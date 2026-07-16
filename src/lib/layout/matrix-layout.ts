@@ -459,6 +459,41 @@ function translateOrientedCells(
 }
 
 /**
+ * Extend the cells on a branch's trailing edges so the branch continues to
+ * tile its full allocation when a sibling needs more depth. Interior gaps are
+ * preserved; only cells already touching the right or bottom edge grow.
+ */
+function stretchOrientedBranch(
+  branch: OrientedBranchLayout,
+  targetWidth: number,
+  targetHeight: number
+): OrientedBranchLayout {
+  const width = Math.max(branch.width, targetWidth);
+  const height = Math.max(branch.height, targetHeight);
+  const extraWidth = width - branch.width;
+  const extraHeight = height - branch.height;
+  if (extraWidth <= 0 && extraHeight <= 0) return branch;
+
+  return {
+    width,
+    height,
+    cells: branch.cells.map((cell) => ({
+      ...cell,
+      width: cell.width + (
+        extraWidth > 0 && Math.abs(cell.x + cell.width - branch.width) <= 0.5
+          ? extraWidth
+          : 0
+      ),
+      height: cell.height + (
+        extraHeight > 0 && Math.abs(cell.y + cell.height - branch.height) <= 0.5
+          ? extraHeight
+          : 0
+      ),
+    })),
+  };
+}
+
+/**
  * Builds the mixed-orientation form of Matrix. Horizontal branches retain the
  * familiar merged-cell table direction (parent left, descendants right), while
  * Vertical branches transpose only that branch (parent above, descendants
@@ -508,12 +543,18 @@ function computeOrientedMatrixLayout(
     }
 
     if (orientation === "vertical") {
-      const childrenWidth = children.reduce((sum, child) => sum + child.width, 0)
+      const naturalChildrenWidth = children.reduce((sum, child) => sum + child.width, 0)
         + settings.cellGap * (children.length - 1);
-      const branchWidth = Math.max(width, childrenWidth);
+      const branchWidth = Math.max(width, naturalChildrenWidth);
       const childrenHeight = Math.max(...children.map((child) => child.height));
+      const extraChildrenWidth = branchWidth - naturalChildrenWidth;
+      const stretchedChildren = children.map((child, index) => {
+        const extraWidth = extraChildrenWidth * (index + 1) / children.length
+          - extraChildrenWidth * index / children.length;
+        return stretchOrientedBranch(child, child.width + extraWidth, childrenHeight);
+      });
       const childY = ownRequiredHeight + settings.cellGap;
-      let childX = Math.max(0, (branchWidth - childrenWidth) / 2);
+      let childX = 0;
       const cells: OrientedBranchCell[] = [{
         nodeId,
         x: 0,
@@ -522,7 +563,7 @@ function computeOrientedMatrixLayout(
         height: ownRequiredHeight,
         requiredHeight: ownRequiredHeight,
       }];
-      for (const child of children) {
+      for (const child of stretchedChildren) {
         cells.push(...translateOrientedCells(child.cells, childX, childY));
         childX += child.width + settings.cellGap;
       }
@@ -533,11 +574,17 @@ function computeOrientedMatrixLayout(
       };
     }
 
-    const childrenHeight = children.reduce((sum, child) => sum + child.height, 0)
+    const naturalChildrenHeight = children.reduce((sum, child) => sum + child.height, 0)
       + settings.cellGap * (children.length - 1);
-    const branchHeight = Math.max(ownRequiredHeight, childrenHeight);
+    const branchHeight = Math.max(ownRequiredHeight, naturalChildrenHeight);
     const childrenWidth = Math.max(...children.map((child) => child.width));
-    let childY = Math.max(0, (branchHeight - childrenHeight) / 2);
+    const extraChildrenHeight = branchHeight - naturalChildrenHeight;
+    const stretchedChildren = children.map((child, index) => {
+      const extraHeight = extraChildrenHeight * (index + 1) / children.length
+        - extraChildrenHeight * index / children.length;
+      return stretchOrientedBranch(child, childrenWidth, child.height + extraHeight);
+    });
+    let childY = 0;
     const cells: OrientedBranchCell[] = [{
       nodeId,
       x: 0,
@@ -546,7 +593,7 @@ function computeOrientedMatrixLayout(
       height: branchHeight,
       requiredHeight: ownRequiredHeight,
     }];
-    for (const child of children) {
+    for (const child of stretchedChildren) {
       cells.push(...translateOrientedCells(child.cells, width + settings.cellGap, childY));
       childY += child.height + settings.cellGap;
     }
@@ -557,28 +604,36 @@ function computeOrientedMatrixLayout(
     };
   };
 
-  const rootChildren = visibleChildren(rootId, hierarchy, byId)
+  const builtRootChildren = visibleChildren(rootId, hierarchy, byId)
     .map((childId) => buildBranch(childId, 0, rootOrientation, new Set([rootId])))
     .filter((child) => child.cells.length > 0);
-  const bodyWidth = rootChildren.length
+  const naturalBodyWidth = builtRootChildren.length
     ? rootOrientation === "vertical"
-      ? rootChildren.reduce((sum, child) => sum + child.width, 0) + settings.cellGap * (rootChildren.length - 1)
-      : Math.max(...rootChildren.map((child) => child.width))
+      ? builtRootChildren.reduce((sum, child) => sum + child.width, 0) + settings.cellGap * (builtRootChildren.length - 1)
+      : Math.max(...builtRootChildren.map((child) => child.width))
     : 0;
-  const bodyHeight = rootChildren.length
+  const bodyHeight = builtRootChildren.length
     ? rootOrientation === "vertical"
-      ? Math.max(...rootChildren.map((child) => child.height))
-      : rootChildren.reduce((sum, child) => sum + child.height, 0) + settings.cellGap * (rootChildren.length - 1)
+      ? Math.max(...builtRootChildren.map((child) => child.height))
+      : builtRootChildren.reduce((sum, child) => sum + child.height, 0) + settings.cellGap * (builtRootChildren.length - 1)
     : 0;
   const preferredHeaderWidth = Math.ceil(clamp(
     preferredCellWidth(root, 0, settings),
     MATRIX_HEADER_MIN_WIDTH,
     760
   ));
-  const tableWidth = Math.max(preferredHeaderWidth, bodyWidth);
+  const tableWidth = Math.max(preferredHeaderWidth, naturalBodyWidth);
+  const rootChildren = rootOrientation === "vertical"
+    ? builtRootChildren.map((child, index) => {
+      const extraBodyWidth = tableWidth - naturalBodyWidth;
+      const extraWidth = extraBodyWidth * (index + 1) / builtRootChildren.length
+        - extraBodyWidth * index / builtRootChildren.length;
+      return stretchOrientedBranch(child, child.width + extraWidth, bodyHeight);
+    })
+    : builtRootChildren.map((child) => stretchOrientedBranch(child, tableWidth, child.height));
   const headerHeight = requiredCellHeight(root, tableWidth, settings, settings.minHeaderHeight);
   const bodyY = tableY + headerHeight + (rootChildren.length ? settings.cellGap : 0);
-  const bodyX = tableX + Math.max(0, (tableWidth - bodyWidth) / 2);
+  const bodyX = tableX;
 
   const orientedCells: OrientedBranchCell[] = [];
   if (rootOrientation === "vertical") {
@@ -817,6 +872,11 @@ export function computeMatrixLayout(
         .slice(span.rowStart, span.rowEnd + 1)
         .reduce((sum, rowHeight) => sum + rowHeight, 0)
         + settings.cellGap * (span.rowEnd - span.rowStart);
+      const isTerminal = visibleChildren(span.nodeId, hierarchy, byId).length === 0;
+      const width = isTerminal
+        ? columnWidths.slice(span.column).reduce((sum, columnWidth) => sum + columnWidth, 0)
+          + settings.cellGap * (columnWidths.length - span.column - 1)
+        : columnWidths[span.column];
       return {
         nodeId: span.nodeId,
         column: span.column,
@@ -825,7 +885,7 @@ export function computeMatrixLayout(
         rowSpan: span.rowEnd - span.rowStart + 1,
         x: columnX[span.column],
         y,
-        width: columnWidths[span.column],
+        width,
         height,
         requiredHeight: cellRequirements.get(span.nodeId) ?? settings.minRowHeight,
       };
