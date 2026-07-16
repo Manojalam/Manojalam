@@ -1,14 +1,13 @@
 "use client";
 
-import { Fragment } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useUIStore } from "@/store/ui-store";
 
 /**
- * Renders a source AND a target handle on each of the four sides, with ids
- * "top" | "right" | "bottom" | "left". Layout-aware edges reference these ids
- * (e.g. sourceHandle="right", targetHandle="left") so arrows exit/enter from
- * the correct side. Handles are invisible until the node is hovered.
+ * Renders one loose-mode handle on each side. In React Flow's loose connection
+ * mode a source handle can also receive a connection, so overlapping source and
+ * target handles only make pointer targeting ambiguous. Layout-aware edges keep
+ * referencing these stable side ids.
  */
 const SIDES: Array<{ id: "top" | "right" | "bottom" | "left"; pos: Position }> = [
   { id: "top", pos: Position.Top },
@@ -19,45 +18,25 @@ const SIDES: Array<{ id: "top" | "right" | "bottom" | "left"; pos: Position }> =
 
 export function NodeHandles({ color = "#6366f1" }: { color?: string }) {
   const activeTool = useUIStore((s) => s.activeTool);
-  const fullSurfaceActive = activeTool === "connector";
+  const connectorActive = activeTool === "connector";
 
   return (
     <>
       {SIDES.map(({ id, pos }) => (
-        <Fragment key={id}>
-          <Handle
-            data-export-ignore
-            type="target"
-            id={id}
-            position={pos}
-            className="!border !border-background !opacity-0"
-            style={{
-              background: color,
-              pointerEvents: fullSurfaceActive ? "all" : undefined,
-              ...(fullSurfaceActive && (id === "top" || id === "bottom")
-                ? { width: "calc(100% - 18px)", height: 18, borderRadius: 9 }
-                : fullSurfaceActive
-                  ? { width: 18, height: "calc(100% - 18px)", borderRadius: 9 }
-                  : { width: 10, height: 10 }),
-            }}
-          />
-          <Handle
-            data-export-ignore
-            type="source"
-            id={id}
-            position={pos}
-            className="!border !border-background !opacity-0"
-            style={{
-              background: color,
-              pointerEvents: fullSurfaceActive ? "all" : undefined,
-              ...(fullSurfaceActive && (id === "top" || id === "bottom")
-                ? { width: "calc(100% - 18px)", height: 18, borderRadius: 9 }
-                : fullSurfaceActive
-                  ? { width: 18, height: "calc(100% - 18px)", borderRadius: 9 }
-                  : { width: 10, height: 10 }),
-            }}
-          />
-        </Fragment>
+        <Handle
+          key={id}
+          data-export-ignore
+          data-connector-handle={id}
+          type="source"
+          id={id}
+          position={pos}
+          isConnectableStart
+          isConnectableEnd
+          className={connectorActive
+            ? "!h-4 !w-4 !border-2 !border-background !opacity-100 !shadow-md"
+            : "!h-2.5 !w-2.5 !border !border-background !opacity-0"}
+          style={{ background: color, pointerEvents: "all" }}
+        />
       ))}
     </>
   );

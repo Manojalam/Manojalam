@@ -37,6 +37,7 @@ import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS, type BoardContent } from "@/lib/types";
 import {
+  getNodeRect,
   isMatrixHierarchyEdge,
   resolveInsertedNodeCollisions,
   routeForMode,
@@ -44,6 +45,7 @@ import {
   type LayoutMode,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { snapRectToAlignment } from "@/lib/canvas/selection-geometry";
 import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
@@ -120,36 +122,6 @@ function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]
     }
     return node;
   });
-}
-
-function calcGuides(
-  dragged: { x: number; y: number; w: number; h: number },
-  others:  Array<{ x: number; y: number; w: number; h: number }>
-): Guides {
-  const h: number[] = [];
-  const v: number[] = [];
-  const { x: dx, y: dy, w: dw, h: dh } = dragged;
-  const dL = dx, dR = dx + dw, dCX = dx + dw / 2;
-  const dT = dy, dB = dy + dh, dCY = dy + dh / 2;
-
-  for (const o of others) {
-    const oL = o.x, oR = o.x + o.w, oCX = o.x + o.w / 2;
-    const oT = o.y, oB = o.y + o.h, oCY = o.y + o.h / 2;
-    const snap = GUIDE_THRESHOLD;
-
-    if (Math.abs(dL  - oL)  < snap) v.push(oL);
-    if (Math.abs(dR  - oR)  < snap) v.push(oR);
-    if (Math.abs(dCX - oCX) < snap) v.push(oCX);
-    if (Math.abs(dR  - oL)  < snap) v.push(oL);
-    if (Math.abs(dL  - oR)  < snap) v.push(oR);
-
-    if (Math.abs(dT  - oT)  < snap) h.push(oT);
-    if (Math.abs(dB  - oB)  < snap) h.push(oB);
-    if (Math.abs(dCY - oCY) < snap) h.push(oCY);
-    if (Math.abs(dB  - oT)  < snap) h.push(oT);
-    if (Math.abs(dT  - oB)  < snap) h.push(oB);
-  }
-  return { h, v };
 }
 
 function touchPair(touches: React.TouchList) {
@@ -592,53 +564,70 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     useUIStore.getState().setCanvasDragging(true);
   }, []);
 
-  // Alignment guides and Shift axis-lock — live during drag.
+  // Alignment snapping, guides, and Shift axis-lock — live during drag.
   const onNodeDrag = useCallback((event: MouseEvent | TouchEvent, draggedNode: Node) => {
     const drag = dragStartRef.current;
+    let moveX = 0;
+    let moveY = 0;
     if (drag) {
       const dx = draggedNode.position.x - drag.source.x;
       const dy = draggedNode.position.y - drag.source.y;
       if (event.shiftKey && !drag.axis && Math.hypot(dx, dy) > 4) {
         drag.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
       }
-      if (drag.moveAsGroup || drag.axis) {
-        const moveX = drag.axis === "y" ? 0 : dx;
-        const moveY = drag.axis === "x" ? 0 : dy;
-        useCanvasStore.setState((state) => ({
-          nodes: state.nodes.map((node) => {
-            const start = drag.positions.get(node.id);
-            if (!start) return node;
-            return {
-              ...node,
-              position: {
-                x: start.x + moveX,
-                y: start.y + moveY,
-              },
-            };
-          }),
-        }));
-      }
+      moveX = drag.axis === "y" ? 0 : dx;
+      moveY = drag.axis === "x" ? 0 : dy;
     }
 
-    const allNodes = useCanvasStore.getState().nodes;
-    const dw = (draggedNode.measured?.width  ?? 150) as number;
-    const dh = (draggedNode.measured?.height ?? 60)  as number;
-    const dragged = { x: draggedNode.position.x, y: draggedNode.position.y, w: dw, h: dh };
-    const others  = allNodes
-      .filter((node) => {
-        if (node.id === draggedNode.id) return false;
-        if (drag?.positions.has(node.id)) return false;
-        if (!drag?.matrixRootId) return true;
-        const data = (node.data ?? {}) as Record<string, unknown>;
-        return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
-      })
-      .map((n) => ({
-        x: n.position.x,
-        y: n.position.y,
-        w: (n.measured?.width  ?? 150) as number,
-        h: (n.measured?.height ?? 60)  as number,
-      }));
-    setGuides(calcGuides(dragged, others));
+    const state = useCanvasStore.getState();
+    const storedDragged = state.nodes.find((node) => node.id === draggedNode.id) ?? draggedNode;
+    const draggedStart = drag?.positions.get(draggedNode.id) ?? draggedNode.position;
+    const unsnappedPosition = drag
+      ? { x: draggedStart.x + moveX, y: draggedStart.y + moveY }
+      : draggedNode.position;
+    const movingIds = new Set(drag?.positions.keys() ?? [draggedNode.id]);
+    const snap = snapRectToAlignment(
+      getNodeRect({ ...storedDragged, position: unsnappedPosition }),
+      state.nodes
+        .filter((node) => {
+          if (movingIds.has(node.id) || node.hidden || node.type === "frame") return false;
+          if (!drag?.matrixRootId) return true;
+          const data = (node.data ?? {}) as Record<string, unknown>;
+          return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
+        })
+        .map(getNodeRect),
+      {
+        threshold: GUIDE_THRESHOLD,
+        allowX: drag?.axis !== "y",
+        allowY: drag?.axis !== "x",
+      }
+    );
+
+    useCanvasStore.setState((current) => ({
+      nodes: current.nodes.map((node) => {
+        const start = drag?.positions.get(node.id);
+        if (start) {
+          return {
+            ...node,
+            position: {
+              x: start.x + moveX + snap.dx,
+              y: start.y + moveY + snap.dy,
+            },
+          };
+        }
+        if (!drag && node.id === draggedNode.id) {
+          return {
+            ...node,
+            position: {
+              x: unsnappedPosition.x + snap.dx,
+              y: unsnappedPosition.y + snap.dy,
+            },
+          };
+        }
+        return node;
+      }),
+    }));
+    setGuides({ h: snap.horizontalGuides, v: snap.verticalGuides });
   }, []);
 
   // Push history when a drag ends (safe: fires once, not on every frame)
@@ -765,6 +754,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         data: {
           edgeType: "branch",
           curveStyle: route?.curveStyle ?? "smooth",
+          arrowEnd: true,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
           hiddenInSunburst,
@@ -772,15 +762,45 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
           layoutMode: mode,
         },
       };
-      // Record parent→child relationship if the target has no parent yet.
-      if (targetNode && !hasParent) {
-        cs.updateNodeData(connection.target, { parentId: connection.source });
-      }
-      setEdges((eds) => [...eds, newEdge]);
+      // Record a new hierarchy relation atomically and select the connection so
+      // its direct label editor is immediately available.
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => {
+          const data = (node.data ?? {}) as Record<string, unknown>;
+          if (targetNode && !hasParent && node.id === connection.target) {
+            return { ...node, selected: false, data: { ...data, parentId: connection.source } };
+          }
+          if (targetNode && !hasParent && node.id === connection.source) {
+            const childOrder = Array.isArray(data.childOrder) ? data.childOrder as string[] : [];
+            return {
+              ...node,
+              selected: false,
+              data: {
+                ...data,
+                childOrder: childOrder.includes(connection.target)
+                  ? childOrder
+                  : [...childOrder, connection.target],
+              },
+            };
+          }
+          return node.selected ? { ...node, selected: false } : node;
+        }),
+        edges: [...state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge), { ...newEdge, selected: true }],
+        selectedNodeIds: [],
+        selectedEdgeIds: [newEdge.id],
+        saveStatus: "unsaved",
+      }));
       if (mode === "matrix") requestAnimationFrame(() => cs.scheduleMatrixReflow(connection.source));
     },
-    [setEdges]
+    []
   );
+
+  const isValidConnection = useCallback((connection: Connection | Edge) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+    return !useCanvasStore.getState().edges.some((edge) => (
+      edge.source === connection.source && edge.target === connection.target
+    ));
+  }, []);
 
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
     if (useUIStore.getState().relationshipSelection) return;
@@ -1268,6 +1288,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      isValidConnection={isValidConnection}
       onReconnect={onReconnect}
       onEdgeClick={onEdgeClick}
       onPaneClick={onPaneClick}
@@ -1278,6 +1299,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       connectionMode={ConnectionMode.Loose}
+      connectOnClick
+      connectionLineStyle={{ stroke: "#4f46e5", strokeWidth: 2 }}
       nodesDraggable={!relationshipSelection}
       nodesConnectable={!relationshipSelection}
       elementsSelectable={!relationshipSelection}
@@ -1305,7 +1328,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       nodeClickDistance={isTouchDevice ? 8 : 0}
       paneClickDistance={isTouchDevice ? 8 : 0}
       nodeDragThreshold={isTouchDevice ? 6 : 1}
-      connectionRadius={isTouchDevice ? 42 : 20}
+      connectionRadius={isTouchDevice ? 42 : 28}
       deleteKeyCode={null}
       onPointerDownCapture={onPointerDownCapture}
       onPointerMoveCapture={onPointerMoveCapture}
@@ -1326,6 +1349,13 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     >
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
+      )}
+      {activeTool === "connector" && (
+        <Panel position="top-center" className="pointer-events-none !mt-3">
+          <div className="rounded-full border bg-background/95 px-3 py-1.5 text-[11px] font-medium text-foreground shadow-md backdrop-blur">
+            Click or drag from a blue connection point to another shape
+          </div>
+        </Panel>
       )}
       <ListTreeConnectors />
       <StructuredTreeConnectors />

@@ -1145,12 +1145,15 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         {!isDrawing && (
           <button
             data-export-ignore
+            type="button"
+            aria-label="Add connected child"
             className={cn(
               "absolute -right-3.5 -bottom-3.5 z-20 hidden h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 group-hover:flex"
             )}
             style={{ backgroundColor: borderColor }}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); createChildNode(id); }}
-            title="Add connected node"
+            title="Add connected child"
           >
             <Plus className="h-3.5 w-3.5 text-white" />
           </button>

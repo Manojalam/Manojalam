@@ -197,8 +197,11 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
         {!d.locked && !isDrawing && (
           <button
             data-export-ignore
+            type="button"
+            aria-label="Add connected child"
             className="absolute -right-3.5 -bottom-3.5 hidden h-7 w-7 items-center justify-center rounded-full border-2 border-background shadow-md transition-transform hover:scale-110 group-hover:flex"
             style={{ backgroundColor: nodeColor }}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); createChildNode(id); }}>
             <Plus className="h-3.5 w-3.5 text-white" />
           </button>

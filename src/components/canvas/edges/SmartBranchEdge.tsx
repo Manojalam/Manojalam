@@ -12,12 +12,11 @@ import {
   useEdges,
   type EdgeProps,
 } from "@xyflow/react";
-import { Trash2 } from "lucide-react";
 import type { VidyaEdgeData } from "@/lib/types";
 import { getNodeRect, type NodeRect } from "@/lib/layout";
 import { routeLayoutEdge, type LayoutRouteOptions } from "@/lib/layout/edge-routing";
-import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
+import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 
 const ROUTING_CORRIDOR_PAD = 360;
 const MAX_ROUTING_OBSTACLES = 160;
@@ -89,13 +88,13 @@ function RoutedSmartBranchEdge({
   targetPosition,
   data,
   selected,
+  markerStart,
   markerEnd,
 }: EdgeProps) {
   const d = (data ?? {}) as VidyaEdgeData;
   const edgeColor = d.color ?? d.layoutColor;
   const nodes = useNodes();
   const edges = useEdges();
-  const deleteEdges = useCanvasStore((s) => s.deleteEdges);
   const canvasDragging = useUIStore((s) => s.canvasDragging);
   if (d.hiddenInMatrix || d.hiddenInSunburst) return null;
 
@@ -152,6 +151,7 @@ function RoutedSmartBranchEdge({
         data-export-normal-stroke={edgeColor ?? "#94a3b8"}
         id={id}
         path={path}
+        markerStart={markerStart}
         markerEnd={markerEnd}
         interactionWidth={28}
         style={{
@@ -160,42 +160,15 @@ function RoutedSmartBranchEdge({
           strokeDasharray: d.dashed ? "6 4" : undefined,
         }}
       />
-      {selected && (
+      {(selected || d.label) && (
         <EdgeLabelRenderer>
-          <button
-            data-export-ignore
-            type="button"
-            title="Delete connection"
-            aria-label="Delete connection"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              deleteEdges([id]);
-            }}
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY - (d.label ? 24 : 0)}px)`,
-              pointerEvents: "all",
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded-full border bg-background text-destructive shadow-md"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </EdgeLabelRenderer>
-      )}
-      {d.label && (
-        <EdgeLabelRenderer>
-          <div
-            data-export-edge-id={id}
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              pointerEvents: "all",
-            }}
-            className="rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium shadow-sm"
-          >
-            {d.label}
-          </div>
+          <ConnectionLabelEditor
+            edgeId={id}
+            x={labelX}
+            y={labelY}
+            label={d.label}
+            selected={selected}
+          />
         </EdgeLabelRenderer>
       )}
     </>
