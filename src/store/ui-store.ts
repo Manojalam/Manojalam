@@ -35,6 +35,9 @@ interface UIState {
   setTouchSelectionMode: (active: boolean) => void;
   canvasDragging: boolean;
   setCanvasDragging: (active: boolean) => void;
+  /** One-shot override: move this node without its descendants or attached notes. */
+  moveOnlyNodeId: string | null;
+  setMoveOnlyNodeId: (nodeId: string | null) => void;
   connectorClickPoint: { edgeId: string; x: number; y: number } | null;
   setConnectorClickPoint: (point: { edgeId: string; x: number; y: number } | null) => void;
   relationshipSelection: RelationshipSelectionSession | null;
@@ -91,6 +94,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   canvasDragging: false,
   setCanvasDragging: (active) => set({ canvasDragging: active }),
+  moveOnlyNodeId: null,
+  setMoveOnlyNodeId: (nodeId) => set({ moveOnlyNodeId: nodeId }),
   connectorClickPoint: null,
   setConnectorClickPoint: (point) => set({ connectorClickPoint: point }),
   relationshipSelection: null,
