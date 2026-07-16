@@ -8,7 +8,7 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
-  FileImage, FileType2, Maximize2,
+  ArrowLeftRight, FileImage, FileType2, Maximize2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { toast } from "sonner";
@@ -72,7 +72,10 @@ import {
   CONNECTOR_PATH_STYLES,
   resolveConnectorPathStyle,
 } from "@/lib/canvas/connector-path-style";
-import { findLogicalConnectorEdgeIds } from "@/lib/canvas/connector-junction";
+import {
+  findLogicalConnectorEdgeIds,
+  reverseLogicalConnectors,
+} from "@/lib/canvas/connector-junction";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -629,6 +632,7 @@ function ConnectionInspectorSections({
   onChange,
   onWidthChange,
   onWidthChangeStart,
+  onReverse,
   onDelete,
   defaultOpen = false,
 }: {
@@ -637,6 +641,7 @@ function ConnectionInspectorSections({
   onChange: (key: string, value: unknown, captureHistory?: boolean) => void;
   onWidthChange?: (value: number) => void;
   onWidthChangeStart?: () => void;
+  onReverse: () => void;
   onDelete: () => void;
   defaultOpen?: boolean;
 }) {
@@ -745,6 +750,10 @@ function ConnectionInspectorSections({
             ))}
           </div>
         </div>
+        <Button type="button" variant="outline" size="sm" className="h-8 w-full text-[10px]" onClick={onReverse}>
+          <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" />
+          Reverse {connectionEdges.length === 1 ? "direction" : `${connectionEdges.length} directions`}
+        </Button>
       </Section>
       <Section label="Connection appearance" defaultOpen={defaultOpen}>
         <div>
@@ -1202,6 +1211,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     deleteEdges(editableSelectionEdges.map((edge) => edge.id));
   };
 
+  const reverseEditableConnections = () => {
+    const state = useCanvasStore.getState();
+    const reversed = reverseLogicalConnectors(
+      state.edges,
+      editableSelectionEdges.map((edge) => edge.id)
+    );
+    if (reversed === state.edges) return;
+    state.pushHistory();
+    useCanvasStore.setState({ edges: reversed, saveStatus: "unsaved" });
+  };
+
   if (selectedNodes.length > 1 || (selectedNodes.length > 0 && selectedEdges.length > 0)) {
     const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
     const commonFontFamily = typeof commonValue("fontFamily") === "string" ? commonValue("fontFamily") as string : "";
@@ -1481,6 +1501,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={setSelectedEdgeField}
               onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
               onWidthChangeStart={pushHistory}
+              onReverse={reverseEditableConnections}
               onDelete={deleteEditableConnections}
               defaultOpen
             />
@@ -1519,6 +1540,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={setSelectedEdgeField}
               onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
               onWidthChangeStart={pushHistory}
+              onReverse={reverseEditableConnections}
               onDelete={deleteEditableConnections}
               defaultOpen
             />

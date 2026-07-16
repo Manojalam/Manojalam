@@ -7,8 +7,93 @@ import {
   findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
   releaseConnectorJunctionRouteAnchors,
+  reverseLogicalConnectors,
   splitConnectorAtJunction,
 } from "./connector-junction";
+
+test("reversing a connection swaps endpoints, handles, and stored bend order", () => {
+  const markerEnd = { type: MarkerType.ArrowClosed, color: "#123456" };
+  const edge: Edge = {
+    id: "edge",
+    source: "source",
+    target: "target",
+    sourceHandle: "right",
+    targetHandle: "left",
+    markerEnd,
+    data: {
+      label: "Approved",
+      arrowEnd: true,
+      waypoints: [{ x: 100, y: 20 }, { x: 400, y: 20 }],
+    },
+  };
+
+  const [reversed] = reverseLogicalConnectors([edge], [edge.id]);
+
+  assert.equal(reversed.source, "target");
+  assert.equal(reversed.target, "source");
+  assert.equal(reversed.sourceHandle, "left");
+  assert.equal(reversed.targetHandle, "right");
+  assert.deepEqual(reversed.markerEnd, markerEnd);
+  assert.equal(reversed.markerStart, undefined);
+  assert.equal(reversed.data?.label, "Approved");
+  assert.deepEqual(reversed.data?.waypoints, [{ x: 400, y: 20 }, { x: 100, y: 20 }]);
+});
+
+test("reversing a junction connection moves terminal arrows away from the junction", () => {
+  const markerStart = { type: MarkerType.ArrowClosed, color: "#111111" };
+  const markerEnd = { type: MarkerType.ArrowClosed, color: "#222222" };
+  const edges: Edge[] = [
+    {
+      id: "incoming",
+      source: "source",
+      target: "junction",
+      sourceHandle: "right",
+      targetHandle: "left",
+      markerStart,
+      data: {
+        connectorGroupId: "connection",
+        connectorJunctionId: "junction",
+        connectorJunctionSegment: "incoming",
+        arrowStart: true,
+        arrowEnd: false,
+        waypoints: [{ x: 100, y: 20 }, { x: 200, y: 20 }],
+      },
+    },
+    {
+      id: "outgoing",
+      source: "junction",
+      target: "target",
+      sourceHandle: "right",
+      targetHandle: "left",
+      markerEnd,
+      data: {
+        connectorGroupId: "connection",
+        connectorJunctionId: "junction",
+        connectorJunctionSegment: "outgoing",
+        arrowStart: false,
+        arrowEnd: true,
+      },
+    },
+  ];
+
+  const reversed = reverseLogicalConnectors(edges, ["incoming"]);
+  const newEnd = reversed.find((edge) => edge.id === "incoming")!;
+  const newStart = reversed.find((edge) => edge.id === "outgoing")!;
+
+  assert.equal(newStart.source, "target");
+  assert.equal(newStart.target, "junction");
+  assert.deepEqual(newStart.markerStart, markerStart);
+  assert.equal(newStart.markerEnd, undefined);
+  assert.equal(newStart.data?.connectorJunctionSegment, "incoming");
+  assert.equal(newStart.data?.arrowStart, true);
+  assert.equal(newEnd.source, "junction");
+  assert.equal(newEnd.target, "source");
+  assert.equal(newEnd.markerStart, undefined);
+  assert.deepEqual(newEnd.markerEnd, markerEnd);
+  assert.equal(newEnd.data?.connectorJunctionSegment, "outgoing");
+  assert.equal(newEnd.data?.arrowEnd, true);
+  assert.deepEqual(newEnd.data?.waypoints, [{ x: 200, y: 20 }, { x: 100, y: 20 }]);
+});
 
 test("a connector junction preserves the line endpoints and terminal arrow", () => {
   const edge: Edge = {

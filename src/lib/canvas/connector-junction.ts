@@ -300,6 +300,85 @@ export function findLogicalConnectorEdgeIds(edges: Edge[], edgeId: string): stri
   return edges.filter((candidate) => associated.has(candidate.id)).map((candidate) => candidate.id);
 }
 
+function reverseStoredPoints(data: Record<string, unknown>, key: string): void {
+  const points = data[key];
+  if (Array.isArray(points)) data[key] = [...points].reverse();
+}
+
+function connectorArrowEnabled(
+  edge: Edge,
+  key: "arrowStart" | "arrowEnd",
+  marker: Edge["markerStart"] | Edge["markerEnd"]
+): boolean {
+  const configured = ((edge.data ?? {}) as Record<string, unknown>)[key];
+  return typeof configured === "boolean" ? configured : marker !== undefined;
+}
+
+function reverseLogicalConnector(edges: Edge[], logicalEdgeIds: readonly string[]): Edge[] {
+  const logicalIdSet = new Set(logicalEdgeIds);
+  const logicalEdges = edges.filter((edge) => logicalIdSet.has(edge.id));
+  if (!logicalEdges.length) return edges;
+
+  const oldStarts = logicalEdges.filter((edge) => (
+    !logicalEdges.some((candidate) => candidate.target === edge.source)
+  ));
+  const oldEnds = logicalEdges.filter((edge) => (
+    !logicalEdges.some((candidate) => candidate.source === edge.target)
+  ));
+  const startEdges = oldStarts.length ? oldStarts : [logicalEdges[0]];
+  const endEdges = oldEnds.length ? oldEnds : [logicalEdges[logicalEdges.length - 1]];
+  const oldStartIds = new Set(startEdges.map((edge) => edge.id));
+  const oldEndIds = new Set(endEdges.map((edge) => edge.id));
+  const startArrowEnabled = startEdges.some((edge) => (
+    connectorArrowEnabled(edge, "arrowStart", edge.markerStart)
+  ));
+  const endArrowEnabled = endEdges.some((edge) => (
+    connectorArrowEnabled(edge, "arrowEnd", edge.markerEnd)
+  ));
+  const startMarker = startEdges.find((edge) => edge.markerStart !== undefined)?.markerStart;
+  const endMarker = endEdges.find((edge) => edge.markerEnd !== undefined)?.markerEnd;
+
+  return edges.map((edge) => {
+    if (!logicalIdSet.has(edge.id)) return edge;
+    const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
+    reverseStoredPoints(data, "waypoints");
+    reverseStoredPoints(data, "junctionUserWaypoints");
+    if (data.connectorJunctionSegment === "incoming") data.connectorJunctionSegment = "outgoing";
+    else if (data.connectorJunctionSegment === "outgoing") data.connectorJunctionSegment = "incoming";
+
+    // An old terminal end becomes a new start, and an old start becomes a new end.
+    const newStart = oldEndIds.has(edge.id);
+    const newEnd = oldStartIds.has(edge.id);
+    data.arrowStart = newStart && startArrowEnabled;
+    data.arrowEnd = newEnd && endArrowEnabled;
+
+    return {
+      ...edge,
+      source: edge.target,
+      target: edge.source,
+      sourceHandle: edge.targetHandle,
+      targetHandle: edge.sourceHandle,
+      markerStart: newStart && startArrowEnabled ? startMarker : undefined,
+      markerEnd: newEnd && endArrowEnabled ? endMarker : undefined,
+      data,
+    };
+  });
+}
+
+/** Reverses one or more complete connections, including every segment around junctions. */
+export function reverseLogicalConnectors(edges: Edge[], edgeIds: readonly string[]): Edge[] {
+  let nextEdges = edges;
+  const reversedIds = new Set<string>();
+  for (const edgeId of edgeIds) {
+    if (reversedIds.has(edgeId)) continue;
+    const logicalIds = findLogicalConnectorEdgeIds(nextEdges, edgeId);
+    if (!logicalIds.length) continue;
+    logicalIds.forEach((id) => reversedIds.add(id));
+    nextEdges = reverseLogicalConnector(nextEdges, logicalIds);
+  }
+  return nextEdges;
+}
+
 /** Resolves any junction segment to the edge that owns its logical connector label. */
 export function findConnectorLabelOwnerEdge(edges: Edge[], edgeId: string): Edge | undefined {
   const edge = edges.find((candidate) => candidate.id === edgeId);
