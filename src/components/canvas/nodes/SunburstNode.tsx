@@ -41,6 +41,10 @@ import {
 } from "@/lib/relationships";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
+import {
+  chartHierarchyEdgeToken,
+  chartNodeContentToken,
+} from "@/lib/canvas/chart-render-data";
 import { RichTextEditor } from "../RichTextEditor";
 
 type PolarPoint = { x: number; y: number };
@@ -816,8 +820,17 @@ function unwrapAngle(angle: number, near: number): number {
 function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const d = data as SunburstNodeData;
   const objectRotation = resolveObjectRotation("sunburst", d as Record<string, unknown>);
-  const nodes = useCanvasStore((state) => state.nodes);
-  const edges = useCanvasStore((state) => state.edges);
+  const nodeContentToken = useCanvasStore((state) => chartNodeContentToken(state.nodes));
+  const hierarchyEdgeToken = useCanvasStore((state) => chartHierarchyEdgeToken(state.edges));
+  const canvasDragging = useUIStore((state) => state.canvasDragging);
+  const { nodes, edges } = useMemo(() => {
+    // These tokens intentionally gate when the latest store snapshot is read.
+    void canvasDragging;
+    void hierarchyEdgeToken;
+    void nodeContentToken;
+    const state = useCanvasStore.getState();
+    return { nodes: state.nodes, edges: state.edges };
+  }, [canvasDragging, hierarchyEdgeToken, nodeContentToken]);
   const relationships = useCanvasStore((state) => state.relationships);
   const relationshipFans = useCanvasStore((state) => state.relationshipFans);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);

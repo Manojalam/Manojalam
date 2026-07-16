@@ -20,12 +20,28 @@ import {
 } from "@/lib/relationship-diagram";
 import type { RelationshipDiagramNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import {
+  chartHierarchyEdgeToken,
+  chartNodeContentToken,
+} from "@/lib/canvas/chart-render-data";
+
+const MemoizedRelationshipDiagramSvg = memo(RelationshipDiagramSvg);
 
 function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
-  const nodes = useCanvasStore((state) => state.nodes);
+  const nodeContentToken = useCanvasStore((state) => chartNodeContentToken(state.nodes));
+  const hierarchyEdgeToken = useCanvasStore((state) => chartHierarchyEdgeToken(state.edges));
+  const canvasDragging = useUIStore((state) => state.canvasDragging);
+  const { nodes, edges } = useMemo(() => {
+    // These tokens intentionally gate when the latest store snapshot is read.
+    void canvasDragging;
+    void hierarchyEdgeToken;
+    void nodeContentToken;
+    const state = useCanvasStore.getState();
+    return { nodes: state.nodes, edges: state.edges };
+  }, [canvasDragging, hierarchyEdgeToken, nodeContentToken]);
   const d = (nodes.find((node) => node.id === id)?.data ?? data) as RelationshipDiagramNodeData;
-  const edges = useCanvasStore((state) => state.edges);
   const relationships = useCanvasStore((state) => state.relationships);
   const beginManualNodeResize = useCanvasStore((state) => state.beginManualNodeResize);
   const finishManualNodeResize = useCanvasStore((state) => state.finishManualNodeResize);
@@ -97,7 +113,7 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
         aria-label={spec.title || "Relationship diagram"}
       >
         <div className="relative h-full w-full" data-export-fill-node>
-          <RelationshipDiagramSvg
+          <MemoizedRelationshipDiagramSvg
             groups={groups}
             spec={spec}
             exportId={id}

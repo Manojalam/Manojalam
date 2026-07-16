@@ -249,6 +249,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const activeTool  = useUIStore((s) => s.activeTool);
   const touchSelectionMode = useUIStore((s) => s.touchSelectionMode);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
+  const boardExportRequest = useUIStore((s) => s.boardExportRequest);
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
 
@@ -1416,6 +1417,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       reconnectRadius={isTouchDevice ? 28 : 14}
       minZoom={MIN_CANVAS_ZOOM}
       maxZoom={MAX_CANVAS_ZOOM}
+      onlyRenderVisibleElements={!boardExportRequest}
       defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
       snapToGrid={settings.snapToGrid && !freeDragActive}
