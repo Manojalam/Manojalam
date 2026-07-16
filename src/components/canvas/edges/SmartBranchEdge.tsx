@@ -26,7 +26,7 @@ import {
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { generateId } from "@/lib/utils";
-import { splitConnectorAtJunction } from "@/lib/canvas/connector-junction";
+import { findConnectorLabelOwnerEdge, splitConnectorAtJunction } from "@/lib/canvas/connector-junction";
 import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
@@ -146,12 +146,21 @@ function RoutedSmartBranchEdge({
   const curveStyle = d.curveStyle ?? "step";
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
+  const junctionEndpoint = sourceNode?.type === "junction" || targetNode?.type === "junction";
+  const endpointOptions = {
+    sourceStubDistance: sourceNode?.type === "junction" ? 0 : undefined,
+    targetStubDistance: targetNode?.type === "junction" ? 0 : undefined,
+  };
   const manualRoute = d.manualRoute === true;
   const waypoints = edgeWaypoints(d);
+  const labelOwnerEdge = findConnectorLabelOwnerEdge(edges, id);
+  const labelOwnerId = labelOwnerEdge?.id ?? id;
+  const labelOwnerData = (labelOwnerEdge?.data ?? d) as VidyaEdgeData;
+  const connectionLabel = typeof labelOwnerData.label === "string" ? labelOwnerData.label : undefined;
 
   // Keep every connector inexpensive while nodes are moving. The obstacle-aware
   // route is recalculated from the final node geometry as soon as dragging ends.
-  if (curveStyle !== "step" || (canvasDragging && !waypoints.length)) {
+  if (curveStyle !== "step" || (canvasDragging && !waypoints.length && !junctionEndpoint)) {
     const routed = curveStyle === "straight"
       ? getStraightPath({ sourceX, sourceY, targetX, targetY })
       : curveStyle === "smooth"
@@ -178,7 +187,8 @@ function RoutedSmartBranchEdge({
           { x: targetX, y: targetY },
           positionSide(sourcePosition),
           positionSide(targetPosition),
-          waypoints
+          waypoints,
+          endpointOptions
         )
       : manualRoute
         ? routeOrthogonalEdge(
@@ -186,7 +196,9 @@ function RoutedSmartBranchEdge({
             { x: targetX, y: targetY },
             positionSide(sourcePosition),
             positionSide(targetPosition),
-            obstacles
+            obstacles,
+            [],
+            endpointOptions
           )
         : routeLayoutEdge(
             sourceRect,
@@ -225,11 +237,13 @@ function RoutedSmartBranchEdge({
       {(selected || d.label) && (
         <EdgeLabelRenderer>
           <ConnectionLabelEditor
-            edgeId={id}
+            edgeId={labelOwnerId}
+            deleteEdgeId={id}
             x={labelX}
             y={labelY}
-            label={d.label}
+            label={connectionLabel}
             selected={selected}
+            showLabel={labelOwnerId === id}
             onAddBend={curveStyle === "step" ? () => {
               pushHistory();
               setEdgeWaypoints(id, insertWaypointOnRoute(routePoints, waypoints));

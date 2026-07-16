@@ -12,6 +12,8 @@ interface ConnectionLabelEditorProps {
   y: number;
   label?: string;
   selected?: boolean;
+  showLabel?: boolean;
+  deleteEdgeId?: string;
   onAddBend?: () => void;
   onResetRoute?: () => void;
   onAddJunction?: () => void;
@@ -59,6 +61,8 @@ export function ConnectionLabelEditor({
   y,
   label = "",
   selected = false,
+  showLabel = true,
+  deleteEdgeId = edgeId,
   onAddBend,
   onResetRoute,
   onAddJunction,
@@ -112,7 +116,7 @@ export function ConnectionLabelEditor({
 
   return (
     <>
-      {label && (
+      {showLabel && label && (
         <div
           data-export-edge-id={edgeId}
           style={{
@@ -300,7 +304,7 @@ export function ConnectionLabelEditor({
             title="Delete connection"
             aria-label="Delete connection"
             className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10"
-            onClick={() => deleteEdges([edgeId])}
+            onClick={() => deleteEdges([deleteEdgeId])}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
