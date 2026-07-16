@@ -20,6 +20,7 @@ import {
   Link2,
   Maximize2,
   MessageSquarePlus,
+  Move,
   Network,
   Plus,
   Rows3,
@@ -43,16 +44,19 @@ import { useUIStore } from "@/store/ui-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FLOWCHART_SHAPES } from "@/components/canvas/flowchart-shapes";
 import type { ShapeType } from "@/lib/types";
+import { buildHierarchy } from "@/lib/layout/hierarchy";
 
 function ActionButton({
   label,
   onClick,
   disabled,
+  active,
   children,
 }: {
   label: string;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
+  active?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -60,13 +64,17 @@ function ActionButton({
       type="button"
       title={label}
       aria-label={label}
+      aria-pressed={active === undefined ? undefined : active}
       disabled={disabled}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
         onClick(event);
       }}
-      className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-35"
+      className={cn(
+        "flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-35",
+        active && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+      )}
     >
       {children}
     </button>
@@ -179,6 +187,7 @@ function ShapeChanger({
 export function SelectionToolbar() {
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const nodes = useCanvasStore((state) => state.nodes);
+  const edges = useCanvasStore((state) => state.edges);
   const relationships = useCanvasStore((state) => state.relationships);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
@@ -187,6 +196,8 @@ export function SelectionToolbar() {
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
   const setNodeLocked = useCanvasStore((state) => state.setNodeLocked);
   const setLayoutPanelOpen = useUIStore((state) => state.setLayoutPanelOpen);
+  const moveOnlyNodeId = useUIStore((state) => state.moveOnlyNodeId);
+  const setMoveOnlyNodeId = useUIStore((state) => state.setMoveOnlyNodeId);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
   const openBoardExport = useUIStore((state) => state.openBoardExport);
   const { screenToFlowPosition } = useReactFlow();
@@ -261,6 +272,12 @@ export function SelectionToolbar() {
   const singleShapeData = selected.length === 1 && selected[0].type === "shape"
     ? ((selected[0].data ?? {}) as Record<string, unknown>)
     : null;
+  const singleHasChildren = singleId
+    ? (buildHierarchy(nodes, edges).get(singleId)?.childIds.length ?? 0) > 0
+    : false;
+  const singleCanMoveOnly = singleHasChildren
+    && !singleLocked
+    && ((selected[0]?.data ?? {}) as Record<string, unknown>).matrixCell !== true;
   const exportTitle = selected.length === 1
     ? String(
         ((selected[0].data ?? {}) as Record<string, unknown>).title
@@ -326,6 +343,25 @@ export function SelectionToolbar() {
             <MessageSquarePlus className="h-4 w-4" />
           </ActionButton>
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
+          {singleCanMoveOnly && (
+            <ActionButton
+              label={moveOnlyNodeId === singleId
+                ? "Move parent only is ready — click to cancel"
+                : "Move parent only on the next drag"}
+              active={moveOnlyNodeId === singleId}
+              onClick={() => {
+                const nextNodeId = moveOnlyNodeId === singleId ? null : singleId;
+                setMoveOnlyNodeId(nextNodeId);
+                if (nextNodeId) {
+                  toast.info("Move parent only is ready.", {
+                    description: "Drag the parent once; its children and notes will stay in place.",
+                  });
+                }
+              }}
+            >
+              <Move className="h-4 w-4" />
+            </ActionButton>
+          )}
           {singleShapeData && (
             <ShapeChanger
               nodeId={singleId}
