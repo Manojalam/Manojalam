@@ -1442,6 +1442,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       panOnScroll
       zoomOnScroll
       zoomOnPinch
+      zoomOnDoubleClick={false}
       noPanClassName={isTouchDevice ? "rf-no-pan" : "nopan"}
       preventScrolling
       nodeClickDistance={isTouchDevice ? 8 : 0}
