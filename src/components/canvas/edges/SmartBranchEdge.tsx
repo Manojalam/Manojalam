@@ -35,6 +35,7 @@ import { isConnectorRoutingObstacle } from "@/lib/canvas/connector-obstacles";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
 import { ConnectorPath } from "./ConnectorPath";
+import { ConnectorSegmentHandles } from "./ConnectorSegmentHandles";
 
 const ROUTING_CORRIDOR_PAD = 360;
 const MAX_ROUTING_OBSTACLES = 160;
@@ -243,6 +244,15 @@ function RoutedSmartBranchEdge({
         markerEnd={targetNode?.type === "junction" ? undefined : markerEnd}
         interactionWidth={48}
       />
+      {editorSelected && curveStyle === "step" && (
+        <ConnectorSegmentHandles
+          edgeId={id}
+          routePoints={routePoints}
+          sourceSide={positionSide(sourcePosition)}
+          targetSide={positionSide(targetPosition)}
+          endpointOptions={endpointOptions}
+        />
+      )}
       {(logicalSelected || (labelOwnerId === id && connectionLabel)) && (
         <EdgeLabelRenderer>
           <ConnectionLabelEditor
