@@ -15,6 +15,7 @@ import {
   nodeContentPadding,
   shapeTextContentSize,
   shapeTextContentWidth,
+  shouldRenderDiamondTextFlow,
   shouldUseDiamondTextFlow,
 } from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
@@ -168,6 +169,20 @@ test("short diamond labels remain centered", () => {
     height: 80,
     lineCount: 4,
   }), false);
+});
+
+test("diamond flow is disabled while the caret is editing soft-wrapped text", () => {
+  const size = { width: 160, height: 160 };
+  const dense = {
+    width: 100,
+    naturalWidth: 280,
+    height: 90,
+    naturalHeight: 20,
+    lineCount: 5,
+  };
+
+  assert.equal(shouldRenderDiamondTextFlow("diamond", size, dense, false), true);
+  assert.equal(shouldRenderDiamondTextFlow("diamond", size, dense, true), false);
 });
 
 test("maximum text fitting fills the corrected diamond interior", () => {

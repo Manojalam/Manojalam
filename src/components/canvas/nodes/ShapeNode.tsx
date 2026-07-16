@@ -14,7 +14,7 @@ import {
   diamondTextFlowBox,
   diamondTextFlowCapacity,
   shapeTextContentSize,
-  shouldUseDiamondTextFlow,
+  shouldRenderDiamondTextFlow,
 } from "@/lib/canvas/shape-fitting";
 import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type {
@@ -1044,10 +1044,11 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const centeredTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape", {
     contentSize: intrinsicContentSize,
   });
-  const diamondTextFlow = shouldUseDiamondTextFlow(
+  const diamondTextFlow = shouldRenderDiamondTextFlow(
     renderedShapeType,
     nodeSize,
-    intrinsicContentSize
+    intrinsicContentSize,
+    editing
   );
   const availableTextSize = diamondTextFlow
     ? diamondTextFlowCapacity(nodeSize)
