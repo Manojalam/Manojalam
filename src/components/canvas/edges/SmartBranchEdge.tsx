@@ -32,6 +32,7 @@ import {
   splitConnectorAtJunction,
 } from "@/lib/canvas/connector-junction";
 import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
+import { isConnectorRoutingObstacle } from "@/lib/canvas/connector-obstacles";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
 
@@ -184,7 +185,7 @@ function RoutedSmartBranchEdge({
     const obstacles: NodeRect[] = [];
     for (const n of nodes) {
       if (n.id === source || n.id === target) continue;
-      if (n.hidden || n.type === "frame") continue;
+      if (!isConnectorRoutingObstacle(n)) continue;
       const rect = getNodeRect(n);
       if (!nearRouteCorridor(rect, sourceRect, targetRect)) continue;
       obstacles.push(rect);

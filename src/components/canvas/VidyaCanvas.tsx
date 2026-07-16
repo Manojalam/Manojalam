@@ -584,7 +584,9 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       state.markListManualOverride(movingIds, true);
       state.markTreeManualOverride(movingIds, true);
     }
-    useUIStore.getState().setCanvasDragging(true);
+    // Notes are routing-neutral: dragging one must not switch connector paths
+    // or move labels derived from those paths.
+    useUIStore.getState().setCanvasDragging(!isExternalNoteNode(storedDraggedNode ?? draggedNode));
   }, []);
 
   // Alignment snapping, guides, and Shift axis-lock — live during drag.
