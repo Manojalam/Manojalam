@@ -75,6 +75,7 @@ import {
   manualizeFlowchartBranch,
   normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
+  rerouteFlowchartInsertionEdges,
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
@@ -2325,6 +2326,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     let placedNodes = manualFlowchart
       ? placeFlowchartInsertions(nextNodes, childIds)
       : nextNodes;
+    if (manualFlowchart) {
+      nextEdges = rerouteFlowchartInsertionEdges(placedNodes, nextEdges, childIds);
+    }
     if (!manualFlowchart && placementMode === "matrix") {
       const result = computeMatrixLayout(
         layoutRoot.id,
@@ -2490,6 +2494,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
               : computeLayout(nextNodes, nextEdges, placementMode, { rootId: nextLayoutRoot.id })
             : resolveInsertedNodeCollisions(nextNodes, siblingId)
         );
+    if (manualFlowchart) {
+      nextEdges = rerouteFlowchartInsertionEdges(placedNodes, nextEdges, [siblingId]);
+    }
     const styledLayout = manualFlowchart
       ? { nodes: placedNodes, edges: nextEdges }
       : applyLayoutPalette(

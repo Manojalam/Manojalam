@@ -1,6 +1,9 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMode, VidyaEdgeData } from "../types";
 import {
+  getNodeDimensions,
+  getNodeRect,
+  nodePositionFromTopLeft,
   resolveInsertedNodeCollisions,
   routeForMode,
 } from "../layout";
@@ -8,6 +11,99 @@ import { buildHierarchy, getSubtree, type Hierarchy } from "../layout/hierarchy"
 
 const FLOWCHART_STRUCTURED_MODES = new Set<LayoutMode>(["list", "matrix", "radial"]);
 const LEGACY_IMPLICIT_FLOWCHART_MODES = new Set<LayoutMode>(["horizontal", "vertical", "topDown"]);
+const FLOWCHART_CHILD_GAP_X = 104;
+const FLOWCHART_CHILD_GAP_Y = 64;
+const FLOWCHART_SIBLING_GAP_X = 64;
+const FLOWCHART_SIBLING_GAP_Y = 40;
+
+type Vector = { x: number; y: number };
+
+function centerVector(from: Node, to: Node): Vector {
+  const fromRect = getNodeRect(from);
+  const toRect = getNodeRect(to);
+  return {
+    x: toRect.centerX - fromRect.centerX,
+    y: toRect.centerY - fromRect.centerY,
+  };
+}
+
+function positionFromCenter(node: Node, center: Vector): Vector {
+  const size = getNodeDimensions(node);
+  return nodePositionFromTopLeft(
+    node,
+    { x: center.x - size.width / 2, y: center.y - size.height / 2 },
+    size
+  );
+}
+
+function continuationPosition(parent: Node, child: Node, rawDirection: Vector): Vector {
+  const parentRect = getNodeRect(parent);
+  const childSize = getNodeDimensions(child);
+  const direction = Math.abs(rawDirection.x) + Math.abs(rawDirection.y) > 1
+    ? rawDirection
+    : { x: 1, y: 0 };
+  const horizontal = Math.abs(direction.x) >= Math.abs(direction.y);
+  const mainDistance = horizontal
+    ? (parentRect.width + childSize.width) / 2 + FLOWCHART_CHILD_GAP_X
+    : (parentRect.height + childSize.height) / 2 + FLOWCHART_CHILD_GAP_Y;
+  const mainComponent = horizontal ? Math.abs(direction.x) : Math.abs(direction.y);
+  const scale = mainDistance / Math.max(1, mainComponent);
+  return positionFromCenter(child, {
+    x: parentRect.centerX + direction.x * scale,
+    y: parentRect.centerY + direction.y * scale,
+  });
+}
+
+function priorSiblings(nodes: Node[], parent: Node, insertedId: string): Node[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const storedOrder = (parent.data as { childOrder?: unknown } | undefined)?.childOrder;
+  const orderedIds = Array.isArray(storedOrder)
+    ? storedOrder.filter((value): value is string => typeof value === "string")
+    : nodes
+        .filter((node) => (node.data as { parentId?: unknown } | undefined)?.parentId === parent.id)
+        .map((node) => node.id);
+  const insertionIndex = orderedIds.indexOf(insertedId);
+  const precedingIds = insertionIndex >= 0
+    ? orderedIds.slice(0, insertionIndex)
+    : orderedIds.filter((id) => id !== insertedId);
+  return precedingIds
+    .map((id) => byId.get(id))
+    .filter((node): node is Node => Boolean(node));
+}
+
+function siblingPosition(parent: Node, child: Node, siblings: Node[]): Vector | null {
+  const previous = siblings[siblings.length - 1];
+  if (!previous) return null;
+
+  const previousRect = getNodeRect(previous);
+  const childSize = getNodeDimensions(child);
+  const branchDirection = centerVector(parent, previous);
+  const horizontalBranch = Math.abs(branchDirection.x) >= Math.abs(branchDirection.y);
+  const beforePrevious = siblings[siblings.length - 2];
+  if (beforePrevious) {
+    const siblingStep = centerVector(beforePrevious, previous);
+    const followsSiblingAxis = horizontalBranch
+      ? Math.abs(siblingStep.y) >= Math.abs(siblingStep.x)
+      : Math.abs(siblingStep.x) >= Math.abs(siblingStep.y);
+    if (followsSiblingAxis && Math.abs(siblingStep.x) + Math.abs(siblingStep.y) > 1) {
+      return positionFromCenter(child, {
+        x: previousRect.centerX + siblingStep.x,
+        y: previousRect.centerY + siblingStep.y,
+      });
+    }
+  }
+
+  if (horizontalBranch) {
+    return positionFromCenter(child, {
+      x: previousRect.centerX,
+      y: previousRect.bottom + FLOWCHART_SIBLING_GAP_Y + childSize.height / 2,
+    });
+  }
+  return positionFromCenter(child, {
+    x: previousRect.right + FLOWCHART_SIBLING_GAP_X + childSize.width / 2,
+    y: previousRect.centerY,
+  });
+}
 
 /** Flowchart shape additions are local unless a specialized layout owns them. */
 export function usesManualFlowchartPlacement(parent: Node, mode?: LayoutMode): boolean {
@@ -55,17 +151,74 @@ export function manualizeFlowchartBranch(
   };
 }
 
-/** Resolve overlap by moving only newly inserted flowchart nodes. */
+/**
+ * Continue the branch's live direction and resolve overlap by moving only new
+ * nodes. A first child follows its parent's incoming direction. Later children
+ * stay on the side established by the most recently positioned sibling.
+ */
 export function placeFlowchartInsertions(nodes: Node[], insertedIds: string[]): Node[] {
   let placed = nodes;
+  const inserted = new Set(insertedIds);
+  const completed = new Set<string>();
   for (const insertedId of insertedIds) {
-    const placements = resolveInsertedNodeCollisions(placed, insertedId);
+    const child = placed.find((node) => node.id === insertedId);
+    const parentId = (child?.data as { parentId?: unknown } | undefined)?.parentId;
+    const parent = typeof parentId === "string"
+      ? placed.find((node) => node.id === parentId)
+      : undefined;
+    if (!child || !parent) continue;
+
+    const siblings = priorSiblings(placed, parent, insertedId);
+    const siblingPlacement = siblingPosition(parent, child, siblings);
+    const parentParentId = (parent.data as { parentId?: unknown } | undefined)?.parentId;
+    const parentParent = typeof parentParentId === "string"
+      ? placed.find((node) => node.id === parentParentId)
+      : undefined;
+    const direction = parentParent
+      ? centerVector(parentParent, parent)
+      : centerVector(parent, child);
+    const position = siblingPlacement ?? continuationPosition(parent, child, direction);
+    placed = placed.map((node) => node.id === insertedId ? { ...node, position } : node);
+
+    const collisionScope = placed.filter((node) =>
+      node.id === insertedId || !inserted.has(node.id) || completed.has(node.id)
+    );
+    const placements = resolveInsertedNodeCollisions(collisionScope, insertedId);
+    completed.add(insertedId);
     if (!Object.keys(placements).length) continue;
     placed = placed.map((node) => placements[node.id]
       ? { ...node, position: placements[node.id] }
       : node);
   }
   return placed;
+}
+
+/** Reattach new connectors to the nearest sides after directional placement. */
+export function rerouteFlowchartInsertionEdges(
+  nodes: Node[],
+  edges: Edge[],
+  insertedIds: string[]
+): Edge[] {
+  const inserted = new Set(insertedIds);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let changed = false;
+  const routed = edges.map((edge) => {
+    if (!inserted.has(edge.target)) return edge;
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) return edge;
+    const route = routeForMode("freeForm", source, target);
+    if (edge.sourceHandle === route.sourceHandle && edge.targetHandle === route.targetHandle) {
+      return edge;
+    }
+    changed = true;
+    return {
+      ...edge,
+      sourceHandle: route.sourceHandle,
+      targetHandle: route.targetHandle,
+    };
+  });
+  return changed ? routed : edges;
 }
 
 /**

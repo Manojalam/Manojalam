@@ -8,6 +8,7 @@ import {
   manualizeFlowchartBranch,
   normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
+  rerouteFlowchartInsertionEdges,
   usesManualFlowchartPlacement,
 } from "./flowchart-behavior";
 
@@ -80,6 +81,50 @@ test("collision handling moves only the newly inserted flowchart node", () => {
   assert.deepEqual(placed.find((node) => node.id === "parent")?.position, { x: 0, y: 0 });
   assert.deepEqual(placed.find((node) => node.id === "existing")?.position, { x: 280, y: 0 });
   assert.notDeepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 280, y: 0 });
+});
+
+test("a first child continues its parent's live incoming direction", () => {
+  const nodes = [
+    shape("root", 0, 0, null, { childOrder: ["parent"] }),
+    shape("parent", 0, 180, "root", { childOrder: ["inserted"] }),
+    shape("inserted", 280, 180, "parent"),
+  ];
+  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+  const inserted = placed.find((node) => node.id === "inserted");
+
+  assert.deepEqual(inserted?.position, { x: 0, y: 324 });
+
+  const routed = rerouteFlowchartInsertionEdges(placed, [{
+    id: "new-edge",
+    source: "parent",
+    target: "inserted",
+    sourceHandle: "right",
+    targetHandle: "left",
+  }], ["inserted"]);
+  assert.equal(routed[0].sourceHandle, "bottom");
+  assert.equal(routed[0].targetHandle, "top");
+});
+
+test("moving a branch changes the direction followed by its next child", () => {
+  const nodes = [
+    shape("root", 0, 0, null, { childOrder: ["parent"] }),
+    shape("parent", 300, 0, "root", { childOrder: ["inserted"] }),
+    shape("inserted", 300, 200, "parent"),
+  ];
+  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+
+  assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 564, y: 0 });
+});
+
+test("additional children stay on the side established by the latest child", () => {
+  const nodes = [
+    shape("parent", 300, 300, null, { childOrder: ["existing", "inserted"] }),
+    shape("existing", 300, 100, "parent"),
+    shape("inserted", 580, 300, "parent"),
+  ];
+  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+
+  assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 524, y: 100 });
 });
 
 test("manual flowchart edges are excluded from shared tree and list connector buses", () => {
