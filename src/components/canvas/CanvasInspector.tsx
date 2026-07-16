@@ -784,6 +784,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setNodeSize = useCanvasStore((s) => s.setNodeSize);
   const deleteSelected  = useCanvasStore((s) => s.deleteSelected);
   const deleteEdges     = useCanvasStore((s) => s.deleteEdges);
+  const clearConnectorJunction = useCanvasStore((s) => s.clearConnectorJunction);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const createChildNodes = useCanvasStore((s) => s.createChildNodes);
@@ -1629,13 +1630,30 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <h3 className="text-sm font-semibold text-foreground">Connector junction</h3>
             <p className="text-[10px] text-muted-foreground">A movable branch point between connectors</p>
           </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={deleteSelected}>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Clear junction and restore the main connector"
+            className="h-7 w-7 text-destructive hover:bg-destructive/10"
+            onClick={() => clearConnectorJunction(selectedNode.id)}
+          >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
         <div className="space-y-2 p-3 text-[11px] leading-relaxed text-muted-foreground">
-          <p>Drag the dot to reroute the connected lines.</p>
+          <p>Drag the center of the dot anywhere to reroute the connected lines.</p>
           <p>Select the Connector tool, then drag from any junction handle to a shape or another junction.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 w-full text-[10px] text-destructive hover:text-destructive"
+            onClick={() => clearConnectorJunction(selectedNode.id)}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+            Clear junction
+          </Button>
+          <p className="text-[10px]">This rejoins the original through-line and removes branches connected through this junction.</p>
         </div>
       </aside>
     );

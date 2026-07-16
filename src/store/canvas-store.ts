@@ -78,6 +78,8 @@ import {
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
+import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
+import { createExternalNoteNode } from "@/lib/canvas/node-note";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -149,9 +151,11 @@ interface CanvasState {
   ) => void;
   deleteSelected: () => void;
   deleteEdges: (ids: string[]) => void;
+  clearConnectorJunction: (junctionId: string) => void;
   createChildNode: (parentId: string) => void;
   createChildNodes: (parentId: string, count: number, keepParentSelected?: boolean) => void;
   createSiblingNode: (nodeId: string) => string | null;
+  createNodeNote: (nodeId: string) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
@@ -2189,6 +2193,43 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "unsaved",
     });
     detachedBySource.forEach((_, sourceId) => get().scheduleStructuredReflow(sourceId));
+  },
+
+  clearConnectorJunction: (junctionId) => {
+    const { nodes, edges } = get();
+    if (!nodes.some((node) => node.id === junctionId && node.type === "junction")) return;
+    get().pushHistory();
+    const result = clearConnectorJunctionGraph(nodes, edges, junctionId);
+    set({
+      nodes: result.nodes.map((node) => ({ ...node, selected: false })),
+      edges: result.edges.map((edge) => ({
+        ...edge,
+        selected: edge.id === result.mergedEdgeId,
+      })),
+      selectedNodeIds: [],
+      selectedEdgeIds: result.mergedEdgeId ? [result.mergedEdgeId] : [],
+      saveStatus: "unsaved",
+    });
+  },
+
+  createNodeNote: (nodeId) => {
+    const { nodes, edges, settings } = get();
+    const source = nodes.find((node) => node.id === nodeId);
+    if (!source || ["junction", "frame", "sunburst", "relationshipDiagram"].includes(source.type ?? "")) {
+      return null;
+    }
+    get().pushHistory();
+    const noteId = generateId();
+    const note = createExternalNoteNode(source, nodes, noteId, settings.defaultScriptMode);
+    set({
+      nodes: [...nodes.map((node) => ({ ...node, selected: false })), note],
+      edges: edges.map((edge) => ({ ...edge, selected: false })),
+      selectedNodeIds: [noteId],
+      selectedEdgeIds: [],
+      saveStatus: "unsaved",
+    });
+    requestNodeTextEdit(noteId);
+    return noteId;
   },
 
   createChildNode: (parentId) => get().createChildNodes(parentId, 1),

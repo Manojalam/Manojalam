@@ -18,6 +18,7 @@ import {
   Group,
   Lock,
   Maximize2,
+  MessageSquarePlus,
   Network,
   Plus,
   Rows3,
@@ -168,6 +169,7 @@ export function SelectionToolbar() {
   const relationships = useCanvasStore((state) => state.relationships);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
+  const createNodeNote = useCanvasStore((state) => state.createNodeNote);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
   const setNodeLocked = useCanvasStore((state) => state.setNodeLocked);
@@ -264,6 +266,7 @@ export function SelectionToolbar() {
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
+          <ActionButton label="Add note outside box" onClick={() => createNodeNote(singleId)}><MessageSquarePlus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
           {singleShapeData && (
             <ShapeChanger

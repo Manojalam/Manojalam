@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CircleDot, GitBranch, RotateCcw, Trash2, X } from "lucide-react";
+import { useReactFlow } from "@xyflow/react";
+import { CircleDot, GitBranch, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 
@@ -25,6 +26,19 @@ function updateLabel(edgeId: string, label: string): void {
   }));
 }
 
+function updateLabelOffset(edgeId: string, labelOffset?: { x: number; y: number }): void {
+  useCanvasStore.setState((state) => ({
+    edges: state.edges.map((edge) => {
+      if (edge.id !== edgeId) return edge;
+      const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
+      if (labelOffset) data.labelOffset = labelOffset;
+      else delete data.labelOffset;
+      return { ...edge, data };
+    }),
+    saveStatus: "unsaved",
+  }));
+}
+
 /** A visible edge label plus an in-place editor whenever the edge is selected. */
 export function ConnectionLabelEditor({
   edgeId,
@@ -38,8 +52,23 @@ export function ConnectionLabelEditor({
 }: ConnectionLabelEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const historyCaptured = useRef(false);
+  const labelDrag = useRef<{
+    startPointer: { x: number; y: number };
+    startOffset: { x: number; y: number };
+  } | null>(null);
   const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
+  const storedLabelOffset = useCanvasStore((state) => (
+    state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
+  )?.labelOffset) as { x?: unknown; y?: unknown } | undefined;
+  const { screenToFlowPosition } = useReactFlow();
+  const labelOffset = {
+    x: typeof storedLabelOffset?.x === "number" ? storedLabelOffset.x : 0,
+    y: typeof storedLabelOffset?.y === "number" ? storedLabelOffset.y : 0,
+  };
+  const labelX = x + labelOffset.x;
+  const labelY = y + labelOffset.y;
+  const labelWasMoved = labelOffset.x !== 0 || labelOffset.y !== 0;
 
   useEffect(() => {
     if (!selected || label) return;
@@ -62,7 +91,7 @@ export function ConnectionLabelEditor({
           data-export-edge-id={edgeId}
           style={{
             position: "absolute",
-            transform: `translate(-50%, -50%) translate(${x}px,${y}px)`,
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: "none",
           }}
           className="rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium shadow-sm"
@@ -78,7 +107,7 @@ export function ConnectionLabelEditor({
           aria-label="Edit connection label"
           style={{
             position: "absolute",
-            transform: `translate(-50%, -50%) translate(${x}px,${y - (label ? 36 : 0)}px)`,
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY - (label ? 36 : 0)}px)`,
             pointerEvents: "all",
           }}
           className="nodrag nopan flex items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-lg backdrop-blur"
@@ -103,6 +132,58 @@ export function ConnectionLabelEditor({
             }}
           />
           <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
+          <button
+            type="button"
+            title="Drag to move the label"
+            aria-label="Move connection label"
+            className="flex h-7 w-7 cursor-move items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              pushHistory();
+              labelDrag.current = {
+                startPointer: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+                startOffset: labelOffset,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!labelDrag.current) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+              updateLabelOffset(edgeId, {
+                x: Math.round(labelDrag.current.startOffset.x + point.x - labelDrag.current.startPointer.x),
+                y: Math.round(labelDrag.current.startOffset.y + point.y - labelDrag.current.startPointer.y),
+              });
+            }}
+            onPointerUp={(event) => {
+              event.stopPropagation();
+              labelDrag.current = null;
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onPointerCancel={() => {
+              labelDrag.current = null;
+            }}
+          >
+            <Move className="h-3.5 w-3.5" />
+          </button>
+          {labelWasMoved && (
+            <button
+              type="button"
+              title="Reset label position"
+              aria-label="Reset connection label position"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                pushHistory();
+                updateLabelOffset(edgeId);
+              }}
+            >
+              <LocateFixed className="h-3.5 w-3.5" />
+            </button>
+          )}
           {onAddBend && (
             <button
               type="button"
