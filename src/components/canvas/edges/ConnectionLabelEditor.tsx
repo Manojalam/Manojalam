@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { ArrowLeftRight, CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -8,6 +8,9 @@ import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer"
 import { reverseLogicalConnectors } from "@/lib/canvas/connector-junction";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 import { ConnectorPathStylePicker } from "./ConnectorPathStylePicker";
+import { ConnectorLabelStylePicker } from "./ConnectorLabelStylePicker";
+import { resolveConnectorLabelPresentation } from "@/lib/canvas/connector-label-style";
+import type { VidyaEdgeData } from "@/lib/types";
 
 interface ConnectionLabelEditorProps {
   edgeId: string;
@@ -84,6 +87,9 @@ export function ConnectionLabelEditor({
   } | null>(null);
   const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
+  const storedLabelData = useCanvasStore((state) => (
+    state.edges.find((edge) => edge.id === edgeId)?.data ?? {}
+  )) as VidyaEdgeData;
   const storedLabelOffset = useCanvasStore((state) => (
     state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
   )?.labelOffset) as { x?: unknown; y?: unknown } | undefined;
@@ -105,6 +111,20 @@ export function ConnectionLabelEditor({
   };
   const toolbarX = x + toolbarOffset.x;
   const toolbarY = y + toolbarOffset.y;
+  const labelPresentation = resolveConnectorLabelPresentation(storedLabelData);
+  const labelStyle: CSSProperties = {
+    color: labelPresentation.color,
+    fontFamily: labelPresentation.fontFamily,
+    fontSize: `${labelPresentation.fontSize}px`,
+    fontWeight: labelPresentation.fontWeight,
+    fontStyle: labelPresentation.fontStyle,
+  };
+  const labelInputStyle: CSSProperties = {
+    color: labelPresentation.color,
+    fontFamily: labelPresentation.fontFamily,
+    fontWeight: labelPresentation.fontWeight,
+    fontStyle: labelPresentation.fontStyle,
+  };
 
   useEffect(() => {
     if (!selected || label) return;
@@ -137,6 +157,7 @@ export function ConnectionLabelEditor({
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: "none",
+            ...labelStyle,
           }}
           className="rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium shadow-sm"
         >
@@ -212,6 +233,7 @@ export function ConnectionLabelEditor({
             value={label}
             placeholder="Connection label"
             className="h-7 w-28 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            style={labelInputStyle}
             onChange={(event) => setLabel(event.target.value)}
             onKeyDown={(event) => {
               event.stopPropagation();
@@ -221,6 +243,7 @@ export function ConnectionLabelEditor({
           />
           <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
           <ConnectorPathStylePicker edgeId={toolbarEdgeId} />
+          <ConnectorLabelStylePicker edgeId={toolbarEdgeId} />
           <button
             type="button"
             title="Reverse connection direction"

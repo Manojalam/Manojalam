@@ -8,7 +8,7 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
-  ArrowLeftRight, FileImage, FileType2, Maximize2,
+  ArrowLeftRight, FileImage, FileType2, Link2, Maximize2, Unlink2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { toast } from "sonner";
@@ -73,9 +73,18 @@ import {
   resolveConnectorPathStyle,
 } from "@/lib/canvas/connector-path-style";
 import {
+  findConnectorLabelOwnerEdge,
   findLogicalConnectorEdgeIds,
   reverseLogicalConnectors,
 } from "@/lib/canvas/connector-junction";
+import {
+  applyConnectorLabelStyleUpdate,
+  DEFAULT_CONNECTOR_LABEL_COLOR,
+  DEFAULT_CONNECTOR_LABEL_FONT_SIZE,
+  MAX_CONNECTOR_LABEL_FONT_SIZE,
+  MIN_CONNECTOR_LABEL_FONT_SIZE,
+  type ConnectorLabelStyleUpdate,
+} from "@/lib/canvas/connector-label-style";
 import {
   MAX_BOARD_FONT_SIZE,
   MIN_BOARD_FONT_SIZE,
@@ -615,7 +624,9 @@ function BorderStylePicker({ value, onChange }: {
 function ConnectionInspectorSections({
   connectionEdges,
   commonValue,
+  commonLabelValue,
   onChange,
+  onLabelStyleChange,
   onWidthChange,
   onWidthChangeStart,
   onReverse,
@@ -624,14 +635,15 @@ function ConnectionInspectorSections({
 }: {
   connectionEdges: Edge[];
   commonValue: (key: string) => unknown;
+  commonLabelValue: (key: string) => unknown;
   onChange: (key: string, value: unknown, captureHistory?: boolean) => void;
+  onLabelStyleChange: (update: ConnectorLabelStyleUpdate, captureHistory?: boolean) => void;
   onWidthChange?: (value: number) => void;
   onWidthChangeStart?: () => void;
   onReverse: () => void;
   onDelete: () => void;
   defaultOpen?: boolean;
 }) {
-  const edgeData = (connectionEdges[0]?.data ?? {}) as Record<string, unknown>;
   const widths = connectionEdges.map((edge) => {
     const width = ((edge.data ?? {}) as Record<string, unknown>).width;
     return typeof width === "number" && Number.isFinite(width) ? width : 2;
@@ -660,6 +672,19 @@ function ConnectionInspectorSections({
   const pathStyle = pathStyles.every((value) => value === pathStyles[0])
     ? pathStyles[0]
     : undefined;
+  const label = typeof commonLabelValue("label") === "string" ? commonLabelValue("label") as string : "";
+  const labelColor = typeof commonLabelValue("labelColor") === "string"
+    ? commonLabelValue("labelColor") as string
+    : DEFAULT_CONNECTOR_LABEL_COLOR;
+  const labelColorSynced = commonLabelValue("labelColorSynced") === true;
+  const labelFontFamily = typeof commonLabelValue("labelFontFamily") === "string"
+    ? commonLabelValue("labelFontFamily") as string
+    : "__default_font__";
+  const labelFontSize = typeof commonLabelValue("labelFontSize") === "number"
+    ? commonLabelValue("labelFontSize") as number
+    : DEFAULT_CONNECTOR_LABEL_FONT_SIZE;
+  const labelFontWeight = commonLabelValue("labelFontWeight") === "bold" ? "bold" : "normal";
+  const labelFontStyle = commonLabelValue("labelFontStyle") === "italic" ? "italic" : "normal";
   return (
     <>
       <Section label={`Connection path (${connectionEdges.length})`} defaultOpen={defaultOpen}>
@@ -758,32 +783,117 @@ function ConnectionInspectorSections({
             mixed={widthMixed}
           />
         </div>
+        <Button type="button" variant="outline" size="sm" className="h-7 w-full text-[10px] text-destructive hover:text-destructive" onClick={onDelete}>
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          Delete {connectionEdges.length === 1 ? "connection" : `${connectionEdges.length} connections`}
+        </Button>
+      </Section>
+      <Section label="Connection label" defaultOpen={defaultOpen}>
         {connectionEdges.length === 1 && (
           <div>
             <Label htmlFor="connection-label" className="text-xs">Label</Label>
             <Input
               id="connection-label"
               name="connection-label"
-              value={(edgeData.label as string) ?? ""}
+              value={label}
               placeholder="e.g. Yes, No, Approved"
               onFocus={onWidthChangeStart}
-              onChange={(event) => onChange("label", event.target.value, false)}
+              onChange={(event) => onLabelStyleChange({ label: event.target.value }, false)}
               className="mt-1 h-8 text-xs"
+              style={{
+                color: labelColor,
+                fontFamily: labelFontFamily === "__default_font__" ? undefined : labelFontFamily,
+                fontWeight: labelFontWeight,
+                fontStyle: labelFontStyle,
+              }}
             />
             <div className="mt-1.5 grid grid-cols-4 gap-1">
               <ConnectorLabelPresets
                 variant="grid"
                 maxVisible={7}
-                currentLabel={(edgeData.label as string) ?? ""}
-                onSelect={(label) => onChange("label", label)}
+                currentLabel={label}
+                onSelect={(nextLabel) => onLabelStyleChange({ label: nextLabel })}
               />
             </div>
           </div>
         )}
-        <Button type="button" variant="outline" size="sm" className="h-7 w-full text-[10px] text-destructive hover:text-destructive" onClick={onDelete}>
-          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-          Delete {connectionEdges.length === 1 ? "connection" : `${connectionEdges.length} connections`}
-        </Button>
+        <div>
+          <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
+          <ColorSwatchPicker
+            value={labelColor}
+            onChange={(value) => onLabelStyleChange({ labelColor: value })}
+            size="sm"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-md border p-2">
+          <div className="flex items-center gap-2">
+            {labelColorSynced ? <Link2 className="h-3.5 w-3.5 text-primary" /> : <Unlink2 className="h-3.5 w-3.5 text-muted-foreground" />}
+            <div>
+              <p className="text-[11px] font-medium">Sync label + connector</p>
+              <p className="text-[9px] text-muted-foreground">Label color controls both; turn off to override</p>
+            </div>
+          </div>
+          <Switch
+            checked={labelColorSynced}
+            aria-label="Sync label and connector color"
+            onCheckedChange={(checked) => onLabelStyleChange({ labelColorSynced: checked })}
+          />
+        </div>
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font</p>
+          <Select
+            value={labelFontFamily}
+            onValueChange={(value) => onLabelStyleChange({
+              labelFontFamily: value === "__default_font__" ? "" : value,
+            })}
+          >
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Default font" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default_font__">Default font</SelectItem>
+              {[...groupFontsByCategory(FONT_OPTIONS).entries()].map(([category, fonts]) => (
+                <div key={category}>
+                  <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">{category}</div>
+                  {fonts.map((font) => (
+                    <SelectItem key={font.value} value={font.value}>
+                      <span style={{ fontFamily: font.value }}>{font.label}</span>
+                    </SelectItem>
+                  ))}
+                </div>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font size</p>
+          <SliderControl
+            value={labelFontSize}
+            onChange={(value) => onLabelStyleChange({ labelFontSize: value }, false)}
+            onChangeStart={onWidthChangeStart}
+            min={MIN_CONNECTOR_LABEL_FONT_SIZE}
+            max={MAX_CONNECTOR_LABEL_FONT_SIZE}
+            suffix="px"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <Button
+            type="button"
+            variant={labelFontWeight === "bold" ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-[10px]"
+            onClick={() => onLabelStyleChange({ labelFontWeight: labelFontWeight === "bold" ? "normal" : "bold" })}
+          >
+            <Bold className="mr-1 h-3.5 w-3.5" /> Bold
+          </Button>
+          <Button
+            type="button"
+            variant={labelFontStyle === "italic" ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-[10px]"
+            onClick={() => onLabelStyleChange({ labelFontStyle: labelFontStyle === "italic" ? "normal" : "italic" })}
+          >
+            <Italic className="mr-1 h-3.5 w-3.5" /> Italic
+          </Button>
+        </div>
       </Section>
     </>
   );
@@ -1138,6 +1248,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setSelectedEdgeField = (key: string, value: unknown, captureHistory = true) => {
     if (!editableSelectionEdges.length) return;
     if (captureHistory) pushHistory();
+    if (key === "color") {
+      useCanvasStore.setState((state) => ({
+        edges: editableSelectionEdges.reduce(
+          (currentEdges, edge) => applyConnectorLabelStyleUpdate(currentEdges, edge.id, {
+            connectorColor: String(value),
+          }),
+          state.edges
+        ),
+        saveStatus: "unsaved",
+      }));
+      return;
+    }
     const selectedIds = new Set(key === "pathStyle"
       ? editableSelectionEdges.flatMap((edge) => findLogicalConnectorEdgeIds(edges, edge.id))
       : editableSelectionEdges.map((edge) => edge.id));
@@ -1172,14 +1294,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             data: { ...(edge.data ?? {}), arrowEnd: value },
           };
         }
-        if (key === "color" && (edge.markerStart || edge.markerEnd)) {
-          return {
-            ...edge,
-            markerStart: edge.markerStart ? { type: MarkerType.ArrowClosed, color: String(value) } : undefined,
-            markerEnd: edge.markerEnd ? { type: MarkerType.ArrowClosed, color: String(value) } : undefined,
-            data: { ...(edge.data ?? {}), color: value },
-          };
-        }
         if (key === "pathStyle") {
           const data = { ...(edge.data ?? {}), pathStyle: value } as Record<string, unknown>;
           delete data.dashed;
@@ -1191,11 +1305,34 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     }));
   };
 
+  const setSelectedEdgeLabelStyle = (
+    update: ConnectorLabelStyleUpdate,
+    captureHistory = true
+  ) => {
+    if (!editableSelectionEdges.length) return;
+    if (captureHistory) pushHistory();
+    useCanvasStore.setState((state) => ({
+      edges: editableSelectionEdges.reduce(
+        (currentEdges, edge) => applyConnectorLabelStyleUpdate(currentEdges, edge.id, update),
+        state.edges
+      ),
+      saveStatus: "unsaved",
+    }));
+  };
+
   const commonEdgeValue = (key: string) => {
     const first = ((editableSelectionEdges[0]?.data ?? {}) as Record<string, unknown>)[key];
     return editableSelectionEdges.every((edge) => ((edge.data ?? {}) as Record<string, unknown>)[key] === first)
       ? first
       : undefined;
+  };
+
+  const commonEdgeLabelValue = (key: string) => {
+    const values = editableSelectionEdges.map((edge) => {
+      const owner = findConnectorLabelOwnerEdge(edges, edge.id) ?? edge;
+      return ((owner.data ?? {}) as Record<string, unknown>)[key];
+    });
+    return values.every((value) => value === values[0]) ? values[0] : undefined;
   };
 
   const deleteEditableConnections = () => {
@@ -1489,7 +1626,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <ConnectionInspectorSections
               connectionEdges={editableSelectionEdges}
               commonValue={commonEdgeValue}
+              commonLabelValue={commonEdgeLabelValue}
               onChange={setSelectedEdgeField}
+              onLabelStyleChange={setSelectedEdgeLabelStyle}
               onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
               onWidthChangeStart={pushHistory}
               onReverse={reverseEditableConnections}
@@ -1528,7 +1667,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <ConnectionInspectorSections
               connectionEdges={selectedEdges}
               commonValue={commonEdgeValue}
+              commonLabelValue={commonEdgeLabelValue}
               onChange={setSelectedEdgeField}
+              onLabelStyleChange={setSelectedEdgeLabelStyle}
               onWidthChange={(value) => setSelectedEdgeField("width", value, false)}
               onWidthChangeStart={pushHistory}
               onReverse={reverseEditableConnections}
