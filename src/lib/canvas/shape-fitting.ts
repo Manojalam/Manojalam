@@ -16,6 +16,8 @@ export interface ContentMeasurement extends Size {
   lineHeight?: number;
   /** Width of the longest explicit line before soft wrapping. */
   naturalWidth?: number;
+  /** Height of the explicit lines before width-dependent soft wrapping. */
+  naturalHeight?: number;
 }
 
 export interface ShapeFitOptions {
@@ -229,7 +231,13 @@ export function shapeTextContentSize(
     options.contentSize?.naturalWidth,
     finitePositive(options.contentSize?.width, 180)
   );
-  const contentHeight = finitePositive(options.contentSize?.height, 80);
+  // Diamonds need both unwrapped axes. Pairing naturalWidth with the height
+  // produced by an already-narrow editor creates a feedback loop: wrapping
+  // increases the measured height, which makes the next diamond box narrower.
+  const contentHeight = finitePositive(
+    shapeType === "diamond" ? options.contentSize?.naturalHeight : undefined,
+    finitePositive(options.contentSize?.height, 80)
+  );
   const paddedAspect = Math.max(
     0.35,
     Math.min(4, (contentWidth + padding.width) / (contentHeight + padding.height))

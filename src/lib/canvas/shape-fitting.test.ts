@@ -103,6 +103,27 @@ test("diamond measurements cannot collapse the editor to one character", () => {
   assert.ok(shapeTextContentWidth("diamond", 126) >= 55);
 });
 
+test("diamond text width does not shrink because of previous soft wrapping", () => {
+  const wrappedMeasurement = {
+    width: 48,
+    naturalWidth: 100,
+    height: 72,
+    naturalHeight: 20,
+    lineCount: 4,
+    lineHeight: 18,
+  };
+  const feedbackInterior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
+    contentSize: { ...wrappedMeasurement, naturalHeight: undefined },
+  });
+  const correctedInterior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
+    contentSize: wrappedMeasurement,
+  });
+
+  assert.ok(correctedInterior.width >= 90);
+  assert.ok(correctedInterior.width > feedbackInterior.width + 20);
+  assert.ok(correctedInterior.height < feedbackInterior.height);
+});
+
 test("maximum text fitting fills the corrected diamond interior", () => {
   const interior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
     contentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },

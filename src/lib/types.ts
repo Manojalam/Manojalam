@@ -400,9 +400,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** Render-only dimensions for the active structured layout. */
   layoutSizeOverride?: { mode: LayoutMode; width: number; height: number };
   /** Last DOM content measurement used for Matrix text wrapping and row reflow. */
-  matrixIntrinsicSize?: { width: number; height: number; naturalWidth?: number; lineCount?: number; lineHeight?: number };
+  matrixIntrinsicSize?: { width: number; height: number; naturalWidth?: number; naturalHeight?: number; lineCount?: number; lineHeight?: number };
   /** Last rendered rich-text measurement used by editing and shape conversion. */
-  intrinsicContentSize?: { width: number; height: number; naturalWidth?: number; lineCount?: number; lineHeight?: number };
+  intrinsicContentSize?: { width: number; height: number; naturalWidth?: number; naturalHeight?: number; lineCount?: number; lineHeight?: number };
   matrixCell?: boolean;
   matrixCellRole?: "header" | "category" | "cell";
   matrixRootId?: string;
