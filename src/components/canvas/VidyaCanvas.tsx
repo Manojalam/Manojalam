@@ -988,6 +988,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         data: {
           ...edgeData,
           waypoints: undefined,
+          waypointOrigin: undefined,
           edgeType: "branch",
           curveStyle: flowchartConnection ? "step" : route.curveStyle,
           manualRoute: flowchartConnection || edgeData.manualRoute === true,

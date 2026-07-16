@@ -159,6 +159,7 @@ export function splitConnectorAtJunction(
       label: undefined,
       arrowEnd: false,
       waypoints: firstWaypoints.length ? firstWaypoints : undefined,
+      waypointOrigin: firstWaypoints.length ? data.waypointOrigin : undefined,
       junctionPreservedWaypoints: firstWaypoints.length > 0 || undefined,
       junctionUserWaypoints: firstUserWaypoints.length ? firstUserWaypoints : undefined,
       connectorJunctionSegment: "incoming",
@@ -175,6 +176,7 @@ export function splitConnectorAtJunction(
       ...commonData,
       arrowStart: false,
       waypoints: secondWaypoints.length ? secondWaypoints : undefined,
+      waypointOrigin: secondWaypoints.length ? data.waypointOrigin : undefined,
       junctionPreservedWaypoints: secondWaypoints.length > 0 || undefined,
       junctionUserWaypoints: secondUserWaypoints.length ? secondUserWaypoints : undefined,
       connectorJunctionSegment: "outgoing",
@@ -215,7 +217,10 @@ export function releaseConnectorJunctionRouteAnchors(
     }
     const userWaypoints = storedRoutePoints(data.junctionUserWaypoints);
     if (userWaypoints.length) data.waypoints = userWaypoints;
-    else delete data.waypoints;
+    else {
+      delete data.waypoints;
+      delete data.waypointOrigin;
+    }
     delete data.junctionPreservedWaypoints;
     delete data.junctionUserWaypoints;
     return { ...edge, data };
@@ -463,7 +468,10 @@ export function clearConnectorJunctionGraph(
   delete data.junctionPreservedWaypoints;
   delete data.junctionUserWaypoints;
   if (waypoints.length) data.waypoints = waypoints;
-  else delete data.waypoints;
+  else {
+    delete data.waypoints;
+    delete data.waypointOrigin;
+  }
 
   const merged: Edge = {
     ...outgoing,

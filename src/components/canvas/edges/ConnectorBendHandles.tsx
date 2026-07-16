@@ -16,7 +16,7 @@ interface ConnectorBendHandlesProps {
 function replaceWaypoints(edgeId: string, waypoints: Array<{ x: number; y: number }>): void {
   useCanvasStore.setState((state) => ({
     edges: state.edges.map((edge) => edge.id === edgeId
-      ? { ...edge, data: { ...(edge.data ?? {}), waypoints } }
+      ? { ...edge, data: { ...(edge.data ?? {}), waypoints, waypointOrigin: "bend" } }
       : edge),
     saveStatus: "unsaved",
   }));
@@ -32,7 +32,7 @@ function updateWaypoint(edgeId: string, index: number, point: { x: number; y: nu
         : [];
       if (!waypoints[index]) return edge;
       waypoints[index] = point;
-      return { ...edge, data: { ...data, waypoints } };
+      return { ...edge, data: { ...data, waypoints, waypointOrigin: "bend" } };
     }),
     saveStatus: "unsaved",
   }));
@@ -48,8 +48,13 @@ function removeWaypoint(edgeId: string, index: number): void {
         : [];
       if (!waypoints[index]) return edge;
       waypoints.splice(index, 1);
-      if (waypoints.length) data.waypoints = waypoints;
-      else delete data.waypoints;
+      if (waypoints.length) {
+        data.waypoints = waypoints;
+        data.waypointOrigin = "bend";
+      } else {
+        delete data.waypoints;
+        delete data.waypointOrigin;
+      }
       return { ...edge, data };
     }),
     saveStatus: "unsaved",

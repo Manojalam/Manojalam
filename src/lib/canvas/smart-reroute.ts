@@ -146,6 +146,7 @@ export function smartRerouteBoardEdges(
 
     if (resetManual) {
       delete nextData.waypoints;
+      delete nextData.waypointOrigin;
       if (junctionEndpoint) nextData.preserveHandles = true;
       else delete nextData.preserveHandles;
     }

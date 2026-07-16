@@ -63,6 +63,29 @@ test("dragging an internal horizontal segment translates both adjoining bends", 
   ]);
 });
 
+test("dragging a segment near an endpoint axis snaps away the redundant joint", () => {
+  const source = { x: 100, y: 100 };
+  const target = { x: 500, y: 300 };
+  const route = [
+    source,
+    { x: 120, y: 100 },
+    { x: 120, y: 220 },
+    { x: 480, y: 220 },
+    { x: 480, y: 300 },
+    target,
+  ];
+  const waypoints = dragRouteSegmentToWaypoints(route, 2, 296, "right", "left");
+  const manual = routeManualOrthogonalEdge(source, target, "right", "left", waypoints);
+
+  assert.deepEqual(waypoints, [{ x: 120, y: 300 }]);
+  assert.deepEqual(manual.points, [
+    source,
+    { x: 120, y: 100 },
+    { x: 120, y: 300 },
+    target,
+  ]);
+});
+
 test("a translated segment carries its label even when the route midpoint shifts", () => {
   const startAnchor = { x: 100, y: 100 };
   const startOffset = { x: 20, y: -16 };

@@ -58,9 +58,18 @@ function edgeWaypoints(data: VidyaEdgeData): RoutePoint[] {
 
 function setEdgeWaypoints(edgeId: string, waypoints: RoutePoint[] | undefined): void {
   useCanvasStore.setState((state) => ({
-    edges: state.edges.map((edge) => edge.id === edgeId
-      ? { ...edge, data: { ...(edge.data ?? {}), waypoints } }
-      : edge),
+    edges: state.edges.map((edge) => {
+      if (edge.id !== edgeId) return edge;
+      const data = { ...(edge.data ?? {}) } as VidyaEdgeData;
+      if (waypoints?.length) {
+        data.waypoints = waypoints;
+        data.waypointOrigin = "bend";
+      } else {
+        delete data.waypoints;
+        delete data.waypointOrigin;
+      }
+      return { ...edge, data };
+    }),
     saveStatus: "unsaved",
   }));
 }
@@ -253,6 +262,7 @@ function RoutedSmartBranchEdge({
           endpointOptions={endpointOptions}
           labelEdgeId={labelOwnerId === id && connectionLabel ? labelOwnerId : undefined}
           labelAnchor={{ x: labelX, y: labelY }}
+          resultWaypointOrigin={d.waypointOrigin === "bend" ? "bend" : "segment-drag"}
         />
       )}
       {(logicalSelected || (labelOwnerId === id && connectionLabel)) && (
@@ -325,7 +335,7 @@ function RoutedSmartBranchEdge({
               useUIStore.getState().setConnectorClickPoint(null);
             } : undefined}
           />
-          {editorSelected && curveStyle === "step" && (
+          {editorSelected && curveStyle === "step" && d.waypointOrigin !== "segment-drag" && (
             <ConnectorBendHandles edgeId={id} routePoints={routePoints} waypoints={waypoints} />
           )}
         </EdgeLabelRenderer>

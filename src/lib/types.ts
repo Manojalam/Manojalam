@@ -547,6 +547,8 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   preserveHandles?: boolean;
   /** User-positioned anchors that turn the automatic route into an editable path. */
   waypoints?: Array<{ x: number; y: number }>;
+  /** Distinguishes explicit bend controls from internal anchors created by segment dragging. */
+  waypointOrigin?: "bend" | "segment-drag";
   /** User-positioned offset from the connector route's natural label anchor. */
   labelOffset?: { x: number; y: number };
   /** User-positioned offset for the selected connector's editing toolbar. */

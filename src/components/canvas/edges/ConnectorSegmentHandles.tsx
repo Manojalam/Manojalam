@@ -11,6 +11,7 @@ import {
   dragRouteSegmentToWaypoints,
   draggableRouteSegments,
   labelOffsetAfterSegmentTranslation,
+  snapDraggedSegmentCoordinate,
 } from "@/lib/canvas/connector-waypoints";
 import { useCanvasStore } from "@/store/canvas-store";
 
@@ -22,6 +23,7 @@ interface ConnectorSegmentHandlesProps {
   endpointOptions?: { sourceStubDistance?: number; targetStubDistance?: number };
   labelEdgeId?: string;
   labelAnchor: RoutePoint;
+  resultWaypointOrigin: "bend" | "segment-drag";
 }
 
 interface SegmentDragState {
@@ -31,11 +33,15 @@ interface SegmentDragState {
   startCoordinate: number;
   startLabelAnchor: RoutePoint;
   startLabelOffset?: RoutePoint;
+  resultWaypointOrigin: "bend" | "segment-drag";
 }
+
+const SEGMENT_ALIGNMENT_SNAP_SCREEN_PX = 8;
 
 function replaceWaypoints(
   edgeId: string,
   waypoints: RoutePoint[],
+  waypointOrigin: "bend" | "segment-drag",
   labelUpdate?: { edgeId: string; offset: RoutePoint }
 ): void {
   useCanvasStore.setState((state) => ({
@@ -45,7 +51,13 @@ function replaceWaypoints(
       if (edge.id === edgeId) {
         data.manualRoute = true;
         data.preserveHandles = true;
-        data.waypoints = waypoints;
+        if (waypoints.length) {
+          data.waypoints = waypoints;
+          data.waypointOrigin = waypointOrigin;
+        } else {
+          delete data.waypoints;
+          delete data.waypointOrigin;
+        }
       }
       if (edge.id === labelUpdate?.edgeId) {
         const x = Math.round(labelUpdate.offset.x);
@@ -68,10 +80,11 @@ export function ConnectorSegmentHandles({
   endpointOptions,
   labelEdgeId,
   labelAnchor,
+  resultWaypointOrigin,
 }: ConnectorSegmentHandlesProps) {
   const dragging = useRef<SegmentDragState | null>(null);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
-  const { screenToFlowPosition } = useReactFlow();
+  const { getZoom, screenToFlowPosition } = useReactFlow();
   const segments = draggableRouteSegments(routePoints);
 
   return (
@@ -98,6 +111,7 @@ export function ConnectorSegmentHandles({
               routePoints: routePoints.map((point) => ({ ...point })),
               startCoordinate: segment.orientation === "horizontal" ? segment.start.y : segment.start.x,
               startLabelAnchor: { ...labelAnchor },
+              resultWaypointOrigin,
               startLabelOffset: (() => {
                 if (!labelEdgeId) return undefined;
                 const value = useCanvasStore.getState().edges.find((edge) => (
@@ -117,14 +131,21 @@ export function ConnectorSegmentHandles({
             event.preventDefault();
             event.stopPropagation();
             const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-            const coordinate = active.orientation === "horizontal" ? point.y : point.x;
+            const pointerCoordinate = active.orientation === "horizontal" ? point.y : point.x;
+            const coordinate = snapDraggedSegmentCoordinate(
+              active.routePoints,
+              active.segmentIndex,
+              pointerCoordinate,
+              SEGMENT_ALIGNMENT_SNAP_SCREEN_PX / Math.max(0.1, getZoom())
+            );
             const waypoints = dragRouteSegmentToWaypoints(
               active.routePoints,
               active.segmentIndex,
               Math.round(coordinate),
               sourceSide,
               targetSide,
-              endpointOptions
+              endpointOptions,
+              0
             );
             const nextLabelAnchor = waypoints.length
               ? (() => {
@@ -151,7 +172,7 @@ export function ConnectorSegmentHandles({
                   ),
                 }
               : undefined;
-            replaceWaypoints(edgeId, waypoints, labelUpdate);
+            replaceWaypoints(edgeId, waypoints, active.resultWaypointOrigin, labelUpdate);
           }}
           onPointerUp={(event) => {
             event.preventDefault();
