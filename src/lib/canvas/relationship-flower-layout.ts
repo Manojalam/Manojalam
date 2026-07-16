@@ -675,14 +675,15 @@ export function layoutRelationshipFlowerPetals(
   let previousLabelCenterRadius = attachmentRootRadius + labelCenterOffset;
 
   const petalSpacing = 360 / layerSlotCount;
-  const layerOffset = petalSpacing / layerCount;
+  const closingGapMidpointOffset = petalSpacing / 2;
 
   layerIndexes.forEach((itemIndexes, visualLayerIndex) => {
-    // Continue the source order through the closing gap of each flower: the
-    // first petal in a later layer sits between the preceding layer's last and
-    // first axes. Empty slots remain real geometry so every layer shares one
-    // complete angular grid even when its content count is lower.
-    const layerStartAngle = -90 - visualLayerIndex * layerOffset;
+    // Start at the top, proceed clockwise, then place each later layer's first
+    // petal at the midpoint of the preceding layer's closing gap (between its
+    // last and first petals). Empty slots remain real geometry so all layers
+    // share one stable angular grid.
+    const layerStartAngle = -90
+      - visualLayerIndex * closingGapMidpointOffset;
     const slots: CandidateSlot[] = Array.from({ length: layerSlotCount }, (_, slotIndex) => ({
       itemIndex: itemIndexes[slotIndex] ?? null,
       slotIndex,
