@@ -4,7 +4,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMode } from "../types";
 import { getNodeRect, inflateRect, rectsOverlap, segmentIntersectsRect } from "./geometry";
 import { EDGE_OBSTACLE_PADDING, routeLayoutEdge } from "./edge-routing";
-import { computeLayout, LAYOUT_OPTIONS } from "./index";
+import { computeLayout, LAYOUT_OPTIONS, routeForMode } from "./index";
 
 function buildVariableTree(count = 31): { nodes: Node[]; edges: Edge[] } {
   const childOrder = new Map<string, string[]>();
@@ -136,4 +136,50 @@ test("Top Down is hidden from the chooser while legacy boards retain Vertical ge
 
   assert.equal(LAYOUT_OPTIONS.some((option) => option.mode === "topDown"), false);
   assert.deepEqual(legacyTopDown, vertical);
+});
+
+test("free-form child connectors keep vertical levels until nodes share a row", () => {
+  const parent: Node = {
+    id: "parent",
+    position: { x: 360, y: 20 },
+    measured: { width: 120, height: 120 },
+    data: {},
+  };
+  const lowerLeft: Node = {
+    id: "lower-left",
+    position: { x: 20, y: 300 },
+    measured: { width: 120, height: 120 },
+    data: {},
+  };
+  const sameRow: Node = {
+    ...lowerLeft,
+    id: "same-row",
+    position: { x: 20, y: 34 },
+  };
+  const upperRight: Node = {
+    ...lowerLeft,
+    id: "upper-right",
+    position: { x: 620, y: -180 },
+  };
+
+  assert.deepEqual(routeForMode("freeForm", parent, lowerLeft), {
+    sourceHandle: "bottom",
+    targetHandle: "top",
+    curveStyle: "smooth",
+  });
+  assert.deepEqual(routeForMode("freeForm", parent, sameRow), {
+    sourceHandle: "left",
+    targetHandle: "right",
+    curveStyle: "smooth",
+  });
+  assert.deepEqual(routeForMode("fromParentFreeForm", parent, upperRight), {
+    sourceHandle: "top",
+    targetHandle: "bottom",
+    curveStyle: "smooth",
+  });
+  assert.deepEqual(routeForMode("matrix", parent, lowerLeft), {
+    sourceHandle: "left",
+    targetHandle: "right",
+    curveStyle: "step",
+  });
 });

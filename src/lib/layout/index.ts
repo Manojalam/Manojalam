@@ -358,6 +358,23 @@ function nearestSides(a: Node, b: Node): { source: Side; target: Side } {
   return { source, target: opposite(source) };
 }
 
+/**
+ * Free-form flowcharts keep parent/child levels stable while nodes are moved.
+ * A connector changes to side-to-side only when the node centers are close
+ * enough to read as the same row; otherwise vertical order takes precedence.
+ */
+function levelAwareFreeFormSides(a: Node, b: Node): { source: Side; target: Side } {
+  const aRect = getNodeRect(a);
+  const bRect = getNodeRect(b);
+  const dx = bRect.centerX - aRect.centerX;
+  const dy = bRect.centerY - aRect.centerY;
+  const sameLevelTolerance = Math.max(24, Math.min(aRect.height, bRect.height) * 0.35);
+  const source: Side = Math.abs(dy) <= sameLevelTolerance
+    ? (dx >= 0 ? "right" : "left")
+    : (dy >= 0 ? "bottom" : "top");
+  return { source, target: opposite(source) };
+}
+
 export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeRoute {
   switch (mode) {
     case "horizontal":
@@ -375,11 +392,14 @@ export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeR
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "step" };
     }
-    case "radial":
+    case "radial": {
+      const { source, target } = nearestSides(parent, child);
+      return { sourceHandle: source, targetHandle: target, curveStyle: "smooth" };
+    }
     case "fromParentFreeForm":
     case "freeForm":
     default: {
-      const { source, target } = nearestSides(parent, child);
+      const { source, target } = levelAwareFreeFormSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "smooth" };
     }
   }
