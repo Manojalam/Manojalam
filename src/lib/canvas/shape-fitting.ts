@@ -49,18 +49,17 @@ export interface ShapeTextContentOptions {
 }
 
 /**
- * The rectangular capacity used to size text that flows through a diamond.
- *
- * A diamond contains half of its bounding box. Reserving a little slope and
- * border clearance leaves roughly 44% usable area; 60% width by 74% height
- * models that capacity without forcing every line into one center rectangle.
+ * Equivalent rectangular capacity for text that flows through a diamond.
+ * A diamond occupies exactly half of its inset bounding box. Using its average
+ * line width (50%) across the full height preserves that area without adding a
+ * second rectangular vertical inset on top of the shape-aware CSS flow.
  */
 export function diamondTextFlowCapacity(renderedSize: Size): Size {
   const width = Math.max(8, finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH) - 8);
   const height = Math.max(8, finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT) - 8);
   return {
-    width: Math.max(8, width * 0.6),
-    height: Math.max(8, height * 0.74),
+    width: Math.max(8, width * 0.5),
+    height,
   };
 }
 
