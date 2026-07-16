@@ -103,8 +103,9 @@ export function measureRichTextElement(
   host.replaceChildren(naturalClone);
   const naturalRect = naturalClone.getBoundingClientRect();
   const naturalWidth = Math.ceil(Math.max(naturalRect.width, naturalClone.scrollWidth));
+  const naturalHeight = Math.ceil(Math.max(naturalRect.height, naturalClone.scrollHeight));
   host.replaceChildren();
-  return { width, height, lineCount, lineHeight, naturalWidth };
+  return { width, height, lineCount, lineHeight, naturalWidth, naturalHeight };
 }
 
 export interface PlainTextMeasureOptions extends RichTextMeasureOptions {

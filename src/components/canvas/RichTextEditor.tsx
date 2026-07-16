@@ -214,6 +214,7 @@ export function RichTextEditor({
       || Math.abs(previous.width - measured.width) > 1
       || Math.abs(previous.height - measured.height) > 1
       || Math.abs((previous.naturalWidth ?? 0) - (measured.naturalWidth ?? 0)) > 1
+      || Math.abs((previous.naturalHeight ?? 0) - (measured.naturalHeight ?? 0)) > 1
       || Math.abs((previous.lineCount ?? 0) - (measured.lineCount ?? 0)) > 0.5
       || Math.abs((previous.lineHeight ?? 0) - (measured.lineHeight ?? 0)) > 0.5;
     if (!changed && reason !== "blur" && reason !== "fit") return;
