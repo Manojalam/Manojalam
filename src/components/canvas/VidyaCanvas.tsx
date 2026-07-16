@@ -58,6 +58,7 @@ import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
+import { isExternalNoteNode } from "@/lib/canvas/node-note";
 import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
 import {
   findLogicalConnectorEdgeIds,
@@ -249,6 +250,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
+  const [freeDragActive, setFreeDragActive] = useState(false);
   const pinchRef = useRef<{
     distance: number;
     flowCenter: { x: number; y: number };
@@ -522,6 +524,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const state = useCanvasStore.getState();
     const storedDraggedNode = state.nodes.find((node) => node.id === draggedNode.id);
     if (isNodeLocked(storedDraggedNode)) return;
+    setFreeDragActive(isExternalNoteNode(storedDraggedNode ?? draggedNode));
     state.pushHistory();
     const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
     const matrixRootId = draggedData.matrixCellRole === "header"
@@ -618,7 +621,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (movingIds.has(edge.source) && !movingIds.has(edge.target)) connectedIds.add(edge.target);
       if (movingIds.has(edge.target) && !movingIds.has(edge.source)) connectedIds.add(edge.source);
     }
-    const snappingDisabled = event.altKey;
+    const snappingDisabled = event.altKey || isExternalNoteNode(storedDragged);
     const zoom = getViewport().zoom;
     const snapOptions = {
       allowX: drag?.axis !== "y",
@@ -691,6 +694,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const onNodeDragStop = useCallback(() => {
     if (useUIStore.getState().relationshipSelection) return;
     setGuides({ h: [], v: [] });
+    setFreeDragActive(false);
     const movedIds = new Set(dragStartRef.current?.positions.keys() ?? []);
     const state = useCanvasStore.getState();
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
@@ -1405,7 +1409,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       maxZoom={MAX_CANVAS_ZOOM}
       defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
-      snapToGrid={settings.snapToGrid}
+      snapToGrid={settings.snapToGrid && !freeDragActive}
       snapGrid={[gridSpacing, gridSpacing]}
       panOnDrag={relationshipSelection
         ? [0, 1, 2]

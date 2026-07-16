@@ -6,6 +6,10 @@ export const EXTERNAL_NOTE_SIZE = { width: 220, height: 72 };
 const NOTE_GAP = 32;
 const COLLISION_PADDING = 12;
 
+export function isExternalNoteNode(node: Node | undefined): boolean {
+  return (node?.data as { externalNote?: unknown } | undefined)?.externalNote === true;
+}
+
 function candidateIsFree(
   candidate: { x: number; y: number },
   sourceId: string,

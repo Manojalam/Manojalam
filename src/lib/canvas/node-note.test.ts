@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
-import { createExternalNoteNode, EXTERNAL_NOTE_SIZE } from "./node-note";
+import { createExternalNoteNode, EXTERNAL_NOTE_SIZE, isExternalNoteNode } from "./node-note";
 
 const source: Node = {
   id: "source",
@@ -19,6 +19,8 @@ test("external notes are placed to the right of their box", () => {
   assert.equal(note.type, "text");
   assert.equal(note.data.noteForNodeId, "source");
   assert.equal(note.data.externalNote, true);
+  assert.equal(isExternalNoteNode(note), true);
+  assert.equal(isExternalNoteNode(source), false);
 });
 
 test("external notes choose another side when the preferred position is occupied", () => {

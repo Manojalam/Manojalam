@@ -36,6 +36,7 @@ import {
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
+import { isExternalNoteNode } from "@/lib/canvas/node-note";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -234,6 +235,7 @@ export function SelectionToolbar() {
   const singleIsRelationshipDiagram = selected.length === 1 && selected[0].type === "relationshipDiagram";
   const singleIsSunburst = selected.length === 1 && selected[0].type === "sunburst";
   const singleIsJunction = selected.length === 1 && selected[0].type === "junction";
+  const singleIsExternalNote = selected.length === 1 && isExternalNoteNode(selected[0]);
   const singleLocked = selected.length === 1
     && ((selected[0].data ?? {}) as Record<string, unknown>).locked === true;
   const singleShapeData = selected.length === 1 && selected[0].type === "shape"
@@ -248,7 +250,10 @@ export function SelectionToolbar() {
     : "canvas-selection";
   const relationshipSourceIds = relationshipDiagramSourceIds(
     selected
-      .filter((node) => !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? ""))
+      .filter((node) => (
+        !isExternalNoteNode(node)
+        && !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? "")
+      ))
       .map((node) => node.id),
     relationships
   );
@@ -262,7 +267,7 @@ export function SelectionToolbar() {
       offset={14}
       className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
-      {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && (
+      {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && !singleIsExternalNote && (
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
@@ -358,29 +363,33 @@ export function SelectionToolbar() {
           {singleLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
         </ActionButton>
       )}
-      <ActionButton
-        label="Export PNG"
-        onClick={() => openBoardExport({
-          scope: selected.length === 1 ? "node" : "selection",
-          nodeIds: selected.map((node) => node.id),
-          format: "png",
-          title: exportTitle,
-        })}
-      >
-        <FileImage className="h-4 w-4" />
-      </ActionButton>
-      <ActionButton
-        label="Export SVG"
-        onClick={() => openBoardExport({
-          scope: selected.length === 1 ? "node" : "selection",
-          nodeIds: selected.map((node) => node.id),
-          format: "svg",
-          title: exportTitle,
-        })}
-      >
-        <FileType2 className="h-4 w-4" />
-      </ActionButton>
-      <Divider />
+      {!singleIsExternalNote && (
+        <>
+          <ActionButton
+            label="Export PNG"
+            onClick={() => openBoardExport({
+              scope: selected.length === 1 ? "node" : "selection",
+              nodeIds: selected.map((node) => node.id),
+              format: "png",
+              title: exportTitle,
+            })}
+          >
+            <FileImage className="h-4 w-4" />
+          </ActionButton>
+          <ActionButton
+            label="Export SVG"
+            onClick={() => openBoardExport({
+              scope: selected.length === 1 ? "node" : "selection",
+              nodeIds: selected.map((node) => node.id),
+              format: "svg",
+              title: exportTitle,
+            })}
+          >
+            <FileType2 className="h-4 w-4" />
+          </ActionButton>
+          <Divider />
+        </>
+      )}
 
       <ActionButton
         label={singleIsSunburst ? "Radial charts cannot be duplicated without their source branch" : "Duplicate"}
