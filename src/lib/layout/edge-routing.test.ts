@@ -111,3 +111,24 @@ test("manual bend routes preserve clean handle stubs", () => {
   assert.equal(beforeTarget.x, 400);
   assert.ok(beforeTarget.y < 300);
 });
+
+test("a collinear waypoint does not change the direction used by later bends", () => {
+  const source = { x: 100, y: 100 };
+  const target = { x: 600, y: 280 };
+  const original = routeManualOrthogonalEdge(
+    source,
+    target,
+    "right",
+    "left",
+    [{ x: 430, y: 40 }]
+  );
+  const withNeutralWaypoint = routeManualOrthogonalEdge(
+    source,
+    target,
+    "right",
+    "left",
+    [{ x: 265, y: 100 }, { x: 430, y: 40 }]
+  );
+
+  assert.deepEqual(withNeutralWaypoint.points, original.points);
+});

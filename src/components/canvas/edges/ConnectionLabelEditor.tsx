@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { CircleDot, GitBranch, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
+import { CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 
@@ -39,6 +39,19 @@ function updateLabelOffset(edgeId: string, labelOffset?: { x: number; y: number 
   }));
 }
 
+function updateToolbarOffset(edgeId: string, toolbarOffset?: { x: number; y: number }): void {
+  useCanvasStore.setState((state) => ({
+    edges: state.edges.map((edge) => {
+      if (edge.id !== edgeId) return edge;
+      const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
+      if (toolbarOffset) data.toolbarOffset = toolbarOffset;
+      else delete data.toolbarOffset;
+      return { ...edge, data };
+    }),
+    saveStatus: "unsaved",
+  }));
+}
+
 /** A visible edge label plus an in-place editor whenever the edge is selected. */
 export function ConnectionLabelEditor({
   edgeId,
@@ -56,11 +69,18 @@ export function ConnectionLabelEditor({
     startPointer: { x: number; y: number };
     startOffset: { x: number; y: number };
   } | null>(null);
+  const toolbarDrag = useRef<{
+    startPointer: { x: number; y: number };
+    startOffset: { x: number; y: number };
+  } | null>(null);
   const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const storedLabelOffset = useCanvasStore((state) => (
     state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
   )?.labelOffset) as { x?: unknown; y?: unknown } | undefined;
+  const storedToolbarOffset = useCanvasStore((state) => (
+    state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
+  )?.toolbarOffset) as { x?: unknown; y?: unknown } | undefined;
   const { screenToFlowPosition } = useReactFlow();
   const labelOffset = {
     x: typeof storedLabelOffset?.x === "number" ? storedLabelOffset.x : 0,
@@ -69,6 +89,12 @@ export function ConnectionLabelEditor({
   const labelX = x + labelOffset.x;
   const labelY = y + labelOffset.y;
   const labelWasMoved = labelOffset.x !== 0 || labelOffset.y !== 0;
+  const toolbarOffset = {
+    x: typeof storedToolbarOffset?.x === "number" ? storedToolbarOffset.x : 0,
+    y: typeof storedToolbarOffset?.y === "number" ? storedToolbarOffset.y : -64,
+  };
+  const toolbarX = x + toolbarOffset.x;
+  const toolbarY = y + toolbarOffset.y;
 
   useEffect(() => {
     if (!selected || label) return;
@@ -107,7 +133,7 @@ export function ConnectionLabelEditor({
           aria-label="Edit connection label"
           style={{
             position: "absolute",
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY - (label ? 36 : 0)}px)`,
+            transform: `translate(-50%, -50%) translate(${toolbarX}px,${toolbarY}px)`,
             pointerEvents: "all",
           }}
           className="nodrag nopan flex items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-lg backdrop-blur"
@@ -118,6 +144,49 @@ export function ConnectionLabelEditor({
             historyCaptured.current = false;
           }}
         >
+          <button
+            type="button"
+            title="Drag to move this connector toolbar. Double-click to reset its position."
+            aria-label="Move connector toolbar"
+            className="flex h-7 w-5 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              pushHistory();
+              toolbarDrag.current = {
+                startPointer: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+                startOffset: toolbarOffset,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!toolbarDrag.current) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+              updateToolbarOffset(edgeId, {
+                x: Math.round(toolbarDrag.current.startOffset.x + point.x - toolbarDrag.current.startPointer.x),
+                y: Math.round(toolbarDrag.current.startOffset.y + point.y - toolbarDrag.current.startPointer.y),
+              });
+            }}
+            onPointerUp={(event) => {
+              event.stopPropagation();
+              toolbarDrag.current = null;
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onPointerCancel={() => {
+              toolbarDrag.current = null;
+            }}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              pushHistory();
+              updateToolbarOffset(edgeId);
+            }}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
           <input
             ref={inputRef}
             aria-label="Connection label"

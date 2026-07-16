@@ -216,8 +216,12 @@ function simplifyOrthogonalPoints(points: Pt[]): Pt[] {
     if (index === 0 || index === unique.length - 1) return true;
     const previous = unique[index - 1];
     const next = unique[index + 1];
-    return !(previous.x === point.x && point.x === next.x)
-      && !(previous.y === point.y && point.y === next.y);
+    const betweenX = point.x >= Math.min(previous.x, next.x)
+      && point.x <= Math.max(previous.x, next.x);
+    const betweenY = point.y >= Math.min(previous.y, next.y)
+      && point.y <= Math.max(previous.y, next.y);
+    return !(previous.x === point.x && point.x === next.x && betweenY)
+      && !(previous.y === point.y && point.y === next.y && betweenX);
   });
 }
 
@@ -287,7 +291,7 @@ export function routeManualOrthogonalEdge(
     const previous = points[points.length - 2];
     const horizontalFirst = index === 0
       ? sourceSide === "left" || sourceSide === "right"
-      : previous.x === current.x;
+      : previous.y === current.y;
     appendOrthogonal(points, waypoint, horizontalFirst);
   });
 

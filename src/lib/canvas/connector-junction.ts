@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { Side } from "../layout/edge-routing";
+import type { RoutePoint, Side } from "../layout/edge-routing";
 
 export const CONNECTOR_JUNCTION_SIZE = 28;
 
@@ -16,13 +16,68 @@ function sideToward(origin: { x: number; y: number }, target: { x: number; y: nu
   return dy >= 0 ? "bottom" : "top";
 }
 
+function samePoint(first: RoutePoint, second: RoutePoint): boolean {
+  return Math.abs(first.x - second.x) < 0.5 && Math.abs(first.y - second.y) < 0.5;
+}
+
+function pointOnSegment(point: RoutePoint, first: RoutePoint, second: RoutePoint): boolean {
+  const epsilon = 0.5;
+  if (Math.abs(first.x - second.x) <= epsilon) {
+    return Math.abs(point.x - first.x) <= epsilon
+      && point.y >= Math.min(first.y, second.y) - epsilon
+      && point.y <= Math.max(first.y, second.y) + epsilon;
+  }
+  if (Math.abs(first.y - second.y) <= epsilon) {
+    return Math.abs(point.y - first.y) <= epsilon
+      && point.x >= Math.min(first.x, second.x) - epsilon
+      && point.x <= Math.max(first.x, second.x) + epsilon;
+  }
+  return false;
+}
+
+function simplifyRoutePoints(points: RoutePoint[]): RoutePoint[] {
+  const unique = points.filter((point, index) => index === 0 || !samePoint(point, points[index - 1]));
+  return unique.filter((point, index) => {
+    if (index === 0 || index === unique.length - 1) return true;
+    const previous = unique[index - 1];
+    const next = unique[index + 1];
+    const betweenX = point.x >= Math.min(previous.x, next.x)
+      && point.x <= Math.max(previous.x, next.x);
+    const betweenY = point.y >= Math.min(previous.y, next.y)
+      && point.y <= Math.max(previous.y, next.y);
+    return !(previous.x === point.x && point.x === next.x && betweenY)
+      && !(previous.y === point.y && point.y === next.y && betweenX);
+  });
+}
+
+function splitRouteWaypoints(
+  routePoints: readonly RoutePoint[],
+  splitPoint: RoutePoint
+): [RoutePoint[], RoutePoint[]] {
+  for (let index = 0; index < routePoints.length - 1; index++) {
+    const first = routePoints[index];
+    const second = routePoints[index + 1];
+    if (!pointOnSegment(splitPoint, first, second)) continue;
+    const before = [...routePoints.slice(0, index + 1)];
+    if (!samePoint(before[before.length - 1], splitPoint)) before.push(splitPoint);
+    const after = [splitPoint];
+    if (!samePoint(splitPoint, second)) after.push(second);
+    after.push(...routePoints.slice(index + 2));
+    const firstRoute = simplifyRoutePoints(before);
+    const secondRoute = simplifyRoutePoints(after);
+    return [firstRoute.slice(1, -1), secondRoute.slice(1, -1)];
+  }
+  return [[], []];
+}
+
 /** Splits one visual connection into two edges joined by a movable dot node. */
 export function splitConnectorAtJunction(
   edge: Edge,
   point: { x: number; y: number },
   sourcePoint: { x: number; y: number },
   targetPoint: { x: number; y: number },
-  ids: SplitConnectorIds
+  ids: SplitConnectorIds,
+  routePoints: readonly RoutePoint[] = []
 ): { junction: Node; edges: [Edge, Edge] } {
   const data = (edge.data ?? {}) as Record<string, unknown>;
   const color = typeof data.color === "string"
@@ -38,6 +93,7 @@ export function splitConnectorAtJunction(
     waypoints: undefined,
     connectorJunctionId: ids.junctionId,
   };
+  const [firstWaypoints, secondWaypoints] = splitRouteWaypoints(routePoints, point);
   const junctionCenter = { x: point.x, y: point.y };
   const first: Edge = {
     ...edge,
@@ -50,6 +106,7 @@ export function splitConnectorAtJunction(
       ...commonData,
       label: undefined,
       arrowEnd: false,
+      waypoints: firstWaypoints.length ? firstWaypoints : undefined,
       connectorJunctionSegment: "incoming",
     },
   };
@@ -63,6 +120,7 @@ export function splitConnectorAtJunction(
     data: {
       ...commonData,
       arrowStart: false,
+      waypoints: secondWaypoints.length ? secondWaypoints : undefined,
       connectorJunctionSegment: "outgoing",
     },
   };

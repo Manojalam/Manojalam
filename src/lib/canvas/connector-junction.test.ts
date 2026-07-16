@@ -87,3 +87,22 @@ test("clearing a branched junction merges the main line and removes branch edges
   assert.equal(result.edges[0].source, "source");
   assert.equal(result.edges[0].target, "target");
 });
+
+test("adding a junction preserves the existing route on both split edges", () => {
+  const result = splitConnectorAtJunction(
+    { id: "edge", source: "source", target: "target", data: {} },
+    { x: 300, y: 20 },
+    { x: 100, y: 100 },
+    { x: 500, y: 100 },
+    { junctionId: "junction", firstEdgeId: "first", secondEdgeId: "second" },
+    [
+      { x: 100, y: 100 },
+      { x: 100, y: 20 },
+      { x: 500, y: 20 },
+      { x: 500, y: 100 },
+    ]
+  );
+
+  assert.deepEqual(result.edges[0].data?.waypoints, [{ x: 100, y: 20 }]);
+  assert.deepEqual(result.edges[1].data?.waypoints, [{ x: 500, y: 20 }]);
+});

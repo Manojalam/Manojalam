@@ -27,6 +27,7 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { generateId } from "@/lib/utils";
 import { splitConnectorAtJunction } from "@/lib/canvas/connector-junction";
+import { insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
 
@@ -139,6 +140,7 @@ function RoutedSmartBranchEdge({
   let path: string;
   let labelX: number;
   let labelY: number;
+  let routePoints: RoutePoint[];
 
   const curveStyle = d.curveStyle ?? "step";
   const sourceNode = nodes.find((n) => n.id === source);
@@ -155,6 +157,7 @@ function RoutedSmartBranchEdge({
         ? getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
         : getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 8 });
     [path, labelX, labelY] = routed;
+    routePoints = [{ x: sourceX, y: sourceY }, { x: targetX, y: targetY }];
   } else if (sourceNode && targetNode) {
     const sourceRect = getNodeRect(sourceNode);
     const targetRect = getNodeRect(targetNode);
@@ -195,10 +198,12 @@ function RoutedSmartBranchEdge({
     path = routed.path;
     labelX = routed.labelX;
     labelY = routed.labelY;
+    routePoints = routed.points;
   } else {
     path = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
     labelX = (sourceX + targetX) / 2;
     labelY = (sourceY + targetY) / 2;
+    routePoints = [{ x: sourceX, y: sourceY }, { x: targetX, y: targetY }];
   }
 
   return (
@@ -226,11 +231,7 @@ function RoutedSmartBranchEdge({
             selected={selected}
             onAddBend={curveStyle === "step" ? () => {
               pushHistory();
-              const previous = waypoints[waypoints.length - 1];
-              const next = previous
-                ? { x: Math.round((previous.x + targetX) / 2), y: Math.round((previous.y + targetY) / 2) }
-                : { x: Math.round(labelX), y: Math.round(labelY) };
-              setEdgeWaypoints(id, [...waypoints, next]);
+              setEdgeWaypoints(id, insertWaypointOnRoute(routePoints, waypoints));
             } : undefined}
             onResetRoute={waypoints.length ? () => {
               pushHistory();
@@ -250,7 +251,8 @@ function RoutedSmartBranchEdge({
                   junctionId: generateId(),
                   firstEdgeId: generateId(),
                   secondEdgeId: generateId(),
-                }
+                },
+                routePoints
               );
               useCanvasStore.setState((current) => ({
                 nodes: [
