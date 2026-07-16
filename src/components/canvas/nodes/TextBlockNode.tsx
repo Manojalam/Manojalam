@@ -105,7 +105,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
       />
       <div
         className={cn(
-          "group relative h-full w-full px-4 py-3",
+          "group relative h-full w-full p-1",
           selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
         )}
         style={{

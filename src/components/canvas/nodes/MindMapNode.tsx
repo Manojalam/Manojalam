@@ -112,7 +112,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
       />
       <div
         className={cn(
-          "group relative h-full w-full px-4 py-3 transition-shadow",
+          "group relative h-full w-full p-1 transition-shadow",
           matrixCell ? "shadow-none" : "shadow-md",
           selected && "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg",
           d.locked && "opacity-75"
