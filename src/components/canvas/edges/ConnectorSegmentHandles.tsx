@@ -2,10 +2,15 @@
 
 import { useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
-import type { RoutePoint, Side } from "@/lib/layout/edge-routing";
+import {
+  routeManualOrthogonalEdge,
+  type RoutePoint,
+  type Side,
+} from "@/lib/layout/edge-routing";
 import {
   dragRouteSegmentToWaypoints,
   draggableRouteSegments,
+  labelOffsetAfterSegmentTranslation,
 } from "@/lib/canvas/connector-waypoints";
 import { useCanvasStore } from "@/store/canvas-store";
 
@@ -15,27 +20,41 @@ interface ConnectorSegmentHandlesProps {
   sourceSide: Side;
   targetSide: Side;
   endpointOptions?: { sourceStubDistance?: number; targetStubDistance?: number };
+  labelEdgeId?: string;
+  labelAnchor: RoutePoint;
 }
 
 interface SegmentDragState {
   segmentIndex: number;
   orientation: "horizontal" | "vertical";
   routePoints: RoutePoint[];
+  startCoordinate: number;
+  startLabelAnchor: RoutePoint;
+  startLabelOffset?: RoutePoint;
 }
 
-function replaceWaypoints(edgeId: string, waypoints: RoutePoint[]): void {
+function replaceWaypoints(
+  edgeId: string,
+  waypoints: RoutePoint[],
+  labelUpdate?: { edgeId: string; offset: RoutePoint }
+): void {
   useCanvasStore.setState((state) => ({
-    edges: state.edges.map((edge) => edge.id === edgeId
-      ? {
-          ...edge,
-          data: {
-            ...(edge.data ?? {}),
-            manualRoute: true,
-            preserveHandles: true,
-            waypoints,
-          },
-        }
-      : edge),
+    edges: state.edges.map((edge) => {
+      if (edge.id !== edgeId && edge.id !== labelUpdate?.edgeId) return edge;
+      const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
+      if (edge.id === edgeId) {
+        data.manualRoute = true;
+        data.preserveHandles = true;
+        data.waypoints = waypoints;
+      }
+      if (edge.id === labelUpdate?.edgeId) {
+        const x = Math.round(labelUpdate.offset.x);
+        const y = Math.round(labelUpdate.offset.y);
+        if (x || y) data.labelOffset = { x, y };
+        else delete data.labelOffset;
+      }
+      return { ...edge, data };
+    }),
     saveStatus: "unsaved",
   }));
 }
@@ -47,6 +66,8 @@ export function ConnectorSegmentHandles({
   sourceSide,
   targetSide,
   endpointOptions,
+  labelEdgeId,
+  labelAnchor,
 }: ConnectorSegmentHandlesProps) {
   const dragging = useRef<SegmentDragState | null>(null);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
@@ -75,6 +96,18 @@ export function ConnectorSegmentHandles({
               segmentIndex: segment.index,
               orientation: segment.orientation,
               routePoints: routePoints.map((point) => ({ ...point })),
+              startCoordinate: segment.orientation === "horizontal" ? segment.start.y : segment.start.x,
+              startLabelAnchor: { ...labelAnchor },
+              startLabelOffset: (() => {
+                if (!labelEdgeId) return undefined;
+                const value = useCanvasStore.getState().edges.find((edge) => (
+                  edge.id === labelEdgeId
+                ))?.data?.labelOffset as { x?: unknown; y?: unknown } | undefined;
+                return {
+                  x: typeof value?.x === "number" ? value.x : 0,
+                  y: typeof value?.y === "number" ? value.y : 0,
+                };
+              })(),
             };
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
@@ -93,7 +126,32 @@ export function ConnectorSegmentHandles({
               targetSide,
               endpointOptions
             );
-            replaceWaypoints(edgeId, waypoints);
+            const nextLabelAnchor = waypoints.length
+              ? (() => {
+                  const nextRoute = routeManualOrthogonalEdge(
+                    active.routePoints[0],
+                    active.routePoints[active.routePoints.length - 1],
+                    sourceSide,
+                    targetSide,
+                    waypoints,
+                    endpointOptions
+                  );
+                  return { x: nextRoute.labelX, y: nextRoute.labelY };
+                })()
+              : active.startLabelAnchor;
+            const labelUpdate = labelEdgeId && active.startLabelOffset
+              ? {
+                  edgeId: labelEdgeId,
+                  offset: labelOffsetAfterSegmentTranslation(
+                    active.startLabelAnchor,
+                    active.startLabelOffset,
+                    nextLabelAnchor,
+                    active.orientation,
+                    coordinate - active.startCoordinate
+                  ),
+                }
+              : undefined;
+            replaceWaypoints(edgeId, waypoints, labelUpdate);
           }}
           onPointerUp={(event) => {
             event.preventDefault();

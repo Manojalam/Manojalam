@@ -251,6 +251,8 @@ function RoutedSmartBranchEdge({
           sourceSide={positionSide(sourcePosition)}
           targetSide={positionSide(targetPosition)}
           endpointOptions={endpointOptions}
+          labelEdgeId={labelOwnerId === id && connectionLabel ? labelOwnerId : undefined}
+          labelAnchor={{ x: labelX, y: labelY }}
         />
       )}
       {(logicalSelected || (labelOwnerId === id && connectionLabel)) && (

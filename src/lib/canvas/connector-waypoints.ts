@@ -8,6 +8,27 @@ export interface DraggableRouteSegment {
   length: number;
 }
 
+/**
+ * Compensate for a route midpoint that shifts while one complete segment is
+ * translated. The rendered label then moves by exactly the segment's delta,
+ * preserving any offset the user previously chose.
+ */
+export function labelOffsetAfterSegmentTranslation(
+  startAnchor: RoutePoint,
+  startOffset: RoutePoint,
+  nextAnchor: RoutePoint,
+  orientation: "horizontal" | "vertical",
+  delta: number
+): RoutePoint {
+  const translation = orientation === "horizontal"
+    ? { x: 0, y: delta }
+    : { x: delta, y: 0 };
+  return {
+    x: startAnchor.x + startOffset.x + translation.x - nextAnchor.x,
+    y: startAnchor.y + startOffset.y + translation.y - nextAnchor.y,
+  };
+}
+
 interface RouteSegmentCandidate {
   point: RoutePoint;
   progress: number;
