@@ -3,6 +3,7 @@ import test from "node:test";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import {
   clearConnectorJunctionGraph,
+  findConnectorLabelOwnerEdge,
   refreshConnectorJunctionHandles,
   releaseConnectorJunctionRouteAnchors,
   splitConnectorAtJunction,
@@ -180,4 +181,18 @@ test("a moved junction keeps its handles facing connected nodes", () => {
   );
 
   assert.equal(edges[0].sourceHandle, "left");
+});
+
+test("either junction segment resolves to the outgoing label owner", () => {
+  const split = splitConnectorAtJunction(
+    { id: "edge", source: "source", target: "target", data: { label: "Yes" } },
+    { x: 300, y: 100 },
+    { x: 100, y: 100 },
+    { x: 500, y: 100 },
+    { junctionId: "junction", firstEdgeId: "incoming", secondEdgeId: "outgoing" }
+  );
+
+  assert.equal(findConnectorLabelOwnerEdge(split.edges, "incoming")?.id, "outgoing");
+  assert.equal(findConnectorLabelOwnerEdge(split.edges, "outgoing")?.id, "outgoing");
+  assert.equal(findConnectorLabelOwnerEdge(split.edges, "incoming")?.data?.label, "Yes");
 });

@@ -7,6 +7,7 @@ type Pt = RoutePoint;
 export type Segment = { a: Pt; b: Pt };
 
 export const EDGE_OBSTACLE_PADDING = 24;
+const DIRECT_ALIGNMENT_TOLERANCE = 8;
 
 // -- Geometry helpers ---------------------------------------------------------
 
@@ -87,9 +88,16 @@ function stub(p: Pt, side: Side, d = 20): Pt {
 
 // -- Candidate orthogonal paths -----------------------------------------------
 
-function buildCandidates(s: Pt, t: Pt, ss: Side, ts: Side, obstacles: NodeRect[]): Pt[][] {
-  const s1 = stub(s, ss);
-  const t1 = stub(t, ts);
+function buildCandidates(
+  s: Pt,
+  t: Pt,
+  ss: Side,
+  ts: Side,
+  obstacles: NodeRect[],
+  endpointOptions: OrthogonalEndpointOptions = {}
+): Pt[][] {
+  const s1 = stub(s, ss, endpointOptions.sourceStubDistance ?? 20);
+  const t1 = stub(t, ts, endpointOptions.targetStubDistance ?? 20);
   const candidates: Pt[][] = [];
 
   // HV and VH elbows between the stubs
@@ -208,6 +216,11 @@ function routeMidpoint(points: Pt[]): Pt {
   return points[points.length - 1];
 }
 
+export interface OrthogonalEndpointOptions {
+  sourceStubDistance?: number;
+  targetStubDistance?: number;
+}
+
 function simplifyOrthogonalPoints(points: Pt[]): Pt[] {
   const unique = points.filter((point, index) => (
     index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y
@@ -273,7 +286,8 @@ export function routeManualOrthogonalEdge(
   target: Pt,
   sourceSide: Side,
   targetSide: Side,
-  waypoints: readonly RoutePoint[]
+  waypoints: readonly RoutePoint[],
+  endpointOptions: OrthogonalEndpointOptions = {}
 ): RouteResult {
   const validWaypoints = waypoints.filter((point) => (
     Number.isFinite(point.x) && Number.isFinite(point.y)
@@ -282,8 +296,8 @@ export function routeManualOrthogonalEdge(
     return makeRoute([source, target]);
   }
 
-  const sourceStub = stub(source, sourceSide);
-  const targetStub = stub(target, targetSide);
+  const sourceStub = stub(source, sourceSide, endpointOptions.sourceStubDistance ?? 20);
+  const targetStub = stub(target, targetSide, endpointOptions.targetStubDistance ?? 20);
   const points: Pt[] = [source, sourceStub];
 
   validWaypoints.forEach((waypoint, index) => {
@@ -317,10 +331,26 @@ export function routeOrthogonalEdge(
   sourceSide: Side,
   targetSide: Side,
   obstacles: NodeRect[],
-  peerSegments: Segment[] = []
+  peerSegments: Segment[] = [],
+  endpointOptions: OrthogonalEndpointOptions = {}
 ): RouteResult {
   const inflated = obstacles.map((o) => inflate(o, EDGE_OBSTACLE_PADDING));
-  const candidates = buildCandidates(source, target, sourceSide, targetSide, inflated);
+  const verticallyFacing = (
+    (sourceSide === "bottom" && targetSide === "top" && target.y >= source.y)
+    || (sourceSide === "top" && targetSide === "bottom" && target.y <= source.y)
+  );
+  const horizontallyFacing = (
+    (sourceSide === "right" && targetSide === "left" && target.x >= source.x)
+    || (sourceSide === "left" && targetSide === "right" && target.x <= source.x)
+  );
+  if (
+    ((verticallyFacing && Math.abs(source.x - target.x) <= DIRECT_ALIGNMENT_TOLERANCE)
+      || (horizontallyFacing && Math.abs(source.y - target.y) <= DIRECT_ALIGNMENT_TOLERANCE))
+    && pathIntersections([source, target], inflated) === 0
+  ) {
+    return makeRoute([source, target]);
+  }
+  const candidates = buildCandidates(source, target, sourceSide, targetSide, inflated, endpointOptions);
 
   let best = candidates[0];
   let bestScore = Infinity;
@@ -333,8 +363,7 @@ export function routeOrthogonalEdge(
     if (score < bestScore) { bestScore = score; best = c; }
   }
 
-  const mid = best[Math.floor(best.length / 2)];
-  return { path: routePointsToRoundedPath(best), labelX: mid.x, labelY: mid.y, points: best };
+  return makeRoute(best);
 }
 
 function sidePoint(rect: NodeRect, side: Side, fraction: number): Pt {

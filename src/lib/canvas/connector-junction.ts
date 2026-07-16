@@ -245,6 +245,21 @@ export function refreshConnectorJunctionHandles(
   });
 }
 
+/** Resolves either half of a split connector to the edge that owns its shared label. */
+export function findConnectorLabelOwnerEdge(edges: Edge[], edgeId: string): Edge | undefined {
+  const edge = edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) return undefined;
+  const data = (edge.data ?? {}) as Record<string, unknown>;
+  if (data.connectorJunctionSegment !== "incoming" || typeof data.connectorJunctionId !== "string") {
+    return edge;
+  }
+  return edges.find((candidate) => {
+    const candidateData = (candidate.data ?? {}) as Record<string, unknown>;
+    return candidateData.connectorJunctionId === data.connectorJunctionId
+      && candidateData.connectorJunctionSegment === "outgoing";
+  }) ?? edge;
+}
+
 export interface ClearConnectorJunctionResult {
   nodes: Node[];
   edges: Edge[];

@@ -5,6 +5,7 @@ import {
   EDGE_OBSTACLE_PADDING,
   routeLayoutEdge,
   routeManualOrthogonalEdge,
+  routeOrthogonalEdge,
   routeRectilinearEdge,
 } from "./edge-routing";
 
@@ -131,4 +132,50 @@ test("a collinear waypoint does not change the direction used by later bends", (
   );
 
   assert.deepEqual(withNeutralWaypoint.points, original.points);
+});
+
+test("junction endpoint routes do not retain tiny redundant stub bends", () => {
+  const route = routeOrthogonalEdge(
+    { x: 0, y: 0 },
+    { x: 300, y: 120 },
+    "right",
+    "top",
+    [],
+    [],
+    { sourceStubDistance: 0 }
+  );
+
+  for (let index = 1; index < route.points.length - 1; index++) {
+    const previous = route.points[index - 1];
+    const point = route.points[index];
+    const next = route.points[index + 1];
+    assert.equal(
+      (previous.x === point.x && point.x === next.x)
+        || (previous.y === point.y && point.y === next.y),
+      false,
+      "the simplified junction route should contain only real turns"
+    );
+  }
+});
+
+test("nearly aligned facing ports render as one straight segment", () => {
+  const vertical = routeOrthogonalEdge(
+    { x: 100, y: 80 },
+    { x: 104, y: 260 },
+    "bottom",
+    "top",
+    []
+  );
+  const horizontal = routeOrthogonalEdge(
+    { x: 80, y: 100 },
+    { x: 260, y: 105 },
+    "right",
+    "left",
+    []
+  );
+
+  assert.equal(vertical.points.length, 2);
+  assert.equal(horizontal.points.length, 2);
+  assert.equal(vertical.path.includes("Q"), false);
+  assert.equal(horizontal.path.includes("Q"), false);
 });
