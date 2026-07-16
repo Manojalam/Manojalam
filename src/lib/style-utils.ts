@@ -89,22 +89,9 @@ export function getFittedTextPresentation(
       { preferredFontSize, minimumFontSize, maximumFontSize: 96 }
     );
     scale = maximumFontSize / preferredFontSize;
-    if (storedMeasurement) {
-      const measuredHeight = typeof storedMeasurement.height === "number" && storedMeasurement.height > 0
-        ? storedMeasurement.height
-        : 0;
-      const measuredWidth = typeof storedMeasurement.naturalWidth === "number" && storedMeasurement.naturalWidth > 0
-        ? storedMeasurement.naturalWidth
-        : typeof storedMeasurement.width === "number" && storedMeasurement.width > 0
-          ? storedMeasurement.width
-          : 0;
-      const measuredSingleLine = (storedMeasurement.lineCount ?? 1) <= 1.05;
-      const measuredLimit = Math.min(
-        measuredHeight ? availableHeight / measuredHeight : Number.POSITIVE_INFINITY,
-        measuredSingleLine && measuredWidth ? availableWidth / measuredWidth : Number.POSITIVE_INFINITY
-      );
-      if (Number.isFinite(measuredLimit)) scale = Math.min(scale, measuredLimit);
-    }
+    // The maximum-fit search already evaluates the current shape dimensions.
+    // Do not cap it with a prior DOM measurement: that measurement may come
+    // from the old, narrower text box and can make enabling maximize shrink.
     scale = Math.max(minimumFontSize / preferredFontSize, Math.min(96 / preferredFontSize, scale));
   } else if (shouldConstrain && storedMeasurement) {
     scale = fittedContentScale(

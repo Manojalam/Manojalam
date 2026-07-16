@@ -10,6 +10,7 @@ import {
   MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
   MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
   maximumFittedTextFontSize,
+  nodeContentPadding,
   shapeTextContentSize,
   shapeTextContentWidth,
 } from "./shape-fitting";
@@ -53,6 +54,15 @@ test("shape fitting gives every supported conversion a safe finite interior", ()
     assert.ok(interior.width >= content.width);
     assert.ok(interior.height >= content.height);
   }
+});
+
+test("shape nodes keep only a thin inset inside their safe geometry", () => {
+  assert.deepEqual(nodeContentPadding("shape"), { width: 8, height: 8 });
+  assert.deepEqual(
+    shapeTextContentSize("rectangle", { width: 180, height: 80 }, "shape"),
+    { width: 172, height: 72 }
+  );
+  assert.deepEqual(nodeContentPadding("sticky"), { width: 36, height: 30 });
 });
 
 test("diamond fitting uses the full safe interior with compact padding", () => {
@@ -343,6 +353,34 @@ test("whole-node maximum fitting is opt-in and preserves the authored font size"
   assert.equal(maximized.authoredFontSize, 14);
   assert.ok(maximized.fontSize > 14);
   assert.ok(maximized.scale > 1);
+});
+
+test("maximum fitting ignores stale measurements from a previously narrow shape", () => {
+  const available = { width: 180, height: 50 };
+  const expectedFontSize = maximumFittedTextFontSize("Earth", available, {
+    preferredFontSize: 14,
+    minimumFontSize: 8,
+    maximumFontSize: 96,
+  });
+  const maximized = getFittedTextPresentation(
+    {
+      text: "Earth",
+      fontSize: 14,
+      maximizeText: true,
+      intrinsicContentSize: {
+        width: 8,
+        naturalWidth: 70,
+        height: 400,
+        lineCount: 20,
+      },
+    },
+    available.width,
+    14,
+    { availableHeight: available.height, constrain: true }
+  );
+
+  assert.equal(maximized.fontSize, expectedFontSize);
+  assert.ok(maximized.fontSize > 14);
 });
 
 test("fixed-box fitting respects a readable minimum scale", () => {
