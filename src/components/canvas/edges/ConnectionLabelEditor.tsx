@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 
 interface ConnectionLabelEditorProps {
@@ -141,9 +142,10 @@ export function ConnectionLabelEditor({
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${toolbarX}px,${toolbarY}px)`,
-            pointerEvents: "all",
+            pointerEvents: "auto",
+            zIndex: CONNECTOR_CONTROL_Z_INDEX,
           }}
-          className="nodrag nopan flex items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-lg backdrop-blur"
+          className="nodrag nopan nowheel isolate flex items-center gap-1 rounded-lg border bg-background/95 p-1 shadow-lg backdrop-blur"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           onBlur={(event) => {
@@ -155,7 +157,7 @@ export function ConnectionLabelEditor({
             type="button"
             title="Drag to move this connector toolbar. Double-click to reset its position."
             aria-label="Move connector toolbar"
-            className="flex h-7 w-5 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
+            className="touch-none flex h-7 w-7 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();

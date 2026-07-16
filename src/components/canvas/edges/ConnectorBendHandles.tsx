@@ -4,6 +4,7 @@ import { Fragment, useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
 
 interface ConnectorBendHandlesProps {
   edgeId: string;
@@ -63,8 +64,9 @@ export function ConnectorBendHandles({ edgeId, waypoints }: ConnectorBendHandles
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${waypoint.x}px,${waypoint.y}px)`,
               pointerEvents: "all",
+              zIndex: CONNECTOR_CONTROL_Z_INDEX,
             }}
-            className="nodrag nopan z-20 h-4 w-4 cursor-move rounded-full border-2 border-primary bg-background shadow-md outline-none hover:scale-125 focus-visible:ring-2 focus-visible:ring-primary"
+            className="nodrag nopan nowheel touch-none h-4 w-4 cursor-move rounded-full border-2 border-primary bg-background shadow-md outline-none hover:scale-125 focus-visible:ring-2 focus-visible:ring-primary"
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -102,8 +104,9 @@ export function ConnectorBendHandles({ edgeId, waypoints }: ConnectorBendHandles
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${waypoint.x + 13}px,${waypoint.y - 13}px)`,
               pointerEvents: "all",
+              zIndex: CONNECTOR_CONTROL_Z_INDEX,
             }}
-            className="nodrag nopan z-20 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="nodrag nopan nowheel flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
