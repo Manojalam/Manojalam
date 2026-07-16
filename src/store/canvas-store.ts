@@ -157,7 +157,7 @@ interface CanvasState {
   createChildNode: (parentId: string) => void;
   createChildNodes: (parentId: string, count: number, keepParentSelected?: boolean) => void;
   createSiblingNode: (nodeId: string) => string | null;
-  createNodeNote: (nodeId: string) => string | null;
+  createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
@@ -2220,7 +2220,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
-  createNodeNote: (nodeId) => {
+  createNodeNote: (nodeId, nearPoint) => {
     const { nodes, edges, settings } = get();
     const source = nodes.find((node) => node.id === nodeId);
     if (!source || ["junction", "frame", "sunburst", "relationshipDiagram"].includes(source.type ?? "")) {
@@ -2228,7 +2228,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }
     get().pushHistory();
     const noteId = generateId();
-    const note = createExternalNoteNode(source, nodes, noteId, settings.defaultScriptMode);
+    const note = createExternalNoteNode(
+      source,
+      nodes,
+      noteId,
+      settings.defaultScriptMode,
+      nearPoint
+    );
     set({
       nodes: [...nodes.map((node) => ({ ...node, selected: false })), note],
       edges: edges.map((edge) => ({ ...edge, selected: false })),
@@ -2331,7 +2337,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const placementMode = layoutRoot.mode ?? mode;
     const useSunburst = placementMode === "radial";
     let placedNodes = manualFlowchart
-      ? placeFlowchartInsertions(nextNodes, childIds)
+      ? placeFlowchartInsertions(nextNodes, nextEdges, childIds)
       : nextNodes;
     if (manualFlowchart) {
       nextEdges = rerouteFlowchartInsertionEdges(placedNodes, nextEdges, childIds);
@@ -2476,7 +2482,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const placementMode = nextLayoutRoot.mode ?? edgeMode;
     const useSunburst = placementMode === "radial";
     const placedNodes = manualFlowchart
-      ? placeFlowchartInsertions(nextNodes, [siblingId])
+      ? placeFlowchartInsertions(nextNodes, nextEdges, [siblingId])
       : placementMode === "matrix"
       ? applyMatrixResultToNodes(
           nextNodes,

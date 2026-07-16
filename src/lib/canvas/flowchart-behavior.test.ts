@@ -102,7 +102,7 @@ test("collision handling moves only the newly inserted flowchart node", () => {
     shape("existing", 280, 0, null),
     shape("inserted", 280, 0, "parent"),
   ];
-  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+  const placed = placeFlowchartInsertions(nodes, [], ["inserted"]);
 
   assert.deepEqual(placed.find((node) => node.id === "parent")?.position, { x: 0, y: 0 });
   assert.deepEqual(placed.find((node) => node.id === "existing")?.position, { x: 280, y: 0 });
@@ -115,7 +115,13 @@ test("a first child continues its parent's live incoming direction", () => {
     shape("parent", 0, 180, "root", { childOrder: ["inserted"] }),
     shape("inserted", 280, 180, "parent"),
   ];
-  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+  const placed = placeFlowchartInsertions(nodes, [{
+    id: "incoming",
+    source: "root",
+    target: "parent",
+    sourceHandle: "bottom",
+    targetHandle: "top",
+  }], ["inserted"]);
   const inserted = placed.find((node) => node.id === "inserted");
 
   assert.deepEqual(inserted?.position, { x: 0, y: 324 });
@@ -137,7 +143,13 @@ test("moving a branch changes the direction followed by its next child", () => {
     shape("parent", 300, 0, "root", { childOrder: ["inserted"] }),
     shape("inserted", 300, 200, "parent"),
   ];
-  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+  const placed = placeFlowchartInsertions(nodes, [{
+    id: "incoming",
+    source: "root",
+    target: "parent",
+    sourceHandle: "right",
+    targetHandle: "left",
+  }], ["inserted"]);
 
   assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 564, y: 0 });
 });
@@ -148,9 +160,28 @@ test("additional children stay on the side established by the latest child", () 
     shape("existing", 300, 100, "parent"),
     shape("inserted", 580, 300, "parent"),
   ];
-  const placed = placeFlowchartInsertions(nodes, ["inserted"]);
+  const placed = placeFlowchartInsertions(nodes, [], ["inserted"]);
 
   assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 524, y: 100 });
+});
+
+test("a reversed incoming connector overrides stale child order when adding a child", () => {
+  const nodes = [
+    shape("parent", 200, 100, null, { childOrder: ["former-child", "inserted"] }),
+    shape("former-child", 500, 100, "parent"),
+    shape("inserted", 200, 280, "parent"),
+  ];
+  const edges: Edge[] = [{
+    id: "reversed",
+    source: "former-child",
+    target: "parent",
+    sourceHandle: "left",
+    targetHandle: "right",
+  }];
+
+  const placed = placeFlowchartInsertions(nodes, edges, ["inserted"]);
+
+  assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: -64, y: 100 });
 });
 
 test("saved automatic ports refresh while explicitly chosen ports stay fixed", () => {

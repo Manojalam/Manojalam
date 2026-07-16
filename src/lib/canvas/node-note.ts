@@ -4,6 +4,7 @@ import { getNodeRect, rectsOverlap } from "../layout";
 
 export const EXTERNAL_NOTE_SIZE = { width: 220, height: 72 };
 const NOTE_GAP = 32;
+const CLICK_NOTE_GAP = 12;
 const COLLISION_PADDING = 12;
 
 export function isExternalNoteNode(node: Node | undefined): boolean {
@@ -40,7 +41,8 @@ export function createExternalNoteNode(
   source: Node,
   nodes: Node[],
   id: string,
-  scriptMode: ScriptMode
+  scriptMode: ScriptMode,
+  nearPoint?: { x: number; y: number }
 ): Node {
   const sourceRect = getNodeRect(source);
   const candidates = [
@@ -53,8 +55,10 @@ export function createExternalNoteNode(
       y: sourceRect.top + (index + 1) * (EXTERNAL_NOTE_SIZE.height + NOTE_GAP),
     })),
   ];
-  const position = candidates.find((candidate) => candidateIsFree(candidate, source.id, nodes))
-    ?? candidates[candidates.length - 1];
+  const position = nearPoint
+    ? { x: nearPoint.x + CLICK_NOTE_GAP, y: nearPoint.y + CLICK_NOTE_GAP }
+    : candidates.find((candidate) => candidateIsFree(candidate, source.id, nodes))
+      ?? candidates[candidates.length - 1];
 
   return {
     id,

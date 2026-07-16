@@ -6,6 +6,7 @@ import {
   dragRouteSegmentToWaypoints,
   draggableRouteSegments,
   insertWaypointOnRoute,
+  labelOffsetAfterSegmentTranslation,
   routeBendPoints,
 } from "./connector-waypoints";
 
@@ -60,6 +61,26 @@ test("dragging an internal horizontal segment translates both adjoining bends", 
     { x: 480, y: 300 },
     target,
   ]);
+});
+
+test("a translated segment carries its label even when the route midpoint shifts", () => {
+  const startAnchor = { x: 100, y: 100 };
+  const startOffset = { x: 20, y: -16 };
+  const nextAnchor = { x: 60, y: 140 };
+
+  const nextOffset = labelOffsetAfterSegmentTranslation(
+    startAnchor,
+    startOffset,
+    nextAnchor,
+    "horizontal",
+    40
+  );
+
+  assert.deepEqual(nextOffset, { x: 60, y: -16 });
+  assert.deepEqual({
+    x: nextAnchor.x + nextOffset.x,
+    y: nextAnchor.y + nextOffset.y,
+  }, { x: 120, y: 124 });
 });
 
 test("only non-zero orthogonal route segments become direct drag targets", () => {

@@ -17,6 +17,7 @@ const FLOWCHART_SIBLING_GAP_X = 64;
 const FLOWCHART_SIBLING_GAP_Y = 40;
 
 type Vector = { x: number; y: number };
+type PerimeterSide = "top" | "right" | "bottom" | "left";
 
 type ConnectorConnection = {
   source?: string | null;
@@ -61,7 +62,7 @@ function positionFromCenter(node: Node, center: Vector): Vector {
 function continuationPosition(parent: Node, child: Node, rawDirection: Vector): Vector {
   const parentRect = getNodeRect(parent);
   const childSize = getNodeDimensions(child);
-  const direction = Math.abs(rawDirection.x) + Math.abs(rawDirection.y) > 1
+  const direction = Math.abs(rawDirection.x) + Math.abs(rawDirection.y) >= 1
     ? rawDirection
     : { x: 1, y: 0 };
   const horizontal = Math.abs(direction.x) >= Math.abs(direction.y);
@@ -76,13 +77,55 @@ function continuationPosition(parent: Node, child: Node, rawDirection: Vector): 
   });
 }
 
-function priorSiblings(nodes: Node[], parent: Node, insertedId: string): Node[] {
+function directionThroughTargetHandle(targetHandle?: string | null): Vector | null {
+  const directions: Record<PerimeterSide, Vector> = {
+    top: { x: 0, y: 1 },
+    right: { x: -1, y: 0 },
+    bottom: { x: 0, y: -1 },
+    left: { x: 1, y: 0 },
+  };
+  return targetHandle && targetHandle in directions
+    ? directions[targetHandle as PerimeterSide]
+    : null;
+}
+
+function liveIncomingDirection(nodes: Node[], edges: Edge[], parent: Node): Vector | null {
+  const incoming = edges.filter((edge) => (
+    !edge.hidden
+    && edge.target === parent.id
+    && edge.source !== parent.id
+  ));
+  if (!incoming.length) return null;
+
+  const storedParentId = (parent.data as { parentId?: unknown } | undefined)?.parentId;
+  const edge = typeof storedParentId === "string"
+    ? incoming.find((candidate) => candidate.source === storedParentId) ?? incoming[0]
+    : incoming[0];
+  const handleDirection = directionThroughTargetHandle(edge.targetHandle);
+  if (handleDirection) return handleDirection;
+
+  const source = nodes.find((node) => node.id === edge.source);
+  return source ? centerVector(source, parent) : null;
+}
+
+function priorSiblings(nodes: Node[], edges: Edge[], parent: Node, insertedId: string): Node[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  // Reversing a connector deliberately does not rewrite the user's hierarchy
+  // metadata. Do not let the former child continue to influence placement as a
+  // sibling when its live connector now flows back into this parent.
+  const reversedChildIds = new Set(edges
+    .filter((edge) => !edge.hidden && edge.target === parent.id)
+    .map((edge) => edge.source));
   const storedOrder = (parent.data as { childOrder?: unknown } | undefined)?.childOrder;
   const orderedIds = Array.isArray(storedOrder)
-    ? storedOrder.filter((value): value is string => typeof value === "string")
+    ? storedOrder.filter((value): value is string => (
+        typeof value === "string" && !reversedChildIds.has(value)
+      ))
     : nodes
-        .filter((node) => (node.data as { parentId?: unknown } | undefined)?.parentId === parent.id)
+        .filter((node) => (
+          (node.data as { parentId?: unknown } | undefined)?.parentId === parent.id
+          && !reversedChildIds.has(node.id)
+        ))
         .map((node) => node.id);
   const insertionIndex = orderedIds.indexOf(insertedId);
   const precedingIds = insertionIndex >= 0
@@ -178,7 +221,11 @@ export function manualizeFlowchartBranch(
  * nodes. A first child follows its parent's incoming direction. Later children
  * stay on the side established by the most recently positioned sibling.
  */
-export function placeFlowchartInsertions(nodes: Node[], insertedIds: string[]): Node[] {
+export function placeFlowchartInsertions(
+  nodes: Node[],
+  edges: Edge[],
+  insertedIds: string[]
+): Node[] {
   let placed = nodes;
   const inserted = new Set(insertedIds);
   const completed = new Set<string>();
@@ -190,15 +237,16 @@ export function placeFlowchartInsertions(nodes: Node[], insertedIds: string[]): 
       : undefined;
     if (!child || !parent) continue;
 
-    const siblings = priorSiblings(placed, parent, insertedId);
+    const siblings = priorSiblings(placed, edges, parent, insertedId);
     const siblingPlacement = siblingPosition(parent, child, siblings);
     const parentParentId = (parent.data as { parentId?: unknown } | undefined)?.parentId;
     const parentParent = typeof parentParentId === "string"
       ? placed.find((node) => node.id === parentParentId)
       : undefined;
-    const direction = parentParent
-      ? centerVector(parentParent, parent)
-      : centerVector(parent, child);
+    const direction = liveIncomingDirection(placed, edges, parent)
+      ?? (parentParent
+        ? centerVector(parentParent, parent)
+        : centerVector(parent, child));
     const position = siblingPlacement ?? continuationPosition(parent, child, direction);
     placed = placed.map((node) => node.id === insertedId ? { ...node, position } : node);
 
