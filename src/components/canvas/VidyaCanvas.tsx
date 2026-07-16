@@ -55,6 +55,7 @@ import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
+import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
 import {
   createManojalamClipboardPayload,
   MANOJALAM_NODES_MIME,
@@ -644,6 +645,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (!sourceNode || !targetNode) return edge;
       const edgeData = (edge.data ?? {}) as Record<string, unknown>;
       if (edgeData.hiddenInMatrix === true) return edge;
+      if (edgeData.preserveHandles === true) return edge;
       const mode = ((edgeData.layoutMode ?? (sourceNode.data as Record<string, unknown>).layoutMode ?? "freeForm") as LayoutMode);
       const route = routeForMode(mode, sourceNode, targetNode);
       return { ...edge, sourceHandle: route.sourceHandle, targetHandle: route.targetHandle };
@@ -734,9 +736,15 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       const matrixRoot = typeof sourceData.matrixRootId === "string"
         ? cs.nodes.find((node) => node.id === sourceData.matrixRootId)
         : null;
-      const mode = (((matrixRoot?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode
+      const configuredMode = (((matrixRoot?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode
         ?? sourceData.layoutMode
         ?? "freeForm") as LayoutMode);
+      const flowchartEndpoint = source?.type === "shape"
+        ? source
+        : targetNode?.type === "shape" ? targetNode : null;
+      const flowchartConnection = !!flowchartEndpoint
+        && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode);
+      const mode: LayoutMode = flowchartConnection ? "freeForm" : configuredMode;
       const route = source && targetNode ? routeForMode(mode, source, targetNode) : null;
       const hasParent = targetNode && (targetNode.data as { parentId?: string | null }).parentId;
       const hiddenInMatrix = mode === "matrix" && !hasParent;
@@ -753,7 +761,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: {
           edgeType: "branch",
-          curveStyle: route?.curveStyle ?? "smooth",
+          curveStyle: flowchartConnection ? "step" : route?.curveStyle ?? "smooth",
+          manualRoute: flowchartConnection,
+          preserveHandles: flowchartConnection
+            && (!!connection.sourceHandle || !!connection.targetHandle),
           arrowEnd: true,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
@@ -816,9 +827,13 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const matrixRoot = typeof sourceData.matrixRootId === "string"
       ? cs.nodes.find((node) => node.id === sourceData.matrixRootId)
       : null;
-    const mode = (((matrixRoot?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode
+    const configuredMode = (((matrixRoot?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode
       ?? sourceData.layoutMode
       ?? "freeForm") as LayoutMode);
+    const flowchartEndpoint = source.type === "shape" ? source : target.type === "shape" ? target : null;
+    const flowchartConnection = !!flowchartEndpoint
+      && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode);
+    const mode: LayoutMode = flowchartConnection ? "freeForm" : configuredMode;
     const route = routeForMode(mode, source, target);
     // Reconnecting a cross-link must not silently rewrite the canonical tree.
     // Only an edge that was already structural transfers parent metadata.
@@ -875,7 +890,9 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         data: {
           ...edgeData,
           edgeType: "branch",
-          curveStyle: route.curveStyle,
+          curveStyle: flowchartConnection ? "step" : route.curveStyle,
+          manualRoute: flowchartConnection || edgeData.manualRoute === true,
+          preserveHandles: flowchartConnection || edgeData.preserveHandles === true,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
           hiddenInSunburst,

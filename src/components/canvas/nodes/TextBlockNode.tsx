@@ -123,7 +123,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
         {/* Extra border layers */}
         {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
-        <NodeHandles color={borderColor ?? "#6366f1"} />
+        <NodeHandles color={borderColor ?? "#6366f1"} selected={selected} />
         <NodeQuickActions nodeId={id} color={borderColor ?? "#6366f1"} selected={selected} />
 
         {/* Add connected child */}

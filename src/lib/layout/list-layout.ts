@@ -277,6 +277,7 @@ export function computeListLayout(
 
 export function isListHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
   const data = (edge.data ?? {}) as Record<string, unknown>;
+  if (data.manualRoute === true) return false;
   const target = byId.get(edge.target);
   return data.layoutMode === "list"
     && !edge.hidden

@@ -71,6 +71,11 @@ import {
 } from "@/lib/canvas/hydration";
 import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 import { resolveChartNodeResize } from "@/lib/canvas/chart-sizing";
+import {
+  manualizeFlowchartBranch,
+  placeFlowchartInsertions,
+  usesManualFlowchartPlacement,
+} from "@/lib/canvas/flowchart-behavior";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -2194,7 +2199,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const existingChildCount = currentHierarchy.get(parentId)?.childIds.length ?? 0;
     const parentData = parent.data as Record<string, unknown>;
     const childType = childTypeFor(parent.type);
-    const mode = currentLayoutRoot.mode ?? (parentData.layoutMode as LayoutMode) ?? "horizontal";
+    const inheritedMode = currentLayoutRoot.mode ?? (parentData.layoutMode as LayoutMode | undefined);
+    const manualFlowchart = usesManualFlowchartPlacement(parent, inheritedMode);
+    const mode = manualFlowchart ? "freeForm" : inheritedMode ?? "horizontal";
     const hiddenInMatrix = mode === "matrix";
     const hiddenInSunburst = mode === "radial";
     const parentRect = getNodeRect(parent);
@@ -2228,13 +2235,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: {
           edgeType: "branch",
-          curveStyle: route.curveStyle,
+          curveStyle: manualFlowchart ? "step" : route.curveStyle,
           arrowEnd: true,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? currentLayoutRoot.id : undefined,
           hiddenInSunburst,
           hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(currentLayoutRoot.id) : undefined,
           layoutMode: mode,
+          ...(manualFlowchart && { manualRoute: true }),
         },
       };
     });
@@ -2243,7 +2251,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const prevOrder = storedOrder?.length
       ? storedOrder
       : currentHierarchy.get(parentId)?.childIds ?? [];
-    const nextNodes = [
+    let nextNodes = [
       ...nodes.map((n) =>
         n.id === parentId
           ? { ...n, data: { ...n.data, childOrder: [...prevOrder, ...childIds] } }
@@ -2251,13 +2259,26 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ),
       ...newNodes,
     ];
-    const nextEdges = [...edges, ...newEdges];
-    const nextHierarchy = buildHierarchy(nextNodes, nextEdges);
+    let nextEdges = [...edges, ...newEdges];
+    let nextHierarchy = buildHierarchy(nextNodes, nextEdges);
+    if (manualFlowchart) {
+      const manualized = manualizeFlowchartBranch(
+        nextNodes,
+        nextEdges,
+        currentLayoutRoot.id,
+        nextHierarchy
+      );
+      nextNodes = manualized.nodes;
+      nextEdges = manualized.edges;
+      nextHierarchy = buildHierarchy(nextNodes, nextEdges);
+    }
     const layoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const placementMode = layoutRoot.mode ?? mode;
     const useSunburst = placementMode === "radial";
-    let placedNodes = nextNodes;
-    if (placementMode === "matrix") {
+    let placedNodes = manualFlowchart
+      ? placeFlowchartInsertions(nextNodes, childIds)
+      : nextNodes;
+    if (!manualFlowchart && placementMode === "matrix") {
       const result = computeMatrixLayout(
         layoutRoot.id,
         nextHierarchy,
@@ -2269,7 +2290,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nextHierarchy,
         new Set(getSubtree(layoutRoot.id, nextHierarchy))
       );
-    } else if (!useSunburst) {
+    } else if (!manualFlowchart && !useSunburst) {
       const placements = placementMode === "list"
         ? computeListLayout(
             layoutRoot.id,
@@ -2283,14 +2304,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         placements
       );
     }
-    const styledLayout = applyLayoutPalette(
-      placedNodes,
-      nextEdges,
-      nextHierarchy,
-      layoutRoot.id,
-      layoutRoot.mode ?? "freeForm",
-      layoutSchemeValue(nextNodes, layoutRoot.id)
-    );
+    const styledLayout = manualFlowchart
+      ? { nodes: placedNodes, edges: nextEdges }
+      : applyLayoutPalette(
+          placedNodes,
+          nextEdges,
+          nextHierarchy,
+          layoutRoot.id,
+          layoutRoot.mode ?? "freeForm",
+          layoutSchemeValue(nextNodes, layoutRoot.id)
+        );
     const rootScope = new Set(getSubtree(layoutRoot.id, nextHierarchy));
     const matrixNodes = placementMode === "matrix"
       ? withMatrixFrame(styledLayout.nodes, rootScope, matrixFrameKey(layoutRoot.id), true)
@@ -2324,7 +2347,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const nodeData = node.data as Record<string, unknown>;
     const sibType = childTypeFor(node.type);
     const parentData = (parentNode.data ?? {}) as Record<string, unknown>;
-    const edgeMode = layoutRoot.mode ?? (parentData.layoutMode as LayoutMode | undefined) ?? "horizontal";
+    const inheritedMode = layoutRoot.mode ?? (parentData.layoutMode as LayoutMode | undefined);
+    const manualFlowchart = usesManualFlowchartPlacement(node, inheritedMode);
+    const edgeMode = manualFlowchart ? "freeForm" : inheritedMode ?? "horizontal";
     const siblingSize = getNodeDimensions(node);
     const nodeRect = getNodeRect(node);
     const siblingTopLeft = { x: nodeRect.left, y: nodeRect.bottom + 36 };
@@ -2357,29 +2382,44 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
       data: {
         edgeType: "branch",
-        curveStyle: route.curveStyle,
+        curveStyle: manualFlowchart ? "step" : route.curveStyle,
         arrowEnd: true,
         hiddenInMatrix,
         hiddenInMatrixFor: hiddenInMatrix ? layoutRoot.id : undefined,
         hiddenInSunburst,
         hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(layoutRoot.id) : undefined,
         layoutMode: edgeMode,
+        ...(manualFlowchart && { manualRoute: true }),
       },
     });
     const siblingOrder = [...(currentHierarchy.get(parentId)?.childIds ?? [])];
     const insertionIndex = Math.max(0, siblingOrder.indexOf(nodeId) + 1);
     siblingOrder.splice(insertionIndex, 0, siblingId);
-    const nextNodes = [
+    let nextNodes = [
       ...nodes.map((candidate) => candidate.id === parentId
         ? { ...candidate, data: { ...(candidate.data ?? {}), childOrder: siblingOrder } }
         : candidate),
       newNode,
     ];
-    const nextHierarchy = buildHierarchy(nextNodes, newEdges);
+    let nextEdges = newEdges;
+    let nextHierarchy = buildHierarchy(nextNodes, nextEdges);
+    if (manualFlowchart) {
+      const manualized = manualizeFlowchartBranch(
+        nextNodes,
+        nextEdges,
+        layoutRoot.id,
+        nextHierarchy
+      );
+      nextNodes = manualized.nodes;
+      nextEdges = manualized.edges;
+      nextHierarchy = buildHierarchy(nextNodes, nextEdges);
+    }
     const nextLayoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const placementMode = nextLayoutRoot.mode ?? edgeMode;
     const useSunburst = placementMode === "radial";
-    const placedNodes = placementMode === "matrix"
+    const placedNodes = manualFlowchart
+      ? placeFlowchartInsertions(nextNodes, [siblingId])
+      : placementMode === "matrix"
       ? applyMatrixResultToNodes(
           nextNodes,
           computeMatrixLayout(
@@ -2400,17 +2440,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
                   new Map(nextNodes.map((candidate) => [candidate.id, candidate])),
                   { preserveBranchAnchors: true }
                 )
-              : computeLayout(nextNodes, newEdges, placementMode, { rootId: nextLayoutRoot.id })
+              : computeLayout(nextNodes, nextEdges, placementMode, { rootId: nextLayoutRoot.id })
             : resolveInsertedNodeCollisions(nextNodes, siblingId)
         );
-    const styledLayout = applyLayoutPalette(
-      placedNodes,
-      newEdges,
-      nextHierarchy,
-      nextLayoutRoot.id,
-      nextLayoutRoot.mode ?? "freeForm",
-      layoutSchemeValue(nextNodes, nextLayoutRoot.id)
-    );
+    const styledLayout = manualFlowchart
+      ? { nodes: placedNodes, edges: nextEdges }
+      : applyLayoutPalette(
+          placedNodes,
+          nextEdges,
+          nextHierarchy,
+          nextLayoutRoot.id,
+          nextLayoutRoot.mode ?? "freeForm",
+          layoutSchemeValue(nextNodes, nextLayoutRoot.id)
+        );
     const rootScope = new Set(getSubtree(nextLayoutRoot.id, nextHierarchy));
     const matrixNodes = placementMode === "matrix"
       ? withMatrixFrame(styledLayout.nodes, rootScope, matrixFrameKey(nextLayoutRoot.id), true)

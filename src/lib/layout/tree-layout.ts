@@ -196,6 +196,7 @@ export interface TreeConnectorModel {
 
 export function isGroupedTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
   const data = (edge.data ?? {}) as Record<string, unknown>;
+  if (data.manualRoute === true) return false;
   const source = byId.get(edge.source);
   const target = byId.get(edge.target);
   if (!source || !target || source.hidden || target.hidden || edge.hidden) return false;

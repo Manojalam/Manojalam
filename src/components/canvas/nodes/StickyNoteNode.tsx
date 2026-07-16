@@ -133,7 +133,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
         {/* Extra border layers */}
         {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
-        <NodeHandles color={border} />
+        <NodeHandles color={border} selected={selected} />
         <NodeQuickActions nodeId={id} color={border} selected={selected} />
 
         {/* Add connected child */}

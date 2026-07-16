@@ -528,6 +528,10 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   arrowStart?: boolean;
   arrowEnd?: boolean;
   curveStyle?: EdgeCurveStyle;
+  /** Render this as an individual flowchart connector instead of a shared layout bus. */
+  manualRoute?: boolean;
+  /** Keep the exact user-selected source and target handles when nodes move. */
+  preserveHandles?: boolean;
   edgeType?: "normal" | "arrow" | "labeled" | "branch" | "dashed" | "sanskrit";
 }
 
