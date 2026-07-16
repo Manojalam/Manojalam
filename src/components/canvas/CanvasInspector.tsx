@@ -1234,6 +1234,19 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
               <ThicknessControl value={commonFontSize} onChange={(v) => setSelectedField("fontSize", v)} max={96} />
             </div>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
+              <div>
+                <p className="text-[10px] font-medium text-foreground">Fill available text space</p>
+                <p className="text-[9px] leading-relaxed text-muted-foreground">
+                  Maximizes text inside every selected node&apos;s safe shape area.
+                </p>
+              </div>
+              <Switch
+                checked={commonValue("maximizeText") === true}
+                onCheckedChange={(value) => setSelectedField("maximizeText", value)}
+                aria-label="Fill available text space for selected nodes"
+              />
+            </div>
             {isRadialMultiSelection && (
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -2088,7 +2101,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <Label className="text-xs">Maximize label size</Label>
+                <Label className="text-xs">Fill available text space</Label>
                 <p className="text-[9px] leading-relaxed text-muted-foreground">
                   Applies intelligently to every relationship layout.
                 </p>
@@ -2844,6 +2857,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 max={96}
               />
             </div>
+
+            {!selectedTextRange && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
+                <div>
+                  <p className="text-[10px] font-medium text-foreground">Fill available text space</p>
+                  <p className="text-[9px] leading-relaxed text-muted-foreground">
+                    Uses this size as a preference, then fills the node or radial sector safely.
+                  </p>
+                </div>
+                <Switch
+                  checked={d.maximizeText === true}
+                  onCheckedChange={(value) => setField("maximizeText", value)}
+                  aria-label="Fill available text space"
+                />
+              </div>
+            )}
 
             {isRadialLayoutSector && (
               <div>

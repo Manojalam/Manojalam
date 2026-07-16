@@ -360,6 +360,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   fontFamily?: string;
   fontStyle?: "normal" | "italic";
   fontWeight?: "normal" | "bold";
+  /** Grow rendered text to the largest size that fits the node's safe interior. */
+  maximizeText?: boolean;
   textColor?: string;
   textHighlightColor?: string;
   textAlign?: "left" | "center" | "right" | "justify";

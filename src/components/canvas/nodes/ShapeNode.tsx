@@ -264,7 +264,8 @@ function fitSectorLabel(
   startAngle: number,
   endAngle: number,
   manualRotation: number,
-  preferredFontSize?: number
+  preferredFontSize?: number,
+  maximizeFontSize = false
 ): SectorLabelFit {
   const label = text?.trim() ?? "";
   const midAngle = (startAngle + endAngle) / 2;
@@ -286,8 +287,11 @@ function fitSectorLabel(
   const preferred = preferredFontSize ?? Math.max(3.2, Math.min(10, availableHeight * 0.42));
   const minimumReadableFontSize = Math.max(0.8, Math.min(1.4, availableHeight * 0.12));
   const unwrappedLines = explicitTextLines(label);
+  const maximum = maximizeFontSize
+    ? Math.min(96, availableHeight / (isDevanagariText(label) ? 1.18 : 1))
+    : preferred;
 
-  for (let fontSize = preferred; fontSize >= minimumReadableFontSize; fontSize -= 0.15) {
+  for (let fontSize = maximum; fontSize >= minimumReadableFontSize; fontSize -= 0.15) {
     const unwrappedMetrics = textLayoutMetrics(unwrappedLines, fontSize);
     if (unwrappedMetrics.width <= availableWidth && unwrappedMetrics.height <= availableHeight) {
       return { lines: unwrappedLines, fontSize, lineAdvance: unwrappedMetrics.lineAdvance, point, availableWidth, availableHeight, rotation };
@@ -312,7 +316,12 @@ function fitSectorLabel(
   };
 }
 
-function fitCenterText(text: string | undefined, radius: number, preferredFontSize?: number): { lines: string[]; fontSize: number; lineAdvance: number } {
+function fitCenterText(
+  text: string | undefined,
+  radius: number,
+  preferredFontSize?: number,
+  maximizeFontSize = false
+): { lines: string[]; fontSize: number; lineAdvance: number } {
   if (!text?.trim() || radius <= 0) {
     const fontSize = preferredFontSize ?? Math.max(3, radius * 0.34);
     return { lines: [], fontSize, lineAdvance: fontSize * 1.12 };
@@ -321,8 +330,11 @@ function fitCenterText(text: string | undefined, radius: number, preferredFontSi
   const preferred = preferredFontSize ?? Math.max(3, Math.min(12, radius * 0.38));
   const availableWidth = Math.max(2, radius * 1.62);
   const availableHeight = Math.max(2, radius * 1.55);
+  const maximum = maximizeFontSize
+    ? Math.min(96, availableHeight / (isDevanagariText(text) ? 1.18 : 1))
+    : preferred;
 
-  for (let fontSize = preferred; fontSize >= 0.55; fontSize -= 0.15) {
+  for (let fontSize = maximum; fontSize >= 0.55; fontSize -= 0.15) {
     const charsPerLine = Math.max(1, Math.floor(availableWidth / Math.max(0.36, fontSize * 0.54)));
     const lines = wrapTextLines(text, charsPerLine);
     const metrics = textLayoutMetrics(lines, fontSize);
@@ -501,12 +513,14 @@ function updateRadialSegmentText(chart: RadialChartData, ringIndex: number, segm
 function RadialChartLayer({
   chart,
   borderColor,
+  maximizeText,
   editingText,
   onSegmentEdit,
   onCenterEdit,
 }: {
   chart?: RadialChartData;
   borderColor: string;
+  maximizeText?: boolean;
   editingText?: ChartTextEdit | null;
   onSegmentEdit?: (edit: ChartTextEdit & { kind: "segment" }) => void;
   onCenterEdit?: (edit: ChartTextEdit & { kind: "center" }) => void;
@@ -528,7 +542,8 @@ function RadialChartLayer({
   const centerTextFit = fitCenterText(
     chart.centerText,
     centerRadius,
-    radialControlFontSize(chart.centerFontSize)
+    radialControlFontSize(chart.centerFontSize),
+    maximizeText
   );
   const ringAngles = radialRingAngles(rings, rotation);
   const hiddenSegments = mergedChildIndices(rings);
@@ -566,7 +581,8 @@ function RadialChartLayer({
               start,
               end,
               manualTextRotation,
-              radialControlFontSize(segment.fontSize)
+              radialControlFontSize(segment.fontSize),
+              maximizeText
             );
             const { lines, fontSize, lineAdvance, point: textPoint } = labelFit;
             const isEditingSegment =
@@ -700,7 +716,8 @@ function RadialChartLayer({
               start,
               end,
               manualTextRotation,
-              radialControlFontSize(segment.fontSize)
+              radialControlFontSize(segment.fontSize),
+              maximizeText
             );
             const { lines, fontSize, lineAdvance, point: textPoint, rotation: labelRotation } = labelFit;
             if (!lines.length) return null;
@@ -1173,6 +1190,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           <RadialChartLayer
             chart={radialChart}
             borderColor={borderColor}
+            maximizeText={dd.maximizeText === true}
             editingText={activeChartTextEdit}
             onSegmentEdit={(edit) => {
               editHistoryCaptured.current = false;

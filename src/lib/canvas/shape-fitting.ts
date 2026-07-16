@@ -36,6 +36,12 @@ export interface SingleWordFit {
   fontSize: number;
 }
 
+export interface MaximumTextFitOptions {
+  minimumFontSize?: number;
+  maximumFontSize?: number;
+  preferredFontSize?: number;
+}
+
 export interface ShapeTextContentOptions {
   contentSize?: Partial<Size>;
 }
@@ -88,6 +94,79 @@ export function fitSingleUnbrokenWord(
     ? preferred * (safeWidth / estimatedWidth)
     : preferred;
   return { singleWord: true, fontSize: Math.max(0.5, Math.min(preferred, fitted)) };
+}
+
+function estimatedTextWidth(value: string, fontSize: number): number {
+  const widthFactor = /[\u2e80-\u9fff\uf900-\ufaff]/u.test(value)
+    ? 1
+    : /[\u0900-\u097f]/u.test(value) ? 0.82 : 0.56;
+  return Math.max(1, graphemeCount(value)) * fontSize * widthFactor;
+}
+
+function estimatedWrappedLineCount(value: string, availableWidth: number, fontSize: number): number {
+  const explicitLines = value.replace(/\r\n/g, "\n").split("\n");
+  let lineCount = 0;
+  for (const rawLine of explicitLines) {
+    const line = rawLine.trim();
+    if (!line) {
+      lineCount += 1;
+      continue;
+    }
+    const widthFactor = /[\u2e80-\u9fff\uf900-\ufaff]/u.test(line)
+      ? 1
+      : /[\u0900-\u097f]/u.test(line) ? 0.82 : 0.56;
+    const unitsPerLine = Math.max(1, Math.floor(availableWidth / Math.max(0.5, fontSize * widthFactor)));
+    const words = line.split(/\s+/u);
+    let usedUnits = 0;
+    let wrappedLines = 1;
+    for (const word of words) {
+      const units = graphemeCount(word);
+      const nextUnits = usedUnits === 0 ? units : usedUnits + 1 + units;
+      if (nextUnits <= unitsPerLine) {
+        usedUnits = nextUnits;
+      } else if (units <= unitsPerLine) {
+        wrappedLines += 1;
+        usedUnits = units;
+      } else {
+        wrappedLines += Math.max(1, Math.ceil(units / unitsPerLine)) - (usedUnits === 0 ? 1 : 0);
+        usedUnits = units % unitsPerLine;
+      }
+    }
+    lineCount += wrappedLines;
+  }
+  return Math.max(1, lineCount);
+}
+
+/** Largest whole-node font size that fits a shape's already-safe text rectangle. */
+export function maximumFittedTextFontSize(
+  value: string,
+  available: Size,
+  options: MaximumTextFitOptions = {}
+): number {
+  const preferred = finitePositive(options.preferredFontSize, 14);
+  const minimum = Math.max(1, Math.min(preferred, finitePositive(options.minimumFontSize, 8)));
+  const maximum = Math.max(minimum, finitePositive(options.maximumFontSize, 96));
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (!normalized) return preferred;
+  const width = Math.max(1, finitePositive(available.width, 1));
+  const height = Math.max(1, finitePositive(available.height, 1));
+  const singleWord = !/\s/u.test(normalized);
+  const lineHeight = /[\u0900-\u097f]/u.test(normalized) ? 1.42 : 1.38;
+  const fits = (fontSize: number) => {
+    if (singleWord && estimatedTextWidth(normalized, fontSize) > width) return false;
+    const lines = singleWord ? 1 : estimatedWrappedLineCount(value, width, fontSize);
+    return lines * fontSize * lineHeight <= height;
+  };
+
+  if (!fits(minimum)) return minimum;
+  let lower = minimum;
+  let upper = maximum;
+  for (let iteration = 0; iteration < 14; iteration += 1) {
+    const candidate = (lower + upper) / 2;
+    if (fits(candidate)) lower = candidate;
+    else upper = candidate;
+  }
+  return Math.max(minimum, Math.floor(lower * 4) / 4);
 }
 
 /** Approximate the safe horizontal text interior used by each supported shape. */
