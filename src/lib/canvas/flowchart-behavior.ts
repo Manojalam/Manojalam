@@ -4,9 +4,10 @@ import {
   resolveInsertedNodeCollisions,
   routeForMode,
 } from "../layout";
-import { getSubtree, type Hierarchy } from "../layout/hierarchy";
+import { buildHierarchy, getSubtree, type Hierarchy } from "../layout/hierarchy";
 
 const FLOWCHART_STRUCTURED_MODES = new Set<LayoutMode>(["list", "matrix", "radial"]);
+const LEGACY_IMPLICIT_FLOWCHART_MODES = new Set<LayoutMode>(["horizontal", "vertical", "topDown"]);
 
 /** Flowchart shape additions are local unless a specialized layout owns them. */
 export function usesManualFlowchartPlacement(parent: Node, mode?: LayoutMode): boolean {
@@ -65,4 +66,50 @@ export function placeFlowchartInsertions(nodes: Node[], insertedIds: string[]): 
       : node);
   }
   return placed;
+}
+
+/**
+ * Old `+` actions wrote Horizontal edge metadata without assigning an actual
+ * layout owner. Repair only those implicit shape edges so existing boards load
+ * with attached individual connectors; explicitly applied layouts stay intact.
+ */
+export function normalizeImplicitFlowchartRoutes(nodes: Node[], edges: Edge[]): Edge[] {
+  const hierarchy = buildHierarchy(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let changed = false;
+  const normalized = edges.map((edge) => {
+    const data = (edge.data ?? {}) as VidyaEdgeData;
+    const mode = data.layoutMode;
+    if (!mode || !LEGACY_IMPLICIT_FLOWCHART_MODES.has(mode) || data.manualRoute === true) return edge;
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (source?.type !== "shape" || target?.type !== "shape") return edge;
+    if (hierarchy.get(edge.target)?.parentId !== edge.source) return edge;
+
+    let cursor: string | null = edge.source;
+    const seen = new Set<string>();
+    let hasLayoutOwner = false;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const nodeMode = (byId.get(cursor)?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode;
+      if (nodeMode === mode) {
+        hasLayoutOwner = true;
+        break;
+      }
+      cursor = hierarchy.get(cursor)?.parentId ?? null;
+    }
+    if (hasLayoutOwner) return edge;
+
+    changed = true;
+    return {
+      ...edge,
+      data: {
+        ...data,
+        layoutMode: "freeForm" as LayoutMode,
+        curveStyle: data.curveStyle ?? "step",
+        manualRoute: true,
+      },
+    };
+  });
+  return changed ? normalized : edges;
 }

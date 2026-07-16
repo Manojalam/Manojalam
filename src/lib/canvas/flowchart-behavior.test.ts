@@ -6,6 +6,7 @@ import { buildTreeConnectorModel } from "../layout/tree-layout";
 import { buildHierarchy } from "../layout/hierarchy";
 import {
   manualizeFlowchartBranch,
+  normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
   usesManualFlowchartPlacement,
 } from "./flowchart-behavior";
@@ -100,4 +101,30 @@ test("manual flowchart edges are excluded from shared tree and list connector bu
 
   assert.deepEqual(buildTreeConnectorModel(nodes, [treeEdge]).groups, []);
   assert.deepEqual(buildListConnectorModel(nodes, [listEdge]).groups, []);
+});
+
+test("old implicit Horizontal shape edges repair on load while explicit layouts remain grouped", () => {
+  const implicitNodes = [
+    shape("root", 0, 0, null, { childOrder: ["child"] }),
+    shape("child", 280, 0, "root"),
+  ];
+  const edge: Edge = {
+    id: "legacy-edge",
+    source: "root",
+    target: "child",
+    sourceHandle: "right",
+    targetHandle: "left",
+    data: { layoutMode: "horizontal", curveStyle: "step" },
+  };
+  const repaired = normalizeImplicitFlowchartRoutes(implicitNodes, [edge]);
+  assert.equal(repaired[0].data?.manualRoute, true);
+  assert.equal(repaired[0].data?.layoutMode, "freeForm");
+  assert.equal(repaired[0].sourceHandle, "right");
+  assert.equal(repaired[0].targetHandle, "left");
+
+  const explicitNodes = implicitNodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutMode: "horizontal" } }
+    : node);
+  const explicitEdges = [edge];
+  assert.equal(normalizeImplicitFlowchartRoutes(explicitNodes, explicitEdges), explicitEdges);
 });

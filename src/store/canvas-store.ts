@@ -73,6 +73,7 @@ import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 import { resolveChartNodeResize } from "@/lib/canvas/chart-sizing";
 import {
   manualizeFlowchartBranch,
+  normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
@@ -1539,8 +1540,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
     const handledEdges = assignDefaultHandles(parentedNodes, board.content.edges);
-    const normalizedNodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, handledEdges));
-    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, handledEdges);
+    const flowchartEdges = normalizeImplicitFlowchartRoutes(parentedNodes, handledEdges);
+    const normalizedNodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, flowchartEdges));
+    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, flowchartEdges);
     const nodes = styledBoard.nodes;
     const edges = styledBoard.edges;
     const { relationships, relationshipFans } = normalizeRelationshipState(
