@@ -22,6 +22,7 @@ test("reversing a connection swaps endpoints, handles, and stored bend order", (
     markerEnd,
     data: {
       label: "Approved",
+      labelPosition: 0.2,
       arrowEnd: true,
       waypoints: [{ x: 100, y: 20 }, { x: 400, y: 20 }],
     },
@@ -36,6 +37,7 @@ test("reversing a connection swaps endpoints, handles, and stored bend order", (
   assert.deepEqual(reversed.markerEnd, markerEnd);
   assert.equal(reversed.markerStart, undefined);
   assert.equal(reversed.data?.label, "Approved");
+  assert.equal(reversed.data?.labelPosition, 0.8);
   assert.deepEqual(reversed.data?.waypoints, [{ x: 400, y: 20 }, { x: 100, y: 20 }]);
 });
 

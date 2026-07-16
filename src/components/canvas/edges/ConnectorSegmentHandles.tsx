@@ -114,9 +114,11 @@ export function ConnectorSegmentHandles({
               resultWaypointOrigin,
               startLabelOffset: (() => {
                 if (!labelEdgeId) return undefined;
-                const value = useCanvasStore.getState().edges.find((edge) => (
+                const labelData = useCanvasStore.getState().edges.find((edge) => (
                   edge.id === labelEdgeId
-                ))?.data?.labelOffset as { x?: unknown; y?: unknown } | undefined;
+                ))?.data as Record<string, unknown> | undefined;
+                if (typeof labelData?.labelPosition === "number") return undefined;
+                const value = labelData?.labelOffset as { x?: unknown; y?: unknown } | undefined;
                 return {
                   x: typeof value?.x === "number" ? value.x : 0,
                   y: typeof value?.y === "number" ? value.y : 0,

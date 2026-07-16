@@ -554,7 +554,11 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   waypoints?: Array<{ x: number; y: number }>;
   /** Distinguishes explicit bend controls from internal anchors created by segment dragging. */
   waypointOrigin?: "bend" | "segment-drag";
-  /** User-positioned offset from the connector route's natural label anchor. */
+  /** Normalized distance along the rendered connector where its label is anchored. */
+  labelPosition?: number;
+  /** Segment that carries a logical junction connector's label. */
+  labelPathEdgeId?: string;
+  /** @deprecated Legacy free offset projected onto the connector when loaded. */
   labelOffset?: { x: number; y: number };
   /** Independent text color for the connector label. */
   labelColor?: string;

@@ -174,12 +174,14 @@ export function ListTreeConnectors() {
           const data = edgeData(edge);
           if (!edge.selected && !data.label) return null;
           const segment = segments[segments.length - 1];
+          const path = branchPath({ segments });
           return (
             <ConnectionLabelEditor
               key={`label-${edge.id}`}
               edgeId={edge.id}
               x={(segment.x1 + segment.x2) / 2}
               y={segment.y1}
+              path={path}
               label={data.label}
               selected={edge.selected}
             />
