@@ -1057,8 +1057,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   }, [pushHistory]);
 
   const beginRequestedEdit = useCallback(() => {
-    if (!matrixCell && !isDrawing) setEditing(true);
-  }, [isDrawing, matrixCell, setEditing]);
+    if (!isDrawing) setEditing(true);
+  }, [isDrawing, setEditing]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {

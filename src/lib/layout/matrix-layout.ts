@@ -10,6 +10,7 @@ import {
 } from "./geometry";
 
 export type MatrixTableDensity = "compact" | "comfortable" | "presentation";
+export type MatrixOrientation = "horizontal" | "vertical";
 
 export interface MatrixRow {
   index: number;
@@ -48,6 +49,8 @@ export interface MatrixLayoutDiagnostics {
 export interface MatrixLayoutResult {
   rootId: string;
   density: MatrixTableDensity;
+  /** Root direction. Descendants may override it for their own branch. */
+  orientation: MatrixOrientation;
   rows: MatrixRow[];
   cells: MatrixCellGeometry[];
   placements: Record<string, MatrixPlacement>;
@@ -66,6 +69,14 @@ type DensitySettings = {
   paddingY: number;
   minRowHeight: number;
   minHeaderHeight: number;
+};
+
+type MatrixLogicalSpan = {
+  nodeId: string;
+  column: number;
+  rowStart: number;
+  rowEnd: number;
+  occurrences: number[];
 };
 
 export const MATRIX_MIN_COLUMN_WIDTH = 180;
@@ -271,6 +282,10 @@ function storedDensity(value: unknown): MatrixTableDensity | null {
     : null;
 }
 
+function storedOrientation(value: unknown): MatrixOrientation | null {
+  return value === "horizontal" || value === "vertical" ? value : null;
+}
+
 function isVisible(nodeId: string, byId: Map<string, Node>): boolean {
   const node = byId.get(nodeId);
   return !!node && !node.hidden;
@@ -376,20 +391,14 @@ function diagnoseMatrix(
     .map((cell) => cell.nodeId);
 
   const overlapPairs: Array<[string, string]> = [];
-  const cellsByColumn = new Map<number, MatrixCellGeometry[]>();
-  cells.forEach((cell) => cellsByColumn.set(cell.column, [...(cellsByColumn.get(cell.column) ?? []), cell]));
-  for (const columnCells of cellsByColumn.values()) {
-    columnCells.sort((first, second) => first.y - second.y);
-    for (let index = 1; index < columnCells.length; index++) {
-      const previous = columnCells[index - 1];
-      const current = columnCells[index];
-      if (rectsOverlap(cellRect(previous), cellRect(current))) {
-        overlapPairs.push([previous.nodeId, current.nodeId]);
+  const renderedCells = [header, ...cells].sort((first, second) => first.y - second.y);
+  for (let first = 0; first < renderedCells.length; first++) {
+    for (let second = first + 1; second < renderedCells.length; second++) {
+      if (renderedCells[second].y >= renderedCells[first].y + renderedCells[first].height) break;
+      if (rectsOverlap(cellRect(renderedCells[first]), cellRect(renderedCells[second]))) {
+        overlapPairs.push([renderedCells[first].nodeId, renderedCells[second].nodeId]);
       }
     }
-  }
-  for (const cell of cells) {
-    if (rectsOverlap(cellRect(header), cellRect(cell))) overlapPairs.push([rootId, cell.nodeId]);
   }
   return {
     duplicateNodeIds,
@@ -397,6 +406,268 @@ function diagnoseMatrix(
     nonContiguousNodeIds,
     invalidNodeIds,
     overlapPairs,
+  };
+}
+
+type OrientedBranchCell = {
+  nodeId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  requiredHeight: number;
+};
+
+type OrientedBranchLayout = {
+  width: number;
+  height: number;
+  cells: OrientedBranchCell[];
+};
+
+function matrixOrientationForNode(
+  nodeId: string,
+  inherited: MatrixOrientation,
+  byId: Map<string, Node>
+): MatrixOrientation {
+  const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+  return storedOrientation(data.matrixOrientation) ?? inherited;
+}
+
+function hasVerticalMatrixBranch(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): boolean {
+  const visit = (nodeId: string, inherited: MatrixOrientation, ancestors: Set<string>): boolean => {
+    if (ancestors.has(nodeId)) return false;
+    const orientation = matrixOrientationForNode(nodeId, inherited, byId);
+    const children = visibleChildren(nodeId, hierarchy, byId)
+      .filter((childId) => !ancestors.has(childId));
+    if (children.length && orientation === "vertical") return true;
+    const nextAncestors = new Set(ancestors).add(nodeId);
+    return children.some((childId) => visit(childId, orientation, nextAncestors));
+  };
+  return visit(rootId, "horizontal", new Set());
+}
+
+function translateOrientedCells(
+  cells: OrientedBranchCell[],
+  dx: number,
+  dy: number
+): OrientedBranchCell[] {
+  return cells.map((cell) => ({ ...cell, x: cell.x + dx, y: cell.y + dy }));
+}
+
+/**
+ * Builds the mixed-orientation form of Matrix. Horizontal branches retain the
+ * familiar merged-cell table direction (parent left, descendants right), while
+ * Vertical branches transpose only that branch (parent above, descendants
+ * below). An unset child inherits its nearest ancestor's direction.
+ */
+function computeOrientedMatrixLayout(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  rows: MatrixRow[],
+  spanMap: Map<string, MatrixLogicalSpan>,
+  duplicateNodeIds: Set<string>,
+  columnWidths: number[],
+  density: MatrixTableDensity,
+  settings: DensitySettings,
+  tableX: number,
+  tableY: number
+): MatrixLayoutResult {
+  const root = byId.get(rootId)!;
+  const rootData = (root.data ?? {}) as Record<string, unknown>;
+  const rootOrientation = storedOrientation(rootData.matrixOrientation) ?? "horizontal";
+
+  const buildBranch = (
+    nodeId: string,
+    column: number,
+    inherited: MatrixOrientation,
+    ancestors: Set<string>
+  ): OrientedBranchLayout => {
+    const node = byId.get(nodeId);
+    if (!node || ancestors.has(nodeId)) return { width: 0, height: 0, cells: [] };
+    const orientation = matrixOrientationForNode(nodeId, inherited, byId);
+    const width = columnWidths[column]
+      ?? preferredCellWidth(node, column, settings);
+    const ownRequiredHeight = requiredCellHeight(node, width, settings);
+    const nextAncestors = new Set(ancestors).add(nodeId);
+    const children = visibleChildren(nodeId, hierarchy, byId)
+      .filter((childId) => !nextAncestors.has(childId))
+      .map((childId) => buildBranch(childId, column + 1, orientation, nextAncestors))
+      .filter((child) => child.cells.length > 0);
+
+    if (!children.length) {
+      return {
+        width,
+        height: ownRequiredHeight,
+        cells: [{ nodeId, x: 0, y: 0, width, height: ownRequiredHeight, requiredHeight: ownRequiredHeight }],
+      };
+    }
+
+    if (orientation === "vertical") {
+      const childrenWidth = children.reduce((sum, child) => sum + child.width, 0)
+        + settings.cellGap * (children.length - 1);
+      const branchWidth = Math.max(width, childrenWidth);
+      const childrenHeight = Math.max(...children.map((child) => child.height));
+      const childY = ownRequiredHeight + settings.cellGap;
+      let childX = Math.max(0, (branchWidth - childrenWidth) / 2);
+      const cells: OrientedBranchCell[] = [{
+        nodeId,
+        x: 0,
+        y: 0,
+        width: branchWidth,
+        height: ownRequiredHeight,
+        requiredHeight: ownRequiredHeight,
+      }];
+      for (const child of children) {
+        cells.push(...translateOrientedCells(child.cells, childX, childY));
+        childX += child.width + settings.cellGap;
+      }
+      return {
+        width: branchWidth,
+        height: ownRequiredHeight + settings.cellGap + childrenHeight,
+        cells,
+      };
+    }
+
+    const childrenHeight = children.reduce((sum, child) => sum + child.height, 0)
+      + settings.cellGap * (children.length - 1);
+    const branchHeight = Math.max(ownRequiredHeight, childrenHeight);
+    const childrenWidth = Math.max(...children.map((child) => child.width));
+    let childY = Math.max(0, (branchHeight - childrenHeight) / 2);
+    const cells: OrientedBranchCell[] = [{
+      nodeId,
+      x: 0,
+      y: 0,
+      width,
+      height: branchHeight,
+      requiredHeight: ownRequiredHeight,
+    }];
+    for (const child of children) {
+      cells.push(...translateOrientedCells(child.cells, width + settings.cellGap, childY));
+      childY += child.height + settings.cellGap;
+    }
+    return {
+      width: width + settings.cellGap + childrenWidth,
+      height: branchHeight,
+      cells,
+    };
+  };
+
+  const rootChildren = visibleChildren(rootId, hierarchy, byId)
+    .map((childId) => buildBranch(childId, 0, rootOrientation, new Set([rootId])))
+    .filter((child) => child.cells.length > 0);
+  const bodyWidth = rootChildren.length
+    ? rootOrientation === "vertical"
+      ? rootChildren.reduce((sum, child) => sum + child.width, 0) + settings.cellGap * (rootChildren.length - 1)
+      : Math.max(...rootChildren.map((child) => child.width))
+    : 0;
+  const bodyHeight = rootChildren.length
+    ? rootOrientation === "vertical"
+      ? Math.max(...rootChildren.map((child) => child.height))
+      : rootChildren.reduce((sum, child) => sum + child.height, 0) + settings.cellGap * (rootChildren.length - 1)
+    : 0;
+  const preferredHeaderWidth = Math.ceil(clamp(
+    preferredCellWidth(root, 0, settings),
+    MATRIX_HEADER_MIN_WIDTH,
+    760
+  ));
+  const tableWidth = Math.max(preferredHeaderWidth, bodyWidth);
+  const headerHeight = requiredCellHeight(root, tableWidth, settings, settings.minHeaderHeight);
+  const bodyY = tableY + headerHeight + (rootChildren.length ? settings.cellGap : 0);
+  const bodyX = tableX + Math.max(0, (tableWidth - bodyWidth) / 2);
+
+  const orientedCells: OrientedBranchCell[] = [];
+  if (rootOrientation === "vertical") {
+    let nextX = bodyX;
+    for (const child of rootChildren) {
+      orientedCells.push(...translateOrientedCells(child.cells, nextX, bodyY));
+      nextX += child.width + settings.cellGap;
+    }
+  } else {
+    let nextY = bodyY;
+    for (const child of rootChildren) {
+      orientedCells.push(...translateOrientedCells(child.cells, bodyX, nextY));
+      nextY += child.height + settings.cellGap;
+    }
+  }
+
+  const cells = orientedCells.map<MatrixCellGeometry>((cell) => {
+    const span = spanMap.get(cell.nodeId);
+    return {
+      ...cell,
+      column: span?.column ?? 0,
+      rowStart: span?.rowStart ?? 0,
+      rowEnd: span?.rowEnd ?? 0,
+      rowSpan: span ? span.rowEnd - span.rowStart + 1 : 1,
+    };
+  });
+  const header: MatrixCellGeometry = {
+    nodeId: rootId,
+    column: -1,
+    rowStart: -1,
+    rowEnd: -1,
+    rowSpan: 1,
+    x: tableX,
+    y: tableY,
+    width: tableWidth,
+    height: headerHeight,
+    requiredHeight: headerHeight,
+  };
+  const placements: Record<string, MatrixPlacement> = {};
+  for (const cell of [header, ...cells]) {
+    const node = byId.get(cell.nodeId);
+    if (!node) continue;
+    const position = nodePositionForRect(node, cell.x, cell.y, cell.width, cell.height);
+    placements[cell.nodeId] = { ...position, width: cell.width, height: cell.height };
+  }
+
+  const columnX: number[] = [];
+  let nextColumnX = tableX;
+  for (const width of columnWidths) {
+    columnX.push(nextColumnX);
+    nextColumnX += width + settings.cellGap;
+  }
+  const rowHeights = rows.map((row) => Math.max(
+    settings.minRowHeight,
+    ...row.path.map((nodeId, column) => {
+      const node = byId.get(nodeId);
+      return node ? requiredCellHeight(node, columnWidths[column] ?? MATRIX_MIN_COLUMN_WIDTH, settings) : 0;
+    })
+  ));
+  const rowY: number[] = [];
+  let nextRowY = bodyY;
+  for (const height of rowHeights) {
+    rowY.push(nextRowY);
+    nextRowY += height + settings.cellGap;
+  }
+  const totalHeight = headerHeight + (bodyHeight ? settings.cellGap + bodyHeight : 0);
+  const bounds = createNodeRect(`matrix-bounds-${rootId}`, tableX, tableY, tableWidth, totalHeight);
+  const diagnostics = diagnoseMatrix(rootId, rows, cells, header, hierarchy, byId);
+  diagnostics.duplicateNodeIds.push(...[...duplicateNodeIds]
+    .filter((id) => !diagnostics.duplicateNodeIds.includes(id)));
+
+  if (process.env.NODE_ENV !== "production" && Object.values(diagnostics).some((items) => items.length)) {
+    console.warn("[matrix-layout] geometry diagnostics", diagnostics);
+  }
+
+  return {
+    rootId,
+    density,
+    orientation: rootOrientation,
+    rows,
+    cells,
+    placements,
+    columnWidths,
+    columnX,
+    rowHeights,
+    rowY,
+    header,
+    bounds,
+    diagnostics,
   };
 }
 
@@ -423,13 +694,7 @@ export function computeMatrixLayout(
   const tableX = rootRect.left;
   const tableY = rootRect.top;
 
-  const spanMap = new Map<string, {
-    nodeId: string;
-    column: number;
-    rowStart: number;
-    rowEnd: number;
-    occurrences: number[];
-  }>();
+  const spanMap = new Map<string, MatrixLogicalSpan>();
   const duplicateNodeIds = new Set<string>();
   rows.forEach((row) => row.path.forEach((nodeId, column) => {
     const current = spanMap.get(nodeId);
@@ -475,6 +740,22 @@ export function computeMatrixLayout(
       columnWidths[column] += growth;
       deficit -= growth;
     }
+  }
+
+  if (hasVerticalMatrixBranch(rootId, hierarchy, byId)) {
+    return computeOrientedMatrixLayout(
+      rootId,
+      hierarchy,
+      byId,
+      rows,
+      spanMap,
+      duplicateNodeIds,
+      columnWidths,
+      density,
+      settings,
+      tableX,
+      tableY
+    );
   }
 
   const columnX: number[] = [];
@@ -585,6 +866,7 @@ export function computeMatrixLayout(
   return {
     rootId,
     density,
+    orientation: storedOrientation(rootData.matrixOrientation) ?? "horizontal",
     rows,
     cells,
     placements,

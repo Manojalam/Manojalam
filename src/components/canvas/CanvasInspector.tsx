@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowLeft, ArrowRight, Share2,
+  Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowDown, ArrowLeft, ArrowRight, Share2,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
@@ -857,6 +857,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   // ALL hooks before any early return
   const d = (selectedNode?.data ?? {}) as Record<string, unknown>;
+  const matrixRootId = d.layoutMode === "matrix"
+    ? selectedNode?.id ?? null
+    : typeof d.matrixRootId === "string" ? d.matrixRootId : null;
+  const matrixRootNode = matrixRootId
+    ? nodes.find((node) => node.id === matrixRootId) ?? null
+    : null;
+  const matrixBranchIds = matrixRootNode ? getSubtree(matrixRootNode.id, hierarchy) : [];
+  const explicitMatrixOrientation = d.matrixOrientation === "horizontal" || d.matrixOrientation === "vertical"
+    ? d.matrixOrientation
+    : null;
+  let effectiveMatrixOrientation: "horizontal" | "vertical" = "horizontal";
+  if (selectedNode && matrixRootNode) {
+    const lineage: string[] = [];
+    let cursor: string | null = selectedNode.id;
+    const seen = new Set<string>();
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      lineage.unshift(cursor);
+      if (cursor === matrixRootNode.id) break;
+      cursor = hierarchy.get(cursor)?.parentId ?? null;
+    }
+    for (const nodeId of lineage) {
+      const orientation = (nodes.find((node) => node.id === nodeId)?.data as Record<string, unknown> | undefined)?.matrixOrientation;
+      if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
+    }
+  }
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
     ? nodes.find((node) => node.type === "sunburst" && (node.data as Record<string, unknown>).sunburstFor === d.sunburstHiddenFor)
@@ -2831,7 +2857,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Layout</span>
-              <span className="truncate text-right text-foreground">{inspectorLayoutLabel(d.layoutMode)}</span>
+              <span className="truncate text-right text-foreground">{inspectorLayoutLabel(matrixRootNode ? "matrix" : d.layoutMode)}</span>
             </div>
           </div>
           {isRadialLayoutSector && parentNode && (
@@ -3082,34 +3108,104 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {d.layoutMode === "matrix" && (
-          <Section label="Matrix density" visible={singleNodeTab === "layout"}>
-            <div className="grid grid-cols-3 gap-1">
-              {(["compact", "comfortable", "presentation"] as const).map((density) => (
+        {matrixRootNode && selectedNode && (
+          <Section label="Matrix table" visible={singleNodeTab === "layout"}>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Branch orientation
+              </p>
+              <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
+                {selectedNode.id === matrixRootNode.id
+                  ? "Sets the Matrix direction; children inherit it until overridden."
+                  : "Sets how this cell's descendants grow inside the Matrix."}
+              </p>
+              <div className={cn("grid gap-1", selectedNode.id === matrixRootNode.id ? "grid-cols-2" : "grid-cols-3")}>
                 <button
-                  key={density}
                   type="button"
                   onClick={() => {
-                    updateNodeData(selectedNode.id, { matrixDensity: density, matrixDensityUserSet: true });
+                    pushHistory();
+                    updateNodeData(selectedNode.id, { matrixOrientation: "horizontal" });
                     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
-                      detail: {
-                        mode: "matrix",
-                        rootId: selectedNode.id,
-                        nodeIds: [selectedNode.id, ...descendantIds],
-                      },
+                      detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
                     })));
                   }}
                   className={cn(
-                    "rounded-md border px-1 py-1.5 text-[9px] capitalize",
-                    ((d.matrixDensity as string) ?? "comfortable") === density
+                    "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                    effectiveMatrixOrientation === "horizontal" && (selectedNode.id === matrixRootNode.id || explicitMatrixOrientation === "horizontal")
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
                 >
-                  {density}
+                  <ArrowRight className="h-3 w-3" /> Across
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushHistory();
+                    updateNodeData(selectedNode.id, { matrixOrientation: "vertical" });
+                    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                      detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                    })));
+                  }}
+                  className={cn(
+                    "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                    effectiveMatrixOrientation === "vertical" && (selectedNode.id === matrixRootNode.id || explicitMatrixOrientation === "vertical")
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  <ArrowDown className="h-3 w-3" /> Down
+                </button>
+                {selectedNode.id !== matrixRootNode.id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushHistory();
+                      updateNodeData(selectedNode.id, { matrixOrientation: undefined });
+                      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                        detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                      })));
+                    }}
+                    className={cn(
+                      "rounded-md border px-1 py-1.5 text-[9px]",
+                      explicitMatrixOrientation === null
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    Inherit
+                  </button>
+                )}
+              </div>
             </div>
+
+            {selectedNode.id === matrixRootNode.id && (
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Density</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {(["compact", "comfortable", "presentation"] as const).map((density) => (
+                    <button
+                      key={density}
+                      type="button"
+                      onClick={() => {
+                        updateNodeData(matrixRootNode.id, { matrixDensity: density, matrixDensityUserSet: true });
+                        requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                          detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                        })));
+                      }}
+                      className={cn(
+                        "rounded-md border px-1 py-1.5 text-[9px] capitalize",
+                        ((((matrixRootNode.data ?? {}) as Record<string, unknown>).matrixDensity as string) ?? "comfortable") === density
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border hover:bg-muted"
+                      )}
+                    >
+                      {density}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </Section>
         )}
 

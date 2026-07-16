@@ -54,6 +54,7 @@ export type CanvasTool =
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 export type EdgeCurveStyle = "smooth" | "straight" | "step";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
+export type MatrixOrientation = "horizontal" | "vertical";
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
 
 export type RadialColorScheme =
@@ -393,6 +394,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   listDensity?: "compact" | "comfortable";
   matrixDensity?: MatrixDensity;
   matrixDensityUserSet?: boolean;
+  /** Direction in which this Matrix cell's descendants grow. Inherits from its parent. */
+  matrixOrientation?: MatrixOrientation;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
   /** Controls how authored text and manually chosen node dimensions interact. */
