@@ -2080,6 +2080,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 suffix="px"
                 onChange={(value) => updateDiagram({ textSize: value })}
               />
+              {diagramSpec.maximizeLabelText && (
+                <p className="mt-1 text-[9px] leading-relaxed text-muted-foreground">
+                  Used as the preferred minimum; labels grow to fill their safe region and still shrink when required.
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label className="text-xs">Maximize label size</Label>
+                <p className="text-[9px] leading-relaxed text-muted-foreground">
+                  Applies intelligently to every relationship layout.
+                </p>
+              </div>
+              <Switch
+                checked={diagramSpec.maximizeLabelText}
+                onCheckedChange={(value) => updateDiagram({ maximizeLabelText: value })}
+              />
             </div>
             <Select
               value={diagramSpec.fontFamily ?? "__default_font__"}

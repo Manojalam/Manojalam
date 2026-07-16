@@ -214,6 +214,8 @@ export interface RelationshipDiagramSpec {
   showIcons: boolean;
   palette: RelationshipDiagramPalette;
   textSize: number;
+  /** Grow relationship labels to the largest size that fits each layout region. */
+  maximizeLabelText: boolean;
   density: RelationshipDiagramDensity;
   /** Legacy automatic-layer capacity retained for diagrams saved before layer-only controls. */
   flowerPetalsPerLayer: number;

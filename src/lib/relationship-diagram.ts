@@ -70,6 +70,7 @@ export const DEFAULT_RELATIONSHIP_DIAGRAM_SPEC: Readonly<RelationshipDiagramSpec
   showIcons: false,
   palette: "source",
   textSize: 16,
+  maximizeLabelText: false,
   density: "comfortable",
   flowerPetalsPerLayer: DEFAULT_FLOWER_PETALS_PER_LAYER,
   flowerLayerCount: 0,
@@ -483,6 +484,10 @@ export function normalizeRelationshipDiagramSpec(
       ),
       8,
       72
+    ),
+    maximizeLabelText: booleanValue(
+      optionValue(raw, legacyOptions, "maximizeLabelText", "maximizeText"),
+      DEFAULT_RELATIONSHIP_DIAGRAM_SPEC.maximizeLabelText
     ),
     density: normalizeDensity(optionValue(raw, legacyOptions, "density", "spacingDensity")),
     flowerPetalsPerLayer: normalizeFlowerPetalsPerLayer(
