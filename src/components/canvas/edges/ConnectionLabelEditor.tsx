@@ -6,11 +6,12 @@ import { ArrowLeftRight, CircleDot, GitBranch, GripVertical, LocateFixed, Move, 
 import { useCanvasStore } from "@/store/canvas-store";
 import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
 import { reverseLogicalConnectors } from "@/lib/canvas/connector-junction";
+import { applyConnectorLabelPreset } from "@/lib/canvas/connector-label-presets";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 import { ConnectorPathStylePicker } from "./ConnectorPathStylePicker";
 import { ConnectorLabelStylePicker } from "./ConnectorLabelStylePicker";
 import { resolveConnectorLabelPresentation } from "@/lib/canvas/connector-label-style";
-import type { VidyaEdgeData } from "@/lib/types";
+import type { ConnectorLabelPreset, VidyaEdgeData } from "@/lib/types";
 import {
   closestConnectorPathPosition,
   connectorPointAtProgress,
@@ -175,6 +176,17 @@ export function ConnectionLabelEditor({
     updateLabel(edgeId, nextLabel);
   };
 
+  const selectPreset = (preset: ConnectorLabelPreset) => {
+    if (!historyCaptured.current) {
+      pushHistory();
+      historyCaptured.current = true;
+    }
+    useCanvasStore.setState((state) => ({
+      edges: applyConnectorLabelPreset(state.edges, toolbarEdgeId, preset),
+      saveStatus: "unsaved",
+    }));
+  };
+
   const reverseConnection = () => {
     const state = useCanvasStore.getState();
     const edges = reverseLogicalConnectors(state.edges, [toolbarEdgeId]);
@@ -276,7 +288,7 @@ export function ConnectionLabelEditor({
               if (event.key === "Escape") inputRef.current?.blur();
             }}
           />
-          <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
+          <ConnectorLabelPresets currentLabel={label} onSelect={selectPreset} />
           <ConnectorPathStylePicker edgeId={toolbarEdgeId} />
           <ConnectorLabelStylePicker edgeId={toolbarEdgeId} />
           <button
