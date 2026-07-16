@@ -119,7 +119,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
         onResizeEnd={resizeControls.onResizeEnd} />
       <div
         className={cn(
-          "group relative h-full w-full p-3 transition-shadow",
+          "group relative h-full w-full p-1 transition-shadow",
           matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
         )}
         style={{ backgroundColor: bg, border: `${bWidth}px ${bStyle} ${border}`, borderRadius: bRadius }}

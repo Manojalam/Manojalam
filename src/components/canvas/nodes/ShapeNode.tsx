@@ -1283,7 +1283,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               data-node-content-layer="true"
               data-node-owner={id}
               className={cn(
-                "absolute inset-0 z-10 box-border flex items-center justify-center px-1 text-center text-sm font-medium text-foreground",
+                "absolute inset-0 z-10 box-border flex items-center justify-center p-1 text-center text-sm font-medium text-foreground",
                 editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
               )}
             >

@@ -83,15 +83,20 @@ export function getFittedTextPresentation(
     | undefined;
 
   if (shouldMaximize) {
+    const normalScale = getFittedTextPresentation(
+      { ...d, maximizeText: false },
+      availableWidth,
+      fallbackFontSize,
+      options
+    ).scale;
     const maximumFontSize = maximumFittedTextFontSize(
       plainText,
       { width: availableWidth, height: availableHeight },
       { preferredFontSize, minimumFontSize, maximumFontSize: 96 }
     );
-    scale = maximumFontSize / preferredFontSize;
-    // The maximum-fit search already evaluates the current shape dimensions.
-    // Do not cap it with a prior DOM measurement: that measurement may come
-    // from the old, narrower text box and can make enabling maximize shrink.
+    // Fill-space is monotonic across every shared consumer: it can enlarge the
+    // normal rendered fit, but enabling it must never make that text smaller.
+    scale = Math.max(normalScale, maximumFontSize / preferredFontSize);
     scale = Math.max(minimumFontSize / preferredFontSize, Math.min(96 / preferredFontSize, scale));
   } else if (shouldConstrain && storedMeasurement) {
     scale = fittedContentScale(

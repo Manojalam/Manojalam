@@ -62,11 +62,9 @@ function finitePositive(value: unknown, fallback: number): number {
 }
 
 export function nodeContentPadding(nodeType: string | undefined): Size {
-  if (nodeType === "sticky") return { width: 36, height: 30 };
-  if (nodeType === "text") return { width: 36, height: 26 };
-  if (nodeType === "mindmap") return { width: 44, height: 30 };
-  // Shape geometry already restricts text to each visible interior. Keep only
-  // four pixels per side here so the fitted label can use that safe area.
+  void nodeType;
+  // Every editable content node already has a shape-safe text rectangle. Keep
+  // only four pixels per side so all shared fill-space consumers use it fully.
   return { width: 8, height: 8 };
 }
 

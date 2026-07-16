@@ -56,13 +56,14 @@ test("shape fitting gives every supported conversion a safe finite interior", ()
   }
 });
 
-test("shape nodes keep only a thin inset inside their safe geometry", () => {
-  assert.deepEqual(nodeContentPadding("shape"), { width: 8, height: 8 });
-  assert.deepEqual(
-    shapeTextContentSize("rectangle", { width: 180, height: 80 }, "shape"),
-    { width: 172, height: 72 }
-  );
-  assert.deepEqual(nodeContentPadding("sticky"), { width: 36, height: 30 });
+test("every editable content node keeps only a thin inset inside its safe geometry", () => {
+  for (const nodeType of ["shape", "sticky", "text", "mindmap"]) {
+    assert.deepEqual(nodeContentPadding(nodeType), { width: 8, height: 8 });
+    assert.deepEqual(
+      shapeTextContentSize("rectangle", { width: 180, height: 80 }, nodeType),
+      { width: 172, height: 72 }
+    );
+  }
 });
 
 test("diamond fitting uses the full safe interior with compact padding", () => {
@@ -381,6 +382,34 @@ test("maximum fitting ignores stale measurements from a previously narrow shape"
 
   assert.equal(maximized.fontSize, expectedFontSize);
   assert.ok(maximized.fontSize > 14);
+});
+
+test("fill available space never shrinks the normal rendered fit", () => {
+  const data = {
+    text: [
+      "अथ योगानुशासनम्",
+      "योगश्चित्तवृत्तिनिरोधः",
+      "तदा द्रष्टुः स्वरूपेऽवस्थानम्",
+      "वृत्तिसारूप्यमितरत्र",
+      "अभ्यासवैराग्याभ्यां तन्निरोधः",
+    ].join("\n"),
+    fontSize: 33,
+    autoSizeMode: "fixed",
+    intrinsicContentSize: {
+      width: 260,
+      naturalWidth: 430,
+      height: 260,
+      lineCount: 8,
+      lineHeight: 45,
+    },
+  };
+  const options = { availableHeight: 120, constrain: true };
+  const ordinary = getFittedTextPresentation(data, 260, 14, options);
+  const maximized = getFittedTextPresentation({ ...data, maximizeText: true }, 260, 14, options);
+
+  assert.ok(ordinary.scale < 1);
+  assert.ok(maximized.scale >= ordinary.scale);
+  assert.ok(maximized.fontSize >= ordinary.fontSize);
 });
 
 test("fixed-box fitting respects a readable minimum scale", () => {
