@@ -541,6 +541,8 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   preserveHandles?: boolean;
   /** User-positioned anchors that turn the automatic route into an editable path. */
   waypoints?: Array<{ x: number; y: number }>;
+  /** User-positioned offset from the connector route's natural label anchor. */
+  labelOffset?: { x: number; y: number };
   edgeType?: "normal" | "arrow" | "labeled" | "branch" | "dashed" | "sanskrit";
 }
 

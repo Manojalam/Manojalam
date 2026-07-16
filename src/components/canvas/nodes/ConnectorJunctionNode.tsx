@@ -12,12 +12,12 @@ function ConnectorJunctionNodeComponent({ data, selected }: NodeProps) {
       aria-label="Connector junction"
       title="Connector junction — drag to reroute or connect another line"
       className={cn(
-        "group relative h-full w-full rounded-full border-[3px] border-background shadow-sm",
+        "group relative h-full w-full cursor-move rounded-full border-[3px] border-background shadow-sm active:cursor-grabbing",
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
       style={{ backgroundColor: color }}
     >
-      <NodeHandles color={color} selected={selected} />
+      <NodeHandles color={color} selected={selected} compact />
     </div>
   );
 }

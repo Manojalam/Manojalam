@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Side } from "../layout/edge-routing";
 
-export const CONNECTOR_JUNCTION_SIZE = 20;
+export const CONNECTOR_JUNCTION_SIZE = 28;
 
 interface SplitConnectorIds {
   junctionId: string;
@@ -85,4 +85,94 @@ export function splitConnectorAtJunction(
     draggable: true,
   };
   return { junction, edges: [first, second] };
+}
+
+export interface ClearConnectorJunctionResult {
+  nodes: Node[];
+  edges: Edge[];
+  mergedEdgeId?: string;
+  removedEdgeCount: number;
+  merged: boolean;
+}
+
+function edgeSegment(edge: Edge): unknown {
+  return (edge.data as Record<string, unknown> | undefined)?.connectorJunctionSegment;
+}
+
+function edgeWaypoints(edge: Edge): Array<{ x: number; y: number }> {
+  const value = (edge.data as Record<string, unknown> | undefined)?.waypoints;
+  if (!Array.isArray(value)) return [];
+  return value.filter((point): point is { x: number; y: number } => (
+    !!point
+    && typeof point === "object"
+    && typeof (point as { x?: unknown }).x === "number"
+    && typeof (point as { y?: unknown }).y === "number"
+  ));
+}
+
+/** Removes a junction while preserving its original through-connection when identifiable. */
+export function clearConnectorJunctionGraph(
+  nodes: Node[],
+  edges: Edge[],
+  junctionId: string
+): ClearConnectorJunctionResult {
+  const attached = edges.filter((edge) => edge.source === junctionId || edge.target === junctionId);
+  const incomingEdges = attached.filter((edge) => edge.target === junctionId && edge.source !== junctionId);
+  const outgoingEdges = attached.filter((edge) => edge.source === junctionId && edge.target !== junctionId);
+  const incoming = incomingEdges.find((edge) => edgeSegment(edge) === "incoming")
+    ?? (incomingEdges.length === 1 ? incomingEdges[0] : undefined);
+  const outgoing = outgoingEdges.find((edge) => edgeSegment(edge) === "outgoing")
+    ?? (outgoingEdges.length === 1 ? outgoingEdges[0] : undefined);
+  const remainingNodes = nodes.filter((node) => node.id !== junctionId);
+  const attachedIds = new Set(attached.map((edge) => edge.id));
+  const remainingEdges = edges.filter((edge) => !attachedIds.has(edge.id));
+
+  if (!incoming || !outgoing || incoming.id === outgoing.id) {
+    return {
+      nodes: remainingNodes,
+      edges: remainingEdges,
+      removedEdgeCount: attached.length,
+      merged: false,
+    };
+  }
+
+  const incomingData = { ...(incoming.data ?? {}) } as Record<string, unknown>;
+  const outgoingData = { ...(outgoing.data ?? {}) } as Record<string, unknown>;
+  const waypoints = [...edgeWaypoints(incoming), ...edgeWaypoints(outgoing)];
+  const data: Record<string, unknown> = {
+    ...incomingData,
+    ...outgoingData,
+    edgeType: outgoingData.edgeType ?? incomingData.edgeType ?? "branch",
+    curveStyle: "step",
+    manualRoute: true,
+    preserveHandles: true,
+    layoutMode: "freeForm",
+    arrowStart: incomingData.arrowStart,
+    arrowEnd: outgoingData.arrowEnd,
+  };
+  delete data.connectorJunctionId;
+  delete data.connectorJunctionSegment;
+  if (waypoints.length) data.waypoints = waypoints;
+  else delete data.waypoints;
+
+  const merged: Edge = {
+    ...outgoing,
+    source: incoming.source,
+    target: outgoing.target,
+    sourceHandle: incoming.sourceHandle,
+    targetHandle: outgoing.targetHandle,
+    markerStart: incoming.markerStart,
+    markerEnd: outgoing.markerEnd,
+    selected: true,
+    reconnectable: true,
+    data,
+  };
+
+  return {
+    nodes: remainingNodes,
+    edges: [...remainingEdges, merged],
+    mergedEdgeId: merged.id,
+    removedEdgeCount: attached.length,
+    merged: true,
+  };
 }
