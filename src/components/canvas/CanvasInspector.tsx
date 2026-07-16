@@ -56,6 +56,10 @@ import {
   normalizeRelationshipDiagramSpec,
 } from "@/lib/relationship-diagram";
 import {
+  relationshipDiagramItemColor,
+  relationshipDiagramItemStyle,
+} from "@/lib/relationship-diagram-colors";
+import {
   alignSelection,
   compactEqualSpacing,
   type SelectionAlignment,
@@ -2319,11 +2323,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </p>
             <div className="space-y-2">
               {diagramGroups.map((group, index) => {
-                const style = {
-                  ...(diagramSpec.itemStyles?.[group.sourceNodeId] ?? {}),
-                  ...(diagramSpec.itemStyles?.[group.itemId] ?? {}),
-                };
-                const sourceColor = hexInputColor(style.fillColor ?? group.sourceColor, "#6366f1");
+                const style = relationshipDiagramItemStyle(group, diagramSpec);
+                const sourceColor = hexInputColor(
+                  relationshipDiagramItemColor(group, index, diagramSpec),
+                  "#6366f1"
+                );
                 return (
                   <div key={group.itemId} className="space-y-2 rounded-lg border border-border p-2">
                     <div className="flex items-center gap-1">

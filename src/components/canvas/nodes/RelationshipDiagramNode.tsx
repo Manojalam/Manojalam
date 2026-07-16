@@ -22,8 +22,8 @@ import type { RelationshipDiagramNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 
 function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
-  const d = data as RelationshipDiagramNodeData;
   const nodes = useCanvasStore((state) => state.nodes);
+  const d = (nodes.find((node) => node.id === id)?.data ?? data) as RelationshipDiagramNodeData;
   const edges = useCanvasStore((state) => state.edges);
   const relationships = useCanvasStore((state) => state.relationships);
   const beginManualNodeResize = useCanvasStore((state) => state.beginManualNodeResize);
