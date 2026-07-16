@@ -154,6 +154,21 @@ test("moving a branch changes the direction followed by its next child", () => {
   assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 564, y: 0 });
 });
 
+test("a nearly vertical branch places its next child on the exact center axis", () => {
+  const nodes = [
+    shape("root", 12, 0, null, { childOrder: ["parent"] }),
+    shape("parent", 0, 180, "root", { childOrder: ["inserted"] }),
+    shape("inserted", 280, 180, "parent"),
+  ];
+  const placed = placeFlowchartInsertions(nodes, [{
+    id: "incoming",
+    source: "root",
+    target: "parent",
+  }], ["inserted"]);
+
+  assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 0, y: 324 });
+});
+
 test("additional children stay on the side established by the latest child", () => {
   const nodes = [
     shape("parent", 300, 300, null, { childOrder: ["existing", "inserted"] }),

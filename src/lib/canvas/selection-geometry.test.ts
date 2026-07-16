@@ -7,6 +7,7 @@ import {
   alignSelection,
   compactEqualSpacing,
   distributeSelection,
+  snapPointToGrid,
   snapRectToAlignment,
 } from "./selection-geometry";
 
@@ -147,6 +148,11 @@ test("center-only snapping prioritizes straight connector alignment over matchin
   assert.equal(snap.dy, 0);
   assert.deepEqual(snap.verticalGuides, [150]);
   assert.deepEqual(snap.horizontalGuides, []);
+});
+
+test("grid snapping quantizes both axes and safely ignores invalid spacing", () => {
+  assert.deepEqual(snapPointToGrid({ x: 47, y: 81 }, 32), { x: 32, y: 96 });
+  assert.deepEqual(snapPointToGrid({ x: 47, y: 81 }, 0), { x: 47, y: 81 });
 });
 
 test("alignment snapping keeps a consistent screen-sized target across zoom levels", () => {

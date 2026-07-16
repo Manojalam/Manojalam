@@ -35,6 +35,15 @@ export function alignmentSnapThreshold(
   return Math.min(maxFlowDistance, Math.max(2, screenPixels / safeZoom));
 }
 
+/** Quantize one canvas position without involving React Flow's separate drag snap. */
+export function snapPointToGrid(point: Point, spacing: number): Point {
+  if (!Number.isFinite(spacing) || spacing <= 0) return { ...point };
+  return {
+    x: Math.round(point.x / spacing) * spacing,
+    y: Math.round(point.y / spacing) * spacing,
+  };
+}
+
 /** Find the nearest edge, center, or touching-edge alignment for a dragged box. */
 export function snapRectToAlignment(
   dragged: NodeRect,

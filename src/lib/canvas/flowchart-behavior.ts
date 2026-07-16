@@ -69,11 +69,9 @@ function continuationPosition(parent: Node, child: Node, rawDirection: Vector): 
   const mainDistance = horizontal
     ? (parentRect.width + childSize.width) / 2 + FLOWCHART_CHILD_GAP_X
     : (parentRect.height + childSize.height) / 2 + FLOWCHART_CHILD_GAP_Y;
-  const mainComponent = horizontal ? Math.abs(direction.x) : Math.abs(direction.y);
-  const scale = mainDistance / Math.max(1, mainComponent);
   return positionFromCenter(child, {
-    x: parentRect.centerX + direction.x * scale,
-    y: parentRect.centerY + direction.y * scale,
+    x: parentRect.centerX + (horizontal ? Math.sign(direction.x || 1) * mainDistance : 0),
+    y: parentRect.centerY + (horizontal ? 0 : Math.sign(direction.y || 1) * mainDistance),
   });
 }
 
