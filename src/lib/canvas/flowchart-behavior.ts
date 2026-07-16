@@ -18,6 +18,28 @@ const FLOWCHART_SIBLING_GAP_Y = 40;
 
 type Vector = { x: number; y: number };
 
+type ConnectorConnection = {
+  source?: string | null;
+  target?: string | null;
+};
+
+/**
+ * Reject duplicate connectors while allowing one selected connector to move
+ * between handles on its existing pair of nodes.
+ */
+export function isConnectorConnectionAllowed(
+  edges: Edge[],
+  connection: ConnectorConnection,
+  reconnectingEdgeId?: string | null
+): boolean {
+  if (!connection.source || !connection.target || connection.source === connection.target) return false;
+  return !edges.some((edge) => (
+    edge.id !== reconnectingEdgeId
+    && edge.source === connection.source
+    && edge.target === connection.target
+  ));
+}
+
 function centerVector(from: Node, to: Node): Vector {
   const fromRect = getNodeRect(from);
   const toRect = getNodeRect(to);

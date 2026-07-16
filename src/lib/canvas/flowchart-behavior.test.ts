@@ -5,6 +5,7 @@ import { buildListConnectorModel } from "../layout/list-layout";
 import { buildTreeConnectorModel } from "../layout/tree-layout";
 import { buildHierarchy } from "../layout/hierarchy";
 import {
+  isConnectorConnectionAllowed,
   manualizeFlowchartBranch,
   normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
@@ -38,6 +39,30 @@ test("ordinary shape additions are manual-first but specialized layouts remain s
   assert.equal(usesManualFlowchartPlacement(parent, "matrix"), false);
   assert.equal(usesManualFlowchartPlacement(parent, "radial"), false);
   assert.equal(usesManualFlowchartPlacement({ ...parent, type: "sticky" }, "horizontal"), false);
+});
+
+test("an existing connector can move to another handle on the same nodes", () => {
+  const edges: Edge[] = [{ id: "edge", source: "parent", target: "child" }];
+
+  assert.equal(isConnectorConnectionAllowed(edges, {
+    source: "parent",
+    target: "child",
+  }), false);
+  assert.equal(isConnectorConnectionAllowed(edges, {
+    source: "parent",
+    target: "child",
+  }, "edge"), true);
+  assert.equal(isConnectorConnectionAllowed([
+    ...edges,
+    { id: "duplicate", source: "parent", target: "child" },
+  ], {
+    source: "parent",
+    target: "child",
+  }, "edge"), false);
+  assert.equal(isConnectorConnectionAllowed(edges, {
+    source: "parent",
+    target: "parent",
+  }, "edge"), false);
 });
 
 test("manualizing a flowchart preserves node positions and converts only its branch edges", () => {

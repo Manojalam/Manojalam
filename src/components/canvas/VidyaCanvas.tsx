@@ -62,7 +62,10 @@ import {
   includeAttachedExternalNoteIds,
   isExternalNoteNode,
 } from "@/lib/canvas/node-note";
-import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
+import {
+  isConnectorConnectionAllowed,
+  usesManualFlowchartPlacement,
+} from "@/lib/canvas/flowchart-behavior";
 import {
   findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
@@ -884,11 +887,20 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     []
   );
 
+  const reconnectingEdgeIdRef = useRef<string | null>(null);
+  const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    reconnectingEdgeIdRef.current = edge.id;
+  }, []);
+  const onReconnectEnd = useCallback(() => {
+    reconnectingEdgeIdRef.current = null;
+  }, []);
+
   const isValidConnection = useCallback((connection: Connection | Edge) => {
-    if (!connection.source || !connection.target || connection.source === connection.target) return false;
-    return !useCanvasStore.getState().edges.some((edge) => (
-      edge.source === connection.source && edge.target === connection.target
-    ));
+    return isConnectorConnectionAllowed(
+      useCanvasStore.getState().edges,
+      connection,
+      reconnectingEdgeIdRef.current
+    );
   }, []);
 
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
@@ -1395,6 +1407,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       onConnect={onConnect}
       isValidConnection={isValidConnection}
       onReconnect={onReconnect}
+      onReconnectStart={onReconnectStart}
+      onReconnectEnd={onReconnectEnd}
       onEdgeClick={onEdgeClick}
       onPaneClick={onPaneClick}
       onNodeClick={onNodeClick}
