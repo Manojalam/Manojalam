@@ -55,6 +55,63 @@ test("shape fitting gives every supported conversion a safe finite interior", ()
   }
 });
 
+test("diamond fitting uses the full safe interior with compact padding", () => {
+  const fitted = fitShapeToContent("diamond", { width: 200, height: 80 }, { nodeType: "shape" });
+  const interior = shapeTextContentSize("diamond", fitted, "shape", {
+    contentSize: { width: 200, naturalWidth: 200, height: 80 },
+  });
+
+  // 200x80 content, 8px total padding per axis, and 2px measurement safety
+  // requires a 210x90 padded box. A square diamond fits it in 210 + 90px.
+  assert.deepEqual(fitted, { width: 300, height: 300 });
+  assert.ok(interior.width >= 200);
+  assert.ok(interior.height >= 80);
+});
+
+test("diamond measurements cannot collapse the editor to one character", () => {
+  const singleLineInterior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
+    contentSize: {
+      width: 8,
+      naturalWidth: 180,
+      height: 22,
+      lineCount: 1,
+    },
+  });
+  const wrappedInterior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
+    contentSize: {
+      width: 8,
+      naturalWidth: 180,
+      height: 220,
+      lineCount: 12,
+    },
+  });
+
+  assert.ok(singleLineInterior.width >= 92);
+  assert.ok(wrappedInterior.width >= 48);
+  assert.ok(wrappedInterior.height >= 60);
+  assert.ok(shapeTextContentWidth("diamond", 126) >= 55);
+});
+
+test("maximum text fitting fills the corrected diamond interior", () => {
+  const interior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
+    contentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },
+  });
+  const presentation = getFittedTextPresentation(
+    {
+      text: "Decision?",
+      fontSize: 14,
+      maximizeText: true,
+      intrinsicContentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },
+    },
+    interior.width,
+    14,
+    { availableHeight: interior.height, constrain: true }
+  );
+
+  assert.ok(presentation.fontSize > 14);
+  assert.ok(presentation.scale > 1);
+});
+
 test("100 percent radius reaches half the shorter dimension", () => {
   assert.equal(effectiveCornerRadius(100, { width: 300, height: 80 }), 40);
   assert.equal(effectiveCornerRadius(0, { width: 300, height: 80 }), 0);
