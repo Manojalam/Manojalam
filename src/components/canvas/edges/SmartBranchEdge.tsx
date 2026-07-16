@@ -173,6 +173,11 @@ function RoutedSmartBranchEdge({
   const connectionLabel = typeof labelOwnerData.label === "string" ? labelOwnerData.label : undefined;
   const logicalEdgeIds = findLogicalConnectorEdgeIds(edges, id);
   const logicalEdgeIdSet = new Set(logicalEdgeIds);
+  const storedLabelPathEdgeId = typeof labelOwnerData.labelPathEdgeId === "string"
+    && logicalEdgeIdSet.has(labelOwnerData.labelPathEdgeId)
+    ? labelOwnerData.labelPathEdgeId
+    : labelOwnerId;
+  const labelRendersOnThisEdge = storedLabelPathEdgeId === id;
   const logicalSelected = edges.some((edge) => logicalEdgeIdSet.has(edge.id) && edge.selected);
   const activeSegmentId = connectorClickPoint?.edgeId && logicalEdgeIdSet.has(connectorClickPoint.edgeId)
     ? connectorClickPoint.edgeId
@@ -260,12 +265,12 @@ function RoutedSmartBranchEdge({
           sourceSide={positionSide(sourcePosition)}
           targetSide={positionSide(targetPosition)}
           endpointOptions={endpointOptions}
-          labelEdgeId={labelOwnerId === id && connectionLabel ? labelOwnerId : undefined}
+          labelEdgeId={labelRendersOnThisEdge && connectionLabel ? labelOwnerId : undefined}
           labelAnchor={{ x: labelX, y: labelY }}
           resultWaypointOrigin={d.waypointOrigin === "bend" ? "bend" : "segment-drag"}
         />
       )}
-      {(logicalSelected || (labelOwnerId === id && connectionLabel)) && (
+      {(logicalSelected || (labelRendersOnThisEdge && connectionLabel)) && (
         <EdgeLabelRenderer>
           <ConnectionLabelEditor
             edgeId={labelOwnerId}
@@ -273,9 +278,10 @@ function RoutedSmartBranchEdge({
             deleteEdgeId={id}
             x={labelX}
             y={labelY}
+            path={path}
             label={connectionLabel}
             selected={editorSelected}
-            showLabel={labelOwnerId === id}
+            showLabel={labelRendersOnThisEdge}
             onAddBend={curveStyle === "step" ? () => {
               pushHistory();
               setEdgeWaypoints(id, insertWaypointOnRoute(routePoints, waypoints));

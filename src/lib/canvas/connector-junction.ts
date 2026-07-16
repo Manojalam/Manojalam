@@ -348,6 +348,9 @@ function reverseLogicalConnector(edges: Edge[], logicalEdgeIds: readonly string[
     const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
     reverseStoredPoints(data, "waypoints");
     reverseStoredPoints(data, "junctionUserWaypoints");
+    if (typeof data.labelPosition === "number" && Number.isFinite(data.labelPosition)) {
+      data.labelPosition = 1 - Math.max(0, Math.min(1, data.labelPosition));
+    }
     if (data.connectorJunctionSegment === "incoming") data.connectorJunctionSegment = "outgoing";
     else if (data.connectorJunctionSegment === "outgoing") data.connectorJunctionSegment = "incoming";
 

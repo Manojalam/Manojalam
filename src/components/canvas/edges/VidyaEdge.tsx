@@ -88,6 +88,7 @@ function VidyaEdgeComponent({
             edgeId={id}
             x={labelX}
             y={labelY}
+            path={path}
             label={d.label}
             selected={selected}
           />

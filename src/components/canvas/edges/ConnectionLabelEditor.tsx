@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { ArrowLeftRight, CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -11,12 +11,18 @@ import { ConnectorPathStylePicker } from "./ConnectorPathStylePicker";
 import { ConnectorLabelStylePicker } from "./ConnectorLabelStylePicker";
 import { resolveConnectorLabelPresentation } from "@/lib/canvas/connector-label-style";
 import type { VidyaEdgeData } from "@/lib/types";
+import {
+  closestConnectorPathPosition,
+  connectorPointAtProgress,
+  sampleConnectorPath,
+} from "@/lib/canvas/connector-label-position";
 
 interface ConnectionLabelEditorProps {
   edgeId: string;
   toolbarEdgeId?: string;
   x: number;
   y: number;
+  path: string;
   label?: string;
   selected?: boolean;
   showLabel?: boolean;
@@ -35,13 +41,25 @@ function updateLabel(edgeId: string, label: string): void {
   }));
 }
 
-function updateLabelOffset(edgeId: string, labelOffset?: { x: number; y: number }): void {
+function updateLabelPosition(
+  edgeId: string,
+  labelPosition?: number,
+  labelPathEdgeId?: string
+): void {
   useCanvasStore.setState((state) => ({
     edges: state.edges.map((edge) => {
       if (edge.id !== edgeId) return edge;
       const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
-      if (labelOffset) data.labelOffset = labelOffset;
-      else delete data.labelOffset;
+      if (typeof labelPosition === "number" && Number.isFinite(labelPosition)) {
+        data.labelPosition = Math.round(Math.max(0, Math.min(1, labelPosition)) * 1_000_000) / 1_000_000;
+        if (labelPathEdgeId) data.labelPathEdgeId = labelPathEdgeId;
+        else delete data.labelPathEdgeId;
+        delete data.labelOffset;
+      } else {
+        delete data.labelPosition;
+        delete data.labelPathEdgeId;
+        delete data.labelOffset;
+      }
       return { ...edge, data };
     }),
     saveStatus: "unsaved",
@@ -67,6 +85,7 @@ export function ConnectionLabelEditor({
   toolbarEdgeId = edgeId,
   x,
   y,
+  path,
   label = "",
   selected = false,
   showLabel = true,
@@ -79,7 +98,7 @@ export function ConnectionLabelEditor({
   const historyCaptured = useRef(false);
   const labelDrag = useRef<{
     startPointer: { x: number; y: number };
-    startOffset: { x: number; y: number };
+    startLabelPoint: { x: number; y: number };
   } | null>(null);
   const toolbarDrag = useRef<{
     startPointer: { x: number; y: number };
@@ -93,17 +112,33 @@ export function ConnectionLabelEditor({
   const storedLabelOffset = useCanvasStore((state) => (
     state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
   )?.labelOffset) as { x?: unknown; y?: unknown } | undefined;
+  const storedLabelPosition = useCanvasStore((state) => (
+    state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
+  )?.labelPosition);
   const storedToolbarOffset = useCanvasStore((state) => (
     state.edges.find((edge) => edge.id === toolbarEdgeId)?.data as Record<string, unknown> | undefined
   )?.toolbarOffset) as { x?: unknown; y?: unknown } | undefined;
   const { screenToFlowPosition } = useReactFlow();
-  const labelOffset = {
+  const legacyLabelOffset = {
     x: typeof storedLabelOffset?.x === "number" ? storedLabelOffset.x : 0,
     y: typeof storedLabelOffset?.y === "number" ? storedLabelOffset.y : 0,
   };
-  const labelX = x + labelOffset.x;
-  const labelY = y + labelOffset.y;
-  const labelWasMoved = labelOffset.x !== 0 || labelOffset.y !== 0;
+  const sampledPath = useMemo(() => sampleConnectorPath(path), [path]);
+  const savedProgress = typeof storedLabelPosition === "number" && Number.isFinite(storedLabelPosition)
+    ? Math.max(0, Math.min(1, storedLabelPosition))
+    : null;
+  const legacyPosition = legacyLabelOffset.x !== 0 || legacyLabelOffset.y !== 0
+    ? closestConnectorPathPosition(sampledPath, {
+        x: x + legacyLabelOffset.x,
+        y: y + legacyLabelOffset.y,
+      })
+    : null;
+  const labelPoint = savedProgress === null
+    ? legacyPosition?.point ?? { x, y }
+    : connectorPointAtProgress(sampledPath, savedProgress, { x, y });
+  const labelX = labelPoint.x;
+  const labelY = labelPoint.y;
+  const labelWasMoved = savedProgress !== null || legacyPosition !== null;
   const hasMovableLabel = label.trim().length > 0;
   const toolbarOffset = {
     x: typeof storedToolbarOffset?.x === "number" ? storedToolbarOffset.x : 0,
@@ -255,7 +290,7 @@ export function ConnectionLabelEditor({
           </button>
           <button
             type="button"
-            title={hasMovableLabel ? "Drag to move the label" : "Enter a label before moving it"}
+            title={hasMovableLabel ? "Drag the label along this connector" : "Enter a label before moving it"}
             aria-label="Move connection label"
             disabled={!hasMovableLabel}
             className={hasMovableLabel
@@ -267,7 +302,7 @@ export function ConnectionLabelEditor({
               pushHistory();
               labelDrag.current = {
                 startPointer: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-                startOffset: labelOffset,
+                startLabelPoint: { x: labelX, y: labelY },
               };
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
@@ -276,10 +311,12 @@ export function ConnectionLabelEditor({
               event.preventDefault();
               event.stopPropagation();
               const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-              updateLabelOffset(edgeId, {
-                x: Math.round(labelDrag.current.startOffset.x + point.x - labelDrag.current.startPointer.x),
-                y: Math.round(labelDrag.current.startOffset.y + point.y - labelDrag.current.startPointer.y),
-              });
+              const desiredPoint = {
+                x: labelDrag.current.startLabelPoint.x + point.x - labelDrag.current.startPointer.x,
+                y: labelDrag.current.startLabelPoint.y + point.y - labelDrag.current.startPointer.y,
+              };
+              const nextPosition = closestConnectorPathPosition(sampledPath, desiredPoint);
+              updateLabelPosition(edgeId, nextPosition.progress, toolbarEdgeId);
             }}
             onPointerUp={(event) => {
               event.stopPropagation();
@@ -302,7 +339,7 @@ export function ConnectionLabelEditor({
               className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={() => {
                 pushHistory();
-                updateLabelOffset(edgeId);
+                updateLabelPosition(edgeId);
               }}
             >
               <LocateFixed className="h-3.5 w-3.5" />
