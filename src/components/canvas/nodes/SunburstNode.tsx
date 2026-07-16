@@ -28,6 +28,7 @@ import {
 import {
   radialColorScheme,
   radialHierarchyWeight,
+  radialOutermostCommonFontSize,
   radialSectorColors,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
@@ -509,7 +510,9 @@ function sectorLabelGeometry(
   segment: SunburstSegment,
   center: number,
   useBrowserMetrics: boolean,
-  chartRotation: unknown
+  chartRotation: unknown,
+  preferredFontSizeOverride?: number,
+  minimumReadableFontSizeOverride?: number
 ): LabelGeometry {
   const midAngle = (segment.startAngle + segment.endAngle) / 2;
   const textRadius = (segment.innerRadius + segment.outerRadius) / 2;
@@ -521,13 +524,15 @@ function sectorLabelGeometry(
   const width = useRadialAxis ? radialBand : arcLength;
   const height = useRadialAxis ? arcLength : radialBand;
   const defaultMax = segment.depth <= 1 ? 30 : 22;
-  const preferred = clamp(segment.preferredFontSize ?? defaultMax, 4, 96);
+  const preferred = clamp(preferredFontSizeOverride ?? segment.preferredFontSize ?? defaultMax, 4, 96);
   const automaticMinimum = isDevanagariText(segment.label)
     ? segment.depth <= 1 ? 14 : 12
     : segment.depth <= 1 ? 13 : 11;
-  const minimumReadable = segment.preferredFontSize === undefined
-    ? automaticMinimum
-    : Math.min(preferred, automaticMinimum);
+  const minimumReadable = typeof minimumReadableFontSizeOverride === "number"
+    ? clamp(minimumReadableFontSizeOverride, 4, preferred)
+    : segment.preferredFontSize === undefined
+      ? automaticMinimum
+      : Math.min(preferred, automaticMinimum);
   const fit = fitLabel(segment.label, width, height, preferred, {
     fontFamily: segment.fontFamily,
     fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
@@ -947,11 +952,49 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     d.rotation,
   );
   const rootClipId = `${clipPrefix}-root`;
+  const outermostLabelPreferredFontSize = clamp(
+    typeof d.fontSize === "number" ? d.fontSize : 18,
+    8,
+    72
+  );
+  const outermostLabelMinimumFontSize = 8;
+  const outermostLabelSegments = d.radialEqualOutermostLabelSizes === true
+    ? model.segments.filter((segment) => !segment.children.length && segment.label.trim())
+    : [];
+  const outermostLabelFontSize = d.radialEqualOutermostLabelSizes === true
+    ? radialOutermostCommonFontSize(
+        outermostLabelSegments.map((segment) => {
+          const geometry = sectorLabelGeometry(
+            segment,
+            model.center,
+            fontMetricsReady,
+            d.rotation,
+            outermostLabelPreferredFontSize,
+            outermostLabelMinimumFontSize
+          );
+          return geometry.lines.length ? geometry.fontSize : null;
+        }),
+        outermostLabelPreferredFontSize,
+        outermostLabelMinimumFontSize
+      )
+    : null;
+
+  const labelGeometryForSegment = (segment: SunburstSegment): LabelGeometry => {
+    const useCommonOutermostSize = outermostLabelFontSize !== null && !segment.children.length;
+    return sectorLabelGeometry(
+      segment,
+      model.center,
+      fontMetricsReady,
+      d.rotation,
+      useCommonOutermostSize ? outermostLabelFontSize : undefined,
+      useCommonOutermostSize ? outermostLabelMinimumFontSize : undefined
+    );
+  };
 
   const selectedGeometry = selectedId === d.rootId
     ? rootFit
     : selectedSegment
-      ? sectorLabelGeometry(selectedSegment, model.center, fontMetricsReady, d.rotation)
+      ? labelGeometryForSegment(selectedSegment)
       : null;
   const selectedRichText = selectedId === d.rootId ? rootRichText : selectedSegment?.richText ?? "";
   const selectedLabel = selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "";
@@ -1385,7 +1428,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             segment.outerRadius,
             (segment.startAngle + segment.endAngle) / 2
           );
-          const labelGeometry = sectorLabelGeometry(segment, model.center, fontMetricsReady, d.rotation);
+          const labelGeometry = labelGeometryForSegment(segment);
           const relationshipMarkerPoint = pointOnCircle(
             model.center,
             model.center,

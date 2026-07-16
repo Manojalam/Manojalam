@@ -41,6 +41,28 @@ export function radialHierarchyWeight(
   return Math.max(0.01, automaticWeight * clamp(numericManualWeight, 0.1, 10));
 }
 
+/**
+ * Chooses one font size for terminal radial labels after each label has been
+ * fitted to its own sector. A missing fit lowers the group to the readable
+ * floor instead of allowing the remaining labels to look inconsistently large.
+ */
+export function radialOutermostCommonFontSize(
+  fittedFontSizes: readonly (number | null)[],
+  preferredFontSize: number,
+  minimumReadableFontSize: number
+): number | null {
+  if (!fittedFontSizes.length) return null;
+  const minimum = clamp(minimumReadableFontSize, 4, 96);
+  const preferred = clamp(preferredFontSize, minimum, 96);
+  const tightestFit = fittedFontSizes.reduce<number>((smallest, fitted) => {
+    const size = typeof fitted === "number" && Number.isFinite(fitted)
+      ? clamp(fitted, minimum, preferred)
+      : minimum;
+    return Math.min(smallest, size);
+  }, preferred);
+  return clamp(tightestFit, minimum, preferred);
+}
+
 export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
   {
     id: "spectrum",
