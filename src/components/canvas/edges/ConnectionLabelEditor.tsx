@@ -6,6 +6,7 @@ import { CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash
 import { useCanvasStore } from "@/store/canvas-store";
 import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
+import { ConnectorPathStylePicker } from "./ConnectorPathStylePicker";
 
 interface ConnectionLabelEditorProps {
   edgeId: string;
@@ -210,6 +211,7 @@ export function ConnectionLabelEditor({
             }}
           />
           <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
+          <ConnectorPathStylePicker edgeId={toolbarEdgeId} />
           <button
             type="button"
             title={hasMovableLabel ? "Drag to move the label" : "Enter a label before moving it"}
