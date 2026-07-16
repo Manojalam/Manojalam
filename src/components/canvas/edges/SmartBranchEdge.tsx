@@ -26,7 +26,11 @@ import {
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { generateId } from "@/lib/utils";
-import { findConnectorLabelOwnerEdge, splitConnectorAtJunction } from "@/lib/canvas/connector-junction";
+import {
+  findConnectorLabelOwnerEdge,
+  findLogicalConnectorEdgeIds,
+  splitConnectorAtJunction,
+} from "@/lib/canvas/connector-junction";
 import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
@@ -125,7 +129,6 @@ function RoutedSmartBranchEdge({
   sourcePosition,
   targetPosition,
   data,
-  selected,
   markerStart,
   markerEnd,
 }: EdgeProps) {
@@ -157,6 +160,13 @@ function RoutedSmartBranchEdge({
   const labelOwnerId = labelOwnerEdge?.id ?? id;
   const labelOwnerData = (labelOwnerEdge?.data ?? d) as VidyaEdgeData;
   const connectionLabel = typeof labelOwnerData.label === "string" ? labelOwnerData.label : undefined;
+  const logicalEdgeIds = findLogicalConnectorEdgeIds(edges, id);
+  const logicalEdgeIdSet = new Set(logicalEdgeIds);
+  const logicalSelected = edges.some((edge) => logicalEdgeIdSet.has(edge.id) && edge.selected);
+  const activeSegmentId = connectorClickPoint?.edgeId && logicalEdgeIdSet.has(connectorClickPoint.edgeId)
+    ? connectorClickPoint.edgeId
+    : labelOwnerId;
+  const editorSelected = logicalSelected && activeSegmentId === id;
 
   // Keep every connector inexpensive while nodes are moving. The obstacle-aware
   // route is recalculated from the final node geometry as soon as dragging ends.
@@ -225,24 +235,25 @@ function RoutedSmartBranchEdge({
         data-export-normal-stroke={edgeColor ?? "#94a3b8"}
         id={id}
         path={path}
-        markerStart={markerStart}
-        markerEnd={markerEnd}
-        interactionWidth={28}
+        markerStart={sourceNode?.type === "junction" ? undefined : markerStart}
+        markerEnd={targetNode?.type === "junction" ? undefined : markerEnd}
+        interactionWidth={48}
         style={{
-          stroke: selected ? "#6366f1" : edgeColor ?? "#94a3b8",
+          stroke: logicalSelected ? "#6366f1" : edgeColor ?? "#94a3b8",
           strokeWidth: d.width ?? 2,
           strokeDasharray: d.dashed ? "6 4" : undefined,
         }}
       />
-      {(selected || d.label) && (
+      {(logicalSelected || (labelOwnerId === id && connectionLabel)) && (
         <EdgeLabelRenderer>
           <ConnectionLabelEditor
             edgeId={labelOwnerId}
+            toolbarEdgeId={id}
             deleteEdgeId={id}
             x={labelX}
             y={labelY}
             label={connectionLabel}
-            selected={selected}
+            selected={editorSelected}
             showLabel={labelOwnerId === id}
             onAddBend={curveStyle === "step" ? () => {
               pushHistory();
@@ -303,7 +314,7 @@ function RoutedSmartBranchEdge({
               useUIStore.getState().setConnectorClickPoint(null);
             } : undefined}
           />
-          {selected && curveStyle === "step" && waypoints.length > 0 && (
+          {editorSelected && curveStyle === "step" && waypoints.length > 0 && (
             <ConnectorBendHandles edgeId={id} waypoints={waypoints} />
           )}
         </EdgeLabelRenderer>

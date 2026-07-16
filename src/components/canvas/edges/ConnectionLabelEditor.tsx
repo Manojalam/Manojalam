@@ -8,6 +8,7 @@ import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 
 interface ConnectionLabelEditorProps {
   edgeId: string;
+  toolbarEdgeId?: string;
   x: number;
   y: number;
   label?: string;
@@ -57,6 +58,7 @@ function updateToolbarOffset(edgeId: string, toolbarOffset?: { x: number; y: num
 /** A visible edge label plus an in-place editor whenever the edge is selected. */
 export function ConnectionLabelEditor({
   edgeId,
+  toolbarEdgeId = edgeId,
   x,
   y,
   label = "",
@@ -83,7 +85,7 @@ export function ConnectionLabelEditor({
     state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
   )?.labelOffset) as { x?: unknown; y?: unknown } | undefined;
   const storedToolbarOffset = useCanvasStore((state) => (
-    state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
+    state.edges.find((edge) => edge.id === toolbarEdgeId)?.data as Record<string, unknown> | undefined
   )?.toolbarOffset) as { x?: unknown; y?: unknown } | undefined;
   const { screenToFlowPosition } = useReactFlow();
   const labelOffset = {
@@ -93,6 +95,7 @@ export function ConnectionLabelEditor({
   const labelX = x + labelOffset.x;
   const labelY = y + labelOffset.y;
   const labelWasMoved = labelOffset.x !== 0 || labelOffset.y !== 0;
+  const hasMovableLabel = label.trim().length > 0;
   const toolbarOffset = {
     x: typeof storedToolbarOffset?.x === "number" ? storedToolbarOffset.x : 0,
     y: typeof storedToolbarOffset?.y === "number" ? storedToolbarOffset.y : -64,
@@ -168,7 +171,7 @@ export function ConnectionLabelEditor({
               event.preventDefault();
               event.stopPropagation();
               const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-              updateToolbarOffset(edgeId, {
+              updateToolbarOffset(toolbarEdgeId, {
                 x: Math.round(toolbarDrag.current.startOffset.x + point.x - toolbarDrag.current.startPointer.x),
                 y: Math.round(toolbarDrag.current.startOffset.y + point.y - toolbarDrag.current.startPointer.y),
               });
@@ -186,7 +189,7 @@ export function ConnectionLabelEditor({
             onDoubleClick={(event) => {
               event.stopPropagation();
               pushHistory();
-              updateToolbarOffset(edgeId);
+              updateToolbarOffset(toolbarEdgeId);
             }}
           >
             <GripVertical className="h-4 w-4" />
@@ -207,9 +210,12 @@ export function ConnectionLabelEditor({
           <ConnectorLabelPresets currentLabel={label} onSelect={setLabel} />
           <button
             type="button"
-            title="Drag to move the label"
+            title={hasMovableLabel ? "Drag to move the label" : "Enter a label before moving it"}
             aria-label="Move connection label"
-            className="flex h-7 w-7 cursor-move items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            disabled={!hasMovableLabel}
+            className={hasMovableLabel
+              ? "flex h-7 w-7 cursor-move items-center justify-center rounded-md bg-primary/10 text-primary hover:bg-primary/20"
+              : "flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-md text-muted-foreground/40"}
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();

@@ -126,6 +126,9 @@ export function splitConnectorAtJunction(
   const color = typeof data.color === "string"
     ? data.color
     : typeof data.layoutColor === "string" ? data.layoutColor : "#6366f1";
+  const connectorGroupId = typeof data.connectorGroupId === "string"
+    ? data.connectorGroupId
+    : edge.id;
   const commonData = {
     ...data,
     edgeType: "branch",
@@ -134,6 +137,7 @@ export function splitConnectorAtJunction(
     preserveHandles: true,
     layoutMode: "freeForm",
     waypoints: undefined,
+    connectorGroupId,
     connectorJunctionId: ids.junctionId,
   };
   const [firstWaypoints, secondWaypoints] = splitRouteWaypoints(routePoints, point);
@@ -245,19 +249,71 @@ export function refreshConnectorJunctionHandles(
   });
 }
 
-/** Resolves either half of a split connector to the edge that owns its shared label. */
+function junctionSegmentData(edge: Edge): {
+  connectorGroupId?: string;
+  connectorJunctionId?: string;
+  connectorJunctionSegment?: "incoming" | "outgoing";
+} {
+  const data = (edge.data ?? {}) as Record<string, unknown>;
+  return {
+    connectorGroupId: typeof data.connectorGroupId === "string" ? data.connectorGroupId : undefined,
+    connectorJunctionId: typeof data.connectorJunctionId === "string" ? data.connectorJunctionId : undefined,
+    connectorJunctionSegment: data.connectorJunctionSegment === "incoming" || data.connectorJunctionSegment === "outgoing"
+      ? data.connectorJunctionSegment
+      : undefined,
+  };
+}
+
+/**
+ * Returns every stored edge that forms one logical connector through junctions.
+ * New connectors use a stable group id; the topology fallback repairs boards
+ * saved before that id existed, including connectors split more than once.
+ */
+export function findLogicalConnectorEdgeIds(edges: Edge[], edgeId: string): string[] {
+  const edge = edges.find((candidate) => candidate.id === edgeId);
+  if (!edge) return [];
+  const metadata = junctionSegmentData(edge);
+  if (metadata.connectorGroupId) {
+    return edges
+      .filter((candidate) => junctionSegmentData(candidate).connectorGroupId === metadata.connectorGroupId)
+      .map((candidate) => candidate.id);
+  }
+  if (!metadata.connectorJunctionId || !metadata.connectorJunctionSegment) return [edge.id];
+
+  const associated = new Set([edge.id]);
+  const queue = [edge];
+  while (queue.length) {
+    const current = queue.shift()!;
+    const currentMetadata = junctionSegmentData(current);
+    for (const candidate of edges) {
+      if (associated.has(candidate.id)) continue;
+      const candidateMetadata = junctionSegmentData(candidate);
+      if (!candidateMetadata.connectorJunctionId || !candidateMetadata.connectorJunctionSegment) continue;
+      const sameJunction = candidateMetadata.connectorJunctionId === currentMetadata.connectorJunctionId;
+      const continuesForward = candidate.source === current.target;
+      const continuesBackward = candidate.target === current.source;
+      if (!sameJunction && !continuesForward && !continuesBackward) continue;
+      associated.add(candidate.id);
+      queue.push(candidate);
+    }
+  }
+  return edges.filter((candidate) => associated.has(candidate.id)).map((candidate) => candidate.id);
+}
+
+/** Resolves any junction segment to the edge that owns its logical connector label. */
 export function findConnectorLabelOwnerEdge(edges: Edge[], edgeId: string): Edge | undefined {
   const edge = edges.find((candidate) => candidate.id === edgeId);
   if (!edge) return undefined;
-  const data = (edge.data ?? {}) as Record<string, unknown>;
-  if (data.connectorJunctionSegment !== "incoming" || typeof data.connectorJunctionId !== "string") {
-    return edge;
-  }
-  return edges.find((candidate) => {
-    const candidateData = (candidate.data ?? {}) as Record<string, unknown>;
-    return candidateData.connectorJunctionId === data.connectorJunctionId
-      && candidateData.connectorJunctionSegment === "outgoing";
-  }) ?? edge;
+  const logicalIds = new Set(findLogicalConnectorEdgeIds(edges, edgeId));
+  const logicalEdges = edges.filter((candidate) => logicalIds.has(candidate.id));
+  const storedLabelOwner = logicalEdges.find((candidate) => (
+    typeof ((candidate.data ?? {}) as Record<string, unknown>).label === "string"
+  ));
+  if (storedLabelOwner) return storedLabelOwner;
+
+  return logicalEdges.find((candidate) => (
+    !logicalEdges.some((next) => next.id !== candidate.id && next.source === candidate.target)
+  )) ?? logicalEdges[logicalEdges.length - 1] ?? edge;
 }
 
 export interface ClearConnectorJunctionResult {

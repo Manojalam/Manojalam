@@ -57,6 +57,7 @@ import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
 import {
+  findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
   releaseConnectorJunctionRouteAnchors,
 } from "@/lib/canvas/connector-junction";
@@ -727,9 +728,14 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     useUIStore.getState().setConnectorClickPoint({ edgeId: edge.id, ...clickPoint });
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
     useCanvasStore.setState((state) => {
+      const logicalEdgeIds = findLogicalConnectorEdgeIds(state.edges, edge.id);
       const selectedEdgeIds = new Set(additive ? state.selectedEdgeIds : []);
-      if (additive && selectedEdgeIds.has(edge.id)) selectedEdgeIds.delete(edge.id);
-      else selectedEdgeIds.add(edge.id);
+      const logicalConnectorSelected = logicalEdgeIds.every((edgeId) => selectedEdgeIds.has(edgeId));
+      if (additive && logicalConnectorSelected) {
+        logicalEdgeIds.forEach((edgeId) => selectedEdgeIds.delete(edgeId));
+      } else {
+        logicalEdgeIds.forEach((edgeId) => selectedEdgeIds.add(edgeId));
+      }
       const selectedNodeIds = additive ? state.selectedNodeIds : [];
       const selectedNodes = new Set(selectedNodeIds);
       return {
@@ -762,6 +768,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         ? source
         : targetNode?.type === "shape" ? targetNode : null;
       const junctionConnection = source?.type === "junction" || targetNode?.type === "junction";
+      const terminatesAtJunction = targetNode?.type === "junction";
       const flowchartConnection = junctionConnection || (!!flowchartEndpoint
         && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode));
       const mode: LayoutMode = flowchartConnection ? "freeForm" : configuredMode;
@@ -779,14 +786,16 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         type: "branch",
         hidden: hiddenInMatrix || hiddenInSunburst,
         reconnectable: true,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
+        markerEnd: terminatesAtJunction
+          ? undefined
+          : { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: {
           edgeType: "branch",
           curveStyle: flowchartConnection ? "step" : route?.curveStyle ?? "smooth",
           manualRoute: flowchartConnection,
           preserveHandles: flowchartConnection
             && (!!connection.sourceHandle || !!connection.targetHandle),
-          arrowEnd: true,
+          arrowEnd: !terminatesAtJunction,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
           hiddenInSunburst,
@@ -853,6 +862,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       ?? "freeForm") as LayoutMode);
     const flowchartEndpoint = source.type === "shape" ? source : target.type === "shape" ? target : null;
     const junctionConnection = source.type === "junction" || target.type === "junction";
+    const terminatesAtJunction = target.type === "junction";
     const flowchartConnection = junctionConnection || (!!flowchartEndpoint
       && usesManualFlowchartPlacement(flowchartEndpoint, configuredMode));
     const mode: LayoutMode = flowchartConnection ? "freeForm" : configuredMode;
@@ -912,7 +922,9 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         targetHandle: connection.targetHandle ?? route.targetHandle,
         hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
         reconnectable: true,
-        markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
+        markerEnd: terminatesAtJunction
+          ? undefined
+          : edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: {
           ...edgeData,
           waypoints: undefined,
@@ -920,6 +932,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
           curveStyle: flowchartConnection ? "step" : route.curveStyle,
           manualRoute: flowchartConnection || edgeData.manualRoute === true,
           preserveHandles: flowchartConnection || edgeData.preserveHandles === true,
+          arrowEnd: !terminatesAtJunction,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
           hiddenInSunburst,
