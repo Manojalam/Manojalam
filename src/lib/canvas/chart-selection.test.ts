@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isHierarchyRadialChartActive } from "./chart-selection";
+import {
+  isHierarchyRadialChartActive,
+  relationshipDiagramSourceIds,
+} from "./chart-selection";
 
 const chartNodeIds = new Set(["root", "sector-a", "sector-b"]);
 
@@ -16,4 +19,28 @@ test("mixed selections do not expose independent chart controls", () => {
 
 test("selecting the chart wrapper directly keeps its controls active", () => {
   assert.equal(isHierarchyRadialChartActive(true, [], chartNodeIds), true);
+});
+
+test("a single selected source with a saved relationship can generate a diagram", () => {
+  assert.deepEqual(
+    relationshipDiagramSourceIds(
+      ["sector-a"],
+      [{ sourceNodeId: "sector-a" }]
+    ),
+    ["sector-a"]
+  );
+});
+
+test("diagram sources exclude unrelated selections and preserve selection order", () => {
+  assert.deepEqual(
+    relationshipDiagramSourceIds(
+      ["sector-b", "unrelated", "sector-a", "sector-b"],
+      [{ sourceNodeId: "sector-a" }, { sourceNodeId: "sector-b" }]
+    ),
+    ["sector-b", "sector-a"]
+  );
+  assert.deepEqual(
+    relationshipDiagramSourceIds(["unrelated"], [{ sourceNodeId: "sector-a" }]),
+    []
+  );
 });

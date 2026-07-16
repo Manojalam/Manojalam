@@ -32,6 +32,7 @@ import {
   distributeSelection,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
+import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
@@ -71,6 +72,7 @@ function Divider() {
 export function SelectionToolbar() {
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const nodes = useCanvasStore((state) => state.nodes);
+  const relationships = useCanvasStore((state) => state.relationships);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
@@ -145,9 +147,12 @@ export function SelectionToolbar() {
         ?? "canvas-object"
       )
     : "canvas-selection";
-  const relationshipSourceIds = selected
-    .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
-    .map((node) => node.id);
+  const relationshipSourceIds = relationshipDiagramSourceIds(
+    selected
+      .filter((node) => !["sunburst", "frame", "relationshipDiagram"].includes(node.type ?? ""))
+      .map((node) => node.id),
+    relationships
+  );
 
   return (
     <NodeToolbar
