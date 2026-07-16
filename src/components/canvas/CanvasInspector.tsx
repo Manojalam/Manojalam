@@ -24,7 +24,7 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
-import { LAYOUT_OPTIONS, getNodeDimensions, isMatrixHierarchyEdge, routeForMode, type LayoutMode } from "@/lib/layout";
+import { LAYOUT_OPTIONS, getNodeDimensions } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import type {
   BorderLayer,
@@ -65,6 +65,7 @@ import {
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
+import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -766,6 +767,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>("style");
   const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
   const [bulkChildCount, setBulkChildCount] = useState(3);
+  const [resetManualRoutes, setResetManualRoutes] = useState(false);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const relationships   = useCanvasStore((s) => s.relationships);
@@ -1043,60 +1045,34 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
   const rerouteAllArrows = () => {
     if (!edges.length) return;
-    pushHistory();
-    const byId = new Map(nodes.map((node) => [node.id, node]));
-    const hierarchy = buildHierarchy(nodes, edges);
-    const matrixScopes = new Map<string, Set<string>>();
-    nodes.forEach((node) => {
-      const data = (node.data ?? {}) as Record<string, unknown>;
-      if (data.layoutMode === "matrix") {
-        matrixScopes.set(node.id, new Set(getSubtree(node.id, hierarchy)));
+    const result = smartRerouteBoardEdges(nodes, edges, {
+      resetManualAdjustments: resetManualRoutes,
+    });
+    if (result.changedCount > 0) {
+      pushHistory();
+      useCanvasStore.setState({ edges: result.edges, saveStatus: "unsaved" });
+    } else {
+      // Refresh render-time obstacle routes even when metadata was already clean.
+      useCanvasStore.setState({ edges: [...result.edges] });
+    }
+    const detail = [
+      !resetManualRoutes && result.preservedManualCount
+        ? `Kept ${result.preservedManualCount} manually adjusted connector${result.preservedManualCount === 1 ? "" : "s"}.`
+        : null,
+      result.unresolvedCount
+        ? `Skipped ${result.unresolvedCount} connector${result.unresolvedCount === 1 ? "" : "s"} with a missing endpoint.`
+        : null,
+      result.changedCount === 0 ? "Routes were already optimized." : null,
+    ].filter(Boolean).join(" ");
+    toast.success(
+      `${resetManualRoutes ? "Reset and smart-routed" : "Smart-routed"} ${result.reroutedCount} connector${result.reroutedCount === 1 ? "" : "s"}.`,
+      {
+        description: detail || undefined,
+        ...(result.changedCount > 0
+          ? { action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() } }
+          : {}),
       }
-    });
-    useCanvasStore.setState({
-      edges: edges.map((edge) => {
-        const source = byId.get(edge.source);
-        const target = byId.get(edge.target);
-        if (!source || !target) return edge;
-        const sourceData = (source.data ?? {}) as Record<string, unknown>;
-        const matrixRootId = typeof sourceData.matrixRootId === "string"
-          ? sourceData.matrixRootId
-          : sourceData.layoutMode === "matrix" ? source.id : null;
-        const matrixRoot = matrixRootId ? byId.get(matrixRootId) : null;
-        const mode = ((((matrixRoot?.data ?? source.data) as Record<string, unknown>).layoutMode as LayoutMode | undefined) ?? "freeForm");
-        const route = routeForMode(mode, source, target);
-        const scopeIds = matrixRootId ? matrixScopes.get(matrixRootId) : undefined;
-        const hiddenInMatrix = mode === "matrix"
-          && !!scopeIds
-          && isMatrixHierarchyEdge(edge, hierarchy, scopeIds);
-        const hiddenInSunburst = mode === "radial";
-        const edgeData = (edge.data ?? {}) as Record<string, unknown>;
-        const baseHidden = !!edge.hidden
-          && edgeData.hiddenInMatrix !== true
-          && edgeData.hiddenInSunburst !== true;
-        return {
-          ...edge,
-          hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
-          sourceHandle: route.sourceHandle,
-          targetHandle: route.targetHandle,
-          markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
-          data: {
-            ...edgeData,
-            edgeType: "branch",
-            curveStyle: route.curveStyle,
-            hiddenInMatrix,
-            hiddenInMatrixFor: hiddenInMatrix ? matrixRootId : undefined,
-            hiddenInSunburst,
-            hiddenInSunburstFor: hiddenInSunburst ? edge.source : undefined,
-            layoutMode: mode,
-          },
-        };
-      }),
-      saveStatus: "unsaved",
-    });
-    toast.success(`Rerouted ${edges.length} arrow${edges.length === 1 ? "" : "s"}.`, {
-      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-    });
+    );
   };
 
   const setSelectedEdgeField = (key: string, value: unknown, captureHistory = true) => {
@@ -1579,6 +1555,35 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
           </Section>
           <Separator />
+          <Section label="Connector routing" defaultOpen>
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              Recalculates attachment sides and refreshes obstacle-aware paths across the board.
+            </p>
+            <div className="flex items-center justify-between gap-3 rounded-md border p-2">
+              <div>
+                <Label className="text-xs">Reset manual adjustments</Label>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Clears bend points and custom attachment sides.
+                </p>
+              </div>
+              <Switch checked={resetManualRoutes} onCheckedChange={setResetManualRoutes} />
+            </div>
+            <Button
+              variant={resetManualRoutes ? "destructive" : "outline"}
+              size="sm"
+              className="h-8 w-full justify-start text-xs"
+              disabled={!edges.length}
+              onClick={rerouteAllArrows}
+            >
+              {resetManualRoutes ? "Reset and reroute all connectors" : "Smart reroute all connectors"}
+            </Button>
+            {!resetManualRoutes && (
+              <p className="text-[9px] leading-relaxed text-muted-foreground">
+                Manual bends, custom ports, labels, line styles, and junctions are preserved.
+              </p>
+            )}
+          </Section>
+          <Separator />
           <Section label="Repair tools" defaultOpen={false}>
             <Button
               variant="outline"
@@ -1588,15 +1593,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onClick={repairHierarchyFromArrows}
             >
               Repair hierarchy from arrows
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-full justify-start text-xs"
-              disabled={!edges.length}
-              onClick={rerouteAllArrows}
-            >
-              Reroute all arrows
             </Button>
             <Button
               variant="outline"
