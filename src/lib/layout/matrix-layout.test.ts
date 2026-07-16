@@ -21,6 +21,7 @@ type TreeNode = {
   height?: number;
   hidden?: boolean;
   collapsed?: boolean;
+  orientation?: "horizontal" | "vertical";
 };
 
 function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
@@ -39,6 +40,7 @@ function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
       parentId: spec.parentId,
       childOrder: childOrder.get(spec.id) ?? [],
       ...(spec.collapsed ? { collapsed: true } : {}),
+      ...(spec.orientation ? { matrixOrientation: spec.orientation } : {}),
     },
   }));
   const edges = specs
@@ -271,4 +273,47 @@ test("Matrix overrides do not replace the stored normal node size", () => {
     },
   };
   assert.deepEqual(getMatrixBaseSize(node), { width: 240, height: 96 });
+});
+
+test("a vertical Matrix grows hierarchy levels downward", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, orientation: "vertical" },
+    { id: "group-a", parentId: "root" },
+    { id: "a-1", parentId: "group-a" },
+    { id: "a-2", parentId: "group-a" },
+    { id: "group-b", parentId: "root" },
+    { id: "b-1", parentId: "group-b" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(result.orientation, "vertical");
+  assert.ok(cells.get("group-a")!.x < cells.get("group-b")!.x);
+  assert.ok(cells.get("a-1")!.y > cells.get("group-a")!.y);
+  assert.ok(cells.get("a-1")!.x < cells.get("a-2")!.x);
+  assert.ok(result.header.y < cells.get("group-a")!.y);
+  assertClean(result);
+});
+
+test("a child Matrix orientation overrides only its own descendants", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "vertical-branch", parentId: "root", orientation: "vertical" },
+    { id: "vertical-1", parentId: "vertical-branch" },
+    { id: "vertical-2", parentId: "vertical-branch" },
+    { id: "horizontal-branch", parentId: "root" },
+    { id: "horizontal-1", parentId: "horizontal-branch" },
+    { id: "horizontal-2", parentId: "horizontal-branch" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(result.orientation, "horizontal");
+  assert.ok(cells.get("vertical-1")!.y > cells.get("vertical-branch")!.y);
+  assert.ok(cells.get("vertical-1")!.x < cells.get("vertical-2")!.x);
+  assert.ok(cells.get("horizontal-1")!.x > cells.get("horizontal-branch")!.x);
+  assert.ok(cells.get("horizontal-1")!.y < cells.get("horizontal-2")!.y);
+  assertClean(result);
 });

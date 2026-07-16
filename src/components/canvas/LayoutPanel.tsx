@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3X3, Maximize2, Palette, RefreshCw, RotateCcw, Ungroup, X } from "lucide-react";
+import { ArrowDown, ArrowRight, Grid3X3, Maximize2, Palette, RefreshCw, RotateCcw, Ungroup, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -106,6 +106,26 @@ export function LayoutPanel() {
     ? nodes.find((node) => node.id === matrixRootId) ?? null
     : currentMode === "matrix" ? selectedNode : null;
   const matrixBranchIds = matrixRoot ? getSubtree(matrixRoot.id, hierarchy) : [];
+  const explicitMatrixOrientation = selectedData.matrixOrientation === "vertical"
+    || selectedData.matrixOrientation === "horizontal"
+    ? selectedData.matrixOrientation
+    : null;
+  let effectiveMatrixOrientation: "horizontal" | "vertical" = "horizontal";
+  if (selectedNode && matrixRoot) {
+    const lineage: string[] = [];
+    let cursor: string | null = selectedNode.id;
+    const seen = new Set<string>();
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      lineage.unshift(cursor);
+      if (cursor === matrixRoot.id) break;
+      cursor = hierarchy.get(cursor)?.parentId ?? null;
+    }
+    for (const nodeId of lineage) {
+      const orientation = (nodes.find((node) => node.id === nodeId)?.data as Record<string, unknown> | undefined)?.matrixOrientation;
+      if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
+    }
+  }
   let paletteRoot = matrixRoot;
   if (!paletteRoot && selectedNode) {
     const nodesById = new Map(nodes.map((node) => [node.id, node]));
@@ -363,6 +383,75 @@ export function LayoutPanel() {
               >
                 <Grid3X3 className="h-3.5 w-3.5" />
               </button>
+            </div>
+
+            <div className="mb-2 rounded-md border border-border/70 bg-background/60 p-1.5">
+              <div className="mb-1.5">
+                <div className="text-[10px] font-medium text-foreground">Branch orientation</div>
+                <div className="truncate text-[9px] text-muted-foreground">
+                  {selectedNode?.id === matrixRoot.id
+                    ? "Sets the Matrix and is inherited by its children"
+                    : `Children of ${nodeTitle(selectedNode)}`}
+                </div>
+              </div>
+              <div className={cn("grid gap-1", selectedNode?.id === matrixRoot.id ? "grid-cols-2" : "grid-cols-3")}>
+                <button
+                  type="button"
+                  title="Grow descendants from left to right"
+                  onClick={() => {
+                    if (!selectedNode) return;
+                    useCanvasStore.getState().pushHistory();
+                    updateNodeData(selectedNode.id, { matrixOrientation: "horizontal" });
+                    requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                  }}
+                  className={cn(
+                    "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                    effectiveMatrixOrientation === "horizontal" && (selectedNode?.id === matrixRoot.id || explicitMatrixOrientation === "horizontal")
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background hover:bg-muted"
+                  )}
+                >
+                  <ArrowRight className="h-3 w-3" /> Across
+                </button>
+                <button
+                  type="button"
+                  title="Grow descendants from top to bottom"
+                  onClick={() => {
+                    if (!selectedNode) return;
+                    useCanvasStore.getState().pushHistory();
+                    updateNodeData(selectedNode.id, { matrixOrientation: "vertical" });
+                    requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                  }}
+                  className={cn(
+                    "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                    effectiveMatrixOrientation === "vertical" && (selectedNode?.id === matrixRoot.id || explicitMatrixOrientation === "vertical")
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background hover:bg-muted"
+                  )}
+                >
+                  <ArrowDown className="h-3 w-3" /> Down
+                </button>
+                {selectedNode?.id !== matrixRoot.id && (
+                  <button
+                    type="button"
+                    title={`Inherit ${effectiveMatrixOrientation === "vertical" ? "Down" : "Across"} from the parent`}
+                    onClick={() => {
+                      if (!selectedNode) return;
+                      useCanvasStore.getState().pushHistory();
+                      updateNodeData(selectedNode.id, { matrixOrientation: undefined });
+                      requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                    }}
+                    className={cn(
+                      "rounded-md border px-1 py-1.5 text-[9px]",
+                      explicitMatrixOrientation === null
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background hover:bg-muted"
+                    )}
+                  >
+                    Inherit
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-1">

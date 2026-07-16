@@ -920,7 +920,7 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "matrixDensity", "matrixGridVisible",
+  "collapsed", "parentId", "childOrder", "matrixDensity", "matrixGridVisible", "matrixOrientation",
 ]);
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
