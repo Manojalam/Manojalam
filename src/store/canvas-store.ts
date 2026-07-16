@@ -75,6 +75,7 @@ import {
   manualizeFlowchartBranch,
   normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
+  refreshAutomaticFlowchartHandles,
   rerouteFlowchartInsertionEdges,
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
@@ -1552,7 +1553,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
     const handledEdges = assignDefaultHandles(parentedNodes, board.content.edges);
-    const flowchartEdges = normalizeImplicitFlowchartRoutes(parentedNodes, handledEdges);
+    const normalizedFlowchartEdges = normalizeImplicitFlowchartRoutes(parentedNodes, handledEdges);
+    const flowchartEdges = refreshAutomaticFlowchartHandles(parentedNodes, normalizedFlowchartEdges);
     const normalizedNodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, flowchartEdges));
     const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, flowchartEdges);
     const nodes = styledBoard.nodes;

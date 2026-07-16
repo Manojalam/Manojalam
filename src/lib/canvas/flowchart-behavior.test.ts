@@ -9,6 +9,7 @@ import {
   manualizeFlowchartBranch,
   normalizeImplicitFlowchartRoutes,
   placeFlowchartInsertions,
+  refreshAutomaticFlowchartHandles,
   rerouteFlowchartInsertionEdges,
   usesManualFlowchartPlacement,
 } from "./flowchart-behavior";
@@ -150,6 +151,32 @@ test("additional children stay on the side established by the latest child", () 
   const placed = placeFlowchartInsertions(nodes, ["inserted"]);
 
   assert.deepEqual(placed.find((node) => node.id === "inserted")?.position, { x: 524, y: 100 });
+});
+
+test("saved automatic ports refresh while explicitly chosen ports stay fixed", () => {
+  const nodes = [
+    shape("parent", 360, 20, null),
+    shape("child", 20, 120, "parent"),
+  ];
+  const automatic: Edge = {
+    id: "automatic",
+    source: "parent",
+    target: "child",
+    sourceHandle: "bottom",
+    targetHandle: "top",
+    data: { layoutMode: "freeForm", manualRoute: true },
+  };
+  const preserved: Edge = {
+    ...automatic,
+    id: "preserved",
+    data: { ...automatic.data, preserveHandles: true },
+  };
+
+  const refreshed = refreshAutomaticFlowchartHandles(nodes, [automatic, preserved]);
+
+  assert.equal(refreshed[0].sourceHandle, "left");
+  assert.equal(refreshed[0].targetHandle, "right");
+  assert.deepEqual(refreshed[1], preserved);
 });
 
 test("manual flowchart edges are excluded from shared tree and list connector buses", () => {
