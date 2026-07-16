@@ -41,6 +41,24 @@ test("external notes choose another side when the preferred position is occupied
   assert.equal(note.data.scriptMode, "iast");
 });
 
+test("a toolbar click places its note immediately beside the clicked canvas point", () => {
+  const occupied: Node = {
+    id: "occupied",
+    position: { x: 400, y: 240 },
+    style: { width: 300, height: 180 },
+    data: {},
+  };
+  const note = createExternalNoteNode(
+    source,
+    [source, occupied],
+    "note",
+    "plain",
+    { x: 420, y: 260 }
+  );
+
+  assert.deepEqual(note.position, { x: 432, y: 272 });
+});
+
 test("a source can have multiple independently positioned notes", () => {
   const first = createExternalNoteNode(source, [source], "first-note", "plain");
   const second = createExternalNoteNode(source, [source, first], "second-note", "plain");

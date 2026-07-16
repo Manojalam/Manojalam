@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { NodeToolbar, Position, type Node } from "@xyflow/react";
+import { NodeToolbar, Position, useReactFlow, type Node } from "@xyflow/react";
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
@@ -51,7 +51,7 @@ function ActionButton({
   children,
 }: {
   label: string;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   children: React.ReactNode;
 }) {
@@ -64,7 +64,7 @@ function ActionButton({
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
-        onClick();
+        onClick(event);
       }}
       className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-35"
     >
@@ -189,6 +189,7 @@ export function SelectionToolbar() {
   const setLayoutPanelOpen = useUIStore((state) => state.setLayoutPanelOpen);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
   const openBoardExport = useUIStore((state) => state.openBoardExport);
+  const { screenToFlowPosition } = useReactFlow();
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
@@ -299,7 +300,10 @@ export function SelectionToolbar() {
           {typeof noteSourceId === "string" && noteSource && (
             <ActionButton
               label={`Add another note to ${noteSourceLabel}`}
-              onClick={() => createNodeNote(noteSourceId)}
+              onClick={(event) => createNodeNote(noteSourceId, screenToFlowPosition({
+                x: event.clientX,
+                y: event.clientY,
+              }))}
             >
               <MessageSquarePlus className="h-4 w-4" />
             </ActionButton>
@@ -312,7 +316,15 @@ export function SelectionToolbar() {
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Add note outside box" onClick={() => createNodeNote(singleId)}><MessageSquarePlus className="h-4 w-4" /></ActionButton>
+          <ActionButton
+            label="Add note outside box"
+            onClick={(event) => createNodeNote(singleId, screenToFlowPosition({
+              x: event.clientX,
+              y: event.clientY,
+            }))}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+          </ActionButton>
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
           {singleShapeData && (
             <ShapeChanger
