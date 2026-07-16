@@ -23,6 +23,7 @@ import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -103,27 +104,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
       />
-      <div
-        className={cn(
-          "group relative h-full w-full p-1",
-          selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-        )}
-        style={{
-          backgroundColor: fillColor ?? "transparent",
-          border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
-          borderRadius: bRadius,
-        }}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          if (isDrawing) return;
-          editHistoryCaptured.current = false;
-          editDirty.current = false;
-          setEditing(true);
-        }}
-      >
-        {/* Extra border layers */}
-        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
-
+      <div className="group relative h-full w-full">
         <NodeHandles color={borderColor ?? "#6366f1"} selected={selected} />
         <NodeQuickActions nodeId={id} color={borderColor ?? "#6366f1"} selected={selected} />
 
@@ -142,6 +123,28 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             <Plus className="h-3.5 w-3.5 text-white" />
           </button>
         )}
+
+        <div
+          className={cn(
+            "absolute inset-0 p-1",
+            selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          )}
+          style={{
+            backgroundColor: fillColor ?? "transparent",
+            border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
+            borderRadius: bRadius,
+            ...objectRotationStyle("text", dd),
+          }}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            if (isDrawing) return;
+            editHistoryCaptured.current = false;
+            editDirty.current = false;
+            setEditing(true);
+          }}
+        >
+        {/* Extra border layers */}
+        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
         {/* Internal fill regions (clipped to node bounds) */}
         {!matrixCell && <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
@@ -189,6 +192,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
             onBlur={finishEditing}
           />
+        </div>
         </div>
       </div>
     </>

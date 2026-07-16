@@ -16,6 +16,7 @@ import {
   resolveLayoutVisualStyle,
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 const SECTIONS = [
   { key: "verse", label: "Verse" },
@@ -69,19 +70,23 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
       />
-      <div
+      <div className="relative h-full w-full">
+        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
+        <div
         className={cn(
-          "relative rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
+          "absolute inset-0 rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
           matrixCell ? "rounded-md shadow-none" : "",
           "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
-        style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}
+        style={{
+          ...generatedStyle,
+          ...(matrixCell ? { borderRadius: matrixRadius } : {}),
+          ...objectRotationStyle("shloka", dd),
+        }}
       >
-        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-semibold">{d.title || "Śloka"}</h3>
           <Badge className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}>
@@ -129,6 +134,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
             ))}
           </div>
         )}
+        </div>
       </div>
     </>
   );

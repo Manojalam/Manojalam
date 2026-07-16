@@ -20,6 +20,7 @@ import {
 } from "@/lib/relationship-diagram";
 import type { RelationshipDiagramNodeData } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
   const nodes = useCanvasStore((state) => state.nodes);
@@ -91,8 +92,7 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
           : "relative h-full w-full cursor-move overflow-visible"}
         style={{
           background: spec.background || "transparent",
-          transform: d.rotation ? `rotate(${d.rotation}deg)` : undefined,
-          transformOrigin: "center",
+          ...objectRotationStyle("relationshipDiagram", d as Record<string, unknown>),
         }}
         aria-label={spec.title || "Relationship diagram"}
       >

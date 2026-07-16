@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NodeToolbar, Position, useReactFlow, type Node } from "@xyflow/react";
 import {
   AlignCenterHorizontal,
@@ -24,6 +24,8 @@ import {
   Network,
   Plus,
   Rows3,
+  RotateCcw,
+  RotateCw,
   Settings2,
   Share2,
   Trash2,
@@ -45,6 +47,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { FLOWCHART_SHAPES } from "@/components/canvas/flowchart-shapes";
 import type { ShapeType } from "@/lib/types";
 import { buildHierarchy } from "@/lib/layout/hierarchy";
+import {
+  normalizeObjectRotation,
+  resolveObjectRotation,
+  supportsObjectRotation,
+} from "@/lib/canvas/object-rotation";
 
 function ActionButton({
   label,
@@ -178,6 +185,171 @@ function ShapeChanger({
               </button>
             );
           })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RotationPicker({ nodes }: { nodes: Node[] }) {
+  const [open, setOpen] = useState(false);
+  const historyCaptured = useRef(false);
+  const rotatable = nodes.filter((node) => supportsObjectRotation(
+    node.type,
+    (node.data ?? {}) as Record<string, unknown>
+  ));
+  if (!rotatable.length) return null;
+
+  const rotations = rotatable.map((node) => resolveObjectRotation(
+    node.type,
+    (node.data ?? {}) as Record<string, unknown>
+  ));
+  const mixed = rotations.some((rotation) => rotation !== rotations[0]);
+  const displayedRotation = mixed ? 0 : rotations[0];
+  const selectedIds = new Set(rotatable.map((node) => node.id));
+
+  const captureHistory = () => {
+    if (historyCaptured.current) return;
+    useCanvasStore.getState().pushHistory();
+    historyCaptured.current = true;
+  };
+  const finishChange = () => {
+    const changed = historyCaptured.current;
+    historyCaptured.current = false;
+    if (changed) useCanvasStore.getState().setSaveStatus("unsaved");
+  };
+  const applyAbsolute = (value: number) => {
+    captureHistory();
+    const objectRotation = normalizeObjectRotation(value);
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => selectedIds.has(node.id)
+        ? { ...node, data: { ...(node.data ?? {}), objectRotation } }
+        : node),
+      saveStatus: "unsaved",
+    }));
+  };
+  const rotateBy = (delta: number) => {
+    historyCaptured.current = false;
+    useCanvasStore.getState().pushHistory();
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => selectedIds.has(node.id)
+        ? {
+            ...node,
+            data: {
+              ...(node.data ?? {}),
+              objectRotation: normalizeObjectRotation(resolveObjectRotation(
+                node.type,
+                (node.data ?? {}) as Record<string, unknown>
+              ) + delta),
+            },
+          }
+        : node),
+      saveStatus: "unsaved",
+    }));
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (!next) finishChange();
+    }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={mixed ? "Rotate selected objects (mixed angles)" : `Rotate object (${displayedRotation}°)`}
+          aria-label="Rotate selected objects"
+          aria-expanded={open}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          className={cn(
+            "relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            (mixed || displayedRotation !== 0) && "bg-primary/10 text-primary"
+          )}
+        >
+          <RotateCw className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        data-export-ignore
+        side="top"
+        align="center"
+        sideOffset={10}
+        className="nodrag nopan w-72 p-3"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold">Object rotation</p>
+            <p className="text-[10px] text-muted-foreground">
+              {mixed ? "Mixed angles — moving the slider makes them equal." : `${displayedRotation}°`}
+            </p>
+          </div>
+          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            Angle
+            <input
+              key={`${rotatable.map((node) => node.id).join("-")}-${mixed ? "mixed" : displayedRotation}`}
+              type="number"
+              min={-180}
+              max={180}
+              step={1}
+              defaultValue={displayedRotation}
+              className="h-7 w-16 rounded-md border border-input bg-background px-2 text-right text-xs text-foreground"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              onBlur={(event) => {
+                const value = Number(event.currentTarget.value);
+                if (Number.isFinite(value) && (mixed || normalizeObjectRotation(value) !== displayedRotation)) {
+                  applyAbsolute(value);
+                }
+                finishChange();
+              }}
+            />
+          </label>
+        </div>
+        <input
+          aria-label="Object rotation angle"
+          type="range"
+          min={-180}
+          max={180}
+          step={1}
+          value={displayedRotation}
+          className="h-1.5 w-full accent-primary"
+          onPointerDown={captureHistory}
+          onPointerUp={finishChange}
+          onPointerCancel={finishChange}
+          onKeyDown={(event) => {
+            if (!event.repeat) captureHistory();
+          }}
+          onKeyUp={finishChange}
+          onChange={(event) => applyAbsolute(Number(event.currentTarget.value))}
+        />
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            className="flex h-8 items-center justify-center gap-1 rounded-md border border-border text-xs hover:bg-muted"
+            onClick={() => rotateBy(-90)}
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> 90°
+          </button>
+          <button
+            type="button"
+            className="h-8 rounded-md border border-border text-xs hover:bg-muted"
+            onClick={() => {
+              historyCaptured.current = false;
+              applyAbsolute(0);
+              finishChange();
+            }}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            className="flex h-8 items-center justify-center gap-1 rounded-md border border-border text-xs hover:bg-muted"
+            onClick={() => rotateBy(90)}
+          >
+            <RotateCw className="h-3.5 w-3.5" /> 90°
+          </button>
         </div>
       </PopoverContent>
     </Popover>
@@ -443,6 +615,8 @@ export function SelectionToolbar() {
           <Divider />
         </>
       )}
+
+      <RotationPicker nodes={selected} />
 
       {singleId && (
         <ActionButton
