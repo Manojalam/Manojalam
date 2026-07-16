@@ -360,6 +360,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** @deprecated Legacy pixel radius retained for old board compatibility. */
   borderRadius?: number;
   borderStyle?: "solid" | "dashed" | "dotted";
+  /** Whole-object visual rotation. Kept separate from chart and item-level rotations. */
+  objectRotation?: number;
+  /** @deprecated Legacy whole-object rotation retained for old boards. */
   rotation?: number;
   borderLayers?: BorderLayer[];
   fontSize?: number;

@@ -19,6 +19,7 @@ import {
   resolveLayoutVisualStyle,
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
@@ -59,19 +60,23 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
       />
-      <div
+      <div className="relative h-full w-full">
+        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
+        <div
         className={cn(
-          "relative rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
+          "absolute inset-0 rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
           matrixCell ? "rounded-md shadow-none" : "",
           "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
-        style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}
+        style={{
+          ...generatedStyle,
+          ...(matrixCell ? { borderRadius: matrixRadius } : {}),
+          ...objectRotationStyle("sanskrit", dd),
+        }}
       >
-        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
             <h3 className="font-semibold text-foreground">{d.title || "Sanskrit Card"}</h3>
@@ -118,6 +123,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
               <Copy className="h-3 w-3" />
             </Button>
           )}
+        </div>
         </div>
       </div>
     </>

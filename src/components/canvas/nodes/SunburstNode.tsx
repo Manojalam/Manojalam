@@ -20,6 +20,7 @@ import {
   SUNBURST_MIN_SIZE,
 } from "@/lib/canvas/chart-sizing";
 import { isHierarchyRadialChartActive } from "@/lib/canvas/chart-selection";
+import { resolveObjectRotation } from "@/lib/canvas/object-rotation";
 import {
   normalizeRadialLabelRotation,
   resolveChartAwareCenterLabelRotation,
@@ -814,6 +815,7 @@ function unwrapAngle(angle: number, near: number): number {
 
 function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const d = data as SunburstNodeData;
+  const objectRotation = resolveObjectRotation("sunburst", d as Record<string, unknown>);
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
   const relationships = useCanvasStore((state) => state.relationships);
@@ -983,7 +985,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     fontMetricsReady,
     d.maximizeText === true || rootData.maximizeText === true,
     rootData.radialTextRotation,
-    d.rotation,
+    objectRotation,
   );
   const rootClipId = `${clipPrefix}-root`;
   const outermostLabelPreferredFontSize = clamp(
@@ -1002,7 +1004,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             segment,
             model.center,
             fontMetricsReady,
-            d.rotation,
+            objectRotation,
             outermostLabelPreferredFontSize,
             outermostLabelMinimumFontSize
           );
@@ -1019,7 +1021,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       segment,
       model.center,
       fontMetricsReady,
-      d.rotation,
+      objectRotation,
       useCommonOutermostSize ? outermostLabelFontSize : undefined,
       useCommonOutermostSize ? outermostLabelMinimumFontSize : undefined
     );
@@ -1377,7 +1379,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         style={{
           left: 0,
           top: 0,
-          transform: d.rotation ? `rotate(${d.rotation}deg)` : undefined,
+          transform: objectRotation ? `rotate(${objectRotation}deg)` : undefined,
           transformOrigin: "center",
         }}
         data-sunburst-export="true"

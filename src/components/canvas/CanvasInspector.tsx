@@ -91,6 +91,10 @@ import {
   normalizeWholeBoxFontSize,
   supportsBoardTypography,
 } from "@/lib/canvas/board-typography";
+import {
+  resolveObjectRotation,
+  supportsObjectRotation,
+} from "@/lib/canvas/object-rotation";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -2099,14 +2103,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
           <Section label="Transform" defaultOpen>
             <div>
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Object rotation</p>
               <SliderControl
-                value={typeof chartData.rotation === "number" ? chartData.rotation : 0}
+                value={resolveObjectRotation("sunburst", chartData)}
                 min={-180}
                 max={180}
                 step={1}
                 suffix="deg"
-                onChange={(value) => updateNodeData(selectedNode.id, { rotation: value })}
+                onChangeStart={pushHistory}
+                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                onChange={(value) => updateNodeData(selectedNode.id, { objectRotation: value })}
               />
             </div>
           </Section>
@@ -2396,14 +2402,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
           <Section label="Transform" defaultOpen>
             <div>
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Object rotation</p>
               <SliderControl
-                value={typeof d.rotation === "number" ? d.rotation : 0}
+                value={resolveObjectRotation("relationshipDiagram", d)}
                 min={-180}
                 max={180}
                 step={1}
                 suffix="deg"
-                onChange={(value) => updateNodeData(selectedNode.id, { rotation: value })}
+                onChangeStart={pushHistory}
+                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                onChange={(value) => updateNodeData(selectedNode.id, { objectRotation: value })}
               />
             </div>
           </Section>
@@ -3940,17 +3948,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {isShapeNode && !isRadialLayoutSector && (
-          <Section label="Transform" defaultOpen={false} visible={singleNodeTab === "shape"}>
+        {supportsObjectRotation(nodeType, d) && !isRadialLayoutSector && (
+          <Section
+            label="Transform"
+            defaultOpen={false}
+            visible={singleNodeTab === (isShapeNode ? "shape" : "layout")}
+          >
             <div>
-              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Rotation</p>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Object rotation</p>
               <SliderControl
-                value={typeof d.rotation === "number" ? d.rotation : 0}
+                value={resolveObjectRotation(nodeType, d)}
                 min={-180}
                 max={180}
                 step={1}
                 suffix="deg"
-                onChange={(value) => setField("rotation", value)}
+                onChangeStart={pushHistory}
+                onChangeEnd={() => useCanvasStore.getState().setSaveStatus("unsaved")}
+                onChange={(value) => updateNodeData(selectedNode.id, { objectRotation: value })}
               />
             </div>
           </Section>

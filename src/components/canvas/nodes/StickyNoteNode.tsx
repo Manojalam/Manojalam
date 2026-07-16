@@ -29,6 +29,7 @@ import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -117,23 +118,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
         lineStyle={{ borderColor: border, borderRadius: bRadius }} handleStyle={{ borderColor: border, backgroundColor: "white" }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd} />
-      <div
-        className={cn(
-          "group relative h-full w-full p-1 transition-shadow",
-          matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
-        )}
-        style={{ backgroundColor: bg, border: `${bWidth}px ${bStyle} ${border}`, borderRadius: bRadius }}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          if (isDrawing) return;
-          editHistoryCaptured.current = false;
-          editDirty.current = false;
-          setEditing(true);
-        }}
-      >
-        {/* Extra border layers */}
-        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
-
+      <div className="group relative h-full w-full">
         <NodeHandles color={border} selected={selected} />
         <NodeQuickActions nodeId={id} color={border} selected={selected} />
 
@@ -152,6 +137,28 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             <Plus className="h-3.5 w-3.5 text-white" />
           </button>
         )}
+
+        <div
+          className={cn(
+            "absolute inset-0 p-1 transition-shadow",
+            matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
+          )}
+          style={{
+            backgroundColor: bg,
+            border: `${bWidth}px ${bStyle} ${border}`,
+            borderRadius: bRadius,
+            ...objectRotationStyle("sticky", dd),
+          }}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            if (isDrawing) return;
+            editHistoryCaptured.current = false;
+            editDirty.current = false;
+            setEditing(true);
+          }}
+        >
+        {/* Extra border layers */}
+        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
         {/* Internal fill regions (clipped to node bounds) */}
         {!matrixCell && <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
@@ -204,6 +211,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
             onBlur={finishEditing}
           />
+        </div>
         </div>
       </div>
     </>

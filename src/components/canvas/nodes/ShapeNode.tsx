@@ -35,6 +35,7 @@ import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -1029,7 +1030,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
   const petalCount   = normalizePetalCount(d.petalCount);
   const radialChart  = matrixCell ? undefined : d.radialChart;
-  const rotation     = matrixCell ? 0 : typeof dd.rotation === "number" ? dd.rotation : 0;
   const concentricLayers = useMemo(
     () => (d.concentricLayers ?? []) as ConcentricShapeLayer[],
     [d.concentricLayers]
@@ -1099,10 +1099,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const chartEditorScale = activeChartTextEdit
     ? Math.min(5, Math.max(1, 1 / Math.max(0.2, viewport.zoom)))
     : 1;
-  const visualRotationStyle: CSSProperties = {
-    transform: rotation ? `rotate(${rotation}deg)` : undefined,
-    transformOrigin: "center",
-  };
+  const visualRotationStyle: CSSProperties = objectRotationStyle("shape", dd);
 
   const addConcentricLayer = useCallback(() => {
     pushHistory();

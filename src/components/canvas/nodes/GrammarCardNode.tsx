@@ -16,6 +16,7 @@ import {
   resolveLayoutVisualStyle,
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
+import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 
 function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
@@ -43,19 +44,23 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
       />
-      <div
+      <div className="relative h-full w-full">
+        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
+        <div
         className={cn(
-          "relative rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
+          "absolute inset-0 rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
           matrixCell ? "rounded-md shadow-none" : "",
           "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
-        style={{ ...generatedStyle, ...(matrixCell ? { borderRadius: matrixRadius } : {}) }}
+        style={{
+          ...generatedStyle,
+          ...(matrixCell ? { borderRadius: matrixRadius } : {}),
+          ...objectRotationStyle("grammar", dd),
+        }}
       >
-        <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="font-semibold">{d.topic || "Grammar Rule"}</h3>
           <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 text-[10px]">
@@ -89,6 +94,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
             ))}
           </div>
         )}
+        </div>
       </div>
     </>
   );
