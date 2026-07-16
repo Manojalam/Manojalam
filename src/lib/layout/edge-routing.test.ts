@@ -179,3 +179,37 @@ test("nearly aligned facing ports render as one straight segment", () => {
   assert.equal(vertical.path.includes("Q"), false);
   assert.equal(horizontal.path.includes("Q"), false);
 });
+
+test("perpendicular ports use one clean elbow when the route is unobstructed", () => {
+  const route = routeOrthogonalEdge(
+    { x: 390, y: 230 },
+    { x: 230, y: 350 },
+    "bottom",
+    "right",
+    []
+  );
+
+  assert.deepEqual(route.points, [
+    { x: 390, y: 230 },
+    { x: 390, y: 350 },
+    { x: 230, y: 350 },
+  ]);
+});
+
+test("the clean elbow is rejected when it would cross an obstacle", () => {
+  const obstacle = createNodeRect("obstacle", 290, 320, 40, 60);
+  const route = routeOrthogonalEdge(
+    { x: 390, y: 230 },
+    { x: 230, y: 350 },
+    "bottom",
+    "right",
+    [obstacle]
+  );
+
+  assert.notDeepEqual(route.points, [
+    { x: 390, y: 230 },
+    { x: 390, y: 350 },
+    { x: 230, y: 350 },
+  ]);
+  assertAvoids(route, obstacle);
+});

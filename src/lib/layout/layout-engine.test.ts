@@ -138,7 +138,7 @@ test("Top Down is hidden from the chooser while legacy boards retain Vertical ge
   assert.deepEqual(legacyTopDown, vertical);
 });
 
-test("free-form child connectors keep vertical levels until nodes share a row", () => {
+test("free-form child connectors keep meaningful levels but follow predominant lateral moves", () => {
   const parent: Node = {
     id: "parent",
     position: { x: 360, y: 20 },
@@ -156,6 +156,11 @@ test("free-form child connectors keep vertical levels until nodes share a row", 
     id: "same-row",
     position: { x: 20, y: 34 },
   };
+  const slightlyLowerFarLeft: Node = {
+    ...lowerLeft,
+    id: "slightly-lower-far-left",
+    position: { x: 20, y: 120 },
+  };
   const upperRight: Node = {
     ...lowerLeft,
     id: "upper-right",
@@ -168,6 +173,11 @@ test("free-form child connectors keep vertical levels until nodes share a row", 
     curveStyle: "smooth",
   });
   assert.deepEqual(routeForMode("freeForm", parent, sameRow), {
+    sourceHandle: "left",
+    targetHandle: "right",
+    curveStyle: "smooth",
+  });
+  assert.deepEqual(routeForMode("freeForm", parent, slightlyLowerFarLeft), {
     sourceHandle: "left",
     targetHandle: "right",
     curveStyle: "smooth",

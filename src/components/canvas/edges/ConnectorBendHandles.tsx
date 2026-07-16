@@ -5,10 +5,21 @@ import { useReactFlow } from "@xyflow/react";
 import { X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
+import { routeBendPoints } from "@/lib/canvas/connector-waypoints";
 
 interface ConnectorBendHandlesProps {
   edgeId: string;
+  routePoints: Array<{ x: number; y: number }>;
   waypoints: Array<{ x: number; y: number }>;
+}
+
+function replaceWaypoints(edgeId: string, waypoints: Array<{ x: number; y: number }>): void {
+  useCanvasStore.setState((state) => ({
+    edges: state.edges.map((edge) => edge.id === edgeId
+      ? { ...edge, data: { ...(edge.data ?? {}), waypoints } }
+      : edge),
+    saveStatus: "unsaved",
+  }));
 }
 
 function updateWaypoint(edgeId: string, index: number, point: { x: number; y: number }): void {
@@ -45,32 +56,35 @@ function removeWaypoint(edgeId: string, index: number): void {
   }));
 }
 
-/** Draggable canvas-space anchors for a manually adjusted connector. */
-export function ConnectorBendHandles({ edgeId, waypoints }: ConnectorBendHandlesProps) {
+/** Draggable canvas-space anchors for automatic and manually adjusted connectors. */
+export function ConnectorBendHandles({ edgeId, routePoints, waypoints }: ConnectorBendHandlesProps) {
   const draggingIndex = useRef<number | null>(null);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
   const { screenToFlowPosition } = useReactFlow();
+  const automatic = waypoints.length === 0;
+  const editablePoints = automatic ? routeBendPoints(routePoints) : waypoints;
 
   return (
     <>
-      {waypoints.map((waypoint, index) => (
+      {editablePoints.map((waypoint, index) => (
         <Fragment key={`${edgeId}-bend-${index}`}>
           <button
             data-export-ignore
             type="button"
             aria-label={`Drag connector bend ${index + 1}`}
-            title="Drag to bend the connector"
+            title={automatic ? "Drag to adjust this automatic bend" : "Drag to bend the connector"}
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${waypoint.x}px,${waypoint.y}px)`,
               pointerEvents: "all",
               zIndex: CONNECTOR_CONTROL_Z_INDEX,
             }}
-            className="nodrag nopan nowheel touch-none h-4 w-4 cursor-move rounded-full border-2 border-primary bg-background shadow-md outline-none hover:scale-125 focus-visible:ring-2 focus-visible:ring-primary"
+            className={`nodrag nopan nowheel touch-none h-4 w-4 cursor-move rounded-full border-2 border-primary shadow-md outline-none hover:scale-125 focus-visible:ring-2 focus-visible:ring-primary ${automatic ? "bg-primary/15" : "bg-background"}`}
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
               pushHistory();
+              if (automatic) replaceWaypoints(edgeId, editablePoints);
               draggingIndex.current = index;
               event.currentTarget.setPointerCapture(event.pointerId);
             }}
@@ -95,27 +109,29 @@ export function ConnectorBendHandles({ edgeId, waypoints }: ConnectorBendHandles
               draggingIndex.current = null;
             }}
           />
-          <button
-            data-export-ignore
-            type="button"
-            aria-label={`Remove connector bend ${index + 1}`}
-            title="Clear this bend point"
-            style={{
-              position: "absolute",
-              transform: `translate(-50%, -50%) translate(${waypoint.x + 13}px,${waypoint.y - 13}px)`,
-              pointerEvents: "all",
-              zIndex: CONNECTOR_CONTROL_Z_INDEX,
-            }}
-            className="nodrag nopan nowheel flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              pushHistory();
-              removeWaypoint(edgeId, index);
-            }}
-          >
-            <X className="h-2.5 w-2.5" />
-          </button>
+          {!automatic && (
+            <button
+              data-export-ignore
+              type="button"
+              aria-label={`Remove connector bend ${index + 1}`}
+              title="Clear this bend point"
+              style={{
+                position: "absolute",
+                transform: `translate(-50%, -50%) translate(${waypoint.x + 13}px,${waypoint.y - 13}px)`,
+                pointerEvents: "all",
+                zIndex: CONNECTOR_CONTROL_Z_INDEX,
+              }}
+              className="nodrag nopan nowheel flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                pushHistory();
+                removeWaypoint(edgeId, index);
+              }}
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          )}
         </Fragment>
       ))}
     </>

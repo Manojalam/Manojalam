@@ -38,6 +38,18 @@ function progressAlongRoute(routePoints: readonly RoutePoint[], point: RoutePoin
   return null;
 }
 
+/** Returns only real internal corners, excluding endpoints and collinear points. */
+export function routeBendPoints(routePoints: readonly RoutePoint[]): RoutePoint[] {
+  return routePoints.slice(1, -1).filter((point, index) => {
+    const previous = routePoints[index];
+    const next = routePoints[index + 2];
+    return !(
+      (previous.x === point.x && point.x === next.x)
+      || (previous.y === point.y && point.y === next.y)
+    );
+  }).map((point) => ({ ...point }));
+}
+
 /** Projects an arbitrary canvas click onto the closest location on a routed connector. */
 export function closestPointOnRoute(
   routePoints: readonly RoutePoint[],

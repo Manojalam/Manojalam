@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { routeManualOrthogonalEdge } from "../layout/edge-routing";
-import { closestPointOnRoute, insertWaypointOnRoute } from "./connector-waypoints";
+import { routeManualOrthogonalEdge, routeOrthogonalEdge } from "../layout/edge-routing";
+import { closestPointOnRoute, insertWaypointOnRoute, routeBendPoints } from "./connector-waypoints";
 
 test("additional bend points are inserted in route order without changing the path", () => {
   const source = { x: 100, y: 100 };
@@ -37,4 +37,30 @@ test("connector clicks project onto the nearest routed segment", () => {
 
   assert.deepEqual(closestPointOnRoute(route, { x: 312, y: 27 }), { x: 312, y: 20 });
   assert.deepEqual(closestPointOnRoute(route, { x: 493, y: 82 }), { x: 500, y: 82 });
+});
+
+test("automatic corners can be promoted without changing the visible route", () => {
+  const source = { x: 390, y: 230 };
+  const target = { x: 230, y: 350 };
+  const automatic = routeOrthogonalEdge(source, target, "bottom", "right", []);
+  const promoted = routeBendPoints(automatic.points);
+  const manual = routeManualOrthogonalEdge(source, target, "bottom", "right", promoted);
+
+  assert.deepEqual(promoted, [{ x: 390, y: 350 }]);
+  assert.deepEqual(manual.points, automatic.points);
+});
+
+test("only real corners become draggable automatic bends", () => {
+  const route = [
+    { x: 100, y: 100 },
+    { x: 100, y: 140 },
+    { x: 100, y: 200 },
+    { x: 260, y: 200 },
+    { x: 260, y: 260 },
+  ];
+
+  assert.deepEqual(routeBendPoints(route), [
+    { x: 100, y: 200 },
+    { x: 260, y: 200 },
+  ]);
 });
