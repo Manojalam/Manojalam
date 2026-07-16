@@ -244,6 +244,34 @@ export function rerouteFlowchartInsertionEdges(
 }
 
 /**
+ * Recalculate saved automatic flowchart ports from current node geometry.
+ * Explicit endpoint reconnections set preserveHandles and are intentionally
+ * excluded, so only handles still owned by the automatic router are refreshed.
+ */
+export function refreshAutomaticFlowchartHandles(nodes: Node[], edges: Edge[]): Edge[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let changed = false;
+  const refreshed = edges.map((edge) => {
+    const data = (edge.data ?? {}) as VidyaEdgeData;
+    if (data.manualRoute !== true || data.preserveHandles === true) return edge;
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (source?.type !== "shape" || target?.type !== "shape") return edge;
+    const route = routeForMode("freeForm", source, target);
+    if (edge.sourceHandle === route.sourceHandle && edge.targetHandle === route.targetHandle) {
+      return edge;
+    }
+    changed = true;
+    return {
+      ...edge,
+      sourceHandle: route.sourceHandle,
+      targetHandle: route.targetHandle,
+    };
+  });
+  return changed ? refreshed : edges;
+}
+
+/**
  * Old `+` actions wrote Horizontal edge metadata without assigning an actual
  * layout owner. Repair only those implicit shape edges so existing boards load
  * with attached individual connectors; explicitly applied layouts stay intact.
