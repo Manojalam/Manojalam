@@ -55,13 +55,13 @@ const LAYOUT_OPTIONS: Array<{
   {
     value: "arc-fan",
     label: "Arc Fan",
-    description: "Picture-2 style: each source owns a bounded outer target fan.",
+    description: "Each source—or each relationship for one source—gets its own fan section.",
     icon: Rows3,
   },
   {
     value: "flower",
     label: "Flower",
-    description: "Sources become petals with their related items inside.",
+    description: "Sources become petals; one-source diagrams use a petal per relationship.",
     icon: Sparkles,
   },
   {
@@ -73,13 +73,13 @@ const LAYOUT_OPTIONS: Array<{
   {
     value: "card-grid",
     label: "Card Grid",
-    description: "Readable source cards with target lists.",
+    description: "Readable source cards, or one card per relationship for a single source.",
     icon: Rows3,
   },
   {
     value: "radial-hub",
     label: "Radial Hub",
-    description: "One central hub with self-contained source groups.",
+    description: "One central hub with source groups or individual relationships around it.",
     icon: Orbit,
   },
 ];
@@ -395,7 +395,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                 ))}
               </div>
               <p className="text-[10px] text-muted-foreground">
-                {scopedSourceIds.length} source section{scopedSourceIds.length === 1 ? "" : "s"} in scope · {groups.length} with saved relationships
+                {scopedSourceIds.length} source section{scopedSourceIds.length === 1 ? "" : "s"} in scope · {groups.length} diagram item{groups.length === 1 ? "" : "s"}
               </p>
             </div>
 

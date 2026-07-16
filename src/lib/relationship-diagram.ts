@@ -23,6 +23,10 @@ import {
   normalizeFlowerLayerCount,
   normalizeFlowerPetalsPerLayer,
 } from "@/lib/canvas/relationship-flower-layout";
+import {
+  splitSingleSourceRelationshipItems,
+  type RelationshipDiagramItemGroup,
+} from "@/lib/relationship-diagram-items";
 
 export {
   DEFAULT_FLOWER_PETALS_PER_LAYER,
@@ -80,20 +84,12 @@ export const DEFAULT_RELATIONSHIP_DIAGRAM_SPEC: Readonly<RelationshipDiagramSpec
   sortTargets: "natural",
 };
 
-export interface RelationshipGroupTarget {
-  id: string;
-  label: string;
-  color?: string;
-}
+export type RelationshipGroupTarget = RelationshipDiagramItemGroup["targets"][number];
 
 /** Layout-neutral relationship data. Presets must not read board geometry. */
-export interface RelationshipGroup {
-  sourceNodeId: string;
+export interface RelationshipGroup extends RelationshipDiagramItemGroup {
   sourceLabel: string;
-  sourceColor?: string;
   sourceIcon?: string;
-  targets: RelationshipGroupTarget[];
-  count: number;
 }
 
 export interface BuildRelationshipGroupsOptions {
@@ -718,6 +714,7 @@ export function buildRelationshipGroups({
     const sourceColor = nodeColor(group.sourceNode);
     const sourceIcon = nodeIcon(group.sourceNode);
     return {
+      itemId: group.sourceNode.id,
       sourceNodeId: group.sourceNode.id,
       sourceLabel: displayLabel(group.sourceNode),
       ...(sourceColor ? { sourceColor } : {}),
@@ -750,13 +747,20 @@ export function buildRelationshipGroupsForSpec({
     sortSources: spec.sortSources,
     sortTargets: spec.sortTargets,
   });
+  const diagramItems = sourceNodeIds.length === 1 && spec.layout !== "matrix"
+    ? splitSingleSourceRelationshipItems(groups)
+    : groups;
   const manualRank = orderRank(spec.itemOrder);
-  if (!manualRank) return groups;
-  return groups
+  if (!manualRank) return diagramItems;
+  return diagramItems
     .map((group, index) => ({ group, index }))
     .sort((first, second) => {
-      const firstRank = manualRank.get(first.group.sourceNodeId) ?? Number.MAX_SAFE_INTEGER;
-      const secondRank = manualRank.get(second.group.sourceNodeId) ?? Number.MAX_SAFE_INTEGER;
+      const firstRank = manualRank.get(first.group.itemId)
+        ?? manualRank.get(first.group.sourceNodeId)
+        ?? Number.MAX_SAFE_INTEGER;
+      const secondRank = manualRank.get(second.group.itemId)
+        ?? manualRank.get(second.group.sourceNodeId)
+        ?? Number.MAX_SAFE_INTEGER;
       return firstRank - secondRank || first.index - second.index;
     })
     .map(({ group }) => group);

@@ -1873,18 +1873,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         preferredFlowerLayerCount
       )
     );
-    const updateItemStyle = (nodeId: string, patch: Partial<RelationshipDiagramItemStyle>) => {
-      const current = diagramSpec.itemStyles?.[nodeId] ?? {};
+    const updateItemStyle = (itemId: string, patch: Partial<RelationshipDiagramItemStyle>) => {
+      const current = diagramSpec.itemStyles?.[itemId] ?? {};
       const nextItem = { ...current, ...patch };
       const nextStyles = { ...(diagramSpec.itemStyles ?? {}) };
-      if (Object.values(nextItem).every((value) => value === undefined)) delete nextStyles[nodeId];
-      else nextStyles[nodeId] = nextItem;
+      if (Object.values(nextItem).every((value) => value === undefined)) delete nextStyles[itemId];
+      else nextStyles[itemId] = nextItem;
       updateDiagram({ itemStyles: nextStyles });
     };
     const moveDiagramItem = (index: number, direction: -1 | 1) => {
       const nextIndex = index + direction;
       if (nextIndex < 0 || nextIndex >= diagramGroups.length) return;
-      const order = diagramGroups.map((group) => group.sourceNodeId);
+      const order = diagramGroups.map((group) => group.itemId);
       [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
       updateDiagram({ itemOrder: order, sortSources: "natural" });
     };
@@ -2319,13 +2319,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </p>
             <div className="space-y-2">
               {diagramGroups.map((group, index) => {
-                const style = diagramSpec.itemStyles?.[group.sourceNodeId] ?? {};
+                const style = {
+                  ...(diagramSpec.itemStyles?.[group.sourceNodeId] ?? {}),
+                  ...(diagramSpec.itemStyles?.[group.itemId] ?? {}),
+                };
                 const sourceColor = hexInputColor(style.fillColor ?? group.sourceColor, "#6366f1");
                 return (
-                  <div key={group.sourceNodeId} className="space-y-2 rounded-lg border border-border p-2">
+                  <div key={group.itemId} className="space-y-2 rounded-lg border border-border p-2">
                     <div className="flex items-center gap-1">
-                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium" title={group.sourceLabel}>
-                        {index + 1}. {group.sourceLabel}
+                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium" title={group.itemLabel ?? group.sourceLabel}>
+                        {index + 1}. {group.itemLabel ?? group.sourceLabel}
                       </span>
                       <Button
                         type="button"
@@ -2357,7 +2360,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           type="color"
                           value={sourceColor}
                           className="h-7 w-full rounded border border-border bg-background"
-                          onChange={(event) => updateItemStyle(group.sourceNodeId, { fillColor: event.target.value })}
+                          onChange={(event) => updateItemStyle(group.itemId, { fillColor: event.target.value })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -2366,7 +2369,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           type="color"
                           value={hexInputColor(style.borderColor ?? diagramSpec.borderColor, sourceColor)}
                           className="h-7 w-full rounded border border-border bg-background"
-                          onChange={(event) => updateItemStyle(group.sourceNodeId, { borderColor: event.target.value })}
+                          onChange={(event) => updateItemStyle(group.itemId, { borderColor: event.target.value })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -2375,7 +2378,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           type="color"
                           value={hexInputColor(style.textColor ?? diagramSpec.textColor, "#0f172a")}
                           className="h-7 w-full rounded border border-border bg-background"
-                          onChange={(event) => updateItemStyle(group.sourceNodeId, { textColor: event.target.value })}
+                          onChange={(event) => updateItemStyle(group.itemId, { textColor: event.target.value })}
                         />
                       </label>
                     </div>
@@ -2388,7 +2391,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           max={72}
                           value={style.fontSize ?? diagramSpec.textSize}
                           className="h-7 text-xs"
-                          onChange={(event) => updateItemStyle(group.sourceNodeId, { fontSize: Number(event.target.value) })}
+                          onChange={(event) => updateItemStyle(group.itemId, { fontSize: Number(event.target.value) })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -2399,7 +2402,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           max={180}
                           value={style.rotation ?? 0}
                           className="h-7 text-xs"
-                          onChange={(event) => updateItemStyle(group.sourceNodeId, { rotation: Number(event.target.value) })}
+                          onChange={(event) => updateItemStyle(group.itemId, { rotation: Number(event.target.value) })}
                         />
                       </label>
                     </div>
@@ -2410,7 +2413,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         </p>
                         <Select
                           value={style.flowerLayer ? String(style.flowerLayer) : "0"}
-                          onValueChange={(value) => updateItemStyle(group.sourceNodeId, {
+                          onValueChange={(value) => updateItemStyle(group.itemId, {
                             flowerLayer: value === "0" ? undefined : Number(value),
                           })}
                         >
@@ -2437,7 +2440,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     <button
                       type="button"
                       className="text-[9px] text-muted-foreground hover:text-foreground hover:underline"
-                      onClick={() => updateItemStyle(group.sourceNodeId, {
+                      onClick={() => updateItemStyle(group.itemId, {
                         fillColor: undefined,
                         borderColor: undefined,
                         textColor: undefined,
