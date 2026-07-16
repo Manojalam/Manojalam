@@ -543,6 +543,8 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   waypoints?: Array<{ x: number; y: number }>;
   /** User-positioned offset from the connector route's natural label anchor. */
   labelOffset?: { x: number; y: number };
+  /** User-positioned offset for the selected connector's editing toolbar. */
+  toolbarOffset?: { x: number; y: number };
   edgeType?: "normal" | "arrow" | "labeled" | "branch" | "dashed" | "sanskrit";
 }
 
