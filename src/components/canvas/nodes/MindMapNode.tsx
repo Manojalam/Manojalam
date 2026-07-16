@@ -122,7 +122,10 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
           border: `${borderWidth}px ${bStyle} ${borderColor ?? nodeColor}`,
           borderRadius,
         }}
-        onDoubleClick={startEditing}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          startEditing();
+        }}
       >
         {/* Extra border layers — expand outward, not clipped */}
         {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={borderWidth} baseRadius={borderRadius} />}

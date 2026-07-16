@@ -113,7 +113,8 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
           border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
           borderRadius: bRadius,
         }}
-        onDoubleClick={() => {
+        onDoubleClick={(event) => {
+          event.stopPropagation();
           if (isDrawing) return;
           editHistoryCaptured.current = false;
           editDirty.current = false;

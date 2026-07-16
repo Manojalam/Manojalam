@@ -1146,7 +1146,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
       <div
         className="group relative flex h-full w-full items-center justify-center"
-        onDoubleClick={() => {
+        onDoubleClick={(event) => {
+          event.stopPropagation();
           if (isDrawing || radialChart?.enabled) return;
           editHistoryCaptured.current = false;
           editDirty.current = false;
