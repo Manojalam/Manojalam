@@ -4,6 +4,7 @@ import {
   effectiveCornerRadius,
   fitSingleUnbrokenWord,
   legacyRadiusToPercent,
+  maximumFittedTextFontSize,
 } from "./canvas/shape-fitting";
 import { fittedContentScale } from "./canvas/node-sizing";
 import type { Size } from "./canvas/node-geometry";
@@ -75,12 +76,37 @@ export function getFittedTextPresentation(
   const availableHeight = options.availableHeight ?? Number.POSITIVE_INFINITY;
   const minimumFontSize = Math.max(4, Math.min(preferredFontSize, options.minimumFontSize ?? 8));
   const shouldConstrain = options.constrain ?? options.fitMultiline ?? false;
+  const shouldMaximize = d.maximizeText === true && Number.isFinite(availableHeight) && !!plainText;
   let scale = 1;
   const storedMeasurement = (d.intrinsicContentSize ?? d.matrixIntrinsicSize) as
     | Partial<{ width: number; height: number; lineCount: number; lineHeight: number; naturalWidth: number }>
     | undefined;
 
-  if (shouldConstrain && storedMeasurement) {
+  if (shouldMaximize) {
+    const maximumFontSize = maximumFittedTextFontSize(
+      plainText,
+      { width: availableWidth, height: availableHeight },
+      { preferredFontSize, minimumFontSize, maximumFontSize: 96 }
+    );
+    scale = maximumFontSize / preferredFontSize;
+    if (storedMeasurement) {
+      const measuredHeight = typeof storedMeasurement.height === "number" && storedMeasurement.height > 0
+        ? storedMeasurement.height
+        : 0;
+      const measuredWidth = typeof storedMeasurement.naturalWidth === "number" && storedMeasurement.naturalWidth > 0
+        ? storedMeasurement.naturalWidth
+        : typeof storedMeasurement.width === "number" && storedMeasurement.width > 0
+          ? storedMeasurement.width
+          : 0;
+      const measuredSingleLine = (storedMeasurement.lineCount ?? 1) <= 1.05;
+      const measuredLimit = Math.min(
+        measuredHeight ? availableHeight / measuredHeight : Number.POSITIVE_INFINITY,
+        measuredSingleLine && measuredWidth ? availableWidth / measuredWidth : Number.POSITIVE_INFINITY
+      );
+      if (Number.isFinite(measuredLimit)) scale = Math.min(scale, measuredLimit);
+    }
+    scale = Math.max(minimumFontSize / preferredFontSize, Math.min(96 / preferredFontSize, scale));
+  } else if (shouldConstrain && storedMeasurement) {
     scale = fittedContentScale(
       storedMeasurement,
       { width: availableWidth, height: availableHeight },
@@ -137,7 +163,7 @@ export function getFittedTextPresentation(
   return {
     style,
     singleWord,
-    constrained: fittedFontSize < preferredFontSize - 0.05,
+    constrained: Math.abs(fittedFontSize - preferredFontSize) > 0.05,
     fontSize: fittedFontSize,
     authoredFontSize: preferredFontSize,
     scale,

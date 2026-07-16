@@ -74,6 +74,7 @@ type SunburstSegment = SunburstTreeNode & {
   fontStyle: CSSProperties["fontStyle"];
   textAlign: CSSProperties["textAlign"];
   preferredFontSize?: number;
+  maximizeText: boolean;
   textRotation?: number;
 };
 
@@ -469,14 +470,43 @@ function fitLabel(
   preferredFontSize: number,
   style: LabelTextStyle,
   useBrowserMetrics: boolean,
-  minimumReadableFont: number
+  minimumReadableFont: number,
+  maximizeFontSize = false
 ): LabelFit {
   const width = Math.max(0.5, availableWidth);
   const height = Math.max(0.5, availableHeight);
   if (!label.trim()) return { lines: [], fontSize: preferredFontSize, width, height };
 
-  const maxFont = Math.max(minimumReadableFont, preferredFontSize);
+  const maxFont = maximizeFontSize
+    ? 96
+    : Math.max(minimumReadableFont, preferredFontSize);
   const unwrapped = explicitLabelLines(label);
+  const fittedLinesAt = (fontSize: number): string[] | null => {
+    const unwrappedMetrics = textMetrics(unwrapped, fontSize, label, style, useBrowserMetrics);
+    if (unwrappedMetrics.width <= width && unwrappedMetrics.height <= height) return unwrapped;
+    const lines = wrapLabelToWidth(label, width, fontSize, style, useBrowserMetrics);
+    const metrics = textMetrics(lines, fontSize, label, style, useBrowserMetrics);
+    return metrics.width <= width && metrics.height <= height ? lines : null;
+  };
+
+  if (maximizeFontSize) {
+    let lower = minimumReadableFont;
+    let upper = maxFont;
+    let lines = fittedLinesAt(lower);
+    if (!lines) return { lines: [], fontSize: minimumReadableFont, width, height };
+    for (let iteration = 0; iteration < 14; iteration += 1) {
+      const candidate = (lower + upper) / 2;
+      const candidateLines = fittedLinesAt(candidate);
+      if (candidateLines) {
+        lower = candidate;
+        lines = candidateLines;
+      } else {
+        upper = candidate;
+      }
+    }
+    return { lines, fontSize: Math.floor(lower * 4) / 4, width, height };
+  }
+
   const unwrappedMetrics = textMetrics(unwrapped, maxFont, label, style, useBrowserMetrics);
   if (unwrappedMetrics.width <= width && unwrappedMetrics.height <= height) {
     return { lines: unwrapped, fontSize: maxFont, width, height };
@@ -537,7 +567,7 @@ function sectorLabelGeometry(
     fontFamily: segment.fontFamily,
     fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
     fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
-  }, useBrowserMetrics, minimumReadable);
+  }, useBrowserMetrics, minimumReadable, segment.maximizeText && preferredFontSizeOverride === undefined);
   const baseRotation = useRadialAxis ? midAngle : midAngle + 90;
   const rotation = resolveChartAwareSectorLabelRotation(
     baseRotation,
@@ -554,6 +584,7 @@ function circleLabelGeometry(
   preferredFontSize: number | undefined,
   style: LabelTextStyle,
   useBrowserMetrics: boolean,
+  maximizeFontSize = false,
   manualRotation: unknown = 0,
   chartRotation: unknown = 0
 ): LabelGeometry {
@@ -563,7 +594,7 @@ function circleLabelGeometry(
   const automaticMinimum = isDevanagariText(label) ? 16 : 14;
   const minimumReadable = preferredFontSize === undefined ? automaticMinimum : Math.min(preferred, automaticMinimum);
   return {
-    ...fitLabel(label, width, height, preferred, style, useBrowserMetrics, minimumReadable),
+    ...fitLabel(label, width, height, preferred, style, useBrowserMetrics, minimumReadable, maximizeFontSize),
     x: center,
     y: center,
     rotation: resolveChartAwareCenterLabelRotation(chartRotation, manualRotation),
@@ -729,6 +760,7 @@ function collectSegments(
           : typeof data.fontSize === "number"
             ? data.fontSize
             : undefined,
+        maximizeText: chartStyle.maximizeText === true || data.maximizeText === true,
         textRotation: typeof data.radialTextRotation === "number"
           ? data.radialTextRotation
           : undefined,
@@ -948,6 +980,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       fontStyle: /<(em|i)\b/i.test(rootRichText) || d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
     },
     fontMetricsReady,
+    d.maximizeText === true || rootData.maximizeText === true,
     rootData.radialTextRotation,
     d.rotation,
   );

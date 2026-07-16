@@ -553,7 +553,7 @@ export function RichTextEditor({
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
   const normalizedContentScale = Number.isFinite(contentScale)
-    ? Math.max(0.2, Math.min(2.5, contentScale))
+    ? Math.max(0.2, Math.min(12, contentScale))
     : 1;
   const hasVisualScale = Math.abs(normalizedContentScale - 1) > 0.001;
   const scaleStyle: CSSProperties | undefined = hasVisualScale

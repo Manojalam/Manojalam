@@ -9,6 +9,7 @@ import {
   MAX_AUTOFIT_NODE_WIDTH,
   MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
   MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
+  maximumFittedTextFontSize,
   shapeTextContentSize,
   shapeTextContentWidth,
 } from "./shape-fitting";
@@ -17,6 +18,7 @@ import {
   computeAutoSize,
   fittedContentScale,
 } from "./node-sizing";
+import { getFittedTextPresentation } from "../style-utils";
 
 test("top-left growth and center conversion use different anchors", () => {
   const rect = createNodeRect("n", 100, 80, 200, 100);
@@ -237,6 +239,53 @@ test("fixed-box rich text only scales down and restores authored size when space
   assert.equal(constrained, 0.5);
   assert.equal(roomy, 1);
   assert.equal(shortLabel, 1);
+});
+
+test("maximum text fitting grows short labels to the safe width or height limit", () => {
+  const fontSize = maximumFittedTextFontSize(
+    "Earth",
+    { width: 180, height: 50 },
+    { preferredFontSize: 14, maximumFontSize: 96 }
+  );
+
+  assert.ok(fontSize > 14);
+  assert.ok(fontSize * 1.38 <= 50 + 0.001);
+  assert.ok((fontSize + 0.25) * 1.38 > 50 || "Earth".length * (fontSize + 0.25) * 0.56 > 180);
+});
+
+test("maximum text fitting keeps dense labels inside shape-aware interiors", () => {
+  const nodeSize = { width: 240, height: 240 };
+  const rectangleInterior = shapeTextContentSize("rectangle", nodeSize, "shape");
+  const circleInterior = shapeTextContentSize("circle", nodeSize, "shape");
+  const label = "a long study label with several important terms to remember";
+  const rectangleFont = maximumFittedTextFontSize(label, rectangleInterior, { preferredFontSize: 14 });
+  const circleFont = maximumFittedTextFontSize(label, circleInterior, { preferredFontSize: 14 });
+
+  assert.ok(rectangleFont >= 8 && rectangleFont <= 96);
+  assert.ok(circleFont >= 8 && circleFont <= rectangleFont);
+  assert.ok(circleInterior.width < rectangleInterior.width);
+  assert.ok(circleInterior.height < rectangleInterior.height);
+});
+
+test("whole-node maximum fitting is opt-in and preserves the authored font size", () => {
+  const ordinary = getFittedTextPresentation(
+    { text: "Earth", fontSize: 14 },
+    180,
+    14,
+    { availableHeight: 50, constrain: true }
+  );
+  const maximized = getFittedTextPresentation(
+    { text: "Earth", fontSize: 14, maximizeText: true },
+    180,
+    14,
+    { availableHeight: 50, constrain: true }
+  );
+
+  assert.equal(ordinary.authoredFontSize, 14);
+  assert.equal(ordinary.scale, 1);
+  assert.equal(maximized.authoredFontSize, 14);
+  assert.ok(maximized.fontSize > 14);
+  assert.ok(maximized.scale > 1);
 });
 
 test("fixed-box fitting respects a readable minimum scale", () => {

@@ -877,7 +877,7 @@ function inheritStyle(parentData: Record<string, unknown>): Record<string, unkno
   const keys = [
     "shapeType", "color", "fillColor", "fillOpacity",
     "borderColor", "borderWidth", "borderStyle", "cornerRadiusPercent", "borderRadius",
-    "fontFamily", "fontSize", "textColor", "scriptMode", "petalCount",
+    "fontFamily", "fontSize", "maximizeText", "textColor", "scriptMode", "petalCount",
   ];
   const out: Record<string, unknown> = {};
   for (const k of keys) if (parentData[k] !== undefined) out[k] = parentData[k];
