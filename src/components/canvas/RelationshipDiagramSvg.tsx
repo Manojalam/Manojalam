@@ -11,15 +11,16 @@ import {
 import { layoutFlowerLabels, type FlowerLabelFlowResult } from "@/lib/canvas/flower-label-flow";
 import { fitRelationshipLabel } from "@/lib/canvas/relationship-label-fit";
 import {
+  relationshipDiagramItemColor,
+  relationshipDiagramItemStyle,
+  relationshipDiagramPaletteColor,
+} from "@/lib/relationship-diagram-colors";
+import {
   layoutRelationshipFlowerPetals,
   type RelationshipFlowerGeometricPlacement,
   type RelationshipFlowerPetalPlacement,
 } from "@/lib/canvas/relationship-flower-layout";
-import type {
-  RelationshipDiagramItemStyle,
-  RelationshipDiagramPalette,
-  RelationshipDiagramSpec,
-} from "@/lib/types";
+import type { RelationshipDiagramSpec } from "@/lib/types";
 
 type RelationshipDiagramSvgProps = {
   groups: RelationshipGroup[];
@@ -35,13 +36,6 @@ const DiagramVisualStyleContext = createContext<Pick<
   RelationshipDiagramSpec,
   "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "maximizeLabelText"
 >>({ maximizeLabelText: false });
-const PALETTES: Record<Exclude<RelationshipDiagramPalette, "source">, string[]> = {
-  spectrum: ["#ef4444", "#f59e0b", "#84cc16", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"],
-  warm: ["#b91c1c", "#dc2626", "#ea580c", "#d97706", "#ca8a04", "#be123c"],
-  cool: ["#0f766e", "#0891b2", "#0284c7", "#2563eb", "#4f46e5", "#7c3aed"],
-  pastel: ["#f9a8d4", "#c4b5fd", "#93c5fd", "#99f6e4", "#bef264", "#fde68a", "#fdba74"],
-  monochrome: ["#1e293b", "#334155", "#475569", "#64748b", "#94a3b8"],
-};
 let measurementCanvas: HTMLCanvasElement | null = null;
 const TextMeasurementContext = createContext(false);
 
@@ -68,39 +62,14 @@ function tint(color: string, amount: number): string {
     .join("");
 }
 
-function paletteColor(index: number, palette: RelationshipDiagramPalette): string {
-  const colors = palette === "source" ? PALETTES.spectrum : PALETTES[palette];
-  return colors[index % colors.length];
-}
-
-function groupColor(group: RelationshipGroup, index: number, palette: RelationshipDiagramPalette): string {
-  if (palette === "source") {
-    return group.sourceColor?.trim() || paletteColor(index, palette);
-  }
-  return paletteColor(index, palette);
-}
-
-function itemStyle(group: RelationshipGroup, spec: RelationshipDiagramSpec): RelationshipDiagramItemStyle {
-  return {
-    ...(spec.itemStyles?.[group.sourceNodeId] ?? {}),
-    ...(spec.itemStyles?.[group.itemId] ?? {}),
-  };
-}
-
-function styledGroupColor(
-  group: RelationshipGroup,
-  index: number,
-  spec: RelationshipDiagramSpec
-): string {
-  return itemStyle(group, spec).fillColor ?? groupColor(group, index, spec.palette);
-}
-
 function groupStrokeColor(
   group: RelationshipGroup,
   index: number,
   spec: RelationshipDiagramSpec
 ): string {
-  return itemStyle(group, spec).borderColor ?? spec.borderColor ?? styledGroupColor(group, index, spec);
+  return relationshipDiagramItemStyle(group, spec).borderColor
+    ?? spec.borderColor
+    ?? relationshipDiagramItemColor(group, index, spec);
 }
 
 function groupStrokeWidth(spec: RelationshipDiagramSpec): number {
@@ -472,8 +441,8 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   const pieces: ReactNode[] = [];
 
   groups.forEach((group, groupIndex) => {
-    const color = styledGroupColor(group, groupIndex, spec);
-    const style = itemStyle(group, spec);
+    const color = relationshipDiagramItemColor(group, groupIndex, spec);
+    const style = relationshipDiagramItemStyle(group, spec);
     const stroke = groupStrokeColor(group, groupIndex, spec);
     const span = (ARC_FAN_END - ARC_FAN_START) * (groupWeights[groupIndex] / totalWeight);
     const gap = Math.min(groups.length > 12 ? 0.5 : 0.9, span * 0.18);
@@ -657,7 +626,7 @@ function flowerPetalGeometry(
 function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpec) {
   const hubRadius = Math.max(92, Math.min(112, spec.textSize * 5.4));
   const layout = layoutRelationshipFlowerPetals(groups.map((group) => ({
-    preferredLayer: itemStyle(group, spec).flowerLayer,
+    preferredLayer: relationshipDiagramItemStyle(group, spec).flowerLayer,
   })), {
     hubRadius,
     maxPerLayer: spec.flowerPetalsPerLayer,
@@ -667,7 +636,7 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
   const flowDensity = spec.density === "spacious" ? "comfortable" : "compact";
   const petals: FlowerPetalMetric[] = layout.petals.map((placement) => {
     const group = groups[placement.index];
-    const style = itemStyle(group, spec);
+    const style = relationshipDiagramItemStyle(group, spec);
     const baseFontSize = style.fontSize ?? spec.textSize;
     const sourceFontSize = Math.max(10, baseFontSize * 0.9);
     const targetFontSize = Math.max(8, baseFontSize * 0.68);
@@ -693,7 +662,7 @@ function flowerMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
     const bounds = flowerPetalGeometryBounds(
       geometry,
       geometry.profile.root,
-      itemStyle(groups[index], spec).rotation ?? 0
+      relationshipDiagramItemStyle(groups[index], spec).rotation ?? 0
     );
     return Math.max(
       maximum,
@@ -789,8 +758,8 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   const items = groups.map((group, index) => {
     const petal = petals[index];
     const geometry = flowerPetalGeometry(petal, { x: cx, y: cy });
-    const color = styledGroupColor(group, index, spec);
-    const style = itemStyle(group, spec);
+    const color = relationshipDiagramItemColor(group, index, spec);
+    const style = relationshipDiagramItemStyle(group, spec);
     return {
       group,
       index,
@@ -807,7 +776,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   const emptyItems = emptyPetals.map((petal, index) => {
     const geometry = flowerPetalGeometry(petal, { x: cx, y: cy });
     const paletteIndex = petal.layerIndex * Math.max(1, layerSlotCount) + petal.slotIndex;
-    const color = paletteColor(paletteIndex, spec.palette);
+    const color = relationshipDiagramPaletteColor(paletteIndex, spec.palette);
     return {
       key: `flower-empty-${petal.layerIndex}-${petal.slotIndex}-${index}`,
       petal,
@@ -971,8 +940,8 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         const row = Math.floor(index / columns);
         const x = gap + column * (cardWidth + gap);
         const y = 82 + gap + row * (cardHeight + gap);
-        const color = styledGroupColor(group, index, spec);
-        const style = itemStyle(group, spec);
+        const color = relationshipDiagramItemColor(group, index, spec);
+        const style = relationshipDiagramItemStyle(group, spec);
         const stroke = groupStrokeColor(group, index, spec);
         return (
           <g
@@ -1076,8 +1045,8 @@ function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       })}
       {groups.map((group, rowIndex) => {
         const y = headerHeight + rowIndex * rowHeight;
-        const color = styledGroupColor(group, rowIndex, spec);
-        const style = itemStyle(group, spec);
+        const color = relationshipDiagramItemColor(group, rowIndex, spec);
+        const style = relationshipDiagramItemStyle(group, spec);
         const stroke = groupStrokeColor(group, rowIndex, spec);
         const related = new Set(group.targets.map((target) => target.id));
         return (
@@ -1149,8 +1118,8 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       {groups.map((group, index) => {
         const angle = -90 + index * 360 / count;
         const point = polar(cx, cy, radius, angle);
-        const color = styledGroupColor(group, index, spec);
-        const style = itemStyle(group, spec);
+        const color = relationshipDiagramItemColor(group, index, spec);
+        const style = relationshipDiagramItemStyle(group, spec);
         const stroke = groupStrokeColor(group, index, spec);
         return (
           <g
