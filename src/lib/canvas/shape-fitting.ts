@@ -48,6 +48,48 @@ export interface ShapeTextContentOptions {
   contentSize?: Partial<ContentMeasurement>;
 }
 
+/**
+ * The rectangular capacity used to size text that flows through a diamond.
+ *
+ * A diamond contains half of its bounding box. Reserving a little slope and
+ * border clearance leaves roughly 44% usable area; 60% width by 74% height
+ * models that capacity without forcing every line into one center rectangle.
+ */
+export function diamondTextFlowCapacity(renderedSize: Size): Size {
+  const width = Math.max(8, finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH) - 8);
+  const height = Math.max(8, finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT) - 8);
+  return {
+    width: Math.max(8, width * 0.6),
+    height: Math.max(8, height * 0.74),
+  };
+}
+
+/** Full bounding box used by CSS shape-outside flow guides. */
+export function diamondTextFlowBox(renderedSize: Size): Size {
+  return {
+    width: Math.max(8, finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH) - 8),
+    height: Math.max(8, finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT) - 8),
+  };
+}
+
+/**
+ * Keep compact labels centered, and switch genuinely dense labels to the
+ * shape-aware flow path. Natural width also makes this work on first render,
+ * before a wrapped line count has been persisted.
+ */
+export function shouldUseDiamondTextFlow(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  contentSize?: Partial<ContentMeasurement>
+): boolean {
+  if (shapeType !== "diamond" || !contentSize) return false;
+  const lineCount = finitePositive(contentSize.lineCount, 0);
+  if (lineCount >= 3) return true;
+  const naturalWidth = finitePositive(contentSize.naturalWidth, 0);
+  const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
+  return naturalWidth > width * 0.9;
+}
+
 interface GraphemeSegmenter {
   segment(value: string): Iterable<unknown>;
 }

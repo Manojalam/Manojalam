@@ -11,7 +11,10 @@ import {
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
 } from "@/lib/style-utils";
 import {
+  diamondTextFlowBox,
+  diamondTextFlowCapacity,
   shapeTextContentSize,
+  shouldUseDiamondTextFlow,
 } from "@/lib/canvas/shape-fitting";
 import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type {
@@ -1038,9 +1041,20 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const intrinsicContentSize = (dd.matrixIntrinsicSize ?? dd.intrinsicContentSize) as
     | Partial<{ width: number; height: number }>
     | undefined;
-  const availableTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape", {
+  const centeredTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape", {
     contentSize: intrinsicContentSize,
   });
+  const diamondTextFlow = shouldUseDiamondTextFlow(
+    renderedShapeType,
+    nodeSize,
+    intrinsicContentSize
+  );
+  const availableTextSize = diamondTextFlow
+    ? diamondTextFlowCapacity(nodeSize)
+    : centeredTextSize;
+  const renderedTextBox = diamondTextFlow
+    ? diamondTextFlowBox(nodeSize)
+    : availableTextSize;
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
@@ -1286,16 +1300,20 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               data-node-content-layer="true"
               data-node-owner={id}
               className={cn(
-                "absolute inset-0 z-10 box-border flex items-center justify-center p-1 text-center text-sm font-medium text-foreground",
+                "absolute inset-0 z-10 box-border p-1 text-center text-sm font-medium text-foreground",
+                diamondTextFlow ? "block" : "flex items-center justify-center",
                 editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
               )}
             >
               <div
-                className="w-full"
+                className={cn(
+                  "w-full",
+                  diamondTextFlow && "h-full overflow-hidden"
+                )}
                 style={{
                   ...textPresentation.style,
-                  maxWidth: `${availableTextSize.width}px`,
-                  maxHeight: `${availableTextSize.height}px`,
+                  maxWidth: `${renderedTextBox.width}px`,
+                  maxHeight: `${renderedTextBox.height}px`,
                 }}
               >
                 <RichTextEditor
@@ -1306,6 +1324,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   measurementWidth={availableTextSize.width}
                   measurementFontSize={textPresentation.authoredFontSize}
                   contentScale={textPresentation.scale}
+                  shapeTextFlow={diamondTextFlow ? "diamond" : undefined}
                   placeholder="Double-click…"
                   className="[&_.ProseMirror]:text-center"
                   blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
