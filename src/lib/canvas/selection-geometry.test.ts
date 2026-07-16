@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
 import { createNodeRect, getNodeRect } from "../layout/geometry";
-import { alignSelection, compactEqualSpacing, distributeSelection, snapRectToAlignment } from "./selection-geometry";
+import {
+  alignmentSnapThreshold,
+  alignSelection,
+  compactEqualSpacing,
+  distributeSelection,
+  snapRectToAlignment,
+} from "./selection-geometry";
 
 function node(id: string, x: number, y: number, width: number, height: number, origin?: [number, number]): Node {
   return { id, position: { x, y }, origin, data: {}, style: { width, height } };
@@ -130,4 +136,22 @@ test("drag snapping respects axis locks and ignores distant candidates", () => {
   assert.equal(snap.dy, 5);
   assert.deepEqual(snap.verticalGuides, []);
   assert.deepEqual(snap.horizontalGuides, [15]);
+});
+
+test("center-only snapping prioritizes straight connector alignment over matching edges", () => {
+  const dragged = createNodeRect("dragged", 100, 100, 80, 40);
+  const connected = createNodeRect("connected", 100, 200, 100, 60);
+  const snap = snapRectToAlignment(dragged, [connected], { centersOnly: true, threshold: 12 });
+
+  assert.equal(snap.dx, 10);
+  assert.equal(snap.dy, 0);
+  assert.deepEqual(snap.verticalGuides, [150]);
+  assert.deepEqual(snap.horizontalGuides, []);
+});
+
+test("alignment snapping keeps a consistent screen-sized target across zoom levels", () => {
+  assert.equal(alignmentSnapThreshold(2), 6);
+  assert.equal(alignmentSnapThreshold(1), 12);
+  assert.equal(alignmentSnapThreshold(0.5), 24);
+  assert.equal(alignmentSnapThreshold(0.1), 48, "very low zoom stays bounded");
 });

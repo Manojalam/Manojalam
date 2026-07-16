@@ -45,7 +45,10 @@ import {
   type LayoutMode,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
-import { snapRectToAlignment } from "@/lib/canvas/selection-geometry";
+import {
+  alignmentSnapThreshold,
+  snapRectToAlignment,
+} from "@/lib/canvas/selection-geometry";
 import { useDeviceProfile } from "@/lib/use-device-profile";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
@@ -55,6 +58,10 @@ import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
+import {
+  includeAttachedExternalNoteIds,
+  isExternalNoteNode,
+} from "@/lib/canvas/node-note";
 import { usesManualFlowchartPlacement } from "@/lib/canvas/flowchart-behavior";
 import {
   findLogicalConnectorEdgeIds,
@@ -72,7 +79,8 @@ import {
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
 
-const GUIDE_THRESHOLD = 6; // px in flow coords
+const ALIGNMENT_SNAP_SCREEN_PX = 12;
+const CONNECTED_CENTER_SNAP_SCREEN_PX = 18;
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
 const MIN_RADIAL_FIT_ZOOM = 0.25;
@@ -245,6 +253,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
+  const [freeDragActive, setFreeDragActive] = useState(false);
   const pinchRef = useRef<{
     distance: number;
     flowCenter: { x: number; y: number };
@@ -518,6 +527,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const state = useCanvasStore.getState();
     const storedDraggedNode = state.nodes.find((node) => node.id === draggedNode.id);
     if (isNodeLocked(storedDraggedNode)) return;
+    setFreeDragActive(isExternalNoteNode(storedDraggedNode ?? draggedNode));
     state.pushHistory();
     const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
     const matrixRootId = draggedData.matrixCellRole === "header"
@@ -553,6 +563,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       collectMovableBranch(draggedNode.id);
       moveAsGroup = movingIds.length > 1;
     }
+    movingIds = includeAttachedExternalNoteIds(state.nodes, movingIds);
     dragStartRef.current = {
       source: { ...draggedNode.position },
       positions: new Map(state.nodes
@@ -601,22 +612,56 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const movingJunctionIds = new Set(Array.from(movingIds).filter((nodeId) => (
       state.nodes.find((node) => node.id === nodeId)?.type === "junction"
     )));
-    const snap = snapRectToAlignment(
-      getNodeRect({ ...storedDragged, position: unsnappedPosition }),
-      state.nodes
-        .filter((node) => {
-          if (movingIds.has(node.id) || node.hidden || node.type === "frame") return false;
-          if (!drag?.matrixRootId) return true;
-          const data = (node.data ?? {}) as Record<string, unknown>;
-          return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
-        })
-        .map(getNodeRect),
-      {
-        threshold: GUIDE_THRESHOLD,
-        allowX: drag?.axis !== "y",
-        allowY: drag?.axis !== "x",
-      }
-    );
+    const draggedRect = getNodeRect({ ...storedDragged, position: unsnappedPosition });
+    const alignmentCandidates = state.nodes.filter((node) => {
+      if (movingIds.has(node.id) || node.hidden || node.type === "frame") return false;
+      if (!drag?.matrixRootId) return true;
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
+    });
+    const connectedIds = new Set<string>();
+    for (const edge of state.edges) {
+      if (edge.hidden) continue;
+      if (movingIds.has(edge.source) && !movingIds.has(edge.target)) connectedIds.add(edge.target);
+      if (movingIds.has(edge.target) && !movingIds.has(edge.source)) connectedIds.add(edge.source);
+    }
+    const snappingDisabled = event.altKey || isExternalNoteNode(storedDragged);
+    const zoom = getViewport().zoom;
+    const snapOptions = {
+      allowX: drag?.axis !== "y",
+      allowY: drag?.axis !== "x",
+    };
+    const generalSnap = snappingDisabled
+      ? { dx: 0, dy: 0, horizontalGuides: [], verticalGuides: [] }
+      : snapRectToAlignment(
+          draggedRect,
+          alignmentCandidates.map(getNodeRect),
+          {
+            ...snapOptions,
+            threshold: alignmentSnapThreshold(zoom, ALIGNMENT_SNAP_SCREEN_PX),
+          }
+        );
+    const connectedCenterSnap = snappingDisabled
+      ? { dx: 0, dy: 0, horizontalGuides: [], verticalGuides: [] }
+      : snapRectToAlignment(
+          draggedRect,
+          alignmentCandidates.filter((node) => connectedIds.has(node.id)).map(getNodeRect),
+          {
+            ...snapOptions,
+            centersOnly: true,
+            threshold: alignmentSnapThreshold(zoom, CONNECTED_CENTER_SNAP_SCREEN_PX, 64),
+          }
+        );
+    const snap = {
+      dx: connectedCenterSnap.verticalGuides.length ? connectedCenterSnap.dx : generalSnap.dx,
+      dy: connectedCenterSnap.horizontalGuides.length ? connectedCenterSnap.dy : generalSnap.dy,
+      verticalGuides: connectedCenterSnap.verticalGuides.length
+        ? connectedCenterSnap.verticalGuides
+        : generalSnap.verticalGuides,
+      horizontalGuides: connectedCenterSnap.horizontalGuides.length
+        ? connectedCenterSnap.horizontalGuides
+        : generalSnap.horizontalGuides,
+    };
 
     useCanvasStore.setState((current) => {
       const nextNodes = current.nodes.map((node) => {
@@ -647,12 +692,13 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       };
     });
     setGuides({ h: snap.horizontalGuides, v: snap.verticalGuides });
-  }, []);
+  }, [getViewport]);
 
   // Push history when a drag ends (safe: fires once, not on every frame)
   const onNodeDragStop = useCallback(() => {
     if (useUIStore.getState().relationshipSelection) return;
     setGuides({ h: [], v: [] });
+    setFreeDragActive(false);
     const movedIds = new Set(dragStartRef.current?.positions.keys() ?? []);
     const state = useCanvasStore.getState();
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
@@ -1367,7 +1413,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       maxZoom={MAX_CANVAS_ZOOM}
       defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
-      snapToGrid={settings.snapToGrid}
+      snapToGrid={settings.snapToGrid && !freeDragActive}
       snapGrid={[gridSpacing, gridSpacing]}
       panOnDrag={relationshipSelection
         ? [0, 1, 2]
