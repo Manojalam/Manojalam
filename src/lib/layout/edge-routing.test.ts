@@ -69,6 +69,36 @@ test("structured sibling routes use distinct ordered ports and lanes", () => {
   assert.notEqual(first.points[1].x, second.points[1].x, "siblings need distinct routing lanes");
 });
 
+test("near-aligned automatic routes collapse micro-doglegs into one segment", () => {
+  const horizontal = routeLayoutEdge(
+    createNodeRect("source", 0, 100, 120, 80),
+    createNodeRect("target", 320, 108, 120, 80),
+    "horizontal",
+    []
+  );
+  const vertical = routeLayoutEdge(
+    createNodeRect("source", 100, 0, 120, 80),
+    createNodeRect("target", 110, 260, 120, 80),
+    "vertical",
+    []
+  );
+
+  assert.equal(horizontal.points.length, 2);
+  assert.equal(vertical.points.length, 2);
+  assert.equal(horizontal.path.includes("Q"), false);
+  assert.equal(vertical.path.includes("Q"), false);
+});
+
+test("a direct near-aligned route still detours around obstacles", () => {
+  const source = createNodeRect("source", 0, 100, 120, 80);
+  const target = createNodeRect("target", 420, 108, 120, 80);
+  const obstacle = createNodeRect("obstacle", 230, 80, 100, 120);
+  const route = routeLayoutEdge(source, target, "horizontal", [obstacle]);
+
+  assert.ok(route.points.length > 2);
+  assertAvoids(route, obstacle);
+});
+
 test("orthogonal routes detour around intervening boxes", () => {
   const source = createNodeRect("source", 0, 80, 160, 80);
   const target = createNodeRect("target", 520, 80, 160, 80);

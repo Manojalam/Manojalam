@@ -47,6 +47,7 @@ import {
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import {
   alignmentSnapThreshold,
+  snapPointToGrid,
   snapRectToAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { useDeviceProfile } from "@/lib/use-device-profile";
@@ -83,7 +84,7 @@ import {
 interface Guides { h: number[]; v: number[] }
 
 const ALIGNMENT_SNAP_SCREEN_PX = 12;
-const CONNECTED_CENTER_SNAP_SCREEN_PX = 18;
+const CONNECTED_CENTER_SNAP_SCREEN_PX = 24;
 const MIN_CANVAS_ZOOM = 0.02;
 const MAX_CANVAS_ZOOM = 6;
 const MIN_RADIAL_FIT_ZOOM = 0.25;
@@ -257,7 +258,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
-  const [freeDragActive, setFreeDragActive] = useState(false);
   const pinchRef = useRef<{
     distance: number;
     flowCenter: { x: number; y: number };
@@ -539,7 +539,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     const state = useCanvasStore.getState();
     const storedDraggedNode = state.nodes.find((node) => node.id === draggedNode.id);
     if (isNodeLocked(storedDraggedNode)) return;
-    setFreeDragActive(isExternalNoteNode(storedDraggedNode ?? draggedNode));
     state.pushHistory();
     const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
@@ -642,9 +641,24 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
             threshold: alignmentSnapThreshold(zoom, CONNECTED_CENTER_SNAP_SCREEN_PX, 64),
           }
         );
+    const gridSpacing = state.settings.gridSpacing
+      ?? state.settings.gridSize
+      ?? DEFAULT_BOARD_SETTINGS.gridSpacing
+      ?? 32;
+    const gridPosition = !snappingDisabled && state.settings.snapToGrid
+      ? snapPointToGrid(unsnappedPosition, gridSpacing)
+      : unsnappedPosition;
+    const gridDelta = {
+      x: snapOptions.allowX ? gridPosition.x - unsnappedPosition.x : 0,
+      y: snapOptions.allowY ? gridPosition.y - unsnappedPosition.y : 0,
+    };
     const snap = {
-      dx: connectedCenterSnap.verticalGuides.length ? connectedCenterSnap.dx : generalSnap.dx,
-      dy: connectedCenterSnap.horizontalGuides.length ? connectedCenterSnap.dy : generalSnap.dy,
+      dx: connectedCenterSnap.verticalGuides.length
+        ? connectedCenterSnap.dx
+        : generalSnap.verticalGuides.length ? generalSnap.dx : gridDelta.x,
+      dy: connectedCenterSnap.horizontalGuides.length
+        ? connectedCenterSnap.dy
+        : generalSnap.horizontalGuides.length ? generalSnap.dy : gridDelta.y,
       verticalGuides: connectedCenterSnap.verticalGuides.length
         ? connectedCenterSnap.verticalGuides
         : generalSnap.verticalGuides,
@@ -688,7 +702,6 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const onNodeDragStop = useCallback(() => {
     if (useUIStore.getState().relationshipSelection) return;
     setGuides({ h: [], v: [] });
-    setFreeDragActive(false);
     const movedIds = new Set(dragStartRef.current?.positions.keys() ?? []);
     const state = useCanvasStore.getState();
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
@@ -1420,8 +1433,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       onlyRenderVisibleElements={!boardExportRequest}
       defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
-      snapToGrid={settings.snapToGrid && !freeDragActive}
-      snapGrid={[gridSpacing, gridSpacing]}
+      snapToGrid={false}
       panOnDrag={relationshipSelection
         ? [0, 1, 2]
         : isTouchDevice
@@ -1438,7 +1450,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       preventScrolling
       nodeClickDistance={isTouchDevice ? 8 : 0}
       paneClickDistance={isTouchDevice ? 8 : 0}
-      nodeDragThreshold={isTouchDevice ? 6 : 1}
+      nodeDragThreshold={isTouchDevice ? 6 : 3}
       connectionRadius={isTouchDevice ? 42 : 28}
       deleteKeyCode={null}
       onPointerDownCapture={onPointerDownCapture}

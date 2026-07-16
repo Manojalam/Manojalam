@@ -7,7 +7,7 @@ type Pt = RoutePoint;
 export type Segment = { a: Pt; b: Pt };
 
 export const EDGE_OBSTACLE_PADDING = 24;
-const DIRECT_ALIGNMENT_TOLERANCE = 8;
+const DIRECT_ALIGNMENT_TOLERANCE = 16;
 
 // -- Geometry helpers ---------------------------------------------------------
 
@@ -527,6 +527,45 @@ function routeVerticalEdge(
     : makeRoute(points);
 }
 
+function centeredDirectRoute(
+  sourceRect: NodeRect,
+  targetRect: NodeRect,
+  layoutMode: LayoutMode | undefined,
+  obstacles: NodeRect[],
+  options: LayoutRouteOptions
+): RouteResult | null {
+  const sourceFraction = options.sourceFraction ?? 0.5;
+  const targetFraction = options.targetFraction ?? 0.5;
+  if (
+    Math.abs(sourceFraction - 0.5) > Number.EPSILON
+    || Math.abs(targetFraction - 0.5) > Number.EPSILON
+    || Math.abs(options.laneOffset ?? 0) > Number.EPSILON
+  ) return null;
+
+  const centerDx = targetRect.centerX - sourceRect.centerX;
+  const centerDy = targetRect.centerY - sourceRect.centerY;
+  const verticalMode = layoutMode === "vertical" || layoutMode === "topDown";
+  const horizontalMode = layoutMode === "horizontal" || layoutMode === "linear" || layoutMode === "list";
+  const horizontal = horizontalMode || (!verticalMode && Math.abs(centerDx) >= Math.abs(centerDy));
+  const separated = horizontal
+    ? Math.abs(centerDx) >= (sourceRect.width + targetRect.width) / 2
+    : Math.abs(centerDy) >= (sourceRect.height + targetRect.height) / 2;
+  if (!separated) return null;
+  if (horizontal ? Math.abs(centerDy) > DIRECT_ALIGNMENT_TOLERANCE : Math.abs(centerDx) > DIRECT_ALIGNMENT_TOLERANCE) {
+    return null;
+  }
+
+  const sourceSide: Side = horizontal
+    ? centerDx >= 0 ? "right" : "left"
+    : centerDy >= 0 ? "bottom" : "top";
+  const targetSide: Side = horizontal
+    ? sourceSide === "right" ? "left" : "right"
+    : sourceSide === "bottom" ? "top" : "bottom";
+  const points = [sidePoint(sourceRect, sourceSide, 0.5), sidePoint(targetRect, targetSide, 0.5)];
+  const inflated = obstacles.map((obstacle) => inflate(obstacle, EDGE_OBSTACLE_PADDING));
+  return pathIntersections(points, inflated) === 0 ? makeRoute(points) : null;
+}
+
 export function routeLayoutEdge(
   sourceRect: NodeRect,
   targetRect: NodeRect,
@@ -534,6 +573,8 @@ export function routeLayoutEdge(
   obstacles: NodeRect[],
   options: LayoutRouteOptions = {}
 ): RouteResult {
+  const direct = centeredDirectRoute(sourceRect, targetRect, layoutMode, obstacles, options);
+  if (direct) return direct;
   switch (layoutMode) {
     case "list":
       return routeListEdge(sourceRect, targetRect, obstacles, options);
