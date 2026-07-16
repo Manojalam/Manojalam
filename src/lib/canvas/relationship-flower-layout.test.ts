@@ -419,11 +419,11 @@ test("partial last layers keep a complete shared slot grid with placeholders", (
     Array.from({ length: 4 }, (_, layerIndex) =>
       twentyTwoAcrossFour.petals.find((petal) => petal.layerIndex === layerIndex)?.angle
     ),
-    [-90, -105, -120, -135]
+    [-90, -120, -150, -180]
   );
 });
 
-test("successive layers continue clockwise through the closing petal gap", () => {
+test("successive layers start midway through the preceding layer's closing gap", () => {
   const fiveByTwo = layoutRelationshipFlowerPetals(
     Array.from({ length: 9 }, () => ({})),
     { hubRadius: 88, maxPerLayer: 9, density: "comfortable", layerCount: 2 }
@@ -455,10 +455,20 @@ test("successive layers continue clockwise through the closing petal gap", () =>
       .map((petal) => petal.angle)),
     [
       [-90, 30, 150],
-      [-130, -10, 110],
-      [-170, -50, 70],
+      [-150, -30, 90],
+      [-210, -90, 30],
     ]
   );
+  const normalized = (angle: number) => ((angle % 360) + 360) % 360;
+  const threeByThreeLayers = [0, 1, 2].map((layerIndex) => threeByThree.petals
+    .filter((petal) => petal.layerIndex === layerIndex)
+    .sort((first, second) => first.slotIndex - second.slotIndex));
+  for (let layerIndex = 1; layerIndex < threeByThreeLayers.length; layerIndex += 1) {
+    const previous = threeByThreeLayers[layerIndex - 1];
+    const closingGap = (normalized(previous[0].angle) - normalized(previous.at(-1)!.angle) + 360) % 360;
+    const expectedStart = normalized(previous.at(-1)!.angle + closingGap / 2);
+    assert.equal(normalized(threeByThreeLayers[layerIndex][0].angle), expectedStart);
+  }
 });
 
 test("dense flowers attach every compact nested layer beneath the hub", () => {
@@ -471,8 +481,8 @@ test("dense flowers attach every compact nested layer beneath the hub", () => {
     result.petals.filter((petal) => petal.layerIndex === layerIndex)
   );
   assert.equal(layers[0][0].angle, -90);
-  assert.equal(layers[1][0].angle, -105);
-  assert.equal(layers[2][0].angle, -120);
+  assert.equal(layers[1][0].angle, -112.5);
+  assert.equal(layers[2][0].angle, -135);
   const attachmentRootRadius = 88 * 0.68;
   assert.ok(result.petals.every((petal) =>
     Math.abs(petal.rootRadius - attachmentRootRadius) <= 0.001
