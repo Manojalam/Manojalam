@@ -16,9 +16,16 @@ const SIDES: Array<{ id: "top" | "right" | "bottom" | "left"; pos: Position }> =
   { id: "left", pos: Position.Left },
 ];
 
-export function NodeHandles({ color = "#6366f1" }: { color?: string }) {
+export function NodeHandles({
+  color = "#6366f1",
+  selected = false,
+}: {
+  color?: string;
+  selected?: boolean;
+}) {
   const activeTool = useUIStore((s) => s.activeTool);
   const connectorActive = activeTool === "connector";
+  const visible = connectorActive || selected;
 
   return (
     <>
@@ -32,8 +39,10 @@ export function NodeHandles({ color = "#6366f1" }: { color?: string }) {
           position={pos}
           isConnectableStart
           isConnectableEnd
-          className={connectorActive
-            ? "!h-4 !w-4 !border-2 !border-background !opacity-100 !shadow-md"
+          className={visible
+            ? connectorActive
+              ? "!h-4 !w-4 !border-2 !border-background !opacity-100 !shadow-md"
+              : "!h-3 !w-3 !border-2 !border-background !opacity-100 !shadow-sm"
             : "!h-2.5 !w-2.5 !border !border-background !opacity-0"}
           style={{ background: color, pointerEvents: "all" }}
         />

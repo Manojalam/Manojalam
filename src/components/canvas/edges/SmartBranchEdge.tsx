@@ -105,10 +105,11 @@ function RoutedSmartBranchEdge({
   const curveStyle = d.curveStyle ?? "step";
   const sourceNode = nodes.find((n) => n.id === source);
   const targetNode = nodes.find((n) => n.id === target);
+  const manualRoute = d.manualRoute === true;
 
   // Keep every connector inexpensive while nodes are moving. The obstacle-aware
   // route is recalculated from the final node geometry as soon as dragging ends.
-  if (canvasDragging || curveStyle !== "step") {
+  if (canvasDragging || curveStyle !== "step" || manualRoute) {
     const routed = curveStyle === "straight"
       ? getStraightPath({ sourceX, sourceY, targetX, targetY })
       : curveStyle === "smooth"
@@ -179,13 +180,16 @@ function SmartBranchEdgeComponent(props: EdgeProps) {
   const endpointData = useNodesData([props.source, props.target]);
   const targetData = (endpointData.find((node) => node.id === props.target)?.data ?? {}) as Record<string, unknown>;
   const data = (props.data ?? {}) as VidyaEdgeData;
+  const manualRoute = data.manualRoute === true;
   const isGroupedListEdge = data.layoutMode === "list"
+    && !manualRoute
     && targetData.parentId === props.source;
   const isGroupedTreeEdge = (
     data.layoutMode === "horizontal"
     || data.layoutMode === "vertical"
     || data.layoutMode === "topDown"
   )
+    && !manualRoute
     && targetData.parentId === props.source;
   return isGroupedListEdge || isGroupedTreeEdge ? null : <RoutedSmartBranchEdge {...props} />;
 }

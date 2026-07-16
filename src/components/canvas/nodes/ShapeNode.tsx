@@ -1138,7 +1138,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           setEditing(true);
         }}
       >
-        <NodeHandles color={borderColor} />
+        <NodeHandles color={borderColor} selected={selected} />
         <NodeQuickActions nodeId={id} color={borderColor} selected={selected} />
 
         {/* Add connected child */}
