@@ -11,6 +11,7 @@ import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { cn } from "@/lib/utils";
 import {
+  routeTidiedFlowchartEdges,
   tidyFlowchart,
   type FlowchartTidyDirection,
 } from "@/lib/canvas/flowchart-tidy";
@@ -196,7 +197,6 @@ export function LayoutPanel() {
     }
 
     const layoutIds = new Set(layout.layoutNodeIds);
-    const nodesById = new Map(layout.nodes.map((node) => [node.id, node]));
     const routeEdgeIndices = edges.flatMap((edge, index) => (
       !edge.hidden && layoutIds.has(edge.source) && layoutIds.has(edge.target) ? [index] : []
     ));
@@ -204,10 +204,8 @@ export function LayoutPanel() {
       const edge = edges[index];
       const sourceRank = layout.rankByNodeId[edge.source];
       const targetRank = layout.rankByNodeId[edge.target];
-      const junctionEndpoint = nodesById.get(edge.source)?.type === "junction"
-        || nodesById.get(edge.target)?.type === "junction";
-      const forward = !junctionEndpoint && targetRank > sourceRank;
-      const layoutMode: LayoutMode = forward
+      const adjacent = targetRank - sourceRank === 1;
+      const layoutMode: LayoutMode = adjacent
         ? layout.direction === "vertical" ? "topDown" : "horizontal"
         : "freeForm";
       return {
@@ -215,17 +213,18 @@ export function LayoutPanel() {
         data: {
           ...(edge.data ?? {}),
           layoutMode,
-          manualRoute: true,
+          manualRoute: !adjacent,
         },
       };
     });
     const rerouted = smartRerouteBoardEdges(layout.nodes, preparedEdges, {
       resetManualAdjustments: true,
     });
+    const plannedRoutes = routeTidiedFlowchartEdges(layout.nodes, rerouted.edges, layout);
     const routeEdgeIndexSet = new Set(routeEdgeIndices);
     let reroutedIndex = 0;
     const nextEdges = edges.map((edge, index) => (
-      routeEdgeIndexSet.has(index) ? rerouted.edges[reroutedIndex++] : edge
+      routeEdgeIndexSet.has(index) ? plannedRoutes.edges[reroutedIndex++] : edge
     ));
 
     useCanvasStore.getState().pushHistory();
@@ -239,10 +238,12 @@ export function LayoutPanel() {
       `${layout.direction === "vertical" ? "Top-to-bottom" : "Left-to-right"} layers`,
       layout.componentCount > 1 ? `${layout.componentCount} connected groups packed separately` : null,
       layout.lockedNodeCount ? `${layout.lockedNodeCount} locked object${layout.lockedNodeCount === 1 ? "" : "s"} kept in place` : null,
-      layout.movedNoteCount ? `${layout.movedNoteCount} attached note${layout.movedNoteCount === 1 ? "" : "s"} kept with its source` : null,
+      layout.movedNoteCount ? `${layout.movedNoteCount} attached note${layout.movedNoteCount === 1 ? "" : "s"} spaced with its source` : null,
+      plannedRoutes.semanticBranchCount ? `${plannedRoutes.semanticBranchCount} labeled decision branch${plannedRoutes.semanticBranchCount === 1 ? "" : "es"} separated` : null,
+      plannedRoutes.laneRoutedCount ? `${plannedRoutes.laneRoutedCount} cross-link${plannedRoutes.laneRoutedCount === 1 ? "" : "s"} moved to outer lanes` : null,
     ].filter(Boolean).join(" · ");
     toast.success(`Tidied ${layout.layoutNodeIds.length} flowchart object${layout.layoutNodeIds.length === 1 ? "" : "s"}.`, {
-      description: `${details}. Connector bends were rebuilt; labels and styles were preserved.`,
+      description: `${details}. Connector labels were re-anchored to rebuilt paths; styles were preserved.`,
       action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
     });
   };
@@ -271,7 +272,7 @@ export function LayoutPanel() {
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Tidy up flowchart
           </div>
           <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-            Arranges the whole connected flowchart into layers, reduces crossings, separates groups, and reroutes connectors.
+            Builds clear layers, keeps notes out of flow corridors, separates labeled decision branches, and lanes cross-links around the chart.
           </p>
           <div className="mt-2 grid grid-cols-3 gap-1">
             {([

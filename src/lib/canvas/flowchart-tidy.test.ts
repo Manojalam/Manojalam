@@ -4,7 +4,11 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 
 import { getNodeRect } from "../layout/geometry";
-import { tidyFlowchart } from "./flowchart-tidy";
+import {
+  flowchartBranchKind,
+  routeTidiedFlowchartEdges,
+  tidyFlowchart,
+} from "./flowchart-tidy";
 
 function shape(
   id: string,
@@ -182,4 +186,144 @@ test("produces deterministic positions for the same rough chart", () => {
     first.nodes.map((node) => node.position),
     second.nodes.map((node) => node.position)
   );
+});
+
+test("reserves attached note space while packing sibling branches", () => {
+  const root = shape("root", 200, 0);
+  const owner = shape("owner", 0, 220);
+  const sibling = shape("sibling", 480, 220);
+  const note: Node = {
+    id: "owner-note",
+    type: "text",
+    position: { x: 136, y: 214 },
+    style: { width: 280, height: 76 },
+    data: { externalNote: true, noteForNodeId: owner.id, text: "Attached explanation" },
+  };
+  const result = tidyFlowchart([root, owner, sibling, note], [
+    edge("root-owner", root.id, owner.id),
+    edge("root-sibling", root.id, sibling.id),
+  ], { direction: "vertical" });
+  const laidOut = byId(result.nodes);
+  const ownerRect = getNodeRect(laidOut.get(owner.id)!);
+  const noteRect = getNodeRect(laidOut.get(note.id)!);
+  const siblingRect = getNodeRect(laidOut.get(sibling.id)!);
+
+  assert.deepEqual({
+    x: noteRect.left - ownerRect.left,
+    y: noteRect.top - ownerRect.top,
+  }, {
+    x: note.position.x - owner.position.x,
+    y: note.position.y - owner.position.y,
+  });
+  assert.ok(siblingRect.left - noteRect.right >= 70);
+});
+
+test("moves a note out of the main horizontal connector corridor", () => {
+  const source = shape("source", 0, 160);
+  const target = shape("target", 560, 160);
+  const note: Node = {
+    id: "source-note",
+    type: "text",
+    position: { x: 150, y: 156 },
+    style: { width: 220, height: 72 },
+    data: { externalNote: true, noteForNodeId: source.id, text: "Explanation" },
+  };
+  const result = tidyFlowchart([source, target, note], [edge("flow", source.id, target.id)], {
+    direction: "horizontal",
+  });
+  const laidOut = byId(result.nodes);
+  const sourceRect = getNodeRect(laidOut.get(source.id)!);
+  const noteRect = getNodeRect(laidOut.get(note.id)!);
+
+  assert.ok(noteRect.bottom <= sourceRect.top - 27 || noteRect.top >= sourceRect.bottom + 27);
+  assert.equal(result.movedNoteCount, 1);
+});
+
+test("keeps the affirmative decision branch on axis and moves the negative branch aside", () => {
+  const decision = shape("decision", 200, 0, { shapeType: "diamond" }, 140, 110);
+  const affirmative = shape("affirmative", 180, 260);
+  const negative = shape("negative", 520, 260);
+  const edges = [
+    edge("yes", decision.id, affirmative.id, { data: { label: "आम्" } }),
+    edge("no", decision.id, negative.id, { data: { label: "न" } }),
+  ];
+  const result = tidyFlowchart([decision, affirmative, negative], edges, { direction: "vertical" });
+  const laidOut = byId(result.nodes);
+  const decisionRect = getNodeRect(laidOut.get(decision.id)!);
+  const affirmativeRect = getNodeRect(laidOut.get(affirmative.id)!);
+  const negativeRect = getNodeRect(laidOut.get(negative.id)!);
+
+  assert.ok(Math.abs(decisionRect.centerX - affirmativeRect.centerX) < 1);
+  assert.ok(negativeRect.left - affirmativeRect.right >= 55);
+
+  const routed = routeTidiedFlowchartEdges(result.nodes, edges, result);
+  assert.equal(routed.semanticBranchCount, 2);
+  assert.equal(routed.edges[0].sourceHandle, "bottom");
+  assert.equal(routed.edges[0].targetHandle, "top");
+  assert.equal(routed.edges[0].data?.manualRoute, false);
+  assert.equal(routed.edges[1].sourceHandle, "right");
+  assert.equal(routed.edges[1].targetHandle, "left");
+  assert.equal(routed.edges[1].data?.preserveHandles, true);
+});
+
+test("uses rightward affirmative and downward negative ports in a horizontal flow", () => {
+  const decision = shape("decision", 0, 200, { shapeType: "diamond" }, 140, 110);
+  const affirmative = shape("affirmative", 320, 190);
+  const negative = shape("negative", 320, 520);
+  const edges = [
+    edge("yes", decision.id, affirmative.id, { data: { label: "Yes" } }),
+    edge("no", decision.id, negative.id, { data: { label: "No" } }),
+  ];
+  const layout = tidyFlowchart([decision, affirmative, negative], edges, { direction: "horizontal" });
+  const laidOut = byId(layout.nodes);
+  const decisionRect = getNodeRect(laidOut.get(decision.id)!);
+  const affirmativeRect = getNodeRect(laidOut.get(affirmative.id)!);
+  const negativeRect = getNodeRect(laidOut.get(negative.id)!);
+
+  assert.ok(Math.abs(decisionRect.centerY - affirmativeRect.centerY) < 1);
+  assert.ok(negativeRect.top - affirmativeRect.bottom >= 55);
+
+  const routed = routeTidiedFlowchartEdges(layout.nodes, edges, layout);
+  assert.equal(routed.edges[0].sourceHandle, "right");
+  assert.equal(routed.edges[0].targetHandle, "left");
+  assert.equal(routed.edges[1].sourceHandle, "bottom");
+  assert.equal(routed.edges[1].targetHandle, "top");
+});
+
+test("moves feedback connectors into distinct outer lanes and reanchors their labels", () => {
+  const nodes = [shape("a", 0, 0), shape("b", 0, 220), shape("c", 0, 440)];
+  const edges = [
+    edge("ab", "a", "b"),
+    edge("bc", "b", "c"),
+    edge("ca", "c", "a", { data: { label: "Retry", labelOffset: { x: 80, y: 40 } } }),
+    edge("cb", "c", "b", { data: { label: "Review" } }),
+  ];
+  const layout = tidyFlowchart(nodes, edges, { direction: "vertical" });
+  const routed = routeTidiedFlowchartEdges(layout.nodes, edges, layout);
+  const feedback = routed.edges.slice(2);
+  const chartLeft = Math.min(...layout.nodes.map((node) => getNodeRect(node).left));
+
+  assert.equal(routed.laneRoutedCount, 2);
+  assert.equal(routed.resetLabelOffsetCount, 1);
+  assert.equal(feedback[0].sourceHandle, "left");
+  assert.equal(feedback[0].targetHandle, "left");
+  assert.equal(feedback[0].data?.labelOffset, undefined);
+  assert.equal(feedback[0].data?.waypointOrigin, "segment-drag");
+  assert.ok((feedback[0].data?.waypoints as Array<{ x: number }>)[0].x < chartLeft);
+  assert.ok(
+    (feedback[1].data?.waypoints as Array<{ x: number }>)[0].x
+      < (feedback[0].data?.waypoints as Array<{ x: number }>)[0].x
+  );
+});
+
+test("recognizes localized affirmative and negative connector labels", () => {
+  assert.equal(flowchartBranchKind(edge("yes", "a", "b", { data: { label: "आम्" } })), "affirmative");
+  assert.equal(flowchartBranchKind(edge("no", "a", "b", { data: { label: "न" } })), "negative");
+  assert.equal(flowchartBranchKind(edge("custom-yes", "a", "b", {
+    data: { label: "My custom outcome", labelColor: "#22c55e", labelColorSynced: true },
+  })), "affirmative");
+  assert.equal(flowchartBranchKind(edge("custom-no", "a", "b", {
+    data: { label: "Another outcome", labelColor: "#ef4444", labelColorSynced: true },
+  })), "negative");
+  assert.equal(flowchartBranchKind(edge("custom", "a", "b", { data: { label: "Optional" } })), "other");
 });
