@@ -23,7 +23,7 @@ const PRESET_COLORS = [
 interface ColorSwatchPickerProps {
   value?: string;
   onChange: (color: string) => void;
-  /** Removes the explicit color override. Defaults to onChange(""). */
+  /** Clears the color using caller-specific semantics. Defaults to onChange(""). */
   onClear?: () => void;
   /** Called only for a color chosen through the native custom picker. */
   onCustomColor?: (color: string) => void;
@@ -52,9 +52,30 @@ export function ColorSwatchPicker({
   const nativeValue = typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
     ? value
     : "#6366f1";
+  const isCleared = !value || value === "transparent";
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        title="Clear color"
+        aria-label="Clear color"
+        onClick={() => (onClear ?? (() => onChange("")))()}
+        className={cn(
+          "flex flex-none items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:scale-110 hover:text-foreground",
+          swatchSize,
+          isCleared && `ring-2 ring-primary ${ringOffset}`
+        )}
+        style={{
+          backgroundColor: "#ffffff",
+          backgroundImage: "linear-gradient(45deg,#e2e8f0 25%,transparent 25%),linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e2e8f0 75%),linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)",
+          backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
+          backgroundSize: "8px 8px",
+        }}
+      >
+        <X className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
+      </button>
+
       {allColors.map((hex) => (
         <button
           type="button"
@@ -71,26 +92,6 @@ export function ColorSwatchPicker({
           style={{ backgroundColor: hex }}
         />
       ))}
-
-      <button
-        type="button"
-        title="Clear color"
-        aria-label="Clear color"
-        onClick={() => (onClear ?? (() => onChange("")))()}
-        className={cn(
-          "flex flex-none items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:scale-110 hover:text-foreground",
-          swatchSize,
-          !value && `ring-2 ring-primary ${ringOffset}`
-        )}
-        style={{
-          backgroundColor: "#ffffff",
-          backgroundImage: "linear-gradient(45deg,#e2e8f0 25%,transparent 25%),linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e2e8f0 75%),linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)",
-          backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
-          backgroundSize: "8px 8px",
-        }}
-      >
-        <X className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
-      </button>
 
       {/* Custom color + button */}
       <button

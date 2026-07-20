@@ -39,3 +39,12 @@ test("manual item fill overrides the palette and legacy source style", () => {
     borderColor: "#22c55e",
   });
 });
+
+test("a transparent item fill does not fall back to the palette", () => {
+  assert.equal(relationshipDiagramItemColor(item, 2, {
+    palette: "pastel",
+    itemStyles: {
+      [item.itemId]: { fillColor: "transparent" },
+    },
+  }), "transparent");
+});
