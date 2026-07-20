@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowDown, ArrowRight, Grid3X3, Maximize2, Palette, RefreshCw, RotateCcw, Ungroup, X } from "lucide-react";
+import { useState } from "react";
+import { ArrowDown, ArrowRight, Grid3X3, Maximize2, Palette, RefreshCw, RotateCcw, Sparkles, Ungroup, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -9,6 +10,11 @@ import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { cn } from "@/lib/utils";
+import {
+  tidyFlowchart,
+  type FlowchartTidyDirection,
+} from "@/lib/canvas/flowchart-tidy";
+import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
 
 // ── Schematic SVG previews (56×40) ────────────────────────────────────────────
 const dot = (x: number, y: number, r = 3.2, fill = "#4262ff") => (
@@ -80,6 +86,7 @@ function layoutLabel(mode: string | undefined): string {
 }
 
 export function LayoutPanel() {
+  const [tidyDirection, setTidyDirection] = useState<FlowchartTidyDirection>("auto");
   const open = useUIStore((s) => s.layoutPanelOpen);
   const setOpen = useUIStore((s) => s.setLayoutPanelOpen);
   const applyLayout = useCanvasStore((s) => s.applyLayout);
@@ -181,6 +188,65 @@ export function LayoutPanel() {
     });
   };
 
+  const handleTidyFlowchart = () => {
+    const layout = tidyFlowchart(nodes, edges, { direction: tidyDirection });
+    if (layout.layoutNodeIds.length < 2) {
+      toast.error("Connect at least two flowchart objects before using Tidy up.");
+      return;
+    }
+
+    const layoutIds = new Set(layout.layoutNodeIds);
+    const nodesById = new Map(layout.nodes.map((node) => [node.id, node]));
+    const routeEdgeIndices = edges.flatMap((edge, index) => (
+      !edge.hidden && layoutIds.has(edge.source) && layoutIds.has(edge.target) ? [index] : []
+    ));
+    const preparedEdges = routeEdgeIndices.map((index) => {
+      const edge = edges[index];
+      const sourceRank = layout.rankByNodeId[edge.source];
+      const targetRank = layout.rankByNodeId[edge.target];
+      const junctionEndpoint = nodesById.get(edge.source)?.type === "junction"
+        || nodesById.get(edge.target)?.type === "junction";
+      const forward = !junctionEndpoint && targetRank > sourceRank;
+      const layoutMode: LayoutMode = forward
+        ? layout.direction === "vertical" ? "topDown" : "horizontal"
+        : "freeForm";
+      return {
+        ...edge,
+        data: {
+          ...(edge.data ?? {}),
+          layoutMode,
+          manualRoute: true,
+        },
+      };
+    });
+    const rerouted = smartRerouteBoardEdges(layout.nodes, preparedEdges, {
+      resetManualAdjustments: true,
+    });
+    const routeEdgeIndexSet = new Set(routeEdgeIndices);
+    let reroutedIndex = 0;
+    const nextEdges = edges.map((edge, index) => (
+      routeEdgeIndexSet.has(index) ? rerouted.edges[reroutedIndex++] : edge
+    ));
+
+    useCanvasStore.getState().pushHistory();
+    useCanvasStore.setState({
+      nodes: layout.nodes,
+      edges: nextEdges,
+      saveStatus: "unsaved",
+    });
+
+    const details = [
+      `${layout.direction === "vertical" ? "Top-to-bottom" : "Left-to-right"} layers`,
+      layout.componentCount > 1 ? `${layout.componentCount} connected groups packed separately` : null,
+      layout.lockedNodeCount ? `${layout.lockedNodeCount} locked object${layout.lockedNodeCount === 1 ? "" : "s"} kept in place` : null,
+      layout.movedNoteCount ? `${layout.movedNoteCount} attached note${layout.movedNoteCount === 1 ? "" : "s"} kept with its source` : null,
+    ].filter(Boolean).join(" · ");
+    toast.success(`Tidied ${layout.layoutNodeIds.length} flowchart object${layout.layoutNodeIds.length === 1 ? "" : "s"}.`, {
+      description: `${details}. Connector bends were rebuilt; labels and styles were preserved.`,
+      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+    });
+  };
+
   return (
     <aside className="vidya-float-panel layout-panel flex max-h-[calc(100dvh-100px)] w-64 flex-col">
       <div className="flex items-center justify-between border-b px-3 py-2.5">
@@ -191,7 +257,7 @@ export function LayoutPanel() {
               Selected branch · {affectedCount} node{affectedCount === 1 ? "" : "s"}
             </p>
           ) : (
-            <p className="text-[10px] text-muted-foreground">Select one parent node first</p>
+            <p className="text-[10px] text-muted-foreground">Tidy the board or select a branch</p>
           )}
         </div>
         <button onClick={() => setOpen(false)} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
@@ -200,6 +266,47 @@ export function LayoutPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
+        <div className="mb-2 rounded-lg border border-primary/30 bg-primary/5 p-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" /> Tidy up flowchart
+          </div>
+          <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+            Arranges the whole connected flowchart into layers, reduces crossings, separates groups, and reroutes connectors.
+          </p>
+          <div className="mt-2 grid grid-cols-3 gap-1">
+            {([
+              ["auto", "Auto"],
+              ["vertical", "Down"],
+              ["horizontal", "Across"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTidyDirection(value)}
+                className={cn(
+                  "rounded-md border px-1.5 py-1.5 text-[9px]",
+                  tidyDirection === value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={!edges.some((edge) => !edge.hidden)}
+            onClick={handleTidyFlowchart}
+            className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Tidy up entire flowchart
+          </button>
+          <p className="mt-1.5 text-[9px] leading-snug text-muted-foreground">
+            Locked objects stay fixed. Attached notes keep their relative position. Undo restores node placement and connector bends.
+          </p>
+        </div>
+
         {selectedNode ? (
           <div className="mb-2 rounded-lg border border-border bg-muted/35 p-2">
             <div className="truncate text-xs font-medium text-foreground">{nodeTitle(selectedNode)}</div>
@@ -212,7 +319,7 @@ export function LayoutPanel() {
           </div>
         ) : (
           <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-900">
-            Layouts now apply only to a selected branch, so the whole board will not be rearranged by accident.
+            Branch layouts require one selected parent. Tidy up above works on the whole connected flowchart.
           </div>
         )}
 
@@ -510,7 +617,7 @@ export function LayoutPanel() {
       </div>
 
       <div className="border-t px-3 py-2 text-[10px] text-muted-foreground">
-        Tip: select the branch root before applying a layout.
+        Tip: use Tidy up for a rough whole-board flow; use a layout below for one selected branch.
       </div>
     </aside>
   );
