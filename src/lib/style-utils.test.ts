@@ -6,6 +6,7 @@ import {
   getTextStyle,
   resolveBorderColor,
   resolveFillColor,
+  themeAwareNodeFillColor,
 } from "./style-utils";
 
 const automaticLayoutStyle = {
@@ -50,4 +51,16 @@ test("automatic text follows the theme for transparent or soft fills", () => {
 test("explicit text colors remain unchanged", () => {
   assert.equal(getTextStyle({ textColor: "#ec4899" }, "#ffffff").color, "#ec4899");
   assert.equal(getTextStyle({}, "#ffffff").color, "#111827");
+});
+
+test("opaque node fills are theme toned without changing saved colors", () => {
+  assert.equal(
+    themeAwareNodeFillColor("#fbbf24"),
+    "color-mix(in srgb, #fbbf24 var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))"
+  );
+});
+
+test("transparent and soft node fills are not darkened", () => {
+  assert.equal(themeAwareNodeFillColor("transparent"), "transparent");
+  assert.equal(themeAwareNodeFillColor("rgba(251, 191, 36, 0.18)"), "rgba(251, 191, 36, 0.18)");
 });

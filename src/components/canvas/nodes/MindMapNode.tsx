@@ -8,6 +8,7 @@ import {
   getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity,
   resolveBorderStyle, resolveAccentColor, textMeasurementKey,
+  themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import {
   shapeTextContentSize,
@@ -119,7 +120,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
           d.locked && "opacity-75"
         )}
         style={{
-          backgroundColor: fillColor,
+          backgroundColor: themeAwareNodeFillColor(fillColor),
           border: `${borderWidth}px ${bStyle} ${borderColor ?? nodeColor}`,
           borderRadius,
         }}

@@ -286,6 +286,7 @@ function contrastRatio(first: number, second: number): number {
 
 const AUTOMATIC_DARK_TEXT = "#111827";
 const AUTOMATIC_LIGHT_TEXT = "#f8fafc";
+const DARK_MODE_OPAQUE_FILL_STRENGTH = 0.76;
 
 function readableTextColor(background: { r: number; g: number; b: number }): string {
   const backgroundLuminance = relativeLuminance(background);
@@ -309,8 +310,28 @@ export function automaticNodeTextColor(renderedBackgroundColor?: string): string
   const lightCanvas = parseCssColor(BOARD_THEME_COLORS.light.canvas)!;
   const darkCanvas = parseCssColor(BOARD_THEME_COLORS.dark.canvas)!;
   const lightModeText = readableTextColor(compositeColor(fill, lightCanvas));
-  const darkModeText = readableTextColor(compositeColor(fill, darkCanvas));
+  const darkModeFill = fill.a >= 0.999
+    ? {
+        r: fill.r * DARK_MODE_OPAQUE_FILL_STRENGTH + darkCanvas.r * (1 - DARK_MODE_OPAQUE_FILL_STRENGTH),
+        g: fill.g * DARK_MODE_OPAQUE_FILL_STRENGTH + darkCanvas.g * (1 - DARK_MODE_OPAQUE_FILL_STRENGTH),
+        b: fill.b * DARK_MODE_OPAQUE_FILL_STRENGTH + darkCanvas.b * (1 - DARK_MODE_OPAQUE_FILL_STRENGTH),
+        a: 1,
+      }
+    : compositeColor(fill, darkCanvas);
+  const darkModeText = readableTextColor(darkModeFill);
   return lightModeText === darkModeText ? lightModeText : "var(--foreground)";
+}
+
+/**
+ * Tone fully opaque node surfaces toward the visible canvas in dark mode.
+ * Saved colors stay exact, while transparent and already-soft fills retain
+ * their authored alpha instead of picking up a dark matte.
+ */
+export function themeAwareNodeFillColor(renderedFillColor?: string): string | undefined {
+  if (!renderedFillColor) return undefined;
+  const fill = parseCssColor(renderedFillColor);
+  if (!fill || fill.a < 0.999) return renderedFillColor;
+  return `color-mix(in srgb, ${renderedFillColor} var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))`;
 }
 
 /** Combine a base color + opacity into an rgba() string */

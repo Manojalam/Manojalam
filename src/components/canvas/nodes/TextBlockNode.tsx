@@ -8,7 +8,7 @@ import { NodeHandles } from "./NodeHandles";
 import {
   getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity, resolveBorderStyle,
-  textMeasurementKey,
+  textMeasurementKey, themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import {
   shapeTextContentSize,
@@ -131,7 +131,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
           style={{
-            backgroundColor: fillColor ?? "transparent",
+            backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
             border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
             borderRadius: bRadius,
             ...objectRotationStyle("text", dd),
