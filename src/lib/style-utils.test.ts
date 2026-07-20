@@ -56,7 +56,7 @@ test("explicit text colors remain unchanged", () => {
 test("opaque node fills are theme toned without changing saved colors", () => {
   assert.equal(
     themeAwareNodeFillColor("#fbbf24"),
-    "color-mix(in srgb, #fbbf24 var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))"
+    "color-mix(in oklch, #fbbf24 var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))"
   );
 });
 
