@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   compositeExportColor,
+  DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
   parseExportCssColor,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
@@ -28,6 +29,12 @@ test("continues a non-strict export after the font readiness wait times out", as
   assert.equal(warnings[0]?.kind, "font-resource");
   assert.match(warnings[0]?.message ?? "", /continued/i);
   assert.match(warnings[0]?.message ?? "", /fallback/i);
+});
+
+test("preserves the CSS exclusion geometry used by dense diamond labels", () => {
+  assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("float"));
+  assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("shape-outside"));
+  assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("shape-margin"));
 });
 
 test("continues a non-strict export after the document font set rejects", async () => {
