@@ -43,6 +43,9 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
   }, [canvasDragging, hierarchyEdgeToken, nodeContentToken]);
   const d = (nodes.find((node) => node.id === id)?.data ?? data) as RelationshipDiagramNodeData;
   const relationships = useCanvasStore((state) => state.relationships);
+  const showLabelBoxGuides = useCanvasStore(
+    (state) => state.settings.showLabelBoxGuides === true
+  );
   const beginManualNodeResize = useCanvasStore((state) => state.beginManualNodeResize);
   const finishManualNodeResize = useCanvasStore((state) => state.finishManualNodeResize);
   const setNodeSize = useCanvasStore((state) => state.setNodeSize);
@@ -118,6 +121,7 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
             spec={spec}
             exportId={id}
             measureText={fontMetricsReady}
+            showLabelBoxGuides={showLabelBoxGuides}
           />
         </div>
         {selected && (

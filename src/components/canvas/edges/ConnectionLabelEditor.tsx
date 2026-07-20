@@ -200,6 +200,7 @@ export function ConnectionLabelEditor({
       {showLabel && label && (
         <div
           data-export-edge-id={edgeId}
+          data-canvas-label-box="true"
           style={{
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,

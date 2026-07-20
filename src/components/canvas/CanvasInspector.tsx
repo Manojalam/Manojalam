@@ -1831,9 +1831,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
           <Separator />
           <Section label="Behavior">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Snap to grid</Label>
-              <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setBoardSettings({ snapToGrid: v })} />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Snap to grid</Label>
+                <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setBoardSettings({ snapToGrid: v })} />
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-md border p-2">
+                <div>
+                  <Label className="text-xs">Label box guides</Label>
+                  <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                    Show label areas for every canvas object and connector.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.showLabelBoxGuides === true}
+                  onCheckedChange={(v) => setBoardSettings({ showLabelBoxGuides: v })}
+                />
+              </div>
             </div>
           </Section>
           <Separator />
@@ -3718,10 +3732,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
               <div>
                 <p className="text-[10px] font-medium">Label area guides</p>
-                <p className="text-[9px] text-muted-foreground">Show outlines aligned to each chart section</p>
+                <p className="text-[9px] text-muted-foreground">
+                  {settings.showLabelBoxGuides
+                    ? "Enabled for the whole canvas"
+                    : "Show outlines aligned to each chart section"}
+                </p>
               </div>
               <Switch
-                checked={!!radialRootData.radialDebugLabelBoxes}
+                checked={settings.showLabelBoxGuides === true || !!radialRootData.radialDebugLabelBoxes}
+                disabled={settings.showLabelBoxGuides === true}
                 onCheckedChange={(checked) => {
                   if (!radialRootId) return;
                   pushHistory();
@@ -4215,10 +4234,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
                     <div>
                       <p className="text-[10px] font-medium">Debug label boxes</p>
-                      <p className="text-[9px] text-muted-foreground">Show the computed long-axis label bounds</p>
+                      <p className="text-[9px] text-muted-foreground">
+                        {settings.showLabelBoxGuides
+                          ? "Enabled for the whole canvas"
+                          : "Show the computed long-axis label bounds"}
+                      </p>
                     </div>
                     <Switch
-                      checked={!!activeRadialChart.debugLabelBoxes}
+                      checked={settings.showLabelBoxGuides === true || !!activeRadialChart.debugLabelBoxes}
+                      disabled={settings.showLabelBoxGuides === true}
                       onCheckedChange={(checked) => setRadialChart({ ...activeRadialChart, debugLabelBoxes: checked, enabled: true })}
                     />
                   </div>

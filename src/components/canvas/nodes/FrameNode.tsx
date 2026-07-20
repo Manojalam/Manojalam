@@ -40,6 +40,7 @@ function FrameNodeComponent({ id, data, selected }: NodeProps) {
       >
         {d.title !== "" && (
           <div
+            data-canvas-label-box="true"
             className="absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm"
             style={{
               backgroundColor: d.color ?? "#6366f1",

@@ -144,6 +144,8 @@ export interface BoardSettings {
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
   snapToGrid: boolean;
+  /** Show editor-only outlines for label layout areas across the canvas. */
+  showLabelBoxGuides?: boolean;
   defaultScriptMode: ScriptMode;
   defaultNodeColor: string;
   defaultFont: string;
@@ -638,6 +640,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   background: "dots",
   theme: "system",
   snapToGrid: false,
+  showLabelBoxGuides: false,
   defaultScriptMode: "plain",
   defaultNodeColor: "#6366f1",
   defaultFont: "Inter",

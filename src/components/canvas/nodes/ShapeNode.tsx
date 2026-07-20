@@ -36,6 +36,7 @@ import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import { resolveLabelBoxGuideVisibility } from "@/lib/canvas/label-box-guides";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -518,6 +519,7 @@ function RadialChartLayer({
   chart,
   borderColor,
   maximizeText,
+  showLabelBoxGuides = false,
   editingText,
   onSegmentEdit,
   onCenterEdit,
@@ -525,6 +527,7 @@ function RadialChartLayer({
   chart?: RadialChartData;
   borderColor: string;
   maximizeText?: boolean;
+  showLabelBoxGuides?: boolean;
   editingText?: ChartTextEdit | null;
   onSegmentEdit?: (edit: ChartTextEdit & { kind: "segment" }) => void;
   onCenterEdit?: (edit: ChartTextEdit & { kind: "center" }) => void;
@@ -534,6 +537,10 @@ function RadialChartLayer({
   const centerClipId = `${clipId}-center`;
 
   if (!chart?.enabled) return null;
+  const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(
+    showLabelBoxGuides,
+    chart.debugLabelBoxes
+  );
   const rings = normalizeRelationshipRingCounts(
     chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }]
   );
@@ -629,8 +636,8 @@ function RadialChartLayer({
                 >
                   {segment.text?.trim() && <title>{segment.text}</title>}
                 </path>
-                {chart.debugLabelBoxes && (
-                  <g clipPath={`url(#${segmentClipId})`} pointerEvents="none">
+                {drawLabelBoxGuides && (
+                  <g clipPath={`url(#${segmentClipId})`} pointerEvents="none" data-export-ignore>
                     <rect
                       x={textPoint.x - labelFit.availableWidth / 2}
                       y={textPoint.y - labelFit.availableHeight / 2}
@@ -790,6 +797,19 @@ function RadialChartLayer({
               });
             }}
           />
+          {drawLabelBoxGuides && (
+            <circle
+              cx="50"
+              cy="50"
+              r={Math.max(1, centerRadius - 0.8)}
+              fill="rgba(236,72,153,0.08)"
+              stroke="#db2777"
+              strokeWidth="0.18"
+              strokeDasharray="0.8 0.5"
+              pointerEvents="none"
+              data-export-ignore
+            />
+          )}
           {centerTextFit.lines.length > 0 && editingText?.kind !== "center" && (
             <g clipPath={`url(#${centerClipId})`}>
               <text
@@ -995,6 +1015,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
+  const showLabelBoxGuides = useCanvasStore((s) => s.settings.showLabelBoxGuides === true);
   const viewport = useViewport();
 
   const drawingModeNodeId   = useUIStore((s) => s.drawingModeNodeId);
@@ -1208,6 +1229,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
             chart={radialChart}
             borderColor={borderColor}
             maximizeText={dd.maximizeText === true}
+            showLabelBoxGuides={showLabelBoxGuides}
             editingText={activeChartTextEdit}
             onSegmentEdit={(edit) => {
               editHistoryCaptured.current = false;

@@ -65,6 +65,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
         <div
+        data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
           matrixCell ? "rounded-md shadow-none" : "",
