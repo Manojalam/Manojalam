@@ -29,7 +29,6 @@ import {
 import { radialLabelGuideGeometry } from "@/lib/canvas/radial-label-guide";
 import {
   radialCurvedLabelLayout,
-  radialLabelSupportsCurvedPath,
   radialLabelUsesCurvedText,
 } from "@/lib/canvas/radial-curved-label";
 import {
@@ -1133,7 +1132,6 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       const midAngle = (segment.startAngle + segment.endAngle) / 2;
       const curvedLabel = labelGeometry.lines.length > 0
         && radialLabelUsesCurvedText(segment)
-        && radialLabelSupportsCurvedPath(segment.label)
         && Math.abs(normalizeRadialLabelRotation(segment.textRotation)) < 0.001
         ? radialCurvedLabelLayout({
             centerX: model.center,
