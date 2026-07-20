@@ -93,6 +93,19 @@ export interface ActiveTextSelection {
   textAlign?: "left" | "center" | "right" | "justify";
 }
 
+/** Inline formatting captured by the one-shot format painter. */
+export interface InlineTextFormatSnapshot {
+  bold: boolean;
+  italic: boolean;
+  strike: boolean;
+  underline: boolean;
+  fontSize?: string;
+  fontFamily?: string;
+  textColor?: string;
+  highlightColor?: string;
+  textAlign: "left" | "center" | "right" | "justify";
+}
+
 export type InlineTextFormatKey =
   | "fontWeight"
   | "fontStyle"
@@ -141,6 +154,10 @@ export interface BoardSettings {
   gridSpacing?: number;
   /** Reusable connector-label shortcuts and their default styles, saved with this board. */
   connectorLabelPresets?: Array<string | ConnectorLabelPreset>;
+  /** Recently chosen inline text colors, saved with this board. */
+  customTextColors?: string[];
+  /** Recently chosen inline highlight colors, saved with this board. */
+  customHighlightColors?: string[];
   /** @deprecated Legacy alias retained while old boards migrate. */
   gridSize?: number;
 }
@@ -633,6 +650,8 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
     { label: "Yes", color: "#22c55e", syncConnectorColor: true },
     { label: "No", color: "#ef4444", syncConnectorColor: true },
   ],
+  customTextColors: [],
+  customHighlightColors: [],
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

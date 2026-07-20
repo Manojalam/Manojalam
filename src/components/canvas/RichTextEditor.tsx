@@ -15,17 +15,20 @@ import TextAlign from "@tiptap/extension-text-align";
 import Highlight from "@tiptap/extension-highlight";
 import { cn } from "@/lib/utils";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
-import type { InlineTextFormatDetail } from "@/lib/types";
+import type { InlineTextFormatDetail, InlineTextFormatSnapshot } from "@/lib/types";
 import { useUIStore } from "@/store/ui-store";
+import { useCanvasStore } from "@/store/canvas-store";
 import {
   measureRichTextElement,
   textMeasurementFontsReady,
 } from "@/lib/canvas/text-measurement";
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
-import { sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
+import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
+import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
-import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Palette } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Paintbrush, Palette } from "lucide-react";
+import { toast } from "sonner";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
 const FontSize = Extension.create({
@@ -109,6 +112,36 @@ function selectedMarkValue(editor: Editor, markName: string, attribute?: string)
   return value && value !== "absent" ? value : null;
 }
 
+function captureInlineFormat(editor: Editor): InlineTextFormatSnapshot {
+  const { from, to, $from } = editor.state.selection;
+  let marks = $from.marks();
+  let foundText = false;
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (foundText || !node.isText || !node.text?.length) return;
+    marks = node.marks;
+    foundText = true;
+  });
+  const hasMark = (name: string) => marks.some((mark) => mark.type.name === name);
+  const markAttributes = (name: string) => marks.find((mark) => mark.type.name === name)?.attrs;
+  const textStyle = markAttributes("textStyle");
+  const highlight = markAttributes("highlight");
+  const candidateAlign = String($from.parent.attrs.textAlign ?? "left");
+  const textAlign = (["left", "center", "right", "justify"] as const).find(
+    (alignment) => alignment === candidateAlign
+  ) ?? "left";
+  return {
+    bold: hasMark("bold"),
+    italic: hasMark("italic"),
+    strike: hasMark("strike"),
+    underline: hasMark("underline"),
+    fontSize: typeof textStyle?.fontSize === "string" ? textStyle.fontSize : undefined,
+    fontFamily: typeof textStyle?.fontFamily === "string" ? textStyle.fontFamily : undefined,
+    textColor: typeof textStyle?.color === "string" ? textStyle.color : undefined,
+    highlightColor: typeof highlight?.color === "string" ? highlight.color : undefined,
+    textAlign,
+  };
+}
+
 interface Anchor { top: number; bottom: number; left: number }
 interface Point { top: number; left: number }
 
@@ -178,6 +211,11 @@ export function RichTextEditor({
   onBlur,
 }: RichTextEditorProps) {
   const setActiveTextSelection = useUIStore((state) => state.setActiveTextSelection);
+  const inlineFormatPainter = useUIStore((state) => state.inlineFormatPainter);
+  const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
+  const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
+  const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
+  const setSettings = useCanvasStore((state) => state.setSettings);
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
   const alignFirstRun = useRef(true);
   // Anchor = topmost point of the current selection (used to place the bar above it).
@@ -195,6 +233,7 @@ export function RichTextEditor({
   const [mounted, setMounted] = useState(false);
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
+  const nativeColorPickerOpenRef = useRef(false);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
   const measurementFontSizeRef = useRef(measurementFontSize);
@@ -286,6 +325,7 @@ export function RichTextEditor({
     extensions: EXTENSIONS,
     editorProps: {
       transformPastedHTML: sanitizePastedHtml,
+      transformPastedText: normalizePastedText,
     },
     content: initialContent || "",
     editable,
@@ -298,7 +338,11 @@ export function RichTextEditor({
     },
     onBlur({ editor, event }) {
       reportContentSize(editor, "blur");
-      if (!toolbarRef.current?.contains(event.relatedTarget as globalThis.Node | null)) hideToolbar();
+      const focusMovedToToolbar = toolbarRef.current?.contains(
+        event.relatedTarget as globalThis.Node | null
+      );
+      if (nativeColorPickerOpenRef.current || focusMovedToToolbar) return;
+      hideToolbar();
       onBlur?.();
     },
   });
@@ -560,7 +604,79 @@ export function RichTextEditor({
   const alignRight = useCallback(() => { selectionChain()?.setTextAlign("right").run(); }, [selectionChain]);
   const clearFormatting = useCallback(() => { selectionChain()?.unsetAllMarks().run(); }, [selectionChain]);
 
+  const useFormatPainter = useCallback(() => {
+    if (!editor) return;
+    if (!inlineFormatPainter) {
+      setInlineFormatPainter(captureInlineFormat(editor));
+      toast.success("Formatting copied", {
+        description: "Select the target text and click the brush again.",
+      });
+      return;
+    }
+
+    const chain = selectionChain();
+    if (!chain) return;
+    chain.unsetAllMarks();
+    if (inlineFormatPainter.bold) chain.setBold();
+    if (inlineFormatPainter.italic) chain.setItalic();
+    if (inlineFormatPainter.strike) chain.setStrike();
+    if (inlineFormatPainter.underline) chain.setUnderline();
+    if (inlineFormatPainter.fontSize) {
+      chain.setMark("textStyle", { fontSize: inlineFormatPainter.fontSize });
+    }
+    if (inlineFormatPainter.fontFamily) chain.setFontFamily(inlineFormatPainter.fontFamily);
+    if (inlineFormatPainter.textColor) chain.setColor(inlineFormatPainter.textColor);
+    if (inlineFormatPainter.highlightColor) {
+      chain.setHighlight({ color: inlineFormatPainter.highlightColor });
+    }
+    chain.setTextAlign(inlineFormatPainter.textAlign);
+    pendingReportReasonRef.current = "format";
+    chain.run();
+    setInlineFormatPainter(null);
+    toast.success("Formatting applied");
+  }, [editor, inlineFormatPainter, selectionChain, setInlineFormatPainter]);
+
+  const chooseCustomTextColor = useCallback((color: string) => {
+    nativeColorPickerOpenRef.current = false;
+    setSettings({ customTextColors: rememberCustomColor(customTextColors, color) });
+    pendingReportReasonRef.current = "format";
+    selectionChain()?.setColor(color).run();
+    setShowColors(false);
+  }, [customTextColors, selectionChain, setSettings]);
+
+  const chooseCustomHighlightColor = useCallback((color: string) => {
+    nativeColorPickerOpenRef.current = false;
+    setSettings({ customHighlightColors: rememberCustomColor(customHighlightColors, color) });
+    pendingReportReasonRef.current = "format";
+    selectionChain()?.setHighlight({ color }).run();
+    setShowHighlights(false);
+  }, [customHighlightColors, selectionChain, setSettings]);
+
+  const openNativeColorPicker = useCallback((input: HTMLInputElement | null) => {
+    if (!input) return;
+    nativeColorPickerOpenRef.current = true;
+    window.addEventListener("focus", () => {
+      window.setTimeout(() => {
+        const restoreSelection = nativeColorPickerOpenRef.current;
+        nativeColorPickerOpenRef.current = false;
+        if (restoreSelection) selectionChain()?.run();
+      }, 0);
+    }, { once: true });
+    try {
+      if (typeof input.showPicker === "function") input.showPicker();
+      else input.click();
+    } catch {
+      try {
+        input.click();
+      } catch {
+        nativeColorPickerOpenRef.current = false;
+      }
+    }
+  }, [selectionChain]);
+
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
+  const textColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customTextColors]));
+  const highlightColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customHighlightColors]));
 
   const selectedFontSize = editor ? selectedMarkValue(editor, "textStyle", "fontSize") : null;
   const selectedFamily = editor ? selectedMarkValue(editor, "textStyle", "fontFamily") : null;
@@ -722,20 +838,24 @@ export function RichTextEditor({
                   }}>Reset</button>
                 </div>
                 <div className="grid grid-cols-6 gap-2">
-                  {COLOR_SWATCHES.map((hex) => (
+                  {textColorSwatches.map((hex) => (
                     <button key={hex} title={hex}
                       onMouseDown={(e) => { e.preventDefault(); selectionChain()?.setColor(hex).run(); setShowColors(false); }}
                       className={cn("h-7 w-7 flex-none rounded-full border border-border/50 transition-transform hover:scale-110",
                         currentColor === hex && "ring-2 ring-primary ring-offset-1")}
                       style={{ backgroundColor: hex }} />
                   ))}
-                  <label className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-red-400 via-green-400 to-blue-400 text-[10px] font-bold text-white transition-transform hover:scale-110" title="Custom color">
+                  <button type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => openNativeColorPicker(customColorRef.current)}
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-red-400 via-green-400 to-blue-400 text-[10px] font-bold text-white transition-transform hover:scale-110"
+                    title="Add custom color">
                     +
-                    <input ref={customColorRef} type="color" className="sr-only"
-                      aria-label="Choose custom text color"
-                      name="custom-text-color"
-                      onChange={(e) => { selectionChain()?.setColor(e.target.value).run(); setShowColors(false); }} />
-                  </label>
+                  </button>
+                  <input ref={customColorRef} type="color" className="sr-only" tabIndex={-1}
+                    aria-label="Choose custom text color"
+                    name="custom-text-color"
+                    onChange={(event) => chooseCustomTextColor(event.target.value)} />
                 </div>
               </div>
             )}
@@ -762,26 +882,34 @@ export function RichTextEditor({
                   }}>Reset</button>
                 </div>
                 <div className="grid grid-cols-6 gap-2">
-                  {COLOR_SWATCHES.map((hex) => (
+                  {highlightColorSwatches.map((hex) => (
                     <button key={hex} title={hex}
                       onMouseDown={(e) => { e.preventDefault(); selectionChain()?.setHighlight({ color: hex }).run(); setShowHighlights(false); }}
                       className={cn("h-7 w-7 flex-none rounded-full border border-border/50 transition-transform hover:scale-110",
                         currentHighlight === hex && "ring-2 ring-primary ring-offset-1")}
                       style={{ backgroundColor: hex }} />
                   ))}
-                  <label className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-yellow-200 via-pink-300 to-cyan-300 text-[10px] font-bold text-slate-800 transition-transform hover:scale-110" title="Custom highlight">
+                  <button type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => openNativeColorPicker(customHighlightRef.current)}
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-yellow-200 via-pink-300 to-cyan-300 text-[10px] font-bold text-slate-800 transition-transform hover:scale-110"
+                    title="Add custom highlight">
                     +
-                    <input ref={customHighlightRef} type="color" className="sr-only"
-                      aria-label="Choose custom highlight color"
-                      name="custom-highlight-color"
-                      onChange={(e) => { selectionChain()?.setHighlight({ color: e.target.value }).run(); setShowHighlights(false); }} />
-                  </label>
+                  </button>
+                  <input ref={customHighlightRef} type="color" className="sr-only" tabIndex={-1}
+                    aria-label="Choose custom highlight color"
+                    name="custom-highlight-color"
+                    onChange={(event) => chooseCustomHighlightColor(event.target.value)} />
                 </div>
               </div>
             )}
           </div>
 
           {/* Clear formatting */}
+          <FormatButton active={!!inlineFormatPainter} onAction={useFormatPainter}
+            title={inlineFormatPainter ? "Apply copied formatting" : "Copy formatting"}>
+            <Paintbrush className="h-4 w-4" />
+          </FormatButton>
           <FormatButton onAction={clearFormatting} title="Clear formatting"><Eraser className="h-4 w-4" /></FormatButton>
         </div>,
         document.body

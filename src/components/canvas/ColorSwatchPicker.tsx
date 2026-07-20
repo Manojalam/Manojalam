@@ -22,6 +22,8 @@ const PRESET_COLORS = [
 interface ColorSwatchPickerProps {
   value?: string;
   onChange: (color: string) => void;
+  /** Called only for a color chosen through the native custom picker. */
+  onCustomColor?: (color: string) => void;
   /** Extra colors to show (e.g. recently used) */
   extra?: string[];
   size?: "sm" | "md";
@@ -30,6 +32,7 @@ interface ColorSwatchPickerProps {
 export function ColorSwatchPicker({
   value,
   onChange,
+  onCustomColor,
   extra = [],
   size = "md",
 }: ColorSwatchPickerProps) {
@@ -47,6 +50,7 @@ export function ColorSwatchPicker({
     <div className="flex flex-wrap items-center gap-1.5">
       {allColors.map((hex) => (
         <button
+          type="button"
           key={hex}
           title={hex}
           onClick={() => handleSwatch(hex)}
@@ -63,9 +67,17 @@ export function ColorSwatchPicker({
 
       {/* Custom color + button */}
       <button
+        type="button"
         title="Custom color…"
         onClick={() => {
-          requestAnimationFrame(() => inputRef.current?.click());
+          const input = inputRef.current;
+          if (!input) return;
+          try {
+            if (typeof input.showPicker === "function") input.showPicker();
+            else input.click();
+          } catch {
+            try { input.click(); } catch {}
+          }
         }}
         className={cn(
           "flex-none rounded-full border border-border/40 bg-gradient-to-br from-red-400 via-green-400 to-blue-400",
@@ -81,7 +93,10 @@ export function ColorSwatchPicker({
         aria-label="Choose custom color"
         name="custom-swatch-color"
         value={value ?? "#6366f1"}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => {
+          onCustomColor?.(event.target.value);
+          onChange(event.target.value);
+        }}
         className="sr-only"
       />
     </div>
