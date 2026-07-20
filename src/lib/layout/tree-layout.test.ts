@@ -193,3 +193,82 @@ test("manually moved endpoints remain on grouped hierarchy buses", () => {
   assert.equal(rootGroup!.branches.some((branch) => branch.childId === "branch-3"), true);
   assert.equal(model.groups.some((group) => group.parentId === "branch-3"), true);
 });
+
+test("single-child buses connect offset parents and children without a gap", () => {
+  for (const orientation of ["vertical", "horizontal"] as const) {
+    const nodes: Node[] = [{
+      id: "parent",
+      type: "shape",
+      position: { x: 40, y: 60 },
+      measured: { width: 120, height: 70 },
+      data: { text: "Parent", parentId: null, childOrder: ["child"] },
+    }, {
+      id: "child",
+      type: "shape",
+      position: orientation === "vertical" ? { x: 260, y: 260 } : { x: 320, y: 220 },
+      measured: { width: 100, height: 60 },
+      data: { text: "Child", parentId: "parent", childOrder: [] },
+    }];
+    const edge: Edge = {
+      id: "parent-child",
+      source: "parent",
+      target: "child",
+      type: "branch",
+      data: { layoutMode: orientation, curveStyle: "step" },
+    };
+
+    const group = buildTreeConnectorModel(nodes, [edge]).groups[0];
+    assert.ok(group);
+    const trunk = group.sharedSegments[0];
+    const bus = group.sharedSegments[1];
+    const branch = group.branches[0].segments[0];
+    if (orientation === "vertical") {
+      assert.equal(trunk.y2, bus.y1);
+      assert.equal(branch.y1, bus.y1);
+      assert.ok(bus.x1 <= trunk.x2 && trunk.x2 <= bus.x2);
+      assert.ok(bus.x1 <= branch.x1 && branch.x1 <= bus.x2);
+    } else {
+      assert.equal(trunk.x2, bus.x1);
+      assert.equal(branch.x1, bus.x1);
+      assert.ok(bus.y1 <= trunk.y2 && trunk.y2 <= bus.y2);
+      assert.ok(bus.y1 <= branch.y1 && branch.y1 <= bus.y2);
+    }
+  }
+});
+
+test("selected hierarchy edges leave the shared bus for full connector editing", () => {
+  const nodes: Node[] = [{
+    id: "parent",
+    type: "shape",
+    position: { x: 0, y: 0 },
+    measured: { width: 120, height: 70 },
+    data: { text: "Parent", parentId: null, childOrder: ["child"] },
+  }, {
+    id: "child",
+    type: "shape",
+    position: { x: 220, y: 220 },
+    measured: { width: 100, height: 60 },
+    data: { text: "Child", parentId: "parent", childOrder: [] },
+  }];
+  const edge: Edge = {
+    id: "parent-child",
+    source: "parent",
+    target: "child",
+    selected: true,
+    type: "branch",
+    data: { layoutMode: "vertical", curveStyle: "step" },
+  };
+
+  assert.deepEqual(buildTreeConnectorModel(nodes, [edge]).groups, []);
+
+  const bentEdge: Edge = {
+    ...edge,
+    selected: false,
+    data: {
+      ...edge.data,
+      waypoints: [{ x: 160, y: 120 }],
+      waypointOrigin: "bend",
+    },
+  };
+  assert.deepEqual(buildTreeConnectorModel(nodes, [bentEdge]).groups, []);
+});
