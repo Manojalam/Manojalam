@@ -9,6 +9,7 @@ import {
   getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
+  themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import {
   diamondTextFlowBox,
@@ -978,11 +979,12 @@ function ShapeSurface({
   selected?: boolean;
   petalCount?: number;
 }) {
+  const renderedFillColor = themeAwareNodeFillColor(fillColor);
   if (isSvgShape(shapeType)) {
     return (
       <SvgShapeSurface
         shapeType={shapeType}
-        fillColor={fillColor}
+        fillColor={renderedFillColor}
         borderColor={borderColor}
         borderWidth={borderWidth}
         borderStyle={borderStyle}
@@ -999,7 +1001,7 @@ function ShapeSurface({
         className="absolute inset-0"
         style={{
           ...shapeStyle,
-          backgroundColor: fillColor,
+          backgroundColor: renderedFillColor,
           border: `${borderWidth}px ${borderStyle} ${borderColor}`,
         }}
       />

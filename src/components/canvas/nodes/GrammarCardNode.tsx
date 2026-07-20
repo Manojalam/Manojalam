@@ -14,6 +14,7 @@ import {
   resolveBorderWidth,
   resolveFillColor,
   resolveLayoutVisualStyle,
+  themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -27,7 +28,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#4f46e5";
   const generatedStyle = layoutStyle ? {
-    background: resolveFillColor(dd),
+    background: themeAwareNodeFillColor(resolveFillColor(dd)),
     borderColor: resolveBorderColor(dd),
     borderStyle: resolveBorderStyle(dd),
     borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),

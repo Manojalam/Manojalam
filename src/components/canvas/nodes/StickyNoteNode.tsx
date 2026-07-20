@@ -15,6 +15,7 @@ import {
   resolveLayoutVisualStyle,
   resolveNodeBorderRadius,
   textMeasurementKey,
+  themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import {
   shapeTextContentSize,
@@ -145,7 +146,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
           )}
           style={{
-            backgroundColor: bg,
+            backgroundColor: themeAwareNodeFillColor(bg),
             border: `${bWidth}px ${bStyle} ${border}`,
             borderRadius: bRadius,
             ...objectRotationStyle("sticky", dd),

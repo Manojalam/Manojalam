@@ -14,6 +14,7 @@ import {
   resolveBorderWidth,
   resolveFillColor,
   resolveLayoutVisualStyle,
+  themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -43,7 +44,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#d97706";
   const generatedStyle = layoutStyle ? {
-    background: resolveFillColor(dd),
+    background: themeAwareNodeFillColor(resolveFillColor(dd)),
     borderColor: resolveBorderColor(dd),
     borderStyle: resolveBorderStyle(dd),
     borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
