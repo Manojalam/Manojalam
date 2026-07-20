@@ -59,6 +59,7 @@ import { ExportDialog } from "./ExportDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
+import { boardColorCssValue } from "@/lib/canvas/board-colors";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import {
   isExternalNoteNode,
@@ -1289,8 +1290,8 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     settings.background === "grid"  ? BackgroundVariant.Lines :
     settings.background === "dots"  ? BackgroundVariant.Dots  : undefined;
   const gridSpacing = settings.gridSpacing ?? settings.gridSize ?? DEFAULT_BOARD_SETTINGS.gridSpacing ?? 32;
-  const canvasBackgroundColor = settings.canvasBackgroundColor ?? "var(--canvas-bg)";
-  const gridColor = settings.gridColor ?? "var(--canvas-dot)";
+  const canvasBackgroundColor = boardColorCssValue(settings.canvasBackgroundColor, "canvas");
+  const gridColor = boardColorCssValue(settings.gridColor, "grid");
 
   const clearLongPressPan = useCallback(() => {
     if (longPressPanRef.current) window.clearTimeout(longPressPanRef.current.timeout);

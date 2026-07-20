@@ -11,6 +11,7 @@ import {
   ArrowLeftRight, FileImage, FileType2, Link2, Maximize2, Unlink2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,11 @@ import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
 import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
+import {
+  resolvedBoardColor,
+  usesAutomaticBoardColor,
+  type BoardColorTheme,
+} from "@/lib/canvas/board-colors";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import {
   buildRelationshipGroupsForSpec,
@@ -915,6 +921,8 @@ function ConnectionInspectorSections({
 // ── Main inspector ─────────────────────────────────────────────────────────
 
 export function CanvasInspector({ compact = false }: { compact?: boolean }) {
+  const { resolvedTheme } = useTheme();
+  const boardTheme: BoardColorTheme = resolvedTheme === "dark" ? "dark" : "light";
   const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>("style");
   const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
   const [bulkChildCount, setBulkChildCount] = useState(3);
@@ -1731,13 +1739,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <button
                   type="button"
                   className="text-[10px] text-muted-foreground hover:text-foreground"
-                  onClick={() => setBoardSettings({ canvasBackgroundColor: DEFAULT_BOARD_SETTINGS.canvasBackgroundColor })}
+                  onClick={() => setBoardSettings({ canvasBackgroundColor: undefined })}
                 >
-                  Reset
+                  {usesAutomaticBoardColor(settings.canvasBackgroundColor, "canvas")
+                    ? `Auto · ${boardTheme === "dark" ? "Dark" : "Light"}`
+                    : "Use auto"}
                 </button>
               </div>
               <ColorSwatchPicker
-                value={settings.canvasBackgroundColor ?? DEFAULT_BOARD_SETTINGS.canvasBackgroundColor}
+                value={resolvedBoardColor(settings.canvasBackgroundColor, "canvas", boardTheme)}
                 onChange={(value) => setBoardSettings({ canvasBackgroundColor: value })}
                 onClear={() => setBoardSettings({ canvasBackgroundColor: "transparent" })}
               />
@@ -1751,13 +1761,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <button
                     type="button"
                     className="text-[10px] text-muted-foreground hover:text-foreground"
-                    onClick={() => setBoardSettings({ gridColor: DEFAULT_BOARD_SETTINGS.gridColor })}
+                    onClick={() => setBoardSettings({ gridColor: undefined })}
                   >
-                    Reset
+                    {usesAutomaticBoardColor(settings.gridColor, "grid")
+                      ? `Auto · ${boardTheme === "dark" ? "Dark" : "Light"}`
+                      : "Use auto"}
                   </button>
                 </div>
                 <ColorSwatchPicker
-                  value={settings.gridColor ?? DEFAULT_BOARD_SETTINGS.gridColor}
+                  value={resolvedBoardColor(settings.gridColor, "grid", boardTheme)}
                   onChange={(value) => setBoardSettings({ gridColor: value })}
                   onClear={() => setBoardSettings({ gridColor: "transparent" })}
                   size="sm"

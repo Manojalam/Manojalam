@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   compositeExportColor,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
+  isTransparentExportBackground,
   parseExportCssColor,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
@@ -112,6 +113,13 @@ test("combines SVG paint opacity with the color alpha", () => {
 
 test("keeps fully transparent paint transparent instead of adding a rectangular matte", () => {
   assert.equal(compositeExportColor("transparent", "#ffffff"), null);
+});
+
+test("recognizes explicit transparent export backgrounds", () => {
+  assert.equal(isTransparentExportBackground(null), true);
+  assert.equal(isTransparentExportBackground("transparent"), true);
+  assert.equal(isTransparentExportBackground("rgba(0, 0, 0, 0)"), true);
+  assert.equal(isTransparentExportBackground("rgb(255, 255, 255)"), false);
 });
 
 test("parses modern computed color syntax used by color-mix", () => {

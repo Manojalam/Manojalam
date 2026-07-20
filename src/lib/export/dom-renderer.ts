@@ -263,6 +263,12 @@ export function parseExportCssColor(value: string): ExportRgba | null {
   return null;
 }
 
+export function isTransparentExportBackground(value: string | null | undefined): boolean {
+  if (!value || value.trim().toLowerCase() === "none") return true;
+  const parsed = parseExportCssColor(value);
+  return parsed?.a === 0;
+}
+
 /** Return the opaque color that looks like `foreground` painted over `matte`. */
 export function compositeExportColor(
   foreground: string,
@@ -764,7 +770,7 @@ export function cloneReactFlowViewport(
       fill.removeAttribute("data-export-fill-node");
     }
     const removedSelectionElementCount = removeEditorSelectionChrome(clone);
-    if (!options.background && options.appearanceBackground) {
+    if (isTransparentExportBackground(options.background) && options.appearanceBackground) {
       // A transparent PNG may be viewed on black or another arbitrary color.
       // Preserve how translucent cards looked on the board without filling the
       // transparent area outside those cards.

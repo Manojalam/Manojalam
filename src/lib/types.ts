@@ -645,8 +645,6 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   defaultNodeColor: "#6366f1",
   defaultFont: "Inter",
   defaultFontSize: 14,
-  canvasBackgroundColor: "#f0eeea",
-  gridColor: "#d5d2cb",
   gridSpacing: 32,
   gridSize: 32,
   connectorLabelPresets: [
