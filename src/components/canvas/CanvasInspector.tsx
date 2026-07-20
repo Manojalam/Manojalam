@@ -1549,7 +1549,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   }}
                 />
                 <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                  Relative to each label&apos;s automatic sector angle.
+                  0° follows each section curve. A custom angle uses straight text.
                 </p>
               </div>
             )}
@@ -3314,7 +3314,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   onChange={(value) => updateNodeData(selectedNode.id, { radialTextRotation: value })}
                 />
                 <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                  Drag the round handle on the label for direct rotation.
+                  0° follows the section curve. Dragging the handle uses straight text.
                 </p>
               </div>
             )}
