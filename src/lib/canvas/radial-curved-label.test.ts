@@ -70,6 +70,44 @@ test("places lower-half lines from the inside outward", () => {
   assert.match(layout.lines[0].path, / A .* 0 /);
 });
 
+test("keeps a spaced label on one curve when a larger radius can hold it", () => {
+  const layout = radialCurvedLabelLayout({
+    centerX: 300,
+    centerY: 300,
+    innerRadius: 100,
+    outerRadius: 200,
+    startAngle: 60,
+    endAngle: 120,
+    label: "short continuingtext",
+    fittedLines: ["short", "continuingtext"],
+    fontSize: 20,
+    lineHeight: 1.2,
+    measureText: (value) => value.length * 8.2,
+  });
+
+  assert.equal(layout.lines.length, 1);
+  assert.equal(layout.lines[0].text, "short continuingtext");
+  assert.ok(layout.lines[0].radius > 150);
+});
+
+test("preserves authored line breaks while fitting curved labels", () => {
+  const layout = radialCurvedLabelLayout({
+    centerX: 300,
+    centerY: 300,
+    innerRadius: 100,
+    outerRadius: 220,
+    startAngle: -150,
+    endAngle: -30,
+    label: "first line\nsecond line",
+    fittedLines: ["first line", "second line"],
+    fontSize: 18,
+    lineHeight: 1.2,
+    measureText: (value) => value.length * 8,
+  });
+
+  assert.deepEqual(layout.lines.map((line) => line.text), ["first line", "second line"]);
+});
+
 test("maps inline rich-text styles back onto wrapped curved lines", () => {
   const lines = radialRichTextRuns(
     '<p><strong>अक् सवर्णः</strong> <span style="color: #dc2626; font-style: italic">दीर्घः</span></p>',

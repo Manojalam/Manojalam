@@ -26,17 +26,23 @@ export interface RadialCurvedLabelLayout {
   lines: RadialCurvedLine[];
 }
 
+export type RadialLabelMeasureText = (value: string, fontSize: number) => number;
+
 export interface RadialCurvedLabelOptions extends RadialSectionGeometry {
   centerX: number;
   centerY: number;
   chartRotation?: number;
+  label?: string;
   fittedLines: string[];
   fontSize: number;
   lineHeight: number;
+  measureText?: RadialLabelMeasureText;
   richText?: string;
 }
 
 type StyledUnit = { character: string; style: RadialTextRunStyle };
+type RadialLineBounds = { minimumRadius: number; maximumRadius: number };
+type WrappedLinePlan = { lines: string[]; radii: number[] };
 
 const BLOCK_TAGS = new Set(["div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p"]);
 
@@ -252,6 +258,187 @@ function arcPath(
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${reversed ? 0 : 1} ${end.x} ${end.y}`;
 }
 
+function estimatedTextWidth(value: string, fontSize: number): number {
+  const devanagari = /[\u0900-\u097f]/.test(value);
+  return Array.from(value).length * fontSize * (devanagari ? 0.62 : 0.54);
+}
+
+function normalizedParagraphs(value: string): string[] {
+  return value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+function radialLineBounds(
+  guide: RadialSectionGeometry,
+  fontSize: number
+): RadialLineBounds {
+  const halfInk = fontSize * 0.56;
+  const minimumRadius = Math.min(
+    (guide.innerRadius + guide.outerRadius) / 2,
+    guide.innerRadius + halfInk
+  );
+  return {
+    minimumRadius,
+    maximumRadius: Math.max(minimumRadius, guide.outerRadius - halfInk),
+  };
+}
+
+function distributedLineRadii(
+  lineCount: number,
+  bounds: RadialLineBounds,
+  fontSize: number,
+  lineHeight: number,
+  reversed: boolean
+): number[] {
+  if (lineCount <= 1) return [(bounds.minimumRadius + bounds.maximumRadius) / 2];
+  const lineStep = Math.min(
+    fontSize * lineHeight,
+    (bounds.maximumRadius - bounds.minimumRadius) / (lineCount - 1)
+  );
+  const usedBand = lineStep * (lineCount - 1);
+  const firstAscendingRadius = (bounds.minimumRadius + bounds.maximumRadius - usedBand) / 2;
+  const ascendingRadii = Array.from(
+    { length: lineCount },
+    (_, index) => firstAscendingRadius + lineStep * index
+  );
+  return reversed ? ascendingRadii : [...ascendingRadii].reverse();
+}
+
+function wrapWordsForArcCapacities(
+  paragraphs: string[],
+  capacities: number[],
+  fontSize: number,
+  measureText: RadialLabelMeasureText
+): string[] | null {
+  const words = paragraphs.flatMap((paragraph, paragraphIndex) =>
+    paragraph.split(/\s+/).filter(Boolean).map((text) => ({ text, paragraphIndex }))
+  );
+  if (!words.length || words.length < capacities.length) return null;
+
+  type Result = { cost: number; lines: string[] };
+  const memo = new Map<string, Result | null>();
+  const solve = (lineIndex: number, wordIndex: number): Result | null => {
+    const key = `${lineIndex}:${wordIndex}`;
+    if (memo.has(key)) return memo.get(key) ?? null;
+    if (lineIndex === capacities.length) {
+      const result = wordIndex === words.length ? { cost: 0, lines: [] } : null;
+      memo.set(key, result);
+      return result;
+    }
+
+    const remainingLines = capacities.length - lineIndex;
+    if (words.length - wordIndex < remainingLines) {
+      memo.set(key, null);
+      return null;
+    }
+
+    const paragraphIndex = words[wordIndex]?.paragraphIndex;
+    if (paragraphIndex === undefined) {
+      memo.set(key, null);
+      return null;
+    }
+
+    let best: Result | null = null;
+    let line = "";
+    for (let end = wordIndex; end < words.length; end += 1) {
+      if (words[end].paragraphIndex !== paragraphIndex) break;
+      line = line ? `${line} ${words[end].text}` : words[end].text;
+      const width = measureText(line, fontSize);
+      const capacity = capacities[lineIndex];
+      if (width > capacity + 0.01) break;
+
+      const nextWord = end + 1;
+      const linesAfter = capacities.length - lineIndex - 1;
+      const wordsAfter = words.length - nextWord;
+      if (wordsAfter < linesAfter) continue;
+      const paragraphsAfter = new Set(words.slice(nextWord).map((word) => word.paragraphIndex)).size;
+      if (paragraphsAfter > linesAfter) continue;
+
+      const tail = solve(lineIndex + 1, nextWord);
+      if (!tail) continue;
+      const fill = Math.min(1, width / Math.max(1, capacity));
+      const wordCount = end - wordIndex + 1;
+      const paragraphContinues = words[nextWord]?.paragraphIndex === paragraphIndex;
+      const orphanPenalty = wordCount === 1 && paragraphContinues && fill < 0.34 ? 0.45 : 0;
+      const result = {
+        cost: (1 - fill) ** 2 + orphanPenalty + tail.cost,
+        lines: [line, ...tail.lines],
+      };
+      if (!best || result.cost < best.cost) best = result;
+    }
+
+    memo.set(key, best);
+    return best;
+  };
+
+  return solve(0, 0)?.lines ?? null;
+}
+
+/**
+ * Wrap a label against the real length of each concentric text path. This is
+ * intentionally separate from the rectangular editor fit: a word sequence
+ * that does not fit at the section's middle radius may still fit cleanly on a
+ * slightly larger arc.
+ */
+function radialCurveAwareLinePlan(
+  options: RadialCurvedLabelOptions,
+  guide: RadialSectionGeometry,
+  bounds: RadialLineBounds,
+  reversed: boolean
+): WrappedLinePlan {
+  const fallbackLines = options.fittedLines;
+  const fallbackRadii = distributedLineRadii(
+    fallbackLines.length,
+    bounds,
+    options.fontSize,
+    options.lineHeight,
+    reversed
+  );
+  const paragraphs = normalizedParagraphs(options.label ?? "");
+  if (!paragraphs.length) return { lines: fallbackLines, radii: fallbackRadii };
+
+  const measureText = options.measureText ?? estimatedTextWidth;
+  const angleSpan = Math.max(0.01, ((guide.endAngle - guide.startAngle) * Math.PI) / 180);
+  const maximumLineCount = Math.max(paragraphs.length, fallbackLines.length);
+
+  for (let lineCount = paragraphs.length; lineCount <= maximumLineCount; lineCount += 1) {
+    if (lineCount === 1) {
+      const text = paragraphs[0];
+      const width = measureText(text, options.fontSize);
+      const safetyPadding = options.fontSize * 0.24;
+      const requiredRadius = (width + safetyPadding) / angleSpan;
+      if (requiredRadius <= bounds.maximumRadius + 0.01) {
+        return {
+          lines: [text],
+          radii: [Math.max((bounds.minimumRadius + bounds.maximumRadius) / 2, requiredRadius)],
+        };
+      }
+      continue;
+    }
+
+    const radii = distributedLineRadii(
+      lineCount,
+      bounds,
+      options.fontSize,
+      options.lineHeight,
+      reversed
+    );
+    const capacities = radii.map((radius) => Math.max(1, radius * angleSpan - options.fontSize * 0.24));
+    const lines = wrapWordsForArcCapacities(
+      paragraphs,
+      capacities,
+      options.fontSize,
+      measureText
+    );
+    if (lines) return { lines, radii };
+  }
+
+  return { lines: fallbackLines, radii: fallbackRadii };
+}
+
 export function radialCurvedLabelLayout(options: RadialCurvedLabelOptions): RadialCurvedLabelLayout {
   const reversed = radialLabelPathIsReversed(
     options.startAngle,
@@ -262,36 +449,19 @@ export function radialCurvedLabelLayout(options: RadialCurvedLabelOptions): Radi
 
   const inset = Math.max(5, options.fontSize * 0.38);
   const guide = radialLabelGuideGeometry(options, inset);
-  const halfInk = options.fontSize * 0.56;
-  const minimumRadius = Math.min(
-    (guide.innerRadius + guide.outerRadius) / 2,
-    guide.innerRadius + halfInk
-  );
-  const maximumRadius = Math.max(
-    minimumRadius,
-    guide.outerRadius - halfInk
-  );
-  const lineStep = options.fittedLines.length > 1
-    ? Math.min(
-        options.fontSize * options.lineHeight,
-        (maximumRadius - minimumRadius) / (options.fittedLines.length - 1)
-      )
-    : 0;
-  const usedBand = lineStep * Math.max(0, options.fittedLines.length - 1);
-  const firstAscendingRadius = (minimumRadius + maximumRadius - usedBand) / 2;
-  const ascendingRadii = options.fittedLines.map((_, index) => firstAscendingRadius + lineStep * index);
-  const radii = reversed ? ascendingRadii : [...ascendingRadii].reverse();
-  const runs = radialRichTextRuns(options.richText, options.fittedLines);
+  const bounds = radialLineBounds(guide, options.fontSize);
+  const plan = radialCurveAwareLinePlan(options, guide, bounds, reversed);
+  const runs = radialRichTextRuns(options.richText, plan.lines);
 
   return {
     reversed,
-    lines: options.fittedLines.map((text, index) => ({
+    lines: plan.lines.map((text, index) => ({
       text,
-      radius: radii[index],
+      radius: plan.radii[index],
       path: arcPath(
         options.centerX,
         options.centerY,
-        radii[index],
+        plan.radii[index],
         guide.startAngle,
         guide.endAngle,
         reversed
