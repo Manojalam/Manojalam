@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveBorderColor, resolveFillColor } from "./style-utils";
+import {
+  automaticNodeTextColor,
+  getTextStyle,
+  resolveBorderColor,
+  resolveFillColor,
+} from "./style-utils";
 
 const automaticLayoutStyle = {
   rootId: "root",
@@ -29,4 +34,20 @@ test("a cleared node border stays transparent instead of falling back to its acc
     layoutVisualStyle: automaticLayoutStyle,
     layoutAutoBorder: false,
   }), "transparent");
+});
+
+test("automatic text contrasts with opaque light and dark node fills", () => {
+  assert.equal(automaticNodeTextColor("#ffffff"), "#111827");
+  assert.equal(automaticNodeTextColor("#fef9c3"), "#111827");
+  assert.equal(automaticNodeTextColor("#020617"), "#f8fafc");
+});
+
+test("automatic text follows the theme for transparent or soft fills", () => {
+  assert.equal(automaticNodeTextColor("transparent"), "var(--foreground)");
+  assert.equal(automaticNodeTextColor("rgba(255, 255, 255, 0.18)"), "var(--foreground)");
+});
+
+test("explicit text colors remain unchanged", () => {
+  assert.equal(getTextStyle({ textColor: "#ec4899" }, "#ffffff").color, "#ec4899");
+  assert.equal(getTextStyle({}, "#ffffff").color, "#111827");
 });
