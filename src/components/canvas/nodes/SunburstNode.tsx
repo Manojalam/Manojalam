@@ -138,6 +138,11 @@ type DirectManipulationPoint = {
   clientY: number;
 };
 
+type PendingTextEdit = {
+  nodeId: string;
+  html: string;
+};
+
 type SegmentRenderGeometry = {
   segmentPath: string;
   labelGuidePath: string | null;
@@ -167,6 +172,7 @@ const DEVANAGARI_INK_PADDING_Y = 0.18;
 const DEVANAGARI_FONT = "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif";
 const TEXT_MEASUREMENT_CACHE_LIMIT = 12_000;
 const SEGMENT_GEOMETRY_CACHE_LIMIT = 4_000;
+const TEXT_EDIT_COMMIT_DELAY_MS = 1_500;
 let textMeasurementCanvas: HTMLCanvasElement | null = null;
 const textMeasurementCache = new Map<string, TextMetrics>();
 const segmentGeometryCache = new Map<string, SegmentRenderGeometry>();
@@ -888,6 +894,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const directManipulationFrameRef = useRef<number | null>(null);
   const pendingResizePreviewRef = useRef<ResizeParams | null>(null);
   const resizePreviewFrameRef = useRef<number | null>(null);
+  const pendingTextEditRef = useRef<PendingTextEdit | null>(null);
+  const textEditCommitTimerRef = useRef<number | null>(null);
   const editHistoryCaptured = useRef(false);
 
   const applyChartResizePreview = useCallback((params: ResizeParams) => {
@@ -1184,21 +1192,51 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     };
   }, [d, fontMetricsReady, fontMetricsRevision, model, objectRotation]);
 
-  const finishEditing = useCallback(() => {
-    if (editHistoryCaptured.current) pushHistory();
-    editHistoryCaptured.current = false;
-    setEditingId(null);
-  }, [pushHistory]);
-
-  const updateText = useCallback((nodeId: string, html: string) => {
-    const node = useCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId);
+  const flushPendingTextEdit = useCallback(() => {
+    if (textEditCommitTimerRef.current !== null) {
+      window.clearTimeout(textEditCommitTimerRef.current);
+      textEditCommitTimerRef.current = null;
+    }
+    const pending = pendingTextEditRef.current;
+    pendingTextEditRef.current = null;
+    if (!pending) return;
+    const node = useCanvasStore.getState().nodes.find((candidate) => candidate.id === pending.nodeId);
     if (!node) return;
+    const patch = editableTextPatch(node, pending.html);
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const changed = Object.entries(patch).some(([key, value]) => data[key] !== value);
+    if (!changed) return;
     if (!editHistoryCaptured.current) {
       pushHistory();
       editHistoryCaptured.current = true;
     }
-    updateNodeData(nodeId, editableTextPatch(node, html));
+    updateNodeData(pending.nodeId, patch);
   }, [pushHistory, updateNodeData]);
+
+  const updateText = useCallback((nodeId: string, html: string) => {
+    if (pendingTextEditRef.current?.nodeId !== nodeId) flushPendingTextEdit();
+    pendingTextEditRef.current = { nodeId, html };
+    if (textEditCommitTimerRef.current !== null) {
+      window.clearTimeout(textEditCommitTimerRef.current);
+    }
+    textEditCommitTimerRef.current = window.setTimeout(
+      flushPendingTextEdit,
+      TEXT_EDIT_COMMIT_DELAY_MS
+    );
+  }, [flushPendingTextEdit]);
+
+  const finishEditing = useCallback(() => {
+    flushPendingTextEdit();
+    if (editHistoryCaptured.current) pushHistory();
+    editHistoryCaptured.current = false;
+    setEditingId(null);
+  }, [flushPendingTextEdit, pushHistory]);
+
+  useEffect(() => () => {
+    flushPendingTextEdit();
+    if (editHistoryCaptured.current) pushHistory();
+    editHistoryCaptured.current = false;
+  }, [flushPendingTextEdit, pushHistory]);
 
   if (!model || !fittedGeometry) {
     return (

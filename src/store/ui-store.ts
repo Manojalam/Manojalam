@@ -84,6 +84,23 @@ interface UIState {
   loadAppSettings: () => void;
 }
 
+function sameActiveTextSelection(
+  current: ActiveTextSelection | null,
+  next: ActiveTextSelection | null
+): boolean {
+  if (current === next) return true;
+  if (!current || !next) return false;
+  return current.nodeId === next.nodeId
+    && current.hasSelection === next.hasSelection
+    && current.bold === next.bold
+    && current.italic === next.italic
+    && current.fontSize === next.fontSize
+    && current.fontFamily === next.fontFamily
+    && current.textColor === next.textColor
+    && current.highlightColor === next.highlightColor
+    && current.textAlign === next.textAlign;
+}
+
 export const useUIStore = create<UIState>((set, get) => ({
   activeTool: "select",
   setActiveTool: (tool) => set({
@@ -151,7 +168,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   closeBoardExport: () => set({ boardExportRequest: null }),
   activeTextSelection: null,
-  setActiveTextSelection: (selection) => set({ activeTextSelection: selection }),
+  setActiveTextSelection: (selection) => set((state) =>
+    sameActiveTextSelection(state.activeTextSelection, selection)
+      ? state
+      : { activeTextSelection: selection }
+  ),
   inlineFormatPainter: null,
   setInlineFormatPainter: (format) => set({ inlineFormatPainter: format }),
   shapeVariant: "rounded",
