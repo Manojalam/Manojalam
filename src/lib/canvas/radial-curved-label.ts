@@ -225,6 +225,16 @@ export function radialLabelUsesCurvedText(section: RadialSectionGeometry): boole
   return arcLength >= radialBand;
 }
 
+/**
+ * Indic scripts rely on shaping relationships between neighboring glyphs.
+ * SVG textPath rotates those glyphs independently along the curve, which can
+ * break Devanagari headlines, conjuncts, and matra alignment. Keep those runs
+ * straight and let the sector renderer tangent-align the shaped label instead.
+ */
+export function radialLabelSupportsCurvedPath(label: string): boolean {
+  return !/[\u0900-\u0DFF\u1CD0-\u1CFF\uA8E0-\uA8FF]/u.test(label);
+}
+
 /** Text runs clockwise on the upper half and counter-clockwise below the center. */
 export function radialLabelPathIsReversed(
   startAngle: number,
