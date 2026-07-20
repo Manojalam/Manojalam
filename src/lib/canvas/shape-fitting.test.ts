@@ -12,8 +12,11 @@ import {
   maximumFittedTextFontSize,
   nodeContentPadding,
   shapeLabelBox,
+  shapeTextFlowLayout,
   shapeTextContentSize,
   shapeTextContentWidth,
+  shouldRenderShapeTextFlow,
+  shouldUseShapeTextFlow,
 } from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
 import {
@@ -125,7 +128,7 @@ test("diamond text width does not shrink because of previous soft wrapping", () 
   assert.ok(correctedInterior.height < feedbackInterior.height);
 });
 
-test("every shape uses one centered label box inside its rendered bounds", () => {
+test("shape text flow uses the full silhouette instead of one inscribed rectangle", () => {
   const rendered = { width: 360, height: 240 };
   const shapeTypes = [
     "rectangle", "rounded", "capsule", "circle", "ellipse", "diamond",
@@ -135,14 +138,50 @@ test("every shape uses one centered label box inside its rendered bounds", () =>
   ];
 
   for (const shapeType of shapeTypes) {
-    const box = shapeLabelBox(shapeType, rendered, "shape", {
-      contentSize: { width: 220, naturalWidth: 360, height: 72, naturalHeight: 24, lineCount: 3 },
+    const flow = shapeTextFlowLayout(shapeType, rendered, {
+      cornerRadius: shapeType === "rounded" ? 36 : undefined,
+      petalCount: 8,
     });
-    assert.ok(box.width > 0 && box.width <= rendered.width, `${shapeType} width`);
-    assert.ok(box.height > 0 && box.height <= rendered.height, `${shapeType} height`);
-    assert.equal(box.x, (rendered.width - box.width) / 2, `${shapeType} horizontal center`);
-    assert.equal(box.y, (rendered.height - box.height) / 2, `${shapeType} vertical center`);
+    assert.deepEqual(flow.box, { x: 4, y: 4, width: 352, height: 232 }, `${shapeType} full inset box`);
+    assert.ok(flow.areaRatio >= 0.08 && flow.areaRatio <= 1, `${shapeType} finite area`);
+    assert.equal(flow.capacity.height, flow.box.height, `${shapeType} full height`);
+    assert.ok(flow.capacity.width > 0 && flow.capacity.width <= flow.box.width, `${shapeType} capacity`);
+    assert.match(flow.leftExclusion, /^polygon\(/, `${shapeType} left contour`);
+    assert.match(flow.rightExclusion, /^polygon\(/, `${shapeType} right contour`);
   }
+
+  const compactDiamond = shapeLabelBox("diamond", rendered, "shape", {
+    contentSize: { width: 220, naturalWidth: 360, height: 72, naturalHeight: 24, lineCount: 3 },
+  });
+  const diamondFlow = shapeTextFlowLayout("diamond", rendered);
+  assert.ok(diamondFlow.box.width > compactDiamond.width);
+  assert.ok(diamondFlow.box.height > compactDiamond.height);
+  assert.ok(diamondFlow.capacity.width * diamondFlow.capacity.height > compactDiamond.width * compactDiamond.height);
+  assert.ok(diamondFlow.areaRatio > 0.45 && diamondFlow.areaRatio < 0.55);
+});
+
+test("dense labels use contour flow globally while editing stays caret-safe", () => {
+  const rendered = { width: 240, height: 180 };
+  const denseMeasurement = { width: 120, naturalWidth: 320, height: 72, lineCount: 3 };
+  const flowShapes = [
+    "rounded", "capsule", "circle", "ellipse", "diamond", "star", "flower",
+    "triangle", "arrow", "callout", "offPageConnector", "parallelogram",
+    "trapezoid", "hexagon", "document", "database", "predefinedProcess",
+    "delay", "cloud", "leaf",
+  ];
+  for (const shapeType of flowShapes) {
+    assert.equal(
+      shouldUseShapeTextFlow(shapeType, rendered, denseMeasurement, "three words here"),
+      true,
+      `${shapeType} dense flow`
+    );
+    assert.equal(
+      shouldRenderShapeTextFlow(shapeType, rendered, denseMeasurement, true, "three words here"),
+      false,
+      `${shapeType} editing flow`
+    );
+  }
+  assert.equal(shouldUseShapeTextFlow("rectangle", rendered, denseMeasurement, "three words here"), false);
 });
 
 test("maximum text fitting fills the corrected diamond interior", () => {

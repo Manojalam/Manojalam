@@ -13,6 +13,9 @@ import {
 } from "@/lib/style-utils";
 import {
   shapeLabelBox,
+  shapeTextFlowLayout,
+  shouldRenderShapeTextFlow,
+  type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
 import type {
   ShapeNodeData,
@@ -72,6 +75,7 @@ const CUSTOM_SVG_SHAPES = new Set([
 
 const SQUARE_ASPECT_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 const CONCENTRIC_INSET_STEP = 6;
+const SHAPE_LABEL_GUIDE_INSET = 4;
 
 function dashArray(style: string, w: number): string | undefined {
   if (style === "dashed") return `${w * 2.5} ${w * 1.5}`;
@@ -1058,16 +1062,34 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
   const intrinsicContentSize = (dd.matrixIntrinsicSize ?? dd.intrinsicContentSize) as
-    | Partial<{ width: number; height: number }>
+    | Partial<ContentMeasurement>
     | undefined;
-  const labelBox = shapeLabelBox(renderedShapeType, nodeSize, "shape", {
-    contentSize: intrinsicContentSize,
-  });
-  const availableTextSize = { width: labelBox.width, height: labelBox.height };
+  const flowOptions = {
+    cornerRadius: bRadius,
+    petalCount,
+  };
+  const contourTextFlow = shouldRenderShapeTextFlow(
+    renderedShapeType,
+    nodeSize,
+    intrinsicContentSize,
+    editing,
+    typeof d.text === "string" ? d.text : undefined,
+    flowOptions
+  );
+  const flowLayout = shapeTextFlowLayout(renderedShapeType, nodeSize, flowOptions);
+  const labelBox = contourTextFlow
+    ? flowLayout.box
+    : shapeLabelBox(renderedShapeType, nodeSize, "shape", {
+        contentSize: intrinsicContentSize,
+      });
+  const availableTextSize = contourTextFlow ? flowLayout.capacity : {
+    width: labelBox.width,
+    height: labelBox.height,
+  };
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
-    // The shared label box is a hard visual boundary for every shape. Smart
-    // sizing can still grow the node from authored measurements on input.
+    // Compact text uses the centered safe box; dense text uses an equivalent
+    // capacity while CSS flows each line through the full shape silhouette.
     constrain: true,
     backgroundColor: fillColor,
   });
@@ -1196,6 +1218,26 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
             petalCount={petalCount}
           />
 
+          {showLabelBoxGuides && !radialChart?.enabled && (
+            <div
+              data-export-ignore
+              data-shape-label-guide={renderedShapeType}
+              aria-hidden="true"
+              className="pointer-events-none absolute z-[9]"
+              style={{ inset: SHAPE_LABEL_GUIDE_INSET }}
+            >
+              <ShapeSurface
+                shapeType={renderedShapeType}
+                fillColor="rgba(236, 72, 153, 0.08)"
+                borderColor="#db2777"
+                borderWidth={1}
+                borderStyle="dashed"
+                borderRadius={Math.max(0, bRadius - SHAPE_LABEL_GUIDE_INSET)}
+                petalCount={petalCount}
+              />
+            </div>
+          )}
+
           {/* Internal fill regions — clipped inside shape */}
           {!matrixCell && (
             <div className="absolute inset-0 overflow-hidden" style={shapeStyle}>
@@ -1314,10 +1356,12 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               )}
             >
               <div
-                data-node-content-layer="true"
-                data-shape-label-box="true"
+                data-shape-label-content="true"
                 data-node-owner={id}
-                className="absolute flex items-center justify-center"
+                className={cn(
+                  "absolute",
+                  contourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
+                )}
                 style={{
                   ...textPresentation.style,
                   left: `${labelBox.x}px`,
@@ -1326,7 +1370,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   height: `${labelBox.height}px`,
                 }}
               >
-                <div className="w-full max-h-full">
+                <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
                   <RichTextEditor
                     nodeId={id}
                     initialContent={initialContent}
@@ -1335,6 +1379,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     measurementWidth={availableTextSize.width}
                     measurementFontSize={textPresentation.authoredFontSize}
                     contentScale={textPresentation.scale}
+                    shapeTextFlow={contourTextFlow ? {
+                      leftExclusion: flowLayout.leftExclusion,
+                      rightExclusion: flowLayout.rightExclusion,
+                    } : undefined}
                     placeholder="Double-click…"
                     className={cn(
                       "[&_.ProseMirror]:text-center",
