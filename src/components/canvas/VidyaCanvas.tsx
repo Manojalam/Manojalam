@@ -1290,8 +1290,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     settings.background === "grid"  ? BackgroundVariant.Lines :
     settings.background === "dots"  ? BackgroundVariant.Dots  : undefined;
   const gridSpacing = settings.gridSpacing ?? settings.gridSize ?? DEFAULT_BOARD_SETTINGS.gridSpacing ?? 32;
-  const canvasBackgroundColor = boardColorCssValue(settings.canvasBackgroundColor, "canvas");
-  const gridColor = boardColorCssValue(settings.gridColor, "grid");
+  const canvasBackgroundColor = boardColorCssValue(
+    settings.canvasBackgroundColor,
+    "canvas",
+    settings.canvasBackgroundMode
+  );
+  const gridColor = boardColorCssValue(settings.gridColor, "grid", settings.gridColorMode);
 
   const clearLongPressPan = useCallback(() => {
     if (longPressPanRef.current) window.clearTimeout(longPressPanRef.current.timeout);

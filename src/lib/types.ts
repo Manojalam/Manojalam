@@ -57,6 +57,7 @@ export type ConnectorPathStyle = "solid" | "dashed" | "dotted" | "double";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
+export type BoardColorMode = "auto" | "custom" | "transparent";
 
 export type RadialColorScheme =
   | "spectrum"
@@ -151,7 +152,11 @@ export interface BoardSettings {
   defaultFont: string;
   /** Board-wide default applied to shapes, notes, text blocks, and mind-map nodes. */
   defaultFontSize: number;
+  /** Whether the canvas follows the app theme, uses a fixed color, or is transparent. */
+  canvasBackgroundMode?: BoardColorMode;
   canvasBackgroundColor?: string;
+  /** Whether dots/grid follow the app theme, use a fixed color, or are transparent. */
+  gridColorMode?: BoardColorMode;
   gridColor?: string;
   gridSpacing?: number;
   /** Reusable connector-label shortcuts and their default styles, saved with this board. */
@@ -645,6 +650,8 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   defaultNodeColor: "#6366f1",
   defaultFont: "Inter",
   defaultFontSize: 14,
+  canvasBackgroundMode: "auto",
+  gridColorMode: "auto",
   gridSpacing: 32,
   gridSize: 32,
   connectorLabelPresets: [
