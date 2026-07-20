@@ -42,8 +42,11 @@ const EDITOR_UI_SELECTORS = [
  * typography, SVG paint, clipping, and node decoration without copying every
  * browser-only interaction property into the standalone document.
  */
-const COMPUTED_STYLE_PROPERTIES = [
+export const DOM_EXPORT_COMPUTED_STYLE_PROPERTIES = [
   "display", "position", "inset", "top", "right", "bottom", "left", "float",
+  // Dense diamond labels depend on floated exclusion polygons. Without these
+  // properties the two 50%-wide guides consume the whole exported text box.
+  "shape-outside", "shape-margin", "shape-image-threshold",
   "width", "height", "min-width", "min-height", "max-width", "max-height",
   "box-sizing", "aspect-ratio",
   "margin-top", "margin-right", "margin-bottom", "margin-left",
@@ -74,6 +77,7 @@ const COMPUTED_STYLE_PROPERTIES = [
   "text-align", "text-align-last", "text-decoration", "text-decoration-color",
   "text-decoration-line", "text-decoration-style", "text-transform", "text-indent",
   "text-shadow", "white-space", "word-break", "overflow-wrap", "hyphens",
+  "text-wrap", "text-wrap-mode", "text-wrap-style",
   "writing-mode", "direction", "unicode-bidi", "vertical-align", "tab-size",
   "list-style", "list-style-type", "list-style-position", "list-style-image",
   "object-fit", "object-position",
@@ -363,7 +367,7 @@ function inlineComputedStyle(source: Element, target: Element): void {
   ) return;
 
   const computed = window.getComputedStyle(source);
-  for (const property of COMPUTED_STYLE_PROPERTIES) {
+  for (const property of DOM_EXPORT_COMPUTED_STYLE_PROPERTIES) {
     const value = computed.getPropertyValue(property);
     if (value) target.style.setProperty(property, value);
   }
