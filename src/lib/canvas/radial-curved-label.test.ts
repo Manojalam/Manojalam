@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  radialCurvedLabelLayout,
+  radialLabelPathIsReversed,
+  radialLabelUsesCurvedText,
+  radialRichTextRuns,
+} from "./radial-curved-label";
+
+test("uses curved text when the section arc is wider than its radial band", () => {
+  assert.equal(radialLabelUsesCurvedText({
+    innerRadius: 180,
+    outerRadius: 260,
+    startAngle: -120,
+    endAngle: -20,
+  }), true);
+  assert.equal(radialLabelUsesCurvedText({
+    innerRadius: 180,
+    outerRadius: 260,
+    startAngle: -4,
+    endAngle: 4,
+  }), false);
+});
+
+test("reverses lower-half paths so their text remains upright", () => {
+  assert.equal(radialLabelPathIsReversed(-140, -40), false);
+  assert.equal(radialLabelPathIsReversed(35, 145), true);
+  assert.equal(radialLabelPathIsReversed(-20, 20, 100), true);
+});
+
+test("places upper-half lines from the outside inward", () => {
+  const layout = radialCurvedLabelLayout({
+    centerX: 300,
+    centerY: 300,
+    innerRadius: 160,
+    outerRadius: 260,
+    startAngle: -150,
+    endAngle: -30,
+    fittedLines: ["first", "second", "third"],
+    fontSize: 20,
+    lineHeight: 1.2,
+  });
+
+  assert.equal(layout.reversed, false);
+  assert.equal(layout.lines.length, 3);
+  assert.ok(layout.lines[0].radius > layout.lines[1].radius);
+  assert.ok(layout.lines[1].radius > layout.lines[2].radius);
+  layout.lines.forEach((line) => {
+    assert.ok(line.radius > 160 && line.radius < 260);
+    assert.match(line.path, /^M .* A /);
+  });
+});
+
+test("places lower-half lines from the inside outward", () => {
+  const layout = radialCurvedLabelLayout({
+    centerX: 300,
+    centerY: 300,
+    innerRadius: 160,
+    outerRadius: 260,
+    startAngle: 30,
+    endAngle: 150,
+    fittedLines: ["first", "second"],
+    fontSize: 18,
+    lineHeight: 1.2,
+  });
+
+  assert.equal(layout.reversed, true);
+  assert.ok(layout.lines[0].radius < layout.lines[1].radius);
+  assert.match(layout.lines[0].path, / A .* 0 /);
+});
+
+test("maps inline rich-text styles back onto wrapped curved lines", () => {
+  const lines = radialRichTextRuns(
+    '<p><strong>अक् सवर्णः</strong> <span style="color: #dc2626; font-style: italic">दीर्घः</span></p>',
+    ["अक् सवर्णः", "दीर्घः"]
+  );
+
+  assert.equal(lines[0].map((run) => run.text).join(""), "अक् सवर्णः");
+  assert.equal(lines[0][0].style.fontWeight, "bold");
+  assert.equal(lines[1].map((run) => run.text).join(""), "दीर्घः");
+  assert.equal(lines[1][0].style.fill, "#dc2626");
+  assert.equal(lines[1][0].style.fontStyle, "italic");
+});
+
+test("decodes common and numeric HTML entities without using the DOM", () => {
+  const lines = radialRichTextRuns("<p>A&nbsp;&amp;&#x20;B</p>", ["A & B"]);
+  assert.equal(lines[0].map((run) => run.text).join(""), "A & B");
+});

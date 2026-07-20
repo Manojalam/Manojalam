@@ -28,6 +28,10 @@ import {
 } from "@/lib/canvas/radial-label-rotation";
 import { radialLabelGuideGeometry } from "@/lib/canvas/radial-label-guide";
 import {
+  radialCurvedLabelLayout,
+  radialLabelUsesCurvedText,
+} from "@/lib/canvas/radial-curved-label";
+import {
   radialColorScheme,
   radialHierarchyWeight,
   radialOutermostCommonFontSize,
@@ -1492,6 +1496,28 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             (segment.startAngle + segment.endAngle) / 2
           );
           const labelGeometry = labelGeometryForSegment(segment);
+          const curvedLabel = labelGeometry.lines.length > 0
+            && radialLabelUsesCurvedText(segment)
+            && Math.abs(normalizeRadialLabelRotation(segment.textRotation)) < 0.001
+            ? radialCurvedLabelLayout({
+                centerX: model.center,
+                centerY: model.center,
+                innerRadius: segment.innerRadius,
+                outerRadius: segment.outerRadius,
+                startAngle: segment.startAngle,
+                endAngle: segment.endAngle,
+                chartRotation: objectRotation,
+                fittedLines: labelGeometry.lines,
+                fontSize: labelGeometry.fontSize,
+                lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+                richText: segment.richText,
+              })
+            : null;
+          const curvedTextAnchor = segment.textAlign === "left"
+            ? { startOffset: "5%", textAnchor: "start" as const }
+            : segment.textAlign === "right"
+              ? { startOffset: "95%", textAnchor: "end" as const }
+              : { startOffset: "50%", textAnchor: "middle" as const };
           const relationshipMarkerPoint = pointOnCircle(
             model.center,
             model.center,
@@ -1517,6 +1543,15 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                   <stop offset="0%" stopColor={segment.fill} />
                   <stop offset="100%" stopColor={segment.fillEnd} />
                 </linearGradient>
+                {curvedLabel?.lines.map((line, lineIndex) => (
+                  <path
+                    key={lineIndex}
+                    id={`${segmentClipId}-label-line-${lineIndex}`}
+                    d={line.path}
+                    fill="none"
+                    stroke="none"
+                  />
+                ))}
               </defs>
               <path
                 d={segmentPath}
@@ -1563,7 +1598,53 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                   data-export-ignore
                 />
               )}
-              {labelGeometry.lines.length > 0 && (
+              {curvedLabel && curvedLabel.lines.length > 0 ? (
+                <g
+                  clipPath={`url(#${segmentClipId})`}
+                  pointerEvents="none"
+                  style={{ visibility: selected && editingId === segment.id ? "hidden" : "visible" }}
+                  data-export-restore={selected && editingId === segment.id ? "true" : undefined}
+                  aria-label={segment.label}
+                >
+                  {curvedLabel.lines.map((line, lineIndex) => (
+                    <text
+                      key={lineIndex}
+                      fill={segment.textColor}
+                      fontSize={labelGeometry.fontSize}
+                      fontFamily={labelFontFamily(segment.label, segment.fontFamily)}
+                      fontWeight={labelFontWeight(segment.label, segment.fontWeight)}
+                      fontStyle={segment.fontStyle}
+                      textAnchor={curvedTextAnchor.textAnchor}
+                      dominantBaseline="middle"
+                      style={{
+                        paintOrder: "stroke fill",
+                        stroke: "rgba(255,255,255,0.28)",
+                        strokeWidth: 0.45,
+                        strokeLinejoin: "round",
+                      }}
+                    >
+                      <textPath
+                        href={`#${segmentClipId}-label-line-${lineIndex}`}
+                        startOffset={curvedTextAnchor.startOffset}
+                      >
+                        {line.runs.map((run, runIndex) => (
+                          <tspan
+                            key={runIndex}
+                            fill={run.style.fill}
+                            fontFamily={run.style.fontFamily}
+                            fontSize={run.style.fontSize}
+                            fontStyle={run.style.fontStyle}
+                            fontWeight={run.style.fontWeight}
+                            textDecoration={run.style.textDecoration}
+                          >
+                            {run.text}
+                          </tspan>
+                        ))}
+                      </textPath>
+                    </text>
+                  ))}
+                </g>
+              ) : labelGeometry.lines.length > 0 && (
                 <g
                   clipPath={`url(#${segmentClipId})`}
                   pointerEvents="none"
