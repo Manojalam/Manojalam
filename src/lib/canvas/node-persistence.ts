@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 
 type RuntimeNodeFields = {
   initialWidth?: unknown;
@@ -73,4 +73,15 @@ export function normalizePersistedNode<NodeType extends Node>(node: NodeType): N
 
 export function normalizePersistedNodes<NodeType extends Node>(nodes: NodeType[]): NodeType[] {
   return nodes.map(normalizePersistedNode);
+}
+
+/** Selection belongs to the current canvas session and must never survive a reload. */
+export function normalizePersistedEdge<EdgeType extends Edge>(edge: EdgeType): EdgeType {
+  const normalized = { ...edge };
+  delete normalized.selected;
+  return normalized;
+}
+
+export function normalizePersistedEdges<EdgeType extends Edge>(edges: EdgeType[]): EdgeType[] {
+  return edges.map(normalizePersistedEdge);
 }

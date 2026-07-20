@@ -70,7 +70,7 @@ import {
   resolveHydratedSunburstGeometry,
   viewportsEqual,
 } from "@/lib/canvas/hydration";
-import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
+import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 import { resolveChartNodeResize } from "@/lib/canvas/chart-sizing";
 import {
   manualizeFlowchartBranch,
@@ -1536,15 +1536,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       hasUserChangedBoard: false,
       pendingMigration: false,
       saveStatus: "saved",
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
     });
   },
 
   setBoard: (board) => {
     cancelPendingLayoutReflows();
     const persistedNodes = normalizePersistedNodes(board.content.nodes);
+    const persistedEdges = normalizePersistedEdges(board.content.edges);
     const migrated = migrateNodes(persistedNodes);
     // Infer + persist parentId from directed edges (for old boards).
-    const hierarchy = buildHierarchy(migrated, board.content.edges);
+    const hierarchy = buildHierarchy(migrated, persistedEdges);
     const parentedNodes = migrated.map((n) => {
       const h = hierarchy.get(n.id);
       return {
@@ -1563,7 +1566,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         || JSON.stringify(before.childOrder ?? []) !== JSON.stringify(after.childOrder ?? []);
     });
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
-    const handledEdges = assignDefaultHandles(parentedNodes, board.content.edges);
+    const handledEdges = assignDefaultHandles(parentedNodes, persistedEdges);
     const normalizedFlowchartEdges = normalizeImplicitFlowchartRoutes(parentedNodes, handledEdges);
     const flowchartEdges = refreshAutomaticFlowchartHandles(parentedNodes, normalizedFlowchartEdges);
     const normalizedNodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, flowchartEdges));
@@ -1639,6 +1642,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges,
       relationships,
       relationshipFans,
+      selectedNodeIds: [],
+      selectedEdgeIds: [],
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings,
       saveStatus: "saved",

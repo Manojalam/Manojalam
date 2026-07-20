@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Node } from "@xyflow/react";
-import { normalizePersistedNode } from "./node-persistence";
+import type { Edge, Node } from "@xyflow/react";
+import { normalizePersistedEdge, normalizePersistedNode } from "./node-persistence";
 
 function node(overrides: Partial<Node> = {}): Node {
   return {
@@ -84,4 +84,21 @@ test("layout presentation remains canonical and normalization is idempotent", ()
 
   assert.deepEqual(once.style, { width: 520, height: 260 });
   assert.deepEqual(twice, once);
+});
+
+test("connector selection is stripped before persistence", () => {
+  const edge: Edge = {
+    id: "edge-1",
+    source: "node-1",
+    target: "node-2",
+    selected: true,
+    data: { label: "yes", toolbarOffset: { x: 12, y: -40 } },
+  };
+
+  assert.deepEqual(normalizePersistedEdge(edge), {
+    id: "edge-1",
+    source: "node-1",
+    target: "node-2",
+    data: { label: "yes", toolbarOffset: { x: 12, y: -40 } },
+  });
 });
