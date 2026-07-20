@@ -398,6 +398,7 @@ mark { border-radius: 2px; padding: 0 2px; }
 /* ─── Floating panel glass effect ─── */
 .vidya-float-panel {
   background: var(--card);
+  color: var(--card-foreground);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow-lg);

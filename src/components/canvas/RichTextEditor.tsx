@@ -27,6 +27,7 @@ import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
+import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Paintbrush, Palette } from "lucide-react";
 import { toast } from "sonner";
 
@@ -215,6 +216,7 @@ export function RichTextEditor({
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
+  const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const setSettings = useCanvasStore((state) => state.setSettings);
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
   const alignFirstRun = useRef(true);
@@ -264,6 +266,17 @@ export function RichTextEditor({
     setShowFonts(false);
     setShowSizes(false);
   }, []);
+
+  useEffect(() => {
+    if (!nodeId || (selectedNodeIds.length === 1 && selectedNodeIds[0] === nodeId)) return;
+    const frame = requestAnimationFrame(() => {
+      hideToolbar();
+      if (useUIStore.getState().activeTextSelection?.nodeId === nodeId) {
+        setActiveTextSelection(null);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hideToolbar, nodeId, selectedNodeIds, setActiveTextSelection]);
 
   const reportContentSize = useCallback((
     activeEditor: Editor | null | undefined,
@@ -526,10 +539,19 @@ export function RichTextEditor({
   }, [editor, reportContentSize]);
 
   const updateToolbar = useCallback(() => {
-    publishTextSelection();
-    if (!editor?.isEditable) { hideToolbar(); return; }
+    if (!editor) { hideToolbar(); return; }
     const { state, view } = editor;
-    if (state.selection.empty) { hideToolbar(); return; }
+    if (!canShowInlineTextToolbar({
+      nodeId,
+      selectedNodeIds,
+      editorEditable: editor.isEditable,
+      editorFocused: editor.isFocused,
+      hasTextSelection: !state.selection.empty,
+    })) {
+      hideToolbar();
+      return;
+    }
+    publishTextSelection();
     const { from, to } = state.selection;
     savedSelectionRef.current = { from, to };
     const start = view.coordsAtPos(from);
@@ -540,7 +562,7 @@ export function RichTextEditor({
       bottom: Math.max(start.bottom, end.bottom),
       left: (start.left + end.right) / 2,
     });
-  }, [editor, hideToolbar, publishTextSelection]);
+  }, [editor, hideToolbar, nodeId, publishTextSelection, selectedNodeIds]);
 
   useEffect(() => {
     if (!editor) return;
@@ -708,7 +730,7 @@ export function RichTextEditor({
       {mounted && anchor && editor && createPortal(
         <div
           ref={toolbarRef}
-          className="fixed z-[9999] flex max-w-[min(94vw,920px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-background p-2 shadow-2xl"
+          className="fixed z-[9999] flex max-w-[min(94vw,920px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-2xl"
           style={
             drag
               ? { top: drag.top, left: drag.left }
@@ -753,7 +775,7 @@ export function RichTextEditor({
             </button>
             {showFonts && (
               <div className={cn(
-                "absolute left-0 z-10 max-h-64 w-52 overflow-y-auto rounded-lg border border-border bg-background shadow-xl",
+                "absolute left-0 z-10 max-h-64 w-52 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1"
               )}>
                 {[...fontGroups.entries()].map(([cat, fonts]) => (
@@ -793,7 +815,7 @@ export function RichTextEditor({
             </button>
             {showSizes && (
               <div className={cn(
-                "absolute left-1/2 z-10 grid w-40 -translate-x-1/2 grid-cols-4 gap-1 rounded-lg border border-border bg-background p-1.5 shadow-xl",
+                "absolute left-1/2 z-10 grid w-40 -translate-x-1/2 grid-cols-4 gap-1 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1"
               )}>
                 {SIZE_PRESETS.map((s) => (
@@ -826,7 +848,7 @@ export function RichTextEditor({
             </button>
             {showColors && (
               <div className={cn(
-                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-background p-3 shadow-xl",
+                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
               )}>
                 <div className="mb-2 flex items-center justify-between">
@@ -870,7 +892,7 @@ export function RichTextEditor({
             </button>
             {showHighlights && (
               <div className={cn(
-                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-background p-3 shadow-xl",
+                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
               )}>
                 <div className="mb-2 flex items-center justify-between">
