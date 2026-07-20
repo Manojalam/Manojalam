@@ -81,6 +81,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
+    backgroundColor: bg,
   });
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);

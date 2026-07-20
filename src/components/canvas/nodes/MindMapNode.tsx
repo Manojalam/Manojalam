@@ -62,6 +62,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
+    backgroundColor: fillColor,
   });
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);

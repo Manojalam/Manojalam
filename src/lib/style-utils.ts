@@ -8,14 +8,23 @@ import {
 } from "./canvas/shape-fitting";
 import { fittedContentScale } from "./canvas/node-sizing";
 import type { Size } from "./canvas/node-geometry";
+import { BOARD_THEME_COLORS } from "./canvas/board-colors";
 import { resolveLayoutFontSize } from "./layout/layout-presentation";
 
 /** CSS applied to the text-content container of a node.
  *  Always emits explicit values for inheritable properties so CSS
  *  inheritance works correctly inside TipTap's ProseMirror. */
-export function getTextStyle(d: Record<string, unknown>): CSSProperties {
+export function getTextStyle(
+  d: Record<string, unknown>,
+  renderedBackgroundColor?: string
+): CSSProperties {
   const layoutStyle = resolveLayoutVisualStyle(d);
   const fontSize = resolveLayoutFontSize(d);
+  const explicitTextColor = layoutStyle && d.layoutAutoText !== false
+    ? layoutStyle.textColor
+    : typeof d.textColor === "string" && d.textColor
+      ? d.textColor
+      : undefined;
   return {
     // NOTE: text alignment is intentionally NOT applied here. Alignment is
     // handled purely at the paragraph level inside the editor so the right
@@ -26,9 +35,9 @@ export function getTextStyle(d: Record<string, unknown>): CSSProperties {
     // Always emit italic/bold so browsers don't need to guess defaults
     fontStyle:  d.fontStyle  === "italic" ? "italic" : "normal",
     fontWeight: d.fontWeight === "bold"   ? "700"    : undefined,
-    color:      layoutStyle && d.layoutAutoText !== false
-      ? layoutStyle.textColor
-      : (d.textColor as string) ?? undefined,
+    color: explicitTextColor ?? automaticNodeTextColor(
+      renderedBackgroundColor ?? resolveFillColor(d)
+    ),
   };
 }
 
@@ -77,6 +86,8 @@ export function getFittedTextPresentation(
     constrain?: boolean;
     fitMultiline?: boolean;
     minimumFontSize?: number;
+    /** The actual surface behind the node text, including palette fallbacks. */
+    backgroundColor?: string;
   } = {}
 ): {
   style: CSSProperties;
@@ -86,7 +97,7 @@ export function getFittedTextPresentation(
   authoredFontSize: number;
   scale: number;
 } {
-  const style = getTextStyle(d);
+  const style = getTextStyle(d, options.backgroundColor);
   const inheritedFontSize = typeof style.fontSize === "number"
     ? style.fontSize
     : typeof style.fontSize === "string" ? Number.parseFloat(style.fontSize) : fallbackFontSize;
@@ -224,6 +235,82 @@ function parseColor(hex: string): { r: number; g: number; b: number; a: number }
     return { r, g, b, a };
   }
   return null;
+}
+
+function parseCssColor(color: string): { r: number; g: number; b: number; a: number } | null {
+  const normalized = color.trim().toLowerCase();
+  if (normalized === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
+  const hex = parseColor(normalized);
+  if (hex) return hex;
+
+  const rgb = normalized.match(
+    /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)$/
+  );
+  if (!rgb) return null;
+  const channels = rgb.slice(1, 4).map(Number);
+  if (channels.some((channel) => channel < 0 || channel > 255)) return null;
+  const alpha = rgb[4] === undefined ? 1 : Number(rgb[4]);
+  if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
+  return { r: channels[0], g: channels[1], b: channels[2], a: alpha };
+}
+
+function compositeColor(
+  foreground: { r: number; g: number; b: number; a: number },
+  background: { r: number; g: number; b: number; a: number }
+): { r: number; g: number; b: number; a: number } {
+  const alpha = foreground.a + background.a * (1 - foreground.a);
+  if (alpha <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+  return {
+    r: (foreground.r * foreground.a + background.r * background.a * (1 - foreground.a)) / alpha,
+    g: (foreground.g * foreground.a + background.g * background.a * (1 - foreground.a)) / alpha,
+    b: (foreground.b * foreground.a + background.b * background.a * (1 - foreground.a)) / alpha,
+    a: alpha,
+  };
+}
+
+function relativeLuminance(color: { r: number; g: number; b: number }): number {
+  const [red, green, blue] = [color.r, color.g, color.b].map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+}
+
+function contrastRatio(first: number, second: number): number {
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const AUTOMATIC_DARK_TEXT = "#111827";
+const AUTOMATIC_LIGHT_TEXT = "#f8fafc";
+
+function readableTextColor(background: { r: number; g: number; b: number }): string {
+  const backgroundLuminance = relativeLuminance(background);
+  const darkLuminance = relativeLuminance(parseColor(AUTOMATIC_DARK_TEXT)!);
+  const lightLuminance = relativeLuminance(parseColor(AUTOMATIC_LIGHT_TEXT)!);
+  return contrastRatio(backgroundLuminance, darkLuminance)
+    >= contrastRatio(backgroundLuminance, lightLuminance)
+    ? AUTOMATIC_DARK_TEXT
+    : AUTOMATIC_LIGHT_TEXT;
+}
+
+/**
+ * Pick automatic node text from the actual rendered fill. If a translucent
+ * fill needs opposite text in light and dark mode, keep following the theme.
+ */
+export function automaticNodeTextColor(renderedBackgroundColor?: string): string {
+  if (!renderedBackgroundColor) return "var(--foreground)";
+  const fill = parseCssColor(renderedBackgroundColor);
+  if (!fill || fill.a <= 0) return "var(--foreground)";
+
+  const lightCanvas = parseCssColor(BOARD_THEME_COLORS.light.canvas)!;
+  const darkCanvas = parseCssColor(BOARD_THEME_COLORS.dark.canvas)!;
+  const lightModeText = readableTextColor(compositeColor(fill, lightCanvas));
+  const darkModeText = readableTextColor(compositeColor(fill, darkCanvas));
+  return lightModeText === darkModeText ? lightModeText : "var(--foreground)";
 }
 
 /** Combine a base color + opacity into an rgba() string */
