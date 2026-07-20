@@ -322,14 +322,45 @@ body {
 
 /* Every shape label uses the same word-boundary wrapping policy. A phrase may
    wrap at whitespace; one unbroken token is fitted instead of split. */
-[data-shape-label-box="true"] .ProseMirror {
+[data-shape-label-content="true"] .ProseMirror {
   white-space: pre-wrap;
   text-wrap: pretty;
   word-break: keep-all !important;
   overflow-wrap: normal !important;
   hyphens: none !important;
 }
-[data-shape-label-box="true"] .ProseMirror > * {
+[data-shape-label-content="true"] .ProseMirror > * {
+  text-wrap: inherit;
+}
+
+/* Dense labels flow through the actual silhouette. Two invisible TipTap
+   decorations float away only the area outside each horizontal shape slice;
+   the decorations are editor chrome and are never stored with the document. */
+.shape-text-flow-guide { display: none; }
+.shape-text-flow-editor .shape-text-flow-guide {
+  display: block;
+  width: 50%;
+  height: 100%;
+  pointer-events: none;
+  shape-margin: 2px;
+}
+.shape-text-flow-editor .shape-text-flow-guide-left {
+  float: left;
+  shape-outside: var(--shape-text-flow-left);
+}
+.shape-text-flow-editor .shape-text-flow-guide-right {
+  float: right;
+  shape-outside: var(--shape-text-flow-right);
+}
+.shape-text-flow-editor .ProseMirror {
+  box-sizing: border-box;
+  padding: 0;
+  text-wrap: pretty;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
+}
+.shape-text-flow-editor .ProseMirror > * {
   text-wrap: inherit;
 }
 .single-word-fit .ProseMirror,

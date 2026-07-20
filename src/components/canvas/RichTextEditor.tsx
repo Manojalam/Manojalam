@@ -11,6 +11,8 @@ import { FontFamily } from "@tiptap/extension-font-family";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Highlight from "@tiptap/extension-highlight";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { cn } from "@/lib/utils";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import type { InlineTextFormatDetail, InlineTextFormatSnapshot } from "@/lib/types";
@@ -47,6 +49,32 @@ const FontSize = Extension.create({
   },
 });
 
+const ShapeTextFlowGuides = Extension.create({
+  name: "shapeTextFlowGuides",
+  addProseMirrorPlugins() {
+    const guide = (className: string, side: number) => Decoration.widget(0, () => {
+      const element = document.createElement("span");
+      element.className = `shape-text-flow-guide ${className}`;
+      element.dataset.shapeTextFlowGuide = "true";
+      element.setAttribute("aria-hidden", "true");
+      element.contentEditable = "false";
+      return element;
+    }, { side, ignoreSelection: true });
+
+    return [new Plugin({
+      key: new PluginKey("shapeTextFlowGuides"),
+      props: {
+        decorations(state) {
+          return DecorationSet.create(state.doc, [
+            guide("shape-text-flow-guide-left", -2),
+            guide("shape-text-flow-guide-right", -1),
+          ]);
+        },
+      },
+    })];
+  },
+});
+
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
   StarterKit,
@@ -57,6 +85,7 @@ const EXTENSIONS = [
   Underline,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
+  ShapeTextFlowGuides,
 ];
 
 const COLOR_SWATCHES = [
@@ -158,6 +187,11 @@ interface RichTextEditorProps {
   measurementFontSize?: number;
   /** Visual scale used only by fixed/layout-owned boxes. */
   contentScale?: number;
+  /** Exclusion polygons that let wrapped text occupy a non-rectangular silhouette. */
+  shapeTextFlow?: {
+    leftExclusion: string;
+    rightExclusion: string;
+  };
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
   onChange: (html: string) => void;
@@ -175,6 +209,7 @@ export function RichTextEditor({
   measurementWidth,
   measurementFontSize,
   contentScale = 1,
+  shapeTextFlow,
   blockAlign,
   onChange,
   onContentSizeChange,
@@ -693,6 +728,13 @@ export function RichTextEditor({
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
   const scaleStyle: CSSProperties | undefined = getRichTextScaleStyle(contentScale);
+  const editorStyle = shapeTextFlow
+    ? ({
+        ...scaleStyle,
+        "--shape-text-flow-left": shapeTextFlow.leftExclusion,
+        "--shape-text-flow-right": shapeTextFlow.rightExclusion,
+      } as CSSProperties)
+    : scaleStyle;
 
   return (
     <>
@@ -908,7 +950,8 @@ export function RichTextEditor({
 
       <div
         data-rich-text-editor="true"
-        style={scaleStyle}
+        className={cn(shapeTextFlow && "shape-text-flow-editor h-full w-full")}
+        style={editorStyle}
       >
         <EditorContent
           editor={editor}
@@ -917,8 +960,9 @@ export function RichTextEditor({
           className={cn(
             "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
             "[&_.ProseMirror]:leading-snug",
-            "[&_.ProseMirror]:break-words",
+            !shapeTextFlow && "[&_.ProseMirror]:break-words",
             "[&_.ProseMirror_p]:m-0",
+            shapeTextFlow && "h-full w-full [&_.ProseMirror]:h-full [&_.ProseMirror]:min-h-full [&_.ProseMirror]:overflow-hidden",
             !editable && "pointer-events-none select-none",
             className
           )}

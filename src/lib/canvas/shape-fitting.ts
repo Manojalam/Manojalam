@@ -53,6 +53,41 @@ export interface ShapeLabelBox extends Size {
   y: number;
 }
 
+export interface ShapeTextFlowLayout {
+  /** Nearly the full node bounds; the outline profile supplies the real inset. */
+  box: ShapeLabelBox;
+  /** Equivalent rectangular area used by the font-size fitter. */
+  capacity: Size;
+  /** Concave regions floated away from the left and right sides of the text. */
+  leftExclusion: string;
+  rightExclusion: string;
+  areaRatio: number;
+}
+
+export interface ShapeTextFlowOptions {
+  cornerRadius?: number;
+  petalCount?: number;
+}
+
+type NormalizedPoint = readonly [x: number, y: number];
+
+const SHAPE_FLOW_INSET = 4;
+const SHAPE_FLOW_SAMPLES = 24;
+
+const SHAPE_FLOW_POLYGONS: Partial<Record<string, readonly NormalizedPoint[]>> = {
+  diamond: [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]],
+  triangle: [[0.5, 0], [0, 1], [1, 1]],
+  hexagon: [[0.25, 0], [0.75, 0], [1, 0.5], [0.75, 1], [0.25, 1], [0, 0.5]],
+  star: [[0.5, 0], [0.61, 0.35], [0.98, 0.35], [0.68, 0.57], [0.79, 0.91], [0.5, 0.7], [0.21, 0.91], [0.32, 0.57], [0.02, 0.35], [0.39, 0.35]],
+  arrow: [[0.6, 0.25], [0.6, 0], [1, 0.5], [0.6, 1], [0.6, 0.75], [0, 0.75], [0, 0.25]],
+  parallelogram: [[0.16, 0], [1, 0], [0.84, 1], [0, 1]],
+  trapezoid: [[0.18, 0], [0.82, 0], [1, 1], [0, 1]],
+  offPageConnector: [[0, 0], [1, 0], [1, 0.76], [0.5, 1], [0, 0.76]],
+  callout: [[0, 0], [1, 0], [1, 0.78], [0.64, 0.78], [0.5, 1], [0.38, 0.78], [0, 0.78]],
+  document: [[0.06, 0.05], [0.94, 0.05], [0.94, 0.76], [0.76, 0.74], [0.6, 0.9], [0.46, 0.83], [0.28, 0.72], [0.14, 0.86], [0.06, 0.8]],
+  cloud: [[0.3, 0.8], [0.17, 0.76], [0.05, 0.64], [0.06, 0.48], [0.17, 0.39], [0.2, 0.27], [0.35, 0.22], [0.43, 0.25], [0.58, 0.17], [0.75, 0.25], [0.78, 0.36], [0.92, 0.4], [0.96, 0.58], [0.9, 0.74], [0.78, 0.8]],
+};
+
 interface GraphemeSegmenter {
   segment(value: string): Iterable<unknown>;
 }
@@ -66,6 +101,181 @@ const graphemeSegmenter = SegmenterConstructor
 
 function finitePositive(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function polygonHorizontalRange(points: readonly NormalizedPoint[], y: number): readonly [number, number] {
+  const scanY = Math.max(0.000001, Math.min(0.999999, y));
+  const intersections: number[] = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const [x1, y1] = points[index];
+    const [x2, y2] = points[(index + 1) % points.length];
+    if (y1 === y2 || scanY < Math.min(y1, y2) || scanY >= Math.max(y1, y2)) continue;
+    const progress = (scanY - y1) / (y2 - y1);
+    intersections.push(x1 + (x2 - x1) * progress);
+  }
+  if (intersections.length < 2) return [0.5, 0.5];
+  intersections.sort((a, b) => a - b);
+  return [clampUnit(intersections[0]), clampUnit(intersections[intersections.length - 1])];
+}
+
+function ellipseHorizontalRange(y: number, left = 0, right = 1, top = 0, bottom = 1): readonly [number, number] {
+  if (y < top || y > bottom) return [0.5, 0.5];
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const radiusX = (right - left) / 2;
+  const radiusY = Math.max(0.000001, (bottom - top) / 2);
+  const normalizedY = (y - centerY) / radiusY;
+  const halfWidth = radiusX * Math.sqrt(Math.max(0, 1 - normalizedY * normalizedY));
+  return [clampUnit(centerX - halfWidth), clampUnit(centerX + halfWidth)];
+}
+
+function roundedHorizontalRange(y: number, size: Size, cornerRadius: number): readonly [number, number] {
+  const width = finitePositive(size.width, MIN_AUTOFIT_WIDTH);
+  const height = finitePositive(size.height, MIN_AUTOFIT_HEIGHT);
+  const radius = Math.max(0, Math.min(cornerRadius, width / 2, height / 2));
+  if (radius <= 0) return [0, 1];
+  const radiusX = radius / width;
+  const radiusY = radius / height;
+  if (y >= radiusY && y <= 1 - radiusY) return [0, 1];
+  const centerY = y < radiusY ? radiusY : 1 - radiusY;
+  const normalizedY = (y - centerY) / Math.max(0.000001, radiusY);
+  const inset = radiusX * (1 - Math.sqrt(Math.max(0, 1 - normalizedY * normalizedY)));
+  return [clampUnit(inset), clampUnit(1 - inset)];
+}
+
+function shapeHorizontalRange(
+  shapeType: string | undefined,
+  y: number,
+  renderedSize: Size,
+  options: ShapeTextFlowOptions
+): readonly [number, number] {
+  const polygon = SHAPE_FLOW_POLYGONS[shapeType ?? ""];
+  if (polygon) {
+    const range = polygonHorizontalRange(polygon, y);
+    // A pair of half-width floats requires a center-spanning interval. Slices
+    // such as the arrow tip are deliberately left unavailable to centered text.
+    return range[0] <= 0.5 && range[1] >= 0.5 ? range : [0.5, 0.5];
+  }
+  switch (shapeType) {
+    case "circle":
+    case "ellipse":
+      return ellipseHorizontalRange(y);
+    case "capsule":
+      return roundedHorizontalRange(y, renderedSize, Math.min(renderedSize.width, renderedSize.height) / 2);
+    case "rounded":
+      return roundedHorizontalRange(y, renderedSize, options.cornerRadius ?? 0);
+    case "flower": {
+      const petals = Math.max(4, Math.min(16, Math.round(options.petalCount ?? 8)));
+      const profilePower = petals % 2 === 0 ? 0.82 : 0.9;
+      const [left, right] = ellipseHorizontalRange(y, 0.02, 0.98, 0.01, 0.99);
+      const halfWidth = (right - left) / 2 * profilePower;
+      return [0.5 - halfWidth, 0.5 + halfWidth];
+    }
+    case "leaf": {
+      const halfWidth = 0.48 * Math.pow(Math.max(0, Math.sin(Math.PI * clampUnit(y))), 0.72);
+      return [0.5 - halfWidth, 0.5 + halfWidth];
+    }
+    case "database": {
+      if (y < 0.22) return ellipseHorizontalRange(y, 0.1, 0.9, 0.08, 0.36);
+      if (y > 0.78) return ellipseHorizontalRange(y, 0.1, 0.9, 0.64, 0.92);
+      return [0.1, 0.9];
+    }
+    case "predefinedProcess":
+      return [0.04, 0.96];
+    case "delay": {
+      const normalizedY = (y - 0.5) / 0.5;
+      const right = 0.55 + 0.41 * Math.sqrt(Math.max(0, 1 - normalizedY * normalizedY));
+      return y < 0.05 || y > 0.95 ? [0.5, 0.5] : [0.08, right];
+    }
+    default:
+      return [0, 1];
+  }
+}
+
+function percentage(value: number): string {
+  return `${Math.round(clampUnit(value) * 10000) / 100}%`;
+}
+
+function exclusionPolygon(
+  side: "left" | "right",
+  ranges: ReadonlyArray<readonly [number, number]>
+): string {
+  const boundary = ranges.map((range, index) => {
+    const y = index / Math.max(1, ranges.length - 1);
+    const x = side === "left"
+      ? Math.min(1, range[0] * 2)
+      : Math.max(0, (range[1] - 0.5) * 2);
+    return `${percentage(x)} ${percentage(y)}`;
+  });
+  const start = side === "left" ? "0% 0%" : "100% 0%";
+  const end = side === "left" ? "0% 100%" : "100% 100%";
+  return `polygon(${start}, ${boundary.join(", ")}, ${end})`;
+}
+
+/**
+ * Shape-aware text flow for the full inner silhouette. CSS floats remove only
+ * the space outside each horizontal slice, so wrapped lines can expand through
+ * the wider portions of diamonds, capsules, polygons, and custom shapes.
+ */
+export function shapeTextFlowLayout(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  options: ShapeTextFlowOptions = {}
+): ShapeTextFlowLayout {
+  const renderedWidth = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
+  const renderedHeight = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
+  const width = Math.max(8, renderedWidth - SHAPE_FLOW_INSET * 2);
+  const height = Math.max(8, renderedHeight - SHAPE_FLOW_INSET * 2);
+  const insetSize = { width, height };
+  const ranges = Array.from({ length: SHAPE_FLOW_SAMPLES + 1 }, (_, index) => (
+    shapeHorizontalRange(shapeType, index / SHAPE_FLOW_SAMPLES, insetSize, {
+      ...options,
+      cornerRadius: Math.max(0, (options.cornerRadius ?? 0) - SHAPE_FLOW_INSET),
+    })
+  ));
+  const areaRatio = Math.max(
+    0.08,
+    ranges.reduce((sum, [left, right]) => sum + Math.max(0, right - left), 0) / ranges.length
+  );
+  return {
+    box: { x: SHAPE_FLOW_INSET, y: SHAPE_FLOW_INSET, width, height },
+    capacity: { width: Math.max(8, width * areaRatio), height },
+    leftExclusion: exclusionPolygon("left", ranges),
+    rightExclusion: exclusionPolygon("right", ranges),
+    areaRatio,
+  };
+}
+
+export function shouldUseShapeTextFlow(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  contentSize?: Partial<ContentMeasurement>,
+  text?: string,
+  options: ShapeTextFlowOptions = {}
+): boolean {
+  if (!shapeType || shapeType === "rectangle" || !contentSize) return false;
+  const lineCount = finitePositive(contentSize.lineCount, 0);
+  if (lineCount >= 3) return true;
+  const normalizedText = text?.replace(/\s+/gu, " ").trim() ?? "";
+  const hasWordBoundary = /\S\s+\S/u.test(normalizedText);
+  const naturalWidth = finitePositive(contentSize.naturalWidth, contentSize.width ?? 0);
+  return hasWordBoundary && naturalWidth > shapeTextFlowLayout(shapeType, renderedSize, options).capacity.width;
+}
+
+/** Editing stays rectangular so caret movement matches the visible soft wraps. */
+export function shouldRenderShapeTextFlow(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  contentSize: Partial<ContentMeasurement> | undefined,
+  editing: boolean,
+  text?: string,
+  options: ShapeTextFlowOptions = {}
+): boolean {
+  return !editing && shouldUseShapeTextFlow(shapeType, renderedSize, contentSize, text, options);
 }
 
 export function nodeContentPadding(nodeType: string | undefined): Size {
