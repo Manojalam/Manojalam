@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   radialCurvedLabelLayout,
   radialLabelPathIsReversed,
-  radialLabelSupportsCurvedPath,
   radialLabelUsesCurvedText,
   radialRichTextRuns,
 } from "./radial-curved-label";
@@ -22,13 +21,6 @@ test("uses curved text when the section arc is wider than its radial band", () =
     startAngle: -4,
     endAngle: 4,
   }), false);
-});
-
-test("keeps Indic labels off curved paths so complex shaping stays intact", () => {
-  assert.equal(radialLabelSupportsCurvedPath("quality"), true);
-  assert.equal(radialLabelSupportsCurvedPath("guṇa"), true);
-  assert.equal(radialLabelSupportsCurvedPath("गुणाः"), false);
-  assert.equal(radialLabelSupportsCurvedPath("स्वरसन्धयः"), false);
 });
 
 test("reverses lower-half paths so their text remains upright", () => {
@@ -138,6 +130,28 @@ test("preserves authored line breaks while fitting curved labels", () => {
   });
 
   assert.deepEqual(layout.lines.map((line) => line.text), ["first line", "second line"]);
+});
+
+test("places every Devanagari line on its own concentric curve", () => {
+  const layout = radialCurvedLabelLayout({
+    centerX: 300,
+    centerY: 300,
+    innerRadius: 110,
+    outerRadius: 250,
+    startAngle: -155,
+    endAngle: -25,
+    label: "गुणाः\nद्रव्यम्\nअभावः",
+    fittedLines: ["गुणाः", "द्रव्यम्", "अभावः"],
+    fontSize: 22,
+    lineHeight: 1.28,
+    measureText: (value) => Array.from(value).length * 13,
+  });
+
+  assert.equal(layout.lines.length, 3);
+  assert.deepEqual(layout.lines.map((line) => line.text), ["गुणाः", "द्रव्यम्", "अभावः"]);
+  assert.ok(layout.lines[0].radius > layout.lines[1].radius);
+  assert.ok(layout.lines[1].radius > layout.lines[2].radius);
+  layout.lines.forEach((line) => assert.match(line.path, /^M .* A /));
 });
 
 test("maps inline rich-text styles back onto wrapped curved lines", () => {
