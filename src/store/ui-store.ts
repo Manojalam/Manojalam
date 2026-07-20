@@ -6,6 +6,7 @@ import type {
   ActiveTextSelection,
   AppSettings,
   CanvasTool,
+  InlineTextFormatSnapshot,
   RelationshipSelectionSession,
   ShapeType,
 } from "@/lib/types";
@@ -53,6 +54,8 @@ interface UIState {
   closeBoardExport: () => void;
   activeTextSelection: ActiveTextSelection | null;
   setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
+  inlineFormatPainter: InlineTextFormatSnapshot | null;
+  setInlineFormatPainter: (format: InlineTextFormatSnapshot | null) => void;
   shapeVariant: ShapeVariant;
   setShapeVariant: (v: ShapeVariant) => void;
   /** ID of the node currently in free-draw internal-fill mode, or null */
@@ -149,6 +152,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   closeBoardExport: () => set({ boardExportRequest: null }),
   activeTextSelection: null,
   setActiveTextSelection: (selection) => set({ activeTextSelection: selection }),
+  inlineFormatPainter: null,
+  setInlineFormatPainter: (format) => set({ inlineFormatPainter: format }),
   shapeVariant: "rounded",
   setShapeVariant: (v) => set({ shapeVariant: v }),
   drawingModeNodeId: null,

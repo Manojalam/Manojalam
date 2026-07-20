@@ -32,13 +32,79 @@ const SAFE_EXTERNAL_ELEMENTS = new Set([
 
 function fallbackSanitizePastedHtml(html: string): string {
   const unsafe = UNSAFE_PASTE_ELEMENTS.join("|");
-  return html
+  return trimExternalHtmlBoundaries(html
     .replace(new RegExp(`<(${unsafe})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, "gi"), "")
     .replace(new RegExp(`<(${unsafe})\\b[^>]*\\/?>`, "gi"), "")
     .replace(/\s(?:style|class|id|contenteditable|draggable)=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/\son[a-z]+=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/<font\b[^>]*>/gi, "<span>")
-    .replace(/<\/font\s*>/gi, "</span>");
+    .replace(/<\/font\s*>/gi, "</span>"));
+}
+
+const EMPTY_BOUNDARY_BLOCK = "(?:p|div|h[1-6]|blockquote|li)";
+
+function trimExternalHtmlBoundaries(html: string): string {
+  let normalized = html.trim();
+  const leadingEmptyBlock = new RegExp(
+    `^(?:<${EMPTY_BOUNDARY_BLOCK}\\b[^>]*>(?:\\s|&nbsp;|<br\\s*\\/?>)*<\\/${EMPTY_BOUNDARY_BLOCK}>\\s*)+`,
+    "i"
+  );
+  const trailingEmptyBlock = new RegExp(
+    `(?:<${EMPTY_BOUNDARY_BLOCK}\\b[^>]*>(?:\\s|&nbsp;|<br\\s*\\/?>)*<\\/${EMPTY_BOUNDARY_BLOCK}>\\s*)+$`,
+    "i"
+  );
+  normalized = normalized.replace(leadingEmptyBlock, "").replace(trailingEmptyBlock, "");
+  return normalized
+    .replace(/^(<(?:p|div|h[1-6]|blockquote|li)\b[^>]*>)(?:\s|&nbsp;)+/i, "$1")
+    .replace(/(?:\s|&nbsp;)+(<\/(?:p|div|h[1-6]|blockquote|li)>\s*)$/i, "$1");
+}
+
+function firstTextNode(root: globalThis.Node): Text | null {
+  if (root.nodeType === globalThis.Node.TEXT_NODE) return root as Text;
+  for (const child of Array.from(root.childNodes)) {
+    const match = firstTextNode(child);
+    if (match) return match;
+  }
+  return null;
+}
+
+function lastTextNode(root: globalThis.Node): Text | null {
+  if (root.nodeType === globalThis.Node.TEXT_NODE) return root as Text;
+  const children = Array.from(root.childNodes);
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const match = lastTextNode(children[index]);
+    if (match) return match;
+  }
+  return null;
+}
+
+function isEmptyBoundaryElement(element: Element): boolean {
+  return /^(P|DIV|H[1-6]|BLOCKQUOTE|LI)$/.test(element.tagName)
+    && !element.textContent?.replace(/\u00a0/g, " ").trim()
+    && !element.querySelector("img,video,audio,table,hr");
+}
+
+function trimExternalDomBoundaries(body: HTMLElement): void {
+  while (body.firstChild) {
+    const first = body.firstChild;
+    const removable = first.nodeType === globalThis.Node.TEXT_NODE
+      ? !first.textContent?.replace(/\u00a0/g, " ").trim()
+      : first instanceof Element && isEmptyBoundaryElement(first);
+    if (!removable) break;
+    first.remove();
+  }
+  while (body.lastChild) {
+    const last = body.lastChild;
+    const removable = last.nodeType === globalThis.Node.TEXT_NODE
+      ? !last.textContent?.replace(/\u00a0/g, " ").trim()
+      : last instanceof Element && isEmptyBoundaryElement(last);
+    if (!removable) break;
+    last.remove();
+  }
+  const first = firstTextNode(body);
+  const last = lastTextNode(body);
+  if (first) first.data = first.data.replace(/^[\s\u00a0]+/, "");
+  if (last) last.data = last.data.replace(/[\s\u00a0]+$/, "");
 }
 
 function unwrapElement(element: Element): void {
@@ -98,12 +164,19 @@ export function sanitizePastedHtml(html: string): string {
     if (!SAFE_EXTERNAL_ELEMENTS.has(element.tagName) && !internalTipTapCopy) unwrapElement(element);
   }
 
+  if (!internalTipTapCopy) trimExternalDomBoundaries(parsed.body);
+
   return parsed.body.innerHTML;
 }
 
+/** Remove clipboard padding without changing spaces or line breaks inside the text. */
+export function normalizePastedText(value: string): string {
+  return value.replace(/\r\n?/g, "\n").trim();
+}
+
 export function plainTextToRichText(value: string): string {
-  const normalized = value.replace(/\r\n/g, "\n").trimEnd();
-  if (!normalized.trim()) return "";
+  const normalized = normalizePastedText(value);
+  if (!normalized) return "";
   return normalized
     .split(/\n{2,}/)
     .map((paragraph) => {

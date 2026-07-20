@@ -96,6 +96,7 @@ import {
   resolveObjectRotation,
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
+import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1576,7 +1577,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
-              <ColorSwatchPicker value={(commonValue("textColor") as string) ?? ""} onChange={(v) => setSelectedField("textColor", v || undefined)} size="sm" />
+              <ColorSwatchPicker
+                value={(commonValue("textColor") as string) ?? ""}
+                extra={settings.customTextColors}
+                onCustomColor={(color) => setSettings({
+                  customTextColors: rememberCustomColor(settings.customTextColors, color),
+                })}
+                onChange={(v) => setSelectedField("textColor", v || undefined)}
+                size="sm"
+              />
             </div>
           </Section>
 
@@ -3337,12 +3346,28 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {/* Text color */}
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
-              <ColorSwatchPicker value={activeTextColor} onChange={(v) => setField("textColor", v || undefined)} size="sm" />
+              <ColorSwatchPicker
+                value={activeTextColor}
+                extra={settings.customTextColors}
+                onCustomColor={(color) => setSettings({
+                  customTextColors: rememberCustomColor(settings.customTextColors, color),
+                })}
+                onChange={(v) => setField("textColor", v || undefined)}
+                size="sm"
+              />
             </div>
 
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Highlight</p>
-              <ColorSwatchPicker value={activeHighlightColor} onChange={(v) => setField("textHighlightColor", v || undefined)} size="sm" />
+              <ColorSwatchPicker
+                value={activeHighlightColor}
+                extra={settings.customHighlightColors}
+                onCustomColor={(color) => setSettings({
+                  customHighlightColors: rememberCustomColor(settings.customHighlightColors, color),
+                })}
+                onChange={(v) => setField("textHighlightColor", v || undefined)}
+                size="sm"
+              />
               {activeHighlightColor && (
                 <Button
                   type="button"
