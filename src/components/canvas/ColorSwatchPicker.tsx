@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PRESET_COLORS = [
@@ -22,6 +23,8 @@ const PRESET_COLORS = [
 interface ColorSwatchPickerProps {
   value?: string;
   onChange: (color: string) => void;
+  /** Removes the explicit color override. Defaults to onChange(""). */
+  onClear?: () => void;
   /** Called only for a color chosen through the native custom picker. */
   onCustomColor?: (color: string) => void;
   /** Extra colors to show (e.g. recently used) */
@@ -32,6 +35,7 @@ interface ColorSwatchPickerProps {
 export function ColorSwatchPicker({
   value,
   onChange,
+  onClear,
   onCustomColor,
   extra = [],
   size = "md",
@@ -45,6 +49,9 @@ export function ColorSwatchPicker({
   const handleSwatch = (hex: string) => {
     onChange(hex);
   };
+  const nativeValue = typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+    ? value
+    : "#6366f1";
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -64,6 +71,26 @@ export function ColorSwatchPicker({
           style={{ backgroundColor: hex }}
         />
       ))}
+
+      <button
+        type="button"
+        title="Clear color"
+        aria-label="Clear color"
+        onClick={() => (onClear ?? (() => onChange("")))()}
+        className={cn(
+          "flex flex-none items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:scale-110 hover:text-foreground",
+          swatchSize,
+          !value && `ring-2 ring-primary ${ringOffset}`
+        )}
+        style={{
+          backgroundColor: "#ffffff",
+          backgroundImage: "linear-gradient(45deg,#e2e8f0 25%,transparent 25%),linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e2e8f0 75%),linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)",
+          backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
+          backgroundSize: "8px 8px",
+        }}
+      >
+        <X className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
+      </button>
 
       {/* Custom color + button */}
       <button
@@ -92,7 +119,7 @@ export function ColorSwatchPicker({
         type="color"
         aria-label="Choose custom color"
         name="custom-swatch-color"
-        value={value ?? "#6366f1"}
+        value={nativeValue}
         onChange={(event) => {
           onCustomColor?.(event.target.value);
           onChange(event.target.value);

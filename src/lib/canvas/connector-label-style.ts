@@ -12,8 +12,10 @@ export const MAX_CONNECTOR_LABEL_FONT_SIZE = 48;
 
 export interface ConnectorLabelStyleUpdate {
   label?: string;
-  connectorColor?: string;
-  labelColor?: string;
+  /** Null or an empty string removes the explicit connector color. */
+  connectorColor?: string | null;
+  /** Null or an empty string removes the explicit label color. */
+  labelColor?: string | null;
   labelColorSynced?: boolean;
   labelFontFamily?: string;
   labelFontSize?: number;
@@ -58,6 +60,11 @@ function markerWithColor(marker: Edge["markerStart"], color: string): Edge["mark
   return { ...marker, color };
 }
 
+function normalizedColorUpdate(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 /** Applies label styling to the label owner and synced line color to every junction segment. */
 export function applyConnectorLabelStyleUpdate(
   edges: Edge[],
@@ -71,31 +78,39 @@ export function applyConnectorLabelStyleUpdate(
   const logicalIds = new Set(findLogicalConnectorEdgeIds(edges, connectorEdgeId));
   const syncAfter = update.labelColorSynced ?? ownerData.labelColorSynced === true;
 
-  let nextLabelColor = update.labelColor;
-  let nextConnectorColor = update.connectorColor;
+  const hasLabelColorUpdate = "labelColor" in update;
+  const hasConnectorColorUpdate = "connectorColor" in update;
+  let nextLabelColor = normalizedColorUpdate(update.labelColor);
+  let nextConnectorColor = normalizedColorUpdate(update.connectorColor);
   if (update.labelColorSynced === true) {
-    const color = update.labelColor
+    const color = nextLabelColor
       ?? ownerData.labelColor
       ?? DEFAULT_CONNECTOR_LABEL_COLOR;
     nextLabelColor = color;
     nextConnectorColor = color;
-  } else if (syncAfter && update.labelColor) {
-    nextConnectorColor = update.labelColor;
-  } else if (syncAfter && update.connectorColor) {
-    nextLabelColor = update.connectorColor;
+  } else if (syncAfter && hasLabelColorUpdate) {
+    nextConnectorColor = nextLabelColor;
+  } else if (syncAfter && hasConnectorColorUpdate) {
+    nextLabelColor = nextConnectorColor;
   }
 
   return edges.map((edge) => {
     const isOwner = edge.id === owner.id;
-    const recolorConnector = logicalIds.has(edge.id) && typeof nextConnectorColor === "string";
-    if (!isOwner && !recolorConnector) return edge;
+    const updateConnectorColor = logicalIds.has(edge.id) && nextConnectorColor !== undefined;
+    if (!isOwner && !updateConnectorColor) return edge;
     const data = { ...(edge.data ?? {}) } as VidyaEdgeData;
 
-    if (recolorConnector && nextConnectorColor) data.color = nextConnectorColor;
+    if (updateConnectorColor) {
+      if (nextConnectorColor) data.color = nextConnectorColor;
+      else delete data.color;
+    }
     if (isOwner) {
       if ("label" in update) data.label = update.label;
       if ("labelColorSynced" in update) data.labelColorSynced = update.labelColorSynced;
-      if (typeof nextLabelColor === "string") data.labelColor = nextLabelColor;
+      if (nextLabelColor !== undefined) {
+        if (nextLabelColor) data.labelColor = nextLabelColor;
+        else delete data.labelColor;
+      }
       if ("labelFontFamily" in update) {
         if (update.labelFontFamily) data.labelFontFamily = update.labelFontFamily;
         else delete data.labelFontFamily;
@@ -109,11 +124,11 @@ export function applyConnectorLabelStyleUpdate(
 
     return {
       ...edge,
-      markerStart: recolorConnector && nextConnectorColor
-        ? markerWithColor(edge.markerStart, nextConnectorColor)
+      markerStart: updateConnectorColor
+        ? markerWithColor(edge.markerStart, resolveConnectorColor(data))
         : edge.markerStart,
-      markerEnd: recolorConnector && nextConnectorColor
-        ? markerWithColor(edge.markerEnd, nextConnectorColor)
+      markerEnd: updateConnectorColor
+        ? markerWithColor(edge.markerEnd, resolveConnectorColor(data))
         : edge.markerEnd,
       data,
     };

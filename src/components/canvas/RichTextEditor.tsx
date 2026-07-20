@@ -835,7 +835,7 @@ export function RichTextEditor({
                     e.preventDefault();
                     selectionChain()?.unsetColor().run();
                     setShowColors(false);
-                  }}>Reset</button>
+                  }}>Clear color</button>
                 </div>
                 <div className="grid grid-cols-6 gap-2">
                   {textColorSwatches.map((hex) => (
@@ -879,7 +879,7 @@ export function RichTextEditor({
                     e.preventDefault();
                     selectionChain()?.unsetHighlight().run();
                     setShowHighlights(false);
-                  }}>Reset</button>
+                  }}>Clear highlight</button>
                 </div>
                 <div className="grid grid-cols-6 gap-2">
                   {highlightColorSwatches.map((hex) => (

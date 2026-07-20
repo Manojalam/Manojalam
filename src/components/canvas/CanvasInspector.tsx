@@ -45,6 +45,7 @@ import type {
 import type { Edge, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { ColorSwatchPicker } from "./ColorSwatchPicker";
+import { ClearableColorInput } from "./ClearableColorInput";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
@@ -775,7 +776,12 @@ function ConnectionInspectorSections({
       <Section label="Connection appearance" defaultOpen={defaultOpen}>
         <div>
           <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
-          <ColorSwatchPicker value={(commonValue("color") as string) ?? "#94a3b8"} onChange={(value) => onChange("color", value)} size="sm" />
+          <ColorSwatchPicker
+            value={(commonValue("color") as string) ?? "#94a3b8"}
+            onChange={(value) => onChange("color", value)}
+            onClear={() => onChange("color", undefined)}
+            size="sm"
+          />
         </div>
         <div>
           <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
@@ -828,6 +834,7 @@ function ConnectionInspectorSections({
           <ColorSwatchPicker
             value={labelColor}
             onChange={(value) => onLabelStyleChange({ labelColor: value })}
+            onClear={() => onLabelStyleChange({ labelColor: null })}
             size="sm"
           />
         </div>
@@ -1258,7 +1265,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       useCanvasStore.setState((state) => ({
         edges: editableSelectionEdges.reduce(
           (currentEdges, edge) => applyConnectorLabelStyleUpdate(currentEdges, edge.id, {
-            connectorColor: String(value),
+            connectorColor: typeof value === "string" && value ? value : null,
           }),
           state.edges
         ),
@@ -1727,6 +1734,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ColorSwatchPicker
                 value={settings.canvasBackgroundColor ?? DEFAULT_BOARD_SETTINGS.canvasBackgroundColor}
                 onChange={(value) => setBoardSettings({ canvasBackgroundColor: value })}
+                onClear={() => setBoardSettings({ canvasBackgroundColor: undefined })}
               />
             </div>
             {settings.background !== "plain" && (
@@ -1746,6 +1754,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <ColorSwatchPicker
                   value={settings.gridColor ?? DEFAULT_BOARD_SETTINGS.gridColor}
                   onChange={(value) => setBoardSettings({ gridColor: value })}
+                  onClear={() => setBoardSettings({ gridColor: undefined })}
                   size="sm"
                 />
               </div>
@@ -2631,29 +2640,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div className="grid grid-cols-3 gap-1.5">
                   <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                     Fill
-                    <input
-                      type="color"
+                    <ClearableColorInput
+                      aria-label="Relationship diagram center fill color"
                       value={hexInputColor(diagramSpec.centerFillColor, "#0f172a")}
-                      className="h-7 w-full rounded border border-border bg-background"
-                      onChange={(event) => updateDiagram({ centerFillColor: event.target.value })}
+                      inputClassName="h-7 w-full rounded border border-border bg-background"
+                      onColorChange={(color) => updateDiagram({ centerFillColor: color })}
+                      onClear={() => updateDiagram({ centerFillColor: undefined })}
                     />
                   </label>
                   <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                     Border
-                    <input
-                      type="color"
+                    <ClearableColorInput
+                      aria-label="Relationship diagram center border color"
                       value={hexInputColor(diagramSpec.centerBorderColor, "#ffffff")}
-                      className="h-7 w-full rounded border border-border bg-background"
-                      onChange={(event) => updateDiagram({ centerBorderColor: event.target.value })}
+                      inputClassName="h-7 w-full rounded border border-border bg-background"
+                      onColorChange={(color) => updateDiagram({ centerBorderColor: color })}
+                      onClear={() => updateDiagram({ centerBorderColor: undefined })}
                     />
                   </label>
                   <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                     Text
-                    <input
-                      type="color"
+                    <ClearableColorInput
+                      aria-label="Relationship diagram center text color"
                       value={hexInputColor(diagramSpec.centerTextColor, "#ffffff")}
-                      className="h-7 w-full rounded border border-border bg-background"
-                      onChange={(event) => updateDiagram({ centerTextColor: event.target.value })}
+                      inputClassName="h-7 w-full rounded border border-border bg-background"
+                      onColorChange={(color) => updateDiagram({ centerTextColor: color })}
+                      onClear={() => updateDiagram({ centerTextColor: undefined })}
                     />
                   </label>
                 </div>
@@ -2696,12 +2708,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
             {!transparentBackground && (
               <div className="flex gap-2">
-                <input
-                  type="color"
+                <ClearableColorInput
                   aria-label="Relationship diagram background color"
                   value={/^#[0-9a-f]{6}$/i.test(diagramBackground) ? diagramBackground : "#ffffff"}
-                  onChange={(event) => updateDiagram({ background: event.target.value })}
-                  className="h-8 w-10 rounded border border-border bg-background p-1"
+                  onColorChange={(color) => updateDiagram({ background: color })}
+                  onClear={() => updateDiagram({ background: "transparent" })}
+                  inputClassName="h-8 w-10 rounded border border-border bg-background p-1"
                 />
                 <Input
                   value={diagramBackground}
@@ -2756,29 +2768,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     <div className="grid grid-cols-3 gap-1.5">
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                         Fill
-                        <input
-                          type="color"
+                        <ClearableColorInput
+                          aria-label={`Relationship item ${group.itemLabel ?? group.sourceLabel} fill color`}
                           value={sourceColor}
-                          className="h-7 w-full rounded border border-border bg-background"
-                          onChange={(event) => updateItemStyle(group.itemId, { fillColor: event.target.value })}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
+                          onColorChange={(color) => updateItemStyle(group.itemId, { fillColor: color })}
+                          onClear={() => updateItemStyle(group.itemId, { fillColor: undefined })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                         Border
-                        <input
-                          type="color"
+                        <ClearableColorInput
+                          aria-label={`Relationship item ${group.itemLabel ?? group.sourceLabel} border color`}
                           value={hexInputColor(style.borderColor ?? diagramSpec.borderColor, sourceColor)}
-                          className="h-7 w-full rounded border border-border bg-background"
-                          onChange={(event) => updateItemStyle(group.itemId, { borderColor: event.target.value })}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
+                          onColorChange={(color) => updateItemStyle(group.itemId, { borderColor: color })}
+                          onClear={() => updateItemStyle(group.itemId, { borderColor: undefined })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                         Text
-                        <input
-                          type="color"
+                        <ClearableColorInput
+                          aria-label={`Relationship item ${group.itemLabel ?? group.sourceLabel} text color`}
                           value={hexInputColor(style.textColor ?? diagramSpec.textColor, "#0f172a")}
-                          className="h-7 w-full rounded border border-border bg-background"
-                          onChange={(event) => updateItemStyle(group.itemId, { textColor: event.target.value })}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
+                          onColorChange={(color) => updateItemStyle(group.itemId, { textColor: color })}
+                          onClear={() => updateItemStyle(group.itemId, { textColor: undefined })}
                         />
                       </label>
                     </div>
@@ -4070,41 +4085,47 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     <div className="grid grid-cols-3 gap-1.5">
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                         Fill
-                        <input
+                        <ClearableColorInput
                           aria-label={`Concentric ring ${index + 1} fill color`}
                           name={`concentric-ring-${index + 1}-fill`}
-                          type="color"
                           value={hexInputColor(layer.fillColor, "#ffffff")}
-                          onChange={(event) => setField("concentricLayers", concentricLayers.map((item, idx) =>
-                            idx === index ? { ...item, fillColor: event.target.value } : item
+                          onColorChange={(color) => setField("concentricLayers", concentricLayers.map((item, idx) =>
+                            idx === index ? { ...item, fillColor: color } : item
                           ))}
-                          className="h-7 w-full rounded border border-border bg-background"
+                          onClear={() => setField("concentricLayers", concentricLayers.map((item, idx) =>
+                            idx === index ? { ...item, fillColor: undefined } : item
+                          ))}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                         Border
-                        <input
+                        <ClearableColorInput
                           aria-label={`Concentric ring ${index + 1} border color`}
                           name={`concentric-ring-${index + 1}-border`}
-                          type="color"
                           value={hexInputColor(layer.borderColor, "#4262ff")}
-                          onChange={(event) => setField("concentricLayers", concentricLayers.map((item, idx) =>
-                            idx === index ? { ...item, borderColor: event.target.value } : item
+                          onColorChange={(color) => setField("concentricLayers", concentricLayers.map((item, idx) =>
+                            idx === index ? { ...item, borderColor: color } : item
                           ))}
-                          className="h-7 w-full rounded border border-border bg-background"
+                          onClear={() => setField("concentricLayers", concentricLayers.map((item, idx) =>
+                            idx === index ? { ...item, borderColor: undefined } : item
+                          ))}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                         Text
-                        <input
+                        <ClearableColorInput
                           aria-label={`Concentric ring ${index + 1} text color`}
                           name={`concentric-ring-${index + 1}-text-color`}
-                          type="color"
                           value={hexInputColor(layer.textColor, "#111827")}
-                          onChange={(event) => setField("concentricLayers", concentricLayers.map((item, idx) =>
-                            idx === index ? { ...item, textColor: event.target.value } : item
+                          onColorChange={(color) => setField("concentricLayers", concentricLayers.map((item, idx) =>
+                            idx === index ? { ...item, textColor: color } : item
                           ))}
-                          className="h-7 w-full rounded border border-border bg-background"
+                          onClear={() => setField("concentricLayers", concentricLayers.map((item, idx) =>
+                            idx === index ? { ...item, textColor: undefined } : item
+                          ))}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
                         />
                       </label>
                     </div>
@@ -4155,37 +4176,37 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <div className="grid grid-cols-2 gap-1.5">
                     <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                       Center fill
-                      <input
+                      <ClearableColorInput
                         aria-label="Radial chart center fill color"
                         name="radial-chart-center-fill"
-                        type="color"
                         value={hexInputColor(activeRadialChart.centerColor, "#ffffff")}
-                        onChange={(event) => setRadialChart({ ...activeRadialChart, centerColor: event.target.value, enabled: true })}
-                        className="h-7 w-full rounded border border-border bg-background"
+                        onColorChange={(color) => setRadialChart({ ...activeRadialChart, centerColor: color, enabled: true })}
+                        onClear={() => setRadialChart({ ...activeRadialChart, centerColor: undefined, enabled: true })}
+                        inputClassName="h-7 w-full rounded border border-border bg-background"
                       />
                     </label>
                     <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                       Text
-                      <input
+                      <ClearableColorInput
                         aria-label="Radial chart center text color"
                         name="radial-chart-center-text-color"
-                        type="color"
                         value={hexInputColor(activeRadialChart.centerTextColor, "#111827")}
-                        onChange={(event) => setRadialChart({ ...activeRadialChart, centerTextColor: event.target.value, enabled: true })}
-                        className="h-7 w-full rounded border border-border bg-background"
+                        onColorChange={(color) => setRadialChart({ ...activeRadialChart, centerTextColor: color, enabled: true })}
+                        onClear={() => setRadialChart({ ...activeRadialChart, centerTextColor: undefined, enabled: true })}
+                        inputClassName="h-7 w-full rounded border border-border bg-background"
                       />
                     </label>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                       Split border
-                      <input
+                      <ClearableColorInput
                         aria-label="Radial chart split border color"
                         name="radial-chart-split-border-color"
-                        type="color"
                         value={hexInputColor(activeRadialChart.segmentBorderColor, "#ffffff")}
-                        onChange={(event) => setRadialChart({ ...activeRadialChart, segmentBorderColor: event.target.value, enabled: true })}
-                        className="h-7 w-full rounded border border-border bg-background"
+                        onColorChange={(color) => setRadialChart({ ...activeRadialChart, segmentBorderColor: color, enabled: true })}
+                        onClear={() => setRadialChart({ ...activeRadialChart, segmentBorderColor: undefined, enabled: true })}
+                        inputClassName="h-7 w-full rounded border border-border bg-background"
                       />
                     </label>
                     <div>
@@ -4379,21 +4400,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   className="h-7 text-xs"
                                   onChange={(event) => updateRadialSegment(ringIndex, segmentIndex, { text: event.target.value })}
                                 />
-                                <input
+                                <ClearableColorInput
                                   aria-label={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} fill color`}
                                   name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-fill`}
-                                  type="color"
                                   value={hexInputColor(segment.fillColor, RADIAL_SEGMENT_COLORS[segmentIndex % RADIAL_SEGMENT_COLORS.length])}
-                                  onChange={(event) => updateRadialSegment(ringIndex, segmentIndex, { fillColor: event.target.value })}
-                                  className="h-7 w-7 rounded border border-border bg-background"
+                                  onColorChange={(color) => updateRadialSegment(ringIndex, segmentIndex, { fillColor: color })}
+                                  onClear={() => updateRadialSegment(ringIndex, segmentIndex, { fillColor: undefined })}
+                                  inputClassName="h-7 w-7 rounded border border-border bg-background"
+                                  compact
                                 />
-                                <input
+                                <ClearableColorInput
                                   aria-label={`Ring ${ringIndex + 1} segment ${segmentIndex + 1} text color`}
                                   name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-text-color`}
-                                  type="color"
                                   value={hexInputColor(segment.textColor, "#111827")}
-                                  onChange={(event) => updateRadialSegment(ringIndex, segmentIndex, { textColor: event.target.value })}
-                                  className="h-7 w-7 rounded border border-border bg-background"
+                                  onColorChange={(color) => updateRadialSegment(ringIndex, segmentIndex, { textColor: color })}
+                                  onClear={() => updateRadialSegment(ringIndex, segmentIndex, { textColor: undefined })}
+                                  inputClassName="h-7 w-7 rounded border border-border bg-background"
+                                  compact
                                 />
                               </div>
                               {ringIndex < (activeRadialChart.rings ?? []).length - 1 && (
@@ -4506,7 +4529,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <button onClick={() => setField("borderLayers", borderLayers.filter((_, idx) => idx !== i))}
                     className="text-[10px] text-destructive hover:underline">Remove</button>
                 </div>
-                <ColorSwatchPicker value={layer.color} onChange={(c) => setField("borderLayers", borderLayers.map((l, idx) => idx === i ? { ...l, color: c } : l))} size="sm" />
+                <ColorSwatchPicker
+                  value={layer.color}
+                  onChange={(c) => setField("borderLayers", borderLayers.map((l, idx) => idx === i ? { ...l, color: c } : l))}
+                  onClear={() => setField("borderLayers", borderLayers.map((l, idx) => idx === i ? { ...l, color: "transparent" } : l))}
+                  size="sm"
+                />
                 <div>
                   <p className="mb-1 text-[10px] text-muted-foreground">Thickness</p>
                   <ThicknessControl value={layer.width}
@@ -4532,7 +4560,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {/* Region color */}
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region color</p>
-              <ColorSwatchPicker value={drawingRegionColor} onChange={setDrawingRegionColor} size="sm" />
+              <ColorSwatchPicker
+                value={drawingRegionColor}
+                onChange={setDrawingRegionColor}
+                onClear={() => setDrawingRegionColor("transparent")}
+                size="sm"
+              />
             </div>
 
             {/* Region opacity */}
@@ -4607,6 +4640,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     </div>
                     <ColorSwatchPicker value={r.fillColor}
                       onChange={(c) => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, fillColor: c } : x))}
+                      onClear={() => setField("internalFillRegions", fillRegions.map((x, idx) => idx === i ? { ...x, fillColor: "transparent" } : x))}
                       size="sm" />
                     <div>
                       <p className="mb-1 text-[9px] text-muted-foreground">Opacity</p>

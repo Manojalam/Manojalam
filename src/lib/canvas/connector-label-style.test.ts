@@ -81,6 +81,30 @@ test("turning sync off allows the connector color to override independently", ()
   assert.equal(updated[0].data?.labelColor, "#3b82f6");
 });
 
+test("clearing an independent label color removes its override", () => {
+  const original = edge("edge", {
+    color: "#3b82f6",
+    labelColor: "#ef4444",
+  });
+  const updated = applyConnectorLabelStyleUpdate([original], original.id, { labelColor: null });
+
+  assert.equal(updated[0].data?.labelColor, undefined);
+  assert.equal(updated[0].data?.color, "#3b82f6");
+});
+
+test("clearing a synced connector color removes both overrides and refreshes markers", () => {
+  const original = edge("edge", {
+    color: "#3b82f6",
+    labelColor: "#3b82f6",
+    labelColorSynced: true,
+  });
+  const updated = applyConnectorLabelStyleUpdate([original], original.id, { connectorColor: null });
+
+  assert.equal(updated[0].data?.color, undefined);
+  assert.equal(updated[0].data?.labelColor, undefined);
+  assert.equal((updated[0].markerEnd as { color?: string }).color, "#94a3b8");
+});
+
 test("label fonts persist independently and font size is constrained", () => {
   const original = edge();
   const updated = applyConnectorLabelStyleUpdate([original], original.id, {
