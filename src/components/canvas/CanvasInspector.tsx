@@ -3717,8 +3717,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
               <div>
-                <p className="text-[10px] font-medium">Debug label boxes</p>
-                <p className="text-[9px] text-muted-foreground">Show the actual fitted rectangles</p>
+                <p className="text-[10px] font-medium">Label area guides</p>
+                <p className="text-[9px] text-muted-foreground">Show outlines aligned to each chart section</p>
               </div>
               <Switch
                 checked={!!radialRootData.radialDebugLabelBoxes}

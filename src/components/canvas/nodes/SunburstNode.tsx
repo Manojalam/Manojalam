@@ -26,6 +26,7 @@ import {
   resolveChartAwareCenterLabelRotation,
   resolveChartAwareSectorLabelRotation,
 } from "@/lib/canvas/radial-label-rotation";
+import { radialLabelGuideGeometry } from "@/lib/canvas/radial-label-guide";
 import {
   radialColorScheme,
   radialHierarchyWeight,
@@ -1463,6 +1464,19 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             segment.startAngle,
             segment.endAngle
           );
+          const labelGuide = rootData.radialDebugLabelBoxes
+            ? radialLabelGuideGeometry(segment)
+            : null;
+          const labelGuidePath = labelGuide
+            ? arcSegmentPath(
+                model.center,
+                model.center,
+                labelGuide.innerRadius,
+                labelGuide.outerRadius,
+                labelGuide.startAngle,
+                labelGuide.endAngle
+              )
+            : null;
           const segmentClipId = `${clipPrefix}-${segment.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
           const segmentGradientId = `${segmentClipId}-gradient`;
           const gradientStart = pointOnCircle(
@@ -1538,13 +1552,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
               >
                 <title>{segment.label}</title>
               </path>
-              {!!rootData.radialDebugLabelBoxes && (
-                <rect
-                  x={labelGeometry.x - labelGeometry.width / 2}
-                  y={labelGeometry.y - labelGeometry.height / 2}
-                  width={labelGeometry.width}
-                  height={labelGeometry.height}
-                  transform={`rotate(${labelGeometry.rotation} ${labelGeometry.x} ${labelGeometry.y})`}
+              {labelGuidePath && (
+                <path
+                  d={labelGuidePath}
                   fill="rgba(236,72,153,0.08)"
                   stroke="#db2777"
                   strokeWidth="2"
@@ -1704,12 +1714,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           <title>{rootLabel}</title>
         </circle>
         {!!rootData.radialDebugLabelBoxes && (
-          <rect
-            x={rootFit.x - rootFit.width / 2}
-            y={rootFit.y - rootFit.height / 2}
-            width={rootFit.width}
-            height={rootFit.height}
-            transform={`rotate(${rootFit.rotation} ${rootFit.x} ${rootFit.y})`}
+          <circle
+            cx={model.center}
+            cy={model.center}
+            r={Math.max(1, model.centerRadius - 5)}
             fill="rgba(236,72,153,0.08)"
             stroke="#db2777"
             strokeWidth="2"
