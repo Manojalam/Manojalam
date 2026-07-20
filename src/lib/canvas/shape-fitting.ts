@@ -48,62 +48,9 @@ export interface ShapeTextContentOptions {
   contentSize?: Partial<ContentMeasurement>;
 }
 
-/**
- * Equivalent rectangular capacity for text that flows through a diamond.
- * A diamond occupies exactly half of its inset bounding box. Using its average
- * line width (50%) across the full height preserves that area without adding a
- * second rectangular vertical inset on top of the shape-aware CSS flow.
- */
-export function diamondTextFlowCapacity(renderedSize: Size): Size {
-  const width = Math.max(8, finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH) - 8);
-  const height = Math.max(8, finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT) - 8);
-  return {
-    width: Math.max(8, width * 0.5),
-    height,
-  };
-}
-
-/** Full bounding box used by CSS shape-outside flow guides. */
-export function diamondTextFlowBox(renderedSize: Size): Size {
-  return {
-    width: Math.max(8, finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH) - 8),
-    height: Math.max(8, finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT) - 8),
-  };
-}
-
-/**
- * Keep compact labels centered, and switch genuinely dense labels to the
- * shape-aware flow path. Width alone is not density: a single long line can
- * still be maximized safely inside the centered diamond interior.
- */
-export function shouldUseDiamondTextFlow(
-  shapeType: string | undefined,
-  renderedSize: Size,
-  contentSize?: Partial<ContentMeasurement>,
-  text?: string
-): boolean {
-  if (shapeType !== "diamond" || !contentSize) return false;
-  const lineCount = finitePositive(contentSize.lineCount, 0);
-  if (lineCount >= 3) return true;
-
-  const normalizedText = text?.replace(/\s+/gu, " ").trim() ?? "";
-  const hasWordBoundary = /\S\s+\S/u.test(normalizedText);
-  const naturalWidth = finitePositive(contentSize.naturalWidth, contentSize.width ?? 0);
-  // The flow capacity is the diamond's average horizontal cross-section. Once
-  // a phrase is wider than that, letting shape-outside wrap at its spaces uses
-  // the upper and lower halves instead of shrinking one shallow center line.
-  return hasWordBoundary && naturalWidth > diamondTextFlowCapacity(renderedSize).width;
-}
-
-/** Editing stays rectangular so visual soft wraps match caret navigation. */
-export function shouldRenderDiamondTextFlow(
-  shapeType: string | undefined,
-  renderedSize: Size,
-  contentSize: Partial<ContentMeasurement> | undefined,
-  editing: boolean,
-  text?: string
-): boolean {
-  return !editing && shouldUseDiamondTextFlow(shapeType, renderedSize, contentSize, text);
+export interface ShapeLabelBox extends Size {
+  x: number;
+  y: number;
 }
 
 interface GraphemeSegmenter {
@@ -353,6 +300,26 @@ export function shapeTextContentSize(
   return {
     width: Math.max(8, width / scale.width - padding.width),
     height: Math.max(8, height / scale.height - padding.height),
+  };
+}
+
+/** One centered, shape-safe rectangular label box shared by every shape renderer. */
+export function shapeLabelBox(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  nodeType = "shape",
+  options: ShapeTextContentOptions = {}
+): ShapeLabelBox {
+  const renderedWidth = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
+  const renderedHeight = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
+  const contentSize = shapeTextContentSize(shapeType, renderedSize, nodeType, options);
+  const width = Math.min(renderedWidth, contentSize.width);
+  const height = Math.min(renderedHeight, contentSize.height);
+  return {
+    x: (renderedWidth - width) / 2,
+    y: (renderedHeight - height) / 2,
+    width,
+    height,
   };
 }
 
