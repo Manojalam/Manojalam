@@ -52,6 +52,7 @@ function normalizeHex(color: string | undefined): string | null {
 }
 
 function tint(color: string, amount: number): string {
+  if (color.trim().toLowerCase() === "transparent") return "transparent";
   const normalized = normalizeHex(color);
   if (!normalized) {
     return "color-mix(in srgb, " + color + " " + Math.round((1 - amount) * 100) + "%, white)";

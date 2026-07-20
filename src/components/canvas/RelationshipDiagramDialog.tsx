@@ -551,7 +551,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                             aria-label={`${label} center color`}
                             value={typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback}
                             onColorChange={(color) => update(key, color)}
-                            onClear={() => update(key, undefined)}
+                            onClear={() => update(key, key === "centerTextColor" ? undefined : "transparent")}
                             inputClassName="h-8 w-full rounded border bg-background p-1"
                           />
                         </label>

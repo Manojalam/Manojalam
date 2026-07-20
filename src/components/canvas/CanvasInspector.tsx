@@ -1605,6 +1605,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <ColorSwatchPicker
               value={(commonValue("fillColor") as string) ?? ""}
               onChange={(v) => setSelectedField("fillColor", v || undefined)}
+              onClear={() => setSelectedField("fillColor", "transparent")}
             />
             {!isRadialMultiSelection && <div>
               <div className="mb-1 flex items-center justify-between">
@@ -1626,7 +1627,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Border">
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
-              <ColorSwatchPicker value={(commonValue("borderColor") as string) ?? ""} onChange={(v) => setSelectedField("borderColor", v || undefined)} />
+              <ColorSwatchPicker
+                value={(commonValue("borderColor") as string) ?? ""}
+                onChange={(v) => setSelectedField("borderColor", v || undefined)}
+                onClear={() => setSelectedField("borderColor", "transparent")}
+              />
             </div>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
@@ -1734,7 +1739,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ColorSwatchPicker
                 value={settings.canvasBackgroundColor ?? DEFAULT_BOARD_SETTINGS.canvasBackgroundColor}
                 onChange={(value) => setBoardSettings({ canvasBackgroundColor: value })}
-                onClear={() => setBoardSettings({ canvasBackgroundColor: undefined })}
+                onClear={() => setBoardSettings({ canvasBackgroundColor: "transparent" })}
               />
             </div>
             {settings.background !== "plain" && (
@@ -1754,7 +1759,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <ColorSwatchPicker
                   value={settings.gridColor ?? DEFAULT_BOARD_SETTINGS.gridColor}
                   onChange={(value) => setBoardSettings({ gridColor: value })}
-                  onClear={() => setBoardSettings({ gridColor: undefined })}
+                  onClear={() => setBoardSettings({ gridColor: "transparent" })}
                   size="sm"
                 />
               </div>
@@ -2217,11 +2222,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <p className="mb-1 text-[9px] uppercase text-muted-foreground">Fill</p>
-                <ColorSwatchPicker value={typeof chartData.fillColor === "string" ? chartData.fillColor : ""} onChange={(value) => updateNodeData(selectedNode.id, { fillColor: value || undefined })} size="sm" />
+                <ColorSwatchPicker
+                  value={typeof chartData.fillColor === "string" ? chartData.fillColor : ""}
+                  onChange={(value) => updateNodeData(selectedNode.id, { fillColor: value || undefined })}
+                  onClear={() => updateNodeData(selectedNode.id, { fillColor: "transparent" })}
+                  size="sm"
+                />
               </div>
               <div>
                 <p className="mb-1 text-[9px] uppercase text-muted-foreground">Border</p>
-                <ColorSwatchPicker value={typeof chartData.borderColor === "string" ? chartData.borderColor : ""} onChange={(value) => updateNodeData(selectedNode.id, { borderColor: value || undefined })} size="sm" />
+                <ColorSwatchPicker
+                  value={typeof chartData.borderColor === "string" ? chartData.borderColor : ""}
+                  onChange={(value) => updateNodeData(selectedNode.id, { borderColor: value || undefined })}
+                  onClear={() => updateNodeData(selectedNode.id, { borderColor: "transparent" })}
+                  size="sm"
+                />
               </div>
               <div>
                 <p className="mb-1 text-[9px] uppercase text-muted-foreground">Width</p>
@@ -2616,6 +2631,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <ColorSwatchPicker
                   value={diagramSpec.borderColor ?? ""}
                   onChange={(value) => updateDiagram({ borderColor: value || undefined })}
+                  onClear={() => updateDiagram({ borderColor: "transparent" })}
                   size="sm"
                 />
               </div>
@@ -2645,7 +2661,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       value={hexInputColor(diagramSpec.centerFillColor, "#0f172a")}
                       inputClassName="h-7 w-full rounded border border-border bg-background"
                       onColorChange={(color) => updateDiagram({ centerFillColor: color })}
-                      onClear={() => updateDiagram({ centerFillColor: undefined })}
+                      onClear={() => updateDiagram({ centerFillColor: "transparent" })}
                     />
                   </label>
                   <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -2655,7 +2671,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       value={hexInputColor(diagramSpec.centerBorderColor, "#ffffff")}
                       inputClassName="h-7 w-full rounded border border-border bg-background"
                       onColorChange={(color) => updateDiagram({ centerBorderColor: color })}
-                      onClear={() => updateDiagram({ centerBorderColor: undefined })}
+                      onClear={() => updateDiagram({ centerBorderColor: "transparent" })}
                     />
                   </label>
                   <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -2773,7 +2789,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           value={sourceColor}
                           inputClassName="h-7 w-full rounded border border-border bg-background"
                           onColorChange={(color) => updateItemStyle(group.itemId, { fillColor: color })}
-                          onClear={() => updateItemStyle(group.itemId, { fillColor: undefined })}
+                          onClear={() => updateItemStyle(group.itemId, { fillColor: "transparent" })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -2783,7 +2799,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           value={hexInputColor(style.borderColor ?? diagramSpec.borderColor, sourceColor)}
                           inputClassName="h-7 w-full rounded border border-border bg-background"
                           onColorChange={(color) => updateItemStyle(group.itemId, { borderColor: color })}
-                          onClear={() => updateItemStyle(group.itemId, { borderColor: undefined })}
+                          onClear={() => updateItemStyle(group.itemId, { borderColor: "transparent" })}
                         />
                       </label>
                       <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
@@ -3582,6 +3598,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ColorSwatchPicker
                 value={(d.radialFillColor as string) ?? ""}
                 onChange={(value) => setField("radialFillColor", value || undefined)}
+                onClear={() => setField("radialFillColor", "transparent")}
               />
               {selectedRadialDepth === 1 && (
                 <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
@@ -3594,6 +3611,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ColorSwatchPicker
                 value={(d.radialBorderColor as string) ?? "#ffffff"}
                 onChange={(value) => setField("radialBorderColor", value || undefined)}
+                onClear={() => setField("radialBorderColor", "transparent")}
                 size="sm"
               />
             </div>
@@ -3857,6 +3875,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <ColorSwatchPicker
               value={(d.fillColor as string) ?? ""}
               onChange={(v) => setField("fillColor", v || undefined)}
+              onClear={() => setField("fillColor", "transparent")}
             />
             <div>
               <div className="mb-1 flex items-center justify-between">
@@ -4093,7 +4112,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             idx === index ? { ...item, fillColor: color } : item
                           ))}
                           onClear={() => setField("concentricLayers", concentricLayers.map((item, idx) =>
-                            idx === index ? { ...item, fillColor: undefined } : item
+                            idx === index ? { ...item, fillColor: "transparent" } : item
                           ))}
                           inputClassName="h-7 w-full rounded border border-border bg-background"
                         />
@@ -4108,7 +4127,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             idx === index ? { ...item, borderColor: color } : item
                           ))}
                           onClear={() => setField("concentricLayers", concentricLayers.map((item, idx) =>
-                            idx === index ? { ...item, borderColor: undefined } : item
+                            idx === index ? { ...item, borderColor: "transparent" } : item
                           ))}
                           inputClassName="h-7 w-full rounded border border-border bg-background"
                         />
@@ -4181,7 +4200,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         name="radial-chart-center-fill"
                         value={hexInputColor(activeRadialChart.centerColor, "#ffffff")}
                         onColorChange={(color) => setRadialChart({ ...activeRadialChart, centerColor: color, enabled: true })}
-                        onClear={() => setRadialChart({ ...activeRadialChart, centerColor: undefined, enabled: true })}
+                        onClear={() => setRadialChart({ ...activeRadialChart, centerColor: "transparent", enabled: true })}
                         inputClassName="h-7 w-full rounded border border-border bg-background"
                       />
                     </label>
@@ -4205,7 +4224,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         name="radial-chart-split-border-color"
                         value={hexInputColor(activeRadialChart.segmentBorderColor, "#ffffff")}
                         onColorChange={(color) => setRadialChart({ ...activeRadialChart, segmentBorderColor: color, enabled: true })}
-                        onClear={() => setRadialChart({ ...activeRadialChart, segmentBorderColor: undefined, enabled: true })}
+                        onClear={() => setRadialChart({ ...activeRadialChart, segmentBorderColor: "transparent", enabled: true })}
                         inputClassName="h-7 w-full rounded border border-border bg-background"
                       />
                     </label>
@@ -4405,7 +4424,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                                   name={`radial-ring-${ringIndex + 1}-segment-${segmentIndex + 1}-fill`}
                                   value={hexInputColor(segment.fillColor, RADIAL_SEGMENT_COLORS[segmentIndex % RADIAL_SEGMENT_COLORS.length])}
                                   onColorChange={(color) => updateRadialSegment(ringIndex, segmentIndex, { fillColor: color })}
-                                  onClear={() => updateRadialSegment(ringIndex, segmentIndex, { fillColor: undefined })}
+                                  onClear={() => updateRadialSegment(ringIndex, segmentIndex, { fillColor: "transparent" })}
                                   inputClassName="h-7 w-7 rounded border border-border bg-background"
                                   compact
                                 />
@@ -4489,7 +4508,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Border" visible={singleNodeTab === "style"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
-              <ColorSwatchPicker value={(d.borderColor as string) ?? ""} onChange={(v) => setField("borderColor", v || undefined)} />
+              <ColorSwatchPicker
+                value={(d.borderColor as string) ?? ""}
+                onChange={(v) => setField("borderColor", v || undefined)}
+                onClear={() => setField("borderColor", "transparent")}
+              />
             </div>
 
             <div>
