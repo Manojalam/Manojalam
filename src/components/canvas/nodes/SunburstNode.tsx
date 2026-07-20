@@ -1507,9 +1507,15 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                 startAngle: segment.startAngle,
                 endAngle: segment.endAngle,
                 chartRotation: objectRotation,
+                label: segment.label,
                 fittedLines: labelGeometry.lines,
                 fontSize: labelGeometry.fontSize,
                 lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+                measureText: (value, fontSize) => textMetrics([value], fontSize, segment.label, {
+                  fontFamily: segment.fontFamily,
+                  fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
+                  fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
+                }, fontMetricsReady).width,
                 richText: segment.richText,
               })
             : null;
