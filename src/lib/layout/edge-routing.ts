@@ -8,6 +8,7 @@ export type Segment = { a: Pt; b: Pt };
 
 export const EDGE_OBSTACLE_PADDING = 24;
 const DIRECT_ALIGNMENT_TOLERANCE = 16;
+const ENDPOINT_AXIS_SNAP_TOLERANCE = 8;
 
 // -- Geometry helpers ---------------------------------------------------------
 
@@ -245,6 +246,17 @@ export interface OrthogonalEndpointOptions {
   targetStubDistance?: number;
 }
 
+function snapWaypointToEndpointAxis(point: Pt, endpoint: Pt, side: Side): Pt {
+  if (side === "left" || side === "right") {
+    return Math.abs(point.y - endpoint.y) <= ENDPOINT_AXIS_SNAP_TOLERANCE
+      ? { x: point.x, y: endpoint.y }
+      : { ...point };
+  }
+  return Math.abs(point.x - endpoint.x) <= ENDPOINT_AXIS_SNAP_TOLERANCE
+    ? { x: endpoint.x, y: point.y }
+    : { ...point };
+}
+
 function simplifyOrthogonalPoints(points: Pt[]): Pt[] {
   const unique = points.filter((point, index) => (
     index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y
@@ -315,10 +327,21 @@ export function routeManualOrthogonalEdge(
 ): RouteResult {
   const validWaypoints = waypoints.filter((point) => (
     Number.isFinite(point.x) && Number.isFinite(point.y)
-  ));
+  )).map((point) => ({ ...point }));
   if (!validWaypoints.length) {
     return makeRoute([source, target]);
   }
+
+  // Tidy-layout waypoints come from calculated node rectangles while React
+  // Flow endpoints come from measured handles. Normalize their small center
+  // drift so it cannot become a visible U-shaped knot near either node.
+  validWaypoints[0] = snapWaypointToEndpointAxis(validWaypoints[0], source, sourceSide);
+  const lastIndex = validWaypoints.length - 1;
+  validWaypoints[lastIndex] = snapWaypointToEndpointAxis(
+    validWaypoints[lastIndex],
+    target,
+    targetSide
+  );
 
   const sourceStub = stub(source, sourceSide, endpointOptions.sourceStubDistance ?? 20);
   const targetStub = stub(target, targetSide, endpointOptions.targetStubDistance ?? 20);
