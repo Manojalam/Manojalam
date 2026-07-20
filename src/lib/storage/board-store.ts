@@ -4,7 +4,7 @@ import type { BoardContent, VidyaBoard } from "@/lib/types";
 import { getTemplateById } from "@/lib/templates";
 import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
-import { normalizePersistedNodes } from "@/lib/canvas/node-persistence";
+import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 
 interface BoardRow {
   id: string;
@@ -22,6 +22,7 @@ function normalizeBoardContent(content: BoardContent): BoardContent {
     ...content,
     version: BOARD_CONTENT_VERSION,
     nodes: normalizePersistedNodes(content.nodes),
+    edges: normalizePersistedEdges(content.edges),
     relationships: Array.isArray(content.relationships) ? content.relationships : [],
     relationshipFans: Array.isArray(content.relationshipFans) ? content.relationshipFans : [],
   };

@@ -5,7 +5,8 @@ import { useReactFlow } from "@xyflow/react";
 import { ArrowLeftRight, CircleDot, GitBranch, GripVertical, LocateFixed, Move, RotateCcw, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CONNECTOR_CONTROL_Z_INDEX } from "@/lib/canvas/connector-control-layer";
-import { reverseLogicalConnectors } from "@/lib/canvas/connector-junction";
+import { findLogicalConnectorEdgeIds, reverseLogicalConnectors } from "@/lib/canvas/connector-junction";
+import { canShowConnectionToolbar } from "@/lib/canvas/connection-toolbar";
 import { applyConnectorLabelPreset } from "@/lib/canvas/connector-label-presets";
 import { ConnectorLabelPresets } from "./ConnectorLabelPresets";
 import { ConnectorPathStylePicker } from "./ConnectorPathStylePicker";
@@ -80,7 +81,7 @@ function updateToolbarOffset(edgeId: string, toolbarOffset?: { x: number; y: num
   }));
 }
 
-/** A visible edge label plus an in-place editor whenever the edge is selected. */
+/** A visible edge label plus an in-place editor for one deliberately selected connector. */
 export function ConnectionLabelEditor({
   edgeId,
   toolbarEdgeId = edgeId,
@@ -107,6 +108,12 @@ export function ConnectionLabelEditor({
   } | null>(null);
   const deleteEdges = useCanvasStore((state) => state.deleteEdges);
   const pushHistory = useCanvasStore((state) => state.pushHistory);
+  const toolbarVisible = useCanvasStore((state) => canShowConnectionToolbar({
+    selected,
+    selectedNodeIds: state.selectedNodeIds,
+    selectedEdgeIds: state.selectedEdgeIds,
+    logicalEdgeIds: findLogicalConnectorEdgeIds(state.edges, toolbarEdgeId),
+  }));
   const storedLabelData = useCanvasStore((state) => (
     state.edges.find((edge) => edge.id === edgeId)?.data ?? {}
   )) as VidyaEdgeData;
@@ -163,10 +170,10 @@ export function ConnectionLabelEditor({
   };
 
   useEffect(() => {
-    if (!selected || label) return;
+    if (!toolbarVisible || label) return;
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [label, selected]);
+  }, [label, toolbarVisible]);
 
   const setLabel = (nextLabel: string) => {
     if (!historyCaptured.current) {
@@ -213,7 +220,7 @@ export function ConnectionLabelEditor({
         </div>
       )}
 
-      {selected && (
+      {toolbarVisible && (
         <div
           data-export-ignore
           role="group"
