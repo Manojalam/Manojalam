@@ -87,7 +87,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const [scaleChoice, setScaleChoice] = useState<ScaleChoice>("2");
   const [customScale, setCustomScale] = useState(2);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
-  const [includeBackground, setIncludeBackground] = useState(true);
+  const [includeBackground, setIncludeBackground] = useState(false);
   const [exporting, setExporting] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -354,9 +354,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <div>
                 <Label className="text-xs">Board background</Label>
                 <p className="text-[9px] text-muted-foreground">
-                  {boardIsTransparent
-                    ? "On uses the current theme backdrop. Turn off for transparent outer pixels."
-                    : "Turn off for transparent outer pixels."}
+                  {includeBackground
+                    ? boardIsTransparent
+                      ? "Using the current theme backdrop."
+                      : "Included in the exported image."
+                    : "Transparent outer pixels (default)."}
                 </p>
               </div>
               <Switch
