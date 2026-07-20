@@ -286,7 +286,7 @@ function contrastRatio(first: number, second: number): number {
 
 const AUTOMATIC_DARK_TEXT = "#111827";
 const AUTOMATIC_LIGHT_TEXT = "#f8fafc";
-const DARK_MODE_OPAQUE_FILL_STRENGTH = 0.76;
+const DARK_MODE_OPAQUE_FILL_STRENGTH = 0.82;
 
 function readableTextColor(background: { r: number; g: number; b: number }): string {
   const backgroundLuminance = relativeLuminance(background);
@@ -331,7 +331,7 @@ export function themeAwareNodeFillColor(renderedFillColor?: string): string | un
   if (!renderedFillColor) return undefined;
   const fill = parseCssColor(renderedFillColor);
   if (!fill || fill.a < 0.999) return renderedFillColor;
-  return `color-mix(in srgb, ${renderedFillColor} var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))`;
+  return `color-mix(in oklch, ${renderedFillColor} var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))`;
 }
 
 /** Combine a base color + opacity into an rgba() string */
