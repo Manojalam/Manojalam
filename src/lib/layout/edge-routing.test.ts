@@ -164,6 +164,41 @@ test("a collinear waypoint does not change the direction used by later bends", (
   assert.deepEqual(withNeutralWaypoint.points, original.points);
 });
 
+test("outer-lane routes do not turn small endpoint-center drift into visible knots", () => {
+  const route = routeManualOrthogonalEdge(
+    { x: 200, y: 40 },
+    { x: 180, y: 254 },
+    "right",
+    "right",
+    [
+      { x: 412, y: 46 },
+      { x: 412, y: 260 },
+    ]
+  );
+
+  assert.deepEqual(route.points, [
+    { x: 200, y: 40 },
+    { x: 412, y: 40 },
+    { x: 412, y: 254 },
+    { x: 180, y: 254 },
+  ]);
+});
+
+test("manual routes retain deliberate endpoint offsets outside the knot tolerance", () => {
+  const route = routeManualOrthogonalEdge(
+    { x: 200, y: 40 },
+    { x: 180, y: 254 },
+    "right",
+    "right",
+    [
+      { x: 412, y: 52 },
+      { x: 412, y: 242 },
+    ]
+  );
+
+  assert.ok(route.points.some((point) => point.y === 242));
+});
+
 test("junction endpoint routes do not retain tiny redundant stub bends", () => {
   const route = routeOrthogonalEdge(
     { x: 0, y: 0 },
