@@ -47,6 +47,7 @@ import {
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import {
   alignmentSnapThreshold,
+  preserveSnappedDragEndPositions,
   snapPointToGrid,
   snapRectToAlignment,
 } from "@/lib/canvas/selection-geometry";
@@ -482,10 +483,12 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         }
         return;
       }
+      const activeDragIds = new Set(dragStartRef.current?.positions.keys() ?? []);
+      const releaseSafeChanges = preserveSnappedDragEndPositions(changes, activeDragIds);
       const lockedIds = new Set(useCanvasStore.getState().nodes
         .filter((node) => isNodeLocked(node))
         .map((node) => node.id));
-      const acceptedChanges = changes.filter((change) =>
+      const acceptedChanges = releaseSafeChanges.filter((change) =>
         change.type !== "position" || !lockedIds.has(change.id)
       );
       if (!acceptedChanges.length) return;
