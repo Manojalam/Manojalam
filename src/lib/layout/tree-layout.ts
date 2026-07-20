@@ -196,7 +196,11 @@ export interface TreeConnectorModel {
 
 export function isGroupedTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
   const data = (edge.data ?? {}) as Record<string, unknown>;
-  if (data.manualRoute === true) return false;
+  if (
+    data.manualRoute === true
+    || edge.selected
+    || (Array.isArray(data.waypoints) && data.waypoints.length > 0)
+  ) return false;
   const source = byId.get(edge.source);
   const target = byId.get(edge.target);
   if (!source || !target || source.hidden || target.hidden || edge.hidden) return false;
@@ -273,12 +277,13 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
       const clearance = Math.max(0, nearestChildTop - parentRect.bottom);
       const busY = parentRect.bottom + Math.min(56, Math.max(24, clearance / 2));
       const childCenters = children.map((child) => child.rect.centerX);
+      const connectorCenters = [parentRect.centerX, ...childCenters];
       group = {
         parentId,
         orientation,
         sharedSegments: [
           { x1: parentRect.centerX, y1: parentRect.bottom, x2: parentRect.centerX, y2: busY },
-          { x1: Math.min(...childCenters), y1: busY, x2: Math.max(...childCenters), y2: busY },
+          { x1: Math.min(...connectorCenters), y1: busY, x2: Math.max(...connectorCenters), y2: busY },
         ],
         branches: children.map(({ edge, rect }) => ({
           edge,
@@ -291,12 +296,13 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
       const clearance = Math.max(0, nearestChildLeft - parentRect.right);
       const busX = parentRect.right + Math.min(64, Math.max(28, clearance / 2));
       const childCenters = children.map((child) => child.rect.centerY);
+      const connectorCenters = [parentRect.centerY, ...childCenters];
       group = {
         parentId,
         orientation,
         sharedSegments: [
           { x1: parentRect.right, y1: parentRect.centerY, x2: busX, y2: parentRect.centerY },
-          { x1: busX, y1: Math.min(...childCenters), x2: busX, y2: Math.max(...childCenters) },
+          { x1: busX, y1: Math.min(...connectorCenters), x2: busX, y2: Math.max(...connectorCenters) },
         ],
         branches: children.map(({ edge, rect }) => ({
           edge,

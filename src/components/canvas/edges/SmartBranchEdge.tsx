@@ -355,8 +355,11 @@ function SmartBranchEdgeComponent(props: EdgeProps) {
   const targetData = (endpointData.find((node) => node.id === props.target)?.data ?? {}) as Record<string, unknown>;
   const data = (props.data ?? {}) as VidyaEdgeData;
   const manualRoute = data.manualRoute === true;
+  const hasWaypoints = Array.isArray(data.waypoints) && data.waypoints.length > 0;
   const isGroupedListEdge = data.layoutMode === "list"
     && !manualRoute
+    && !hasWaypoints
+    && !props.selected
     && targetData.parentId === props.source;
   const isGroupedTreeEdge = (
     data.layoutMode === "horizontal"
@@ -364,6 +367,8 @@ function SmartBranchEdgeComponent(props: EdgeProps) {
     || data.layoutMode === "topDown"
   )
     && !manualRoute
+    && !hasWaypoints
+    && !props.selected
     && targetData.parentId === props.source;
   return isGroupedListEdge || isGroupedTreeEdge ? null : <RoutedSmartBranchEdge {...props} />;
 }

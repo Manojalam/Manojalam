@@ -4,7 +4,6 @@ import { memo } from "react";
 import {
   EdgeLabelRenderer,
   getBezierPath,
-  getSmoothStepPath,
   getStraightPath,
   useNodesData,
   type EdgeProps,
@@ -14,32 +13,36 @@ import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorPath } from "./ConnectorPath";
 import { SmartBranchEdge } from "./SmartBranchEdge";
 
-function VidyaEdgeComponent({
-  id,
-  source,
-  target,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  data,
-  selected,
-  markerStart,
-  markerEnd,
-}: EdgeProps) {
+function VidyaEdgeComponent(props: EdgeProps) {
+  const {
+    id,
+    source,
+    target,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    data,
+    selected,
+    markerStart,
+    markerEnd,
+  } = props;
   const d = (data ?? {}) as VidyaEdgeData;
   const edgeColor = d.color ?? d.layoutColor;
   const endpointData = useNodesData([source, target]);
   const curveStyle = d.curveStyle ?? "smooth";
   const targetData = (endpointData.find((node) => node.id === target)?.data ?? {}) as Record<string, unknown>;
+  if (curveStyle === "step") return <SmartBranchEdge {...props} />;
   if (
     d.layoutMode === "list" &&
+    !selected &&
     targetData.parentId === source
   ) return null;
   if (
     (d.layoutMode === "horizontal" || d.layoutMode === "vertical" || d.layoutMode === "topDown") &&
+    !selected &&
     targetData.parentId === source
   ) return null;
 
@@ -49,15 +52,6 @@ function VidyaEdgeComponent({
 
   if (curveStyle === "straight") {
     [path, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY });
-  } else if (curveStyle === "step") {
-    [path, labelX, labelY] = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-      sourcePosition,
-      targetPosition,
-    });
   } else {
     [path, labelX, labelY] = getBezierPath({
       sourceX,
