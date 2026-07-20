@@ -81,6 +81,7 @@ import {
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
+import { normalizeBoardColorOverride } from "@/lib/canvas/board-colors";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import { createExternalNoteNode } from "@/lib/canvas/node-note";
 import {
@@ -1593,6 +1594,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
       customTextColors: normalizeCustomColors(rawSettings.customTextColors),
       customHighlightColors: normalizeCustomColors(rawSettings.customHighlightColors),
+      canvasBackgroundColor: normalizeBoardColorOverride(rawSettings.canvasBackgroundColor, "canvas"),
+      gridColor: normalizeBoardColorOverride(rawSettings.gridColor, "grid"),
     };
     const settingsMigrationRequired = JSON.stringify(rawSettings) !== JSON.stringify(settings);
     const normalizedBoard: VidyaBoard = {

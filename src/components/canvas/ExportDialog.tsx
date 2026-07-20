@@ -20,6 +20,7 @@ import { resolveExportTargetWithBounds } from "@/lib/export/bounds";
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
+import { resolveElementExportBackground } from "@/lib/export/background";
 import type { ExportFormat, ExportScope } from "@/lib/export/types";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -149,10 +150,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const pngPlan = pngPlanning.plan;
 
   const boardBackground = useMemo(() => {
-    if (!root) return "#ffffff";
-    const value = window.getComputedStyle(root).backgroundColor;
-    return value && value !== "rgba(0, 0, 0, 0)" ? value : "#ffffff";
+    if (!root) return { background: "#ffffff", appearanceBackground: "#ffffff" };
+    return resolveElementExportBackground(root);
   }, [root]);
+  const boardIsTransparent = boardBackground.background === null;
+  const includedBoardBackground = boardBackground.background ?? boardBackground.appearanceBackground;
 
   const fitToSafeSize = () => {
     if (!pngPlan) return;
@@ -185,8 +187,8 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         requestedScale,
         filename: request.title || boardTitle,
         title: request.title || boardTitle,
-        background: includeBackground ? boardBackground : null,
-        appearanceBackground: boardBackground,
+        background: includeBackground ? includedBoardBackground : null,
+        appearanceBackground: boardBackground.appearanceBackground,
         signal: abortController.signal,
       });
       const adjusted = result.plan?.adjusted
@@ -351,9 +353,17 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             <div className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
               <div>
                 <Label className="text-xs">Board background</Label>
-                <p className="text-[9px] text-muted-foreground">Turn off for transparency.</p>
+                <p className="text-[9px] text-muted-foreground">
+                  {boardIsTransparent
+                    ? "On uses the current theme backdrop. Turn off for transparent outer pixels."
+                    : "Turn off for transparent outer pixels."}
+                </p>
               </div>
-              <Switch checked={includeBackground} onCheckedChange={setIncludeBackground} aria-label="Include board background" />
+              <Switch
+                checked={includeBackground}
+                onCheckedChange={setIncludeBackground}
+                aria-label="Include board background"
+              />
             </div>
           </section>
 
