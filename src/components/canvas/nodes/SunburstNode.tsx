@@ -132,6 +132,22 @@ type LabelRotationDrag = {
   startRotation: number;
 };
 
+type DirectManipulationPoint = {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+};
+
+type SegmentRenderGeometry = {
+  segmentPath: string;
+  labelGuidePath: string | null;
+  gradientStart: PolarPoint;
+  gradientEnd: PolarPoint;
+  labelGeometry: LabelGeometry;
+  curvedLabel: ReturnType<typeof radialCurvedLabelLayout> | null;
+  relationshipMarkerPoint: PolarPoint;
+};
+
 type SunburstVisualBounds = {
   minX: number;
   minY: number;
@@ -149,7 +165,11 @@ const DEVANAGARI_LINE_HEIGHT = 1.46;
 const DEVANAGARI_INK_PADDING_X = 0.16;
 const DEVANAGARI_INK_PADDING_Y = 0.18;
 const DEVANAGARI_FONT = "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif";
+const TEXT_MEASUREMENT_CACHE_LIMIT = 12_000;
+const SEGMENT_GEOMETRY_CACHE_LIMIT = 4_000;
 let textMeasurementCanvas: HTMLCanvasElement | null = null;
+const textMeasurementCache = new Map<string, TextMetrics>();
+const segmentGeometryCache = new Map<string, SegmentRenderGeometry>();
 
 function roundedBound(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -358,8 +378,15 @@ function browserTextMetrics(
   if (!context) return null;
   const family = canvasFontFamily(labelFontFamily(label, style.fontFamily));
   const weight = labelFontWeight(label, style.fontWeight ?? 400) ?? 400;
-  context.font = `${style.fontStyle ?? "normal"} ${weight} ${fontSize}px ${family}`;
-  return context.measureText(text);
+  const font = `${style.fontStyle ?? "normal"} ${weight} ${fontSize}px ${family}`;
+  const cacheKey = `${font}\u0000${text}`;
+  const cached = textMeasurementCache.get(cacheKey);
+  if (cached) return cached;
+  context.font = font;
+  const measurement = context.measureText(text);
+  if (textMeasurementCache.size >= TEXT_MEASUREMENT_CACHE_LIMIT) textMeasurementCache.clear();
+  textMeasurementCache.set(cacheKey, measurement);
+  return measurement;
 }
 
 function textMetrics(
@@ -850,7 +877,6 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const startRelationshipSelection = useUIStore((state) => state.startRelationshipSelection);
   const toggleRelationshipTarget = useUIStore((state) => state.toggleRelationshipTarget);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
   const clipPrefix = `sunburst-clip-${useId().replace(/:/g, "")}`;
@@ -858,9 +884,13 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const boundaryDragRef = useRef<BoundaryDrag | null>(null);
   const centerDragRef = useRef<CenterDrag | null>(null);
   const labelRotationDragRef = useRef<LabelRotationDrag | null>(null);
+  const pendingDirectManipulationRef = useRef<DirectManipulationPoint | null>(null);
+  const directManipulationFrameRef = useRef<number | null>(null);
+  const pendingResizePreviewRef = useRef<ResizeParams | null>(null);
+  const resizePreviewFrameRef = useRef<number | null>(null);
   const editHistoryCaptured = useRef(false);
 
-  const previewChartResize = useCallback((params: ResizeParams) => {
+  const applyChartResizePreview = useCallback((params: ResizeParams) => {
     const resize = resolveChartNodeResize("sunburst", params);
     if (!resize) return;
     useCanvasStore.setState((state) => ({
@@ -878,10 +908,29 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     }));
   }, [id]);
 
+  const previewChartResize = useCallback((params: ResizeParams) => {
+    pendingResizePreviewRef.current = params;
+    if (resizePreviewFrameRef.current !== null) return;
+    resizePreviewFrameRef.current = window.requestAnimationFrame(() => {
+      resizePreviewFrameRef.current = null;
+      const pending = pendingResizePreviewRef.current;
+      pendingResizePreviewRef.current = null;
+      if (pending) applyChartResizePreview(pending);
+    });
+  }, [applyChartResizePreview]);
+
+  const cancelResizePreview = useCallback(() => {
+    pendingResizePreviewRef.current = null;
+    if (resizePreviewFrameRef.current === null) return;
+    window.cancelAnimationFrame(resizePreviewFrameRef.current);
+    resizePreviewFrameRef.current = null;
+  }, []);
+
   useEffect(() => {
     let active = true;
     if (typeof document === "undefined" || !document.fonts) return;
     const refreshMetrics = () => {
+      textMeasurementCache.clear();
       if (active) setFontMetricsRevision((revision) => revision + 1);
     };
     void document.fonts.ready.then(refreshMetrics);
@@ -890,6 +939,15 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       active = false;
       document.fonts.removeEventListener("loadingdone", refreshMetrics);
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (directManipulationFrameRef.current !== null) {
+      window.cancelAnimationFrame(directManipulationFrameRef.current);
+    }
+    if (resizePreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(resizePreviewFrameRef.current);
+    }
   }, []);
 
   const fontMetricsReady = fontMetricsRevision > 0;
@@ -948,6 +1006,184 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     };
   }, [d, edges, nodes]);
 
+  const fittedGeometry = useMemo(() => {
+    if (!model) return null;
+    const rootData = (model.root.data ?? {}) as Record<string, unknown>;
+    const rootLabel = nodeLabel(model.root);
+    const rootRichText = nodeRichText(model.root, rootLabel);
+    const rootFit = circleLabelGeometry(
+      rootLabel,
+      model.centerRadius,
+      model.center,
+      typeof d.fontSize === "number"
+        ? d.fontSize
+        : typeof rootData.fontSize === "number"
+          ? rootData.fontSize
+          : undefined,
+      {
+        fontFamily: d.fontFamily ?? rootData.fontFamily as string | undefined,
+        fontWeight: /<(strong|b)\b/i.test(rootRichText)
+          ? 700
+          : d.fontWeight === "bold" || rootData.fontWeight === "bold"
+            ? 700
+            : d.fontWeight === "normal" || rootData.fontWeight === "normal" ? 400 : 800,
+        fontStyle: /<(em|i)\b/i.test(rootRichText) || d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
+      },
+      fontMetricsReady,
+      d.maximizeText === true || rootData.maximizeText === true,
+      rootData.radialTextRotation,
+      objectRotation,
+    );
+    const outermostLabelPreferredFontSize = clamp(
+      typeof d.fontSize === "number" ? d.fontSize : 18,
+      8,
+      72
+    );
+    const outermostLabelMinimumFontSize = 8;
+    const outermostLabelSegments = d.radialEqualOutermostLabelSizes === true
+      ? model.segments.filter((segment) => !segment.children.length && segment.label.trim())
+      : [];
+    const outermostLabelFontSize = d.radialEqualOutermostLabelSizes === true
+      ? radialOutermostCommonFontSize(
+          outermostLabelSegments.map((segment) => {
+            const geometry = sectorLabelGeometry(
+              segment,
+              model.center,
+              fontMetricsReady,
+              objectRotation,
+              outermostLabelPreferredFontSize,
+              outermostLabelMinimumFontSize
+            );
+            return geometry.lines.length ? geometry.fontSize : null;
+          }),
+          outermostLabelPreferredFontSize,
+          outermostLabelMinimumFontSize
+        )
+      : null;
+    const segmentGeometryById = new Map<string, SegmentRenderGeometry>();
+
+    for (const segment of model.segments) {
+      const useCommonOutermostSize = outermostLabelFontSize !== null && !segment.children.length;
+      const preferredFontSizeOverride = useCommonOutermostSize ? outermostLabelFontSize : undefined;
+      const minimumFontSizeOverride = useCommonOutermostSize ? outermostLabelMinimumFontSize : undefined;
+      const signature = JSON.stringify([
+        fontMetricsRevision,
+        objectRotation,
+        rootData.radialDebugLabelBoxes === true,
+        model.center,
+        segment.depth,
+        segment.startAngle,
+        segment.endAngle,
+        segment.innerRadius,
+        segment.outerRadius,
+        segment.label,
+        segment.richText,
+        segment.fontFamily,
+        segment.fontWeight,
+        segment.fontStyle,
+        segment.preferredFontSize,
+        segment.maximizeText,
+        segment.textRotation,
+        preferredFontSizeOverride,
+        minimumFontSizeOverride,
+      ]);
+      const cached = segmentGeometryCache.get(signature);
+      if (cached) {
+        segmentGeometryById.set(segment.id, cached);
+        continue;
+      }
+      const labelGeometry = sectorLabelGeometry(
+        segment,
+        model.center,
+        fontMetricsReady,
+        objectRotation,
+        preferredFontSizeOverride,
+        minimumFontSizeOverride
+      );
+      const segmentPath = arcSegmentPath(
+        model.center,
+        model.center,
+        segment.innerRadius,
+        segment.outerRadius,
+        segment.startAngle,
+        segment.endAngle
+      );
+      const labelGuide = rootData.radialDebugLabelBoxes
+        ? radialLabelGuideGeometry(segment)
+        : null;
+      const labelGuidePath = labelGuide
+        ? arcSegmentPath(
+            model.center,
+            model.center,
+            labelGuide.innerRadius,
+            labelGuide.outerRadius,
+            labelGuide.startAngle,
+            labelGuide.endAngle
+          )
+        : null;
+      const midAngle = (segment.startAngle + segment.endAngle) / 2;
+      const curvedLabel = labelGeometry.lines.length > 0
+        && radialLabelUsesCurvedText(segment)
+        && Math.abs(normalizeRadialLabelRotation(segment.textRotation)) < 0.001
+        ? radialCurvedLabelLayout({
+            centerX: model.center,
+            centerY: model.center,
+            innerRadius: segment.innerRadius,
+            outerRadius: segment.outerRadius,
+            startAngle: segment.startAngle,
+            endAngle: segment.endAngle,
+            chartRotation: objectRotation,
+            label: segment.label,
+            fittedLines: labelGeometry.lines,
+            fontSize: labelGeometry.fontSize,
+            lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
+            measureText: (value, fontSize) => textMetrics([value], fontSize, segment.label, {
+              fontFamily: segment.fontFamily,
+              fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
+              fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
+            }, fontMetricsReady).width,
+            richText: segment.richText,
+          })
+        : null;
+
+      const geometry: SegmentRenderGeometry = {
+        segmentPath,
+        labelGuidePath,
+        gradientStart: pointOnCircle(
+          model.center,
+          model.center,
+          segment.innerRadius,
+          midAngle
+        ),
+        gradientEnd: pointOnCircle(
+          model.center,
+          model.center,
+          segment.outerRadius,
+          midAngle
+        ),
+        labelGeometry,
+        curvedLabel,
+        relationshipMarkerPoint: pointOnCircle(
+          model.center,
+          model.center,
+          segment.outerRadius - Math.min(15, (segment.outerRadius - segment.innerRadius) * 0.32),
+          midAngle
+        ),
+      };
+      if (segmentGeometryCache.size >= SEGMENT_GEOMETRY_CACHE_LIMIT) segmentGeometryCache.clear();
+      segmentGeometryCache.set(signature, geometry);
+      segmentGeometryById.set(segment.id, geometry);
+    }
+
+    return {
+      rootData,
+      rootLabel,
+      rootRichText,
+      rootFit,
+      segmentGeometryById,
+    };
+  }, [d, fontMetricsReady, fontMetricsRevision, model, objectRotation]);
+
   const finishEditing = useCallback(() => {
     if (editHistoryCaptured.current) pushHistory();
     editHistoryCaptured.current = false;
@@ -964,7 +1200,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     updateNodeData(nodeId, editableTextPatch(node, html));
   }, [pushHistory, updateNodeData]);
 
-  if (!model) {
+  if (!model || !fittedGeometry) {
     return (
       <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed bg-background text-xs text-muted-foreground">
         Sunburst root missing
@@ -979,76 +1215,12 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const chartActive = isHierarchyRadialChartActive(selected, selectedNodeIds, model.chartNodeIds);
   const selectedSegment = selectedId ? model.segments.find((segment) => segment.id === selectedId) ?? null : null;
   const selectedNode = selectedId ? model.byId.get(selectedId) ?? null : null;
-  const rootData = (model.root.data ?? {}) as Record<string, unknown>;
-  const rootLabel = nodeLabel(model.root);
-  const rootRichText = nodeRichText(model.root, rootLabel);
-  const rootFit = circleLabelGeometry(
-    rootLabel,
-    model.centerRadius,
-    model.center,
-    typeof d.fontSize === "number"
-      ? d.fontSize
-      : typeof rootData.fontSize === "number"
-        ? rootData.fontSize
-        : undefined,
-    {
-      fontFamily: d.fontFamily ?? rootData.fontFamily as string | undefined,
-      fontWeight: /<(strong|b)\b/i.test(rootRichText)
-        ? 700
-        : d.fontWeight === "bold" || rootData.fontWeight === "bold"
-          ? 700
-          : d.fontWeight === "normal" || rootData.fontWeight === "normal" ? 400 : 800,
-      fontStyle: /<(em|i)\b/i.test(rootRichText) || d.fontStyle === "italic" || rootData.fontStyle === "italic" ? "italic" : "normal",
-    },
-    fontMetricsReady,
-    d.maximizeText === true || rootData.maximizeText === true,
-    rootData.radialTextRotation,
-    objectRotation,
-  );
+  const { rootData, rootLabel, rootRichText, rootFit, segmentGeometryById } = fittedGeometry;
   const rootClipId = `${clipPrefix}-root`;
-  const outermostLabelPreferredFontSize = clamp(
-    typeof d.fontSize === "number" ? d.fontSize : 18,
-    8,
-    72
-  );
-  const outermostLabelMinimumFontSize = 8;
-  const outermostLabelSegments = d.radialEqualOutermostLabelSizes === true
-    ? model.segments.filter((segment) => !segment.children.length && segment.label.trim())
-    : [];
-  const outermostLabelFontSize = d.radialEqualOutermostLabelSizes === true
-    ? radialOutermostCommonFontSize(
-        outermostLabelSegments.map((segment) => {
-          const geometry = sectorLabelGeometry(
-            segment,
-            model.center,
-            fontMetricsReady,
-            objectRotation,
-            outermostLabelPreferredFontSize,
-            outermostLabelMinimumFontSize
-          );
-          return geometry.lines.length ? geometry.fontSize : null;
-        }),
-        outermostLabelPreferredFontSize,
-        outermostLabelMinimumFontSize
-      )
-    : null;
-
-  const labelGeometryForSegment = (segment: SunburstSegment): LabelGeometry => {
-    const useCommonOutermostSize = outermostLabelFontSize !== null && !segment.children.length;
-    return sectorLabelGeometry(
-      segment,
-      model.center,
-      fontMetricsReady,
-      objectRotation,
-      useCommonOutermostSize ? outermostLabelFontSize : undefined,
-      useCommonOutermostSize ? outermostLabelMinimumFontSize : undefined
-    );
-  };
-
   const selectedGeometry = selectedId === d.rootId
     ? rootFit
     : selectedSegment
-      ? labelGeometryForSegment(selectedSegment)
+      ? segmentGeometryById.get(selectedSegment.id)?.labelGeometry ?? null
       : null;
   const selectedRichText = selectedId === d.rootId ? rootRichText : selectedSegment?.richText ?? "";
   const selectedLabel = selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "";
@@ -1271,25 +1443,23 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     svg.setPointerCapture(event.pointerId);
   };
 
-  const moveDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const applyDirectManipulation = ({ pointerId, clientX, clientY }: DirectManipulationPoint) => {
     const centerDrag = centerDragRef.current;
     const drag = boundaryDragRef.current;
     const labelRotationDrag = labelRotationDragRef.current;
     const svg = svgRef.current;
     if (!svg) return;
     if (
-      (!drag || drag.pointerId !== event.pointerId)
-      && (!centerDrag || centerDrag.pointerId !== event.pointerId)
-      && (!labelRotationDrag || labelRotationDrag.pointerId !== event.pointerId)
+      (!drag || drag.pointerId !== pointerId)
+      && (!centerDrag || centerDrag.pointerId !== pointerId)
+      && (!labelRotationDrag || labelRotationDrag.pointerId !== pointerId)
     ) return;
-    event.preventDefault();
-    event.stopPropagation();
     const matrix = svg.getScreenCTM();
     if (!matrix) return;
-    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    const point = new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
     const x = point.x;
     const y = point.y;
-    if (labelRotationDrag && labelRotationDrag.pointerId === event.pointerId) {
+    if (labelRotationDrag && labelRotationDrag.pointerId === pointerId) {
       const rawAngle = (Math.atan2(y - labelRotationDrag.centerY, x - labelRotationDrag.centerX) * 180) / Math.PI;
       const pointerAngle = unwrapAngle(rawAngle, labelRotationDrag.startPointerAngle);
       const rotation = normalizeRadialLabelRotation(
@@ -1302,7 +1472,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       }));
       return;
     }
-    if (centerDrag && centerDrag.pointerId === event.pointerId) {
+    if (centerDrag && centerDrag.pointerId === pointerId) {
       const radius = Math.hypot(x - model.center, y - model.center);
       const ratio = clamp((radius / Math.max(1, model.outerRadius)) * 100, MIN_CENTER_RATIO, MAX_CENTER_RATIO);
       useCanvasStore.setState((state) => ({
@@ -1331,12 +1501,45 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     }));
   };
 
+  const moveDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const pointerId = event.pointerId;
+    if (
+      boundaryDragRef.current?.pointerId !== pointerId
+      && centerDragRef.current?.pointerId !== pointerId
+      && labelRotationDragRef.current?.pointerId !== pointerId
+    ) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pendingDirectManipulationRef.current = {
+      pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+    if (directManipulationFrameRef.current !== null) return;
+    directManipulationFrameRef.current = window.requestAnimationFrame(() => {
+      directManipulationFrameRef.current = null;
+      const pending = pendingDirectManipulationRef.current;
+      pendingDirectManipulationRef.current = null;
+      if (pending) applyDirectManipulation(pending);
+    });
+  };
+
   const endDirectManipulation = (event: ReactPointerEvent<SVGSVGElement>) => {
     const centerDrag = centerDragRef.current;
     const drag = boundaryDragRef.current;
     const labelRotationDrag = labelRotationDragRef.current;
     const activePointerId = labelRotationDrag?.pointerId ?? drag?.pointerId ?? centerDrag?.pointerId;
     if (activePointerId !== event.pointerId) return;
+    if (directManipulationFrameRef.current !== null) {
+      window.cancelAnimationFrame(directManipulationFrameRef.current);
+      directManipulationFrameRef.current = null;
+    }
+    pendingDirectManipulationRef.current = null;
+    applyDirectManipulation({
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
     if (labelRotationDrag?.pointerId === event.pointerId) labelRotationDragRef.current = null;
     if (drag?.pointerId === event.pointerId) boundaryDragRef.current = null;
     if (centerDrag?.pointerId === event.pointerId) {
@@ -1453,83 +1656,28 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         )}
         {model.segments.map((segment) => {
           const selected = selectedSectorIds.has(segment.id);
-          const hovered = hoveredId === segment.id;
           const relationshipSource = activeRelationshipSession?.sourceNodeId === segment.id;
           const validRelationshipTarget = validRelationshipTargetIds.has(segment.id);
           const selectedRelationshipTarget = draftRelationshipTargetIds.has(segment.id);
           const dimForRelationshipMode = !!activeRelationshipSession
             && !relationshipSource
             && !validRelationshipTarget;
-          const segmentPath = arcSegmentPath(
-            model.center,
-            model.center,
-            segment.innerRadius,
-            segment.outerRadius,
-            segment.startAngle,
-            segment.endAngle
-          );
-          const labelGuide = rootData.radialDebugLabelBoxes
-            ? radialLabelGuideGeometry(segment)
-            : null;
-          const labelGuidePath = labelGuide
-            ? arcSegmentPath(
-                model.center,
-                model.center,
-                labelGuide.innerRadius,
-                labelGuide.outerRadius,
-                labelGuide.startAngle,
-                labelGuide.endAngle
-              )
-            : null;
+          const {
+            segmentPath,
+            labelGuidePath,
+            gradientStart,
+            gradientEnd,
+            labelGeometry,
+            curvedLabel,
+            relationshipMarkerPoint,
+          } = segmentGeometryById.get(segment.id)!;
           const segmentClipId = `${clipPrefix}-${segment.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
           const segmentGradientId = `${segmentClipId}-gradient`;
-          const gradientStart = pointOnCircle(
-            model.center,
-            model.center,
-            segment.innerRadius,
-            (segment.startAngle + segment.endAngle) / 2
-          );
-          const gradientEnd = pointOnCircle(
-            model.center,
-            model.center,
-            segment.outerRadius,
-            (segment.startAngle + segment.endAngle) / 2
-          );
-          const labelGeometry = labelGeometryForSegment(segment);
-          const curvedLabel = labelGeometry.lines.length > 0
-            && radialLabelUsesCurvedText(segment)
-            && Math.abs(normalizeRadialLabelRotation(segment.textRotation)) < 0.001
-            ? radialCurvedLabelLayout({
-                centerX: model.center,
-                centerY: model.center,
-                innerRadius: segment.innerRadius,
-                outerRadius: segment.outerRadius,
-                startAngle: segment.startAngle,
-                endAngle: segment.endAngle,
-                chartRotation: objectRotation,
-                label: segment.label,
-                fittedLines: labelGeometry.lines,
-                fontSize: labelGeometry.fontSize,
-                lineHeight: isDevanagariText(segment.label) ? DEVANAGARI_LINE_HEIGHT : 1.12,
-                measureText: (value, fontSize) => textMetrics([value], fontSize, segment.label, {
-                  fontFamily: segment.fontFamily,
-                  fontWeight: /<(strong|b)\b/i.test(segment.richText) ? 700 : segment.fontWeight,
-                  fontStyle: /<(em|i)\b/i.test(segment.richText) ? "italic" : segment.fontStyle,
-                }, fontMetricsReady).width,
-                richText: segment.richText,
-              })
-            : null;
           const curvedTextAnchor = segment.textAlign === "left"
             ? { startOffset: "5%", textAnchor: "start" as const }
             : segment.textAlign === "right"
               ? { startOffset: "95%", textAnchor: "end" as const }
               : { startOffset: "50%", textAnchor: "middle" as const };
-          const relationshipMarkerPoint = pointOnCircle(
-            model.center,
-            model.center,
-            segment.outerRadius - Math.min(15, (segment.outerRadius - segment.innerRadius) * 0.32),
-            (segment.startAngle + segment.endAngle) / 2
-          );
           const relationshipCount = relationshipTargetsBySource.get(segment.id)?.size ?? 0;
 
           return (
@@ -1567,14 +1715,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                 strokeDasharray={dashArray(segment.borderStyle)}
                 className={activeRelationshipSession
                   ? validRelationshipTarget ? "cursor-pointer" : "cursor-not-allowed"
-                  : "cursor-text"}
+                  : "cursor-text transition-[filter] hover:brightness-95"}
                 onPointerDown={(event) => event.stopPropagation()}
-                onMouseEnter={() => {
-                  if (!activeRelationshipSession) setHoveredId(segment.id);
-                }}
-                onMouseLeave={() => {
-                  if (!activeRelationshipSession) setHoveredId(null);
-                }}
                 onClick={(event) => {
                   event.stopPropagation();
                   if (activeRelationshipSession) {
@@ -1692,12 +1834,12 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                   </foreignObject>
                 </g>
               )}
-              {!activeRelationshipSession && (selected || hovered) && (
+              {!activeRelationshipSession && selected && (
                 <path
                   d={segmentPath}
                   fill="none"
-                  stroke={selected ? "#2563eb" : "#0f172a"}
-                  strokeWidth={selected ? Math.max(3, segment.borderWidth) : Math.max(2, segment.borderWidth)}
+                  stroke="#2563eb"
+                  strokeWidth={Math.max(3, segment.borderWidth)}
                   pointerEvents="none"
                   data-export-ignore
                 />
@@ -2243,7 +2385,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         isVisible={chartActive && d.locked !== true && !activeRelationshipSession}
         onResizeStart={() => pushHistory()}
         onResize={(_, params) => previewChartResize(params)}
-        onResizeEnd={(_, params) => finishManualNodeResize(id, params)}
+        onResizeEnd={(_, params) => {
+          cancelResizePreview();
+          finishManualNodeResize(id, params);
+        }}
       />
     </div>
   );

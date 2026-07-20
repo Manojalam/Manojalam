@@ -318,6 +318,17 @@ function wrapWordsForArcCapacities(
   );
   if (!words.length || words.length < capacities.length) return null;
 
+  const suffixParagraphCounts = new Array<number>(words.length + 1).fill(0);
+  let paragraphCount = 0;
+  let nextParagraphIndex: number | undefined;
+  for (let index = words.length - 1; index >= 0; index -= 1) {
+    if (words[index].paragraphIndex !== nextParagraphIndex) {
+      paragraphCount += 1;
+      nextParagraphIndex = words[index].paragraphIndex;
+    }
+    suffixParagraphCounts[index] = paragraphCount;
+  }
+
   type Result = { cost: number; lines: string[] };
   const memo = new Map<string, Result | null>();
   const solve = (lineIndex: number, wordIndex: number): Result | null => {
@@ -354,7 +365,7 @@ function wrapWordsForArcCapacities(
       const linesAfter = capacities.length - lineIndex - 1;
       const wordsAfter = words.length - nextWord;
       if (wordsAfter < linesAfter) continue;
-      const paragraphsAfter = new Set(words.slice(nextWord).map((word) => word.paragraphIndex)).size;
+      const paragraphsAfter = suffixParagraphCounts[nextWord];
       if (paragraphsAfter > linesAfter) continue;
 
       const tail = solve(lineIndex + 1, nextWord);
@@ -400,7 +411,16 @@ function radialCurveAwareLinePlan(
   const paragraphs = normalizedParagraphs(options.label ?? "");
   if (!paragraphs.length) return { lines: fallbackLines, radii: fallbackRadii };
 
-  const measureText = options.measureText ?? estimatedTextWidth;
+  const rawMeasureText = options.measureText ?? estimatedTextWidth;
+  const measurementCache = new Map<string, number>();
+  const measureText: RadialLabelMeasureText = (value, fontSize) => {
+    const key = `${fontSize}\u0000${value}`;
+    const cached = measurementCache.get(key);
+    if (cached !== undefined) return cached;
+    const measurement = rawMeasureText(value, fontSize);
+    measurementCache.set(key, measurement);
+    return measurement;
+  };
   const angleSpan = Math.max(0.01, ((guide.endAngle - guide.startAngle) * Math.PI) / 180);
   const maximumLineCount = Math.max(paragraphs.length, fallbackLines.length);
 

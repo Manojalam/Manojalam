@@ -90,6 +90,30 @@ test("keeps a spaced label on one curve when a larger radius can hold it", () =>
   assert.ok(layout.lines[0].radius > 150);
 });
 
+test("measures each curved-label candidate only once per layout", () => {
+  const measurements = new Map<string, number>();
+  const layout = radialCurvedLabelLayout({
+    centerX: 300,
+    centerY: 300,
+    innerRadius: 90,
+    outerRadius: 210,
+    startAngle: -145,
+    endAngle: -35,
+    label: "alpha beta gamma delta epsilon zeta eta theta",
+    fittedLines: ["alpha beta", "gamma delta", "epsilon zeta", "eta theta"],
+    fontSize: 18,
+    lineHeight: 1.2,
+    measureText: (value) => {
+      measurements.set(value, (measurements.get(value) ?? 0) + 1);
+      return value.length * 13;
+    },
+  });
+
+  assert.ok(layout.lines.length > 1);
+  assert.ok(measurements.size > 1);
+  assert.equal(Math.max(...measurements.values()), 1);
+});
+
 test("preserves authored line breaks while fitting curved labels", () => {
   const layout = radialCurvedLabelLayout({
     centerX: 300,
