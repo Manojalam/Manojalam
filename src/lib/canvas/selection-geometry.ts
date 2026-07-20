@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { Node, NodeChange } from "@xyflow/react";
 import { getNodeRect, nodePositionFromTopLeft, type NodeRect, type Point } from "../layout/geometry";
 
 export const COMPACT_SELECTION_GAP = 28;
@@ -42,6 +42,25 @@ export function snapPointToGrid(point: Point, spacing: number): Point {
     x: Math.round(point.x / spacing) * spacing,
     y: Math.round(point.y / spacing) * spacing,
   };
+}
+
+/**
+ * React Flow emits one last raw pointer position before onNodeDragStop. Keep
+ * the guide-snapped coordinates already stored by onNodeDrag, while still
+ * accepting the final dragging=false state.
+ */
+export function preserveSnappedDragEndPositions(
+  changes: NodeChange<Node>[],
+  activelyDraggedIds: ReadonlySet<string>
+): NodeChange<Node>[] {
+  if (!activelyDraggedIds.size) return changes;
+  return changes.map((change) => (
+    change.type === "position"
+      && change.dragging === false
+      && activelyDraggedIds.has(change.id)
+      ? { id: change.id, type: "position", dragging: false }
+      : change
+  ));
 }
 
 /** Find the nearest edge, center, or touching-edge alignment for a dragged box. */

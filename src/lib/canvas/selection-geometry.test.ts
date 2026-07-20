@@ -7,6 +7,7 @@ import {
   alignSelection,
   compactEqualSpacing,
   distributeSelection,
+  preserveSnappedDragEndPositions,
   snapPointToGrid,
   snapRectToAlignment,
 } from "./selection-geometry";
@@ -153,6 +154,45 @@ test("center-only snapping prioritizes straight connector alignment over matchin
 test("grid snapping quantizes both axes and safely ignores invalid spacing", () => {
   assert.deepEqual(snapPointToGrid({ x: 47, y: 81 }, 32), { x: 32, y: 96 });
   assert.deepEqual(snapPointToGrid({ x: 47, y: 81 }, 0), { x: 47, y: 81 });
+});
+
+test("drag release keeps the red-guide position instead of restoring the raw pointer position", () => {
+  const changes = preserveSnappedDragEndPositions([
+    {
+      id: "dragged",
+      type: "position",
+      position: { x: 104, y: 211 },
+      dragging: false,
+    },
+    {
+      id: "other",
+      type: "position",
+      position: { x: 300, y: 400 },
+      dragging: false,
+    },
+  ], new Set(["dragged"]));
+
+  assert.deepEqual(changes, [
+    { id: "dragged", type: "position", dragging: false },
+    {
+      id: "other",
+      type: "position",
+      position: { x: 300, y: 400 },
+      dragging: false,
+    },
+  ]);
+});
+
+test("live drag and non-pointer position changes retain their coordinates", () => {
+  const changes = [
+    { id: "dragged", type: "position" as const, position: { x: 104, y: 211 }, dragging: true },
+    { id: "dragged", type: "position" as const, position: { x: 105, y: 212 } },
+  ];
+
+  assert.deepEqual(
+    preserveSnappedDragEndPositions(changes, new Set(["dragged"])),
+    changes
+  );
 });
 
 test("alignment snapping keeps a consistent screen-sized target across zoom levels", () => {
