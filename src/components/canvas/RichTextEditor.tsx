@@ -4,8 +4,6 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProp
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, type Editor } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -49,31 +47,6 @@ const FontSize = Extension.create({
   },
 });
 
-const DiamondTextFlowGuides = Extension.create({
-  name: "diamondTextFlowGuides",
-  addProseMirrorPlugins() {
-    const guide = (className: string, side: number) => Decoration.widget(0, () => {
-      const element = document.createElement("span");
-      element.className = `diamond-text-flow-guide ${className}`;
-      element.setAttribute("aria-hidden", "true");
-      element.contentEditable = "false";
-      return element;
-    }, { side, ignoreSelection: true });
-
-    return [new Plugin({
-      key: new PluginKey("diamondTextFlowGuides"),
-      props: {
-        decorations(state) {
-          return DecorationSet.create(state.doc, [
-            guide("diamond-text-flow-guide-left", -2),
-            guide("diamond-text-flow-guide-right", -1),
-          ]);
-        },
-      },
-    })];
-  },
-});
-
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
   StarterKit,
@@ -84,7 +57,6 @@ const EXTENSIONS = [
   Underline,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
-  DiamondTextFlowGuides,
 ];
 
 const COLOR_SWATCHES = [
@@ -186,8 +158,6 @@ interface RichTextEditorProps {
   measurementFontSize?: number;
   /** Visual scale used only by fixed/layout-owned boxes. */
   contentScale?: number;
-  /** Flow dense text through the visible silhouette instead of one rectangle. */
-  shapeTextFlow?: "diamond";
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
   onChange: (html: string) => void;
@@ -205,7 +175,6 @@ export function RichTextEditor({
   measurementWidth,
   measurementFontSize,
   contentScale = 1,
-  shapeTextFlow,
   blockAlign,
   onChange,
   onContentSizeChange,
@@ -939,7 +908,6 @@ export function RichTextEditor({
 
       <div
         data-rich-text-editor="true"
-        className={cn(shapeTextFlow === "diamond" && "diamond-text-flow-editor h-full w-full")}
         style={scaleStyle}
       >
         <EditorContent
@@ -949,9 +917,8 @@ export function RichTextEditor({
           className={cn(
             "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[1rem]",
             "[&_.ProseMirror]:leading-snug",
-            shapeTextFlow !== "diamond" && "[&_.ProseMirror]:break-words",
+            "[&_.ProseMirror]:break-words",
             "[&_.ProseMirror_p]:m-0",
-            shapeTextFlow === "diamond" && "h-full w-full [&_.ProseMirror]:h-full [&_.ProseMirror]:min-h-full [&_.ProseMirror]:overflow-hidden",
             !editable && "pointer-events-none select-none",
             className
           )}

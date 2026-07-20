@@ -12,12 +12,8 @@ import {
   themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import {
-  diamondTextFlowBox,
-  diamondTextFlowCapacity,
-  shapeTextContentSize,
-  shouldRenderDiamondTextFlow,
+  shapeLabelBox,
 } from "@/lib/canvas/shape-fitting";
-import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type {
   ShapeNodeData,
   InternalFillRegion,
@@ -1064,25 +1060,15 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const intrinsicContentSize = (dd.matrixIntrinsicSize ?? dd.intrinsicContentSize) as
     | Partial<{ width: number; height: number }>
     | undefined;
-  const centeredTextSize = shapeTextContentSize(renderedShapeType, nodeSize, "shape", {
+  const labelBox = shapeLabelBox(renderedShapeType, nodeSize, "shape", {
     contentSize: intrinsicContentSize,
   });
-  const diamondTextFlow = shouldRenderDiamondTextFlow(
-    renderedShapeType,
-    nodeSize,
-    intrinsicContentSize,
-    editing,
-    typeof d.text === "string" ? d.text : undefined
-  );
-  const availableTextSize = diamondTextFlow
-    ? diamondTextFlowCapacity(nodeSize)
-    : centeredTextSize;
-  const renderedTextBox = diamondTextFlow
-    ? diamondTextFlowBox(nodeSize)
-    : availableTextSize;
+  const availableTextSize = { width: labelBox.width, height: labelBox.height };
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
-    constrain: shouldConstrainTextToNode(dd, nodeSize),
+    // The shared label box is a hard visual boundary for every shape. Smart
+    // sizing can still grow the node from authored measurements on input.
+    constrain: true,
     backgroundColor: fillColor,
   });
   const resizeControls = useNodeManualResize(id);
@@ -1322,45 +1308,49 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
           {!radialChart?.enabled && (
             <div
-              data-node-content-layer="true"
-              data-node-owner={id}
               className={cn(
-                "absolute inset-0 z-10 box-border p-1 text-center text-sm font-medium text-foreground",
-                diamondTextFlow ? "block" : "flex items-center justify-center",
+                "absolute inset-0 z-10 box-border text-center text-sm font-medium text-foreground",
                 editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
               )}
             >
               <div
-                className={cn(
-                  "w-full",
-                  diamondTextFlow && "h-full overflow-hidden"
-                )}
+                data-node-content-layer="true"
+                data-shape-label-box="true"
+                data-node-owner={id}
+                className="absolute flex items-center justify-center"
                 style={{
                   ...textPresentation.style,
-                  maxWidth: `${renderedTextBox.width}px`,
-                  maxHeight: `${renderedTextBox.height}px`,
+                  left: `${labelBox.x}px`,
+                  top: `${labelBox.y}px`,
+                  width: `${labelBox.width}px`,
+                  height: `${labelBox.height}px`,
                 }}
               >
-                <RichTextEditor
-                  nodeId={id}
-                  initialContent={initialContent}
-                  editable={editing}
-                  measurementKey={textMeasurementKey(dd)}
-                  measurementWidth={availableTextSize.width}
-                  measurementFontSize={textPresentation.authoredFontSize}
-                  contentScale={textPresentation.scale}
-                  shapeTextFlow={diamondTextFlow ? "diamond" : undefined}
-                  placeholder="Double-click…"
-                  className="[&_.ProseMirror]:text-center"
-                  blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
-                  onChange={(html) => {
-                    captureTextHistory();
-                    const plain = html.replace(/<[^>]+>/g, "").trim();
-                    updateNodeData(id, { richText: html, text: plain });
-                  }}
-                  onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
-                  onBlur={finishEditing}
-                />
+                <div className="w-full max-h-full">
+                  <RichTextEditor
+                    nodeId={id}
+                    initialContent={initialContent}
+                    editable={editing}
+                    measurementKey={textMeasurementKey(dd)}
+                    measurementWidth={availableTextSize.width}
+                    measurementFontSize={textPresentation.authoredFontSize}
+                    contentScale={textPresentation.scale}
+                    placeholder="Double-click…"
+                    className={cn(
+                      "[&_.ProseMirror]:text-center",
+                      textPresentation.singleWord && "single-word-fit",
+                      textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
+                    )}
+                    blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
+                    onChange={(html) => {
+                      captureTextHistory();
+                      const plain = html.replace(/<[^>]+>/g, "").trim();
+                      updateNodeData(id, { richText: html, text: plain });
+                    }}
+                    onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
+                    onBlur={finishEditing}
+                  />
+                </div>
               </div>
             </div>
           )}

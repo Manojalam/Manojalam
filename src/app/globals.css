@@ -145,7 +145,6 @@ body {
 
 /* Editor-only label layout guides. The outlines use pseudo-elements so DOM
    exports keep the labels but do not capture the guide chrome. */
-[data-board-label-box-guides="true"] [data-node-content-layer="true"],
 [data-board-label-box-guides="true"] [data-canvas-label-box="true"] {
   position: relative;
 }
@@ -321,36 +320,17 @@ body {
 /* Inline span styles from TextStyle extension must override inherited values */
 .ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
 
-/* Dense diamond labels follow the shape's exact horizontal cross-section.
-   Two full-height concave floats exclude only the space outside the diamond;
-   unlike four half-height guides, they introduce no clear/layout break through
-   the middle. The TipTap decorations are never stored in the user's content. */
-.diamond-text-flow-guide { display: none; }
-.diamond-text-flow-editor .diamond-text-flow-guide {
-  display: block;
-  width: 50%;
-  height: 100%;
-  pointer-events: none;
-  shape-margin: 2px;
-}
-.diamond-text-flow-editor .ProseMirror {
-  box-sizing: border-box;
-  padding: 0;
+/* Every shape label uses the same word-boundary wrapping policy. A phrase may
+   wrap at whitespace; one unbroken token is fitted instead of split. */
+[data-shape-label-box="true"] .ProseMirror {
+  white-space: pre-wrap;
   text-wrap: pretty;
   word-break: keep-all !important;
   overflow-wrap: normal !important;
   hyphens: none !important;
 }
-.diamond-text-flow-editor .ProseMirror > * {
+[data-shape-label-box="true"] .ProseMirror > * {
   text-wrap: inherit;
-}
-.diamond-text-flow-editor .diamond-text-flow-guide-left {
-  float: left;
-  shape-outside: polygon(0 0, 100% 0, 0 50%, 100% 100%, 0 100%);
-}
-.diamond-text-flow-editor .diamond-text-flow-guide-right {
-  float: right;
-  shape-outside: polygon(100% 0, 0 0, 100% 50%, 0 100%, 100% 100%);
 }
 .single-word-fit .ProseMirror,
 .single-word-fit .ProseMirror * {

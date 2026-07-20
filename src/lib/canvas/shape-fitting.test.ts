@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createNodeRect, nodePositionFromTopLeft, resizeAroundAnchor } from "./node-geometry";
 import {
-  diamondTextFlowBox,
-  diamondTextFlowCapacity,
   effectiveCornerRadius,
   fitShapeToContent,
   fitSingleUnbrokenWord,
@@ -13,10 +11,9 @@ import {
   MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
   maximumFittedTextFontSize,
   nodeContentPadding,
+  shapeLabelBox,
   shapeTextContentSize,
   shapeTextContentWidth,
-  shouldRenderDiamondTextFlow,
-  shouldUseDiamondTextFlow,
 } from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
 import {
@@ -128,89 +125,24 @@ test("diamond text width does not shrink because of previous soft wrapping", () 
   assert.ok(correctedInterior.height < feedbackInterior.height);
 });
 
-test("dense diamond labels use the whole shape instead of one center rectangle", () => {
-  const nodeSize = { width: 160, height: 160 };
-  const centered = shapeTextContentSize("diamond", nodeSize, "shape", {
-    contentSize: { width: 86, naturalWidth: 420, height: 112, lineCount: 6 },
-  });
-  const flowBox = diamondTextFlowBox(nodeSize);
-  const capacity = diamondTextFlowCapacity(nodeSize);
+test("every shape uses one centered label box inside its rendered bounds", () => {
+  const rendered = { width: 360, height: 240 };
+  const shapeTypes = [
+    "rectangle", "rounded", "capsule", "circle", "ellipse", "diamond",
+    "star", "flower", "triangle", "arrow", "callout", "offPageConnector",
+    "parallelogram", "trapezoid", "hexagon", "document", "database",
+    "predefinedProcess", "delay", "cloud", "leaf",
+  ];
 
-  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
-    width: 86,
-    naturalWidth: 420,
-    height: 112,
-    lineCount: 6,
-  }), true);
-  assert.ok(flowBox.width > centered.width);
-  assert.ok(flowBox.height > centered.height * 3);
-  assert.equal(capacity.height, flowBox.height);
-  assert.equal(capacity.width * capacity.height, flowBox.width * flowBox.height / 2);
-});
-
-test("short diamond labels remain centered", () => {
-  const nodeSize = { width: 160, height: 160 };
-
-  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
-    width: 70,
-    naturalWidth: 70,
-    height: 20,
-    lineCount: 1,
-  }), false);
-  assert.equal(shouldUseDiamondTextFlow("diamond", nodeSize, {
-    width: 120,
-    naturalWidth: 420,
-    height: 20,
-    lineCount: 1,
-  }), false);
-  assert.equal(shouldUseDiamondTextFlow("rectangle", nodeSize, {
-    width: 300,
-    naturalWidth: 300,
-    height: 80,
-    lineCount: 4,
-  }), false);
-});
-
-test("wide diamond phrases wrap at spaces before they are scaled down", () => {
-  const nodeSize = { width: 126, height: 126 };
-  const compactMeasurement = {
-    width: 90,
-    naturalWidth: 96,
-    naturalHeight: 20,
-    height: 20,
-    lineCount: 1,
-  };
-
-  assert.equal(
-    shouldUseDiamondTextFlow("diamond", nodeSize, compactMeasurement, "+ अथ पदार्थण"),
-    true
-  );
-  assert.equal(
-    shouldUseDiamondTextFlow("diamond", nodeSize, {
-      ...compactMeasurement,
-      width: 36,
-      naturalWidth: 36,
-    }, "+ हल"),
-    false
-  );
-  assert.equal(
-    shouldUseDiamondTextFlow("diamond", nodeSize, compactMeasurement, "अतिदीर्घसंस्कृतसमासपदम्"),
-    false
-  );
-});
-
-test("diamond flow is disabled while the caret is editing soft-wrapped text", () => {
-  const size = { width: 160, height: 160 };
-  const dense = {
-    width: 100,
-    naturalWidth: 280,
-    height: 90,
-    naturalHeight: 20,
-    lineCount: 5,
-  };
-
-  assert.equal(shouldRenderDiamondTextFlow("diamond", size, dense, false), true);
-  assert.equal(shouldRenderDiamondTextFlow("diamond", size, dense, true), false);
+  for (const shapeType of shapeTypes) {
+    const box = shapeLabelBox(shapeType, rendered, "shape", {
+      contentSize: { width: 220, naturalWidth: 360, height: 72, naturalHeight: 24, lineCount: 3 },
+    });
+    assert.ok(box.width > 0 && box.width <= rendered.width, `${shapeType} width`);
+    assert.ok(box.height > 0 && box.height <= rendered.height, `${shapeType} height`);
+    assert.equal(box.x, (rendered.width - box.width) / 2, `${shapeType} horizontal center`);
+    assert.equal(box.y, (rendered.height - box.height) / 2, `${shapeType} vertical center`);
+  }
 });
 
 test("maximum text fitting fills the corrected diamond interior", () => {
