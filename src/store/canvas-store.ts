@@ -81,7 +81,10 @@ import {
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
-import { normalizeBoardColorOverride } from "@/lib/canvas/board-colors";
+import {
+  normalizeBoardColorOverride,
+  resolveBoardColorMode,
+} from "@/lib/canvas/board-colors";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import { createExternalNoteNode } from "@/lib/canvas/node-note";
 import {
@@ -1579,6 +1582,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       JSON.stringify(board.content.nodes ?? []) !== JSON.stringify(nodes)
       || JSON.stringify(board.content.edges ?? []) !== JSON.stringify(edges);
     const rawSettings = board.content.settings ?? DEFAULT_BOARD_SETTINGS;
+    const canvasBackgroundMode = resolveBoardColorMode(
+      rawSettings.canvasBackgroundColor,
+      rawSettings.canvasBackgroundMode,
+      "canvas"
+    );
+    const gridColorMode = resolveBoardColorMode(
+      rawSettings.gridColor,
+      rawSettings.gridColorMode,
+      "grid"
+    );
     const settings: BoardSettings = {
       ...DEFAULT_BOARD_SETTINGS,
       ...rawSettings,
@@ -1594,8 +1607,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
       customTextColors: normalizeCustomColors(rawSettings.customTextColors),
       customHighlightColors: normalizeCustomColors(rawSettings.customHighlightColors),
-      canvasBackgroundColor: normalizeBoardColorOverride(rawSettings.canvasBackgroundColor, "canvas"),
-      gridColor: normalizeBoardColorOverride(rawSettings.gridColor, "grid"),
+      canvasBackgroundMode,
+      canvasBackgroundColor: normalizeBoardColorOverride(
+        rawSettings.canvasBackgroundColor,
+        "canvas",
+        canvasBackgroundMode
+      ),
+      gridColorMode,
+      gridColor: normalizeBoardColorOverride(rawSettings.gridColor, "grid", gridColorMode),
     };
     const settingsMigrationRequired = JSON.stringify(rawSettings) !== JSON.stringify(settings);
     const normalizedBoard: VidyaBoard = {

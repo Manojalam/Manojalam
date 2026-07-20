@@ -1739,17 +1739,35 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <button
                   type="button"
                   className="text-[10px] text-muted-foreground hover:text-foreground"
-                  onClick={() => setBoardSettings({ canvasBackgroundColor: undefined })}
+                  onClick={() => setBoardSettings({
+                    canvasBackgroundMode: "auto",
+                    canvasBackgroundColor: undefined,
+                  })}
                 >
-                  {usesAutomaticBoardColor(settings.canvasBackgroundColor, "canvas")
+                  {usesAutomaticBoardColor(
+                    settings.canvasBackgroundColor,
+                    "canvas",
+                    settings.canvasBackgroundMode
+                  )
                     ? `Auto · ${boardTheme === "dark" ? "Dark" : "Light"}`
                     : "Use auto"}
                 </button>
               </div>
               <ColorSwatchPicker
-                value={resolvedBoardColor(settings.canvasBackgroundColor, "canvas", boardTheme)}
-                onChange={(value) => setBoardSettings({ canvasBackgroundColor: value })}
-                onClear={() => setBoardSettings({ canvasBackgroundColor: "transparent" })}
+                value={resolvedBoardColor(
+                  settings.canvasBackgroundColor,
+                  "canvas",
+                  boardTheme,
+                  settings.canvasBackgroundMode
+                )}
+                onChange={(value) => setBoardSettings({
+                  canvasBackgroundMode: "custom",
+                  canvasBackgroundColor: value,
+                })}
+                onClear={() => setBoardSettings({
+                  canvasBackgroundMode: "transparent",
+                  canvasBackgroundColor: "transparent",
+                })}
               />
             </div>
             {settings.background !== "plain" && (
@@ -1761,17 +1779,35 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <button
                     type="button"
                     className="text-[10px] text-muted-foreground hover:text-foreground"
-                    onClick={() => setBoardSettings({ gridColor: undefined })}
+                    onClick={() => setBoardSettings({
+                      gridColorMode: "auto",
+                      gridColor: undefined,
+                    })}
                   >
-                    {usesAutomaticBoardColor(settings.gridColor, "grid")
+                    {usesAutomaticBoardColor(
+                      settings.gridColor,
+                      "grid",
+                      settings.gridColorMode
+                    )
                       ? `Auto · ${boardTheme === "dark" ? "Dark" : "Light"}`
                       : "Use auto"}
                   </button>
                 </div>
                 <ColorSwatchPicker
-                  value={resolvedBoardColor(settings.gridColor, "grid", boardTheme)}
-                  onChange={(value) => setBoardSettings({ gridColor: value })}
-                  onClear={() => setBoardSettings({ gridColor: "transparent" })}
+                  value={resolvedBoardColor(
+                    settings.gridColor,
+                    "grid",
+                    boardTheme,
+                    settings.gridColorMode
+                  )}
+                  onChange={(value) => setBoardSettings({
+                    gridColorMode: "custom",
+                    gridColor: value,
+                  })}
+                  onClear={() => setBoardSettings({
+                    gridColorMode: "transparent",
+                    gridColor: "transparent",
+                  })}
                   size="sm"
                 />
               </div>
