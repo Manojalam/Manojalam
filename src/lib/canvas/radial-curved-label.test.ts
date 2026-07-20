@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   radialCurvedLabelLayout,
   radialLabelPathIsReversed,
+  radialLabelSupportsCurvedPath,
   radialLabelUsesCurvedText,
   radialRichTextRuns,
 } from "./radial-curved-label";
@@ -21,6 +22,13 @@ test("uses curved text when the section arc is wider than its radial band", () =
     startAngle: -4,
     endAngle: 4,
   }), false);
+});
+
+test("keeps Indic labels off curved paths so complex shaping stays intact", () => {
+  assert.equal(radialLabelSupportsCurvedPath("quality"), true);
+  assert.equal(radialLabelSupportsCurvedPath("guṇa"), true);
+  assert.equal(radialLabelSupportsCurvedPath("गुणाः"), false);
+  assert.equal(radialLabelSupportsCurvedPath("स्वरसन्धयः"), false);
 });
 
 test("reverses lower-half paths so their text remains upright", () => {
