@@ -59,17 +59,9 @@ function PresetColorControl({
         <ColorSwatchPicker
           value={preset.color}
           onChange={(color) => onChange({ ...preset, color })}
+          onClear={() => onChange({ label: preset.label })}
           size="sm"
         />
-        {preset.color && (
-          <button
-            type="button"
-            className="mt-2 w-full rounded-md border px-2 py-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={() => onChange({ label: preset.label })}
-          >
-            Do not apply a default color
-          </button>
-        )}
       </PopoverContent>
     </Popover>
   );

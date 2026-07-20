@@ -1406,6 +1406,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     <>
     <ReactFlow
       data-board-export-root
+      data-board-label-box-guides={settings.showLabelBoxGuides === true ? "true" : undefined}
       nodes={displayNodes}
       edges={displayEdges}
       onNodesChange={onNodesChange}

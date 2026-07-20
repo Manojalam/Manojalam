@@ -140,6 +140,30 @@ body {
   background-color: var(--board-canvas-bg, var(--canvas-bg)) !important;
 }
 
+/* Editor-only label layout guides. The outlines use pseudo-elements so DOM
+   exports keep the labels but do not capture the guide chrome. */
+[data-board-label-box-guides="true"] [data-node-content-layer="true"],
+[data-board-label-box-guides="true"] [data-canvas-label-box="true"] {
+  position: relative;
+}
+
+[data-board-label-box-guides="true"] [data-node-content-layer="true"]::after,
+[data-board-label-box-guides="true"] [data-canvas-label-box="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  box-sizing: border-box;
+  border: 1px dashed #db2777;
+  background: rgba(236, 72, 153, 0.08);
+  pointer-events: none;
+}
+
+[data-board-label-box-guides="true"] [data-canvas-label-box="true"]::after {
+  inset: -2px;
+  border-radius: inherit;
+}
+
 /* ─── React Flow overrides ─── */
 .react-flow__renderer { border-radius: 0; }
 .react-flow,

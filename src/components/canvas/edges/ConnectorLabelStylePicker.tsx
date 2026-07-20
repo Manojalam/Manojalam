@@ -68,6 +68,7 @@ export function ConnectorLabelStylePicker({ edgeId }: { edgeId: string }) {
             <ColorSwatchPicker
               value={labelColor}
               onChange={(color) => update({ labelColor: color })}
+              onClear={() => update({ labelColor: null })}
               size="sm"
             />
           </div>
@@ -91,6 +92,7 @@ export function ConnectorLabelStylePicker({ edgeId }: { edgeId: string }) {
               <ColorSwatchPicker
                 value={connectorColor}
                 onChange={(color) => update({ connectorColor: color })}
+                onClear={() => update({ connectorColor: null })}
                 size="sm"
               />
             </div>

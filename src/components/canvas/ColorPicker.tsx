@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Palette organised in columns: each row = one hue, each col = darker shade */
@@ -28,11 +29,12 @@ const PALETTE: string[][] = [
 interface ColorPickerProps {
   value?: string;
   onChange: (color: string) => void;
+  onClear?: () => void;
   label?: string;
   className?: string;
 }
 
-export function ColorPicker({ value, onChange, label, className }: ColorPickerProps) {
+export function ColorPicker({ value, onChange, onClear, label, className }: ColorPickerProps) {
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -53,9 +55,14 @@ export function ColorPicker({ value, onChange, label, className }: ColorPickerPr
           title="Open color picker"
         />
         <span className="text-xs text-muted-foreground font-mono">{value ?? "—"}</span>
-        {value && (
-          <button className="ml-auto text-[10px] text-muted-foreground hover:text-foreground" onClick={() => onChange("")}>clear</button>
-        )}
+        <button
+          type="button"
+          className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+          title="Clear color"
+          onClick={() => (onClear ?? (() => onChange("")))()}
+        >
+          <X className="h-3 w-3" /> Clear color
+        </button>
       </div>
 
       {open && (
@@ -92,7 +99,7 @@ export function ColorPicker({ value, onChange, label, className }: ColorPickerPr
               type="color"
               aria-label="Choose custom color"
               name="custom-color"
-              value={value ?? "#6366f1"}
+              value={typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : "#6366f1"}
               onChange={handleNative}
               onBlur={() => setOpen(false)}
               className="sr-only"

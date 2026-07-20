@@ -27,6 +27,7 @@ import {
   resolveChartAwareSectorLabelRotation,
 } from "@/lib/canvas/radial-label-rotation";
 import { radialLabelGuideGeometry } from "@/lib/canvas/radial-label-guide";
+import { resolveLabelBoxGuideVisibility } from "@/lib/canvas/label-box-guides";
 import {
   radialCurvedLabelLayout,
   radialLabelUsesCurvedText,
@@ -871,6 +872,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   }, [canvasDragging, hierarchyEdgeToken, nodeContentToken]);
   const relationships = useCanvasStore((state) => state.relationships);
   const relationshipFans = useCanvasStore((state) => state.relationshipFans);
+  const showCanvasLabelBoxGuides = useCanvasStore(
+    (state) => state.settings.showLabelBoxGuides === true
+  );
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
@@ -1017,6 +1021,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const fittedGeometry = useMemo(() => {
     if (!model) return null;
     const rootData = (model.root.data ?? {}) as Record<string, unknown>;
+    const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(
+      showCanvasLabelBoxGuides,
+      rootData.radialDebugLabelBoxes === true
+    );
     const rootLabel = nodeLabel(model.root);
     const rootRichText = nodeRichText(model.root, rootLabel);
     const rootFit = circleLabelGeometry(
@@ -1077,7 +1085,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       const signature = JSON.stringify([
         fontMetricsRevision,
         objectRotation,
-        rootData.radialDebugLabelBoxes === true,
+        drawLabelBoxGuides,
         model.center,
         segment.depth,
         segment.startAngle,
@@ -1116,7 +1124,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         segment.startAngle,
         segment.endAngle
       );
-      const labelGuide = rootData.radialDebugLabelBoxes
+      const labelGuide = drawLabelBoxGuides
         ? radialLabelGuideGeometry(segment)
         : null;
       const labelGuidePath = labelGuide
@@ -1188,9 +1196,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       rootLabel,
       rootRichText,
       rootFit,
+      drawLabelBoxGuides,
       segmentGeometryById,
     };
-  }, [d, fontMetricsReady, fontMetricsRevision, model, objectRotation]);
+  }, [d, fontMetricsReady, fontMetricsRevision, model, objectRotation, showCanvasLabelBoxGuides]);
 
   const flushPendingTextEdit = useCallback(() => {
     if (textEditCommitTimerRef.current !== null) {
@@ -1253,7 +1262,14 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const chartActive = isHierarchyRadialChartActive(selected, selectedNodeIds, model.chartNodeIds);
   const selectedSegment = selectedId ? model.segments.find((segment) => segment.id === selectedId) ?? null : null;
   const selectedNode = selectedId ? model.byId.get(selectedId) ?? null : null;
-  const { rootData, rootLabel, rootRichText, rootFit, segmentGeometryById } = fittedGeometry;
+  const {
+    rootData,
+    rootLabel,
+    rootRichText,
+    rootFit,
+    drawLabelBoxGuides,
+    segmentGeometryById,
+  } = fittedGeometry;
   const rootClipId = `${clipPrefix}-root`;
   const selectedGeometry = selectedId === d.rootId
     ? rootFit
@@ -1980,7 +1996,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
         >
           <title>{rootLabel}</title>
         </circle>
-        {!!rootData.radialDebugLabelBoxes && (
+        {drawLabelBoxGuides && (
           <circle
             cx={model.center}
             cy={model.center}

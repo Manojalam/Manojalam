@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { relationshipDiagramDimensions } from "@/components/canvas/RelationshipDiagramSvg";
+import { ClearableColorInput } from "@/components/canvas/ClearableColorInput";
 import { buildHierarchy } from "@/lib/layout/hierarchy";
 import {
   buildRelationshipGroupsForSpec,
@@ -546,11 +547,12 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                       return (
                         <label key={key} className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
                           {label}
-                          <input
-                            type="color"
+                          <ClearableColorInput
+                            aria-label={`${label} center color`}
                             value={typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback}
-                            onChange={(event) => update(key, event.target.value)}
-                            className="h-8 w-full rounded border bg-background p-1"
+                            onColorChange={(color) => update(key, color)}
+                            onClear={() => update(key, undefined)}
+                            inputClassName="h-8 w-full rounded border bg-background p-1"
                           />
                         </label>
                       );
@@ -614,12 +616,12 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                   />
                 </div>
                 {!transparentBackground && <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={/^#[0-9a-f]{6}$/i.test(draft.background) ? draft.background : "#ffffff"}
-                    onChange={(event) => update("background", event.target.value)}
-                    className="h-9 w-11 rounded border bg-background p-1"
+                  <ClearableColorInput
                     aria-label="Background color"
+                    value={/^#[0-9a-f]{6}$/i.test(draft.background) ? draft.background : "#ffffff"}
+                    onColorChange={(color) => update("background", color)}
+                    onClear={() => update("background", "transparent")}
+                    inputClassName="h-9 w-11 rounded border bg-background p-1"
                   />
                   <Input
                     id="relationship-diagram-background"

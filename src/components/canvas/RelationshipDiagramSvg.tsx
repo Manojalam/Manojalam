@@ -27,6 +27,7 @@ type RelationshipDiagramSvgProps = {
   spec: RelationshipDiagramSpec;
   exportId?: string;
   measureText?: boolean;
+  showLabelBoxGuides?: boolean;
 };
 
 type Point = { x: number; y: number };
@@ -38,6 +39,7 @@ const DiagramVisualStyleContext = createContext<Pick<
 >>({ maximizeLabelText: false });
 let measurementCanvas: HTMLCanvasElement | null = null;
 const TextMeasurementContext = createContext(false);
+const LabelBoxGuidesContext = createContext(false);
 
 function normalizeHex(color: string | undefined): string | null {
   if (!color) return null;
@@ -205,6 +207,7 @@ function SvgLabel({
   fillOverride?: string;
 }) {
   const measureText = useContext(TextMeasurementContext);
+  const showLabelBoxGuides = useContext(LabelBoxGuidesContext);
   const visualStyle = useContext(DiagramVisualStyleContext);
   const resolvedFill = fillOverride ?? visualStyle.textColor ?? fill;
   const resolvedWeight = visualStyle.fontWeight === "bold"
@@ -224,11 +227,31 @@ function SvgLabel({
     maximize: visualStyle.maximizeLabelText === true,
     measureText: (label, size) => estimatedTextWidth(label, size, measureText),
   });
+  const labelAreaHeight = Math.max(
+    1,
+    height ?? Math.max(1, fit.lines.length) * fit.fontSize * lineHeight
+  );
+  const labelAreaX = anchor === "start" ? x : anchor === "end" ? x - width : x - width / 2;
+  const labelAreaY = y - labelAreaHeight / 2;
   const offset = -((fit.lines.length - 1) * fit.fontSize * lineHeight) / 2;
   if (fit.overflowed) {
     return (
       <g transform={transform} role="img" aria-label={value}>
         <title>{value}</title>
+        {showLabelBoxGuides && (
+          <rect
+            x={labelAreaX}
+            y={labelAreaY}
+            width={width}
+            height={labelAreaHeight}
+            fill="rgba(236,72,153,0.08)"
+            stroke="#db2777"
+            strokeWidth="1.5"
+            strokeDasharray="6 4"
+            pointerEvents="none"
+            data-export-ignore
+          />
+        )}
         <circle cx={x} cy={y} r="9" fill="rgba(255,255,255,0.9)" stroke={resolvedFill} strokeWidth="1.5" />
         <text
           x={x}
@@ -249,6 +272,21 @@ function SvgLabel({
   return (
     <g role="img" aria-label={value}>
       <title>{value}</title>
+      {showLabelBoxGuides && (
+        <rect
+          x={labelAreaX}
+          y={labelAreaY}
+          width={width}
+          height={labelAreaHeight}
+          transform={transform}
+          fill="rgba(236,72,153,0.08)"
+          stroke="#db2777"
+          strokeWidth="1.5"
+          strokeDasharray="6 4"
+          pointerEvents="none"
+          data-export-ignore
+        />
+      )}
       <text
         x={x}
         y={y + offset}
@@ -717,6 +755,8 @@ function SvgTextLines({
   anchor?: "start" | "middle" | "end";
   fillOverride?: string;
 }) {
+  const measureText = useContext(TextMeasurementContext);
+  const showLabelBoxGuides = useContext(LabelBoxGuidesContext);
   const visualStyle = useContext(DiagramVisualStyleContext);
   const resolvedFill = fillOverride ?? visualStyle.textColor ?? fill;
   const resolvedWeight = visualStyle.fontWeight === "bold"
@@ -725,9 +765,33 @@ function SvgTextLines({
       ? 400
       : weight;
   const offset = -((lines.length - 1) * lineHeight) / 2;
+  const labelAreaWidth = Math.max(
+    1,
+    ...lines.map((line) => estimatedTextWidth(line, fontSize, measureText))
+  );
+  const labelAreaHeight = Math.max(1, lines.length) * lineHeight;
+  const labelAreaX = anchor === "start"
+    ? x
+    : anchor === "end"
+      ? x - labelAreaWidth
+      : x - labelAreaWidth / 2;
   return (
     <g role="img" aria-label={value}>
       <title>{value}</title>
+      {showLabelBoxGuides && (
+        <rect
+          x={labelAreaX}
+          y={y - labelAreaHeight / 2}
+          width={labelAreaWidth}
+          height={labelAreaHeight}
+          fill="rgba(236,72,153,0.08)"
+          stroke="#db2777"
+          strokeWidth="1.5"
+          strokeDasharray="6 4"
+          pointerEvents="none"
+          data-export-ignore
+        />
+      )}
       <text
         x={x}
         y={y + offset}
@@ -1239,6 +1303,7 @@ export function RelationshipDiagramSvg({
   spec,
   exportId,
   measureText = false,
+  showLabelBoxGuides = false,
 }: RelationshipDiagramSvgProps) {
   const { width, height } = relationshipDiagramDimensions(groups, spec);
   const background = isTransparentRelationshipDiagramBackground(spec.background)
@@ -1260,6 +1325,7 @@ export function RelationshipDiagramSvg({
       maximizeLabelText: spec.maximizeLabelText,
     }}>
     <TextMeasurementContext.Provider value={measureText}>
+    <LabelBoxGuidesContext.Provider value={showLabelBoxGuides}>
     <svg
       viewBox={"0 0 " + width + " " + height}
       width={width}
@@ -1287,6 +1353,7 @@ export function RelationshipDiagramSvg({
       )}
       {content}
     </svg>
+    </LabelBoxGuidesContext.Provider>
     </TextMeasurementContext.Provider>
     </DiagramVisualStyleContext.Provider>
   );
