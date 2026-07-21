@@ -339,10 +339,13 @@ body {
 .shape-text-flow-guide { display: none; }
 .shape-text-flow-editor .shape-text-flow-guide {
   display: block;
-  width: 50%;
+  /* Leave a symmetric subpixel-rounding tolerance so the right float never
+     drops below the left one while the canvas is zoomed. */
+  width: calc(50% - 0.5px);
   height: 100%;
   pointer-events: none;
-  shape-margin: 2px;
+  /* The node's Shape text padding setting is the sole contour inset. */
+  shape-margin: 0;
 }
 .shape-text-flow-editor .shape-text-flow-guide-left {
   float: left;

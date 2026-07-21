@@ -86,12 +86,13 @@ export function diamondTextLabelBox(renderedSize: Size, inset = 8): ShapeLabelBo
 export interface ShapeTextFlowLayout {
   /** Nearly the full node bounds; the outline profile supplies the real inset. */
   box: ShapeLabelBox;
-  /** Equivalent rectangular area used by the font-size fitter. */
+  /** Broad line width used by the font-size fitter; exclusions govern each real line. */
   capacity: Size;
   /** Concave regions floated away from the left and right sides of the text. */
   leftExclusion: string;
   rightExclusion: string;
   areaRatio: number;
+  lineWidthRatio: number;
 }
 
 export interface ShapeTextFlowOptions {
@@ -286,12 +287,24 @@ export function shapeTextFlowLayout(
     0.08,
     ranges.reduce((sum, [left, right]) => sum + Math.max(0, right - left), 0) / ranges.length
   );
+  const lineWidths = ranges
+    .map(([left, right]) => Math.max(0, right - left))
+    .sort((left, right) => left - right);
+  // Use a broad, genuinely usable slice rather than the average silhouette
+  // width. The average made compact capsule and diamond labels unnecessarily
+  // small even though their middle lines had substantially more room. The
+  // exclusion polygons remain the authority for every rendered line.
+  const lineWidthRatio = Math.max(
+    areaRatio,
+    lineWidths[Math.floor((lineWidths.length - 1) * 0.8)] ?? areaRatio
+  );
   return {
     box: { x: padding, y: padding, width, height },
-    capacity: { width: Math.max(8, width * areaRatio), height },
+    capacity: { width: Math.max(8, width * lineWidthRatio), height },
     leftExclusion: exclusionPolygon("left", ranges),
     rightExclusion: exclusionPolygon("right", ranges),
     areaRatio,
+    lineWidthRatio,
   };
 }
 
@@ -343,7 +356,7 @@ export function shouldRenderShapeTextFlow(
   text?: string,
   options: ShapeTextFlowOptions = {}
 ): boolean {
-  return !editing && shouldUseShapeTextFlow(shapeType, renderedSize, contentSize, text, options);
+  return !editing && shouldUseShapeLabelContour(shapeType, renderedSize, contentSize, text, options);
 }
 
 export function nodeContentPadding(nodeType: string | undefined): Size {

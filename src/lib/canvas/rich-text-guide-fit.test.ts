@@ -31,6 +31,25 @@ test("guide correction always returns a finite renderable scale", () => {
   );
 });
 
+test("guide correction is invariant across canvas zoom levels", () => {
+  const normal = correctedGuideContentScale(
+    1.5,
+    { width: 220, height: 60 },
+    { width: 200, height: 100 },
+    2,
+    1
+  );
+  const zoomedOut = correctedGuideContentScale(
+    1.5,
+    { width: 55, height: 15 },
+    { width: 50, height: 25 },
+    2,
+    0.25
+  );
+
+  assert.ok(Math.abs(normal - zoomedOut) < 0.000001);
+});
+
 const guide = { left: 100, top: 50, right: 400, bottom: 250, width: 300, height: 200 };
 
 test("middle contour alignment uses the actual rendered glyph center", () => {
