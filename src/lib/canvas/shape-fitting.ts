@@ -53,6 +53,26 @@ export interface ShapeLabelBox extends Size {
   y: number;
 }
 
+/**
+ * Stable axis-aligned text box for a diamond. The diamond outline satisfies
+ * width/outerWidth + height/outerHeight <= 1 for an inscribed rectangle, so
+ * using half of the inset interior on each axis keeps every glyph away from
+ * both pointed tips while giving alignment and fitting one dependable box.
+ */
+export function diamondTextLabelBox(renderedSize: Size, inset = 8): ShapeLabelBox {
+  const renderedWidth = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
+  const renderedHeight = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
+  const safeInset = Math.max(0, Math.min(inset, renderedWidth / 4, renderedHeight / 4));
+  const width = Math.max(8, (renderedWidth - safeInset * 2) / 2);
+  const height = Math.max(8, (renderedHeight - safeInset * 2) / 2);
+  return {
+    x: (renderedWidth - width) / 2,
+    y: (renderedHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
 export interface ShapeTextFlowLayout {
   /** Nearly the full node bounds; the outline profile supplies the real inset. */
   box: ShapeLabelBox;

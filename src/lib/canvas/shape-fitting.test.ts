@@ -3,6 +3,7 @@ import test from "node:test";
 import { createNodeRect, nodePositionFromTopLeft, resizeAroundAnchor } from "./node-geometry";
 import {
   effectiveCornerRadius,
+  diamondTextLabelBox,
   fitShapeToContent,
   fitSingleUnbrokenWord,
   MAX_AUTOFIT_NODE_HEIGHT,
@@ -158,6 +159,14 @@ test("shape text flow uses the full silhouette instead of one inscribed rectangl
   assert.ok(diamondFlow.box.height > compactDiamond.height);
   assert.ok(diamondFlow.capacity.width * diamondFlow.capacity.height > compactDiamond.width * compactDiamond.height);
   assert.ok(diamondFlow.areaRatio > 0.45 && diamondFlow.areaRatio < 0.55);
+});
+
+test("diamond labels use a stable inscribed rectangle", () => {
+  const box = diamondTextLabelBox({ width: 250, height: 250 });
+  assert.deepEqual(box, { x: 66.5, y: 66.5, width: 117, height: 117 });
+  assert.ok(box.x + box.width / 2 <= 125);
+  assert.ok(box.y + box.height / 2 <= 125);
+  assert.ok(box.width / 250 + box.height / 250 <= 1);
 });
 
 test("dense labels use contour flow globally while editing stays caret-safe", () => {

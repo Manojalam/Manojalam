@@ -326,7 +326,7 @@ body {
   white-space: pre-wrap;
   text-wrap: pretty;
   word-break: keep-all !important;
-  overflow-wrap: normal !important;
+  overflow-wrap: anywhere !important;
   hyphens: none !important;
 }
 [data-shape-label-content="true"] .ProseMirror > * {
