@@ -3,6 +3,12 @@ const EXPLICIT_PROTOCOL = /^[a-z][a-z\d+.-]*:/i;
 const RELATIVE_LINK = /^(?:\/|#|\?)/;
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
 
+/** Keep link labels on one visible line even when they are pasted from rich text. */
+export function normalizeLinkDisplayText(value: string): string | null {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized || null;
+}
+
 /** Normalize a user-entered destination while rejecting executable protocols. */
 export function normalizeLinkHref(value: string): string | null {
   const trimmed = value.trim();
