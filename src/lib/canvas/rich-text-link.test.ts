@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isSafeLinkHref, normalizeLinkHref } from "./rich-text-link";
+import {
+  isSafeLinkHref,
+  normalizeLinkDisplayText,
+  normalizeLinkHref,
+} from "./rich-text-link";
+
+test("normalizes pasted link labels without changing their script", () => {
+  assert.equal(
+    normalizeLinkDisplayText("  एङः\n  पदान्तादति  "),
+    "एङः पदान्तादति"
+  );
+  assert.equal(normalizeLinkDisplayText(" \n\t "), null);
+});
 
 test("adds a secure protocol to ordinary web addresses", () => {
   assert.equal(normalizeLinkHref("example.com/docs"), "https://example.com/docs");

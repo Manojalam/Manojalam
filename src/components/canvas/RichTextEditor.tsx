@@ -35,10 +35,20 @@ import {
   type ShapeTextVerticalAlign,
 } from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
-import { normalizeLinkHref } from "@/lib/canvas/rich-text-link";
+import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
 const FontSize = Extension.create({
@@ -306,7 +316,9 @@ export function RichTextEditor({
   const [showFonts,   setShowFonts]   = useState(false);
   const [showSizes,   setShowSizes]   = useState(false);
   const [showLink, setShowLink] = useState(false);
+  const [linkText, setLinkText] = useState("");
   const [linkHref, setLinkHref] = useState("");
+  const [linkEditing, setLinkEditing] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [renderedContentScale, setRenderedContentScale] = useState(contentScale);
   const requestedFlowOffset = Math.max(0, shapeTextFlow?.verticalOffset ?? 0);
@@ -320,7 +332,10 @@ export function RichTextEditor({
   const richTextRootRef = useRef<HTMLDivElement>(null);
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
-  const linkInputRef = useRef<HTMLInputElement>(null);
+  const linkTextInputRef = useRef<HTMLInputElement>(null);
+  const linkHrefInputRef = useRef<HTMLInputElement>(null);
+  const linkDialogOpenRef = useRef(false);
+  const linkTargetSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const nativeColorPickerOpenRef = useRef(false);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
@@ -355,12 +370,14 @@ export function RichTextEditor({
     setShowHighlights(false);
     setShowFonts(false);
     setShowSizes(false);
-    setShowLink(false);
+    if (!linkDialogOpenRef.current) setShowLink(false);
   }, []);
 
   useEffect(() => {
     if (!nodeId || (selectedNodeIds.length === 1 && selectedNodeIds[0] === nodeId)) return;
     const frame = requestAnimationFrame(() => {
+      linkDialogOpenRef.current = false;
+      setShowLink(false);
       hideToolbar();
       if (useUIStore.getState().activeTextSelection?.nodeId === nodeId) {
         setActiveTextSelection(null);
@@ -455,7 +472,7 @@ export function RichTextEditor({
       const focusMovedToToolbar = toolbarRef.current?.contains(
         event.relatedTarget as globalThis.Node | null
       );
-      if (nativeColorPickerOpenRef.current || focusMovedToToolbar) return;
+      if (nativeColorPickerOpenRef.current || focusMovedToToolbar || linkDialogOpenRef.current) return;
       hideToolbar();
       onBlur?.();
     },
@@ -937,42 +954,104 @@ export function RichTextEditor({
   const alignRight = useCallback(() => { selectionChain()?.setTextAlign("right").run(); }, [selectionChain]);
   const clearFormatting = useCallback(() => { selectionChain()?.unsetAllMarks().run(); }, [selectionChain]);
 
+  const closeLinkEditor = useCallback(() => {
+    linkDialogOpenRef.current = false;
+    setShowLink(false);
+    requestAnimationFrame(() => {
+      const selection = linkTargetSelectionRef.current ?? savedSelectionRef.current;
+      const chain = editor?.chain();
+      if (selection) chain?.setTextSelection(selection);
+      chain?.focus(undefined, { scrollIntoView: false }).run();
+    });
+  }, [editor]);
+
   const openLinkEditor = useCallback(() => {
     if (!editor) return;
-    setLinkHref(String(editor.getAttributes("link").href ?? ""));
+    linkDialogOpenRef.current = true;
+    const savedSelection = savedSelectionRef.current ?? {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    };
+    editor.commands.setTextSelection(savedSelection);
+    const editing = editor.isActive("link");
+    if (editing) editor.commands.extendMarkRange("link");
+    const targetSelection = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    };
+    linkTargetSelectionRef.current = targetSelection;
+    savedSelectionRef.current = targetSelection;
+    setLinkEditing(editing);
+    setLinkText(editor.state.doc.textBetween(targetSelection.from, targetSelection.to, " "));
+    setLinkHref(editing ? String(editor.getAttributes("link").href ?? "") : "");
     setShowColors(false);
     setShowHighlights(false);
     setShowFonts(false);
     setShowSizes(false);
     setShowLink(true);
-    requestAnimationFrame(() => {
-      linkInputRef.current?.focus();
-      linkInputRef.current?.select();
-    });
   }, [editor]);
 
   const applyLink = useCallback(() => {
+    if (!editor) return;
+    const displayText = normalizeLinkDisplayText(linkText);
+    if (!displayText) {
+      toast.error("Enter display text", {
+        description: "This is the text that will appear on the canvas.",
+      });
+      linkTextInputRef.current?.focus();
+      return;
+    }
     const href = normalizeLinkHref(linkHref);
     if (!href) {
       toast.error("Enter a valid link", {
         description: "Use a web address, email link, phone link, or an app-relative path.",
       });
-      linkInputRef.current?.focus();
+      linkHrefInputRef.current?.focus();
       return;
     }
 
+    const target = linkTargetSelectionRef.current ?? savedSelectionRef.current;
+    if (!target) return;
+    const selectedText = editor.state.doc.textBetween(target.from, target.to, " ");
     pendingReportReasonRef.current = "format";
-    selectionChain()?.extendMarkRange("link").setLink({ href }).run();
-    setShowLink(false);
-    toast.success("Link applied");
-  }, [linkHref, selectionChain]);
+    let linkedSelection = target;
+    if (displayText !== selectedText || target.from === target.to) {
+      let inheritedMarks = editor.state.doc.resolve(target.from).marks();
+      let foundText = false;
+      editor.state.doc.nodesBetween(target.from, target.to, (node) => {
+        if (foundText || !node.isText) return;
+        inheritedMarks = node.marks;
+        foundText = true;
+      });
+      const marks = inheritedMarks
+        .filter((mark) => mark.type.name !== "link")
+        .map((mark) => mark.toJSON());
+      marks.push({ type: "link", attrs: { href } });
+      linkedSelection = { from: target.from, to: target.from + displayText.length };
+      editor.chain()
+        .setTextSelection(target)
+        .insertContent({ type: "text", text: displayText, marks })
+        .setTextSelection(linkedSelection)
+        .run();
+    } else {
+      editor.chain().setTextSelection(target).setLink({ href }).run();
+    }
+    savedSelectionRef.current = linkedSelection;
+    linkTargetSelectionRef.current = linkedSelection;
+    closeLinkEditor();
+    toast.success(linkEditing ? "Link updated" : "Link added");
+  }, [closeLinkEditor, editor, linkEditing, linkHref, linkText]);
 
   const removeLink = useCallback(() => {
+    if (!editor) return;
+    const target = linkTargetSelectionRef.current ?? savedSelectionRef.current;
+    if (!target) return;
     pendingReportReasonRef.current = "format";
-    selectionChain()?.extendMarkRange("link").unsetLink().run();
-    setShowLink(false);
+    editor.chain().setTextSelection(target).unsetLink().run();
+    savedSelectionRef.current = target;
+    closeLinkEditor();
     toast.success("Link removed");
-  }, [selectionChain]);
+  }, [closeLinkEditor, editor]);
 
   const useFormatPainter = useCallback(() => {
     if (!editor) return;
@@ -1127,7 +1206,7 @@ export function RichTextEditor({
               title={linkActive ? "Edit link" : "Add link"}
               onMouseDown={(event) => {
                 event.preventDefault();
-                if (showLink) setShowLink(false);
+                if (showLink) closeLinkEditor();
                 else openLinkEditor();
               }}
               className={cn(
@@ -1137,58 +1216,6 @@ export function RichTextEditor({
             >
               <Link2 className="h-4 w-4" />
             </button>
-            {showLink && (
-              <form
-                aria-label="Link settings"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  applyLink();
-                }}
-                className={cn(
-                  "absolute left-1/2 z-10 w-80 -translate-x-1/2 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
-                  openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
-                )}
-              >
-                <label htmlFor={`rich-text-link-${nodeId ?? "editor"}`} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Link destination
-                </label>
-                <input
-                  ref={linkInputRef}
-                  id={`rich-text-link-${nodeId ?? "editor"}`}
-                  type="text"
-                  inputMode="url"
-                  value={linkHref}
-                  onChange={(event) => setLinkHref(event.target.value)}
-                  placeholder="https://example.com"
-                  className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-                <div className="mt-2 flex items-center justify-end gap-2">
-                  {linkActive && (
-                    <button
-                      type="button"
-                      onClick={removeLink}
-                      className="mr-auto flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-destructive hover:bg-destructive/10"
-                    >
-                      <Unlink2 className="h-3.5 w-3.5" />
-                      Remove
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowLink(false)}
-                    className="h-8 rounded-md px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                  >
-                    {linkActive ? "Update" : "Apply"}
-                  </button>
-                </div>
-              </form>
-            )}
           </div>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
@@ -1371,6 +1398,96 @@ export function RichTextEditor({
           <FormatButton onAction={clearFormatting} title="Clear formatting"><Eraser className="h-4 w-4" /></FormatButton>
         </div>,
         document.body
+      )}
+
+      {mounted && editor && (
+        <Dialog
+          open={showLink}
+          onOpenChange={(open) => {
+            if (!open && linkDialogOpenRef.current) closeLinkEditor();
+          }}
+        >
+          <DialogContent
+            className="w-[min(92vw,28rem)]"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              requestAnimationFrame(() => {
+                linkTextInputRef.current?.focus();
+                linkTextInputRef.current?.select();
+              });
+            }}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <DialogHeader>
+              <DialogTitle>{linkEditing ? "Edit link" : "Add link"}</DialogTitle>
+              <DialogDescription>
+                Choose the text people will see and where the link should open.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              aria-label={linkEditing ? "Edit link" : "Add link"}
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                applyLink();
+              }}
+            >
+              <div className="space-y-2">
+                <Label htmlFor={`rich-text-link-text-${nodeId ?? "editor"}`}>
+                  Display text
+                </Label>
+                <Input
+                  ref={linkTextInputRef}
+                  id={`rich-text-link-text-${nodeId ?? "editor"}`}
+                  value={linkText}
+                  onChange={(event) => setLinkText(event.target.value)}
+                  placeholder="Text shown on the canvas"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor={`rich-text-link-href-${nodeId ?? "editor"}`}>
+                  Link / URL
+                </Label>
+                <Input
+                  ref={linkHrefInputRef}
+                  id={`rich-text-link-href-${nodeId ?? "editor"}`}
+                  type="text"
+                  inputMode="url"
+                  value={linkHref}
+                  onChange={(event) => setLinkHref(event.target.value)}
+                  placeholder="https://example.com"
+                  autoComplete="url"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Addresses without a protocol will use https:// automatically.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                {linkEditing && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={removeLink}
+                  >
+                    <Unlink2 className="h-4 w-4" />
+                    Remove link
+                  </Button>
+                )}
+                <Button type="button" variant="outline" onClick={closeLinkEditor}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {linkEditing ? "Update link" : "Add link"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
 
       <div
