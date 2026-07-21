@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   automaticNodeTextColor,
   getTextStyle,
+  lightenColor,
   resolveBorderColor,
   resolveFillColor,
   themeAwareNodeFillColor,
@@ -63,4 +64,9 @@ test("opaque node fills are theme toned without changing saved colors", () => {
 test("transparent and soft node fills are not darkened", () => {
   assert.equal(themeAwareNodeFillColor("transparent"), "transparent");
   assert.equal(themeAwareNodeFillColor("rgba(251, 191, 36, 0.18)"), "rgba(251, 191, 36, 0.18)");
+});
+
+test("lightens a border color into a pale matching fill", () => {
+  assert.equal(lightenColor("#4262ff"), "#d5dcff");
+  assert.equal(lightenColor("transparent"), "transparent");
 });
