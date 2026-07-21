@@ -56,7 +56,7 @@ function plainTextForFitting(d: Record<string, unknown>): string {
   return typeof d.text === "string" ? d.text.trim() : "";
 }
 
-function measuredCompactFillScale(
+function measuredFillScale(
   measurement: Partial<{
     width: number;
     height: number;
@@ -65,15 +65,26 @@ function measuredCompactFillScale(
     naturalHeight: number;
   }> | undefined,
   available: Size
-): number | null {
-  if (!measurement || (measurement.lineCount ?? 1) > 2) return null;
-  const width = measurement.naturalWidth ?? measurement.width;
-  const height = measurement.naturalHeight ?? measurement.height;
+): { scale: number; compact: boolean } | null {
+  if (!measurement) return null;
+  const compact = (measurement.lineCount ?? 1) <= 2;
+  // Compact labels can use their unwrapped authored dimensions. Dense labels
+  // must use the real wrapped dimensions: estimating them from plain text can
+  // enlarge rich text past the measured height and clip the final line.
+  const width = compact
+    ? measurement.naturalWidth ?? measurement.width
+    : measurement.width;
+  const height = compact
+    ? measurement.naturalHeight ?? measurement.height
+    : measurement.height;
   if (
     typeof width !== "number" || !Number.isFinite(width) || width <= 0
     || typeof height !== "number" || !Number.isFinite(height) || height <= 0
   ) return null;
-  return Math.min(available.width / width, available.height / height);
+  return {
+    scale: Math.min(available.width / width, available.height / height),
+    compact,
+  };
 }
 
 export function getFittedTextPresentation(
@@ -132,7 +143,7 @@ export function getFittedTextPresentation(
       { width: availableWidth, height: availableHeight },
       { preferredFontSize, minimumFontSize, maximumFontSize: 96 }
     );
-    const measuredScale = measuredCompactFillScale(storedMeasurement, {
+    const measuredScale = measuredFillScale(storedMeasurement, {
       width: availableWidth,
       height: availableHeight,
     });
@@ -140,10 +151,13 @@ export function getFittedTextPresentation(
     // normal rendered fit, but enabling it must never make that text smaller.
     // Compact rich text uses its real authored dimensions so inline font marks
     // cannot make one same-sized node look arbitrarily smaller than another.
-    scale = Math.max(
-      normalScale,
-      measuredScale ?? maximumFontSize / preferredFontSize
-    );
+    const estimatedScale = maximumFontSize / preferredFontSize;
+    const safeFillScale = measuredScale == null
+      ? estimatedScale
+      : measuredScale.compact
+        ? measuredScale.scale
+        : Math.min(estimatedScale, measuredScale.scale);
+    scale = Math.max(normalScale, safeFillScale);
     scale = Math.max(minimumFontSize / preferredFontSize, Math.min(96 / preferredFontSize, scale));
   } else if (shouldConstrain && storedMeasurement) {
     scale = fittedContentScale(
