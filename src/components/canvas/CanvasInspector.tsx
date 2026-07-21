@@ -108,6 +108,7 @@ import {
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { lightenColor } from "@/lib/style-utils";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -641,6 +642,17 @@ function BorderStylePicker({ value, onChange }: {
   );
 }
 
+function defaultShapeFillForBorder(
+  data: Record<string, unknown>,
+  borderColor: unknown,
+): Record<string, unknown> {
+  if (typeof borderColor !== "string" || !borderColor.trim() || borderColor === "transparent") return {};
+  const existingBorder = typeof data.borderColor === "string" && data.borderColor.trim() && data.borderColor !== "transparent";
+  const existingFill = data.fillColor !== undefined && data.fillColor !== null && data.fillColor !== "";
+  if (existingBorder || existingFill) return {};
+  return { fillColor: lightenColor(borderColor) };
+}
+
 function ConnectionInspectorSections({
   connectionEdges,
   commonValue,
@@ -1172,7 +1184,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       updateNodeData(selectedNode.id, { radialTextColor: value });
       return;
     }
-    updateNodeData(selectedNode.id, fieldPatch(d, key, value));
+    const patch = fieldPatch(d, key, value);
+    if (selectedNode.type === "shape" && key === "borderColor") {
+      const fillPatch = defaultShapeFillForBorder(d, value);
+      Object.assign(patch, fillPatch);
+      if (fillPatch.fillColor !== undefined && d.layoutVisualStyle) patch.layoutAutoFill = false;
+    }
+    updateNodeData(selectedNode.id, patch);
   };
 
   const commonValue = (key: string) => {
@@ -1199,6 +1217,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     for (const node of selectedNodes) {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const patch = fieldPatch(data, key, value);
+      if (!isRadialMultiSelection && node.type === "shape" && key === "borderColor") {
+        const fillPatch = defaultShapeFillForBorder(data, value);
+        Object.assign(patch, fillPatch);
+        if (fillPatch.fillColor !== undefined && data.layoutVisualStyle) patch.layoutAutoFill = false;
+      }
       if (isRadialMultiSelection && key === "textColor") {
         delete patch.textColor;
         patch.radialTextColor = value;

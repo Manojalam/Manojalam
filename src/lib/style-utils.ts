@@ -374,6 +374,17 @@ export function colorWithOpacity(color: string, opacity: number): string {
   return `rgba(${p.r}, ${p.g}, ${p.b}, ${opacity})`;
 }
 
+/** Return a pale tint of a color by mixing it with white. */
+export function lightenColor(color: string, amount = 0.78): string {
+  const parsed = parseCssColor(color);
+  if (!parsed || parsed.a <= 0) return color;
+  const mix = Math.max(0, Math.min(1, amount));
+  const channel = (value: number) => Math.round(value + (255 - value) * mix);
+  return `#${[channel(parsed.r), channel(parsed.g), channel(parsed.b)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 /** Effective fill opacity for a node (defaults to soft) */
 export function resolveFillOpacity(d: Record<string, unknown>): number {
   return typeof d.fillOpacity === "number" ? d.fillOpacity : DEFAULT_FILL_OPACITY;
