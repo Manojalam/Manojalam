@@ -288,48 +288,47 @@ export function compositeExportColor(
   return `rgb(${mix(source.r, matteR)}, ${mix(source.g, matteG)}, ${mix(source.b, matteB)})`;
 }
 
-function flattenTransparentNodePaint(clone: HTMLElement, matte: string): void {
+function flattenTransparentObjectPaint(clone: HTMLElement, matte: string): void {
   if (!parseExportCssColor(matte)) return;
-  const nodeElements = Array.from(clone.querySelectorAll<HTMLElement>(".react-flow__node"));
-  for (const node of nodeElements) {
-    const elements: Element[] = [node, ...Array.from(node.querySelectorAll("*"))];
-    for (const element of elements) {
-      if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+  const elements: Element[] = [clone, ...Array.from(clone.querySelectorAll("*"))];
 
-      if (element instanceof HTMLElement) {
-        const background = element.style.getPropertyValue("background-color");
-        const parsedBackground = parseExportCssColor(background);
-        if (parsedBackground && parsedBackground.a > 0 && parsedBackground.a < 1) {
-          const flattened = compositeExportColor(background, matte);
-          if (flattened) element.style.setProperty("background-color", flattened, "important");
-        }
-        for (const side of ["top", "right", "bottom", "left"] as const) {
-          const property = `border-${side}-color`;
-          const border = element.style.getPropertyValue(property);
-          const parsedBorder = parseExportCssColor(border);
-          if (!parsedBorder || parsedBorder.a <= 0 || parsedBorder.a >= 1) continue;
-          const flattened = compositeExportColor(border, matte);
-          if (flattened) element.style.setProperty(property, flattened, "important");
-        }
+  const flattenPaint = (
+    element: HTMLElement | SVGElement,
+    property: string,
+    opacity = 1
+  ): boolean => {
+    const color = element.style.getPropertyValue(property)
+      || (element instanceof SVGElement ? element.getAttribute(property) ?? "" : "");
+    const parsed = parseExportCssColor(color);
+    if (!parsed || parsed.a <= 0 || parsed.a * opacity >= 1) return false;
+    const flattened = compositeExportColor(color, matte, opacity);
+    if (!flattened) return false;
+    element.style.setProperty(property, flattened, "important");
+    if (element instanceof SVGElement) element.setAttribute(property, flattened);
+    return true;
+  };
+
+  for (const element of elements) {
+    if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+
+    if (element instanceof HTMLElement) {
+      flattenPaint(element, "background-color");
+      flattenPaint(element, "color");
+      for (const side of ["top", "right", "bottom", "left"] as const) {
+        flattenPaint(element, `border-${side}-color`);
       }
+    }
 
-      if (element instanceof SVGElement) {
-        for (const property of ["fill", "stroke"] as const) {
-          const color = element.style.getPropertyValue(property) || element.getAttribute(property) || "";
-          const parsed = parseExportCssColor(color);
-          if (!parsed || parsed.a <= 0) continue;
-          const opacityProperty = `${property}-opacity`;
-          const opacityValue = element.style.getPropertyValue(opacityProperty)
+    if (element instanceof SVGElement) {
+      for (const property of ["fill", "stroke"] as const) {
+        const opacityProperty = `${property}-opacity`;
+        const paintOpacity = alphaChannel(
+          element.style.getPropertyValue(opacityProperty)
             || element.getAttribute(opacityProperty)
-            || "1";
-          const paintOpacity = alphaChannel(opacityValue);
-          const effectiveAlpha = parsed.a * paintOpacity;
-          if (effectiveAlpha >= 1) continue;
-          const flattened = compositeExportColor(color, matte, paintOpacity);
-          if (!flattened) continue;
-          element.style.setProperty(property, flattened, "important");
+            || "1"
+        );
+        if (flattenPaint(element, property, paintOpacity)) {
           element.style.setProperty(opacityProperty, "1", "important");
-          element.setAttribute(property, flattened);
           element.setAttribute(opacityProperty, "1");
         }
       }
@@ -774,7 +773,7 @@ export function cloneReactFlowViewport(
       // A transparent PNG may be viewed on black or another arbitrary color.
       // Preserve how translucent cards looked on the board without filling the
       // transparent area outside those cards.
-      flattenTransparentNodePaint(clone, options.appearanceBackground);
+      flattenTransparentObjectPaint(clone, options.appearanceBackground);
     }
     sanitizeAttributes(clone);
 

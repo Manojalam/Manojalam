@@ -3837,19 +3837,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <div>
                 <p className="text-[10px] font-medium">Label area guides</p>
                 <p className="text-[9px] text-muted-foreground">
-                  {settings.showLabelBoxGuides
-                    ? "Enabled for the whole canvas"
-                    : "Show outlines aligned to each chart section"}
+                  Show outlines aligned to every canvas label area
                 </p>
               </div>
               <Switch
-                checked={settings.showLabelBoxGuides === true || !!radialRootData.radialDebugLabelBoxes}
-                disabled={settings.showLabelBoxGuides === true}
-                onCheckedChange={(checked) => {
-                  if (!radialRootId) return;
-                  pushHistory();
-                  updateNodeData(radialRootId, { radialDebugLabelBoxes: checked });
-                }}
+                checked={settings.showLabelBoxGuides === true}
+                onCheckedChange={(checked) => setBoardSettings({ showLabelBoxGuides: checked })}
               />
             </div>
 
@@ -4346,15 +4339,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     <div>
                       <p className="text-[10px] font-medium">Debug label boxes</p>
                       <p className="text-[9px] text-muted-foreground">
-                        {settings.showLabelBoxGuides
-                          ? "Enabled for the whole canvas"
-                          : "Show the computed long-axis label bounds"}
+                        Show computed label bounds across the whole canvas
                       </p>
                     </div>
                     <Switch
-                      checked={settings.showLabelBoxGuides === true || !!activeRadialChart.debugLabelBoxes}
-                      disabled={settings.showLabelBoxGuides === true}
-                      onCheckedChange={(checked) => setRadialChart({ ...activeRadialChart, debugLabelBoxes: checked, enabled: true })}
+                      checked={settings.showLabelBoxGuides === true}
+                      onCheckedChange={(checked) => setBoardSettings({ showLabelBoxGuides: checked })}
                     />
                   </div>
                 </div>

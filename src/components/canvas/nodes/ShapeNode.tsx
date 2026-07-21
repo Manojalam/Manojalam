@@ -543,10 +543,7 @@ function RadialChartLayer({
   const centerClipId = `${clipId}-center`;
 
   if (!chart?.enabled) return null;
-  const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(
-    showLabelBoxGuides,
-    chart.debugLabelBoxes
-  );
+  const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(showLabelBoxGuides);
   const rings = normalizeRelationshipRingCounts(
     chart.rings?.length ? chart.rings : [{ id: "ring-1", segmentCount: 6 }]
   );
