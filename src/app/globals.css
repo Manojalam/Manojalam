@@ -317,6 +317,13 @@ body {
 .ProseMirror em, .ProseMirror i     { font-style:  italic !important; }
 .ProseMirror u                      { text-decoration: underline; }
 .ProseMirror s                      { text-decoration: line-through; }
+.ProseMirror a {
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.14em;
+}
 /* Inline span styles from TextStyle extension must override inherited values */
 .ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
 

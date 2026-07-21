@@ -1,3 +1,5 @@
+import { isSafeLinkHref } from "./rich-text-link";
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -27,18 +29,26 @@ const EXTERNAL_TYPOGRAPHY_PROPERTIES = [
 const SAFE_EXTERNAL_ELEMENTS = new Set([
   "P", "BR", "STRONG", "B", "EM", "I", "U", "S", "DEL", "SPAN",
   "UL", "OL", "LI", "BLOCKQUOTE", "PRE", "CODE", "H1", "H2", "H3",
-  "H4", "H5", "H6",
+  "H4", "H5", "H6", "A",
 ]);
+
+function sanitizeFallbackLinks(html: string): string {
+  return html.replace(/<a\b([^>]*)>/gi, (_match, attributes: string) => {
+    const href = attributes.match(/(?:^|\s)href=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const value = href?.[1] ?? href?.[2] ?? href?.[3] ?? "";
+    return href && isSafeLinkHref(value) ? `<a ${href[0].trim()}>` : "<a>";
+  });
+}
 
 function fallbackSanitizePastedHtml(html: string): string {
   const unsafe = UNSAFE_PASTE_ELEMENTS.join("|");
-  return trimExternalHtmlBoundaries(html
+  return sanitizeFallbackLinks(trimExternalHtmlBoundaries(html
     .replace(new RegExp(`<(${unsafe})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, "gi"), "")
     .replace(new RegExp(`<(${unsafe})\\b[^>]*\\/?>`, "gi"), "")
     .replace(/\s(?:style|class|id|contenteditable|draggable)=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/\son[a-z]+=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/<font\b[^>]*>/gi, "<span>")
-    .replace(/<\/font\s*>/gi, "</span>"));
+    .replace(/<\/font\s*>/gi, "</span>")));
 }
 
 const EMPTY_BOUNDARY_BLOCK = "(?:p|div|h[1-6]|blockquote|li)";
@@ -147,9 +157,12 @@ export function sanitizePastedHtml(html: string): string {
       const safeInternalAttribute = internalTipTapCopy
         && (name === "style" || name === "data-pm-slice" || name === "data-pm-node");
       const safeListAttribute = element.tagName === "OL" && name === "start";
+      const safeLinkAttribute = element.tagName === "A"
+        && name === "href"
+        && isSafeLinkHref(attribute.value);
       if (name.startsWith("on") || name === "contenteditable" || name === "draggable") {
         element.removeAttribute(attribute.name);
-      } else if (!safeInternalAttribute && !safeListAttribute && name !== "style") {
+      } else if (!safeInternalAttribute && !safeListAttribute && !safeLinkAttribute && name !== "style") {
         element.removeAttribute(attribute.name);
       }
     }
@@ -159,6 +172,10 @@ export function sanitizePastedHtml(html: string): string {
       const replacement = parsed.createElement("span");
       while (element.firstChild) replacement.appendChild(element.firstChild);
       element.replaceWith(replacement);
+      continue;
+    }
+    if (element.tagName === "A" && !element.hasAttribute("href")) {
+      unwrapElement(element);
       continue;
     }
     if (!SAFE_EXTERNAL_ELEMENTS.has(element.tagName) && !internalTipTapCopy) unwrapElement(element);
