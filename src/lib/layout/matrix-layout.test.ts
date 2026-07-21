@@ -308,9 +308,10 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const first = result.cells.find((cell) => cell.nodeId === "child-0")!;
   const sixth = result.cells.find((cell) => cell.nodeId === "child-5")!;
+  const cellGap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
 
   assert.equal(first.y, sixth.y);
-  assert.ok(sixth.x > first.x + first.width);
+  assert.equal(sixth.x - (first.x + first.width), cellGap + 32);
   assert.equal(result.header.width, result.bounds.width);
   assertClean(result);
 });
@@ -334,10 +335,12 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
   const foldedExamplesHeight = Math.max(...examples.map((cell) => cell.y + cell.height))
     - Math.min(...examples.map((cell) => cell.y));
   const nextRule = cells.get("next-rule")!;
+  const cellGap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
 
   assert.equal(examples[0].y, examples[2].y);
+  assert.equal(examples[2].x - (examples[0].x + examples[0].width), cellGap);
   assert.equal(rule.height, foldedExamplesHeight);
-  assert.equal(nextRule.y, rule.y + rule.height + MATRIX_DENSITY_SETTINGS[result.density].cellGap);
+  assert.equal(nextRule.y, rule.y + rule.height + cellGap);
   assertClean(result);
 
   const resizedNodes = nodes.map((node) => node.id === "rule"
@@ -350,6 +353,27 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
   );
   assert.equal(resized.cells.find((cell) => cell.nodeId === "rule")!.height, 220);
   assertClean(resized);
+});
+
+test("a nested vertical Fold uses the normal Matrix cell gap", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "rule", parentId: "root", orientation: "vertical" },
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `example-${index}`, parentId: "rule" })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "rule"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const first = cells.get("example-0")!;
+  const third = cells.get("example-2")!;
+  const cellGap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
+
+  assert.equal(first.x, third.x);
+  assert.equal(third.y - (first.y + first.height), cellGap);
+  assertClean(result);
 });
 
 test("a compact nested Fold keeps the next large branch in the outer right section", () => {

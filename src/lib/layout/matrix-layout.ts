@@ -592,11 +592,14 @@ function layoutOrientedChildSections(
   orientation: MatrixOrientation,
   settings: DensitySettings,
   minimumWidth = 0,
-  minimumHeight = 0
+  minimumHeight = 0,
+  emphasizeFoldSections = false
 ): OrientedBranchLayout {
   if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
   const sections = orientedChildSections(parentData, children, orientation, settings.cellGap);
-  const foldGap = sections.length > 1 ? settings.cellGap + 32 : 0;
+  const foldGap = sections.length > 1
+    ? settings.cellGap + (emphasizeFoldSections ? 32 : 0)
+    : 0;
 
   if (orientation === "horizontal") {
     const naturalSections = sections.map((section) => ({
@@ -774,7 +777,9 @@ function computeOrientedMatrixLayout(
     builtRootChildren,
     rootOrientation,
     settings,
-    preferredHeaderWidth
+    preferredHeaderWidth,
+    0,
+    true
   );
   const tableWidth = body.width;
   const bodyHeight = body.height;
