@@ -58,3 +58,14 @@ test("legacy font tags keep their text without importing font sizing", () => {
     "<span>Text</span>"
   );
 });
+
+test("keeps safe pasted links and strips executable destinations", () => {
+  assert.equal(
+    sanitizePastedHtml('<p><a href="https://example.com/docs" target="_self">Docs</a></p>'),
+    '<p><a href="https://example.com/docs">Docs</a></p>'
+  );
+  assert.equal(
+    sanitizePastedHtml('<p><a href="javascript:alert(1)">Unsafe</a></p>'),
+    "<p><a>Unsafe</a></p>"
+  );
+});

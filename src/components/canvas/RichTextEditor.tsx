@@ -35,8 +35,9 @@ import {
   type ShapeTextVerticalAlign,
 } from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
+import { normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
-import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Paintbrush, Palette } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
@@ -84,7 +85,17 @@ const ShapeTextFlowGuides = Extension.create({
 
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
-  StarterKit.configure({ underline: false }),
+  StarterKit.configure({
+    underline: false,
+    link: {
+      defaultProtocol: "https",
+      openOnClick: false,
+      HTMLAttributes: {
+        target: "_blank",
+        rel: "noopener noreferrer",
+      },
+    },
+  }),
   TextStyle,
   Color,
   FontFamily,
@@ -291,6 +302,8 @@ export function RichTextEditor({
   const [showHighlights, setShowHighlights] = useState(false);
   const [showFonts,   setShowFonts]   = useState(false);
   const [showSizes,   setShowSizes]   = useState(false);
+  const [showLink, setShowLink] = useState(false);
+  const [linkHref, setLinkHref] = useState("");
   const [mounted, setMounted] = useState(false);
   const [renderedContentScale, setRenderedContentScale] = useState(contentScale);
   const requestedFlowOffset = Math.max(0, shapeTextFlow?.verticalOffset ?? 0);
@@ -304,6 +317,7 @@ export function RichTextEditor({
   const richTextRootRef = useRef<HTMLDivElement>(null);
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const nativeColorPickerOpenRef = useRef(false);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
@@ -338,6 +352,7 @@ export function RichTextEditor({
     setShowHighlights(false);
     setShowFonts(false);
     setShowSizes(false);
+    setShowLink(false);
   }, []);
 
   useEffect(() => {
@@ -863,7 +878,7 @@ export function RichTextEditor({
     const above = anchor.top - h - TOOLBAR_GAP;
     setAutoTop(above >= 8 ? above : Math.max(8, Math.min(window.innerHeight - h - 8, anchor.bottom + TOOLBAR_GAP)));
     setAutoLeft(Math.max(w / 2 + 8, Math.min(window.innerWidth - w / 2 - 8, anchor.left)));
-  }, [anchor, drag, showColors, showFonts, showHighlights, showSizes]);
+  }, [anchor, drag, showColors, showFonts, showHighlights, showLink, showSizes]);
 
   // ── Dragging the toolbar ──
   const onGripDown = useCallback((e: React.PointerEvent) => {
@@ -908,6 +923,43 @@ export function RichTextEditor({
   const alignCenter = useCallback(() => { selectionChain()?.setTextAlign("center").run(); }, [selectionChain]);
   const alignRight = useCallback(() => { selectionChain()?.setTextAlign("right").run(); }, [selectionChain]);
   const clearFormatting = useCallback(() => { selectionChain()?.unsetAllMarks().run(); }, [selectionChain]);
+
+  const openLinkEditor = useCallback(() => {
+    if (!editor) return;
+    setLinkHref(String(editor.getAttributes("link").href ?? ""));
+    setShowColors(false);
+    setShowHighlights(false);
+    setShowFonts(false);
+    setShowSizes(false);
+    setShowLink(true);
+    requestAnimationFrame(() => {
+      linkInputRef.current?.focus();
+      linkInputRef.current?.select();
+    });
+  }, [editor]);
+
+  const applyLink = useCallback(() => {
+    const href = normalizeLinkHref(linkHref);
+    if (!href) {
+      toast.error("Enter a valid link", {
+        description: "Use a web address, email link, phone link, or an app-relative path.",
+      });
+      linkInputRef.current?.focus();
+      return;
+    }
+
+    pendingReportReasonRef.current = "format";
+    selectionChain()?.extendMarkRange("link").setLink({ href }).run();
+    setShowLink(false);
+    toast.success("Link applied");
+  }, [linkHref, selectionChain]);
+
+  const removeLink = useCallback(() => {
+    pendingReportReasonRef.current = "format";
+    selectionChain()?.extendMarkRange("link").unsetLink().run();
+    setShowLink(false);
+    toast.success("Link removed");
+  }, [selectionChain]);
 
   const useFormatPainter = useCallback(() => {
     if (!editor) return;
@@ -1009,6 +1061,7 @@ export function RichTextEditor({
   const boldState = editor ? selectedMarkValue(editor, "bold") : null;
   const italicState = editor ? selectedMarkValue(editor, "italic") : null;
   const underlineState = editor ? selectedMarkValue(editor, "underline") : null;
+  const linkActive = editor?.isActive("link") ?? false;
   const openPopoversBelow = drag
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
@@ -1053,6 +1106,78 @@ export function RichTextEditor({
           <FormatButton active={editor.isActive("italic")} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
           <FormatButton active={editor.isActive("underline")} mixed={underlineState === "mixed"} onAction={toggleUnderline} title="Underline"><u className="text-xs">U</u></FormatButton>
 
+          <div className="relative">
+            <button
+              type="button"
+              aria-expanded={showLink}
+              aria-label={linkActive ? "Edit link" : "Add link"}
+              title={linkActive ? "Edit link" : "Add link"}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                if (showLink) setShowLink(false);
+                else openLinkEditor();
+              }}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted",
+                linkActive && "bg-primary/15 text-primary"
+              )}
+            >
+              <Link2 className="h-4 w-4" />
+            </button>
+            {showLink && (
+              <form
+                aria-label="Link settings"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  applyLink();
+                }}
+                className={cn(
+                  "absolute left-1/2 z-10 w-80 -translate-x-1/2 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                  openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+                )}
+              >
+                <label htmlFor={`rich-text-link-${nodeId ?? "editor"}`} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Link destination
+                </label>
+                <input
+                  ref={linkInputRef}
+                  id={`rich-text-link-${nodeId ?? "editor"}`}
+                  type="text"
+                  inputMode="url"
+                  value={linkHref}
+                  onChange={(event) => setLinkHref(event.target.value)}
+                  placeholder="https://example.com"
+                  className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  {linkActive && (
+                    <button
+                      type="button"
+                      onClick={removeLink}
+                      className="mr-auto flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      <Unlink2 className="h-3.5 w-3.5" />
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowLink(false)}
+                    className="h-8 rounded-md px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="h-8 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    {linkActive ? "Update" : "Apply"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
           {/* Alignment */}
@@ -1064,7 +1189,7 @@ export function RichTextEditor({
 
           {/* Font family */}
           <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setShowColors(false); setShowHighlights(false); setShowSizes(false); }}
+            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setShowColors(false); setShowHighlights(false); setShowSizes(false); setShowLink(false); }}
               className="flex h-8 max-w-[140px] items-center gap-1 rounded-md border border-border px-2.5 text-[11px] hover:bg-muted">
               <span className="truncate" style={{ fontFamily: currentFamily ?? undefined }}>
                 {selectedFamily === "mixed" ? "Mixed" : currentFamily ? FONT_OPTIONS.find((f) => f.value === currentFamily)?.label ?? "Custom" : "Font"}
@@ -1107,7 +1232,7 @@ export function RichTextEditor({
           }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">−</button>
 
           <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setShowColors(false); setShowHighlights(false); }}
+            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setShowColors(false); setShowHighlights(false); setShowLink(false); }}
               className={cn("flex h-8 items-center justify-center rounded-md border border-border px-2 text-xs hover:bg-muted", selectedFontSize === "mixed" ? "w-14" : "w-10")}>
               {selectedFontSize === "mixed" ? "Mixed" : currentFontSize ?? "—"}
             </button>
@@ -1139,7 +1264,7 @@ export function RichTextEditor({
 
           {/* Text color */}
           <div className="relative">
-            <button title={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"} onMouseDown={(e) => { e.preventDefault(); setShowColors((v) => !v); setShowHighlights(false); setShowFonts(false); setShowSizes(false); }}
+            <button title={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"} onMouseDown={(e) => { e.preventDefault(); setShowColors((v) => !v); setShowHighlights(false); setShowFonts(false); setShowSizes(false); setShowLink(false); }}
               className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedColor === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
               <Palette className="h-4 w-4" />
               <span className="absolute bottom-1 left-1 right-1 h-[2px] rounded-full" style={{ backgroundColor: currentColor ?? "#111827" }} />
@@ -1183,7 +1308,7 @@ export function RichTextEditor({
 
           {/* Highlight color */}
           <div className="relative">
-            <button title={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"} onMouseDown={(e) => { e.preventDefault(); setShowHighlights((v) => !v); setShowColors(false); setShowFonts(false); setShowSizes(false); }}
+            <button title={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"} onMouseDown={(e) => { e.preventDefault(); setShowHighlights((v) => !v); setShowColors(false); setShowFonts(false); setShowSizes(false); setShowLink(false); }}
               className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedHighlight === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
               <Highlighter className="h-4 w-4" />
               <span className="absolute bottom-1 left-1 right-1 h-[3px] rounded-full" style={{ backgroundColor: currentHighlight ?? "#fde68a" }} />
@@ -1251,7 +1376,7 @@ export function RichTextEditor({
             !shapeTextFlow && "[&_.ProseMirror]:break-words",
             "[&_.ProseMirror_p]:m-0",
             shapeTextFlow && "h-full w-full [&_.ProseMirror]:h-full [&_.ProseMirror]:min-h-full [&_.ProseMirror]:overflow-hidden",
-            !editable && "pointer-events-none select-none",
+            !editable && "pointer-events-none select-none [&_.ProseMirror_a]:pointer-events-auto [&_.ProseMirror_a]:select-auto",
             className
           )}
         />
