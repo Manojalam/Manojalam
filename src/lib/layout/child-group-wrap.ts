@@ -14,10 +14,50 @@ export interface WrappablePlacement {
 
 export type WrappablePlacements<T extends WrappablePlacement = WrappablePlacement> = Record<string, T>;
 
-export function normalizedChildGroupSize(value: unknown): number | null {
+function normalizedPositiveInteger(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const size = Math.floor(value);
   return size >= 1 ? Math.min(100, size) : null;
+}
+
+/** Resolve the requested number of visual sections, including legacy Fold-after boards. */
+export function resolvedFoldSectionCount(
+  data: Record<string, unknown>,
+  childCount: number
+): number {
+  if (childCount < 2) return 1;
+  const requestedSections = normalizedPositiveInteger(data.layoutFoldCount);
+  if (requestedSections) return Math.min(childCount, requestedSections);
+  const legacyGroupSize = normalizedPositiveInteger(data.layoutWrapAfter);
+  return legacyGroupSize ? Math.max(1, Math.ceil(childCount / legacyGroupSize)) : 1;
+}
+
+/** True when at least one parent in the set is rendered in multiple Fold sections. */
+export function hasFoldedChildSections(nodes: Node[]): boolean {
+  const childCounts = new Map<string, number>();
+  for (const node of nodes) {
+    const parentId = (node.data as { parentId?: unknown } | undefined)?.parentId;
+    if (typeof parentId === "string") childCounts.set(parentId, (childCounts.get(parentId) ?? 0) + 1);
+  }
+  return nodes.some((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const storedOrderCount = Array.isArray(data.childOrder) ? data.childOrder.length : 0;
+    const childCount = Math.max(storedOrderCount, childCounts.get(node.id) ?? 0);
+    return resolvedFoldSectionCount(data, childCount) > 1;
+  });
+}
+
+function balancedChildSections(children: string[], sectionCount: number): string[][] {
+  const baseSize = Math.floor(children.length / sectionCount);
+  const largerSectionCount = children.length % sectionCount;
+  const sections: string[][] = [];
+  let start = 0;
+  for (let index = 0; index < sectionCount; index += 1) {
+    const size = baseSize + (index < largerSectionCount ? 1 : 0);
+    sections.push(children.slice(start, start + size));
+    start += size;
+  }
+  return sections;
 }
 
 function placementRect(node: Node, placement: WrappablePlacement): NodeRect {
@@ -69,8 +109,8 @@ export function wrapChildGroups<T extends WrappablePlacement>(
   const parents = [...hierarchy.values()]
     .filter((entry) => {
       const data = (byId.get(entry.id)?.data ?? {}) as Record<string, unknown>;
-      const groupSize = normalizedChildGroupSize(data.layoutWrapAfter);
-      return groupSize !== null && entry.childIds.filter((childId) => !!next[childId]).length > groupSize;
+      const childCount = entry.childIds.filter((childId) => !!next[childId]).length;
+      return resolvedFoldSectionCount(data, childCount) > 1;
     })
     .sort((a, b) => b.depth - a.depth);
 
@@ -79,14 +119,9 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     const parentPlacement = next[parentEntry.id];
     if (!parent || !parentPlacement) continue;
     const data = (parent.data ?? {}) as Record<string, unknown>;
-    const groupSize = normalizedChildGroupSize(data.layoutWrapAfter);
-    if (!groupSize) continue;
-
     const children = parentEntry.childIds.filter((childId) => !!next[childId]);
-    const chunks = Array.from(
-      { length: Math.ceil(children.length / groupSize) },
-      (_, index) => children.slice(index * groupSize, (index + 1) * groupSize)
-    );
+    const sectionCount = resolvedFoldSectionCount(data, children.length);
+    const chunks = balancedChildSections(children, sectionCount);
     if (chunks.length < 2) continue;
 
     const chunkNodes = chunks.map((chunk) => [...new Set(chunk.flatMap((childId) => getSubtree(childId, hierarchy)))])

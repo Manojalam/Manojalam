@@ -39,6 +39,7 @@ import {
   supportsGeneratedLayoutSizing,
 } from "@/lib/layout/layout-presentation";
 import { computeListLayout } from "@/lib/layout/list-layout";
+import { hasFoldedChildSections } from "@/lib/layout/child-group-wrap";
 import {
   computeMatrixLayout,
   getMatrixBaseSize,
@@ -728,6 +729,9 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
     return node.id === key || data.matrixRootId === key;
   });
   if (!scopedNodes.length) return withoutCurrentFrame;
+  // A folded Matrix is a set of compact sections, not one rectangular table.
+  // Cell borders keep each section legible without framing empty canvas.
+  if (hasFoldedChildSections(scopedNodes)) return withoutCurrentFrame;
 
   const rects = scopedNodes.map((node) => {
     const data = (node.data ?? {}) as Record<string, unknown>;
@@ -940,11 +944,11 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation",
 ]);
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutWrapAfter", "listDensity",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutWrapAfter", "listDensity",
 ]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
@@ -2741,7 +2745,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
-    if (Object.prototype.hasOwnProperty.call(data, "layoutWrapAfter")) {
+    if (
+      Object.prototype.hasOwnProperty.call(data, "layoutFoldCount")
+      || Object.prototype.hasOwnProperty.call(data, "layoutWrapAfter")
+    ) {
       get().scheduleStructuredReflow(nodeId);
     }
   },
