@@ -11,6 +11,7 @@ export interface RenderedBoundsRect extends RenderedBoundsSize {
 }
 
 export type ShapeTextVerticalAlign = "top" | "middle" | "bottom";
+export type ShapeTextHorizontalAlign = "left" | "center" | "right";
 
 /**
  * Reduce an already-rendered rich-text scale until its glyph bounds fit the
@@ -85,4 +86,51 @@ export function correctedShapeFlowOffset(
   const nextOffset = normalizedOffset + (targetTop - content.top) / localToScreenScale;
   const maximumOffset = guide.height / localToScreenScale;
   return Math.max(0, Math.min(maximumOffset, Number.isFinite(nextOffset) ? nextOffset : normalizedOffset));
+}
+
+/**
+ * Correct a small horizontal drift introduced by CSS shape-outside floats.
+ * The offset is visual only, so it never changes line wrapping or the guide
+ * polygons themselves. Rectangles are browser (screen) coordinates and the
+ * returned offset is in the editor's local CSS pixels.
+ */
+export function correctedShapeFlowHorizontalOffset(
+  currentOffset: number,
+  content: RenderedBoundsRect,
+  guide: RenderedBoundsRect,
+  horizontalAlign: ShapeTextHorizontalAlign,
+  options: {
+    inset?: number;
+    localToScreenScale?: number;
+  } = {}
+): number {
+  const normalizedOffset = Number.isFinite(currentOffset) ? currentOffset : 0;
+  const localToScreenScale = Number.isFinite(options.localToScreenScale)
+    ? Math.max(0.01, options.localToScreenScale ?? 1)
+    : 1;
+  const inset = Number.isFinite(options.inset) ? Math.max(0, options.inset ?? 0) : 0;
+  if (
+    !Number.isFinite(content.left)
+    || !Number.isFinite(content.width)
+    || !Number.isFinite(guide.left)
+    || !Number.isFinite(guide.right)
+    || !Number.isFinite(guide.width)
+    || content.width <= 0
+    || guide.width <= 0
+  ) return normalizedOffset;
+
+  const screenInset = Math.min(guide.width / 2, inset * localToScreenScale);
+  const targetLeft = guide.left + screenInset;
+  const targetRight = guide.right - screenInset;
+  const target = horizontalAlign === "left"
+    ? targetLeft
+    : horizontalAlign === "right"
+      ? targetRight - content.width
+      : targetLeft + (targetRight - targetLeft - content.width) / 2;
+  const nextOffset = normalizedOffset + (target - content.left) / localToScreenScale;
+  const maximumOffset = Math.max(guide.width / localToScreenScale, 8);
+  return Math.max(
+    -maximumOffset,
+    Math.min(maximumOffset, Number.isFinite(nextOffset) ? nextOffset : normalizedOffset)
+  );
 }

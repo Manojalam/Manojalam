@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { correctedGuideContentScale, correctedShapeFlowOffset } from "./rich-text-guide-fit";
+import {
+  correctedGuideContentScale,
+  correctedShapeFlowHorizontalOffset,
+  correctedShapeFlowOffset,
+} from "./rich-text-guide-fit";
 
 test("rendered rich text is reduced to the actual label guide", () => {
   const corrected = correctedGuideContentScale(
@@ -90,4 +94,37 @@ test("contour alignment ignores invalid geometry and clamps within its guide", (
     width: 20,
     height: 20,
   }, guide, "top"), 0);
+});
+
+test("horizontal contour alignment removes the measured rightward drift", () => {
+  const content = { left: 140, top: 90, right: 340, bottom: 130, width: 200, height: 40 };
+
+  assert.equal(correctedShapeFlowHorizontalOffset(10, content, guide, "center"), 20);
+});
+
+test("horizontal contour alignment honors left and right text alignment", () => {
+  const content = { left: 180, top: 90, right: 280, bottom: 130, width: 100, height: 40 };
+
+  assert.equal(correctedShapeFlowHorizontalOffset(0, content, guide, "left", { inset: 10 }), -70);
+  assert.equal(correctedShapeFlowHorizontalOffset(0, content, guide, "right", { inset: 10 }), 110);
+});
+
+test("horizontal contour alignment is zoom invariant", () => {
+  const normal = correctedShapeFlowHorizontalOffset(
+    0,
+    { left: 140, top: 90, right: 340, bottom: 130, width: 200, height: 40 },
+    guide,
+    "center",
+    { localToScreenScale: 1 }
+  );
+  const zoomed = correctedShapeFlowHorizontalOffset(
+    0,
+    { left: 35, top: 22.5, right: 85, bottom: 32.5, width: 50, height: 10 },
+    { left: 25, top: 12.5, right: 100, bottom: 62.5, width: 75, height: 50 },
+    "center",
+    { localToScreenScale: 0.25 }
+  );
+
+  assert.equal(normal, 10);
+  assert.equal(normal, zoomed);
 });
