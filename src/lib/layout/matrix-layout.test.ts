@@ -315,6 +315,80 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   assertClean(result);
 });
 
+test("a nested Fold shrinks its parent to the folded child rows", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "rule", parentId: "root" },
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `example-${index}`, parentId: "rule" })),
+    { id: "next-rule", parentId: "root" },
+    { id: "next-example", parentId: "next-rule" },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "rule"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const rule = cells.get("rule")!;
+  const examples = Array.from({ length: 4 }, (_, index) => cells.get(`example-${index}`)!);
+  const foldedExamplesHeight = Math.max(...examples.map((cell) => cell.y + cell.height))
+    - Math.min(...examples.map((cell) => cell.y));
+  const nextRule = cells.get("next-rule")!;
+
+  assert.equal(examples[0].y, examples[2].y);
+  assert.equal(rule.height, foldedExamplesHeight);
+  assert.equal(nextRule.y, rule.y + rule.height + MATRIX_DENSITY_SETTINGS[result.density].cellGap);
+  assertClean(result);
+
+  const resizedNodes = nodes.map((node) => node.id === "rule"
+    ? { ...node, data: { ...node.data, matrixHeightOverride: 220 } }
+    : node);
+  const resized = computeMatrixLayout(
+    "root",
+    buildHierarchy(resizedNodes, fixture.edges),
+    new Map(resizedNodes.map((node) => [node.id, node]))
+  );
+  assert.equal(resized.cells.find((cell) => cell.nodeId === "rule")!.height, 220);
+  assertClean(resized);
+});
+
+test("a compact nested Fold keeps the next large branch in the outer right section", () => {
+  const groups = [
+    ["varna", 4],
+    ["yant", 4],
+    ["savarna", 5],
+    ["guna", 4],
+    ["vrddhi", 4],
+    ["purva", 2],
+    ["para", 2],
+  ] as const;
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    ...groups.flatMap(([groupId, exampleCount]) => [
+      { id: groupId, parentId: "root" },
+      { id: `${groupId}-rule`, parentId: groupId },
+      ...Array.from({ length: exampleCount }, (_, index) => ({
+        id: `${groupId}-example-${index}`,
+        parentId: `${groupId}-rule`,
+      })),
+    ]),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "root") return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    if (node.id === "varna-rule") return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(cells.get("varna")!.x, cells.get("savarna")!.x);
+  assert.ok(cells.get("guna")!.x > cells.get("savarna")!.x);
+  assert.equal(cells.get("guna")!.x, cells.get("para")!.x);
+  assert.equal(cells.get("varna")!.y, cells.get("guna")!.y);
+  assertClean(result);
+});
+
 test("user-resized cells persist column width and row height overrides", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },

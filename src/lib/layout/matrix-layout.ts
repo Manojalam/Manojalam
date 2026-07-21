@@ -1,7 +1,11 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
-import { wrapChildGroups } from "./child-group-wrap";
+import {
+  balancedFoldSectionsByExtent,
+  resolvedFoldSectionCount,
+  resolvedManualFoldBreakAfter,
+} from "./child-group-wrap";
 import {
   createNodeRect,
   getNodeDimensions,
@@ -459,6 +463,23 @@ function hasVerticalMatrixBranch(
   return visit(rootId, "horizontal", new Set());
 }
 
+function hasFoldedMatrixBranch(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): boolean {
+  const visit = (nodeId: string, ancestors: Set<string>): boolean => {
+    if (ancestors.has(nodeId)) return false;
+    const children = visibleChildren(nodeId, hierarchy, byId)
+      .filter((childId) => !ancestors.has(childId));
+    const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+    if (resolvedFoldSectionCount(data, children.length) > 1) return true;
+    const nextAncestors = new Set(ancestors).add(nodeId);
+    return children.some((childId) => visit(childId, nextAncestors));
+  };
+  return visit(rootId, new Set());
+}
+
 function translateOrientedCells(
   cells: OrientedBranchCell[],
   dx: number,
@@ -502,6 +523,144 @@ function stretchOrientedBranch(
   };
 }
 
+type OrientedChildEntry = {
+  nodeId: string;
+  layout: OrientedBranchLayout;
+};
+
+function sequentialSegmentExtents(
+  children: OrientedChildEntry[],
+  orientation: MatrixOrientation,
+  cellGap: number
+): number[][] {
+  const extents = Array.from(
+    { length: children.length },
+    () => Array.from({ length: children.length + 1 }, () => 0)
+  );
+  for (let start = 0; start < children.length; start += 1) {
+    let extent = 0;
+    for (let end = start; end < children.length; end += 1) {
+      if (end > start) extent += cellGap;
+      extent += orientation === "horizontal"
+        ? children[end].layout.height
+        : children[end].layout.width;
+      extents[start][end + 1] = extent;
+    }
+  }
+  return extents;
+}
+
+function orientedChildSections(
+  parentData: Record<string, unknown>,
+  children: OrientedChildEntry[],
+  orientation: MatrixOrientation,
+  cellGap: number
+): OrientedChildEntry[][] {
+  const childIds = children.map((child) => child.nodeId);
+  const sectionCount = resolvedFoldSectionCount(parentData, children.length);
+  if (sectionCount < 2) return [children];
+  const manualBreakAfter = resolvedManualFoldBreakAfter(parentData, childIds, sectionCount);
+  let idSections: string[][];
+  if (manualBreakAfter) {
+    const breakIndexes = new Set(manualBreakAfter.map((childId) => childIds.indexOf(childId)));
+    idSections = [];
+    let start = 0;
+    childIds.forEach((_, index) => {
+      if (!breakIndexes.has(index)) return;
+      idSections.push(childIds.slice(start, index + 1));
+      start = index + 1;
+    });
+    idSections.push(childIds.slice(start));
+  } else {
+    idSections = balancedFoldSectionsByExtent(
+      childIds,
+      sectionCount,
+      sequentialSegmentExtents(children, orientation, cellGap)
+    );
+  }
+  const byChildId = new Map(children.map((child) => [child.nodeId, child]));
+  return idSections.map((section) => section.flatMap((childId) => byChildId.get(childId) ?? []));
+}
+
+function proportionalShare(total: number, index: number, count: number): number {
+  return total * (index + 1) / count - total * index / count;
+}
+
+function layoutOrientedChildSections(
+  parentData: Record<string, unknown>,
+  children: OrientedChildEntry[],
+  orientation: MatrixOrientation,
+  settings: DensitySettings,
+  minimumWidth = 0,
+  minimumHeight = 0
+): OrientedBranchLayout {
+  if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
+  const sections = orientedChildSections(parentData, children, orientation, settings.cellGap);
+  const foldGap = sections.length > 1 ? settings.cellGap + 32 : 0;
+
+  if (orientation === "horizontal") {
+    const naturalSections = sections.map((section) => ({
+      children: section,
+      width: Math.max(...section.map((child) => child.layout.width)),
+      height: section.reduce((sum, child) => sum + child.layout.height, 0)
+        + settings.cellGap * (section.length - 1),
+    }));
+    const naturalWidth = naturalSections.reduce((sum, section) => sum + section.width, 0)
+      + foldGap * (naturalSections.length - 1);
+    const width = Math.max(minimumWidth, naturalWidth);
+    const height = Math.max(minimumHeight, ...naturalSections.map((section) => section.height));
+    const extraWidth = width - naturalWidth;
+    const cells: OrientedBranchCell[] = [];
+    let sectionX = 0;
+
+    naturalSections.forEach((section, sectionIndex) => {
+      const sectionWidth = section.width
+        + proportionalShare(extraWidth, sectionIndex, naturalSections.length);
+      const extraHeight = height - section.height;
+      let childY = 0;
+      section.children.forEach((child, childIndex) => {
+        const childHeight = child.layout.height
+          + proportionalShare(extraHeight, childIndex, section.children.length);
+        const stretched = stretchOrientedBranch(child.layout, sectionWidth, childHeight);
+        cells.push(...translateOrientedCells(stretched.cells, sectionX, childY));
+        childY += stretched.height + settings.cellGap;
+      });
+      sectionX += sectionWidth + foldGap;
+    });
+    return { width, height, cells };
+  }
+
+  const naturalSections = sections.map((section) => ({
+    children: section,
+    width: section.reduce((sum, child) => sum + child.layout.width, 0)
+      + settings.cellGap * (section.length - 1),
+    height: Math.max(...section.map((child) => child.layout.height)),
+  }));
+  const naturalHeight = naturalSections.reduce((sum, section) => sum + section.height, 0)
+    + foldGap * (naturalSections.length - 1);
+  const width = Math.max(minimumWidth, ...naturalSections.map((section) => section.width));
+  const height = Math.max(minimumHeight, naturalHeight);
+  const extraHeight = height - naturalHeight;
+  const cells: OrientedBranchCell[] = [];
+  let sectionY = 0;
+
+  naturalSections.forEach((section, sectionIndex) => {
+    const sectionHeight = section.height
+      + proportionalShare(extraHeight, sectionIndex, naturalSections.length);
+    const extraWidth = width - section.width;
+    let childX = 0;
+    section.children.forEach((child, childIndex) => {
+      const childWidth = child.layout.width
+        + proportionalShare(extraWidth, childIndex, section.children.length);
+      const stretched = stretchOrientedBranch(child.layout, childWidth, sectionHeight);
+      cells.push(...translateOrientedCells(stretched.cells, childX, sectionY));
+      childX += stretched.width + settings.cellGap;
+    });
+    sectionY += sectionHeight + foldGap;
+  });
+  return { width, height, cells };
+}
+
 /**
  * Builds the mixed-orientation form of Matrix. Horizontal branches retain the
  * familiar merged-cell table direction (parent left, descendants right), while
@@ -540,8 +699,11 @@ function computeOrientedMatrixLayout(
     const nextAncestors = new Set(ancestors).add(nodeId);
     const children = visibleChildren(nodeId, hierarchy, byId)
       .filter((childId) => !nextAncestors.has(childId))
-      .map((childId) => buildBranch(childId, column + 1, orientation, nextAncestors))
-      .filter((child) => child.cells.length > 0);
+      .map((childId) => ({
+        nodeId: childId,
+        layout: buildBranch(childId, column + 1, orientation, nextAncestors),
+      }))
+      .filter((child) => child.layout.cells.length > 0);
 
     if (!children.length) {
       return {
@@ -551,113 +713,75 @@ function computeOrientedMatrixLayout(
       };
     }
 
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const childArea = layoutOrientedChildSections(
+      data,
+      children,
+      orientation,
+      settings,
+      orientation === "vertical" ? width : 0,
+      orientation === "horizontal" ? ownRequiredHeight : 0
+    );
+
     if (orientation === "vertical") {
-      const naturalChildrenWidth = children.reduce((sum, child) => sum + child.width, 0)
-        + settings.cellGap * (children.length - 1);
-      const branchWidth = Math.max(width, naturalChildrenWidth);
-      const childrenHeight = Math.max(...children.map((child) => child.height));
-      const extraChildrenWidth = branchWidth - naturalChildrenWidth;
-      const stretchedChildren = children.map((child, index) => {
-        const extraWidth = extraChildrenWidth * (index + 1) / children.length
-          - extraChildrenWidth * index / children.length;
-        return stretchOrientedBranch(child, child.width + extraWidth, childrenHeight);
-      });
-      const childY = ownRequiredHeight + settings.cellGap;
-      let childX = 0;
-      const cells: OrientedBranchCell[] = [{
-        nodeId,
-        x: 0,
-        y: 0,
-        width: branchWidth,
-        height: ownRequiredHeight,
-        requiredHeight: ownRequiredHeight,
-      }];
-      for (const child of stretchedChildren) {
-        cells.push(...translateOrientedCells(child.cells, childX, childY));
-        childX += child.width + settings.cellGap;
-      }
       return {
-        width: branchWidth,
-        height: ownRequiredHeight + settings.cellGap + childrenHeight,
-        cells,
+        width: childArea.width,
+        height: ownRequiredHeight + settings.cellGap + childArea.height,
+        cells: [
+          {
+            nodeId,
+            x: 0,
+            y: 0,
+            width: childArea.width,
+            height: ownRequiredHeight,
+            requiredHeight: ownRequiredHeight,
+          },
+          ...translateOrientedCells(childArea.cells, 0, ownRequiredHeight + settings.cellGap),
+        ],
       };
     }
 
-    const naturalChildrenHeight = children.reduce((sum, child) => sum + child.height, 0)
-      + settings.cellGap * (children.length - 1);
-    const branchHeight = Math.max(ownRequiredHeight, naturalChildrenHeight);
-    const childrenWidth = Math.max(...children.map((child) => child.width));
-    const extraChildrenHeight = branchHeight - naturalChildrenHeight;
-    const stretchedChildren = children.map((child, index) => {
-      const extraHeight = extraChildrenHeight * (index + 1) / children.length
-        - extraChildrenHeight * index / children.length;
-      return stretchOrientedBranch(child, childrenWidth, child.height + extraHeight);
-    });
-    let childY = 0;
-    const cells: OrientedBranchCell[] = [{
-      nodeId,
-      x: 0,
-      y: 0,
-      width,
-      height: branchHeight,
-      requiredHeight: ownRequiredHeight,
-    }];
-    for (const child of stretchedChildren) {
-      cells.push(...translateOrientedCells(child.cells, width + settings.cellGap, childY));
-      childY += child.height + settings.cellGap;
-    }
     return {
-      width: width + settings.cellGap + childrenWidth,
-      height: branchHeight,
-      cells,
+      width: width + settings.cellGap + childArea.width,
+      height: childArea.height,
+      cells: [
+        {
+          nodeId,
+          x: 0,
+          y: 0,
+          width,
+          height: childArea.height,
+          requiredHeight: ownRequiredHeight,
+        },
+        ...translateOrientedCells(childArea.cells, width + settings.cellGap, 0),
+      ],
     };
   };
 
   const builtRootChildren = visibleChildren(rootId, hierarchy, byId)
-    .map((childId) => buildBranch(childId, 0, rootOrientation, new Set([rootId])))
-    .filter((child) => child.cells.length > 0);
-  const naturalBodyWidth = builtRootChildren.length
-    ? rootOrientation === "vertical"
-      ? builtRootChildren.reduce((sum, child) => sum + child.width, 0) + settings.cellGap * (builtRootChildren.length - 1)
-      : Math.max(...builtRootChildren.map((child) => child.width))
-    : 0;
-  const bodyHeight = builtRootChildren.length
-    ? rootOrientation === "vertical"
-      ? Math.max(...builtRootChildren.map((child) => child.height))
-      : builtRootChildren.reduce((sum, child) => sum + child.height, 0) + settings.cellGap * (builtRootChildren.length - 1)
-    : 0;
+    .map((childId) => ({
+      nodeId: childId,
+      layout: buildBranch(childId, 0, rootOrientation, new Set([rootId])),
+    }))
+    .filter((child) => child.layout.cells.length > 0);
   const preferredHeaderWidth = Math.ceil(clamp(
     preferredCellWidth(root, 0, settings),
     MATRIX_HEADER_MIN_WIDTH,
     760
   ));
-  const tableWidth = Math.max(preferredHeaderWidth, naturalBodyWidth);
-  const rootChildren = rootOrientation === "vertical"
-    ? builtRootChildren.map((child, index) => {
-      const extraBodyWidth = tableWidth - naturalBodyWidth;
-      const extraWidth = extraBodyWidth * (index + 1) / builtRootChildren.length
-        - extraBodyWidth * index / builtRootChildren.length;
-      return stretchOrientedBranch(child, child.width + extraWidth, bodyHeight);
-    })
-    : builtRootChildren.map((child) => stretchOrientedBranch(child, tableWidth, child.height));
+  const body = layoutOrientedChildSections(
+    rootData,
+    builtRootChildren,
+    rootOrientation,
+    settings,
+    preferredHeaderWidth
+  );
+  const tableWidth = body.width;
+  const bodyHeight = body.height;
   const headerHeight = requiredCellHeight(root, tableWidth, settings, settings.minHeaderHeight);
-  const bodyY = tableY + headerHeight + (rootChildren.length ? settings.cellGap : 0);
+  const bodyY = tableY + headerHeight + (builtRootChildren.length ? settings.cellGap : 0);
   const bodyX = tableX;
-
-  const orientedCells: OrientedBranchCell[] = [];
-  if (rootOrientation === "vertical") {
-    let nextX = bodyX;
-    for (const child of rootChildren) {
-      orientedCells.push(...translateOrientedCells(child.cells, nextX, bodyY));
-      nextX += child.width + settings.cellGap;
-    }
-  } else {
-    let nextY = bodyY;
-    for (const child of rootChildren) {
-      orientedCells.push(...translateOrientedCells(child.cells, bodyX, nextY));
-      nextY += child.height + settings.cellGap;
-    }
-  }
+  const orientedCells = translateOrientedCells(body.cells, bodyX, bodyY);
 
   const cells = orientedCells.map<MatrixCellGeometry>((cell) => {
     const span = spanMap.get(cell.nodeId);
@@ -735,65 +859,6 @@ function computeOrientedMatrixLayout(
   };
 }
 
-function foldMatrixChildGroups(
-  result: MatrixLayoutResult,
-  hierarchy: Hierarchy,
-  byId: Map<string, Node>
-): MatrixLayoutResult {
-  const orientationCache = new Map<string, MatrixOrientation>();
-  const effectiveOrientation = (nodeId: string): MatrixOrientation => {
-    const cached = orientationCache.get(nodeId);
-    if (cached) return cached;
-    const parentId = hierarchy.get(nodeId)?.parentId;
-    const inherited = parentId ? effectiveOrientation(parentId) : "horizontal";
-    const node = byId.get(nodeId);
-    const data = (node?.data ?? {}) as Record<string, unknown>;
-    const orientation = storedOrientation(data.matrixOrientation) ?? inherited;
-    orientationCache.set(nodeId, orientation);
-    return orientation;
-  };
-  const placements = wrapChildGroups(
-    result.placements,
-    hierarchy,
-    byId,
-    (parentId) => effectiveOrientation(parentId) === "horizontal" ? "horizontal" : "vertical",
-    MATRIX_DENSITY_SETTINGS[result.density].cellGap + 32
-  );
-  if (Object.keys(placements).every((nodeId) => (
-    placements[nodeId].x === result.placements[nodeId].x
-    && placements[nodeId].y === result.placements[nodeId].y
-  ))) return result;
-
-  const cells = result.cells.map((cell) => {
-    const before = result.placements[cell.nodeId];
-    const after = placements[cell.nodeId];
-    return before && after
-      ? { ...cell, x: cell.x + after.x - before.x, y: cell.y + after.y - before.y }
-      : cell;
-  });
-  const right = Math.max(result.header.x + result.header.width, ...cells.map((cell) => cell.x + cell.width));
-  const header = { ...result.header, width: right - result.header.x };
-  const root = byId.get(result.rootId);
-  if (root) {
-    const rootPosition = nodePositionForRect(root, header.x, header.y, header.width, header.height);
-    placements[result.rootId] = { ...rootPosition, width: header.width, height: header.height };
-  }
-  const renderedCells = [header, ...cells];
-  const left = Math.min(...renderedCells.map((cell) => cell.x));
-  const top = Math.min(...renderedCells.map((cell) => cell.y));
-  const bottom = Math.max(...renderedCells.map((cell) => cell.y + cell.height));
-  const bounds = createNodeRect(
-    `matrix-bounds-${result.rootId}`,
-    left,
-    top,
-    right - left,
-    bottom - top
-  );
-  const diagnostics = diagnoseMatrix(result.rootId, result.rows, cells, header, hierarchy, byId);
-
-  return { ...result, cells, placements, header, bounds, diagnostics };
-}
-
 export function computeMatrixLayout(
   rootId: string,
   hierarchy: Hierarchy,
@@ -865,8 +930,11 @@ export function computeMatrixLayout(
     }
   }
 
-  if (hasVerticalMatrixBranch(rootId, hierarchy, byId)) {
-    return foldMatrixChildGroups(computeOrientedMatrixLayout(
+  if (
+    hasVerticalMatrixBranch(rootId, hierarchy, byId)
+    || hasFoldedMatrixBranch(rootId, hierarchy, byId)
+  ) {
+    return computeOrientedMatrixLayout(
       rootId,
       hierarchy,
       byId,
@@ -878,7 +946,7 @@ export function computeMatrixLayout(
       settings,
       tableX,
       tableY
-    ), hierarchy, byId);
+    );
   }
 
   const columnX: number[] = [];
@@ -991,7 +1059,7 @@ export function computeMatrixLayout(
     console.warn("[matrix-layout] geometry diagnostics", diagnostics);
   }
 
-  return foldMatrixChildGroups({
+  return {
     rootId,
     density,
     orientation: storedOrientation(rootData.matrixOrientation) ?? "horizontal",
@@ -1005,5 +1073,5 @@ export function computeMatrixLayout(
     header,
     bounds,
     diagnostics,
-  }, hierarchy, byId);
+  };
 }

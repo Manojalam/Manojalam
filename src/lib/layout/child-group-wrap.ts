@@ -119,7 +119,7 @@ function betterFoldPartition(
   return false;
 }
 
-function balancedChildSectionsByExtent(
+export function balancedFoldSectionsByExtent(
   children: string[],
   sectionCount: number,
   segmentExtents: number[][] | null
@@ -267,7 +267,7 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     const manualBreakAfter = resolvedManualFoldBreakAfter(data, children, sectionCount);
     const chunks = manualBreakAfter
       ? sectionsFromBreakAfter(children, manualBreakAfter)
-      : balancedChildSectionsByExtent(
+      : balancedFoldSectionsByExtent(
           children,
           sectionCount,
           childSegmentExtents(children, hierarchy, next, byId, flow)
