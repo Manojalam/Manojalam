@@ -453,32 +453,35 @@ test("whole-node maximum fitting is opt-in and preserves the authored font size"
   assert.ok(maximized.scale > 1);
 });
 
-test("maximum fitting ignores stale measurements from a previously narrow shape", () => {
+test("maximum fitting does not enlarge an overflowing dense measurement", () => {
   const available = { width: 180, height: 50 };
-  const expectedFontSize = maximumFittedTextFontSize("Earth", available, {
-    preferredFontSize: 14,
-    minimumFontSize: 8,
-    maximumFontSize: 96,
-  });
+  const data = {
+    text: "Earth",
+    fontSize: 14,
+    intrinsicContentSize: {
+      width: 8,
+      naturalWidth: 70,
+      height: 400,
+      lineCount: 20,
+    },
+  };
+  const ordinary = getFittedTextPresentation(
+    data,
+    available.width,
+    14,
+    { availableHeight: available.height, constrain: true }
+  );
   const maximized = getFittedTextPresentation(
     {
-      text: "Earth",
-      fontSize: 14,
+      ...data,
       maximizeText: true,
-      intrinsicContentSize: {
-        width: 8,
-        naturalWidth: 70,
-        height: 400,
-        lineCount: 20,
-      },
     },
     available.width,
     14,
     { availableHeight: available.height, constrain: true }
   );
 
-  assert.equal(maximized.fontSize, expectedFontSize);
-  assert.ok(maximized.fontSize > 14);
+  assert.equal(maximized.scale, ordinary.scale);
 });
 
 test("fill available space never shrinks the normal rendered fit", () => {
@@ -531,6 +534,32 @@ test("fill available space maximizes the actual compact rich-text measurement", 
 
   assert.equal(presentation.scale, 2.25);
   assert.equal(32 * presentation.scale, available.width);
+});
+
+test("fill available space caps dense rich text at its measured height", () => {
+  const available = { width: 180, height: 96 };
+  const measurement = {
+    width: 150,
+    naturalWidth: 420,
+    height: 80,
+    naturalHeight: 40,
+    lineCount: 4,
+  };
+  const presentation = getFittedTextPresentation(
+    {
+      text: "a dense label with enough words to wrap across several lines",
+      fontSize: 14,
+      maximizeText: true,
+      intrinsicContentSize: measurement,
+    },
+    available.width,
+    14,
+    { availableHeight: available.height, constrain: true }
+  );
+
+  assert.equal(presentation.scale, 1.2);
+  assert.ok(measurement.height * presentation.scale <= available.height);
+  assert.ok(measurement.width * presentation.scale <= available.width);
 });
 
 test("fixed-box fitting respects a readable minimum scale", () => {

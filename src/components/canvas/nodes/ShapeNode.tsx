@@ -14,9 +14,6 @@ import {
 import {
   shapeLabelBox,
   diamondTextLabelBox,
-  shapeTextFlowLayout,
-  shouldRenderShapeTextFlow,
-  type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
 import type {
   ShapeNodeData,
@@ -1069,44 +1066,13 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
-  const intrinsicContentSize = (dd.matrixIntrinsicSize ?? dd.intrinsicContentSize) as
-    | Partial<ContentMeasurement>
-    | undefined;
-  const flowOptions = {
-    cornerRadius: bRadius,
-    petalCount,
-  };
-  // Diamonds get one stable inscribed text rectangle. Flowing each line from
-  // a pointed tip makes font fitting and vertical alignment jump unpredictably.
-  const contourTextFlow = renderedShapeType !== "diamond" && shouldRenderShapeTextFlow(
-    renderedShapeType,
-    nodeSize,
-    intrinsicContentSize,
-    editing,
-    initialContent,
-    flowOptions
-  );
-  const flowLayout = shapeTextFlowLayout(renderedShapeType, nodeSize, flowOptions);
+  // Every shape label uses one stable, shape-safe rectangle. A separate
+  // contour-flow editor changed the layout mode after measurement, ignored
+  // flex alignment, and clipped scaled text at the editor boundary.
   const labelBox = renderedShapeType === "diamond"
     ? diamondTextLabelBox(nodeSize)
-    : contourTextFlow
-    ? flowLayout.box
-    : shapeLabelBox(renderedShapeType, nodeSize, "shape", {
-        contentSize: intrinsicContentSize,
-      });
-  // The contour reaches the pointed tips of diamonds and polygons, but those
-  // tips are not useful text space. Reserve a small shape-aware breathing room
-  // so top/bottom alignment cannot place glyphs outside the visible surface.
-  const flowVerticalInset = contourTextFlow
-    ? Math.min(
-        flowLayout.box.height * 0.2,
-        Math.max(16, Math.min(flowLayout.box.width, flowLayout.box.height) * 0.12),
-      )
-    : 0;
-  const availableTextSize = contourTextFlow ? {
-    width: flowLayout.capacity.width,
-    height: Math.max(8, flowLayout.capacity.height - flowVerticalInset * 2),
-  } : {
+    : shapeLabelBox(renderedShapeType, nodeSize, "shape");
+  const availableTextSize = {
     width: labelBox.width,
     height: labelBox.height,
   };
@@ -1118,25 +1084,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     backgroundColor: fillColor,
   });
   const textVerticalAlign = resolveTextVerticalAlign(dd.textVerticalAlign);
-  const fallbackLineCount = Math.max(
-    1,
-    initialContent.split(/\r?\n/u).length,
-    (initialContent.match(/<(?:p|div|h[1-6]|li)\b/gi) ?? []).length,
-    (initialContent.match(/<br\s*\/?\s*>/gi) ?? []).length + 1,
-  );
-  const estimatedTextHeight = Math.min(
-    availableTextSize.height,
-    (intrinsicContentSize?.height
-      ?? textPresentation.authoredFontSize * fallbackLineCount * 1.38)
-      * textPresentation.scale,
-  );
-  const flowVerticalOffset = contourTextFlow
-    ? textVerticalAlign === "top"
-      ? flowVerticalInset
-      : textVerticalAlign === "bottom"
-        ? flowVerticalInset + Math.max(0, labelBox.height - flowVerticalInset * 2 - estimatedTextHeight)
-        : flowVerticalInset + Math.max(0, (labelBox.height - flowVerticalInset * 2 - estimatedTextHeight) / 2)
-    : 0;
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -1414,10 +1361,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               >
                 <div
                   ref={textRotationTargetRef}
-                  className={cn(
-                    "h-full w-full",
-                    contourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
-                  )}
+                  className="flex h-full w-full items-center justify-center"
                   style={{
                     ...textPresentation.style,
                     ...textRotationStyle(textRotation),
@@ -1426,7 +1370,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       : textVerticalAlign === "bottom" ? "flex-end" : "center",
                   }}
                 >
-                  <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
+                  <div className="w-full max-h-full">
                     <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
@@ -1435,11 +1379,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       measurementWidth={availableTextSize.width}
                       measurementFontSize={textPresentation.authoredFontSize}
                       contentScale={textPresentation.scale}
-                      shapeTextFlow={contourTextFlow ? {
-                        leftExclusion: flowLayout.leftExclusion,
-                        rightExclusion: flowLayout.rightExclusion,
-                        verticalOffset: flowVerticalOffset,
-                      } : undefined}
                       placeholder="Double-click…"
                       className={cn(
                         "[&_.ProseMirror]:text-center",
