@@ -7,7 +7,6 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { LAYOUT_OPTIONS, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
-import { resolvedFoldSectionCount } from "@/lib/layout/child-group-wrap";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { cn } from "@/lib/utils";
@@ -17,6 +16,7 @@ import {
   type FlowchartTidyDirection,
 } from "@/lib/canvas/flowchart-tidy";
 import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
+import { FoldBranchControls } from "./FoldBranchControls";
 
 // ── Schematic SVG previews (56×40) ────────────────────────────────────────────
 const dot = (x: number, y: number, r = 3.2, fill = "#4262ff") => (
@@ -153,8 +153,8 @@ export function LayoutPanel() {
   }
   const paletteRootData = (paletteRoot?.data ?? {}) as Record<string, unknown>;
   const paletteMode = paletteRootData.layoutMode as LayoutMode | undefined;
-  const selectedChildCount = selectedNode ? hierarchy.get(selectedNode.id)?.childIds.length ?? 0 : 0;
-  const selectedFoldSectionCount = resolvedFoldSectionCount(selectedData, selectedChildCount);
+  const selectedChildIds = selectedNode ? hierarchy.get(selectedNode.id)?.childIds ?? [] : [];
+  const selectedChildCount = selectedChildIds.length;
   const canFoldSelectedBranch = selectedChildCount > 1
     && (paletteMode === "horizontal"
       || paletteMode === "vertical"
@@ -354,31 +354,13 @@ export function LayoutPanel() {
         </div>
 
         {selectedNode && canFoldSelectedBranch && (
-          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
-            <div className="text-xs font-medium text-foreground">Fold into sections</div>
-            <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-              Children stay in order and are balanced across the selected number of sections.
-            </p>
-            <select
-              value={selectedFoldSectionCount}
-              aria-label="Fold into sections"
-              onChange={(event) => {
-                const sectionCount = Math.max(1, Math.min(selectedChildCount, Number(event.target.value)));
-                useCanvasStore.getState().pushHistory();
-                updateNodeData(selectedNode.id, {
-                  layoutFoldCount: sectionCount > 1 ? sectionCount : undefined,
-                  layoutWrapAfter: undefined,
-                });
-              }}
-              className="mt-2 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-            >
-              {Array.from({ length: selectedChildCount }, (_, index) => index + 1).map((sectionCount) => (
-                <option key={sectionCount} value={sectionCount}>
-                  {sectionCount === 1 ? "No fold · 1 section" : `${sectionCount} balanced sections`}
-                </option>
-              ))}
-            </select>
-          </div>
+          <FoldBranchControls
+            parentId={selectedNode.id}
+            parentData={selectedData}
+            childIds={selectedChildIds}
+            nodes={nodes}
+            className="mt-2"
+          />
         )}
 
         {selectedNode && currentMode === "radial" && (

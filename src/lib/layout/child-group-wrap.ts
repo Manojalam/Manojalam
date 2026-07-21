@@ -60,6 +60,98 @@ function balancedChildSections(children: string[], sectionCount: number): string
   return sections;
 }
 
+/** Default custom break points use the same stable count distribution as older Fold boards. */
+export function defaultFoldBreakAfter(children: string[], sectionCount: number): string[] {
+  const sections = balancedChildSections(children, Math.max(1, Math.min(children.length, sectionCount)));
+  return sections.slice(0, -1).flatMap((section) => section[section.length - 1] ?? []);
+}
+
+/** Resolve valid user-authored break points. Invalid or stale points fall back to automatic balancing. */
+export function resolvedManualFoldBreakAfter(
+  data: Record<string, unknown>,
+  children: string[],
+  sectionCount: number
+): string[] | null {
+  if (sectionCount < 2 || !Array.isArray(data.layoutFoldBreakAfter)) return null;
+  const requested = data.layoutFoldBreakAfter.filter(
+    (childId): childId is string => typeof childId === "string"
+  );
+  if (requested.length !== sectionCount - 1) return null;
+  const indexes = requested.map((childId) => children.indexOf(childId));
+  if (indexes.some((index) => index < 0 || index >= children.length - 1)) return null;
+  if (indexes.some((index, position) => position > 0 && index <= indexes[position - 1])) return null;
+  return requested;
+}
+
+interface FoldPartitionCandidate {
+  breaks: number[];
+  extents: number[];
+}
+
+function betterFoldPartition(
+  candidate: FoldPartitionCandidate,
+  current: FoldPartitionCandidate | null
+): boolean {
+  if (!current) return true;
+  const candidateMax = Math.max(...candidate.extents);
+  const currentMax = Math.max(...current.extents);
+  if (Math.abs(candidateMax - currentMax) > 0.001) return candidateMax < currentMax;
+
+  const candidateRange = candidateMax - Math.min(...candidate.extents);
+  const currentRange = currentMax - Math.min(...current.extents);
+  if (Math.abs(candidateRange - currentRange) > 0.001) return candidateRange < currentRange;
+
+  const candidateMean = candidate.extents.reduce((sum, value) => sum + value, 0) / candidate.extents.length;
+  const currentMean = current.extents.reduce((sum, value) => sum + value, 0) / current.extents.length;
+  const candidateVariance = candidate.extents.reduce((sum, value) => sum + (value - candidateMean) ** 2, 0);
+  const currentVariance = current.extents.reduce((sum, value) => sum + (value - currentMean) ** 2, 0);
+  if (Math.abs(candidateVariance - currentVariance) > 0.001) return candidateVariance < currentVariance;
+
+  // Preserve the legacy preference for putting remainder items in earlier sections.
+  for (let index = 0; index < candidate.breaks.length; index += 1) {
+    if (candidate.breaks[index] !== current.breaks[index]) {
+      return candidate.breaks[index] > current.breaks[index];
+    }
+  }
+  return false;
+}
+
+function balancedChildSectionsByExtent(
+  children: string[],
+  sectionCount: number,
+  segmentExtents: number[][] | null
+): string[][] {
+  if (!segmentExtents) return balancedChildSections(children, sectionCount);
+  const states: Array<Array<FoldPartitionCandidate | null>> = Array.from(
+    { length: sectionCount + 1 },
+    () => Array.from({ length: children.length + 1 }, () => null)
+  );
+
+  for (let end = 1; end <= children.length; end += 1) {
+    states[1][end] = { breaks: [], extents: [segmentExtents[0][end]] };
+  }
+  for (let section = 2; section <= sectionCount; section += 1) {
+    for (let end = section; end <= children.length; end += 1) {
+      let best: FoldPartitionCandidate | null = null;
+      for (let start = section - 1; start < end; start += 1) {
+        const previous = states[section - 1][start];
+        if (!previous) continue;
+        const candidate = {
+          breaks: [...previous.breaks, start],
+          extents: [...previous.extents, segmentExtents[start][end]],
+        };
+        if (betterFoldPartition(candidate, best)) best = candidate;
+      }
+      states[section][end] = best;
+    }
+  }
+
+  const result = states[sectionCount][children.length];
+  if (!result) return balancedChildSections(children, sectionCount);
+  const boundaries = [0, ...result.breaks, children.length];
+  return boundaries.slice(0, -1).map((start, index) => children.slice(start, boundaries[index + 1]));
+}
+
 function placementRect(node: Node, placement: WrappablePlacement): NodeRect {
   const measured = getNodeDimensions(node);
   const width = placement.width ?? measured.width;
@@ -92,6 +184,53 @@ function combinedBounds(
   return createNodeRect("wrapped-group", left, top, right - left, bottom - top);
 }
 
+function childSegmentExtents(
+  children: string[],
+  hierarchy: Hierarchy,
+  placements: WrappablePlacements,
+  byId: Map<string, Node>,
+  flow: ChildGroupFlow
+): number[][] | null {
+  const childBounds = children.map((childId) => {
+    const subtreeIds = [...new Set(getSubtree(childId, hierarchy))].filter((nodeId) => !!placements[nodeId]);
+    return combinedBounds(subtreeIds, placements, byId);
+  });
+  if (childBounds.some((bounds) => !bounds)) return null;
+
+  const extents = Array.from(
+    { length: children.length },
+    () => Array.from({ length: children.length + 1 }, () => 0)
+  );
+  for (let start = 0; start < childBounds.length; start += 1) {
+    let left = Number.POSITIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+    for (let end = start; end < childBounds.length; end += 1) {
+      const bounds = childBounds[end]!;
+      left = Math.min(left, bounds.left);
+      top = Math.min(top, bounds.top);
+      right = Math.max(right, bounds.right);
+      bottom = Math.max(bottom, bounds.bottom);
+      extents[start][end + 1] = flow === "horizontal" ? bottom - top : right - left;
+    }
+  }
+  return extents;
+}
+
+function sectionsFromBreakAfter(children: string[], breakAfter: string[]): string[][] {
+  const breakIndexes = new Set(breakAfter.map((childId) => children.indexOf(childId)));
+  const sections: string[][] = [];
+  let start = 0;
+  children.forEach((_, index) => {
+    if (!breakIndexes.has(index)) return;
+    sections.push(children.slice(start, index + 1));
+    start = index + 1;
+  });
+  sections.push(children.slice(start));
+  return sections;
+}
+
 /**
  * Splits direct children into adjacent visual groups while moving every child's
  * complete subtree with it. Hierarchy metadata and edges remain unchanged.
@@ -121,7 +260,15 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     const data = (parent.data ?? {}) as Record<string, unknown>;
     const children = parentEntry.childIds.filter((childId) => !!next[childId]);
     const sectionCount = resolvedFoldSectionCount(data, children.length);
-    const chunks = balancedChildSections(children, sectionCount);
+    const flow = flowForParent(parentEntry.id);
+    const manualBreakAfter = resolvedManualFoldBreakAfter(data, children, sectionCount);
+    const chunks = manualBreakAfter
+      ? sectionsFromBreakAfter(children, manualBreakAfter)
+      : balancedChildSectionsByExtent(
+          children,
+          sectionCount,
+          childSegmentExtents(children, hierarchy, next, byId, flow)
+        );
     if (chunks.length < 2) continue;
 
     const chunkNodes = chunks.map((chunk) => [...new Set(chunk.flatMap((childId) => getSubtree(childId, hierarchy)))])
@@ -129,7 +276,6 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     const chunkBounds = chunkNodes.map((nodeIds) => combinedBounds(nodeIds, next, byId));
     if (chunkBounds.some((bounds) => !bounds)) continue;
 
-    const flow = flowForParent(parentEntry.id);
     const firstBounds = chunkBounds[0]!;
     let nextMainStart = flow === "horizontal" ? firstBounds.left : firstBounds.top;
     const groupCrossStart = flow === "horizontal" ? firstBounds.top : firstBounds.left;

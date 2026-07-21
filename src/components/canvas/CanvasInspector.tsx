@@ -27,7 +27,6 @@ import { useUIStore } from "@/store/ui-store";
 import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
 import { LAYOUT_OPTIONS, getNodeDimensions } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
-import { resolvedFoldSectionCount } from "@/lib/layout/child-group-wrap";
 import type {
   BorderLayer,
   ConcentricShapeLayer,
@@ -110,6 +109,7 @@ import {
 } from "@/lib/canvas/object-rotation";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 import { lightenColor } from "@/lib/style-utils";
+import { FoldBranchControls } from "./FoldBranchControls";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1097,7 +1097,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     return null;
   })();
   const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
-  const selectedFoldSectionCount = resolvedFoldSectionCount(d, childIds.length);
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
     ? nodes.find((node) => node.type === "sunburst" && (node.data as Record<string, unknown>).sunburstFor === d.sunburstHiddenFor)
@@ -3453,31 +3452,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {canFoldSelectedBranch && (
           <Section label="Fold branch" visible={singleNodeTab === "layout"}>
-            <div className="rounded-lg border border-border bg-muted/30 p-2">
-              <p className="text-[10px] font-medium text-foreground">Fold into sections</p>
-              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                Children stay in order and are balanced across compact sections.
-              </p>
-              <select
-                value={selectedFoldSectionCount}
-                aria-label="Fold into sections"
-                onChange={(event) => {
-                  const sectionCount = Math.max(1, Math.min(childIds.length, Number(event.target.value)));
-                  pushHistory();
-                  updateNodeData(selectedNode.id, {
-                    layoutFoldCount: sectionCount > 1 ? sectionCount : undefined,
-                    layoutWrapAfter: undefined,
-                  });
-                }}
-                className="mt-2 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-              >
-                {Array.from({ length: childIds.length }, (_, index) => index + 1).map((sectionCount) => (
-                  <option key={sectionCount} value={sectionCount}>
-                    {sectionCount === 1 ? "No fold · 1 section" : `${sectionCount} balanced sections`}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <FoldBranchControls
+              parentId={selectedNode.id}
+              parentData={d}
+              childIds={childIds}
+              nodes={nodes}
+              compact
+            />
           </Section>
         )}
 

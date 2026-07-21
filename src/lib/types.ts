@@ -427,6 +427,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   childOrder?: string[];
   /** Number of balanced visual sections used to Fold this parent's direct children. */
   layoutFoldCount?: number;
+  /** Direct-child ids after which custom Fold sections end. Omit to balance automatically. */
+  layoutFoldBreakAfter?: string[];
   /** @deprecated Legacy maximum children per Fold group. */
   layoutWrapAfter?: number;
   /** Layout mode last applied to this node's branch (set on the branch root). */
