@@ -316,6 +316,57 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   assertClean(result);
 });
 
+test("a top-level Fold does not inflate a shorter section to the tallest section", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "tall", parentId: "root" },
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `tall-${index}`, parentId: "tall" })),
+    { id: "short", parentId: "root" },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const unfolded = computeMatrixLayout(
+    "root",
+    buildHierarchy(fixture.nodes, fixture.edges),
+    new Map(fixture.nodes.map((node) => [node.id, node]))
+  );
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const tall = cells.get("tall")!;
+  const short = cells.get("short")!;
+
+  assert.equal(tall.y, short.y);
+  assert.ok(tall.height > short.requiredHeight);
+  assert.equal(short.height, short.requiredHeight);
+  assert.equal(result.header.x, unfolded.header.x);
+  assert.equal(result.header.y, unfolded.header.y);
+  assertClean(result);
+});
+
+test("a top-level vertical Fold does not inflate a shorter section to the widest section", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, orientation: "vertical" },
+    { id: "wide", parentId: "root" },
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `wide-${index}`, parentId: "wide" })),
+    { id: "short", parentId: "root" },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const wide = cells.get("wide")!;
+  const short = cells.get("short")!;
+
+  assert.equal(wide.x, short.x);
+  assert.ok(wide.width > short.width);
+  assert.equal(short.width, result.columnWidths[0]);
+  assertClean(result);
+});
+
 test("a nested Fold shrinks its parent to the folded child rows", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },

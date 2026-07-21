@@ -593,13 +593,14 @@ function layoutOrientedChildSections(
   settings: DensitySettings,
   minimumWidth = 0,
   minimumHeight = 0,
-  emphasizeFoldSections = false
+  isRootSectionLayout = false
 ): OrientedBranchLayout {
   if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
   const sections = orientedChildSections(parentData, children, orientation, settings.cellGap);
   const foldGap = sections.length > 1
-    ? settings.cellGap + (emphasizeFoldSections ? 32 : 0)
+    ? settings.cellGap + (isRootSectionLayout ? 32 : 0)
     : 0;
+  const preserveNaturalSectionCrossAxis = isRootSectionLayout && sections.length > 1;
 
   if (orientation === "horizontal") {
     const naturalSections = sections.map((section) => ({
@@ -619,7 +620,10 @@ function layoutOrientedChildSections(
     naturalSections.forEach((section, sectionIndex) => {
       const sectionWidth = section.width
         + proportionalShare(extraWidth, sectionIndex, naturalSections.length);
-      const extraHeight = height - section.height;
+      // Root Fold sections are adjacent continuations, not rows in one rigid
+      // rectangular table. Keep a shorter section content-sized instead of
+      // inflating every branch merely to match the tallest continuation.
+      const extraHeight = preserveNaturalSectionCrossAxis ? 0 : height - section.height;
       let childY = 0;
       section.children.forEach((child, childIndex) => {
         const childHeight = child.layout.height
@@ -650,7 +654,7 @@ function layoutOrientedChildSections(
   naturalSections.forEach((section, sectionIndex) => {
     const sectionHeight = section.height
       + proportionalShare(extraHeight, sectionIndex, naturalSections.length);
-    const extraWidth = width - section.width;
+    const extraWidth = preserveNaturalSectionCrossAxis ? 0 : width - section.width;
     let childX = 0;
     section.children.forEach((child, childIndex) => {
       const childWidth = child.layout.width
