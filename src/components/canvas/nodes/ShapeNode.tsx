@@ -15,6 +15,7 @@ import {
   shapeLabelBox,
   shapeTextFlowLayout,
   resolveShapeTextPadding,
+  shouldRenderShapeTextFlow,
   shouldUseShapeLabelContour,
   type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
@@ -1090,11 +1091,22 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     plainLabelText,
     flowOptions
   );
+  // Display follows the exact shape contour. Editing intentionally keeps the
+  // same padded label box but removes exclusion floats so caret movement,
+  // selection, and wrapping remain stable and rectangular for every shape.
+  const renderContourTextFlow = !matrixCell && shouldRenderShapeTextFlow(
+    renderedShapeType,
+    nodeSize,
+    currentIntrinsicContentSize,
+    editing,
+    plainLabelText,
+    flowOptions
+  );
   const labelBox = contourTextFlow
     ? flowLayout.box
     : shapeLabelBox(renderedShapeType, nodeSize, "shape");
   const flowVerticalInset = 0;
-  const availableTextSize = contourTextFlow ? {
+  const availableTextSize = renderContourTextFlow ? {
     width: flowLayout.capacity.width,
     height: Math.max(8, flowLayout.capacity.height - flowVerticalInset * 2),
   } : {
@@ -1106,7 +1118,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     // The browser's exclusion polygons perform the final fit for contour text.
     // Pre-shrinking that text into the average rectangular capacity made large
     // fonts look tiny inside otherwise spacious diamonds and curved shapes.
-    constrain: !contourTextFlow,
+    constrain: !renderContourTextFlow,
     backgroundColor: fillColor,
   });
   const textVerticalAlign = resolveTextVerticalAlign(dd.textVerticalAlign);
@@ -1142,7 +1154,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       ?? textPresentation.authoredFontSize * fallbackLineCount * 1.42)
       * textPresentation.scale
   );
-  const flowVerticalOffset = contourTextFlow
+  const flowVerticalOffset = renderContourTextFlow
     ? textVerticalAlign === "top"
       ? flowVerticalInset
       : textVerticalAlign === "bottom"
@@ -1428,7 +1440,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   ref={textRotationTargetRef}
                   className={cn(
                     "h-full w-full",
-                    contourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
+                    renderContourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
                   )}
                   style={{
                     ...textPresentation.style,
@@ -1438,7 +1450,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       : textVerticalAlign === "bottom" ? "flex-end" : "center",
                   }}
                 >
-                  <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
+                  <div className={cn("w-full max-h-full", renderContourTextFlow && "h-full max-h-none")}>
                     <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
@@ -1448,7 +1460,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       measurementFontSize={textPresentation.authoredFontSize}
                       contentScale={textPresentation.scale}
                       constrainToShapeGuide
-                      shapeTextFlow={contourTextFlow ? {
+                      shapeTextFlow={renderContourTextFlow ? {
                         leftExclusion: flowLayout.leftExclusion,
                         rightExclusion: flowLayout.rightExclusion,
                         verticalOffset: flowVerticalOffset,

@@ -167,6 +167,7 @@ test("shape text flow uses the full silhouette instead of one inscribed rectangl
     });
     assert.deepEqual(flow.box, { x: 4, y: 4, width: 352, height: 232 }, `${shapeType} full inset box`);
     assert.ok(flow.areaRatio >= 0.08 && flow.areaRatio <= 1, `${shapeType} finite area`);
+    assert.ok(flow.lineWidthRatio >= flow.areaRatio && flow.lineWidthRatio <= 1, `${shapeType} broad line width`);
     assert.equal(flow.capacity.height, flow.box.height, `${shapeType} full height`);
     assert.ok(flow.capacity.width > 0 && flow.capacity.width <= flow.box.width, `${shapeType} capacity`);
     assert.match(flow.leftExclusion, /^polygon\(/, `${shapeType} left contour`);
@@ -181,6 +182,7 @@ test("shape text flow uses the full silhouette instead of one inscribed rectangl
   assert.ok(diamondFlow.box.height > compactDiamond.height);
   assert.ok(diamondFlow.capacity.width * diamondFlow.capacity.height > compactDiamond.width * compactDiamond.height);
   assert.ok(diamondFlow.areaRatio > 0.45 && diamondFlow.areaRatio < 0.55);
+  assert.ok(diamondFlow.lineWidthRatio >= 0.75);
 });
 
 test("diamond labels use a stable inscribed rectangle", () => {
@@ -235,6 +237,9 @@ test("diamond and capsule phrases keep the full contour available", () => {
     assert.ok(flow.box.width > safeBox.width, `${shapeType} uses more horizontal space`);
     assert.ok(flow.box.height >= safeBox.height, `${shapeType} uses at least the safe-box height`);
   }
+
+  const capsuleFlow = shapeTextFlowLayout("capsule", rendered);
+  assert.ok(capsuleFlow.capacity.width > capsuleFlow.box.width * 0.95);
 });
 
 test("every authored shape label selects its shape contour", () => {
@@ -251,6 +256,16 @@ test("every authored shape label selects its shape contour", () => {
       shouldUseShapeLabelContour(shape, rendered, undefined, "अवसानम्"),
       true,
       `${shape} contour`
+    );
+    assert.equal(
+      shouldRenderShapeTextFlow(shape, rendered, undefined, false, "अवसानम्"),
+      true,
+      `${shape} display contour`
+    );
+    assert.equal(
+      shouldRenderShapeTextFlow(shape, rendered, undefined, true, "अवसानम्"),
+      false,
+      `${shape} rectangular editor`
     );
   }
   assert.equal(shouldUseShapeLabelContour("diamond", rendered, undefined, ""), false);

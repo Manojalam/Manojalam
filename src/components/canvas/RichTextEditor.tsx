@@ -439,14 +439,18 @@ export function RichTextEditor({
   });
 
   const guidePresentation = `${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`;
+  const hasShapeTextFlow = !!shapeTextFlow;
+  const flowVerticalAlign = shapeTextFlow?.verticalAlign ?? "middle";
+  const flowVerticalInset = shapeTextFlow?.verticalInset ?? 0;
+  const flowRotation = shapeTextFlow?.rotation ?? 0;
   const flowPresentation = shapeTextFlow
     ? [
         guidePresentation,
         shapeTextFlow.leftExclusion,
         shapeTextFlow.rightExclusion,
-        shapeTextFlow.verticalAlign ?? "middle",
-        shapeTextFlow.verticalInset ?? 0,
-        shapeTextFlow.rotation ?? 0,
+        flowVerticalAlign,
+        flowVerticalInset,
+        flowRotation,
         shapeTextFlow.guideWidth ?? 0,
         shapeTextFlow.guideHeight ?? 0,
       ].join("|")
@@ -464,11 +468,16 @@ export function RichTextEditor({
     const contentBounds = renderedTextBounds(content);
     if (!contentBounds) return;
     const guideBounds = guide.getBoundingClientRect();
+    const guideLocalToScreenScale = guide.offsetHeight > 0
+      ? guideBounds.height / guide.offsetHeight
+      : 1;
     const currentScale = renderedContentScaleRef.current;
     const correctedScale = correctedGuideContentScale(
       currentScale,
       { width: contentBounds.width, height: contentBounds.height },
-      { width: guideBounds.width, height: guideBounds.height }
+      { width: guideBounds.width, height: guideBounds.height },
+      2,
+      guideLocalToScreenScale
     );
     if (
       correctedScale < currentScale - 0.001
@@ -484,7 +493,7 @@ export function RichTextEditor({
     // way to vertically align the resulting irregular group. Correct the
     // first block's offset from the browser's real glyph bounds after fonts,
     // wrapping, inline sizes, and canvas zoom have all been applied.
-    if (shapeTextFlow && Math.abs(shapeTextFlow.rotation ?? 0) < 0.001) {
+    if (hasShapeTextFlow && Math.abs(flowRotation) < 0.001) {
       const rootBounds = root.getBoundingClientRect();
       const localToScreenScale = root.offsetHeight > 0
         ? rootBounds.height / root.offsetHeight
@@ -501,14 +510,14 @@ export function RichTextEditor({
           width: guideBounds.width,
           height: guideBounds.height,
         },
-        shapeTextFlow.verticalAlign ?? "middle",
+        flowVerticalAlign,
         {
-          inset: shapeTextFlow.verticalInset,
+          inset: flowVerticalInset,
           localToScreenScale,
         }
       );
       if (
-        Math.abs(corrected - currentOffset) > 0.5
+        Math.abs(corrected - currentOffset) * localToScreenScale > 0.75
         && shapeGuideCorrectionCountRef.current < 6
       ) {
         shapeGuideCorrectionCountRef.current += 1;
@@ -516,7 +525,14 @@ export function RichTextEditor({
         setRenderedFlowOffset(corrected);
       }
     }
-  }, [constrainToShapeGuide, editor, shapeTextFlow]);
+  }, [
+    constrainToShapeGuide,
+    editor,
+    flowRotation,
+    flowVerticalAlign,
+    flowVerticalInset,
+    hasShapeTextFlow,
+  ]);
 
   const scheduleShapeGuideReconciliation = useCallback(() => {
     cancelAnimationFrame(shapeGuideFrameRef.current);
