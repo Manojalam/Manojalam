@@ -425,6 +425,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   parentId?: string | null;
   /** Explicit sibling order (child node ids) for stable layouts. */
   childOrder?: string[];
+  /** Maximum direct children in one visual group before continuing alongside. */
+  layoutWrapAfter?: number;
   /** Layout mode last applied to this node's branch (set on the branch root). */
   layoutMode?: LayoutMode;
   /** Palette selected for non-radial hierarchy layouts. */

@@ -940,11 +940,11 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "matrixDensity", "matrixGridVisible", "matrixOrientation",
+  "collapsed", "parentId", "childOrder", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation",
 ]);
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "listDensity",
+  "collapsed", "parentId", "childOrder", "layoutWrapAfter", "listDensity",
 ]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
@@ -2741,6 +2741,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
     if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
+    if (Object.prototype.hasOwnProperty.call(data, "layoutWrapAfter")) {
+      get().scheduleStructuredReflow(nodeId);
+    }
   },
 
   setNodeLocked: (nodeId, locked) => {

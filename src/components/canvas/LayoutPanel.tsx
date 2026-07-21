@@ -152,6 +152,14 @@ export function LayoutPanel() {
   }
   const paletteRootData = (paletteRoot?.data ?? {}) as Record<string, unknown>;
   const paletteMode = paletteRootData.layoutMode as LayoutMode | undefined;
+  const selectedChildCount = selectedNode ? hierarchy.get(selectedNode.id)?.childIds.length ?? 0 : 0;
+  const canFoldSelectedBranch = selectedChildCount > 1
+    && (paletteMode === "horizontal"
+      || paletteMode === "vertical"
+      || paletteMode === "topDown"
+      || paletteMode === "list"
+      || paletteMode === "linear"
+      || paletteMode === "matrix");
   const listRoot = paletteMode === "list" ? paletteRoot : null;
   const listBranchIds = listRoot ? getSubtree(listRoot.id, hierarchy) : [];
   const activeColorScheme = radialColorScheme(
@@ -342,6 +350,46 @@ export function LayoutPanel() {
             </button>
           ))}
         </div>
+
+        {selectedNode && canFoldSelectedBranch && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium text-foreground">Fold children after</div>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Example: 5 folds 10 children into two adjacent groups of five.
+                </p>
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                value={typeof selectedData.layoutWrapAfter === "number" ? selectedData.layoutWrapAfter : ""}
+                placeholder="Off"
+                aria-label="Fold children after"
+                onFocus={() => useCanvasStore.getState().pushHistory()}
+                onChange={(event) => {
+                  const value = event.target.value === "" ? undefined : Math.max(1, Math.min(100, Math.floor(Number(event.target.value))));
+                  updateNodeData(selectedNode.id, { layoutWrapAfter: Number.isFinite(value) ? value : undefined });
+                }}
+                className="h-8 w-16 rounded-md border border-border bg-background px-2 text-center text-xs outline-none focus:border-primary"
+              />
+            </div>
+            {typeof selectedData.layoutWrapAfter === "number" && (
+              <button
+                type="button"
+                onClick={() => {
+                  useCanvasStore.getState().pushHistory();
+                  updateNodeData(selectedNode.id, { layoutWrapAfter: undefined });
+                }}
+                className="mt-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-[9px] hover:bg-muted"
+              >
+                Unfold into one group
+              </button>
+            )}
+          </div>
+        )}
 
         {selectedNode && currentMode === "radial" && (
           <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">

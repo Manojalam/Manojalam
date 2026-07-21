@@ -74,6 +74,20 @@ test("structured layouts remain collision-free with variable node dimensions", (
   }
 });
 
+test("Fold continues a Linear branch on the next row", () => {
+  const tree = buildVariableTree(10);
+  const nodes = tree.nodes.map((node) => node.id === "n0"
+    ? { ...node, data: { ...node.data, layoutWrapAfter: 2 } }
+    : node);
+  const positions = computeLayout(nodes, tree.edges, "linear", { rootId: "n0" });
+  const placed = applyPositions(nodes, positions);
+  const first = getNodeRect(placed.find((node) => node.id === "n1")!);
+  const third = getNodeRect(placed.find((node) => node.id === "n3")!);
+
+  assert.ok(third.top > first.bottom);
+  assertNoOverlap(placed, "linear");
+});
+
 test("tree levels keep clear routing corridors without oversized empty bands", () => {
   const tree = buildVariableTree(13);
   const horizontal = applyPositions(

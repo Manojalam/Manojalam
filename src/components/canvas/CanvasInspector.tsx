@@ -1078,6 +1078,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
     }
   }
+  const structuredLayoutRootNode = (() => {
+    if (matrixRootNode) return matrixRootNode;
+    if (!selectedNode) return null;
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const seen = new Set<string>();
+    let currentId: string | null = selectedNode.id;
+    while (currentId && !seen.has(currentId)) {
+      seen.add(currentId);
+      const candidate = byId.get(currentId) ?? null;
+      const mode = ((candidate?.data ?? {}) as Record<string, unknown>).layoutMode;
+      if (mode === "horizontal" || mode === "vertical" || mode === "topDown" || mode === "list" || mode === "linear") {
+        return candidate;
+      }
+      currentId = hierarchy.get(currentId)?.parentId ?? null;
+    }
+    return null;
+  })();
+  const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
     ? nodes.find((node) => node.type === "sunburst" && (node.data as Record<string, unknown>).sunburstFor === d.sunburstHiddenFor)
@@ -3430,6 +3448,50 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </Button>
           </div>
         </Section>
+
+        {canFoldSelectedBranch && (
+          <Section label="Fold branch" visible={singleNodeTab === "layout"}>
+            <div className="rounded-lg border border-border bg-muted/30 p-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-medium text-foreground">Fold children after</p>
+                  <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                    5 makes two adjacent groups when this parent has 10 children.
+                  </p>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={typeof d.layoutWrapAfter === "number" ? d.layoutWrapAfter : ""}
+                  placeholder="Off"
+                  aria-label="Fold children after"
+                  onFocus={pushHistory}
+                  onChange={(event) => {
+                    const value = event.target.value === "" ? undefined : Math.max(1, Math.min(100, Math.floor(Number(event.target.value))));
+                    updateNodeData(selectedNode.id, { layoutWrapAfter: Number.isFinite(value) ? value : undefined });
+                  }}
+                  className="h-8 w-16 rounded-md border border-border bg-background px-2 text-center text-xs outline-none focus:border-primary"
+                />
+              </div>
+              {typeof d.layoutWrapAfter === "number" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 h-7 w-full text-[9px]"
+                  onClick={() => {
+                    pushHistory();
+                    updateNodeData(selectedNode.id, { layoutWrapAfter: undefined });
+                  }}
+                >
+                  Unfold into one group
+                </Button>
+              )}
+            </div>
+          </Section>
+        )}
 
         {isContentNode && !isRadialLayoutSector && (
           <Section label="Presets" visible={singleNodeTab === "style"}>

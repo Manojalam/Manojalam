@@ -65,6 +65,7 @@ import {
   isExternalNoteNode,
 } from "@/lib/canvas/node-note";
 import { planNodeDragMovement } from "@/lib/canvas/drag-movement";
+import { findReparentDropTarget } from "@/lib/canvas/reparent-drop-target";
 import {
   isConnectorConnectionAllowed,
   usesManualFlowchartPlacement,
@@ -111,34 +112,10 @@ function isNodeLocked(node: Node | undefined): boolean {
   return (node?.data as Record<string, unknown> | undefined)?.locked === true;
 }
 
-function reparentDropTarget(
-  nodes: Node[],
-  edges: Edge[],
-  draggedNodeId: string,
-  movingIds: ReadonlySet<string>
-): string | null {
-  const draggedNode = nodes.find((node) => node.id === draggedNodeId);
-  if (!draggedNode || draggedNode.hidden || isExternalNoteNode(draggedNode)) return null;
-  const hierarchy = buildHierarchy(nodes, edges);
-  const descendants = new Set(getSubtree(draggedNodeId, hierarchy));
-  const draggedRect = getNodeRect(draggedNode);
-  const center = { x: draggedRect.centerX, y: draggedRect.centerY };
-  const unsupportedParentTypes = new Set(["frame", "junction", "sunburst", "relationshipDiagram"]);
-
-  return nodes
-    .filter((candidate) => {
-      if (candidate.hidden || movingIds.has(candidate.id) || descendants.has(candidate.id)) return false;
-      if (unsupportedParentTypes.has(candidate.type ?? "")) return false;
-      if (isExternalNoteNode(candidate)) return false;
-      const rect = getNodeRect(candidate);
-      return center.x >= rect.left && center.x <= rect.right
-        && center.y >= rect.top && center.y <= rect.bottom;
-    })
-    .sort((a, b) => {
-      const aRect = getNodeRect(a);
-      const bRect = getNodeRect(b);
-      return aRect.width * aRect.height - bRect.width * bRect.height;
-    })[0]?.id ?? null;
+function dragEventClientPoint(event: MouseEvent | TouchEvent): { x: number; y: number } | null {
+  if ("clientX" in event) return { x: event.clientX, y: event.clientY };
+  const touch = event.touches.item(0) ?? event.changedTouches.item(0);
+  return touch ? { x: touch.clientX, y: touch.clientY } : null;
 }
 
 function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]): Node[] {
@@ -741,18 +718,36 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       };
     });
     const currentNodes = useCanvasStore.getState().nodes;
-    setReparentTargetId(reparentDropTarget(currentNodes, state.edges, draggedNode.id, movingIds));
+    const pointer = dragEventClientPoint(event);
+    setReparentTargetId(pointer
+      ? findReparentDropTarget(
+          currentNodes,
+          state.edges,
+          draggedNode.id,
+          movingIds,
+          screenToFlowPosition(pointer)
+        )
+      : null);
     setGuides({ h: snap.horizontalGuides, v: snap.verticalGuides });
-  }, [getViewport]);
+  }, [getViewport, screenToFlowPosition]);
 
   // Push history when a drag ends (safe: fires once, not on every frame)
-  const onNodeDragStop = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
+  const onNodeDragStop = useCallback((event: MouseEvent | TouchEvent, draggedNode: Node) => {
     if (useUIStore.getState().relationshipSelection) return;
     setGuides({ h: [], v: [] });
     const drag = dragStartRef.current;
     const movedIds = new Set(drag?.positions.keys() ?? []);
     let state = useCanvasStore.getState();
-    const dropTargetId = reparentDropTarget(state.nodes, state.edges, draggedNode.id, movedIds);
+    const pointer = dragEventClientPoint(event);
+    const dropTargetId = pointer
+      ? findReparentDropTarget(
+          state.nodes,
+          state.edges,
+          draggedNode.id,
+          movedIds,
+          screenToFlowPosition(pointer)
+        )
+      : reparentTargetId;
     if (dropTargetId) {
       state.reparentNode(draggedNode.id, dropTargetId);
       state = useCanvasStore.getState();
@@ -778,7 +773,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     if (ui.moveOnlyNodeId && movedIds.has(ui.moveOnlyNodeId)) ui.setMoveOnlyNodeId(null);
     state.setSaveStatus("unsaved");
     if (drag?.matrixRootId) state.scheduleMatrixReflow(drag.matrixRootId);
-  }, []);
+  }, [reparentTargetId, screenToFlowPosition]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     if (useUIStore.getState().relationshipSelection) {

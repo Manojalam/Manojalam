@@ -125,6 +125,34 @@ test("List creates one strongly indented depth-first outline", () => {
   assertNoOverlap(positionedNodes(nodes, placements));
 });
 
+test("Fold continues a long List branch in an adjacent vertical group", () => {
+  const specs: TreeSpec[] = [
+    { id: "root", parentId: null, width: 220, height: 72 },
+    ...Array.from({ length: 10 }, (_, index) => ({
+      id: `child-${index}`,
+      parentId: "root",
+      width: 180,
+      height: 58,
+    })),
+  ];
+  const fixture = buildTree(specs);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutWrapAfter: 5 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const placed = positionedNodes(nodes, placements);
+  const first = getNodeRect(placed.find((node) => node.id === "child-0")!);
+  const sixth = getNodeRect(placed.find((node) => node.id === "child-5")!);
+  const model = buildListConnectorModel(placed, fixture.edges);
+
+  assert.equal(first.top, sixth.top);
+  assert.ok(sixth.left > first.right);
+  assert.equal(model.groups.find((group) => group.parentId === "root")?.branches.length, 10);
+  assert.deepEqual(model.obstacleIntersections, []);
+  assertNoOverlap(placed);
+});
+
 test("comfortable density increases indentation and row clearance", () => {
   const { nodes, edges } = buildTree(referenceSpecs);
   const hierarchy = buildHierarchy(nodes, edges);

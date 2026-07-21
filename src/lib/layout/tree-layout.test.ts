@@ -177,6 +177,51 @@ test("shared tree buses replace overlapping per-child elbows and avoid every box
   }
 });
 
+test("Fold packs direct children into adjacent groups and routes outside earlier groups", () => {
+  const fixture = denseTree();
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutWrapAfter: 5 } }
+    : node);
+  const edges = fixture.edges.map((edge) => ({
+    ...edge,
+    data: { ...edge.data, layoutMode: "horizontal" },
+  }));
+  const placed = applyLayout(nodes, edges, "horizontal");
+  const firstColumn = getNodeRect(placed.find((node) => node.id === "branch-0")!);
+  const secondColumn = getNodeRect(placed.find((node) => node.id === "branch-5")!);
+  const fourthColumn = getNodeRect(placed.find((node) => node.id === "branch-15")!);
+  const model = buildTreeConnectorModel(placed, edges);
+  const rootGroup = model.groups.find((group) => group.parentId === "root");
+
+  assert.ok(Math.abs(firstColumn.top - secondColumn.top) <= 2);
+  assert.ok(secondColumn.left > firstColumn.right);
+  assert.ok(fourthColumn.left > secondColumn.right);
+  assert.equal(rootGroup?.branches.length, 16);
+  assert.ok((rootGroup?.sharedSegments.length ?? 0) > 2);
+  assert.deepEqual(model.obstacleIntersections, []);
+  assertNoOverlap(placed, "horizontal");
+
+  const verticalEdges = fixture.edges.map((edge) => ({
+    ...edge,
+    data: { ...edge.data, layoutMode: "vertical" },
+  }));
+  const verticalPlaced = applyLayout(nodes, verticalEdges, "vertical");
+  const verticalHierarchy = buildHierarchy(nodes, verticalEdges);
+  const firstRowIds = Array.from({ length: 5 }, (_, index) => `branch-${index}`)
+    .flatMap((branchId) => getSubtree(branchId, verticalHierarchy));
+  const secondRowIds = Array.from({ length: 5 }, (_, index) => `branch-${index + 5}`)
+    .flatMap((branchId) => getSubtree(branchId, verticalHierarchy));
+  const firstRow = crossBounds(verticalPlaced, firstRowIds, "vertical");
+  const secondRow = crossBounds(verticalPlaced, secondRowIds, "vertical");
+  const firstRowRoot = getNodeRect(verticalPlaced.find((node) => node.id === "branch-0")!);
+  const secondRowRoot = getNodeRect(verticalPlaced.find((node) => node.id === "branch-5")!);
+  const verticalModel = buildTreeConnectorModel(verticalPlaced, verticalEdges);
+  assert.ok(Math.abs(firstRow.start - secondRow.start) <= 2);
+  assert.ok(secondRowRoot.top > firstRowRoot.bottom);
+  assert.deepEqual(verticalModel.obstacleIntersections, []);
+  assertNoOverlap(verticalPlaced, "vertical");
+});
+
 test("manually moved endpoints remain on grouped hierarchy buses", () => {
   const fixture = denseTree();
   const placed = applyLayout(fixture.nodes, fixture.edges, "vertical").map((node) => node.id === "branch-3"
