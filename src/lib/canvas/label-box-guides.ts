@@ -1,7 +1,6 @@
-/** A board-wide guide switch augments, rather than replaces, local chart overrides. */
+/** The canvas-wide switch is the single authoritative guide setting. */
 export function resolveLabelBoxGuideVisibility(
-  boardEnabled: boolean | undefined,
-  localEnabled?: boolean
+  boardEnabled: boolean | undefined
 ): boolean {
-  return boardEnabled === true || localEnabled === true;
+  return boardEnabled === true;
 }

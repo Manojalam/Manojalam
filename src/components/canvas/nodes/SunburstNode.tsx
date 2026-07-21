@@ -1021,10 +1021,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const fittedGeometry = useMemo(() => {
     if (!model) return null;
     const rootData = (model.root.data ?? {}) as Record<string, unknown>;
-    const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(
-      showCanvasLabelBoxGuides,
-      rootData.radialDebugLabelBoxes === true
-    );
+    const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(showCanvasLabelBoxGuides);
     const rootLabel = nodeLabel(model.root);
     const rootRichText = nodeRichText(model.root, rootLabel);
     const rootFit = circleLabelGeometry(
