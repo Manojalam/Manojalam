@@ -94,6 +94,37 @@ const COLOR_SWATCHES = [
   "#6b7280", "#ffffff",
 ];
 
+/** Measure only rendered glyphs; editor decorations must never change text fit. */
+function renderedTextBounds(content: HTMLElement): { width: number; height: number } | null {
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode as Text;
+    if (!textNode.data.trim()) continue;
+    const parent = textNode.parentElement;
+    if (parent?.closest('[data-shape-text-flow-guide="true"]')) continue;
+
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    for (const rect of Array.from(range.getClientRects())) {
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+    }
+    range.detach();
+  }
+
+  return Number.isFinite(left) && Number.isFinite(top) && Number.isFinite(right) && Number.isFinite(bottom)
+    ? { width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+    : null;
+}
+
 const SIZE_PRESETS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
 /** Gap in px kept between the selection and the bottom of the floating toolbar. */
@@ -391,10 +422,11 @@ export function RichTextEditor({
     const guide = root?.closest<HTMLElement>('[data-shape-label-content="true"]');
     if (!root || !content || !guide || typeof document === "undefined") return;
 
-    const range = document.createRange();
-    range.selectNodeContents(content);
-    const contentBounds = range.getBoundingClientRect();
-    range.detach();
+    // Shape-flow floats span the entire label box. Including them in the
+    // range made the safety correction repeatedly shrink real text or push it
+    // into a pointed tip. Only glyph bounds are relevant to this guard.
+    const contentBounds = renderedTextBounds(content);
+    if (!contentBounds) return;
     const guideBounds = guide.getBoundingClientRect();
     setRenderedContentScale((currentScale) => {
       const corrected = correctedGuideContentScale(
