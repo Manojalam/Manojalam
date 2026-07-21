@@ -360,10 +360,12 @@ body {
 }
 .shape-text-flow-editor .ProseMirror {
   box-sizing: border-box;
-  padding: 0;
+  padding: var(--shape-text-flow-offset, 0px) 0 0;
   text-wrap: pretty;
   word-break: keep-all !important;
-  overflow-wrap: normal !important;
+  /* Keep words intact when they fit, but provide a final break opportunity
+     for long Sanskrit compounds so fitted labels never spill out of a tip. */
+  overflow-wrap: anywhere !important;
   hyphens: none !important;
 }
 .shape-text-flow-editor .ProseMirror > * {

@@ -1089,7 +1089,19 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     : shapeLabelBox(renderedShapeType, nodeSize, "shape", {
         contentSize: intrinsicContentSize,
       });
-  const availableTextSize = contourTextFlow ? flowLayout.capacity : {
+  // The contour reaches the pointed tips of diamonds and polygons, but those
+  // tips are not useful text space. Reserve a small shape-aware breathing room
+  // so top/bottom alignment cannot place glyphs outside the visible surface.
+  const flowVerticalInset = contourTextFlow
+    ? Math.min(
+        flowLayout.box.height * 0.2,
+        Math.max(16, Math.min(flowLayout.box.width, flowLayout.box.height) * 0.12),
+      )
+    : 0;
+  const availableTextSize = contourTextFlow ? {
+    width: flowLayout.capacity.width,
+    height: Math.max(8, flowLayout.capacity.height - flowVerticalInset * 2),
+  } : {
     width: labelBox.width,
     height: labelBox.height,
   };
@@ -1115,10 +1127,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   );
   const flowVerticalOffset = contourTextFlow
     ? textVerticalAlign === "top"
-      ? 0
+      ? flowVerticalInset
       : textVerticalAlign === "bottom"
-        ? Math.max(0, labelBox.height - estimatedTextHeight)
-        : Math.max(0, (labelBox.height - estimatedTextHeight) / 2)
+        ? flowVerticalInset + Math.max(0, labelBox.height - flowVerticalInset * 2 - estimatedTextHeight)
+        : flowVerticalInset + Math.max(0, (labelBox.height - flowVerticalInset * 2 - estimatedTextHeight) / 2)
     : 0;
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
