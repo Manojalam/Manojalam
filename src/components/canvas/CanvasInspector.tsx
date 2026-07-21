@@ -983,6 +983,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
     : [];
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  const selectedShapeNodes = selectedNodes.filter((node) => node.type === "shape");
+  const allShapeNodes = nodes.filter((node) => node.type === "shape" && !node.hidden);
+  const selectedShapePaddingMax = selectedShapeNodes.length
+    ? Math.floor(Math.min(...selectedShapeNodes.map((node) => maximumShapeTextPadding(getNodeDimensions(node)))))
+    : 0;
+  const firstSelectedShapePadding = selectedShapeNodes.length
+    ? resolveShapeTextPadding(
+        (selectedShapeNodes[0].data as Record<string, unknown> | undefined)?.textPadding,
+        getNodeDimensions(selectedShapeNodes[0])
+      )
+    : 0;
+  const selectedShapePaddingIsMixed = selectedShapeNodes.some((node) => {
+    const value = resolveShapeTextPadding(
+      (node.data as Record<string, unknown> | undefined)?.textPadding,
+      getNodeDimensions(node)
+    );
+    return Math.abs(value - firstSelectedShapePadding) > 0.5;
+  });
   const selectedRelationshipSourceIds = relationshipDiagramSourceIds(
     selectedNodes
       .filter((node) => !["sunburst", "frame", "relationshipDiagram", "junction"].includes(node.type ?? ""))
@@ -1199,6 +1217,29 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       }
       updateNodeData(node.id, patch);
     }
+  };
+
+  const updateShapePadding = (targets: Node[], value: number | undefined) => {
+    const targetIds = new Set(targets.filter((node) => node.type === "shape").map((node) => node.id));
+    if (!targetIds.size) return;
+    pushHistory();
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => targetIds.has(node.id)
+        ? { ...node, data: { ...(node.data ?? {}), textPadding: value } }
+        : node),
+      saveStatus: "unsaved",
+    }));
+  };
+
+  const updateShapePaddingDuringDrag = (targets: Node[], value: number) => {
+    const targetIds = new Set(targets.filter((node) => node.type === "shape").map((node) => node.id));
+    if (!targetIds.size) return;
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => targetIds.has(node.id)
+        ? { ...node, data: { ...(node.data ?? {}), textPadding: value } }
+        : node),
+      saveStatus: "unsaved",
+    }));
   };
 
   const applyRadialColorScheme = (scheme: RadialColorScheme) => {
@@ -1549,6 +1590,44 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 aria-label="Fill available text space for selected nodes"
               />
             </div>
+            {selectedShapeNodes.length > 0 && (
+              <div className="rounded-md border border-border bg-muted/25 p-2">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium text-foreground">Shape text padding</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[9px]"
+                    onClick={() => updateShapePadding(selectedShapeNodes, undefined)}
+                  >
+                    Reset selected
+                  </Button>
+                </div>
+                <ThicknessControl
+                  value={firstSelectedShapePadding}
+                  min={0}
+                  max={selectedShapePaddingMax}
+                  step={1}
+                  mixed={selectedShapePaddingIsMixed}
+                  onChangeStart={pushHistory}
+                  onChange={(value) => updateShapePaddingDuringDrag(selectedShapeNodes, value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 h-7 w-full text-[9px]"
+                  disabled={!allShapeNodes.length}
+                  onClick={() => updateShapePadding(allShapeNodes, firstSelectedShapePadding)}
+                >
+                  Apply to all shape objects
+                </Button>
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  The slider applies to selected shapes; the button copies that value to every visible shape.
+                </p>
+              </div>
+            )}
             {isRadialMultiSelection && (
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -3379,15 +3458,28 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                     Shape text padding
                   </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[9px]"
-                    onClick={() => setField("textPadding", undefined)}
-                  >
-                    Reset
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {allShapeNodes.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[9px]"
+                        onClick={() => updateShapePadding(allShapeNodes, shapeTextPadding)}
+                      >
+                        All shapes
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[9px]"
+                      onClick={() => setField("textPadding", undefined)}
+                    >
+                      Reset
+                    </Button>
+                  </div>
                 </div>
                 <ThicknessControl
                   value={shapeTextPadding}

@@ -9,6 +9,11 @@ export interface ManojalamClipboardPayload {
   edges: Edge[];
 }
 
+export interface BoardSelectionIds {
+  nodeIds: string[];
+  edgeIds: string[];
+}
+
 const TEXT_EDITING_SELECTOR = [
   "input",
   "textarea",
@@ -30,6 +35,14 @@ export function shouldHandleCanvasClipboard(
   activeElement: EventTarget | null
 ): boolean {
   return !isTextEditingTarget(eventTarget) && !isTextEditingTarget(activeElement);
+}
+
+/** Return the visible board objects addressed by the canvas select-all shortcut. */
+export function visibleBoardSelection(nodes: readonly Node[], edges: readonly Edge[]): BoardSelectionIds {
+  return {
+    nodeIds: nodes.filter((node) => !node.hidden).map((node) => node.id),
+    edgeIds: edges.filter((edge) => !edge.hidden).map((edge) => edge.id),
+  };
 }
 
 export function createManojalamClipboardPayload(
