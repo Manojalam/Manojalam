@@ -1064,6 +1064,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   );
 
   const [editing, setEditing] = useState(false);
+  const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
   const presentationKey = textMeasurementKey(dd);
@@ -1173,7 +1174,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   }, [pushHistory]);
 
   const beginRequestedEdit = useCallback(() => {
-    if (!isDrawing) setEditing(true);
+    if (!isDrawing) {
+      setEditFocusPoint(null);
+      setEditing(true);
+    }
   }, [isDrawing, setEditing]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
@@ -1237,8 +1241,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       <NodeResizer
         minWidth={60}
         minHeight={60}
-        isVisible={selected && !editing && !isDrawing && !matrixCell}
-        keepAspectRatio={SQUARE_ASPECT_SHAPES.has(shapeType)}
+        isVisible={selected && !editing && !isDrawing}
+        keepAspectRatio={!matrixCell && SQUARE_ASPECT_SHAPES.has(shapeType)}
         lineStyle={{ borderRadius: bRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
@@ -1251,6 +1255,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           if (isDrawing || radialChart?.enabled) return;
           editHistoryCaptured.current = false;
           editDirty.current = false;
+          setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
           setEditing(true);
         }}
       >
@@ -1455,6 +1460,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       nodeId={id}
                       initialContent={initialContent}
                       editable={editing}
+                      initialFocusPoint={editFocusPoint}
                       measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}
                       measurementFontSize={textPresentation.authoredFontSize}

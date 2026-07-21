@@ -111,6 +111,36 @@ function isNodeLocked(node: Node | undefined): boolean {
   return (node?.data as Record<string, unknown> | undefined)?.locked === true;
 }
 
+function reparentDropTarget(
+  nodes: Node[],
+  edges: Edge[],
+  draggedNodeId: string,
+  movingIds: ReadonlySet<string>
+): string | null {
+  const draggedNode = nodes.find((node) => node.id === draggedNodeId);
+  if (!draggedNode || draggedNode.hidden || isExternalNoteNode(draggedNode)) return null;
+  const hierarchy = buildHierarchy(nodes, edges);
+  const descendants = new Set(getSubtree(draggedNodeId, hierarchy));
+  const draggedRect = getNodeRect(draggedNode);
+  const center = { x: draggedRect.centerX, y: draggedRect.centerY };
+  const unsupportedParentTypes = new Set(["frame", "junction", "sunburst", "relationshipDiagram"]);
+
+  return nodes
+    .filter((candidate) => {
+      if (candidate.hidden || movingIds.has(candidate.id) || descendants.has(candidate.id)) return false;
+      if (unsupportedParentTypes.has(candidate.type ?? "")) return false;
+      if (isExternalNoteNode(candidate)) return false;
+      const rect = getNodeRect(candidate);
+      return center.x >= rect.left && center.x <= rect.right
+        && center.y >= rect.top && center.y <= rect.bottom;
+    })
+    .sort((a, b) => {
+      const aRect = getNodeRect(a);
+      const bRect = getNodeRect(b);
+      return aRect.width * aRect.height - bRect.width * bRect.height;
+    })[0]?.id ?? null;
+}
+
 function applySynchronizedNodeChanges(changes: NodeChange<Node>[], nodes: Node[]): Node[] {
   const nextNodes = applyNodeChanges(changes, nodes);
   const resizedNodes = new Map(
@@ -261,6 +291,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
+  const [reparentTargetId, setReparentTargetId] = useState<string | null>(null);
   const pinchRef = useRef<{
     distance: number;
     flowCenter: { x: number; y: number };
@@ -299,15 +330,24 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       if (data.matrixCell !== true) {
         return locked ? { ...node, draggable: false } : node;
       }
-      const matrixRootId = typeof data.matrixRootId === "string" ? data.matrixRootId : null;
       return {
         ...node,
-        draggable: !locked && matrixRootId === node.id,
-        resizable: false,
+        draggable: !locked,
+        resizable: true,
       };
     });
-    if (!relationshipSelection) return matrixAwareNodes;
-    return matrixAwareNodes.map((node) => {
+    const dropAwareNodes = matrixAwareNodes.map((node) => node.id === reparentTargetId
+      ? {
+          ...node,
+          style: {
+            ...(node.style ?? {}),
+            outline: "4px solid rgba(16, 185, 129, 0.9)",
+            outlineOffset: 4,
+          },
+        }
+      : node);
+    if (!relationshipSelection) return dropAwareNodes;
+    return dropAwareNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const isActiveChart = node.type === "sunburst" && data.rootId === relationshipSelection.chartRootNodeId;
       if (isActiveChart || node.hidden) return node;
@@ -320,7 +360,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         },
       };
     });
-  }, [nodes, relationshipSelection]);
+  }, [nodes, relationshipSelection, reparentTargetId]);
 
   const displayEdges = useMemo(() => {
     if (!relationshipSelection) return edges;
@@ -700,15 +740,24 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         edges: refreshConnectorJunctionHandles(nextNodes, current.edges, movingJunctionIds),
       };
     });
+    const currentNodes = useCanvasStore.getState().nodes;
+    setReparentTargetId(reparentDropTarget(currentNodes, state.edges, draggedNode.id, movingIds));
     setGuides({ h: snap.horizontalGuides, v: snap.verticalGuides });
   }, [getViewport]);
 
   // Push history when a drag ends (safe: fires once, not on every frame)
-  const onNodeDragStop = useCallback(() => {
+  const onNodeDragStop = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
     if (useUIStore.getState().relationshipSelection) return;
     setGuides({ h: [], v: [] });
-    const movedIds = new Set(dragStartRef.current?.positions.keys() ?? []);
-    const state = useCanvasStore.getState();
+    const drag = dragStartRef.current;
+    const movedIds = new Set(drag?.positions.keys() ?? []);
+    let state = useCanvasStore.getState();
+    const dropTargetId = reparentDropTarget(state.nodes, state.edges, draggedNode.id, movedIds);
+    if (dropTargetId) {
+      state.reparentNode(draggedNode.id, dropTargetId);
+      state = useCanvasStore.getState();
+    }
+    setReparentTargetId(null);
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
     const reroutedEdges = state.edges.map((edge) => {
       if (!movedIds.has(edge.source) && !movedIds.has(edge.target)) return edge;
@@ -728,6 +777,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     ui.setCanvasDragging(false);
     if (ui.moveOnlyNodeId && movedIds.has(ui.moveOnlyNodeId)) ui.setMoveOnlyNodeId(null);
     state.setSaveStatus("unsaved");
+    if (drag?.matrixRootId) state.scheduleMatrixReflow(drag.matrixRootId);
   }, []);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {

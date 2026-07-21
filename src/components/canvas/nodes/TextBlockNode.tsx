@@ -60,6 +60,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
+  const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
   const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "text");
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
@@ -80,7 +81,10 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
     editDirty.current = true;
   }, [pushHistory]);
 
-  const beginRequestedEdit = useCallback(() => setEditing(true), []);
+  const beginRequestedEdit = useCallback(() => {
+    setEditFocusPoint(null);
+    setEditing(true);
+  }, []);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -102,9 +106,9 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   return (
     <>
       <NodeResizer
-        minWidth={160}
+        minWidth={matrixCell ? 80 : 160}
         minHeight={40}
-        isVisible={selected && !editing && !isDrawing && !matrixCell}
+        isVisible={selected && !editing && !isDrawing}
         lineStyle={{ borderRadius: bRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
@@ -145,6 +149,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             if (isDrawing) return;
             editHistoryCaptured.current = false;
             editDirty.current = false;
+            setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
             setEditing(true);
           }}
         >
@@ -179,6 +184,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",
               textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"

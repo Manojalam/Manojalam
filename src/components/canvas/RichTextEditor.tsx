@@ -258,6 +258,8 @@ interface RichTextEditorProps {
   };
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
+  /** Canvas pointer location that initiated this editing session. */
+  initialFocusPoint?: { clientX: number; clientY: number } | null;
   onChange: (html: string) => void;
   onContentSizeChange?: (size: ContentMeasurement, reason: ContentResizeReason) => void;
   onBlur?: () => void;
@@ -276,6 +278,7 @@ export function RichTextEditor({
   constrainToShapeGuide = false,
   shapeTextFlow,
   blockAlign,
+  initialFocusPoint,
   onChange,
   onContentSizeChange,
   onBlur,
@@ -760,7 +763,17 @@ export function RichTextEditor({
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
     if (editable) {
       requestAnimationFrame(() => {
-        editor.commands.focus("end", { scrollIntoView: false });
+        const position = initialFocusPoint
+          ? editor.view.posAtCoords({ left: initialFocusPoint.clientX, top: initialFocusPoint.clientY })
+          : null;
+        if (position) {
+          editor.chain()
+            .setTextSelection(position.pos)
+            .focus(undefined, { scrollIntoView: false })
+            .run();
+        } else {
+          editor.commands.focus("end", { scrollIntoView: false });
+        }
         scheduleContentReport(editor, "layout");
       });
     } else {
@@ -771,7 +784,7 @@ export function RichTextEditor({
         hideToolbar();
       });
     }
-  }, [editor, editable, hideToolbar, reportContentSize, scheduleContentReport]);
+  }, [editor, editable, hideToolbar, initialFocusPoint, reportContentSize, scheduleContentReport]);
 
   // Whole-object alignment: when the inspector changes blockAlign, apply it to
   // EVERY paragraph so it overrides any per-paragraph alignment. Skip the first

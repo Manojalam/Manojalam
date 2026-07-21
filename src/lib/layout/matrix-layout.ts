@@ -81,6 +81,8 @@ type MatrixLogicalSpan = {
 
 export const MATRIX_MIN_COLUMN_WIDTH = 180;
 export const MATRIX_MAX_COLUMN_WIDTH = 380;
+export const MATRIX_USER_MIN_COLUMN_WIDTH = 80;
+export const MATRIX_USER_MAX_COLUMN_WIDTH = 1200;
 export const MATRIX_FIRST_COLUMN_MIN_WIDTH = 200;
 export const MATRIX_HEADER_MIN_WIDTH = 280;
 
@@ -233,6 +235,9 @@ function wrappedLineCount(text: string, charsPerLine: number): number {
 }
 
 function preferredCellWidth(node: Node, column: number, settings: DensitySettings): number {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const userWidth = positiveNumber(data.matrixWidthOverride);
+  if (userWidth) return Math.ceil(clamp(userWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH));
   const text = nodeText(node);
   const { charWidth } = fontMetrics(node);
   const words = text.split(/\s+/).filter(Boolean);
@@ -257,6 +262,8 @@ function requiredCellHeight(
   settings: DensitySettings,
   minimum = settings.minRowHeight
 ): number {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const userHeight = positiveNumber(data.matrixHeightOverride) ?? 0;
   const text = nodeText(node);
   const metrics = fontMetrics(node);
   const usableWidth = Math.max(48, width - settings.paddingX * 2);
@@ -270,6 +277,7 @@ function requiredCellHeight(
   const textHeight = estimatedLines * metrics.lineHeight + settings.paddingY * 2;
   return Math.ceil(Math.max(
     minimum,
+    userHeight,
     textHeight,
     measuredHeight,
     measuredLinesHeight
