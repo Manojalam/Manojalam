@@ -86,6 +86,34 @@ test("automatic Fold balances rendered subtree height instead of child count", (
   assert.equal(wrapped["child-0"].y, wrapped["child-3"].y);
 });
 
+test("near-equal Fold choices prefer a fuller earlier section", () => {
+  const root = node("root", 0, 180, { layoutFoldCount: 2 });
+  const heights = [140, 140, 255, 140, 140, 70, 70, 35, 35, 35, 35, 35, 35, 35];
+  let top = 0;
+  const children = heights.map((height, index) => {
+    const child = {
+      ...node(`child-${index}`, 200, top, { parentId: "root" }),
+      style: { width: 100, height },
+    };
+    top += height;
+    return child;
+  });
+  const nodes = [root, ...children];
+  const edges: Edge[] = children.map((child, index) => ({ id: `edge-${index}`, source: "root", target: child.id }));
+  const placements = Object.fromEntries(nodes.map((item) => [item.id, { ...item.position }]));
+
+  const wrapped = wrapChildGroups(
+    placements,
+    buildHierarchy(nodes, edges),
+    new Map(nodes.map((item) => [item.id, item])),
+    () => "horizontal"
+  );
+
+  assert.equal(wrapped["child-0"].x, wrapped["child-3"].x);
+  assert.ok(wrapped["child-4"].x > wrapped["child-3"].x);
+  assert.equal(wrapped["child-4"].x, wrapped["child-13"].x);
+});
+
 test("stacked Fold sections balance rendered width", () => {
   const root = node("root", 180, 0, { layoutFoldCount: 2 });
   const widths = [100, 100, 100, 200, 50, 50, 50];

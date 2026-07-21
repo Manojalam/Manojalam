@@ -88,6 +88,8 @@ interface FoldPartitionCandidate {
   extents: number[];
 }
 
+const FOLD_VISUAL_TIE_RATIO = 0.04;
+
 function betterFoldPartition(
   candidate: FoldPartitionCandidate,
   current: FoldPartitionCandidate | null
@@ -95,19 +97,20 @@ function betterFoldPartition(
   if (!current) return true;
   const candidateMax = Math.max(...candidate.extents);
   const currentMax = Math.max(...current.extents);
-  if (Math.abs(candidateMax - currentMax) > 0.001) return candidateMax < currentMax;
+  // Tiny mathematical improvements are not perceptible and tend to leave the
+  // first section looking prematurely cut. Treat them as visual ties so the
+  // stable reading-order preference below can fill earlier sections first.
+  const visualTolerance = Math.max(
+    1,
+    Math.min(candidateMax, currentMax) * FOLD_VISUAL_TIE_RATIO
+  );
+  if (Math.abs(candidateMax - currentMax) > visualTolerance) return candidateMax < currentMax;
 
   const candidateRange = candidateMax - Math.min(...candidate.extents);
   const currentRange = currentMax - Math.min(...current.extents);
-  if (Math.abs(candidateRange - currentRange) > 0.001) return candidateRange < currentRange;
+  if (Math.abs(candidateRange - currentRange) > visualTolerance) return candidateRange < currentRange;
 
-  const candidateMean = candidate.extents.reduce((sum, value) => sum + value, 0) / candidate.extents.length;
-  const currentMean = current.extents.reduce((sum, value) => sum + value, 0) / current.extents.length;
-  const candidateVariance = candidate.extents.reduce((sum, value) => sum + (value - candidateMean) ** 2, 0);
-  const currentVariance = current.extents.reduce((sum, value) => sum + (value - currentMean) ** 2, 0);
-  if (Math.abs(candidateVariance - currentVariance) > 0.001) return candidateVariance < currentVariance;
-
-  // Preserve the legacy preference for putting remainder items in earlier sections.
+  // Prefer later break points when the alternatives are visually equivalent.
   for (let index = 0; index < candidate.breaks.length; index += 1) {
     if (candidate.breaks[index] !== current.breaks[index]) {
       return candidate.breaks[index] > current.breaks[index];
