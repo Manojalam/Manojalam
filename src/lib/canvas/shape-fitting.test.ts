@@ -219,6 +219,28 @@ test("authored phrases choose contour flow before the first measurement arrives"
   assert.equal(shouldUseShapeTextFlow("diamond", rendered, undefined, "एकपदम्"), false);
 });
 
+test("large diamond phrases use the full contour instead of the small center rectangle", () => {
+  const rendered = { width: 1_000, height: 1_000 };
+  const centerBox = diamondTextLabelBox(rendered);
+  const flow = shapeTextFlowLayout("diamond", rendered);
+  const data = {
+    text: "रेफान्तानि अव्ययानि / ऋकारान्त- संबोधन षष्ठी पञ्चमी / रु भिन्नाः",
+    fontSize: 96,
+  };
+  const presentation = getFittedTextPresentation(
+    data,
+    flow.capacity.width,
+    14,
+    { availableHeight: flow.capacity.height, constrain: false }
+  );
+
+  assert.equal(shouldUseShapeTextFlow("diamond", rendered, undefined, data.text), true);
+  assert.ok(flow.box.width > centerBox.width * 1.9);
+  assert.ok(flow.box.height > centerBox.height * 1.9);
+  assert.equal(presentation.fontSize, 96);
+  assert.equal(presentation.scale, 1);
+});
+
 test("maximum text fitting fills the corrected diamond interior", () => {
   const interior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
     contentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },

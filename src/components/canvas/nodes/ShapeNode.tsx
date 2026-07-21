@@ -14,6 +14,9 @@ import {
 import {
   shapeLabelBox,
   diamondTextLabelBox,
+  shapeTextFlowLayout,
+  shouldUseShapeTextFlow,
+  type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
 import type {
   ShapeNodeData,
@@ -1063,24 +1066,75 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const [editing, setEditing] = useState(false);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
-  // Every shape label uses one stable, shape-safe rectangle. A separate
-  // contour-flow editor changed the layout mode after measurement, ignored
-  // flex alignment, and clipped scaled text at the editor boundary.
-  const labelBox = renderedShapeType === "diamond"
+  const presentationKey = textMeasurementKey(dd);
+  const intrinsicContentSize = (dd.matrixIntrinsicSize ?? dd.intrinsicContentSize) as
+    | Partial<ContentMeasurement>
+    | undefined;
+  const currentIntrinsicContentSize = intrinsicContentSize?.presentationKey === presentationKey
+    ? intrinsicContentSize
+    : undefined;
+  const flowOptions = { cornerRadius: bRadius, petalCount };
+  const flowLayout = shapeTextFlowLayout(renderedShapeType, nodeSize, flowOptions);
+  // Authored phrases select contour flow immediately and keep it while editing,
+  // so a font-size change cannot flash through the small central rectangle.
+  const contourTextFlow = !matrixCell && shouldUseShapeTextFlow(
+    renderedShapeType,
+    nodeSize,
+    currentIntrinsicContentSize,
+    typeof d.text === "string" ? d.text : initialContent.replace(/<[^>]+>/g, " "),
+    flowOptions
+  );
+  const labelBox = contourTextFlow
+    ? flowLayout.box
+    : renderedShapeType === "diamond"
     ? diamondTextLabelBox(nodeSize)
     : shapeLabelBox(renderedShapeType, nodeSize, "shape");
-  const availableTextSize = {
+  const flowVerticalInset = contourTextFlow
+    ? Math.min(
+        flowLayout.box.height * 0.12,
+        Math.max(12, Math.min(flowLayout.box.width, flowLayout.box.height) * 0.06)
+      )
+    : 0;
+  const availableTextSize = contourTextFlow ? {
+    width: flowLayout.capacity.width,
+    height: Math.max(8, flowLayout.capacity.height - flowVerticalInset * 2),
+  } : {
     width: labelBox.width,
     height: labelBox.height,
   };
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
-    // Compact text uses the centered safe box; dense text uses an equivalent
-    // capacity while CSS flows each line through the full shape silhouette.
-    constrain: true,
+    // The browser's exclusion polygons perform the final fit for contour text.
+    // Pre-shrinking that text into the average rectangular capacity made large
+    // fonts look tiny inside otherwise spacious diamonds and curved shapes.
+    constrain: !contourTextFlow,
     backgroundColor: fillColor,
   });
   const textVerticalAlign = resolveTextVerticalAlign(dd.textVerticalAlign);
+  const measuredFlowContent = currentIntrinsicContentSize
+    && typeof currentIntrinsicContentSize.measurementWidth === "number"
+    && Math.abs(currentIntrinsicContentSize.measurementWidth - availableTextSize.width) <= 1
+    ? currentIntrinsicContentSize
+    : undefined;
+  const fallbackLineCount = Math.max(
+    1,
+    initialContent.split(/\r?\n/u).length,
+    (initialContent.match(/<(?:p|div|h[1-6]|li)\b/gi) ?? []).length,
+    (initialContent.match(/<br\s*\/?\s*>/gi) ?? []).length + 1
+  );
+  const estimatedTextHeight = Math.min(
+    availableTextSize.height,
+    (measuredFlowContent?.height
+      ?? textPresentation.authoredFontSize * fallbackLineCount * 1.42)
+      * textPresentation.scale
+  );
+  const flowVerticalOffset = contourTextFlow
+    ? textVerticalAlign === "top"
+      ? flowVerticalInset
+      : textVerticalAlign === "bottom"
+        ? flowVerticalInset + Math.max(0, labelBox.height - flowVerticalInset * 2 - estimatedTextHeight)
+        : flowVerticalInset + Math.max(0, (labelBox.height - flowVerticalInset * 2 - estimatedTextHeight) / 2)
+    : 0;
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -1358,7 +1412,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               >
                 <div
                   ref={textRotationTargetRef}
-                  className="flex h-full w-full items-center justify-center"
+                  className={cn(
+                    "h-full w-full",
+                    contourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
+                  )}
                   style={{
                     ...textPresentation.style,
                     ...textRotationStyle(textRotation),
@@ -1367,16 +1424,21 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       : textVerticalAlign === "bottom" ? "flex-end" : "center",
                   }}
                 >
-                  <div className="w-full max-h-full">
+                  <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
                     <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
                       editable={editing}
-                      measurementKey={textMeasurementKey(dd)}
+                      measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}
                       measurementFontSize={textPresentation.authoredFontSize}
                       contentScale={textPresentation.scale}
                       constrainToShapeGuide
+                      shapeTextFlow={contourTextFlow ? {
+                        leftExclusion: flowLayout.leftExclusion,
+                        rightExclusion: flowLayout.rightExclusion,
+                        verticalOffset: flowVerticalOffset,
+                      } : undefined}
                       placeholder="Double-click…"
                       className={cn(
                         "[&_.ProseMirror]:text-center",
