@@ -24,7 +24,26 @@ import {
   computeAutoSize,
   fittedContentScale,
 } from "./node-sizing";
-import { getFittedTextPresentation } from "../style-utils";
+import { getFittedTextPresentation, textMeasurementKey } from "../style-utils";
+
+function currentMeasurement(
+  data: Record<string, unknown>,
+  measurementWidth: number,
+  measurement: {
+    width: number;
+    height: number;
+    naturalWidth?: number;
+    naturalHeight?: number;
+    lineCount?: number;
+    lineHeight?: number;
+  }
+) {
+  return {
+    ...measurement,
+    presentationKey: textMeasurementKey(data),
+    measurementWidth,
+  };
+}
 
 test("top-left growth and center conversion use different anchors", () => {
   const rect = createNodeRect("n", 100, 80, 200, 100);
@@ -204,12 +223,19 @@ test("maximum text fitting fills the corrected diamond interior", () => {
   const interior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
     contentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },
   });
+  const data = {
+    text: "Decision?",
+    fontSize: 14,
+    maximizeText: true,
+  };
   const presentation = getFittedTextPresentation(
     {
-      text: "Decision?",
-      fontSize: 14,
-      maximizeText: true,
-      intrinsicContentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },
+      ...data,
+      intrinsicContentSize: currentMeasurement(
+        data,
+        interior.width,
+        { width: 70, naturalWidth: 70, height: 19, lineCount: 1 }
+      ),
     },
     interior.width,
     14,
@@ -453,55 +479,67 @@ test("whole-node maximum fitting is opt-in and preserves the authored font size"
   assert.ok(maximized.scale > 1);
 });
 
-test("maximum fitting does not enlarge an overflowing dense measurement", () => {
-  const available = { width: 180, height: 50 };
+test("a stale measurement cannot push a single-word label outside its diamond guide", () => {
+  const labelBox = diamondTextLabelBox({ width: 240, height: 240 });
   const data = {
-    text: "Earth",
-    fontSize: 14,
+    text: "अवसानम्",
+    fontSize: 48,
+    maximizeText: true,
     intrinsicContentSize: {
-      width: 8,
-      naturalWidth: 70,
-      height: 400,
-      lineCount: 20,
+      width: 64,
+      naturalWidth: 64,
+      height: 19,
+      naturalHeight: 19,
+      lineCount: 1,
+      presentationKey: textMeasurementKey({ text: "अवसानम्", fontSize: 14 }),
+      measurementWidth: labelBox.width,
     },
   };
-  const ordinary = getFittedTextPresentation(
+  const presentation = getFittedTextPresentation(
     data,
-    available.width,
+    labelBox.width,
     14,
-    { availableHeight: available.height, constrain: true }
+    { availableHeight: labelBox.height, constrain: true }
   );
-  const maximized = getFittedTextPresentation(
-    {
-      ...data,
-      maximizeText: true,
-    },
-    available.width,
+  const withoutStaleMeasurement = getFittedTextPresentation(
+    { text: data.text, fontSize: data.fontSize, maximizeText: true },
+    labelBox.width,
     14,
-    { availableHeight: available.height, constrain: true }
+    { availableHeight: labelBox.height, constrain: true }
   );
 
-  assert.equal(maximized.scale, ordinary.scale);
+  assert.equal(presentation.scale, withoutStaleMeasurement.scale);
+  assert.ok(presentation.fontSize < data.fontSize);
+});
+
+test("measurement identity changes with text and authored typography", () => {
+  const original = textMeasurementKey({ text: "अवसानम्", fontSize: 14 });
+  assert.notEqual(original, textMeasurementKey({ text: "अवसानम्", fontSize: 24 }));
+  assert.notEqual(original, textMeasurementKey({ text: "अवसानः", fontSize: 14 }));
 });
 
 test("fill available space never shrinks the normal rendered fit", () => {
-  const data = {
-    text: [
-      "अथ योगानुशासनम्",
-      "योगश्चित्तवृत्तिनिरोधः",
-      "तदा द्रष्टुः स्वरूपेऽवस्थानम्",
-      "वृत्तिसारूप्यमितरत्र",
-      "अभ्यासवैराग्याभ्यां तन्निरोधः",
-    ].join("\n"),
+  const text = [
+    "अथ योगानुशासनम्",
+    "योगश्चित्तवृत्तिनिरोधः",
+    "तदा द्रष्टुः स्वरूपेऽवस्थानम्",
+    "वृत्तिसारूप्यमितरत्र",
+    "अभ्यासवैराग्याभ्यां तन्निरोधः",
+  ].join("\n");
+  const presentationData = {
+    text,
     fontSize: 33,
     autoSizeMode: "fixed",
-    intrinsicContentSize: {
+  };
+  const data = {
+    ...presentationData,
+    intrinsicContentSize: currentMeasurement(presentationData, 260, {
       width: 260,
       naturalWidth: 430,
       height: 260,
       lineCount: 8,
       lineHeight: 45,
-    },
+    }),
   };
   const options = { availableHeight: 120, constrain: true };
   const ordinary = getFittedTextPresentation(data, 260, 14, options);
@@ -514,18 +552,21 @@ test("fill available space never shrinks the normal rendered fit", () => {
 
 test("fill available space maximizes the actual compact rich-text measurement", () => {
   const available = { width: 72, height: 28 };
+  const data = {
+    text: "अहन् + सुप ?",
+    fontSize: 14,
+    maximizeText: true,
+  };
   const presentation = getFittedTextPresentation(
     {
-      text: "अहन् + सुप ?",
-      fontSize: 14,
-      maximizeText: true,
-      intrinsicContentSize: {
+      ...data,
+      intrinsicContentSize: currentMeasurement(data, available.width, {
         width: 32,
         naturalWidth: 32,
         height: 9,
         naturalHeight: 9,
         lineCount: 1,
-      },
+      }),
     },
     available.width,
     14,
@@ -538,6 +579,11 @@ test("fill available space maximizes the actual compact rich-text measurement", 
 
 test("fill available space caps dense rich text at its measured height", () => {
   const available = { width: 180, height: 96 };
+  const data = {
+    text: "a dense label with enough words to wrap across several lines",
+    fontSize: 14,
+    maximizeText: true,
+  };
   const measurement = {
     width: 150,
     naturalWidth: 420,
@@ -547,10 +593,8 @@ test("fill available space caps dense rich text at its measured height", () => {
   };
   const presentation = getFittedTextPresentation(
     {
-      text: "a dense label with enough words to wrap across several lines",
-      fontSize: 14,
-      maximizeText: true,
-      intrinsicContentSize: measurement,
+      ...data,
+      intrinsicContentSize: currentMeasurement(data, available.width, measurement),
     },
     available.width,
     14,

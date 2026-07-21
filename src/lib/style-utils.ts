@@ -120,7 +120,7 @@ export function getFittedTextPresentation(
   const shouldConstrain = options.constrain ?? options.fitMultiline ?? false;
   const shouldMaximize = d.maximizeText === true && Number.isFinite(availableHeight) && !!plainText;
   let scale = 1;
-  const storedMeasurement = (d.intrinsicContentSize ?? d.matrixIntrinsicSize) as
+  const storedCandidate = (d.intrinsicContentSize ?? d.matrixIntrinsicSize) as
     | Partial<{
         width: number;
         height: number;
@@ -128,8 +128,18 @@ export function getFittedTextPresentation(
         lineHeight: number;
         naturalWidth: number;
         naturalHeight: number;
+        presentationKey: string;
+        measurementWidth: number;
       }>
     | undefined;
+  // A DOM measurement is safe only for the exact text, authored typography,
+  // and guide width that produced it. Old boards and in-flight formatting
+  // changes intentionally fall back to conservative fitting until remeasured.
+  const storedMeasurement = storedCandidate?.presentationKey === textMeasurementKey(d)
+    && typeof storedCandidate.measurementWidth === "number"
+    && Math.abs(storedCandidate.measurementWidth - availableWidth) <= 1
+    ? storedCandidate
+    : undefined;
 
   if (shouldMaximize) {
     const normalScale = getFittedTextPresentation(
@@ -224,11 +234,20 @@ export function getFittedTextPresentation(
 }
 
 export function textMeasurementKey(d: Record<string, unknown>): string {
+  const content = typeof d.richText === "string"
+    ? d.richText
+    : typeof d.text === "string" ? d.text : "";
+  let contentHash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    contentHash ^= content.charCodeAt(index);
+    contentHash = Math.imul(contentHash, 16777619);
+  }
   return [
     d.fontFamily ?? "",
     resolveLayoutFontSize(d) ?? "",
     d.fontWeight ?? "",
     d.fontStyle ?? "",
+    `${content.length}:${contentHash >>> 0}`,
   ].join("|");
 }
 

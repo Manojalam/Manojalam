@@ -18,6 +18,10 @@ export interface ContentMeasurement extends Size {
   naturalWidth?: number;
   /** Height of the explicit lines before width-dependent soft wrapping. */
   naturalHeight?: number;
+  /** Text and authored typography that produced this DOM measurement. */
+  presentationKey?: string;
+  /** Unscaled guide width used when the rich text was measured. */
+  measurementWidth?: number;
 }
 
 export interface ShapeFitOptions {

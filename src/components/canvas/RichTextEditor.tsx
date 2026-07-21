@@ -178,7 +178,7 @@ interface RichTextEditorProps {
   editable: boolean;
   placeholder?: string;
   className?: string;
-  /** Changes when inherited typography changes outside TipTap's document. */
+  /** Identifies the current text and authored typography presentation. */
   measurementKey?: string;
   /** Current unscaled content-box width in canvas CSS pixels. */
   measurementWidth?: number;
@@ -243,6 +243,7 @@ export function RichTextEditor({
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
   const measurementFontSizeRef = useRef(measurementFontSize);
+  const measurementKeyRef = useRef(measurementKey);
   const pendingReportReasonRef = useRef<ContentResizeReason>("input");
   const scheduledReportReasonRef = useRef<ContentResizeReason>("layout");
   const contentReportFrameRef = useRef(0);
@@ -260,7 +261,8 @@ export function RichTextEditor({
   useLayoutEffect(() => {
     measurementWidthRef.current = measurementWidth;
     measurementFontSizeRef.current = measurementFontSize;
-  }, [measurementFontSize, measurementWidth]);
+    measurementKeyRef.current = measurementKey;
+  }, [measurementFontSize, measurementKey, measurementWidth]);
 
   const hideToolbar = useCallback(() => {
     setAnchor(null);
@@ -290,10 +292,18 @@ export function RichTextEditor({
     if (!report) return;
     const element = activeEditor?.view.dom as HTMLElement | undefined;
     if (!element) return;
-    const measured = measureRichTextElement(element, {
-      maxWidth: measurementWidthRef.current ?? 480,
-      fontSize: measurementFontSizeRef.current,
-    });
+    const measured = {
+      ...measureRichTextElement(element, {
+        maxWidth: measurementWidthRef.current ?? 480,
+        fontSize: measurementFontSizeRef.current,
+      }),
+      ...(measurementKeyRef.current != null
+        ? { presentationKey: measurementKeyRef.current }
+        : {}),
+      ...(measurementWidthRef.current != null
+        ? { measurementWidth: measurementWidthRef.current }
+        : {}),
+    };
     if (measured.height <= 0) return;
 
     const previous = lastReportedContentSizeRef.current;
@@ -303,7 +313,9 @@ export function RichTextEditor({
       || Math.abs((previous.naturalWidth ?? 0) - (measured.naturalWidth ?? 0)) > 1
       || Math.abs((previous.naturalHeight ?? 0) - (measured.naturalHeight ?? 0)) > 1
       || Math.abs((previous.lineCount ?? 0) - (measured.lineCount ?? 0)) > 0.5
-      || Math.abs((previous.lineHeight ?? 0) - (measured.lineHeight ?? 0)) > 0.5;
+      || Math.abs((previous.lineHeight ?? 0) - (measured.lineHeight ?? 0)) > 0.5
+      || previous.presentationKey !== measured.presentationKey
+      || Math.abs((previous.measurementWidth ?? 0) - (measured.measurementWidth ?? 0)) > 1;
     if (!changed && reason !== "blur" && reason !== "fit") return;
 
     lastReportedContentSizeRef.current = measured;
