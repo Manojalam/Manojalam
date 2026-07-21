@@ -373,6 +373,8 @@ body {
 }
 .shape-text-flow-editor .ProseMirror > * {
   text-wrap: inherit;
+  /* Keep the contour's measured center stable without changing line widths. */
+  transform: translateX(var(--shape-text-flow-horizontal-offset, 0px));
 }
 .single-word-fit .ProseMirror,
 .single-word-fit .ProseMirror * {

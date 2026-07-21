@@ -28,8 +28,10 @@ import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
   correctedGuideContentScale,
+  correctedShapeFlowHorizontalOffset,
   correctedShapeFlowOffset,
   type RenderedBoundsRect,
+  type ShapeTextHorizontalAlign,
   type ShapeTextVerticalAlign,
 } from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
@@ -293,8 +295,10 @@ export function RichTextEditor({
   const [renderedContentScale, setRenderedContentScale] = useState(contentScale);
   const requestedFlowOffset = Math.max(0, shapeTextFlow?.verticalOffset ?? 0);
   const [renderedFlowOffset, setRenderedFlowOffset] = useState(requestedFlowOffset);
+  const [renderedFlowHorizontalOffset, setRenderedFlowHorizontalOffset] = useState(0);
   const renderedContentScaleRef = useRef(contentScale);
   const renderedFlowOffsetRef = useRef(requestedFlowOffset);
+  const renderedFlowHorizontalOffsetRef = useRef(0);
   const shapeGuideCorrectionCountRef = useRef(0);
   const shapeGuideFrameRef = useRef(0);
   const richTextRootRef = useRef<HTMLDivElement>(null);
@@ -444,6 +448,9 @@ export function RichTextEditor({
   const flowVerticalAlign = shapeTextFlow?.verticalAlign ?? "middle";
   const flowVerticalInset = shapeTextFlow?.verticalInset ?? 0;
   const flowRotation = shapeTextFlow?.rotation ?? 0;
+  const flowHorizontalAlign: ShapeTextHorizontalAlign = blockAlign === "left"
+    ? "left"
+    : blockAlign === "right" ? "right" : "center";
   const flowPresentation = shapeTextFlow
     ? [
         guidePresentation,
@@ -452,6 +459,7 @@ export function RichTextEditor({
         flowVerticalAlign,
         flowVerticalInset,
         flowRotation,
+        flowHorizontalAlign,
         shapeTextFlow.guideWidth ?? 0,
         shapeTextFlow.guideHeight ?? 0,
       ].join("|")
@@ -525,10 +533,38 @@ export function RichTextEditor({
         renderedFlowOffsetRef.current = corrected;
         setRenderedFlowOffset(corrected);
       }
+
+      const currentHorizontalOffset = renderedFlowHorizontalOffsetRef.current;
+      const correctedHorizontal = correctedShapeFlowHorizontalOffset(
+        currentHorizontalOffset,
+        contentBounds,
+        {
+          left: guideBounds.left,
+          top: guideBounds.top,
+          right: guideBounds.right,
+          bottom: guideBounds.bottom,
+          width: guideBounds.width,
+          height: guideBounds.height,
+        },
+        flowHorizontalAlign,
+        {
+          inset: flowVerticalInset,
+          localToScreenScale,
+        }
+      );
+      if (
+        Math.abs(correctedHorizontal - currentHorizontalOffset) * localToScreenScale > 0.25
+        && shapeGuideCorrectionCountRef.current < 6
+      ) {
+        shapeGuideCorrectionCountRef.current += 1;
+        renderedFlowHorizontalOffsetRef.current = correctedHorizontal;
+        setRenderedFlowHorizontalOffset(correctedHorizontal);
+      }
     }
   }, [
     constrainToShapeGuide,
     editor,
+    flowHorizontalAlign,
     flowRotation,
     flowVerticalAlign,
     flowVerticalInset,
@@ -550,6 +586,7 @@ export function RichTextEditor({
   }, [
     constrainToShapeGuide,
     renderedContentScale,
+    renderedFlowHorizontalOffset,
     renderedFlowOffset,
     scheduleShapeGuideReconciliation,
   ]);
@@ -566,6 +603,8 @@ export function RichTextEditor({
       flowPresentationRef.current = flowPresentation;
       renderedFlowOffsetRef.current = requestedFlowOffset;
       setRenderedFlowOffset(requestedFlowOffset);
+      renderedFlowHorizontalOffsetRef.current = 0;
+      setRenderedFlowHorizontalOffset(0);
     }
     if (guideChanged || flowChanged) shapeGuideCorrectionCountRef.current = 0;
     scheduleShapeGuideReconciliation();
@@ -980,6 +1019,7 @@ export function RichTextEditor({
         "--shape-text-flow-left": shapeTextFlow.leftExclusion,
         "--shape-text-flow-right": shapeTextFlow.rightExclusion,
         "--shape-text-flow-offset": `${renderedFlowOffset}px`,
+        "--shape-text-flow-horizontal-offset": `${renderedFlowHorizontalOffset}px`,
       } as CSSProperties)
     : scaleStyle;
 
