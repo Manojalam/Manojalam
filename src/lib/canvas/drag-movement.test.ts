@@ -57,3 +57,19 @@ test("matrix frames stay together even when move-only is requested", () => {
   assert.equal(plan.matrixRootId, "matrix");
   assert.equal(plan.moveAsGroup, true);
 });
+
+test("a matrix cell can move its branch without dragging the generated frame", () => {
+  const nodes = [
+    node("matrix", { matrixCellRole: "header", matrixRootId: "matrix" }),
+    node("cell", { matrixRootId: "matrix", parentId: "matrix" }),
+    node("leaf", { matrixRootId: "matrix", parentId: "cell" }),
+    node("frame", { matrixFrameFor: "matrix" }),
+  ];
+  const edges = [edge("matrix-cell", "matrix", "cell"), edge("cell-leaf", "cell", "leaf")];
+
+  const plan = planNodeDragMovement(nodes, edges, "cell", ["cell"]);
+
+  assert.deepEqual(new Set(plan.movingIds), new Set(["cell", "leaf"]));
+  assert.equal(plan.matrixRootId, "matrix");
+  assert.equal(plan.moveAsGroup, true);
+});

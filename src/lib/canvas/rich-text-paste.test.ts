@@ -7,6 +7,7 @@ import {
   plainTextToRichText,
   richTextToPlainText,
   sanitizePastedHtml,
+  trimPastedHtmlBoundaries,
 } from "./rich-text-paste";
 
 test("escapes clipboard text while retaining its paragraph structure", () => {
@@ -56,6 +57,24 @@ test("legacy font tags keep their text without importing font sizing", () => {
   assert.equal(
     sanitizePastedHtml('<font face="Papyrus" size="7">Text</font>'),
     "<span>Text</span>"
+  );
+});
+
+test("internal TipTap paste removes ProseMirror boundary padding without flattening marks", () => {
+  assert.equal(
+    trimPastedHtmlBoundaries(
+      '<p data-pm-slice="1 1 []"><br class="ProseMirror-trailingBreak"></p>'
+      + '<p><span style="color:#ef4444"><strong>Safe text</strong></span></p>'
+      + '<p><br class="ProseMirror-trailingBreak"></p>'
+    ),
+    '<p><span style="color:#ef4444"><strong>Safe text</strong></span></p>'
+  );
+  assert.equal(
+    trimPastedHtmlBoundaries(
+      '<div data-pm-slice="1 1 []"><p><br class="ProseMirror-trailingBreak"></p>'
+      + '<p><em>Nested text</em></p><p><br></p></div>'
+    ),
+    '<div data-pm-slice="1 1 []"><p><em>Nested text</em></p></div>'
   );
 });
 

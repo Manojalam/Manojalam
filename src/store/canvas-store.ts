@@ -88,6 +88,10 @@ import {
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import { createExternalNoteNode } from "@/lib/canvas/node-note";
 import {
+  deleteNodesPreservingHierarchy,
+  reparentHierarchy,
+} from "@/lib/canvas/hierarchy-mutations";
+import {
   applyBoardFontSize,
   normalizeBoardFontSize,
   supportsBoardTypography,
@@ -163,6 +167,7 @@ interface CanvasState {
     frameSize?: RelationshipDiagramFrameSize
   ) => void;
   deleteSelected: () => void;
+  reparentNode: (nodeId: string, newParentId: string) => boolean;
   deleteEdges: (ids: string[]) => void;
   clearConnectorJunction: (junctionId: string) => void;
   createChildNode: (parentId: string) => void;
@@ -375,6 +380,7 @@ function clearMatrixPresentationData(data: Record<string, unknown>): Record<stri
     matrixCellRole,
     matrixRootId,
     matrixColumn,
+    matrixColumnWidth,
     matrixRowStart,
     matrixRowSpan,
     ...rest
@@ -383,6 +389,7 @@ function clearMatrixPresentationData(data: Record<string, unknown>): Record<stri
   void matrixCellRole;
   void matrixRootId;
   void matrixColumn;
+  void matrixColumnWidth;
   void matrixRowStart;
   void matrixRowSpan;
   if ((layoutSizeOverride as { mode?: unknown } | undefined)?.mode !== "matrix") {
@@ -523,6 +530,7 @@ function applyMatrixResultToNodes(
       matrixCellRole: node.id === result.rootId ? "header" : h?.parentId === result.rootId ? "category" : "cell",
       matrixRootId: result.rootId,
       matrixColumn: cell.column,
+      matrixColumnWidth: cell.column >= 0 ? result.columnWidths[cell.column] : result.bounds.width,
       matrixRowStart: cell.rowStart,
       matrixRowSpan: cell.rowSpan,
       matrixGridVisible: gridVisible,
@@ -1085,6 +1093,55 @@ function normalizedContentMeasurement(content: ContentSize): ContentSize {
     ...(content.measurementWidth != null
       ? { measurementWidth: Math.max(1, content.measurementWidth) }
       : {}),
+  };
+}
+
+function createStructuralEdge(nodes: Node[], edges: Edge[], sourceId: string, targetId: string): Edge {
+  const source = nodes.find((node) => node.id === sourceId);
+  const target = nodes.find((node) => node.id === targetId);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const layoutRoot = findLayoutRoot(sourceId, nodes, hierarchy);
+  const configuredMode = layoutRoot.mode
+    ?? ((source?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode)
+    ?? "horizontal";
+  const manualFlowchart = !!source && usesManualFlowchartPlacement(source, configuredMode);
+  const mode: LayoutMode = manualFlowchart ? "freeForm" : configuredMode;
+  const route = source && target ? routeForMode(mode, source, target) : null;
+  const hiddenInMatrix = mode === "matrix";
+  const hiddenInSunburst = mode === "radial";
+  return {
+    id: generateId(),
+    source: sourceId,
+    target: targetId,
+    type: "branch",
+    hidden: hiddenInMatrix || hiddenInSunburst,
+    sourceHandle: route?.sourceHandle,
+    targetHandle: route?.targetHandle,
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
+    data: {
+      edgeType: "branch",
+      curveStyle: manualFlowchart ? "step" : route?.curveStyle ?? "smooth",
+      arrowEnd: true,
+      hiddenInMatrix,
+      hiddenInMatrixFor: hiddenInMatrix ? layoutRoot.id : undefined,
+      hiddenInSunburst,
+      hiddenInSunburstFor: hiddenInSunburst ? sunburstFrameKey(layoutRoot.id) : undefined,
+      layoutMode: mode,
+      manualRoute: manualFlowchart,
+      preserveHandles: false,
+    },
+  };
+}
+
+function refreshStructuralEdge(edge: Edge, nodes: Node[], edges: Edge[]): Edge {
+  const created = createStructuralEdge(nodes, edges, edge.source, edge.target);
+  return {
+    ...edge,
+    hidden: created.hidden,
+    sourceHandle: created.sourceHandle,
+    targetHandle: created.targetHandle,
+    markerEnd: edge.markerEnd ?? created.markerEnd,
+    data: { ...(edge.data ?? {}), ...(created.data ?? {}) },
   };
 }
 
@@ -2117,6 +2174,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     get().pushHistory();
     const selectedNodes = new Set(selectedNodeIds);
     const selectedEdges = new Set(selectedEdgeIds);
+    const hierarchyMutation = deleteNodesPreservingHierarchy(
+      nodes,
+      edges,
+      selectedNodes,
+      (source, target) => createStructuralEdge(nodes, edges, source, target)
+    );
     const deletedMatrixRoots = new Set(nodes
       .filter((node) => {
         const data = (node.data ?? {}) as Record<string, unknown>;
@@ -2158,8 +2221,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       .map((fan) => selectedNodes.has(fan.targetBranchNodeId ?? "")
         ? { ...fan, targetBranchNodeId: undefined }
         : fan);
-    const nextNodes = nodes
-      .filter((node) => !selectedNodes.has(node.id))
+    const nextNodes = hierarchyMutation.nodes
       .filter((node) => {
         const frameRootId = autoMatrixFrameKey(node);
         return !frameRootId || !deletedMatrixRoots.has(frameRootId);
@@ -2183,8 +2245,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           data: nextData,
         };
       });
-    const nextEdges = edges
-      .filter((edge) => !selectedEdges.has(edge.id) && !selectedNodes.has(edge.source) && !selectedNodes.has(edge.target))
+    let nextEdges = hierarchyMutation.edges
+      .filter((edge) => !selectedEdges.has(edge.id))
       .map((edge) => {
         const sourceRootId = matrixRootByNode.get(edge.source);
         const targetRootId = matrixRootByNode.get(edge.target);
@@ -2217,6 +2279,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           data: nextData,
         };
       });
+    const changedHierarchyEdges = new Set(hierarchyMutation.changedEdgeIds);
+    nextEdges = nextEdges.map((edge) => changedHierarchyEdges.has(edge.id)
+      ? refreshStructuralEdge(edge, nextNodes, nextEdges)
+      : edge);
     set({
       nodes: nextNodes,
       edges: nextEdges,
@@ -2227,6 +2293,34 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "unsaved",
     });
     affectedMatrixRoots.forEach((rootId) => get().scheduleMatrixReflow(rootId));
+    hierarchyMutation.affectedParentIds.forEach((parentId) => {
+      get().scheduleListReflow(parentId);
+      get().scheduleMatrixReflow(parentId);
+      get().scheduleStructuredReflow(parentId);
+    });
+  },
+
+  reparentNode: (nodeId, newParentId) => {
+    const state = get();
+    const result = reparentHierarchy(
+      state.nodes,
+      state.edges,
+      nodeId,
+      newParentId,
+      (source, target) => createStructuralEdge(state.nodes, state.edges, source, target)
+    );
+    if (!result.changed) return false;
+    const changedEdges = new Set(result.changedEdgeIds);
+    const nextEdges = result.edges.map((edge) => changedEdges.has(edge.id)
+      ? refreshStructuralEdge(edge, result.nodes, result.edges)
+      : edge);
+    set({ nodes: result.nodes, edges: nextEdges, saveStatus: "unsaved" });
+    result.affectedParentIds.forEach((parentId) => {
+      get().scheduleListReflow(parentId);
+      get().scheduleMatrixReflow(parentId);
+      get().scheduleStructuredReflow(parentId);
+    });
+    return true;
   },
 
   deleteEdges: (ids) => {
@@ -2691,6 +2785,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const node = get().nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
     get().pushHistory();
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (data.matrixCell === true) return;
     const currentSize = getNodeDimensions(node);
     set((state) => ({
       nodes: state.nodes.map((candidate) => candidate.id === nodeId
@@ -2710,6 +2806,42 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   finishManualNodeResize: (nodeId, size) => {
     const node = get().nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
+    const nodeData = (node.data ?? {}) as Record<string, unknown>;
+    if (nodeData.matrixCell === true) {
+      const layoutOverride = nodeData.layoutSizeOverride as Partial<{
+        mode: string;
+        width: number;
+        height: number;
+      }> | undefined;
+      const currentSize = layoutOverride?.mode === "matrix"
+        && typeof layoutOverride.width === "number"
+        && typeof layoutOverride.height === "number"
+        ? { width: layoutOverride.width, height: layoutOverride.height }
+        : getNodeDimensions(node);
+      const currentColumnWidth = typeof nodeData.matrixColumnWidth === "number"
+        ? nodeData.matrixColumnWidth
+        : currentSize.width;
+      const desiredColumnWidth = Math.max(80, Math.min(1200,
+        Math.round(currentColumnWidth + size.width - currentSize.width)
+      ));
+      const desiredHeight = Math.max(40, Math.round(size.height));
+      set((state) => ({
+        nodes: state.nodes.map((candidate) => candidate.id === nodeId
+          ? {
+              ...candidate,
+              data: {
+                ...(candidate.data ?? {}),
+                matrixWidthOverride: desiredColumnWidth,
+                matrixHeightOverride: desiredHeight,
+              },
+            }
+          : candidate),
+        saveStatus: "unsaved",
+      }));
+      requestNodeInternalsRefresh([nodeId]);
+      get().scheduleMatrixReflow(nodeId);
+      return;
+    }
     const chartResize = resolveChartNodeResize(node.type, size);
     if (chartResize) {
       const { width, height } = chartResize.size;
@@ -2728,7 +2860,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       requestNodeInternalsRefresh([nodeId]);
       return;
     }
-    const data = (node.data ?? {}) as Record<string, unknown>;
+    const data = nodeData;
     let width = Math.max(60, Math.round(size.width));
     let height = Math.max(40, Math.round(size.height));
     const shapeType = String(data.shapeType ?? "");

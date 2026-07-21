@@ -888,6 +888,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const toggleRelationshipTarget = useUIStore((state) => state.toggleRelationshipTarget);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const [fontMetricsRevision, setFontMetricsRevision] = useState(0);
   const clipPrefix = `sunburst-clip-${useId().replace(/:/g, "")}`;
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1781,6 +1782,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                     return;
                   }
                   selectOriginalNode(segment.id);
+                  setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
                   setEditingId(segment.id);
                 }}
               >
@@ -1988,6 +1990,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
               return;
             }
             selectOriginalNode(d.rootId);
+            setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
             setEditingId(d.rootId);
           }}
         >
@@ -2151,6 +2154,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                 nodeId={selectedId}
                 initialContent={selectedRichText}
                 editable
+                initialFocusPoint={editFocusPoint}
                 placeholder="Type here"
                 className="h-full w-full [&_.ProseMirror]:flex [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:flex-col [&_.ProseMirror]:items-center [&_.ProseMirror]:justify-center [&_.ProseMirror]:overflow-visible"
                 blockAlign={(selectedNode.data as Record<string, unknown>).textAlign as "left" | "center" | "right" | "justify" | undefined}

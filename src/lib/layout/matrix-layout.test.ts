@@ -296,6 +296,25 @@ test("a vertical Matrix grows hierarchy levels downward", () => {
   assertClean(result);
 });
 
+test("user-resized cells persist column width and row height overrides", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "category", parentId: "root" },
+    { id: "detail", parentId: "category", text: "Resizable detail" },
+  ]);
+  nodes[1] = {
+    ...nodes[1],
+    data: { ...nodes[1].data, matrixWidthOverride: 520, matrixHeightOverride: 150 },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const category = result.cells.find((cell) => cell.nodeId === "category")!;
+
+  assert.equal(result.columnWidths[0], 520);
+  assert.ok(category.height >= 150);
+  assertClean(result);
+});
+
 test("vertical Matrix branches stretch shallow siblings to the body edge", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, orientation: "vertical" },

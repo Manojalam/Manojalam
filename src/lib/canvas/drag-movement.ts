@@ -26,17 +26,18 @@ export function planNodeDragMovement(
   }
 
   const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
-  const matrixRootId = draggedData.matrixCellRole === "header"
-    && draggedData.matrixRootId === draggedNode.id
-    ? draggedNode.id
+  const matrixRootId = typeof draggedData.matrixRootId === "string"
+    ? draggedData.matrixRootId
     : null;
+  const movesWholeMatrix = draggedData.matrixCellRole === "header"
+    && matrixRootId === draggedNode.id;
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const selectedGroup = selectedNodeIds.length > 1 && selectedNodeIds.includes(draggedNode.id);
   let movingIds: string[];
   let moveAsGroup = false;
 
   // Matrix frames are a single generated object and cannot be separated safely.
-  if (matrixRootId) {
+  if (movesWholeMatrix && matrixRootId) {
     movingIds = nodes
       .filter((node) => {
         const data = (node.data ?? {}) as Record<string, unknown>;
@@ -63,7 +64,7 @@ export function planNodeDragMovement(
     moveAsGroup = movingIds.length > 1;
   }
 
-  if (!moveOnlyDraggedNode || matrixRootId) {
+  if (!moveOnlyDraggedNode || movesWholeMatrix) {
     movingIds = includeAttachedExternalNoteIds(nodes, movingIds);
   }
 

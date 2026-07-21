@@ -79,6 +79,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
+  const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
   const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "sticky");
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
@@ -99,7 +100,10 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
     editDirty.current = true;
   }, [pushHistory]);
 
-  const beginRequestedEdit = useCallback(() => setEditing(true), []);
+  const beginRequestedEdit = useCallback(() => {
+    setEditFocusPoint(null);
+    setEditing(true);
+  }, []);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -120,7 +124,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
 
   return (
     <>
-      <NodeResizer minWidth={140} minHeight={80} isVisible={selected && !editing && !isDrawing && !matrixCell}
+      <NodeResizer minWidth={matrixCell ? 80 : 140} minHeight={matrixCell ? 40 : 80} isVisible={selected && !editing && !isDrawing}
         lineStyle={{ borderColor: border, borderRadius: bRadius }} handleStyle={{ borderColor: border, backgroundColor: "white" }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd} />
@@ -160,6 +164,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             if (isDrawing) return;
             editHistoryCaptured.current = false;
             editDirty.current = false;
+            setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
             setEditing(true);
           }}
         >
@@ -200,6 +205,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",
               textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"

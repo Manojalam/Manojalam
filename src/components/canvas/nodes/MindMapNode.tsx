@@ -60,6 +60,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
   const [editing, setEditing] = useState(false);
+  const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
   const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "mindmap");
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
@@ -80,13 +81,17 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
     editDirty.current = true;
   }, [pushHistory]);
 
-  const beginRequestedEdit = useCallback(() => setEditing(true), []);
+  const beginRequestedEdit = useCallback(() => {
+    setEditFocusPoint(null);
+    setEditing(true);
+  }, []);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
-  const startEditing = () => {
+  const startEditing = (clientX: number, clientY: number) => {
     if (d.locked || isDrawing) return;
     editHistoryCaptured.current = false;
     editDirty.current = false;
+    setEditFocusPoint({ clientX, clientY });
     setEditing(true);
   };
 
@@ -109,9 +114,9 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   return (
     <>
       <NodeResizer
-        minWidth={120}
+        minWidth={matrixCell ? 80 : 120}
         minHeight={40}
-        isVisible={selected && !editing && !isDrawing && !matrixCell}
+        isVisible={selected && !editing && !isDrawing}
         lineStyle={{ borderRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
@@ -130,7 +135,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
         }}
         onDoubleClick={(event) => {
           event.stopPropagation();
-          startEditing();
+          startEditing(event.clientX, event.clientY);
         }}
       >
         {/* Extra border layers — expand outward, not clipped */}
@@ -174,6 +179,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",
               textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"

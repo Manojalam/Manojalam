@@ -42,7 +42,7 @@ function sanitizeFallbackLinks(html: string): string {
 
 function fallbackSanitizePastedHtml(html: string): string {
   const unsafe = UNSAFE_PASTE_ELEMENTS.join("|");
-  return sanitizeFallbackLinks(trimExternalHtmlBoundaries(html
+  return sanitizeFallbackLinks(trimPastedHtmlBoundaries(html
     .replace(new RegExp(`<(${unsafe})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, "gi"), "")
     .replace(new RegExp(`<(${unsafe})\\b[^>]*\\/?>`, "gi"), "")
     .replace(/\s(?:style|class|id|contenteditable|draggable)=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
@@ -53,20 +53,26 @@ function fallbackSanitizePastedHtml(html: string): string {
 
 const EMPTY_BOUNDARY_BLOCK = "(?:p|div|h[1-6]|blockquote|li)";
 
-function trimExternalHtmlBoundaries(html: string): string {
+export function trimPastedHtmlBoundaries(html: string): string {
   let normalized = html.trim();
   const leadingEmptyBlock = new RegExp(
-    `^(?:<${EMPTY_BOUNDARY_BLOCK}\\b[^>]*>(?:\\s|&nbsp;|<br\\s*\\/?>)*<\\/${EMPTY_BOUNDARY_BLOCK}>\\s*)+`,
+    `^(?:<${EMPTY_BOUNDARY_BLOCK}\\b[^>]*>(?:\\s|&nbsp;|<br\\b[^>]*>)*<\\/${EMPTY_BOUNDARY_BLOCK}>\\s*)+`,
     "i"
   );
   const trailingEmptyBlock = new RegExp(
-    `(?:<${EMPTY_BOUNDARY_BLOCK}\\b[^>]*>(?:\\s|&nbsp;|<br\\s*\\/?>)*<\\/${EMPTY_BOUNDARY_BLOCK}>\\s*)+$`,
+    `(?:<${EMPTY_BOUNDARY_BLOCK}\\b[^>]*>(?:\\s|&nbsp;|<br\\b[^>]*>)*<\\/${EMPTY_BOUNDARY_BLOCK}>\\s*)+$`,
     "i"
   );
   normalized = normalized.replace(leadingEmptyBlock, "").replace(trailingEmptyBlock, "");
-  return normalized
+  normalized = normalized
     .replace(/^(<(?:p|div|h[1-6]|blockquote|li)\b[^>]*>)(?:\s|&nbsp;)+/i, "$1")
     .replace(/(?:\s|&nbsp;)+(<\/(?:p|div|h[1-6]|blockquote|li)>\s*)$/i, "$1");
+  const sliceWrapper = normalized.match(
+    /^(<([a-z][\w:-]*)\b[^>]*\bdata-pm-slice=(?:"[^"]*"|'[^']*'|[^\s>]+)[^>]*>)([\s\S]*)(<\/\2\s*>)$/i
+  );
+  return sliceWrapper
+    ? `${sliceWrapper[1]}${trimPastedHtmlBoundaries(sliceWrapper[3])}${sliceWrapper[4]}`
+    : normalized;
 }
 
 function firstTextNode(root: globalThis.Node): Text | null {
@@ -94,7 +100,7 @@ function isEmptyBoundaryElement(element: Element): boolean {
     && !element.querySelector("img,video,audio,table,hr");
 }
 
-function trimExternalDomBoundaries(body: HTMLElement): void {
+function trimPastedDomBoundaries(body: HTMLElement): void {
   while (body.firstChild) {
     const first = body.firstChild;
     const removable = first.nodeType === globalThis.Node.TEXT_NODE
@@ -130,9 +136,10 @@ function unwrapElement(element: Element): void {
  * stripped in both cases.
  */
 export function sanitizePastedHtml(html: string): string {
-  if (typeof DOMParser === "undefined") return fallbackSanitizePastedHtml(html);
+  const boundedHtml = trimPastedHtmlBoundaries(html);
+  if (typeof DOMParser === "undefined") return fallbackSanitizePastedHtml(boundedHtml);
 
-  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const parsed = new DOMParser().parseFromString(boundedHtml, "text/html");
   const internalTipTapCopy = parsed.body.querySelector("[data-pm-slice]") !== null;
 
   parsed.body.querySelectorAll(UNSAFE_PASTE_ELEMENTS.join(",")).forEach((element) => element.remove());
@@ -181,7 +188,13 @@ export function sanitizePastedHtml(html: string): string {
     if (!SAFE_EXTERNAL_ELEMENTS.has(element.tagName) && !internalTipTapCopy) unwrapElement(element);
   }
 
-  if (!internalTipTapCopy) trimExternalDomBoundaries(parsed.body);
+  // TipTap's own clipboard HTML can contain ProseMirror trailing-break blocks.
+  // Those are layout sentinels, not authored blank lines, so trim them for both
+  // internal and external clipboard content while retaining internal marks.
+  parsed.body.querySelectorAll<HTMLElement>("[data-pm-slice]").forEach((element) => {
+    trimPastedDomBoundaries(element);
+  });
+  trimPastedDomBoundaries(parsed.body);
 
   return parsed.body.innerHTML;
 }
