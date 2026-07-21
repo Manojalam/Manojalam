@@ -944,11 +944,11 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation",
 ]);
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutWrapAfter", "listDensity",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "listDensity",
 ]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
@@ -1478,6 +1478,13 @@ function clearDuplicatedContent(
     .filter((childId): childId is string => typeof childId === "string" && idMap.has(childId))
     .map((childId) => idMap.get(childId)!);
   next.childOrder = mappedChildOrder;
+  if (Array.isArray(next.layoutFoldBreakAfter)) {
+    const mappedBreaks = next.layoutFoldBreakAfter
+      .filter((childId): childId is string => typeof childId === "string" && idMap.has(childId))
+      .map((childId) => idMap.get(childId)!);
+    if (mappedBreaks.length) next.layoutFoldBreakAfter = mappedBreaks;
+    else delete next.layoutFoldBreakAfter;
+  }
   if (originalId === parentId || mappedChildOrder.length === 0) delete next.layoutMode;
 
   return next;
@@ -2747,6 +2754,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
     if (
       Object.prototype.hasOwnProperty.call(data, "layoutFoldCount")
+      || Object.prototype.hasOwnProperty.call(data, "layoutFoldBreakAfter")
       || Object.prototype.hasOwnProperty.call(data, "layoutWrapAfter")
     ) {
       get().scheduleStructuredReflow(nodeId);
