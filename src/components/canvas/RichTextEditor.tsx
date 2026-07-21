@@ -77,7 +77,7 @@ const ShapeTextFlowGuides = Extension.create({
 
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
-  StarterKit,
+  StarterKit.configure({ underline: false }),
   TextStyle,
   Color,
   FontFamily,
@@ -396,13 +396,15 @@ export function RichTextEditor({
     const contentBounds = range.getBoundingClientRect();
     range.detach();
     const guideBounds = guide.getBoundingClientRect();
-    const corrected = correctedGuideContentScale(
-      renderedContentScale,
-      { width: contentBounds.width, height: contentBounds.height },
-      { width: guideBounds.width, height: guideBounds.height }
-    );
-    if (corrected < renderedContentScale - 0.001) setRenderedContentScale(corrected);
-  }, [constrainToShapeGuide, editor, renderedContentScale]);
+    setRenderedContentScale((currentScale) => {
+      const corrected = correctedGuideContentScale(
+        currentScale,
+        { width: contentBounds.width, height: contentBounds.height },
+        { width: guideBounds.width, height: guideBounds.height }
+      );
+      return corrected < currentScale - 0.001 ? corrected : currentScale;
+    });
+  }, [constrainToShapeGuide, editor]);
 
   useLayoutEffect(() => {
     if (guidePresentationRef.current !== guidePresentation) {
