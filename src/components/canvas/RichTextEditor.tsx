@@ -60,15 +60,6 @@ const ShapeTextFlowGuides = Extension.create({
       element.contentEditable = "false";
       return element;
     }, { side, ignoreSelection: true });
-    const spacer = Decoration.widget(0, () => {
-      const element = document.createElement("span");
-      element.className = "shape-text-flow-spacer";
-      element.dataset.shapeTextFlowSpacer = "true";
-      element.setAttribute("aria-hidden", "true");
-      element.contentEditable = "false";
-      return element;
-    }, { side: 1, ignoreSelection: true });
-
     return [new Plugin({
       key: new PluginKey("shapeTextFlowGuides"),
       props: {
@@ -76,7 +67,6 @@ const ShapeTextFlowGuides = Extension.create({
           return DecorationSet.create(state.doc, [
             guide("shape-text-flow-guide-left", -2),
             guide("shape-text-flow-guide-right", -1),
-            spacer,
           ]);
         },
       },
