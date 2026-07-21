@@ -1379,6 +1379,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       measurementWidth={availableTextSize.width}
                       measurementFontSize={textPresentation.authoredFontSize}
                       contentScale={textPresentation.scale}
+                      constrainToShapeGuide
                       placeholder="Double-click…"
                       className={cn(
                         "[&_.ProseMirror]:text-center",
