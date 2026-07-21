@@ -214,6 +214,9 @@ function nodeLayoutSize(node: Node, mode: LayoutMode, depth: number): LayoutNode
       { width: preset.minimumWidth, height: preset.minimumHeight },
       20
     ),
+    textPadding: node.type === "shape" && typeof data.textPadding === "number"
+      ? data.textPadding
+      : undefined,
   });
   if (resolveAutoSizeMode(data) === "height-only" && positiveNumber(userSize?.width)) {
     return { width: positiveNumber(userSize?.width)!, height: Math.ceil(fitted.height) };

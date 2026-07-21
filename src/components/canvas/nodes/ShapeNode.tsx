@@ -14,6 +14,7 @@ import {
 import {
   shapeLabelBox,
   shapeTextFlowLayout,
+  resolveShapeTextPadding,
   shouldUseShapeLabelContour,
   type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
@@ -78,7 +79,6 @@ const CUSTOM_SVG_SHAPES = new Set([
 
 const SQUARE_ASPECT_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 const CONCENTRIC_INSET_STEP = 6;
-const SHAPE_LABEL_GUIDE_INSET = 4;
 
 function resolveTextVerticalAlign(value: unknown): TextVerticalAlign {
   return value === "top" || value === "bottom" ? value : "middle";
@@ -1072,7 +1072,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const currentIntrinsicContentSize = intrinsicContentSize?.presentationKey === presentationKey
     ? intrinsicContentSize
     : undefined;
-  const flowOptions = { cornerRadius: bRadius, petalCount };
+  const textPadding = resolveShapeTextPadding(dd.textPadding, nodeSize);
+  const flowOptions = { cornerRadius: bRadius, petalCount, padding: textPadding };
   const flowLayout = shapeTextFlowLayout(renderedShapeType, nodeSize, flowOptions);
   const plainLabelText = typeof d.text === "string"
     ? d.text
@@ -1080,9 +1081,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         .replace(/<br\s*\/?\s*>/gi, "\n")
         .replace(/<\/(?:p|div|h[1-6]|li)>/gi, "\n")
         .replace(/<[^>]+>/g, " ");
-  // Diamonds and capsules always keep their complete inner silhouette. Other
-  // shapes retain the existing compact-box path until their label needs to
-  // wrap, so already-working simple labels are unchanged.
+  // Every authored shape label uses the same padded contour. The profile
+  // changes with the shape, while alignment and fitting stay shared.
   const contourTextFlow = !matrixCell && shouldUseShapeLabelContour(
     renderedShapeType,
     nodeSize,
@@ -1093,12 +1093,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const labelBox = contourTextFlow
     ? flowLayout.box
     : shapeLabelBox(renderedShapeType, nodeSize, "shape");
-  const flowVerticalInset = contourTextFlow
-    ? Math.min(
-        flowLayout.box.height * 0.12,
-        Math.max(12, Math.min(flowLayout.box.width, flowLayout.box.height) * 0.06)
-      )
-    : 0;
+  const flowVerticalInset = 0;
   const availableTextSize = contourTextFlow ? {
     width: flowLayout.capacity.width,
     height: Math.max(8, flowLayout.capacity.height - flowVerticalInset * 2),
@@ -1287,7 +1282,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               data-shape-label-guide={renderedShapeType}
               aria-hidden="true"
               className="pointer-events-none absolute z-[9]"
-              style={{ inset: SHAPE_LABEL_GUIDE_INSET }}
+              style={{ inset: textPadding }}
             >
               <ShapeSurface
                 shapeType={renderedShapeType}
@@ -1295,7 +1290,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                 borderColor="#db2777"
                 borderWidth={1}
                 borderStyle="dashed"
-                borderRadius={Math.max(0, bRadius - SHAPE_LABEL_GUIDE_INSET)}
+                borderRadius={Math.max(0, bRadius - textPadding)}
                 petalCount={petalCount}
               />
             </div>
@@ -1460,6 +1455,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                         verticalAlign: textVerticalAlign,
                         verticalInset: flowVerticalInset,
                         rotation: textRotation,
+                        guideWidth: labelBox.width,
+                        guideHeight: labelBox.height,
                       } : undefined}
                       placeholder="Double-click…"
                       className={cn(

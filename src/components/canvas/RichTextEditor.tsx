@@ -240,6 +240,8 @@ interface RichTextEditorProps {
     verticalAlign?: ShapeTextVerticalAlign;
     verticalInset?: number;
     rotation?: number;
+    guideWidth?: number;
+    guideHeight?: number;
   };
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
@@ -290,6 +292,10 @@ export function RichTextEditor({
   const [renderedContentScale, setRenderedContentScale] = useState(contentScale);
   const requestedFlowOffset = Math.max(0, shapeTextFlow?.verticalOffset ?? 0);
   const [renderedFlowOffset, setRenderedFlowOffset] = useState(requestedFlowOffset);
+  const renderedContentScaleRef = useRef(contentScale);
+  const renderedFlowOffsetRef = useRef(requestedFlowOffset);
+  const shapeGuideCorrectionCountRef = useRef(0);
+  const shapeGuideFrameRef = useRef(0);
   const richTextRootRef = useRef<HTMLDivElement>(null);
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
@@ -438,10 +444,11 @@ export function RichTextEditor({
         guidePresentation,
         shapeTextFlow.leftExclusion,
         shapeTextFlow.rightExclusion,
-        requestedFlowOffset,
         shapeTextFlow.verticalAlign ?? "middle",
         shapeTextFlow.verticalInset ?? 0,
         shapeTextFlow.rotation ?? 0,
+        shapeTextFlow.guideWidth ?? 0,
+        shapeTextFlow.guideHeight ?? 0,
       ].join("|")
     : "";
   const reconcileShapeGuide = useCallback(() => {
@@ -457,12 +464,18 @@ export function RichTextEditor({
     const contentBounds = renderedTextBounds(content);
     if (!contentBounds) return;
     const guideBounds = guide.getBoundingClientRect();
+    const currentScale = renderedContentScaleRef.current;
     const correctedScale = correctedGuideContentScale(
-      renderedContentScale,
+      currentScale,
       { width: contentBounds.width, height: contentBounds.height },
       { width: guideBounds.width, height: guideBounds.height }
     );
-    if (correctedScale < renderedContentScale - 0.001) {
+    if (
+      correctedScale < currentScale - 0.001
+      && shapeGuideCorrectionCountRef.current < 6
+    ) {
+      shapeGuideCorrectionCountRef.current += 1;
+      renderedContentScaleRef.current = correctedScale;
       setRenderedContentScale(correctedScale);
       return;
     }
@@ -476,54 +489,75 @@ export function RichTextEditor({
       const localToScreenScale = root.offsetHeight > 0
         ? rootBounds.height / root.offsetHeight
         : 1;
-      setRenderedFlowOffset((currentOffset) => {
-        const corrected = correctedShapeFlowOffset(
-          currentOffset,
-          contentBounds,
-          {
-            left: guideBounds.left,
-            top: guideBounds.top,
-            right: guideBounds.right,
-            bottom: guideBounds.bottom,
-            width: guideBounds.width,
-            height: guideBounds.height,
-          },
-          shapeTextFlow.verticalAlign ?? "middle",
-          {
-            inset: shapeTextFlow.verticalInset,
-            localToScreenScale,
-          }
-        );
-        return Math.abs(corrected - currentOffset) > 0.25 ? corrected : currentOffset;
-      });
+      const currentOffset = renderedFlowOffsetRef.current;
+      const corrected = correctedShapeFlowOffset(
+        currentOffset,
+        contentBounds,
+        {
+          left: guideBounds.left,
+          top: guideBounds.top,
+          right: guideBounds.right,
+          bottom: guideBounds.bottom,
+          width: guideBounds.width,
+          height: guideBounds.height,
+        },
+        shapeTextFlow.verticalAlign ?? "middle",
+        {
+          inset: shapeTextFlow.verticalInset,
+          localToScreenScale,
+        }
+      );
+      if (
+        Math.abs(corrected - currentOffset) > 0.5
+        && shapeGuideCorrectionCountRef.current < 6
+      ) {
+        shapeGuideCorrectionCountRef.current += 1;
+        renderedFlowOffsetRef.current = corrected;
+        setRenderedFlowOffset(corrected);
+      }
     }
-  }, [constrainToShapeGuide, editor, renderedContentScale, shapeTextFlow]);
+  }, [constrainToShapeGuide, editor, shapeTextFlow]);
+
+  const scheduleShapeGuideReconciliation = useCallback(() => {
+    cancelAnimationFrame(shapeGuideFrameRef.current);
+    shapeGuideFrameRef.current = requestAnimationFrame(() => {
+      shapeGuideFrameRef.current = 0;
+      reconcileShapeGuide();
+    });
+  }, [reconcileShapeGuide]);
+
+  useEffect(() => () => cancelAnimationFrame(shapeGuideFrameRef.current), []);
+
+  useEffect(() => {
+    if (constrainToShapeGuide) scheduleShapeGuideReconciliation();
+  }, [
+    constrainToShapeGuide,
+    renderedContentScale,
+    renderedFlowOffset,
+    scheduleShapeGuideReconciliation,
+  ]);
 
   useLayoutEffect(() => {
     const guideChanged = guidePresentationRef.current !== guidePresentation;
     const flowChanged = flowPresentationRef.current !== flowPresentation;
-    const needsScaleReset = guideChanged
-      && Math.abs(renderedContentScale - contentScale) > 0.001;
-    const needsFlowReset = flowChanged
-      && Math.abs(renderedFlowOffset - requestedFlowOffset) > 0.25;
     if (guideChanged) {
       guidePresentationRef.current = guidePresentation;
-      if (needsScaleReset) setRenderedContentScale(contentScale);
+      renderedContentScaleRef.current = contentScale;
+      setRenderedContentScale(contentScale);
     }
     if (flowChanged) {
       flowPresentationRef.current = flowPresentation;
-      if (needsFlowReset) setRenderedFlowOffset(requestedFlowOffset);
+      renderedFlowOffsetRef.current = requestedFlowOffset;
+      setRenderedFlowOffset(requestedFlowOffset);
     }
-    if (needsScaleReset || needsFlowReset) return;
-    reconcileShapeGuide();
+    if (guideChanged || flowChanged) shapeGuideCorrectionCountRef.current = 0;
+    scheduleShapeGuideReconciliation();
   }, [
     contentScale,
     flowPresentation,
     guidePresentation,
-    reconcileShapeGuide,
-    renderedContentScale,
-    renderedFlowOffset,
     requestedFlowOffset,
+    scheduleShapeGuideReconciliation,
   ]);
 
   useEffect(() => {
@@ -536,19 +570,22 @@ export function RichTextEditor({
     let frame = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(reconcileShapeGuide);
+      frame = requestAnimationFrame(scheduleShapeGuideReconciliation);
     });
     observer.observe(content);
     observer.observe(guide);
     void textMeasurementFontsReady().then(() => {
-      if (active) reconcileShapeGuide();
+      if (active) {
+        shapeGuideCorrectionCountRef.current = 0;
+        scheduleShapeGuideReconciliation();
+      }
     });
     return () => {
       active = false;
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [constrainToShapeGuide, editor, reconcileShapeGuide]);
+  }, [constrainToShapeGuide, editor, scheduleShapeGuideReconciliation]);
 
   const publishTextSelection = useCallback(() => {
     if (!editor || !nodeId) return;

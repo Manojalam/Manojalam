@@ -410,6 +410,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   textAlign?: "left" | "center" | "right" | "justify";
   /** Whole-object vertical placement for editable labels. */
   textVerticalAlign?: TextVerticalAlign;
+  /** Per-side inset between a shape outline and its editable text contour. */
+  textPadding?: number;
   /** User-authored rotation applied to editable text only, leaving the node surface unchanged. */
   textRotation?: number;
   internalFillRegions?: InternalFillRegion[];

@@ -333,7 +333,7 @@ body {
   text-wrap: inherit;
 }
 
-/* Dense labels flow through the actual silhouette. Two invisible TipTap
+/* Shape labels flow through their actual padded silhouette. Two invisible TipTap
    decorations float away only the area outside each horizontal shape slice;
    the decorations are editor chrome and are never stored with the document. */
 .shape-text-flow-guide { display: none; }

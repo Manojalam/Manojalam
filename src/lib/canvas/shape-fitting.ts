@@ -35,6 +35,8 @@ export interface ShapeFitOptions {
   maxWidth?: number;
   maxHeight?: number;
   cornerRadius?: number;
+  /** Per-side inset between a shape outline and its text contour. */
+  textPadding?: number;
 }
 
 export interface SingleWordFit {
@@ -52,6 +54,8 @@ export interface ShapeTextContentOptions {
   contentSize?: Partial<ContentMeasurement>;
   /** Stable authored-text aspect used before an exact DOM measurement exists. */
   preferredAspect?: number;
+  /** Per-side inset between a shape outline and its text contour. */
+  textPadding?: number;
 }
 
 export interface ShapeLabelBox extends Size {
@@ -93,12 +97,26 @@ export interface ShapeTextFlowLayout {
 export interface ShapeTextFlowOptions {
   cornerRadius?: number;
   petalCount?: number;
+  padding?: number;
 }
 
 type NormalizedPoint = readonly [x: number, y: number];
 
-const SHAPE_FLOW_INSET = 4;
+export const DEFAULT_SHAPE_TEXT_PADDING = 4;
 const SHAPE_FLOW_SAMPLES = 24;
+
+export function maximumShapeTextPadding(renderedSize: Size): number {
+  const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
+  const height = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
+  return Math.max(0, (Math.min(width, height) - 8) / 2);
+}
+
+export function resolveShapeTextPadding(value: unknown, renderedSize: Size): number {
+  const requested = typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, value)
+    : DEFAULT_SHAPE_TEXT_PADDING;
+  return Math.min(requested, maximumShapeTextPadding(renderedSize));
+}
 
 const SHAPE_FLOW_POLYGONS: Partial<Record<string, readonly NormalizedPoint[]>> = {
   diamond: [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]],
@@ -254,13 +272,14 @@ export function shapeTextFlowLayout(
 ): ShapeTextFlowLayout {
   const renderedWidth = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
   const renderedHeight = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
-  const width = Math.max(8, renderedWidth - SHAPE_FLOW_INSET * 2);
-  const height = Math.max(8, renderedHeight - SHAPE_FLOW_INSET * 2);
+  const padding = resolveShapeTextPadding(options.padding, renderedSize);
+  const width = Math.max(8, renderedWidth - padding * 2);
+  const height = Math.max(8, renderedHeight - padding * 2);
   const insetSize = { width, height };
   const ranges = Array.from({ length: SHAPE_FLOW_SAMPLES + 1 }, (_, index) => (
     shapeHorizontalRange(shapeType, index / SHAPE_FLOW_SAMPLES, insetSize, {
       ...options,
-      cornerRadius: Math.max(0, (options.cornerRadius ?? 0) - SHAPE_FLOW_INSET),
+      cornerRadius: Math.max(0, (options.cornerRadius ?? 0) - padding),
     })
   ));
   const areaRatio = Math.max(
@@ -268,7 +287,7 @@ export function shapeTextFlowLayout(
     ranges.reduce((sum, [left, right]) => sum + Math.max(0, right - left), 0) / ranges.length
   );
   return {
-    box: { x: SHAPE_FLOW_INSET, y: SHAPE_FLOW_INSET, width, height },
+    box: { x: padding, y: padding, width, height },
     capacity: { width: Math.max(8, width * areaRatio), height },
     leftExclusion: exclusionPolygon("left", ranges),
     rightExclusion: exclusionPolygon("right", ranges),
@@ -298,9 +317,8 @@ export function shouldUseShapeTextFlow(
 }
 
 /**
- * Select the actual renderer path. Diamonds and capsules always use their
- * contour for authored labels; other shapes retain the established behavior
- * of switching to contour flow only when wrapping needs it.
+ * Select the actual renderer path. Every authored shape label uses the same
+ * contour renderer; the shape profile itself decides each line's width.
  */
 export function shouldUseShapeLabelContour(
   shapeType: string | undefined,
@@ -310,9 +328,10 @@ export function shouldUseShapeLabelContour(
   options: ShapeTextFlowOptions = {}
 ): boolean {
   const normalizedText = text?.replace(/\s+/gu, " ").trim() ?? "";
-  if (!normalizedText || shapeType === "rectangle") return false;
-  if (shapeType === "diamond" || shapeType === "capsule") return true;
-  return shouldUseShapeTextFlow(shapeType, renderedSize, contentSize, normalizedText, options);
+  void renderedSize;
+  void contentSize;
+  void options;
+  return !!shapeType && !!normalizedText;
 }
 
 /** Editing stays rectangular so caret movement matches the visible soft wraps. */
@@ -334,11 +353,15 @@ export function nodeContentPadding(nodeType: string | undefined): Size {
   return { width: 8, height: 8 };
 }
 
-function shapeContentPadding(shapeType: string | undefined, nodeType: string | undefined): Size {
-  if (shapeType === "diamond" && nodeType === "shape") {
-    // Four pixels per side keeps text clear of the sloped border without
-    // consuming most of the diamond's inscribed text rectangle.
-    return { width: 8, height: 8 };
+function shapeContentPadding(
+  shapeType: string | undefined,
+  nodeType: string | undefined,
+  textPadding?: number
+): Size {
+  void shapeType;
+  if (nodeType === "shape" && typeof textPadding === "number" && Number.isFinite(textPadding)) {
+    const totalPadding = Math.max(0, textPadding) * 2;
+    return { width: totalPadding, height: totalPadding };
   }
   return nodeContentPadding(nodeType);
 }
@@ -487,7 +510,7 @@ export function shapeTextContentSize(
 ): Size {
   const width = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
   const height = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
-  const padding = shapeContentPadding(shapeType, nodeType);
+  const padding = shapeContentPadding(shapeType, nodeType, options.textPadding);
   // Prefer the unwrapped width. Using an already-constrained rendered width
   // feeds a narrow diamond editor back into this aspect calculation and can
   // collapse the text area to a one-character column.
@@ -649,7 +672,7 @@ export function fitShapeToContent(
   contentSize: ContentMeasurement,
   options: ShapeFitOptions = {}
 ): Size {
-  const padding = shapeContentPadding(shapeType, options.nodeType);
+  const padding = shapeContentPadding(shapeType, options.nodeType, options.textPadding);
   const borderAllowance = Math.max(0, finitePositive(options.borderWidth, 0)) * 2;
   const maxContentWidth = finitePositive(options.maxContentWidth, MAX_AUTOFIT_WIDTH - padding.width);
   const contentWidth = Math.min(maxContentWidth, finitePositive(contentSize.width, MIN_AUTOFIT_WIDTH - padding.width));
