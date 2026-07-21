@@ -50,7 +50,11 @@ import { ClearableColorInput } from "./ClearableColorInput";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
-import { legacyRadiusToPercent } from "@/lib/canvas/shape-fitting";
+import {
+  legacyRadiusToPercent,
+  maximumShapeTextPadding,
+  resolveShapeTextPadding,
+} from "@/lib/canvas/shape-fitting";
 import { resolveAutoSizeMode } from "@/lib/canvas/node-sizing";
 import {
   resolvedBoardColor,
@@ -2958,6 +2962,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const isContentNode = isTextNode || isShapeNode;
   const isSanskrit    = ["sanskrit", "shloka", "grammar"].includes(nodeType);
   const currentNodeSize = getNodeDimensions(selectedNode);
+  const shapeTextPadding = resolveShapeTextPadding(d.textPadding, currentNodeSize);
+  const shapeTextPaddingMax = Math.floor(maximumShapeTextPadding(currentNodeSize));
   const autoSizeMode = resolveAutoSizeMode(d);
 
   const borderWidth   = typeof d.borderWidth   === "number" ? d.borderWidth   : 2;
@@ -3365,6 +3371,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <IconBtn key={val} active={(d.textVerticalAlign ?? "middle") === val} onClick={() => setField("textVerticalAlign", val)} title={title}>{icon}</IconBtn>
                 ))}
               </Row>
+            )}
+
+            {isShapeNode && !radialChart?.enabled && !selectedTextRange && (
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Shape text padding
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[9px]"
+                    onClick={() => setField("textPadding", undefined)}
+                  >
+                    Reset
+                  </Button>
+                </div>
+                <ThicknessControl
+                  value={shapeTextPadding}
+                  min={0}
+                  max={shapeTextPaddingMax}
+                  step={1}
+                  onChangeStart={pushHistory}
+                  onChange={(value) => updateNodeData(selectedNode.id, { textPadding: value })}
+                />
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  Insets both the label guide and text from the actual shape outline.
+                </p>
+              </div>
             )}
 
             {/* Bold / Italic */}

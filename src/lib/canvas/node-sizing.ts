@@ -31,6 +31,7 @@ export interface AutoSizeOptions {
   shapeType?: string;
   borderWidth?: number;
   cornerRadius?: number;
+  textPadding?: number;
   reason?: ContentResizeReason;
   minWidth?: number;
   minHeight?: number;
@@ -104,7 +105,10 @@ export function computeAutoSize(options: AutoSizeOptions): AutoSizeResult {
     width: positive(options.content.width, 1),
     height: positive(options.content.height, 1),
   };
-  const interior = shapeTextContentSize(shapeType, current, nodeType, { contentSize: content });
+  const interior = shapeTextContentSize(shapeType, current, nodeType, {
+    contentSize: content,
+    textPadding: options.textPadding,
+  });
   const naturalWidth = positive(content.naturalWidth, content.width);
   const singleLine = (content.lineCount ?? 1) <= 1.05;
   const horizontalOverflow = naturalWidth > interior.width + WIDTH_OVERFLOW_THRESHOLD;
@@ -133,6 +137,7 @@ export function computeAutoSize(options: AutoSizeOptions): AutoSizeResult {
     nodeType,
     borderWidth: options.borderWidth,
     cornerRadius: options.cornerRadius,
+    textPadding: options.textPadding,
     minWidth: options.minWidth,
     minHeight: options.minHeight,
     maxContentWidth,

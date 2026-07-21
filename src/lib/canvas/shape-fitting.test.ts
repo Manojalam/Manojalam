@@ -11,7 +11,9 @@ import {
   MAX_FREEFORM_AUTOFIT_NODE_HEIGHT,
   MAX_FREEFORM_AUTOFIT_NODE_WIDTH,
   maximumFittedTextFontSize,
+  maximumShapeTextPadding,
   nodeContentPadding,
+  resolveShapeTextPadding,
   shapeLabelBox,
   shapeTextFlowLayout,
   shapeTextContentSize,
@@ -235,15 +237,45 @@ test("diamond and capsule phrases keep the full contour available", () => {
   }
 });
 
-test("diamond and capsule labels cannot regress to the small safe rectangle", () => {
+test("every authored shape label selects its shape contour", () => {
   const rendered = { width: 320, height: 190 };
+  const shapes = [
+    "rectangle", "rounded", "capsule", "circle", "ellipse", "diamond",
+    "star", "flower", "triangle", "arrow", "callout", "offPageConnector",
+    "parallelogram", "trapezoid", "hexagon", "document", "database",
+    "predefinedProcess", "delay", "cloud", "leaf",
+  ];
 
-  assert.equal(shouldUseShapeLabelContour("diamond", rendered, undefined, "अवसानम्"), true);
-  assert.equal(shouldUseShapeLabelContour("capsule", rendered, undefined, "विसर्गः"), true);
+  for (const shape of shapes) {
+    assert.equal(
+      shouldUseShapeLabelContour(shape, rendered, undefined, "अवसानम्"),
+      true,
+      `${shape} contour`
+    );
+  }
   assert.equal(shouldUseShapeLabelContour("diamond", rendered, undefined, ""), false);
-  assert.equal(shouldUseShapeLabelContour("rectangle", rendered, undefined, "two words"), false);
-  assert.equal(shouldUseShapeLabelContour("ellipse", rendered, undefined, "two words"), true);
-  assert.equal(shouldUseShapeLabelContour("ellipse", rendered, undefined, "word"), false);
+  assert.equal(shouldUseShapeLabelContour(undefined, rendered, undefined, "text"), false);
+});
+
+test("custom shape text padding drives contour, guide, and auto-fit geometry", () => {
+  const rendered = { width: 320, height: 190 };
+  const paddedFlow = shapeTextFlowLayout("star", rendered, { padding: 24, petalCount: 8 });
+  const defaultInterior = shapeTextContentSize("rectangle", rendered, "shape");
+  const paddedInterior = shapeTextContentSize("rectangle", rendered, "shape", { textPadding: 24 });
+  const defaultFit = fitShapeToContent("rectangle", { width: 200, height: 80 }, { nodeType: "shape" });
+  const paddedFit = fitShapeToContent("rectangle", { width: 200, height: 80 }, {
+    nodeType: "shape",
+    textPadding: 24,
+  });
+
+  assert.equal(resolveShapeTextPadding(undefined, rendered), 4);
+  assert.equal(maximumShapeTextPadding({ width: 40, height: 20 }), 6);
+  assert.equal(resolveShapeTextPadding(200, { width: 40, height: 20 }), 6);
+  assert.deepEqual(paddedFlow.box, { x: 24, y: 24, width: 272, height: 142 });
+  assert.deepEqual(defaultInterior, { width: 312, height: 182 });
+  assert.deepEqual(paddedInterior, { width: 272, height: 142 });
+  assert.equal(paddedFit.width - defaultFit.width, 40);
+  assert.equal(paddedFit.height - defaultFit.height, 40);
 });
 
 test("maximum text fitting fills the corrected diamond interior", () => {

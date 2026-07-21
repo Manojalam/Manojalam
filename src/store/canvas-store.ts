@@ -1174,6 +1174,9 @@ function contentFitSize(
     cornerRadius: typeof data.borderRadius === "number"
       ? data.borderRadius
       : effectiveCornerRadius(data.cornerRadiusPercent, { width: currentWidth, height: currentHeight }, 20),
+    textPadding: node.type === "shape" && typeof data.textPadding === "number"
+      ? data.textPadding
+      : undefined,
     reason,
     minWidth: node.type === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
     minHeight: node.type === "sticky" ? 90 : node.type === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
@@ -2985,6 +2988,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       cornerRadius: typeof newData.borderRadius === "number"
         ? newData.borderRadius
         : effectiveCornerRadius(newData.cornerRadiusPercent, current, 20),
+      textPadding: newType === "shape" && typeof newData.textPadding === "number"
+        ? newData.textPadding
+        : undefined,
     });
 
     const convertedData = {
