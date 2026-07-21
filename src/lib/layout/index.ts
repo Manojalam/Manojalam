@@ -4,6 +4,7 @@ import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarch
 import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
 import { computeOrthogonalTreeLayout } from "./tree-layout";
+import { wrapChildGroups } from "./child-group-wrap";
 import {
   createNodeRect,
   getNodeRect,
@@ -323,12 +324,14 @@ export function computeLayout(
     } else if (mode === "linear") {
       const order = getSubtree(root, hierarchy);
       let x = rootNode.position.x;
+      const linearPositions: Positions = {};
       for (const id of order) {
         const { w, h } = sizeOf(byId.get(id)!);
-        result[id] = { x, y: rootCenter.y - h / 2 };
+        linearPositions[id] = { x, y: rootCenter.y - h / 2 };
         x += w + LINEAR_GAP;
       }
-      resolveCollisions(result, byId, "x");
+      resolveCollisions(linearPositions, byId, "x");
+      Object.assign(result, wrapChildGroups(linearPositions, hierarchy, byId, () => "vertical"));
     } else if (mode === "matrix") {
       Object.assign(result, computeMatrixLayout(root, hierarchy, byId).placements);
     }

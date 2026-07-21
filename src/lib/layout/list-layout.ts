@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy } from "./hierarchy";
+import { wrapChildGroups } from "./child-group-wrap";
 import {
   getNodeDimensions,
   getNodeRect,
@@ -254,7 +255,7 @@ export function computeListLayout(
     placeOutlineSubtree(childId, 1);
   });
 
-  const placements: ListPlacements = {};
+  let placements: ListPlacements = {};
   for (const entry of traversal) {
     const node = byId.get(entry.nodeId)!;
     placements[entry.nodeId] = preserveManualOverrides
@@ -262,6 +263,7 @@ export function computeListLayout(
       ? { ...node.position }
       : generated[entry.nodeId];
   }
+  placements = wrapChildGroups(placements, hierarchy, byId, () => "horizontal");
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
     if (

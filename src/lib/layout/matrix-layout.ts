@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
+import { wrapChildGroups } from "./child-group-wrap";
 import {
   createNodeRect,
   getNodeDimensions,
@@ -734,6 +735,65 @@ function computeOrientedMatrixLayout(
   };
 }
 
+function foldMatrixChildGroups(
+  result: MatrixLayoutResult,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): MatrixLayoutResult {
+  const orientationCache = new Map<string, MatrixOrientation>();
+  const effectiveOrientation = (nodeId: string): MatrixOrientation => {
+    const cached = orientationCache.get(nodeId);
+    if (cached) return cached;
+    const parentId = hierarchy.get(nodeId)?.parentId;
+    const inherited = parentId ? effectiveOrientation(parentId) : "horizontal";
+    const node = byId.get(nodeId);
+    const data = (node?.data ?? {}) as Record<string, unknown>;
+    const orientation = storedOrientation(data.matrixOrientation) ?? inherited;
+    orientationCache.set(nodeId, orientation);
+    return orientation;
+  };
+  const placements = wrapChildGroups(
+    result.placements,
+    hierarchy,
+    byId,
+    (parentId) => effectiveOrientation(parentId) === "horizontal" ? "horizontal" : "vertical",
+    MATRIX_DENSITY_SETTINGS[result.density].cellGap + 32
+  );
+  if (Object.keys(placements).every((nodeId) => (
+    placements[nodeId].x === result.placements[nodeId].x
+    && placements[nodeId].y === result.placements[nodeId].y
+  ))) return result;
+
+  const cells = result.cells.map((cell) => {
+    const before = result.placements[cell.nodeId];
+    const after = placements[cell.nodeId];
+    return before && after
+      ? { ...cell, x: cell.x + after.x - before.x, y: cell.y + after.y - before.y }
+      : cell;
+  });
+  const right = Math.max(result.header.x + result.header.width, ...cells.map((cell) => cell.x + cell.width));
+  const header = { ...result.header, width: right - result.header.x };
+  const root = byId.get(result.rootId);
+  if (root) {
+    const rootPosition = nodePositionForRect(root, header.x, header.y, header.width, header.height);
+    placements[result.rootId] = { ...rootPosition, width: header.width, height: header.height };
+  }
+  const renderedCells = [header, ...cells];
+  const left = Math.min(...renderedCells.map((cell) => cell.x));
+  const top = Math.min(...renderedCells.map((cell) => cell.y));
+  const bottom = Math.max(...renderedCells.map((cell) => cell.y + cell.height));
+  const bounds = createNodeRect(
+    `matrix-bounds-${result.rootId}`,
+    left,
+    top,
+    right - left,
+    bottom - top
+  );
+  const diagnostics = diagnoseMatrix(result.rootId, result.rows, cells, header, hierarchy, byId);
+
+  return { ...result, cells, placements, header, bounds, diagnostics };
+}
+
 export function computeMatrixLayout(
   rootId: string,
   hierarchy: Hierarchy,
@@ -806,7 +866,7 @@ export function computeMatrixLayout(
   }
 
   if (hasVerticalMatrixBranch(rootId, hierarchy, byId)) {
-    return computeOrientedMatrixLayout(
+    return foldMatrixChildGroups(computeOrientedMatrixLayout(
       rootId,
       hierarchy,
       byId,
@@ -818,7 +878,7 @@ export function computeMatrixLayout(
       settings,
       tableX,
       tableY
-    );
+    ), hierarchy, byId);
   }
 
   const columnX: number[] = [];
@@ -931,7 +991,7 @@ export function computeMatrixLayout(
     console.warn("[matrix-layout] geometry diagnostics", diagnostics);
   }
 
-  return {
+  return foldMatrixChildGroups({
     rootId,
     density,
     orientation: storedOrientation(rootData.matrixOrientation) ?? "horizontal",
@@ -945,5 +1005,5 @@ export function computeMatrixLayout(
     header,
     bounds,
     diagnostics,
-  };
+  }, hierarchy, byId);
 }

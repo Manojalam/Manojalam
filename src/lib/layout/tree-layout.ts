@@ -1,7 +1,8 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMode } from "../types";
 import type { Hierarchy } from "./hierarchy";
-import { buildHierarchy } from "./hierarchy";
+import { buildHierarchy, getSubtree } from "./hierarchy";
+import { wrapChildGroups } from "./child-group-wrap";
 import {
   getNodeDimensions,
   getNodeRect,
@@ -172,7 +173,7 @@ export function computeOrthogonalTreeLayout(
       size
     );
   }
-  return placements;
+  return wrapChildGroups(placements, hierarchy, byId, () => orientation);
 }
 
 export interface TreeConnectorBranch {
@@ -256,6 +257,8 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
     const parent = byId.get(parentId);
     if (!parent) continue;
     const parentRect = getNodeRect(parent);
+    const branchIds = new Set(getSubtree(parentId, hierarchy));
+    const branchRects = visibleRects.filter((rect) => branchIds.has(rect.id));
     const order = hierarchy.get(parentId)?.childIds ?? [];
     const orderIndex = new Map(order.map((childId, index) => [childId, index]));
     parentEdges.sort((first, second) =>
@@ -273,43 +276,124 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
 
     let group: TreeConnectorGroup;
     if (orientation === "vertical") {
-      const nearestChildTop = Math.min(...children.map((child) => child.rect.top));
-      const clearance = Math.max(0, nearestChildTop - parentRect.bottom);
-      const busY = parentRect.bottom + Math.min(56, Math.max(24, clearance / 2));
-      const childCenters = children.map((child) => child.rect.centerX);
-      const connectorCenters = [parentRect.centerX, ...childCenters];
-      group = {
-        parentId,
-        orientation,
-        sharedSegments: [
-          { x1: parentRect.centerX, y1: parentRect.bottom, x2: parentRect.centerX, y2: busY },
-          { x1: Math.min(...connectorCenters), y1: busY, x2: Math.max(...connectorCenters), y2: busY },
-        ],
-        branches: children.map(({ edge, rect }) => ({
-          edge,
-          childId: edge.target,
-          segments: [{ x1: rect.centerX, y1: busY, x2: rect.centerX, y2: rect.top }],
-        })),
-      };
+      const rows: Array<{ center: number; top: number; items: typeof children }> = [];
+      for (const child of children) {
+        const row = rows.find((candidate) => Math.abs(candidate.center - child.rect.centerY) < 1);
+        if (row) {
+          row.items.push(child);
+          row.top = Math.min(row.top, child.rect.top);
+        } else {
+          rows.push({ center: child.rect.centerY, top: child.rect.top, items: [child] });
+        }
+      }
+      rows.sort((a, b) => a.center - b.center);
+      if (rows.length === 1) {
+        const nearestChildTop = rows[0].top;
+        const clearance = Math.max(0, nearestChildTop - parentRect.bottom);
+        const busY = parentRect.bottom + Math.min(56, Math.max(24, clearance / 2));
+        const childCenters = children.map((child) => child.rect.centerX);
+        const connectorCenters = [parentRect.centerX, ...childCenters];
+        group = {
+          parentId,
+          orientation,
+          sharedSegments: [
+            { x1: parentRect.centerX, y1: parentRect.bottom, x2: parentRect.centerX, y2: busY },
+            { x1: Math.min(...connectorCenters), y1: busY, x2: Math.max(...connectorCenters), y2: busY },
+          ],
+          branches: children.map(({ edge, rect }) => ({
+            edge,
+            childId: edge.target,
+            segments: [{ x1: rect.centerX, y1: busY, x2: rect.centerX, y2: rect.top }],
+          })),
+        };
+      } else {
+        const busByChild = new Map<string, number>();
+        const rowBuses = rows.map((row) => {
+          const busY = row.top - 28;
+          row.items.forEach((item) => busByChild.set(item.edge.target, busY));
+          return { busY, items: row.items };
+        });
+        const corridorX = Math.min(parentRect.left, ...branchRects.map((rect) => rect.left)) - 32;
+        group = {
+          parentId,
+          orientation,
+          sharedSegments: [
+            { x1: parentRect.centerX, y1: parentRect.bottom, x2: parentRect.centerX, y2: rowBuses[0].busY },
+            { x1: corridorX, y1: rowBuses[0].busY, x2: parentRect.centerX, y2: rowBuses[0].busY },
+            { x1: corridorX, y1: rowBuses[0].busY, x2: corridorX, y2: rowBuses[rowBuses.length - 1].busY },
+            ...rowBuses.map((row) => ({
+              x1: corridorX,
+              y1: row.busY,
+              x2: Math.max(...row.items.map((item) => item.rect.centerX)),
+              y2: row.busY,
+            })),
+          ],
+          branches: children.map(({ edge, rect }) => ({
+            edge,
+            childId: edge.target,
+            segments: [{ x1: rect.centerX, y1: busByChild.get(edge.target)!, x2: rect.centerX, y2: rect.top }],
+          })),
+        };
+      }
     } else {
-      const nearestChildLeft = Math.min(...children.map((child) => child.rect.left));
-      const clearance = Math.max(0, nearestChildLeft - parentRect.right);
-      const busX = parentRect.right + Math.min(64, Math.max(28, clearance / 2));
-      const childCenters = children.map((child) => child.rect.centerY);
-      const connectorCenters = [parentRect.centerY, ...childCenters];
-      group = {
-        parentId,
-        orientation,
-        sharedSegments: [
-          { x1: parentRect.right, y1: parentRect.centerY, x2: busX, y2: parentRect.centerY },
-          { x1: busX, y1: Math.min(...connectorCenters), x2: busX, y2: Math.max(...connectorCenters) },
-        ],
-        branches: children.map(({ edge, rect }) => ({
-          edge,
-          childId: edge.target,
-          segments: [{ x1: busX, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
-        })),
-      };
+      const lanes: Array<{ center: number; left: number; items: typeof children }> = [];
+      for (const child of children) {
+        const lane = lanes.find((candidate) => Math.abs(candidate.center - child.rect.centerX) < 1);
+        if (lane) {
+          lane.items.push(child);
+          lane.left = Math.min(lane.left, child.rect.left);
+        } else {
+          lanes.push({ center: child.rect.centerX, left: child.rect.left, items: [child] });
+        }
+      }
+      lanes.sort((a, b) => a.center - b.center);
+      if (lanes.length === 1) {
+        const nearestChildLeft = lanes[0].left;
+        const clearance = Math.max(0, nearestChildLeft - parentRect.right);
+        const busX = parentRect.right + Math.min(64, Math.max(28, clearance / 2));
+        const childCenters = children.map((child) => child.rect.centerY);
+        const connectorCenters = [parentRect.centerY, ...childCenters];
+        group = {
+          parentId,
+          orientation,
+          sharedSegments: [
+            { x1: parentRect.right, y1: parentRect.centerY, x2: busX, y2: parentRect.centerY },
+            { x1: busX, y1: Math.min(...connectorCenters), x2: busX, y2: Math.max(...connectorCenters) },
+          ],
+          branches: children.map(({ edge, rect }) => ({
+            edge,
+            childId: edge.target,
+            segments: [{ x1: busX, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
+          })),
+        };
+      } else {
+        const busByChild = new Map<string, number>();
+        const laneBuses = lanes.map((lane) => {
+          const busX = lane.left - 32;
+          lane.items.forEach((item) => busByChild.set(item.edge.target, busX));
+          return { busX, items: lane.items };
+        });
+        const corridorY = Math.min(parentRect.top, ...branchRects.map((rect) => rect.top)) - 32;
+        group = {
+          parentId,
+          orientation,
+          sharedSegments: [
+            { x1: parentRect.right, y1: parentRect.centerY, x2: laneBuses[0].busX, y2: parentRect.centerY },
+            { x1: laneBuses[0].busX, y1: corridorY, x2: laneBuses[laneBuses.length - 1].busX, y2: corridorY },
+            ...laneBuses.map((lane, index) => ({
+              x1: lane.busX,
+              y1: corridorY,
+              x2: lane.busX,
+              y2: Math.max(index === 0 ? parentRect.centerY : corridorY, ...lane.items.map((item) => item.rect.centerY)),
+            })),
+          ],
+          branches: children.map(({ edge, rect }) => ({
+            edge,
+            childId: edge.target,
+            segments: [{ x1: busByChild.get(edge.target)!, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
+          })),
+        };
+      }
     }
 
     const excluded = new Set([parentId, ...children.map((child) => child.edge.target)]);

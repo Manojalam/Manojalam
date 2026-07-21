@@ -296,6 +296,25 @@ test("a vertical Matrix grows hierarchy levels downward", () => {
   assertClean(result);
 });
 
+test("Fold continues a long Matrix branch in an adjacent vertical block", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    ...Array.from({ length: 10 }, (_, index) => ({ id: `child-${index}`, parentId: "root" })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutWrapAfter: 5 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const first = result.cells.find((cell) => cell.nodeId === "child-0")!;
+  const sixth = result.cells.find((cell) => cell.nodeId === "child-5")!;
+
+  assert.equal(first.y, sixth.y);
+  assert.ok(sixth.x > first.x + first.width);
+  assert.equal(result.header.width, result.bounds.width);
+  assertClean(result);
+});
+
 test("user-resized cells persist column width and row height overrides", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },
