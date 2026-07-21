@@ -60,6 +60,14 @@ const ShapeTextFlowGuides = Extension.create({
       element.contentEditable = "false";
       return element;
     }, { side, ignoreSelection: true });
+    const spacer = Decoration.widget(0, () => {
+      const element = document.createElement("span");
+      element.className = "shape-text-flow-spacer";
+      element.dataset.shapeTextFlowSpacer = "true";
+      element.setAttribute("aria-hidden", "true");
+      element.contentEditable = "false";
+      return element;
+    }, { side: 1, ignoreSelection: true });
 
     return [new Plugin({
       key: new PluginKey("shapeTextFlowGuides"),
@@ -68,6 +76,7 @@ const ShapeTextFlowGuides = Extension.create({
           return DecorationSet.create(state.doc, [
             guide("shape-text-flow-guide-left", -2),
             guide("shape-text-flow-guide-right", -1),
+            spacer,
           ]);
         },
       },
@@ -191,6 +200,7 @@ interface RichTextEditorProps {
   shapeTextFlow?: {
     leftExclusion: string;
     rightExclusion: string;
+    verticalOffset?: number;
   };
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
@@ -733,6 +743,7 @@ export function RichTextEditor({
         ...scaleStyle,
         "--shape-text-flow-left": shapeTextFlow.leftExclusion,
         "--shape-text-flow-right": shapeTextFlow.rightExclusion,
+        "--shape-text-flow-offset": `${Math.max(0, shapeTextFlow.verticalOffset ?? 0)}px`,
       } as CSSProperties)
     : scaleStyle;
 

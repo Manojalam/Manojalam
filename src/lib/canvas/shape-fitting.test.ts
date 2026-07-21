@@ -184,6 +184,13 @@ test("dense labels use contour flow globally while editing stays caret-safe", ()
   assert.equal(shouldUseShapeTextFlow("rectangle", rendered, denseMeasurement, "three words here"), false);
 });
 
+test("authored phrases choose contour flow before the first measurement arrives", () => {
+  const rendered = { width: 240, height: 180 };
+  assert.equal(shouldUseShapeTextFlow("diamond", rendered, undefined, "अत् + रूप"), true);
+  assert.equal(shouldRenderShapeTextFlow("diamond", rendered, undefined, false, "अत् + रूप"), true);
+  assert.equal(shouldUseShapeTextFlow("diamond", rendered, undefined, "एकपदम्"), false);
+});
+
 test("maximum text fitting fills the corrected diamond interior", () => {
   const interior = shapeTextContentSize("diamond", { width: 126, height: 126 }, "shape", {
     contentSize: { width: 70, naturalWidth: 70, height: 19, lineCount: 1 },

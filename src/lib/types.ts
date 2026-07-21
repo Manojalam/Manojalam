@@ -133,6 +133,8 @@ export type LayoutMode =
   | "radial"
   | "matrix";
 
+export type TextVerticalAlign = "top" | "middle" | "bottom";
+
 export interface ConnectorLabelPreset {
   label: string;
   /** Default text color copied to a connector when this shortcut is applied. */
@@ -406,6 +408,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   textColor?: string;
   textHighlightColor?: string;
   textAlign?: "left" | "center" | "right" | "justify";
+  /** Whole-object vertical placement for editable labels. */
+  textVerticalAlign?: TextVerticalAlign;
   internalFillRegions?: InternalFillRegion[];
   tags?: string[];
   notes?: string;

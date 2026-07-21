@@ -352,6 +352,12 @@ body {
   float: right;
   shape-outside: var(--shape-text-flow-right);
 }
+.shape-text-flow-editor .shape-text-flow-spacer {
+  display: block;
+  width: 100%;
+  height: var(--shape-text-flow-offset, 0px);
+  pointer-events: none;
+}
 .shape-text-flow-editor .ProseMirror {
   box-sizing: border-box;
   padding: 0;

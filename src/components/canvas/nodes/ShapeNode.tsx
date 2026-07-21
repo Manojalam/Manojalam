@@ -26,6 +26,7 @@ import type {
   RadialChartRing,
   RadialChartSegment,
   ShapeType,
+  TextVerticalAlign,
 } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -76,6 +77,10 @@ const CUSTOM_SVG_SHAPES = new Set([
 const SQUARE_ASPECT_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 const CONCENTRIC_INSET_STEP = 6;
 const SHAPE_LABEL_GUIDE_INSET = 4;
+
+function resolveTextVerticalAlign(value: unknown): TextVerticalAlign {
+  return value === "top" || value === "bottom" ? value : "middle";
+}
 
 function dashArray(style: string, w: number): string | undefined {
   if (style === "dashed") return `${w * 2.5} ${w * 1.5}`;
@@ -1073,7 +1078,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     nodeSize,
     intrinsicContentSize,
     editing,
-    typeof d.text === "string" ? d.text : undefined,
+    initialContent,
     flowOptions
   );
   const flowLayout = shapeTextFlowLayout(renderedShapeType, nodeSize, flowOptions);
@@ -1093,6 +1098,26 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     constrain: true,
     backgroundColor: fillColor,
   });
+  const textVerticalAlign = resolveTextVerticalAlign(dd.textVerticalAlign);
+  const fallbackLineCount = Math.max(
+    1,
+    initialContent.split(/\r?\n/u).length,
+    (initialContent.match(/<(?:p|div|h[1-6]|li)\b/gi) ?? []).length,
+    (initialContent.match(/<br\s*\/?\s*>/gi) ?? []).length + 1,
+  );
+  const estimatedTextHeight = Math.min(
+    availableTextSize.height,
+    (intrinsicContentSize?.height
+      ?? textPresentation.authoredFontSize * fallbackLineCount * 1.38)
+      * textPresentation.scale,
+  );
+  const flowVerticalOffset = contourTextFlow
+    ? textVerticalAlign === "top"
+      ? 0
+      : textVerticalAlign === "bottom"
+        ? Math.max(0, labelBox.height - estimatedTextHeight)
+        : Math.max(0, (labelBox.height - estimatedTextHeight) / 2)
+    : 0;
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -1368,6 +1393,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                   top: `${labelBox.y}px`,
                   width: `${labelBox.width}px`,
                   height: `${labelBox.height}px`,
+                  alignItems: textVerticalAlign === "top"
+                    ? "flex-start"
+                    : textVerticalAlign === "bottom" ? "flex-end" : "center",
                 }}
               >
                 <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
@@ -1382,6 +1410,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     shapeTextFlow={contourTextFlow ? {
                       leftExclusion: flowLayout.leftExclusion,
                       rightExclusion: flowLayout.rightExclusion,
+                      verticalOffset: flowVerticalOffset,
                     } : undefined}
                     placeholder="Double-click…"
                     className={cn(

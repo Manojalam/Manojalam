@@ -55,7 +55,8 @@ function measurementClone(
   singleWord: boolean
 ): HTMLElement {
   const clone = element.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('[data-shape-text-flow-guide="true"]').forEach((guide) => guide.remove());
+  clone.querySelectorAll('[data-shape-text-flow-guide="true"], [data-shape-text-flow-spacer="true"]')
+    .forEach((guide) => guide.remove());
   clone.removeAttribute("contenteditable");
   clone.removeAttribute("tabindex");
   clone.style.boxSizing = "content-box";

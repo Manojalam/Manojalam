@@ -581,6 +581,9 @@ function fieldPatch(data: Record<string, unknown>, key: string, value: unknown):
   let patch: Record<string, unknown>;
   if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, Number(value));
   else if (key === "textHighlightColor") patch = normalizeWholeTextHighlight(data, value);
+  else if (key === "textVerticalAlign") patch = {
+    textVerticalAlign: value === "top" || value === "bottom" ? value : "middle",
+  };
   else if (["fontFamily", "fontWeight", "fontStyle", "textColor", "textAlign"].includes(key)) {
     patch = normalizeWholeTextFormat(
       data,
@@ -1498,6 +1501,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 ["justify", <AlignJustify key="j" className="h-3.5 w-3.5" />, "Justify"],
               ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
                 <IconBtn key={val} active={commonValue("textAlign") === val} onClick={() => setSelectedField("textAlign", val)} title={title}>{icon}</IconBtn>
+              ))}
+            </Row>
+            <Row label="Vertical">
+              {([
+                ["top",    <AlignStartHorizontal  key="t" className="h-3.5 w-3.5" />, "Top"],
+                ["middle", <AlignCenterHorizontal key="m" className="h-3.5 w-3.5" />, "Middle"],
+                ["bottom", <AlignEndHorizontal   key="b" className="h-3.5 w-3.5" />, "Bottom"],
+              ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
+                <IconBtn key={val} active={(commonValue("textVerticalAlign") ?? "middle") === val} onClick={() => setSelectedField("textVerticalAlign", val)} title={title}>{icon}</IconBtn>
               ))}
             </Row>
             <Row label="Style">
@@ -3343,6 +3355,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <IconBtn key={val} active={activeTextAlign === val} onClick={() => setField("textAlign", val)} title={title}>{icon}</IconBtn>
               ))}
             </Row>
+            {!isRadialLayoutSector && (
+              <Row label="Vertical">
+                {([
+                  ["top",    <AlignStartHorizontal  key="t" className="h-3.5 w-3.5" />, "Top"],
+                  ["middle", <AlignCenterHorizontal key="m" className="h-3.5 w-3.5" />, "Middle"],
+                  ["bottom", <AlignEndHorizontal   key="b" className="h-3.5 w-3.5" />, "Bottom"],
+                ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
+                  <IconBtn key={val} active={(d.textVerticalAlign ?? "middle") === val} onClick={() => setField("textVerticalAlign", val)} title={title}>{icon}</IconBtn>
+                ))}
+              </Row>
+            )}
 
             {/* Bold / Italic */}
             <Row label="Style">

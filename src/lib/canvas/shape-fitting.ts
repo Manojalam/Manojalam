@@ -257,13 +257,18 @@ export function shouldUseShapeTextFlow(
   text?: string,
   options: ShapeTextFlowOptions = {}
 ): boolean {
-  if (!shapeType || shapeType === "rectangle" || !contentSize) return false;
-  const lineCount = finitePositive(contentSize.lineCount, 0);
-  if (lineCount >= 3) return true;
   const normalizedText = text?.replace(/\s+/gu, " ").trim() ?? "";
+  if (!shapeType || shapeType === "rectangle" || !normalizedText) return false;
   const hasWordBoundary = /\S\s+\S/u.test(normalizedText);
+  // Decide from authored text whenever possible. Waiting for the first
+  // ResizeObserver measurement made this switch from a rectangular editor to
+  // contour flow after paint, which was visible as a label blink. A phrase
+  // already has a stable shape-flow requirement before measurement arrives.
+  if (hasWordBoundary) return true;
+  if (!contentSize) return false;
+  const lineCount = finitePositive(contentSize.lineCount, 0);
   const naturalWidth = finitePositive(contentSize.naturalWidth, contentSize.width ?? 0);
-  return hasWordBoundary && naturalWidth > shapeTextFlowLayout(shapeType, renderedSize, options).capacity.width;
+  return lineCount >= 2 || naturalWidth > shapeTextFlowLayout(shapeType, renderedSize, options).capacity.width;
 }
 
 /** Editing stays rectangular so caret movement matches the visible soft wraps. */
