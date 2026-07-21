@@ -11,6 +11,8 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   AlignVerticalDistributeCenter,
+  ArrowLeft,
+  ArrowRight,
   Copy,
   ChevronDown,
   FileImage,
@@ -363,6 +365,7 @@ export function SelectionToolbar() {
   const relationships = useCanvasStore((state) => state.relationships);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
+  const moveSiblingNode = useCanvasStore((state) => state.moveSiblingNode);
   const createNodeNote = useCanvasStore((state) => state.createNodeNote);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
@@ -444,8 +447,14 @@ export function SelectionToolbar() {
   const singleShapeData = selected.length === 1 && selected[0].type === "shape"
     ? ((selected[0].data ?? {}) as Record<string, unknown>)
     : null;
+  const hierarchy = buildHierarchy(nodes, edges);
+  const singleParentId = singleId ? hierarchy.get(singleId)?.parentId : undefined;
+  const siblingIds = singleParentId ? hierarchy.get(singleParentId)?.childIds ?? [] : [];
+  const singleSiblingIndex = singleId ? siblingIds.indexOf(singleId) : -1;
+  const singleCanMoveBefore = singleSiblingIndex > 0;
+  const singleCanMoveAfter = singleSiblingIndex >= 0 && singleSiblingIndex < siblingIds.length - 1;
   const singleHasChildren = singleId
-    ? (buildHierarchy(nodes, edges).get(singleId)?.childIds.length ?? 0) > 0
+    ? (hierarchy.get(singleId)?.childIds.length ?? 0) > 0
     : false;
   const singleCanMoveOnly = singleHasChildren
     && !singleLocked
@@ -505,6 +514,24 @@ export function SelectionToolbar() {
         <>
           <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
           <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
+          {singleParentId && (
+            <>
+              <ActionButton
+                label="Move before previous sibling"
+                disabled={!singleCanMoveBefore}
+                onClick={() => moveSiblingNode(singleId, -1)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </ActionButton>
+              <ActionButton
+                label="Move after next sibling"
+                disabled={!singleCanMoveAfter}
+                onClick={() => moveSiblingNode(singleId, 1)}
+              >
+                <ArrowRight className="h-4 w-4" />
+              </ActionButton>
+            </>
+          )}
           <ActionButton
             label="Add note outside box"
             onClick={(event) => createNodeNote(singleId, screenToFlowPosition({

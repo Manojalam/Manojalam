@@ -3224,7 +3224,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <span className="truncate text-right text-foreground">{inspectorLayoutLabel(matrixRootNode ? "matrix" : d.layoutMode)}</span>
             </div>
           </div>
-          {isRadialLayoutSector && parentNode && (
+          {parentNode && (
             <div className="grid grid-cols-2 gap-1">
               <Button
                 type="button"
@@ -3232,10 +3232,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 size="sm"
                 className="h-7 text-[10px]"
                 disabled={!canMoveSiblingEarlier}
-                title="Move backward (counter-clockwise)"
+                title="Move before the previous sibling"
                 onClick={() => moveSiblingNode(selectedNode.id, -1)}
               >
-                <ArrowLeft className="mr-1 h-3 w-3" /> Back
+                <ArrowLeft className="mr-1 h-3 w-3" /> Before
               </Button>
               <Button
                 type="button"
@@ -3243,10 +3243,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 size="sm"
                 className="h-7 text-[10px]"
                 disabled={!canMoveSiblingLater}
-                title="Move forward (clockwise)"
+                title="Move after the next sibling"
                 onClick={() => moveSiblingNode(selectedNode.id, 1)}
               >
-                Forward <ArrowRight className="ml-1 h-3 w-3" />
+                After <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
           )}
