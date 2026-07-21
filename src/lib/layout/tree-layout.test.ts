@@ -180,22 +180,29 @@ test("shared tree buses replace overlapping per-child elbows and avoid every box
 test("Fold packs direct children into adjacent groups and routes outside earlier groups", () => {
   const fixture = denseTree();
   const nodes = fixture.nodes.map((node) => node.id === "root"
-    ? { ...node, data: { ...node.data, layoutWrapAfter: 5 } }
+    ? { ...node, data: { ...node.data, layoutFoldCount: 4 } }
     : node);
   const edges = fixture.edges.map((edge) => ({
     ...edge,
     data: { ...edge.data, layoutMode: "horizontal" },
   }));
   const placed = applyLayout(nodes, edges, "horizontal");
-  const firstColumn = getNodeRect(placed.find((node) => node.id === "branch-0")!);
-  const secondColumn = getNodeRect(placed.find((node) => node.id === "branch-5")!);
-  const fourthColumn = getNodeRect(placed.find((node) => node.id === "branch-15")!);
+  const horizontalHierarchy = buildHierarchy(nodes, edges);
+  const firstColumnIds = Array.from({ length: 4 }, (_, index) => `branch-${index}`)
+    .flatMap((branchId) => getSubtree(branchId, horizontalHierarchy));
+  const secondColumnIds = Array.from({ length: 4 }, (_, index) => `branch-${index + 4}`)
+    .flatMap((branchId) => getSubtree(branchId, horizontalHierarchy));
+  const firstColumn = crossBounds(placed, firstColumnIds, "horizontal");
+  const secondColumn = crossBounds(placed, secondColumnIds, "horizontal");
+  const firstColumnRoot = getNodeRect(placed.find((node) => node.id === "branch-0")!);
+  const secondColumnRoot = getNodeRect(placed.find((node) => node.id === "branch-4")!);
+  const fourthColumn = getNodeRect(placed.find((node) => node.id === "branch-12")!);
   const model = buildTreeConnectorModel(placed, edges);
   const rootGroup = model.groups.find((group) => group.parentId === "root");
 
-  assert.ok(Math.abs(firstColumn.top - secondColumn.top) <= 2);
-  assert.ok(secondColumn.left > firstColumn.right);
-  assert.ok(fourthColumn.left > secondColumn.right);
+  assert.ok(Math.abs(firstColumn.start - secondColumn.start) <= 2);
+  assert.ok(secondColumnRoot.left > firstColumnRoot.right);
+  assert.ok(fourthColumn.left > secondColumnRoot.right);
   assert.equal(rootGroup?.branches.length, 16);
   assert.ok((rootGroup?.sharedSegments.length ?? 0) > 2);
   assert.deepEqual(model.obstacleIntersections, []);
@@ -207,14 +214,14 @@ test("Fold packs direct children into adjacent groups and routes outside earlier
   }));
   const verticalPlaced = applyLayout(nodes, verticalEdges, "vertical");
   const verticalHierarchy = buildHierarchy(nodes, verticalEdges);
-  const firstRowIds = Array.from({ length: 5 }, (_, index) => `branch-${index}`)
+  const firstRowIds = Array.from({ length: 4 }, (_, index) => `branch-${index}`)
     .flatMap((branchId) => getSubtree(branchId, verticalHierarchy));
-  const secondRowIds = Array.from({ length: 5 }, (_, index) => `branch-${index + 5}`)
+  const secondRowIds = Array.from({ length: 4 }, (_, index) => `branch-${index + 4}`)
     .flatMap((branchId) => getSubtree(branchId, verticalHierarchy));
   const firstRow = crossBounds(verticalPlaced, firstRowIds, "vertical");
   const secondRow = crossBounds(verticalPlaced, secondRowIds, "vertical");
   const firstRowRoot = getNodeRect(verticalPlaced.find((node) => node.id === "branch-0")!);
-  const secondRowRoot = getNodeRect(verticalPlaced.find((node) => node.id === "branch-5")!);
+  const secondRowRoot = getNodeRect(verticalPlaced.find((node) => node.id === "branch-4")!);
   const verticalModel = buildTreeConnectorModel(verticalPlaced, verticalEdges);
   assert.ok(Math.abs(firstRow.start - secondRow.start) <= 2);
   assert.ok(secondRowRoot.top > firstRowRoot.bottom);

@@ -137,7 +137,7 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   ];
   const fixture = buildTree(specs);
   const nodes = fixture.nodes.map((node) => node.id === "root"
-    ? { ...node, data: { ...node.data, layoutWrapAfter: 5 } }
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
     : node);
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));

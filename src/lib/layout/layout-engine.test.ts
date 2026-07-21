@@ -77,7 +77,7 @@ test("structured layouts remain collision-free with variable node dimensions", (
 test("Fold continues a Linear branch on the next row", () => {
   const tree = buildVariableTree(10);
   const nodes = tree.nodes.map((node) => node.id === "n0"
-    ? { ...node, data: { ...node.data, layoutWrapAfter: 2 } }
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
     : node);
   const positions = computeLayout(nodes, tree.edges, "linear", { rootId: "n0" });
   const placed = applyPositions(nodes, positions);

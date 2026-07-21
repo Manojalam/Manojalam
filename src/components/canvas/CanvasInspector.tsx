@@ -27,6 +27,7 @@ import { useUIStore } from "@/store/ui-store";
 import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
 import { LAYOUT_OPTIONS, getNodeDimensions } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { resolvedFoldSectionCount } from "@/lib/layout/child-group-wrap";
 import type {
   BorderLayer,
   ConcentricShapeLayer,
@@ -1096,6 +1097,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     return null;
   })();
   const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
+  const selectedFoldSectionCount = resolvedFoldSectionCount(d, childIds.length);
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
     ? nodes.find((node) => node.type === "sunburst" && (node.data as Record<string, unknown>).sunburstFor === d.sunburstHiddenFor)
@@ -3452,43 +3454,29 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {canFoldSelectedBranch && (
           <Section label="Fold branch" visible={singleNodeTab === "layout"}>
             <div className="rounded-lg border border-border bg-muted/30 p-2">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-medium text-foreground">Fold children after</p>
-                  <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                    5 makes two adjacent groups when this parent has 10 children.
-                  </p>
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={typeof d.layoutWrapAfter === "number" ? d.layoutWrapAfter : ""}
-                  placeholder="Off"
-                  aria-label="Fold children after"
-                  onFocus={pushHistory}
-                  onChange={(event) => {
-                    const value = event.target.value === "" ? undefined : Math.max(1, Math.min(100, Math.floor(Number(event.target.value))));
-                    updateNodeData(selectedNode.id, { layoutWrapAfter: Number.isFinite(value) ? value : undefined });
-                  }}
-                  className="h-8 w-16 rounded-md border border-border bg-background px-2 text-center text-xs outline-none focus:border-primary"
-                />
-              </div>
-              {typeof d.layoutWrapAfter === "number" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-7 w-full text-[9px]"
-                  onClick={() => {
-                    pushHistory();
-                    updateNodeData(selectedNode.id, { layoutWrapAfter: undefined });
-                  }}
-                >
-                  Unfold into one group
-                </Button>
-              )}
+              <p className="text-[10px] font-medium text-foreground">Fold into sections</p>
+              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                Children stay in order and are balanced across compact sections.
+              </p>
+              <select
+                value={selectedFoldSectionCount}
+                aria-label="Fold into sections"
+                onChange={(event) => {
+                  const sectionCount = Math.max(1, Math.min(childIds.length, Number(event.target.value)));
+                  pushHistory();
+                  updateNodeData(selectedNode.id, {
+                    layoutFoldCount: sectionCount > 1 ? sectionCount : undefined,
+                    layoutWrapAfter: undefined,
+                  });
+                }}
+                className="mt-2 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+              >
+                {Array.from({ length: childIds.length }, (_, index) => index + 1).map((sectionCount) => (
+                  <option key={sectionCount} value={sectionCount}>
+                    {sectionCount === 1 ? "No fold · 1 section" : `${sectionCount} balanced sections`}
+                  </option>
+                ))}
+              </select>
             </div>
           </Section>
         )}

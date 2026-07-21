@@ -302,7 +302,7 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
     ...Array.from({ length: 10 }, (_, index) => ({ id: `child-${index}`, parentId: "root" })),
   ]);
   const nodes = fixture.nodes.map((node) => node.id === "root"
-    ? { ...node, data: { ...node.data, layoutWrapAfter: 5 } }
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
     : node);
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
