@@ -297,6 +297,24 @@ export function shouldUseShapeTextFlow(
   return lineCount >= 2 || naturalWidth > shapeTextFlowLayout(shapeType, renderedSize, options).capacity.width;
 }
 
+/**
+ * Select the actual renderer path. Diamonds and capsules always use their
+ * contour for authored labels; other shapes retain the established behavior
+ * of switching to contour flow only when wrapping needs it.
+ */
+export function shouldUseShapeLabelContour(
+  shapeType: string | undefined,
+  renderedSize: Size,
+  contentSize?: Partial<ContentMeasurement>,
+  text?: string,
+  options: ShapeTextFlowOptions = {}
+): boolean {
+  const normalizedText = text?.replace(/\s+/gu, " ").trim() ?? "";
+  if (!normalizedText || shapeType === "rectangle") return false;
+  if (shapeType === "diamond" || shapeType === "capsule") return true;
+  return shouldUseShapeTextFlow(shapeType, renderedSize, contentSize, normalizedText, options);
+}
+
 /** Editing stays rectangular so caret movement matches the visible soft wraps. */
 export function shouldRenderShapeTextFlow(
   shapeType: string | undefined,
@@ -541,30 +559,6 @@ export function shapeTextContentSize(
     width: Math.max(8, width / scale.width - padding.width),
     height: Math.max(8, height / scale.height - padding.height),
   };
-}
-
-/**
- * Pick one deterministic label aspect from authored text. This avoids using
- * the result of a previous wrapped layout to choose the next diamond box,
- * which made its center and line breaks shift after every measurement.
- */
-export function diamondLabelPreferredAspect(text: string | undefined): number {
-  const normalized = text?.replace(/\s+/gu, " ").trim() ?? "";
-  if (!normalized) return 2.25;
-  const wordCount = normalized
-    .split(/\s+/u)
-    .filter((token) => /[\p{L}\p{N}]/u.test(token))
-    .length;
-  if (wordCount <= 1) return 4;
-  if (wordCount <= 3) return 2.2;
-  if (wordCount <= 6) return 1.5;
-  return 1.15;
-}
-
-/** Diamonds use one centered box; CSS contour floats remain available to all
- * other supported shapes without changing their established rendering. */
-export function usesDeterministicDiamondLabel(shapeType: string | undefined): boolean {
-  return shapeType === "diamond";
 }
 
 /** One centered, shape-safe rectangular label box shared by every shape renderer. */
