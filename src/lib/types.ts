@@ -167,6 +167,8 @@ export interface BoardSettings {
   customTextColors?: string[];
   /** Recently chosen inline highlight colors, saved with this board. */
   customHighlightColors?: string[];
+  /** Shared recent colors shown in every board color palette. */
+  customColors?: string[];
   /** @deprecated Legacy alias retained while old boards migrate. */
   gridSize?: number;
 }
@@ -668,6 +670,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   ],
   customTextColors: [],
   customHighlightColors: [],
+  customColors: [],
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

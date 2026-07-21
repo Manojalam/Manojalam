@@ -4,6 +4,8 @@ import type { InputHTMLAttributes } from "react";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { useCanvasStore } from "@/store/canvas-store";
 
 type ClearableColorInputProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -33,7 +35,12 @@ export function ClearableColorInput({
         {...inputProps}
         type="color"
         value={nativeValue}
-        onChange={(event) => onColorChange(event.target.value)}
+        onChange={(event) => {
+          const color = event.target.value;
+          const state = useCanvasStore.getState();
+          state.setSettings({ customColors: rememberCustomColor(state.settings.customColors, color) });
+          onColorChange(color);
+        }}
         className={inputClassName}
       />
       <button

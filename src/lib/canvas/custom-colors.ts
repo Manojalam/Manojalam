@@ -2,6 +2,11 @@ const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 
 export const MAX_CUSTOM_COLORS = 18;
 
+/** Combine the recent-color lists used by older and newer palette contexts. */
+export function mergeCustomColors(...values: unknown[]): string[] {
+  return normalizeCustomColors(values.flatMap((value) => Array.isArray(value) ? value : []));
+}
+
 export function normalizeCustomColors(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const colors: string[] = [];
