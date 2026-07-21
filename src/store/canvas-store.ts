@@ -1081,6 +1081,10 @@ function normalizedContentMeasurement(content: ContentSize): ContentSize {
       : {}),
     ...(content.lineCount != null ? { lineCount: content.lineCount } : {}),
     ...(content.lineHeight != null ? { lineHeight: content.lineHeight } : {}),
+    ...(content.presentationKey != null ? { presentationKey: content.presentationKey } : {}),
+    ...(content.measurementWidth != null
+      ? { measurementWidth: Math.max(1, content.measurementWidth) }
+      : {}),
   };
 }
 
@@ -1093,7 +1097,9 @@ function contentMeasurementChanged(
     || Math.abs((previous?.naturalWidth ?? 0) - (next.naturalWidth ?? 0)) > 1
     || Math.abs((previous?.naturalHeight ?? 0) - (next.naturalHeight ?? 0)) > 1
     || Math.abs((previous?.lineCount ?? 0) - (next.lineCount ?? 0)) > 0.5
-    || Math.abs((previous?.lineHeight ?? 0) - (next.lineHeight ?? 0)) > 0.5;
+    || Math.abs((previous?.lineHeight ?? 0) - (next.lineHeight ?? 0)) > 0.5
+    || previous?.presentationKey !== next.presentationKey
+    || Math.abs((previous?.measurementWidth ?? 0) - (next.measurementWidth ?? 0)) > 1;
 }
 
 function wrappedLineCount(lines: string[], maxChars: number): number {
