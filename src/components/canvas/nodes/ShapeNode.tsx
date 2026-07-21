@@ -34,10 +34,12 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { resolveLabelBoxGuideVisibility } from "@/lib/canvas/label-box-guides";
+import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -1158,6 +1160,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     ? Math.min(5, Math.max(1, 1 / Math.max(0.2, viewport.zoom)))
     : 1;
   const visualRotationStyle: CSSProperties = objectRotationStyle("shape", dd);
+  const textRotation = normalizeTextRotation(dd.textRotation);
+  const textRotationTargetRef = useRef<HTMLDivElement>(null);
 
   const addConcentricLayer = useCallback(() => {
     pushHistory();
@@ -1383,51 +1387,67 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
               <div
                 data-shape-label-content="true"
                 data-node-owner={id}
-                className={cn(
-                  "absolute",
-                  contourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
-                )}
+                className="absolute"
                 style={{
-                  ...textPresentation.style,
                   left: `${labelBox.x}px`,
                   top: `${labelBox.y}px`,
                   width: `${labelBox.width}px`,
                   height: `${labelBox.height}px`,
-                  alignItems: textVerticalAlign === "top"
-                    ? "flex-start"
-                    : textVerticalAlign === "bottom" ? "flex-end" : "center",
                 }}
               >
-                <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
-                  <RichTextEditor
-                    nodeId={id}
-                    initialContent={initialContent}
-                    editable={editing}
-                    measurementKey={textMeasurementKey(dd)}
-                    measurementWidth={availableTextSize.width}
-                    measurementFontSize={textPresentation.authoredFontSize}
-                    contentScale={textPresentation.scale}
-                    shapeTextFlow={contourTextFlow ? {
-                      leftExclusion: flowLayout.leftExclusion,
-                      rightExclusion: flowLayout.rightExclusion,
-                      verticalOffset: flowVerticalOffset,
-                    } : undefined}
-                    placeholder="Double-click…"
-                    className={cn(
-                      "[&_.ProseMirror]:text-center",
-                      textPresentation.singleWord && "single-word-fit",
-                      textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
-                    )}
-                    blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
-                    onChange={(html) => {
-                      captureTextHistory();
-                      const plain = html.replace(/<[^>]+>/g, "").trim();
-                      updateNodeData(id, { richText: html, text: plain });
-                    }}
-                    onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
-                    onBlur={finishEditing}
-                  />
+                <div
+                  ref={textRotationTargetRef}
+                  className={cn(
+                    "h-full w-full",
+                    contourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
+                  )}
+                  style={{
+                    ...textPresentation.style,
+                    ...textRotationStyle(textRotation),
+                    alignItems: textVerticalAlign === "top"
+                      ? "flex-start"
+                      : textVerticalAlign === "bottom" ? "flex-end" : "center",
+                  }}
+                >
+                  <div className={cn("w-full max-h-full", contourTextFlow && "h-full max-h-none")}>
+                    <RichTextEditor
+                      nodeId={id}
+                      initialContent={initialContent}
+                      editable={editing}
+                      measurementKey={textMeasurementKey(dd)}
+                      measurementWidth={availableTextSize.width}
+                      measurementFontSize={textPresentation.authoredFontSize}
+                      contentScale={textPresentation.scale}
+                      shapeTextFlow={contourTextFlow ? {
+                        leftExclusion: flowLayout.leftExclusion,
+                        rightExclusion: flowLayout.rightExclusion,
+                        verticalOffset: flowVerticalOffset,
+                      } : undefined}
+                      placeholder="Double-click…"
+                      className={cn(
+                        "[&_.ProseMirror]:text-center",
+                        textPresentation.singleWord && "single-word-fit",
+                        textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
+                      )}
+                      blockAlign={dd.textAlign as "left" | "center" | "right" | "justify" | undefined}
+                      onChange={(html) => {
+                        captureTextHistory();
+                        const plain = html.replace(/<[^>]+>/g, "").trim();
+                        updateNodeData(id, { richText: html, text: plain });
+                      }}
+                      onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
+                      onBlur={finishEditing}
+                    />
+                  </div>
                 </div>
+                {selected && !editing && !isDrawing && !matrixCell && dd.locked !== true && (
+                  <TextRotationHandle
+                    nodeId={id}
+                    targetRef={textRotationTargetRef}
+                    rotation={textRotation}
+                    color={borderColor}
+                  />
+                )}
               </div>
             </div>
           )}

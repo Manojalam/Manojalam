@@ -28,9 +28,11 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -84,6 +86,8 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
     constrain: shouldConstrainTextToNode(dd, nodeSize),
     backgroundColor: bg,
   });
+  const textRotation = normalizeTextRotation(dd.textRotation);
+  const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -190,8 +194,9 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             "relative z-10 text-sm",
             editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
           )}
-          style={{ color: "#374151", ...textPresentation.style }}>
-          <RichTextEditor
+          style={{ color: "#374151" }}>
+          <div ref={textRotationTargetRef} className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
+            <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
@@ -212,7 +217,16 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             }}
             onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
             onBlur={finishEditing}
-          />
+            />
+          </div>
+          {selected && !editing && !isDrawing && !matrixCell && d.locked !== true && (
+            <TextRotationHandle
+              nodeId={id}
+              targetRef={textRotationTargetRef}
+              rotation={textRotation}
+              color={border}
+            />
+          )}
         </div>
         </div>
       </div>

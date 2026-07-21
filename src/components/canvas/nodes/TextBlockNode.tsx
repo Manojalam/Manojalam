@@ -21,9 +21,11 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 
 function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -65,6 +67,8 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
     constrain: shouldConstrainTextToNode(dd, nodeSize),
     backgroundColor: fillColor,
   });
+  const textRotation = normalizeTextRotation(dd.textRotation);
+  const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -169,9 +173,9 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
           className={cn(
             "relative z-10 text-sm text-foreground",
             editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
-          )}
-          style={textPresentation.style}>
-          <RichTextEditor
+          )}>
+          <div ref={textRotationTargetRef} className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
+            <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
@@ -192,7 +196,16 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             }}
             onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
             onBlur={finishEditing}
-          />
+            />
+          </div>
+          {selected && !editing && !isDrawing && !matrixCell && d.locked !== true && (
+            <TextRotationHandle
+              nodeId={id}
+              targetRef={textRotationTargetRef}
+              rotation={textRotation}
+              color={borderColor ?? "#6366f1"}
+            />
+          )}
         </div>
         </div>
       </div>
