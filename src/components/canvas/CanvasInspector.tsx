@@ -642,14 +642,8 @@ function BorderStylePicker({ value, onChange }: {
   );
 }
 
-function defaultShapeFillForBorder(
-  data: Record<string, unknown>,
-  borderColor: unknown,
-): Record<string, unknown> {
+function defaultShapeFillForBorder(borderColor: unknown): Record<string, unknown> {
   if (typeof borderColor !== "string" || !borderColor.trim() || borderColor === "transparent") return {};
-  const existingBorder = typeof data.borderColor === "string" && data.borderColor.trim() && data.borderColor !== "transparent";
-  const existingFill = data.fillColor !== undefined && data.fillColor !== null && data.fillColor !== "";
-  if (existingBorder || existingFill) return {};
   return { fillColor: lightenColor(borderColor) };
 }
 
@@ -1186,9 +1180,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     }
     const patch = fieldPatch(d, key, value);
     if (selectedNode.type === "shape" && key === "borderColor") {
-      const fillPatch = defaultShapeFillForBorder(d, value);
-      Object.assign(patch, fillPatch);
-      if (fillPatch.fillColor !== undefined && d.layoutVisualStyle) patch.layoutAutoFill = false;
+      const fillPatch = defaultShapeFillForBorder(value);
+      if (fillPatch.fillColor !== undefined) {
+        updateNodeData(selectedNode.id, patch);
+        pushHistory();
+        updateNodeData(selectedNode.id, {
+          ...fillPatch,
+          ...(d.layoutVisualStyle ? { layoutAutoFill: false } : {}),
+        });
+        return;
+      }
     }
     updateNodeData(selectedNode.id, patch);
   };
@@ -1214,13 +1215,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const setSelectedField = (key: string, value: unknown) => {
     if (!selectedNodes.length) return;
     pushHistory();
+    const autoFillUpdates: Array<{ nodeId: string; patch: Record<string, unknown> }> = [];
     for (const node of selectedNodes) {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const patch = fieldPatch(data, key, value);
       if (!isRadialMultiSelection && node.type === "shape" && key === "borderColor") {
-        const fillPatch = defaultShapeFillForBorder(data, value);
-        Object.assign(patch, fillPatch);
-        if (fillPatch.fillColor !== undefined && data.layoutVisualStyle) patch.layoutAutoFill = false;
+        const fillPatch = defaultShapeFillForBorder(value);
+        if (fillPatch.fillColor !== undefined) {
+          autoFillUpdates.push({
+            nodeId: node.id,
+            patch: {
+              ...fillPatch,
+              ...(data.layoutVisualStyle ? { layoutAutoFill: false } : {}),
+            },
+          });
+        }
       }
       if (isRadialMultiSelection && key === "textColor") {
         delete patch.textColor;
@@ -1239,6 +1248,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         patch.radialBorderStyle = value;
       }
       updateNodeData(node.id, patch);
+    }
+    if (autoFillUpdates.length) {
+      // Keep the border edit and generated fill as separate undo steps so the
+      // first Ctrl/Cmd+Z removes only the automatic fill.
+      pushHistory();
+      for (const update of autoFillUpdates) updateNodeData(update.nodeId, update.patch);
     }
   };
 
