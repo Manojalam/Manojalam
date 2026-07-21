@@ -3,6 +3,15 @@ export interface RenderedBoundsSize {
   height: number;
 }
 
+export interface RenderedBoundsRect extends RenderedBoundsSize {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export type ShapeTextVerticalAlign = "top" | "middle" | "bottom";
+
 /**
  * Reduce an already-rendered rich-text scale until its glyph bounds fit the
  * label guide. This is the final safety net after estimated and DOM fitting.
@@ -27,4 +36,45 @@ export function correctedGuideContentScale(
   );
   if (!Number.isFinite(correction) || correction >= 0.995) return normalizedScale;
   return Math.max(0.05, normalizedScale * correction * 0.985);
+}
+
+/**
+ * Move contour-flow text from its actual rendered glyph position instead of
+ * estimating its line count. The returned offset is expressed in the text
+ * editor's local CSS pixels; the rectangles are browser (screen) coordinates.
+ */
+export function correctedShapeFlowOffset(
+  currentOffset: number,
+  content: RenderedBoundsRect,
+  guide: RenderedBoundsRect,
+  verticalAlign: ShapeTextVerticalAlign,
+  options: {
+    inset?: number;
+    localToScreenScale?: number;
+  } = {}
+): number {
+  const normalizedOffset = Number.isFinite(currentOffset) ? Math.max(0, currentOffset) : 0;
+  const localToScreenScale = Number.isFinite(options.localToScreenScale)
+    ? Math.max(0.01, options.localToScreenScale ?? 1)
+    : 1;
+  const inset = Number.isFinite(options.inset) ? Math.max(0, options.inset ?? 0) : 0;
+  if (
+    !Number.isFinite(content.top)
+    || !Number.isFinite(content.height)
+    || !Number.isFinite(guide.top)
+    || !Number.isFinite(guide.bottom)
+    || !Number.isFinite(guide.height)
+    || content.height <= 0
+    || guide.height <= 0
+  ) return normalizedOffset;
+
+  const screenInset = Math.min(guide.height / 2, inset * localToScreenScale);
+  const targetTop = verticalAlign === "top"
+    ? guide.top + screenInset
+    : verticalAlign === "bottom"
+      ? guide.bottom - screenInset - content.height
+      : guide.top + (guide.height - content.height) / 2;
+  const nextOffset = normalizedOffset + (targetTop - content.top) / localToScreenScale;
+  const maximumOffset = guide.height / localToScreenScale;
+  return Math.max(0, Math.min(maximumOffset, Number.isFinite(nextOffset) ? nextOffset : normalizedOffset));
 }

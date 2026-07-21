@@ -26,7 +26,12 @@ import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
-import { correctedGuideContentScale } from "@/lib/canvas/rich-text-guide-fit";
+import {
+  correctedGuideContentScale,
+  correctedShapeFlowOffset,
+  type RenderedBoundsRect,
+  type ShapeTextVerticalAlign,
+} from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Paintbrush, Palette } from "lucide-react";
@@ -95,7 +100,7 @@ const COLOR_SWATCHES = [
 ];
 
 /** Measure only rendered glyphs; editor decorations must never change text fit. */
-function renderedTextBounds(content: HTMLElement): { width: number; height: number } | null {
+function renderedTextBounds(content: HTMLElement): RenderedBoundsRect | null {
   const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
   let left = Number.POSITIVE_INFINITY;
   let top = Number.POSITIVE_INFINITY;
@@ -121,7 +126,14 @@ function renderedTextBounds(content: HTMLElement): { width: number; height: numb
   }
 
   return Number.isFinite(left) && Number.isFinite(top) && Number.isFinite(right) && Number.isFinite(bottom)
-    ? { width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+    ? {
+        left,
+        top,
+        right,
+        bottom,
+        width: Math.max(0, right - left),
+        height: Math.max(0, bottom - top),
+      }
     : null;
 }
 
@@ -225,6 +237,9 @@ interface RichTextEditorProps {
     leftExclusion: string;
     rightExclusion: string;
     verticalOffset?: number;
+    verticalAlign?: ShapeTextVerticalAlign;
+    verticalInset?: number;
+    rotation?: number;
   };
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
@@ -273,6 +288,8 @@ export function RichTextEditor({
   const [showSizes,   setShowSizes]   = useState(false);
   const [mounted, setMounted] = useState(false);
   const [renderedContentScale, setRenderedContentScale] = useState(contentScale);
+  const requestedFlowOffset = Math.max(0, shapeTextFlow?.verticalOffset ?? 0);
+  const [renderedFlowOffset, setRenderedFlowOffset] = useState(requestedFlowOffset);
   const richTextRootRef = useRef<HTMLDivElement>(null);
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
@@ -290,6 +307,7 @@ export function RichTextEditor({
   const previousMeasurementKeyRef = useRef(measurementKey);
   const hasMeasuredPresentationRef = useRef(false);
   const guidePresentationRef = useRef(`${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`);
+  const flowPresentationRef = useRef("");
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -415,6 +433,17 @@ export function RichTextEditor({
   });
 
   const guidePresentation = `${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`;
+  const flowPresentation = shapeTextFlow
+    ? [
+        guidePresentation,
+        shapeTextFlow.leftExclusion,
+        shapeTextFlow.rightExclusion,
+        requestedFlowOffset,
+        shapeTextFlow.verticalAlign ?? "middle",
+        shapeTextFlow.verticalInset ?? 0,
+        shapeTextFlow.rotation ?? 0,
+      ].join("|")
+    : "";
   const reconcileShapeGuide = useCallback(() => {
     if (!constrainToShapeGuide) return;
     const root = richTextRootRef.current;
@@ -428,24 +457,74 @@ export function RichTextEditor({
     const contentBounds = renderedTextBounds(content);
     if (!contentBounds) return;
     const guideBounds = guide.getBoundingClientRect();
-    setRenderedContentScale((currentScale) => {
-      const corrected = correctedGuideContentScale(
-        currentScale,
-        { width: contentBounds.width, height: contentBounds.height },
-        { width: guideBounds.width, height: guideBounds.height }
-      );
-      return corrected < currentScale - 0.001 ? corrected : currentScale;
-    });
-  }, [constrainToShapeGuide, editor]);
-
-  useLayoutEffect(() => {
-    if (guidePresentationRef.current !== guidePresentation) {
-      guidePresentationRef.current = guidePresentation;
-      setRenderedContentScale(contentScale);
+    const correctedScale = correctedGuideContentScale(
+      renderedContentScale,
+      { width: contentBounds.width, height: contentBounds.height },
+      { width: guideBounds.width, height: guideBounds.height }
+    );
+    if (correctedScale < renderedContentScale - 0.001) {
+      setRenderedContentScale(correctedScale);
       return;
     }
+
+    // Exclusion polygons define horizontal line widths, but CSS has no native
+    // way to vertically align the resulting irregular group. Correct the
+    // first block's offset from the browser's real glyph bounds after fonts,
+    // wrapping, inline sizes, and canvas zoom have all been applied.
+    if (shapeTextFlow && Math.abs(shapeTextFlow.rotation ?? 0) < 0.001) {
+      const rootBounds = root.getBoundingClientRect();
+      const localToScreenScale = root.offsetHeight > 0
+        ? rootBounds.height / root.offsetHeight
+        : 1;
+      setRenderedFlowOffset((currentOffset) => {
+        const corrected = correctedShapeFlowOffset(
+          currentOffset,
+          contentBounds,
+          {
+            left: guideBounds.left,
+            top: guideBounds.top,
+            right: guideBounds.right,
+            bottom: guideBounds.bottom,
+            width: guideBounds.width,
+            height: guideBounds.height,
+          },
+          shapeTextFlow.verticalAlign ?? "middle",
+          {
+            inset: shapeTextFlow.verticalInset,
+            localToScreenScale,
+          }
+        );
+        return Math.abs(corrected - currentOffset) > 0.25 ? corrected : currentOffset;
+      });
+    }
+  }, [constrainToShapeGuide, editor, renderedContentScale, shapeTextFlow]);
+
+  useLayoutEffect(() => {
+    const guideChanged = guidePresentationRef.current !== guidePresentation;
+    const flowChanged = flowPresentationRef.current !== flowPresentation;
+    const needsScaleReset = guideChanged
+      && Math.abs(renderedContentScale - contentScale) > 0.001;
+    const needsFlowReset = flowChanged
+      && Math.abs(renderedFlowOffset - requestedFlowOffset) > 0.25;
+    if (guideChanged) {
+      guidePresentationRef.current = guidePresentation;
+      if (needsScaleReset) setRenderedContentScale(contentScale);
+    }
+    if (flowChanged) {
+      flowPresentationRef.current = flowPresentation;
+      if (needsFlowReset) setRenderedFlowOffset(requestedFlowOffset);
+    }
+    if (needsScaleReset || needsFlowReset) return;
     reconcileShapeGuide();
-  }, [contentScale, guidePresentation, reconcileShapeGuide]);
+  }, [
+    contentScale,
+    flowPresentation,
+    guidePresentation,
+    reconcileShapeGuide,
+    renderedContentScale,
+    renderedFlowOffset,
+    requestedFlowOffset,
+  ]);
 
   useEffect(() => {
     if (!constrainToShapeGuide) return;
@@ -840,7 +919,7 @@ export function RichTextEditor({
         ...scaleStyle,
         "--shape-text-flow-left": shapeTextFlow.leftExclusion,
         "--shape-text-flow-right": shapeTextFlow.rightExclusion,
-        "--shape-text-flow-offset": `${Math.max(0, shapeTextFlow.verticalOffset ?? 0)}px`,
+        "--shape-text-flow-offset": `${renderedFlowOffset}px`,
       } as CSSProperties)
     : scaleStyle;
 

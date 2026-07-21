@@ -13,10 +13,8 @@ import {
 } from "@/lib/style-utils";
 import {
   shapeLabelBox,
-  diamondLabelPreferredAspect,
   shapeTextFlowLayout,
-  shouldUseShapeTextFlow,
-  usesDeterministicDiamondLabel,
+  shouldUseShapeLabelContour,
   type ContentMeasurement,
 } from "@/lib/canvas/shape-fitting";
 import type {
@@ -1082,14 +1080,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         .replace(/<br\s*\/?\s*>/gi, "\n")
         .replace(/<\/(?:p|div|h[1-6]|li)>/gi, "\n")
         .replace(/<[^>]+>/g, " ");
-  const deterministicDiamondLabel = !matrixCell
-    && usesDeterministicDiamondLabel(renderedShapeType);
-  // Authored phrases select contour flow immediately and keep it while editing,
-  // so a font-size change cannot flash through the small central rectangle.
-  // Diamonds deliberately use one centered, aspect-aware box instead: their
-  // former float, padding, paragraph and rotation pipeline had no single
-  // definition of center. Other shapes retain their established contour flow.
-  const contourTextFlow = !matrixCell && !deterministicDiamondLabel && shouldUseShapeTextFlow(
+  // Diamonds and capsules always keep their complete inner silhouette. Other
+  // shapes retain the existing compact-box path until their label needs to
+  // wrap, so already-working simple labels are unchanged.
+  const contourTextFlow = !matrixCell && shouldUseShapeLabelContour(
     renderedShapeType,
     nodeSize,
     currentIntrinsicContentSize,
@@ -1098,9 +1092,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   );
   const labelBox = contourTextFlow
     ? flowLayout.box
-    : shapeLabelBox(renderedShapeType, nodeSize, "shape", deterministicDiamondLabel ? {
-        preferredAspect: diamondLabelPreferredAspect(plainLabelText),
-      } : undefined);
+    : shapeLabelBox(renderedShapeType, nodeSize, "shape");
   const flowVerticalInset = contourTextFlow
     ? Math.min(
         flowLayout.box.height * 0.12,
@@ -1128,8 +1120,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     || dd.textAlign === "justify"
     || dd.textAlign === "center")
     ? dd.textAlign
-    : deterministicDiamondLabel ? "center" : undefined;
-  const deterministicTextAlignClass = deterministicDiamondLabel
+    : undefined;
+  const shapeTextAlignClass = wholeTextAlign
     ? wholeTextAlign === "left"
       ? "[&_.ProseMirror>*]:!text-left"
       : wholeTextAlign === "right"
@@ -1465,11 +1457,14 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                         leftExclusion: flowLayout.leftExclusion,
                         rightExclusion: flowLayout.rightExclusion,
                         verticalOffset: flowVerticalOffset,
+                        verticalAlign: textVerticalAlign,
+                        verticalInset: flowVerticalInset,
+                        rotation: textRotation,
                       } : undefined}
                       placeholder="Double-click…"
                       className={cn(
                         "[&_.ProseMirror]:text-center",
-                        deterministicTextAlignClass,
+                        shapeTextAlignClass,
                         textPresentation.singleWord && "single-word-fit",
                         textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"
                       )}
