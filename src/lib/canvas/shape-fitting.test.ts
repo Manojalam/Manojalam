@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createNodeRect, nodePositionFromTopLeft, resizeAroundAnchor } from "./node-geometry";
 import {
+  diamondLabelPreferredAspect,
   effectiveCornerRadius,
   diamondTextLabelBox,
   fitShapeToContent,
@@ -18,6 +19,7 @@ import {
   shapeTextContentWidth,
   shouldRenderShapeTextFlow,
   shouldUseShapeTextFlow,
+  usesDeterministicDiamondLabel,
 } from "./shape-fitting";
 import { adaptiveGridMultiplier, renderedGridGap } from "./grid-density";
 import {
@@ -219,26 +221,50 @@ test("authored phrases choose contour flow before the first measurement arrives"
   assert.equal(shouldUseShapeTextFlow("diamond", rendered, undefined, "एकपदम्"), false);
 });
 
-test("large diamond phrases use the full contour instead of the small center rectangle", () => {
+test("diamond label alignment uses one centered box without changing other shape flow", () => {
   const rendered = { width: 1_000, height: 1_000 };
-  const centerBox = diamondTextLabelBox(rendered);
-  const flow = shapeTextFlowLayout("diamond", rendered);
   const data = {
     text: "रेफान्तानि अव्ययानि / ऋकारान्त- संबोधन षष्ठी पञ्चमी / रु भिन्नाः",
     fontSize: 96,
   };
+  const preferredAspect = diamondLabelPreferredAspect(data.text);
+  const centerBox = shapeLabelBox("diamond", rendered, "shape", { preferredAspect });
   const presentation = getFittedTextPresentation(
     data,
-    flow.capacity.width,
+    centerBox.width,
     14,
-    { availableHeight: flow.capacity.height, constrain: false }
+    { availableHeight: centerBox.height, constrain: true }
   );
 
-  assert.equal(shouldUseShapeTextFlow("diamond", rendered, undefined, data.text), true);
-  assert.ok(flow.box.width > centerBox.width * 1.9);
-  assert.ok(flow.box.height > centerBox.height * 1.9);
-  assert.equal(presentation.fontSize, 96);
-  assert.equal(presentation.scale, 1);
+  assert.equal(usesDeterministicDiamondLabel("diamond"), true);
+  assert.equal(usesDeterministicDiamondLabel("capsule"), false);
+  assert.equal(usesDeterministicDiamondLabel("rectangle"), false);
+  assert.equal(centerBox.x + centerBox.width / 2, rendered.width / 2);
+  assert.equal(centerBox.y + centerBox.height / 2, rendered.height / 2);
+  assert.ok(centerBox.width / rendered.width + centerBox.height / rendered.height <= 1);
+  assert.ok(presentation.fontSize >= 48 && presentation.fontSize <= 96);
+  assert.equal(shouldUseShapeTextFlow("capsule", rendered, undefined, data.text), true);
+});
+
+test("diamond label aspect is stable for compact and dense authored text", () => {
+  assert.equal(diamondLabelPreferredAspect(undefined), 2.25);
+  assert.equal(diamondLabelPreferredAspect("अवसानम्"), 4);
+  assert.equal(diamondLabelPreferredAspect("अत् रूप"), 2.2);
+  assert.equal(diamondLabelPreferredAspect("one two three four"), 1.5);
+  assert.equal(diamondLabelPreferredAspect("one two three four five six seven"), 1.15);
+
+  const compact = shapeLabelBox("diamond", { width: 240, height: 240 }, "shape", {
+    preferredAspect: diamondLabelPreferredAspect("अवसानम्"),
+  });
+  const dense = shapeLabelBox("diamond", { width: 240, height: 240 }, "shape", {
+    preferredAspect: diamondLabelPreferredAspect("one two three four five six seven"),
+  });
+  assert.ok(compact.width > dense.width);
+  assert.ok(compact.height < dense.height);
+  assert.equal(compact.x + compact.width / 2, 120);
+  assert.equal(compact.y + compact.height / 2, 120);
+  assert.equal(dense.x + dense.width / 2, 120);
+  assert.equal(dense.y + dense.height / 2, 120);
 });
 
 test("maximum text fitting fills the corrected diamond interior", () => {
