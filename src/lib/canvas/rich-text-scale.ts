@@ -8,7 +8,7 @@
  */
 export function getRichTextScaleStyle(contentScale: number): { zoom: number } | undefined {
   const scale = Number.isFinite(contentScale)
-    ? Math.max(0.2, Math.min(12, contentScale))
+    ? Math.max(0.05, Math.min(12, contentScale))
     : 1;
   return Math.abs(scale - 1) > 0.001 ? { zoom: scale } : undefined;
 }

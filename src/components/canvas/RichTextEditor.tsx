@@ -26,6 +26,7 @@ import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { correctedGuideContentScale } from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Paintbrush, Palette } from "lucide-react";
@@ -186,6 +187,8 @@ interface RichTextEditorProps {
   measurementFontSize?: number;
   /** Visual scale used only by fixed/layout-owned boxes. */
   contentScale?: number;
+  /** Keep the final rendered glyph bounds inside the owning shape label guide. */
+  constrainToShapeGuide?: boolean;
   /** Exclusion polygons that let wrapped text occupy a non-rectangular silhouette. */
   shapeTextFlow?: {
     leftExclusion: string;
@@ -209,6 +212,7 @@ export function RichTextEditor({
   measurementWidth,
   measurementFontSize,
   contentScale = 1,
+  constrainToShapeGuide = false,
   shapeTextFlow,
   blockAlign,
   onChange,
@@ -237,6 +241,8 @@ export function RichTextEditor({
   const [showFonts,   setShowFonts]   = useState(false);
   const [showSizes,   setShowSizes]   = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [renderedContentScale, setRenderedContentScale] = useState(contentScale);
+  const richTextRootRef = useRef<HTMLDivElement>(null);
   const customColorRef = useRef<HTMLInputElement>(null);
   const customHighlightRef = useRef<HTMLInputElement>(null);
   const nativeColorPickerOpenRef = useRef(false);
@@ -252,6 +258,7 @@ export function RichTextEditor({
   const previousEditableRef = useRef(editable);
   const previousMeasurementKeyRef = useRef(measurementKey);
   const hasMeasuredPresentationRef = useRef(false);
+  const guidePresentationRef = useRef(`${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -375,6 +382,60 @@ export function RichTextEditor({
       onBlur?.();
     },
   });
+
+  const guidePresentation = `${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`;
+  const reconcileShapeGuide = useCallback(() => {
+    if (!constrainToShapeGuide) return;
+    const root = richTextRootRef.current;
+    const content = editor?.view.dom as HTMLElement | undefined;
+    const guide = root?.closest<HTMLElement>('[data-shape-label-content="true"]');
+    if (!root || !content || !guide || typeof document === "undefined") return;
+
+    const range = document.createRange();
+    range.selectNodeContents(content);
+    const contentBounds = range.getBoundingClientRect();
+    range.detach();
+    const guideBounds = guide.getBoundingClientRect();
+    const corrected = correctedGuideContentScale(
+      renderedContentScale,
+      { width: contentBounds.width, height: contentBounds.height },
+      { width: guideBounds.width, height: guideBounds.height }
+    );
+    if (corrected < renderedContentScale - 0.001) setRenderedContentScale(corrected);
+  }, [constrainToShapeGuide, editor, renderedContentScale]);
+
+  useLayoutEffect(() => {
+    if (guidePresentationRef.current !== guidePresentation) {
+      guidePresentationRef.current = guidePresentation;
+      setRenderedContentScale(contentScale);
+      return;
+    }
+    reconcileShapeGuide();
+  }, [contentScale, guidePresentation, reconcileShapeGuide]);
+
+  useEffect(() => {
+    if (!constrainToShapeGuide) return;
+    const root = richTextRootRef.current;
+    const content = editor?.view.dom as HTMLElement | undefined;
+    const guide = root?.closest<HTMLElement>('[data-shape-label-content="true"]');
+    if (!root || !content || !guide || typeof ResizeObserver === "undefined") return;
+    let active = true;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(reconcileShapeGuide);
+    });
+    observer.observe(content);
+    observer.observe(guide);
+    void textMeasurementFontsReady().then(() => {
+      if (active) reconcileShapeGuide();
+    });
+    return () => {
+      active = false;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [constrainToShapeGuide, editor, reconcileShapeGuide]);
 
   const publishTextSelection = useCallback(() => {
     if (!editor || !nodeId) return;
@@ -739,7 +800,7 @@ export function RichTextEditor({
   const openPopoversBelow = drag
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
-  const scaleStyle: CSSProperties | undefined = getRichTextScaleStyle(contentScale);
+  const scaleStyle: CSSProperties | undefined = getRichTextScaleStyle(renderedContentScale);
   const editorStyle = shapeTextFlow
     ? ({
         ...scaleStyle,
@@ -962,6 +1023,7 @@ export function RichTextEditor({
       )}
 
       <div
+        ref={richTextRootRef}
         data-rich-text-editor="true"
         className={cn(shapeTextFlow && "shape-text-flow-editor h-full w-full")}
         style={editorStyle}

@@ -11,7 +11,7 @@ test("fitted rich text keeps its alignment box width while scaling", () => {
 
 test("rich text scale is normalized and omitted at its natural size", () => {
   assert.equal(getRichTextScaleStyle(1), undefined);
-  assert.deepEqual(getRichTextScaleStyle(0.01), { zoom: 0.2 });
+  assert.deepEqual(getRichTextScaleStyle(0.01), { zoom: 0.05 });
   assert.deepEqual(getRichTextScaleStyle(99), { zoom: 12 });
   assert.equal(getRichTextScaleStyle(Number.NaN), undefined);
 });
