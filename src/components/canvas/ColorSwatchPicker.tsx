@@ -3,6 +3,8 @@
 import { useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { useCanvasStore } from "@/store/canvas-store";
 
 const PRESET_COLORS = [
   "#ffffff", // White
@@ -41,10 +43,20 @@ export function ColorSwatchPicker({
   size = "md",
 }: ColorSwatchPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const sharedCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
+  const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
+  const legacyHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
+  const setSettings = useCanvasStore((state) => state.setSettings);
   const swatchSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const ringOffset = size === "sm" ? "ring-offset-[1px]" : "ring-offset-2";
 
-  const allColors = [...new Set([...PRESET_COLORS, ...extra])];
+  const allColors = [...new Set([
+    ...PRESET_COLORS,
+    ...sharedCustomColors,
+    ...legacyTextColors,
+    ...legacyHighlightColors,
+    ...extra,
+  ])];
 
   const handleSwatch = (hex: string) => {
     onChange(hex);
@@ -122,8 +134,10 @@ export function ColorSwatchPicker({
         name="custom-swatch-color"
         value={nativeValue}
         onChange={(event) => {
-          onCustomColor?.(event.target.value);
-          onChange(event.target.value);
+          const color = event.target.value;
+          setSettings({ customColors: rememberCustomColor(sharedCustomColors, color) });
+          onCustomColor?.(color);
+          onChange(color);
         }}
         className="sr-only"
       />

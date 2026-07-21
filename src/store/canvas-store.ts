@@ -65,7 +65,7 @@ import {
   type ContentResizeReason,
 } from "@/lib/canvas/node-sizing";
 import type { ManojalamClipboardPayload } from "@/lib/canvas/clipboard";
-import { normalizeCustomColors } from "@/lib/canvas/custom-colors";
+import { mergeCustomColors, normalizeCustomColors } from "@/lib/canvas/custom-colors";
 import {
   resolveHydratedSunburstGeometry,
   viewportsEqual,
@@ -1619,6 +1619,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
       customTextColors: normalizeCustomColors(rawSettings.customTextColors),
       customHighlightColors: normalizeCustomColors(rawSettings.customHighlightColors),
+      customColors: mergeCustomColors(
+        rawSettings.customColors,
+        rawSettings.customTextColors,
+        rawSettings.customHighlightColors,
+      ),
       canvasBackgroundMode,
       canvasBackgroundColor: normalizeBoardColorOverride(
         rawSettings.canvasBackgroundColor,

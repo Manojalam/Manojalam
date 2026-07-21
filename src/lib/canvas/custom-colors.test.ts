@@ -3,9 +3,17 @@ import test from "node:test";
 
 import {
   MAX_CUSTOM_COLORS,
+  mergeCustomColors,
   normalizeCustomColors,
   rememberCustomColor,
 } from "./custom-colors";
+
+test("merges shared and legacy recent-color lists", () => {
+  assert.deepEqual(
+    mergeCustomColors(["#AABBCC", "#123456"], ["#aabbcc"], ["#DDEEFF"]),
+    ["#aabbcc", "#123456", "#ddeeff"]
+  );
+});
 
 test("normalizes, validates, and deduplicates saved custom colors", () => {
   assert.deepEqual(

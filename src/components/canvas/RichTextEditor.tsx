@@ -272,6 +272,7 @@ export function RichTextEditor({
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
+  const customColors = useCanvasStore((state) => state.settings.customColors ?? []);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const setSettings = useCanvasStore((state) => state.setSettings);
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
@@ -903,19 +904,25 @@ export function RichTextEditor({
 
   const chooseCustomTextColor = useCallback((color: string) => {
     nativeColorPickerOpenRef.current = false;
-    setSettings({ customTextColors: rememberCustomColor(customTextColors, color) });
+    setSettings({
+      customColors: rememberCustomColor(customColors, color),
+      customTextColors: rememberCustomColor(customTextColors, color),
+    });
     pendingReportReasonRef.current = "format";
     selectionChain()?.setColor(color).run();
     setShowColors(false);
-  }, [customTextColors, selectionChain, setSettings]);
+  }, [customColors, customTextColors, selectionChain, setSettings]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
     nativeColorPickerOpenRef.current = false;
-    setSettings({ customHighlightColors: rememberCustomColor(customHighlightColors, color) });
+    setSettings({
+      customColors: rememberCustomColor(customColors, color),
+      customHighlightColors: rememberCustomColor(customHighlightColors, color),
+    });
     pendingReportReasonRef.current = "format";
     selectionChain()?.setHighlight({ color }).run();
     setShowHighlights(false);
-  }, [customHighlightColors, selectionChain, setSettings]);
+  }, [customColors, customHighlightColors, selectionChain, setSettings]);
 
   const openNativeColorPicker = useCallback((input: HTMLInputElement | null) => {
     if (!input) return;
@@ -940,8 +947,8 @@ export function RichTextEditor({
   }, [selectionChain]);
 
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
-  const textColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customTextColors]));
-  const highlightColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customHighlightColors]));
+  const textColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customColors, ...customTextColors]));
+  const highlightColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customColors, ...customHighlightColors]));
 
   const selectedFontSize = editor ? selectedMarkValue(editor, "textStyle", "fontSize") : null;
   const selectedFamily = editor ? selectedMarkValue(editor, "textStyle", "fontFamily") : null;
