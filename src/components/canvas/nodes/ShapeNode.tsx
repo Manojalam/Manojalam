@@ -13,6 +13,7 @@ import {
 } from "@/lib/style-utils";
 import {
   shapeLabelBox,
+  diamondTextLabelBox,
   shapeTextFlowLayout,
   shouldRenderShapeTextFlow,
   type ContentMeasurement,
@@ -1075,7 +1076,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     cornerRadius: bRadius,
     petalCount,
   };
-  const contourTextFlow = shouldRenderShapeTextFlow(
+  // Diamonds get one stable inscribed text rectangle. Flowing each line from
+  // a pointed tip makes font fitting and vertical alignment jump unpredictably.
+  const contourTextFlow = renderedShapeType !== "diamond" && shouldRenderShapeTextFlow(
     renderedShapeType,
     nodeSize,
     intrinsicContentSize,
@@ -1084,7 +1087,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     flowOptions
   );
   const flowLayout = shapeTextFlowLayout(renderedShapeType, nodeSize, flowOptions);
-  const labelBox = contourTextFlow
+  const labelBox = renderedShapeType === "diamond"
+    ? diamondTextLabelBox(nodeSize)
+    : contourTextFlow
     ? flowLayout.box
     : shapeLabelBox(renderedShapeType, nodeSize, "shape", {
         contentSize: intrinsicContentSize,
