@@ -80,6 +80,7 @@ import {
   parseManojalamClipboard,
   serializeManojalamClipboard,
   shouldHandleCanvasClipboard,
+  visibleBoardSelection,
 } from "@/lib/canvas/clipboard";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
@@ -1229,7 +1230,28 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
         return;
       }
 
-      if (mod && e.shiftKey && e.key === "z") { e.preventDefault(); cs.redo(); }
+      if (mod && e.key.toLowerCase() === "a") {
+        // Ctrl/Cmd+A belongs to the board only. Text inputs and TipTap
+        // editors were filtered above, so their native select-all remains
+        // untouched. Select visible nodes and connectors as one board set.
+        e.preventDefault();
+        const { nodeIds: selectableNodeIds, edgeIds: selectableEdgeIds } = visibleBoardSelection(cs.nodes, cs.edges);
+        const nodeIds = new Set(selectableNodeIds);
+        const edgeIds = new Set(selectableEdgeIds);
+        useCanvasStore.setState((state) => ({
+          nodes: state.nodes.map((node) => ({
+            ...node,
+            selected: nodeIds.has(node.id),
+          })),
+          edges: state.edges.map((edge) => ({
+            ...edge,
+            selected: edgeIds.has(edge.id),
+          })),
+          selectedNodeIds: selectableNodeIds,
+          selectedEdgeIds: selectableEdgeIds,
+        }));
+      }
+      else if (mod && e.shiftKey && e.key === "z") { e.preventDefault(); cs.redo(); }
       else if (mod && e.key === "z")           { e.preventDefault(); cs.undo(); }
       else if (mod && e.key === "s")           { e.preventDefault(); cs.setSaveStatus("unsaved"); flushSave(); }
       else if (mod && e.key === "d")           { e.preventDefault(); cs.duplicateSelected(); }

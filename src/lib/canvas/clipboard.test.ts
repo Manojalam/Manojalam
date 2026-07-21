@@ -8,6 +8,7 @@ import {
   parseManojalamClipboard,
   serializeManojalamClipboard,
   shouldHandleCanvasClipboard,
+  visibleBoardSelection,
 } from "./clipboard";
 
 function target(matches: boolean): EventTarget {
@@ -18,6 +19,22 @@ test("canvas clipboard routing yields to active text editors", () => {
   assert.equal(isTextEditingTarget(target(true)), true);
   assert.equal(shouldHandleCanvasClipboard(target(false), target(true)), false);
   assert.equal(shouldHandleCanvasClipboard(target(false), target(false)), true);
+});
+
+test("board select-all includes visible nodes and connectors only", () => {
+  const nodes: Node[] = [
+    { id: "visible", position: { x: 0, y: 0 }, data: {} },
+    { id: "hidden", position: { x: 0, y: 0 }, data: {}, hidden: true },
+  ];
+  const edges: Edge[] = [
+    { id: "edge-visible", source: "visible", target: "visible" },
+    { id: "edge-hidden", source: "visible", target: "visible", hidden: true },
+  ];
+
+  assert.deepEqual(visibleBoardSelection(nodes, edges), {
+    nodeIds: ["visible"],
+    edgeIds: ["edge-visible"],
+  });
 });
 
 test("custom clipboard payload preserves rich text inside the copied node", () => {
