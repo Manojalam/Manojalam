@@ -5,6 +5,8 @@ import { createNodeRect, getNodeDimensions, type NodeRect } from "./geometry";
 
 export type ChildGroupFlow = "horizontal" | "vertical";
 
+export const DEFAULT_CHILD_GROUP_GAP = 72;
+
 export interface WrappablePlacement {
   x: number;
   y: number;
@@ -234,6 +236,20 @@ function sectionsFromBreakAfter(children: string[], breakAfter: string[]): strin
   return sections;
 }
 
+/** Resolve the same stable Fold sections for every structured layout. */
+export function resolvedFoldSections(
+  data: Record<string, unknown>,
+  children: string[],
+  segmentExtents: number[][] | null = null
+): string[][] {
+  const sectionCount = resolvedFoldSectionCount(data, children.length);
+  if (sectionCount < 2) return [children];
+  const manualBreakAfter = resolvedManualFoldBreakAfter(data, children, sectionCount);
+  return manualBreakAfter
+    ? sectionsFromBreakAfter(children, manualBreakAfter)
+    : balancedFoldSectionsByExtent(children, sectionCount, segmentExtents);
+}
+
 /**
  * Splits direct children into adjacent visual groups while moving every child's
  * complete subtree with it. Hierarchy metadata and edges remain unchanged.
@@ -243,7 +259,7 @@ export function wrapChildGroups<T extends WrappablePlacement>(
   hierarchy: Hierarchy,
   byId: Map<string, Node>,
   flowForParent: (parentId: string) => ChildGroupFlow,
-  groupGap = 72
+  groupGap = DEFAULT_CHILD_GROUP_GAP
 ): WrappablePlacements<T> {
   const next = Object.fromEntries(
     Object.entries(placements).map(([nodeId, placement]) => [nodeId, { ...placement }])
@@ -262,16 +278,12 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     if (!parent || !parentPlacement) continue;
     const data = (parent.data ?? {}) as Record<string, unknown>;
     const children = parentEntry.childIds.filter((childId) => !!next[childId]);
-    const sectionCount = resolvedFoldSectionCount(data, children.length);
     const flow = flowForParent(parentEntry.id);
-    const manualBreakAfter = resolvedManualFoldBreakAfter(data, children, sectionCount);
-    const chunks = manualBreakAfter
-      ? sectionsFromBreakAfter(children, manualBreakAfter)
-      : balancedFoldSectionsByExtent(
-          children,
-          sectionCount,
-          childSegmentExtents(children, hierarchy, next, byId, flow)
-        );
+    const chunks = resolvedFoldSections(
+      data,
+      children,
+      childSegmentExtents(children, hierarchy, next, byId, flow)
+    );
     if (chunks.length < 2) continue;
 
     const chunkNodes = chunks.map((chunk) => [...new Set(chunk.flatMap((childId) => getSubtree(childId, hierarchy)))])

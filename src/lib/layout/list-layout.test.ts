@@ -153,6 +153,41 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   assertNoOverlap(placed);
 });
 
+test("Fold compacts the next List branch after child sections move sideways", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "folded", parentId: "root", width: 210, height: 68 },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `folded-child-${index}`,
+      parentId: "folded",
+      width: 200,
+      height: 64,
+    })),
+    { id: "next", parentId: "root", width: 210, height: 68 },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "folded"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const rects = positionedRects(nodes, placements);
+  const firstSection = rects.get("folded-child-0")!;
+  const secondSection = rects.get("folded-child-2")!;
+  const foldedBottom = Math.max(
+    rects.get("folded")!.bottom,
+    ...Array.from({ length: 4 }, (_, index) => rects.get(`folded-child-${index}`)!.bottom)
+  );
+  const density = LIST_DENSITIES.compact;
+
+  assert.equal(firstSection.top, secondSection.top);
+  assert.ok(secondSection.left > firstSection.right);
+  assert.equal(
+    rects.get("next")!.top - foldedBottom,
+    density.rowGapY + density.majorBranchGapY
+  );
+  assertNoOverlap(positionedNodes(nodes, placements));
+});
+
 test("comfortable density increases indentation and row clearance", () => {
   const { nodes, edges } = buildTree(referenceSpecs);
   const hierarchy = buildHierarchy(nodes, edges);

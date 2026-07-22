@@ -72,6 +72,44 @@ function assertClean(result: MatrixLayoutResult): void {
   }
 }
 
+function assertMatrixBodyTiled(result: MatrixLayoutResult): void {
+  const cells = result.cells;
+  assert.ok(cells.length > 0);
+  const cellGap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
+  const tolerance = 0.5;
+  const bodyLeft = Math.min(...cells.map((cell) => cell.x));
+  const bodyRight = Math.max(...cells.map((cell) => cell.x + cell.width));
+  const rowBoundaries = [...new Set(cells.flatMap((cell) => [cell.y, cell.y + cell.height]))]
+    .sort((a, b) => a - b);
+
+  for (let index = 0; index < rowBoundaries.length - 1; index += 1) {
+    const top = rowBoundaries[index];
+    const bottom = rowBoundaries[index + 1];
+    // A normal horizontal cell boundary can cross only part of a merged row.
+    // It is intentionally canvas-colored, but never thicker than cellGap.
+    if (bottom - top <= cellGap + tolerance) continue;
+    const middle = top + (bottom - top) / 2;
+    const activeCells = cells
+      .filter((cell) => cell.y < middle && cell.y + cell.height > middle)
+      .sort((a, b) => a.x - b.x);
+
+    assert.ok(activeCells.length, `Matrix body exposes a ${bottom - top}px horizontal background band`);
+
+    let coveredThrough = bodyLeft;
+    for (const cell of activeCells) {
+      assert.ok(
+        cell.x - coveredThrough <= cellGap + tolerance,
+        `Matrix body exposes a ${cell.x - coveredThrough}px background block near ${cell.nodeId}`
+      );
+      coveredThrough = Math.max(coveredThrough, cell.x + cell.width);
+    }
+    assert.ok(
+      bodyRight - coveredThrough <= cellGap + tolerance,
+      `Matrix body exposes a ${bodyRight - coveredThrough}px trailing background block`
+    );
+  }
+}
+
 function referenceTree(): { nodes: Node[]; edges: Edge[] } {
   return buildTree([
     { id: "root", parentId: null, text: "Month/Year", width: 260, height: 72 },
@@ -451,8 +489,9 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   const cellGap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
 
   assert.equal(first.y, sixth.y);
-  assert.equal(sixth.x - (first.x + first.width), cellGap + 32);
+  assert.equal(sixth.x - (first.x + first.width), cellGap);
   assert.equal(result.header.width, result.bounds.width);
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 
@@ -508,7 +547,7 @@ test("a stretched nested vertical Fold keeps its section rows equally tall", () 
   assertClean(result);
 });
 
-test("a top-level Fold does not inflate a shorter section to the tallest section", () => {
+test("a top-level Fold stretches a shorter section to keep the Matrix tiled", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
     { id: "tall", parentId: "root" },
@@ -531,13 +570,15 @@ test("a top-level Fold does not inflate a shorter section to the tallest section
 
   assert.equal(tall.y, short.y);
   assert.ok(tall.height > short.requiredHeight);
-  assert.equal(short.height, short.requiredHeight);
+  assert.equal(short.height, tall.height);
+  assert.ok(short.height > short.requiredHeight);
   assert.equal(result.header.x, unfolded.header.x);
   assert.equal(result.header.y, unfolded.header.y);
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 
-test("a top-level vertical Fold does not inflate a shorter section to the widest section", () => {
+test("a top-level vertical Fold stretches a shorter section to keep the Matrix tiled", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, orientation: "vertical" },
     { id: "wide", parentId: "root" },
@@ -554,8 +595,8 @@ test("a top-level vertical Fold does not inflate a shorter section to the widest
   const short = cells.get("short")!;
 
   assert.equal(wide.x, short.x);
-  assert.ok(wide.width > short.width);
-  assert.equal(short.width, result.columnWidths[0]);
+  assert.equal(short.width, wide.width);
+  assert.ok(short.width > result.columnWidths[0]);
   assertClean(result);
 });
 
@@ -614,7 +655,7 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
   assertClean(reset);
 });
 
-test("leaf siblings keep one equal height across uneven Fold sections", () => {
+test("uneven Fold sections stretch through the same Matrix body edge", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
     { id: "rule", parentId: "root" },
@@ -639,8 +680,19 @@ test("leaf siblings keep one equal height across uneven Fold sections", () => {
     (_, index) => result.cells.find((cell) => cell.nodeId === `example-${index}`)!
   );
 
-  assert.equal(new Set(examples.map((cell) => cell.height)).size, 1);
+  const sectionBottoms = new Map<number, number>();
+  for (const example of examples) {
+    sectionBottoms.set(
+      example.x,
+      Math.max(sectionBottoms.get(example.x) ?? Number.NEGATIVE_INFINITY, example.y + example.height)
+    );
+  }
+
+  assert.equal(sectionBottoms.size, 2);
+  assert.equal(new Set(sectionBottoms.values()).size, 1);
   assert.equal(examples[0].height, 104);
+  assert.ok(examples[8].height > 104);
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 
@@ -702,7 +754,7 @@ test("a compact nested Fold keeps the next large branch in the outer right secti
   assertClean(result);
 });
 
-test("balanced top-level Fold sections keep nested Matrix branches content-sized", () => {
+test("balanced top-level Fold sections tile nested Matrix branches without background holes", () => {
   const groups = [
     ["varna", 4],
     ["yant", 4],
@@ -738,6 +790,7 @@ test("balanced top-level Fold sections keep nested Matrix branches content-sized
   assert.equal(savarna.height, guna.height);
   assert.equal(savarnaExample.height, savarnaExample.requiredHeight);
   assert.ok(cells.get("guna")!.x > savarna.x);
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 

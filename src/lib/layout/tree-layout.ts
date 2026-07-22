@@ -35,7 +35,7 @@ export const ORTHOGONAL_TREE_SPACING: Record<OrthogonalTreeOrientation, Orthogon
 };
 
 export const TREE_CONNECTOR_OBSTACLE_PADDING = 8;
-export const DEFAULT_TREE_CONNECTOR_WIDTH = 2;
+export const DEFAULT_TREE_CONNECTOR_WIDTH = 2.5;
 
 export type TreePlacements = Record<string, { x: number; y: number }>;
 

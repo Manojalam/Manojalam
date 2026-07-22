@@ -7,6 +7,7 @@ import {
   lightenColor,
   resolveBorderColor,
   resolveFillColor,
+  themeAwareLayoutConnectorColor,
   themeAwareNodeFillColor,
 } from "./style-utils";
 
@@ -64,6 +65,13 @@ test("opaque node fills are theme toned without changing saved colors", () => {
 test("transparent and soft node fills are not darkened", () => {
   assert.equal(themeAwareNodeFillColor("transparent"), "transparent");
   assert.equal(themeAwareNodeFillColor("rgba(251, 191, 36, 0.18)"), "rgba(251, 191, 36, 0.18)");
+});
+
+test("generated hierarchy connectors mix toward the active theme foreground", () => {
+  assert.equal(
+    themeAwareLayoutConnectorColor("#4262ff"),
+    "color-mix(in srgb, #4262ff 62%, var(--foreground))"
+  );
 });
 
 test("lightens a border color into a pale matching fill", () => {

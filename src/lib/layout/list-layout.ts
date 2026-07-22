@@ -1,7 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
-import { buildHierarchy } from "./hierarchy";
-import { wrapChildGroups } from "./child-group-wrap";
+import { buildHierarchy, getSubtree } from "./hierarchy";
+import {
+  DEFAULT_CHILD_GROUP_GAP,
+  resolvedFoldSections,
+} from "./child-group-wrap";
 import {
   getNodeDimensions,
   getNodeRect,
@@ -27,20 +30,20 @@ export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
   compact: {
     rootToFirstRowGapY: 34,
     majorBranchGapY: 34,
-    childIndentX: 132,
+    childIndentX: 160,
     rowGapY: 18,
     parentChildGapY: 24,
     siblingSubtreeGapY: 26,
-    connectorGutterX: 42,
+    connectorGutterX: 48,
   },
   comfortable: {
     rootToFirstRowGapY: 46,
     majorBranchGapY: 46,
-    childIndentX: 156,
+    childIndentX: 184,
     rowGapY: 26,
     parentChildGapY: 34,
     siblingSubtreeGapY: 38,
-    connectorGutterX: 50,
+    connectorGutterX: 56,
   },
 };
 
@@ -53,7 +56,7 @@ export const LIST_OUTER_PADDING = 24;
 export const LIST_COLLISION_PADDING_X = 20;
 export const LIST_COLLISION_PADDING_Y = 14;
 export const LIST_CONNECTOR_OBSTACLE_PADDING = 8;
-export const DEFAULT_LIST_CONNECTOR_WIDTH = 2;
+export const DEFAULT_LIST_CONNECTOR_WIDTH = 2.5;
 export const MIN_LIST_CONNECTOR_WIDTH = 0.5;
 export const MAX_LIST_CONNECTOR_WIDTH = 12;
 export const LIST_CONNECTOR_WIDTH_STEP = 0.5;
@@ -101,15 +104,6 @@ export interface ListConnectorModel {
   obstacleIntersections: Array<{ parentId: string; obstacleId: string }>;
 }
 
-function topLeftPosition(node: Node, left: number, top: number): ListPlacement {
-  const { width, height } = getNodeDimensions(node);
-  const origin = node.origin ?? [0, 0];
-  return {
-    x: left + width * origin[0],
-    y: top + height * origin[1],
-  };
-}
-
 function rectAt(node: Node, position: ListPlacement): NodeRect {
   return getNodeRect({ ...node, position });
 }
@@ -121,6 +115,57 @@ function rectsTooClose(a: NodeRect, b: NodeRect): boolean {
     a.top - LIST_COLLISION_PADDING_Y < b.bottom &&
     a.bottom + LIST_COLLISION_PADDING_Y > b.top
   );
+}
+
+function boundsForNodeIds(
+  nodeIds: string[],
+  placements: ListPlacements,
+  byId: Map<string, Node>
+): NodeRect | null {
+  const rects = nodeIds.flatMap((nodeId) => {
+    const node = byId.get(nodeId);
+    const placement = placements[nodeId];
+    return node && placement ? [rectAt(node, placement)] : [];
+  });
+  if (!rects.length) return null;
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return {
+    id: "list-subtree",
+    x: left,
+    y: top,
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+  };
+}
+
+function verticalFoldExtents(
+  children: string[],
+  childBounds: Map<string, NodeRect>,
+  gap: number
+): number[][] | null {
+  if (children.some((childId) => !childBounds.has(childId))) return null;
+  const extents = Array.from(
+    { length: children.length },
+    () => Array.from({ length: children.length + 1 }, () => 0)
+  );
+  for (let start = 0; start < children.length; start += 1) {
+    let extent = 0;
+    for (let end = start; end < children.length; end += 1) {
+      if (end > start) extent += gap;
+      extent += childBounds.get(children[end])!.height;
+      extents[start][end + 1] = extent;
+    }
+  }
+  return extents;
 }
 
 export function getPreorderTraversal(rootId: string, hierarchy: Hierarchy): ListTraversalEntry[] {
@@ -222,38 +267,79 @@ export function computeListLayout(
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
   const density = LIST_DENSITIES[options.density ?? storedDensity];
-  const rootRect = getNodeRect(root);
-  const generated: ListPlacements = { [rootId]: { ...root.position } };
-  const seen = new Set<string>([rootId]);
-  let cursorY = rootRect.bottom + density.rootToFirstRowGapY;
+  const generated: ListPlacements = Object.fromEntries(
+    traversal.map((entry) => [entry.nodeId, { ...byId.get(entry.nodeId)!.position }])
+  );
+  generated[rootId] = { ...root.position };
+  const arranged = new Set<string>();
+  const arranging = new Set<string>();
 
-  const placeOutlineSubtree = (nodeId: string, depth: number): void => {
-    const node = byId.get(nodeId);
-    if (!node || seen.has(nodeId)) return;
-    seen.add(nodeId);
-
-    const placement = topLeftPosition(
-      node,
-      rootRect.left + depth * density.childIndentX,
-      cursorY
-    );
-    generated[nodeId] = placement;
-    const nodeRect = rectAt(node, placement);
-    const children = hierarchy.get(nodeId)?.childIds ?? [];
-    cursorY = nodeRect.bottom + (children.length ? density.parentChildGapY : density.rowGapY);
-
-    children.forEach((childId, index) => {
-      if (index > 0) {
-        cursorY += Math.max(0, density.siblingSubtreeGapY - density.rowGapY);
-      }
-      placeOutlineSubtree(childId, depth + 1);
-    });
+  const translateSubtree = (nodeId: string, dx: number, dy: number): void => {
+    for (const descendantId of getSubtree(nodeId, hierarchy)) {
+      const placement = generated[descendantId];
+      if (!placement) continue;
+      generated[descendantId] = { x: placement.x + dx, y: placement.y + dy };
+    }
   };
 
-  (hierarchy.get(rootId)?.childIds ?? []).forEach((childId, index) => {
-    if (index > 0) cursorY += density.majorBranchGapY;
-    placeOutlineSubtree(childId, 1);
-  });
+  const subtreeBounds = (nodeId: string): NodeRect | null => boundsForNodeIds(
+    getSubtree(nodeId, hierarchy),
+    generated,
+    byId
+  );
+
+  const arrangeSubtree = (parentId: string): void => {
+    if (arranged.has(parentId) || arranging.has(parentId)) return;
+    const parent = byId.get(parentId);
+    const parentPlacement = generated[parentId];
+    if (!parent || !parentPlacement) return;
+    arranging.add(parentId);
+    const children = (hierarchy.get(parentId)?.childIds ?? []).filter(
+      (childId) => byId.has(childId) && generated[childId] !== undefined
+    );
+    children.forEach(arrangeSubtree);
+
+    if (children.length) {
+      const siblingGap = parentId === rootId
+        ? density.rowGapY + density.majorBranchGapY
+        : density.siblingSubtreeGapY;
+      const childBounds = new Map(children.flatMap((childId) => {
+        const bounds = subtreeBounds(childId);
+        return bounds ? [[childId, bounds] as const] : [];
+      }));
+      const sections = resolvedFoldSections(
+        (parent.data ?? {}) as Record<string, unknown>,
+        children,
+        verticalFoldExtents(children, childBounds, siblingGap)
+      );
+      const parentRect = rectAt(parent, parentPlacement);
+      const firstChildTop = parentRect.bottom + (
+        parentId === rootId ? density.rootToFirstRowGapY : density.parentChildGapY
+      );
+      let columnLeft = parentRect.left + density.childIndentX;
+
+      for (const section of sections) {
+        let cursorY = firstChildTop;
+        let sectionRight = columnLeft;
+        for (const childId of section) {
+          const child = byId.get(childId)!;
+          const childRect = rectAt(child, generated[childId]);
+          const bounds = subtreeBounds(childId);
+          if (!bounds) continue;
+          translateSubtree(childId, columnLeft - childRect.left, cursorY - bounds.top);
+          const movedBounds = subtreeBounds(childId)!;
+          cursorY = movedBounds.bottom + siblingGap;
+          sectionRight = Math.max(sectionRight, movedBounds.right);
+        }
+        columnLeft = sectionRight + DEFAULT_CHILD_GROUP_GAP;
+      }
+    }
+
+    arranging.delete(parentId);
+    arranged.add(parentId);
+  };
+
+  arrangeSubtree(rootId);
 
   let placements: ListPlacements = {};
   for (const entry of traversal) {
@@ -263,7 +349,6 @@ export function computeListLayout(
       ? { ...node.position }
       : generated[entry.nodeId];
   }
-  placements = wrapChildGroups(placements, hierarchy, byId, () => "horizontal");
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
     if (
