@@ -136,7 +136,13 @@ function storedSize(value: unknown): { width: number; height: number } | null {
   return width && height ? { width, height } : null;
 }
 
-function matrixContentSize(node: Node): { width: number; height: number; lineCount: number; lineHeight: number } | null {
+function matrixContentSize(node: Node): {
+  width: number;
+  height: number;
+  lineCount: number;
+  lineHeight: number;
+  cellWidth: number;
+} | null {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const value = data.matrixIntrinsicSize;
   if (!value || typeof value !== "object") return null;
@@ -146,6 +152,7 @@ function matrixContentSize(node: Node): { width: number; height: number; lineCou
     height: positiveNumber(size.height) ?? 0,
     lineCount: positiveNumber(size.lineCount) ?? 0,
     lineHeight: positiveNumber(size.lineHeight) ?? 0,
+    cellWidth: positiveNumber(size.cellWidth) ?? 0,
   };
 }
 
@@ -275,8 +282,16 @@ function requiredCellHeight(
   const charsPerLine = Math.max(6, Math.floor(usableWidth / metrics.charWidth));
   const estimatedLines = wrappedLineCount(text || " ", charsPerLine);
   const content = matrixContentSize(node);
-  const measuredHeight = content?.height ? content.height + settings.paddingY * 2 : 0;
-  const measuredLinesHeight = content?.lineCount && content?.lineHeight
+  // A folded branch can move a cell between differently sized sections. DOM
+  // text metrics captured at the previous cell width must not size the next
+  // pass; doing so can alternate the Fold partition indefinitely. The fresh
+  // measurement will be accepted once React Flow reports it for this width.
+  const measurementMatchesCell = !!content?.cellWidth
+    && Math.abs(content.cellWidth - width) <= 1;
+  const measuredHeight = measurementMatchesCell && content?.height
+    ? content.height + settings.paddingY * 2
+    : 0;
+  const measuredLinesHeight = measurementMatchesCell && content?.lineCount && content?.lineHeight
     ? content.lineCount * content.lineHeight + settings.paddingY * 2
     : 0;
   const textHeight = estimatedLines * metrics.lineHeight + settings.paddingY * 2;

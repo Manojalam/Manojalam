@@ -457,7 +457,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** Render-only dimensions for the active structured layout. */
   layoutSizeOverride?: { mode: LayoutMode; width: number; height: number };
   /** Last DOM content measurement used for Matrix text wrapping and row reflow. */
-  matrixIntrinsicSize?: { width: number; height: number; naturalWidth?: number; naturalHeight?: number; lineCount?: number; lineHeight?: number; presentationKey?: string; measurementWidth?: number };
+  matrixIntrinsicSize?: { width: number; height: number; naturalWidth?: number; naturalHeight?: number; lineCount?: number; lineHeight?: number; presentationKey?: string; measurementWidth?: number; cellWidth?: number };
   /** Last rendered rich-text measurement used by editing and shape conversion. */
   intrinsicContentSize?: { width: number; height: number; naturalWidth?: number; naturalHeight?: number; lineCount?: number; lineHeight?: number; presentationKey?: string; measurementWidth?: number };
   matrixCell?: boolean;

@@ -248,6 +248,59 @@ test("Matrix cells shrink oversized free-form boxes to their content", () => {
   assertClean(result);
 });
 
+test("a stale text measurement from another Fold width cannot inflate a new child row", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "Title" },
+    { id: "branch", parentId: "root", text: "Branch" },
+    { id: "first", parentId: "branch", text: "First" },
+    { id: "new-child", parentId: "branch", text: "New Idea" },
+    { id: "third", parentId: "branch", text: "Third" },
+    { id: "fourth", parentId: "branch", text: "Fourth" },
+  ]);
+  nodes[1] = {
+    ...nodes[1],
+    data: { ...nodes[1].data, layoutFoldCount: 2 },
+  };
+  nodes[3] = {
+    ...nodes[3],
+    data: {
+      ...nodes[3].data,
+      matrixIntrinsicSize: {
+        width: 140,
+        height: 900,
+        lineCount: 40,
+        lineHeight: 22,
+        cellWidth: 720,
+      },
+    },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const staleResult = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const staleCell = staleResult.cells.find((cell) => cell.nodeId === "new-child")!;
+
+  assert.ok(staleCell.requiredHeight < 140);
+  assertClean(staleResult);
+
+  nodes[3] = {
+    ...nodes[3],
+    data: {
+      ...nodes[3].data,
+      matrixIntrinsicSize: {
+        width: 140,
+        height: 220,
+        lineCount: 10,
+        lineHeight: 22,
+        cellWidth: staleCell.width,
+      },
+    },
+  };
+  const freshResult = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const freshCell = freshResult.cells.find((cell) => cell.nodeId === "new-child")!;
+
+  assert.ok(freshCell.requiredHeight >= 248);
+  assertClean(freshResult);
+});
+
 test("one long unbroken word stays in a single Matrix row", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, text: "Title" },
