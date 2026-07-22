@@ -20,6 +20,14 @@ const SIZED_LAYOUT_MODES = new Set<LayoutMode>([
   "linear",
 ]);
 
+const ROUNDED_CARD_LAYOUT_MODES = new Set<LayoutMode>([
+  "horizontal",
+  "vertical",
+  "list",
+  "topDown",
+  "linear",
+]);
+
 const SQUARE_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 const NON_UNIFORM_SHAPES = new Set([
   ...SQUARE_SHAPES,
@@ -124,6 +132,23 @@ export function supportsGeneratedLayoutSizing(mode: LayoutMode): boolean {
   return SIZED_LAYOUT_MODES.has(mode);
 }
 
+export function usesRoundedCardLayoutPresentation(mode: LayoutMode | undefined): boolean {
+  return mode !== undefined && ROUNDED_CARD_LAYOUT_MODES.has(mode);
+}
+
+/**
+ * Structured layouts own the rendered node surface without rewriting the
+ * authored shape. Returning to Freeform therefore restores the original
+ * geometry, while Matrix remains a rectangular cell grid.
+ */
+export function layoutPresentationShapeType(
+  mode: LayoutMode | undefined,
+  authoredShapeType = "rounded"
+): string {
+  if (mode === "matrix") return "rectangle";
+  return usesRoundedCardLayoutPresentation(mode) ? "rounded" : authoredShapeType;
+}
+
 function sizingPreset(mode: LayoutMode, depth: number) {
   if (mode === "list") {
     return {
@@ -199,7 +224,9 @@ function nodeLayoutSize(node: Node, mode: LayoutMode, depth: number): LayoutNode
   // one enlarged word as the font size of the entire node caused huge cells.
   const fontSize = resolveLayoutFontSize(data) ?? 14;
   const content = estimatedContent(node, fontSize, preset.maximumContentWidth);
-  const shapeType = node.type === "shape" ? String(data.shapeType ?? "rectangle") : "rectangle";
+  const shapeType = node.type === "shape"
+    ? layoutPresentationShapeType(mode, String(data.shapeType ?? "rectangle"))
+    : "rectangle";
   const fitted = fitShapeToContent(shapeType, content, {
     nodeType: node.type,
     borderWidth: positiveNumber(data.borderWidth) ?? 2,
@@ -226,7 +253,10 @@ function nodeLayoutSize(node: Node, mode: LayoutMode, depth: number): LayoutNode
 
 function canShareListWidth(node: Node): boolean {
   if (node.type !== "shape") return true;
-  const shapeType = String(((node.data ?? {}) as Record<string, unknown>).shapeType ?? "rectangle");
+  const shapeType = layoutPresentationShapeType(
+    "list",
+    String(((node.data ?? {}) as Record<string, unknown>).shapeType ?? "rectangle")
+  );
   return !NON_UNIFORM_SHAPES.has(shapeType);
 }
 

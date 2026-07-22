@@ -42,6 +42,10 @@ import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { resolveLabelBoxGuideVisibility } from "@/lib/canvas/label-box-guides";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
+import {
+  layoutPresentationShapeType,
+  usesRoundedCardLayoutPresentation,
+} from "@/lib/layout/layout-presentation";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -1032,9 +1036,11 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
   const matrixCell = dd.matrixCell === true;
   const shapeType = (d.shapeType ?? "rounded") as string;
-  // Matrix owns only the visual cell surface. The stored shape type remains
-  // untouched so switching layouts restores the user's original geometry.
-  const renderedShapeType = matrixCell ? "rectangle" : shapeType;
+  const presentationMode = matrixCell ? "matrix" : d.layoutSizeOverride?.mode;
+  const roundedLayoutCard = usesRoundedCardLayoutPresentation(presentationMode);
+  // Structured layouts own only the visual surface. The stored shape remains
+  // untouched so switching back to Freeform restores the authored geometry.
+  const renderedShapeType = layoutPresentationShapeType(presentationMode, shapeType);
   const svgShape = isSvgShape(renderedShapeType);
 
   const fillColor    = resolveFillColor(dd);
@@ -1050,9 +1056,13 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   };
   const bRadius      = matrixCell
     ? (matrixRole === "header" ? 7 : 4)
-    : ["circle", "ellipse", "capsule"].includes(shapeType)
+    : ["circle", "ellipse", "capsule"].includes(renderedShapeType)
       ? Math.min(nodeSize.width, nodeSize.height) / 2
-      : resolveNodeBorderRadius(dd, nodeSize, shapeType === "rectangle" ? 0 : 40);
+      : resolveNodeBorderRadius(
+          roundedLayoutCard ? {} : dd,
+          nodeSize,
+          renderedShapeType === "rectangle" ? 0 : 40
+        );
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
@@ -1242,7 +1252,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         minWidth={60}
         minHeight={60}
         isVisible={selected && !editing && !isDrawing}
-        keepAspectRatio={!matrixCell && SQUARE_ASPECT_SHAPES.has(shapeType)}
+        keepAspectRatio={!matrixCell && SQUARE_ASPECT_SHAPES.has(renderedShapeType)}
         lineStyle={{ borderRadius: bRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
