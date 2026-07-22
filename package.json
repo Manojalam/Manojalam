@@ -31,6 +31,7 @@
     "test:relationship-diagram-colors": "rm -rf .relationship-diagram-colors-test && tsc --outDir .relationship-diagram-colors-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/types.ts src/lib/relationship-diagram-colors.ts src/lib/relationship-diagram-colors.test.ts && node --test .relationship-diagram-colors-test/relationship-diagram-colors.test.js; status=$?; rm -rf .relationship-diagram-colors-test; exit $status",
     "test:style-utils": "rm -rf .style-utils-test && tsc --outDir .style-utils-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/types.ts src/lib/canvas/node-geometry.ts src/lib/canvas/node-sizing.ts src/lib/canvas/shape-fitting.ts src/lib/layout/layout-presentation.ts src/lib/style-utils.ts src/lib/style-utils.test.ts && node --test .style-utils-test/style-utils.test.js; status=$?; rm -rf .style-utils-test; exit $status",
     "test:board-appearance": "rm -rf .board-appearance-test && tsc --rootDir src/lib --outDir .board-appearance-test --module commonjs --moduleResolution node --target ES2021 --esModuleInterop --skipLibCheck src/lib/canvas/board-colors.ts src/lib/canvas/board-colors.test.ts src/lib/export/types.ts src/lib/export/errors.ts src/lib/export/resources.ts src/lib/export/dom-renderer.ts src/lib/export/dom-renderer.test.ts src/lib/export/background.ts src/lib/export/background.test.ts && node --test .board-appearance-test/canvas/board-colors.test.js .board-appearance-test/export/dom-renderer.test.js .board-appearance-test/export/background.test.js; status=$?; rm -rf .board-appearance-test; exit $status",
+    "test:export-pdf": "rm -rf .export-pdf-test && tsc --rootDir src/lib --outDir .export-pdf-test --module commonjs --moduleResolution node --target ES2021 --esModuleInterop --skipLibCheck src/lib/canvas/rich-text-link.ts src/lib/export/types.ts src/lib/export/errors.ts src/lib/export/bounds.ts src/lib/export/pdf.ts src/lib/export/pdf.test.ts && node --test .export-pdf-test/export/pdf.test.js; status=$?; rm -rf .export-pdf-test; exit $status",
     "test:chart-selection": "rm -rf .chart-selection-test && tsc --outDir .chart-selection-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/canvas/chart-selection.ts src/lib/canvas/chart-selection.test.ts && node --test .chart-selection-test/chart-selection.test.js; status=$?; rm -rf .chart-selection-test; exit $status"
   },
   "dependencies": {
@@ -67,6 +68,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.23.0",
     "next": "16.2.10",
     "next-themes": "^0.4.6",

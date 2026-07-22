@@ -137,7 +137,7 @@ function remoteAssetPlaceholder(url: string): string {
     '<circle cx="174" cy="42" r="14" fill="#cbd5e1"/>',
     '<path d="m82 43 76 62M158 43l-76 62" stroke="#dc2626" stroke-width="7" stroke-linecap="round" opacity=".82"/>',
     '<rect x="13" y="111" width="214" height="22" rx="4" fill="#fff" opacity=".94"/>',
-    '<text x="120" y="121" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#334155">REMOTE IMAGE UNAVAILABLE IN PNG</text>',
+    '<text x="120" y="121" text-anchor="middle" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#334155">REMOTE IMAGE UNAVAILABLE IN EXPORT</text>',
     `<text x="120" y="130" text-anchor="middle" font-family="Arial,sans-serif" font-size="7" fill="#64748b">${label}</text>`,
     "</svg>",
   ].join("");
@@ -163,7 +163,7 @@ function markFallbackOwner(
   }
   if (action !== "substituted-placeholder") return;
 
-  const message = "Remote image unavailable in PNG export";
+  const message = "Remote image unavailable in raster export";
   if (owner instanceof HTMLImageElement) {
     if (!owner.alt.trim()) owner.alt = message;
     owner.title = message;
@@ -193,7 +193,7 @@ function recordRemoteFallback(
     .replaceAll(encodeURIComponent(resolvedUrl), encodeURIComponent(safeUrl));
   const message = action === "preserved-reference"
     ? `A remote ${kind} could not be embedded; its external reference was preserved in the SVG. ${detail}`
-    : `A remote ${kind} could not be embedded safely and was replaced with a visible PNG placeholder. ${detail}`;
+    : `A remote ${kind} could not be embedded safely and was replaced with a visible raster placeholder. ${detail}`;
   context.warnings.push({
     kind: "remote-asset",
     action,

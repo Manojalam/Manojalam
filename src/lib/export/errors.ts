@@ -8,24 +8,25 @@ import type {
 const USER_MESSAGES: Record<ExportErrorCode, string> = {
   EMPTY_SCOPE: "There is no visible content in the selected export area.",
   INVALID_BOUNDS: "The selected content has invalid export bounds.",
-  INVALID_SCALE: "Choose a valid PNG export scale greater than zero.",
+  INVALID_SCALE: "Choose a valid PNG or PDF export scale greater than zero.",
   FONT_LOAD_FAILED: "One or more fonts could not be prepared for export.",
   FONT_LOAD_TIMEOUT: "The chart fonts did not finish loading in time.",
   ASSET_EMBED_FAILED: "An image or font could not be embedded in the export.",
-  REMOTE_IMAGE_CORS: "A remote image in this chart prevents PNG export. Remove it, embed it, or export as SVG.",
-  REMOTE_FONT_CORS: "A remote font could not be embedded. PNG export will use a browser-safe fallback font.",
-  REMOTE_ASSET_CORS: "A remote asset in this chart could not be prepared for PNG export.",
+  REMOTE_IMAGE_CORS: "A remote image in this chart prevents raster export. Remove it, embed it, or export as SVG.",
+  REMOTE_FONT_CORS: "A remote font could not be embedded. PNG and PDF export will use a browser-safe fallback font.",
+  REMOTE_ASSET_CORS: "A remote asset in this chart could not be prepared for raster export.",
   UNSUPPORTED_ELEMENT: "The chart renderer could not serialize one of the elements.",
   SERIALIZE_FAILED: "The chart renderer could not serialize one of the elements.",
   SVG_DECODE_FAILED: "The serialized chart could not be rendered as an image.",
   CANVAS_TOO_LARGE: "The chart is too large to render at this resolution.",
-  CANVAS_MEMORY_EXHAUSTED: "PNG rendering ran out of browser memory.",
-  CANVAS_ALLOCATION_FAILED: "The browser could not allocate a canvas for this PNG.",
-  CANVAS_CONTEXT_FAILED: "The browser could not initialize PNG rendering.",
-  CANVAS_DRAW_FAILED: "The chart could not be drawn into the PNG renderer.",
-  CANVAS_TAINTED: "The browser blocked PNG encoding after rendering this chart. Export as SVG or remove unsupported embedded content.",
+  CANVAS_MEMORY_EXHAUSTED: "Raster rendering ran out of browser memory.",
+  CANVAS_ALLOCATION_FAILED: "The browser could not allocate a canvas for this export.",
+  CANVAS_CONTEXT_FAILED: "The browser could not initialize raster rendering.",
+  CANVAS_DRAW_FAILED: "The chart could not be drawn into the raster renderer.",
+  CANVAS_TAINTED: "The browser blocked raster encoding after rendering this chart. Export as SVG or remove unsupported embedded content.",
   PNG_BLOB_CREATION_FAILED: "PNG encoding failed.",
   SVG_BLOB_CREATION_FAILED: "SVG encoding failed.",
+  PDF_BLOB_CREATION_FAILED: "PDF creation failed.",
   DOWNLOAD_FAILED: "The file was created, but the download could not be started.",
   DOWNLOAD_BLOCKED: "The file was created, but the browser blocked the download.",
   ABORTED: "The export was canceled.",
@@ -139,6 +140,8 @@ export function classifyExportError(stage: ExportStage, error: unknown): ExportE
       return "PNG_BLOB_CREATION_FAILED";
     case "create-svg-blob":
       return "SVG_BLOB_CREATION_FAILED";
+    case "create-pdf-blob":
+      return "PDF_BLOB_CREATION_FAILED";
     case "initiate-download":
       return "DOWNLOAD_FAILED";
     default:

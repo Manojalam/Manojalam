@@ -223,7 +223,7 @@ export function CanvasTopbar() {
                 title: board?.title,
               })}
             >
-              Board or selection image…
+              Board or selection…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

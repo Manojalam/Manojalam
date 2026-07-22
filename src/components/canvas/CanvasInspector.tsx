@@ -8,7 +8,7 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
-  ArrowLeftRight, FileImage, FileType2, Link2, Maximize2, Palette, RotateCcw, Unlink2,
+  ArrowLeftRight, FileImage, FileText, FileType2, Link2, Maximize2, Palette, RotateCcw, Unlink2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { useTheme } from "next-themes";
@@ -2257,7 +2257,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <p className="text-[10px] leading-relaxed text-muted-foreground">
               Drag the chart to move it. Drag any corner handle to resize it; the saved diameter stays the same after refresh.
             </p>
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-2 gap-1">
               <Button
                 type="button"
                 variant="outline"
@@ -2295,6 +2295,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 })}
               >
                 <FileType2 className="h-3.5 w-3.5" /> SVG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => openBoardExport({
+                  scope: "node",
+                  nodeIds: [selectedNode.id],
+                  format: "pdf",
+                  title: chartTitle,
+                })}
+              >
+                <FileText className="h-3.5 w-3.5" /> PDF
               </Button>
             </div>
           </div>
@@ -2591,7 +2605,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <Share2 className="h-3.5 w-3.5" />
               Change layout and options
             </Button>
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-2 gap-1">
               <Button
                 type="button"
                 variant="outline"
@@ -2631,6 +2645,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 })}
               >
                 <FileType2 className="h-3.5 w-3.5" /> SVG
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 px-2 text-[10px]"
+                onClick={() => openBoardExport({
+                  scope: "node",
+                  nodeIds: [selectedNode.id],
+                  format: "pdf",
+                  title: diagramTitle,
+                })}
+              >
+                <FileText className="h-3.5 w-3.5" /> PDF
               </Button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { classifyExportError, ExportError, toExportError } from "./errors";
 import { createPngExportPlan } from "./limits";
+import { collectPdfLinkAnnotations, createBoardPdf } from "./pdf";
 import { prepareReactFlowDomSvg } from "./dom-renderer";
 import { createSvgRasterDataUrl } from "./svg-raster-source";
 import type { ExportAssetWarning } from "./resources";
@@ -29,6 +30,7 @@ export interface ExportBoardVisualOptions {
   background?: string | null;
   /** Preserve translucent object colors against this matte even when the outer export is transparent. */
   appearanceBackground?: string | null;
+  viewportTransform?: { x: number; y: number; zoom: number };
   signal?: AbortSignal;
 }
 
@@ -173,7 +175,7 @@ async function runStage<T>(
 }
 
 function sanitizedFilename(value: string, format: ExportFormat): string {
-  const withoutExtension = value.trim().replace(/\.(?:png|svg)$/i, "");
+  const withoutExtension = value.trim().replace(/\.(?:png|svg|pdf)$/i, "");
   const base = withoutExtension
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/\s+/g, "-")
@@ -398,7 +400,7 @@ export async function exportBoardVisual(
   }, { signal: options.signal });
 
   let plan: ExportPlan | undefined;
-  if (options.format === "png") {
+  if (options.format !== "svg") {
     plan = await runStage("plan-output", baseDiagnostics, () =>
       createPngExportPlan(options.bounds, options.requestedScale), {
       signal: options.signal,
@@ -439,7 +441,7 @@ export async function exportBoardVisual(
       // safe proxy, then applies a deterministic browser-safe fallback.
       strictFontEmbedding: false,
       preserveRemoteReferences: options.format === "svg",
-      substituteInaccessibleRemoteAssets: options.format === "png",
+      substituteInaccessibleRemoteAssets: options.format !== "svg",
       onStageComplete: (stage, diagnostics) => {
         logExportStage("completed", {
           ...baseDiagnostics,
@@ -474,7 +476,7 @@ export async function exportBoardVisual(
       throw new ExportError({
         stage: "plan-output",
         code: "CANVAS_TOO_LARGE",
-        message: "PNG export did not produce a safe raster plan.",
+        message: "The export did not produce a safe raster plan.",
       });
     }
     effectiveScale = plan.effectiveScale;
@@ -547,7 +549,7 @@ export async function exportBoardVisual(
       }, () => {
         surface.context.drawImage(decodedImage, 0, 0, plan.outputWidth, plan.outputHeight);
       }, { signal: options.signal });
-      blob = await runStage("encode-png", {
+      const pngBlob = await runStage("encode-png", {
         ...baseDiagnostics,
         renderer: "canvas-2d",
         canvasCreated: true,
@@ -556,6 +558,42 @@ export async function exportBoardVisual(
         signal: options.signal,
         completedDiagnostics: { blobCreated: true },
       });
+      if (options.format === "pdf") {
+        const links = options.viewportTransform
+          ? collectPdfLinkAnnotations({
+              root: options.viewport,
+              nodeIds: options.nodeIds,
+              edgeIds: options.edgeIds,
+              exportBounds: options.bounds,
+              viewport: options.viewportTransform,
+            })
+          : [];
+        const pdf = await runStage("create-pdf-blob", {
+          ...baseDiagnostics,
+          renderer: "pdf-raster",
+        }, () => createBoardPdf({
+          png: pngBlob,
+          sourceWidth: prepared.width,
+          sourceHeight: prepared.height,
+          exportBounds: options.bounds,
+          links,
+          title: options.title,
+        }), {
+          signal: options.signal,
+          completedDiagnostics: (result) => ({
+            renderer: "pdf-raster",
+            blobCreated: true,
+            linkAnnotationCount: result.linkAnnotationCount,
+            pdfPageWidth: result.pageWidth,
+            pdfPageHeight: result.pageHeight,
+          }),
+        });
+        blob = pdf.blob;
+        width = Math.round(pdf.pageWidth);
+        height = Math.round(pdf.pageHeight);
+      } else {
+        blob = pngBlob;
+      }
     } finally {
       decodedImage.onload = null;
       decodedImage.onerror = null;
