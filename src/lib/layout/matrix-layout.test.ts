@@ -10,6 +10,8 @@ import {
   computeMatrixLayout,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixNodeSizeDiffersFromPlacement,
+  matrixRenderedSizeChanged,
   type MatrixLayoutResult,
 } from "./matrix-layout";
 
@@ -388,6 +390,31 @@ test("Matrix overrides do not replace the stored normal node size", () => {
   assert.deepEqual(getMatrixBaseSize(node), { width: 240, height: 96 });
 });
 
+test("Matrix detects and clears a live resize that differs from its allocated cell", () => {
+  const resized: Node = {
+    id: "cell",
+    position: { x: 0, y: 0 },
+    width: 420,
+    height: 60,
+    measured: { width: 420, height: 60 },
+    style: { width: 420, height: 120 },
+    data: {
+      matrixCell: true,
+      layoutSizeOverride: { mode: "matrix", width: 420, height: 120 },
+    },
+  };
+  const reconciled: Node = {
+    ...resized,
+    width: undefined,
+    height: undefined,
+    measured: undefined,
+  };
+
+  assert.equal(matrixNodeSizeDiffersFromPlacement(resized, { width: 420, height: 120 }), true);
+  assert.equal(matrixNodeSizeDiffersFromPlacement(reconciled, { width: 420, height: 120 }), false);
+  assert.equal(matrixRenderedSizeChanged(resized, reconciled), true);
+});
+
 test("a vertical Matrix grows hierarchy levels downward", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, orientation: "vertical" },
@@ -568,6 +595,10 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
     new Map(resizedNodes.map((node) => [node.id, node]))
   );
   assert.equal(resized.cells.find((cell) => cell.nodeId === "rule")!.height, 220);
+  assert.ok(
+    resized.cells.find((cell) => cell.nodeId === "next-rule")!.y > nextRule.y,
+    "growing a Matrix cell should move the following branch"
+  );
   assertClean(resized);
 
   const resetNodes = resizedNodes.map((node) => node.id === "rule"
@@ -579,6 +610,7 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
     new Map(resetNodes.map((node) => [node.id, node]))
   );
   assert.equal(reset.cells.find((cell) => cell.nodeId === "rule")!.height, rule.height);
+  assert.equal(reset.cells.find((cell) => cell.nodeId === "next-rule")!.y, nextRule.y);
   assertClean(reset);
 });
 
