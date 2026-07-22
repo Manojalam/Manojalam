@@ -25,6 +25,7 @@ import {
   MessageSquarePlus,
   Move,
   Network,
+  Paintbrush,
   Plus,
   Rows3,
   RotateCcw,
@@ -55,6 +56,7 @@ import {
   resolveObjectRotation,
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
+import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
 
 function ActionButton({
   label,
@@ -376,10 +378,41 @@ export function SelectionToolbar() {
   const setMoveOnlyNodeId = useUIStore((state) => state.setMoveOnlyNodeId);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
   const openBoardExport = useUIStore((state) => state.openBoardExport);
+  const shapeFormatPainter = useUIStore((state) => state.shapeFormatPainter);
+  const setShapeFormatPainter = useUIStore((state) => state.setShapeFormatPainter);
   const { screenToFlowPosition } = useReactFlow();
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
+  const selectedShapes = selected.filter((node) => node.type === "shape");
+  const allSelectedAreShapes = selectedShapes.length === selected.length;
+
+  const useShapeFormatPainter = () => {
+    if (!shapeFormatPainter) {
+      if (selectedShapes.length !== 1) return;
+      setShapeFormatPainter(captureShapeFormat(
+        (selectedShapes[0].data ?? {}) as Record<string, unknown>
+      ));
+      toast.success("Shape formatting copied", {
+        description: "Select one or more shapes, then click the brush again to apply it.",
+      });
+      return;
+    }
+
+    if (!allSelectedAreShapes) return;
+    const store = useCanvasStore.getState();
+    store.pushHistory();
+    for (const node of selectedShapes) {
+      store.updateNodeData(
+        node.id,
+        shapeFormatPatch((node.data ?? {}) as Record<string, unknown>, shapeFormatPainter)
+      );
+    }
+    setShapeFormatPainter(null);
+    toast.success(`Formatting applied to ${selectedShapes.length} shape${selectedShapes.length === 1 ? "" : "s"}.`, {
+      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+    });
+  };
 
   const updateGeometry = (nextPositions: Map<string, { x: number; y: number }>) => {
     if (!nextPositions.size) return;
@@ -583,6 +616,19 @@ export function SelectionToolbar() {
             onClick={() => openRelationshipDiagram({ mode: "create", sourceNodeIds: relationshipSourceIds })}
           >
             <Share2 className="h-4 w-4" />
+          </ActionButton>
+          <Divider />
+        </>
+      )}
+
+      {allSelectedAreShapes && (selectedShapes.length === 1 || shapeFormatPainter) && (
+        <>
+          <ActionButton
+            label={shapeFormatPainter ? "Apply copied shape formatting" : "Copy shape formatting"}
+            active={!!shapeFormatPainter}
+            onClick={useShapeFormatPainter}
+          >
+            <Paintbrush className="h-4 w-4" />
           </ActionButton>
           <Divider />
         </>

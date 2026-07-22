@@ -11,6 +11,7 @@ import type {
   ShapeType,
 } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS } from "@/lib/types";
+import type { ShapeFormatSnapshot } from "@/lib/canvas/shape-format";
 
 export type ShapeVariant = ShapeType;
 
@@ -56,6 +57,8 @@ interface UIState {
   setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
   inlineFormatPainter: InlineTextFormatSnapshot | null;
   setInlineFormatPainter: (format: InlineTextFormatSnapshot | null) => void;
+  shapeFormatPainter: ShapeFormatSnapshot | null;
+  setShapeFormatPainter: (format: ShapeFormatSnapshot | null) => void;
   shapeVariant: ShapeVariant;
   setShapeVariant: (v: ShapeVariant) => void;
   /** ID of the node currently in free-draw internal-fill mode, or null */
@@ -175,6 +178,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   ),
   inlineFormatPainter: null,
   setInlineFormatPainter: (format) => set({ inlineFormatPainter: format }),
+  shapeFormatPainter: null,
+  setShapeFormatPainter: (format) => set({ shapeFormatPainter: format }),
   shapeVariant: "rounded",
   setShapeVariant: (v) => set({ shapeVariant: v }),
   drawingModeNodeId: null,
