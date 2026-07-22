@@ -65,6 +65,59 @@ function denseTree(): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+function nestedFoldTree(): { nodes: Node[]; edges: Edge[] } {
+  const specs: Array<{
+    id: string;
+    parentId: string | null;
+    width: number;
+    height: number;
+    children: string[];
+    foldCount?: number;
+  }> = [
+    { id: "root", parentId: null, width: 248, height: 96, children: ["first", "second"] },
+    { id: "first", parentId: "root", width: 132, height: 54, children: ["first-card"] },
+    {
+      id: "first-card",
+      parentId: "first",
+      width: 480,
+      height: 120,
+      children: ["first-leaf-0", "first-leaf-1", "first-leaf-2", "first-leaf-3"],
+      foldCount: 4,
+    },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `first-leaf-${index}`,
+      parentId: "first-card",
+      width: 140,
+      height: 60,
+      children: [],
+    })),
+    { id: "second", parentId: "root", width: 148, height: 54, children: ["second-card"] },
+    { id: "second-card", parentId: "second", width: 400, height: 120, children: [] },
+  ];
+  const nodes = specs.map<Node>((spec, index) => ({
+    id: spec.id,
+    type: "shape",
+    position: index === 0 ? { x: 720, y: 420 } : { x: 0, y: 0 },
+    measured: { width: spec.width, height: spec.height },
+    data: {
+      text: spec.id,
+      parentId: spec.parentId,
+      childOrder: spec.children,
+      ...(spec.foldCount ? { layoutFoldCount: spec.foldCount } : {}),
+    },
+  }));
+  const edges = specs
+    .filter((spec): spec is typeof spec & { parentId: string } => spec.parentId !== null)
+    .map<Edge>((spec) => ({
+      id: `${spec.parentId}-${spec.id}`,
+      source: spec.parentId,
+      target: spec.id,
+      type: "branch",
+      data: { layoutMode: "horizontal", edgeType: "branch" },
+    }));
+  return { nodes, edges };
+}
+
 function applyLayout(
   nodes: Node[],
   edges: Edge[],
@@ -154,6 +207,23 @@ test("subtree packing uses compact gaps without collapsing branch boundaries", (
       firstHorizontalLeaves[index].top - firstHorizontalLeaves[index - 1].bottom,
       ORTHOGONAL_TREE_SPACING.horizontal.siblingGap
     );
+  }
+});
+
+test("nested Fold compacts the next root branch from the visible subtree bounds", () => {
+  const fixture = nestedFoldTree();
+  const hierarchy = buildHierarchy(fixture.nodes, fixture.edges);
+
+  for (const orientation of ["horizontal", "vertical"] as const) {
+    const placed = applyLayout(fixture.nodes, fixture.edges, orientation);
+    const firstBounds = crossBounds(placed, getSubtree("first", hierarchy), orientation);
+    const secondBounds = crossBounds(placed, getSubtree("second", hierarchy), orientation);
+
+    assert.equal(
+      secondBounds.start - firstBounds.end,
+      ORTHOGONAL_TREE_SPACING[orientation].rootBranchGap
+    );
+    assertNoOverlap(placed, orientation);
   }
 });
 

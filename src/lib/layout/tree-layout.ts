@@ -2,8 +2,12 @@ import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMode } from "../types";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy, getSubtree } from "./hierarchy";
-import { wrapChildGroups } from "./child-group-wrap";
 import {
+  DEFAULT_CHILD_GROUP_GAP,
+  resolvedFoldSections,
+} from "./child-group-wrap";
+import {
+  createNodeRect,
   getNodeDimensions,
   getNodeRect,
   inflateRect,
@@ -48,6 +52,170 @@ interface SubtreeMetrics {
 interface Point {
   x: number;
   y: number;
+}
+
+function treePlacementRect(node: Node, placement: TreePlacements[string]): NodeRect {
+  const size = getNodeDimensions(node);
+  const origin = node.origin ?? [0, 0];
+  return createNodeRect(
+    node.id,
+    placement.x - size.width * origin[0],
+    placement.y - size.height * origin[1],
+    size.width,
+    size.height
+  );
+}
+
+function treePlacementBounds(
+  nodeIds: string[],
+  placements: TreePlacements,
+  byId: Map<string, Node>
+): NodeRect | null {
+  const rects = nodeIds.flatMap((nodeId) => {
+    const node = byId.get(nodeId);
+    const placement = placements[nodeId];
+    return node && placement ? [treePlacementRect(node, placement)] : [];
+  });
+  if (!rects.length) return null;
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return createNodeRect("tree-subtree-bounds", left, top, right - left, bottom - top);
+}
+
+function moveTreePlacements(
+  nodeIds: string[],
+  placements: TreePlacements,
+  deltaX: number,
+  deltaY: number
+): void {
+  if (deltaX === 0 && deltaY === 0) return;
+  for (const nodeId of nodeIds) {
+    const placement = placements[nodeId];
+    if (!placement) continue;
+    placements[nodeId] = {
+      x: placement.x + deltaX,
+      y: placement.y + deltaY,
+    };
+  }
+}
+
+function treeFoldSegmentExtents(
+  children: string[],
+  subtreeBounds: Map<string, NodeRect>,
+  horizontal: boolean,
+  gap: number
+): number[][] {
+  const extents = Array.from(
+    { length: children.length },
+    () => Array.from({ length: children.length + 1 }, () => 0)
+  );
+  for (let start = 0; start < children.length; start += 1) {
+    let extent = 0;
+    for (let end = start; end < children.length; end += 1) {
+      if (end > start) extent += gap;
+      const bounds = subtreeBounds.get(children[end]);
+      extent += bounds ? (horizontal ? bounds.height : bounds.width) : 0;
+      extents[start][end + 1] = extent;
+    }
+  }
+  return extents;
+}
+
+/**
+ * Repack child subtrees after nested Fold sections have reached their final
+ * visual size. This prevents ancestors from retaining the space that the
+ * children occupied before Fold moved them into adjacent sections.
+ */
+function compactFoldedTreePlacements(
+  placements: TreePlacements,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  orientation: OrthogonalTreeOrientation,
+  spacing: OrthogonalTreeSpacing
+): TreePlacements {
+  const next = Object.fromEntries(
+    Object.entries(placements).map(([nodeId, placement]) => [nodeId, { ...placement }])
+  ) as TreePlacements;
+  const horizontal = orientation === "horizontal";
+  const parents = [...hierarchy.values()].sort((first, second) => second.depth - first.depth);
+
+  for (const parentEntry of parents) {
+    const parent = byId.get(parentEntry.id);
+    const parentPlacement = next[parentEntry.id];
+    if (!parent || !parentPlacement) continue;
+    const children = parentEntry.childIds.filter((childId) => !!next[childId]);
+    if (!children.length) continue;
+
+    const subtreeIds = new Map(children.map((childId) => [
+      childId,
+      [...new Set(getSubtree(childId, hierarchy))].filter((nodeId) => !!next[nodeId]),
+    ]));
+    const subtreeBounds = new Map(children.flatMap((childId) => {
+      const bounds = treePlacementBounds(subtreeIds.get(childId) ?? [], next, byId);
+      return bounds ? [[childId, bounds] as const] : [];
+    }));
+    if (subtreeBounds.size !== children.length) continue;
+
+    const childGap = parentEntry.depth === 0 ? spacing.rootBranchGap : spacing.siblingGap;
+    const data = (parent.data ?? {}) as Record<string, unknown>;
+    const sections = resolvedFoldSections(
+      data,
+      children,
+      treeFoldSegmentExtents(children, subtreeBounds, horizontal, childGap)
+    );
+    const sectionSpans = sections.map((section) => section.reduce((sum, childId, index) => {
+      const bounds = subtreeBounds.get(childId)!;
+      return sum + (horizontal ? bounds.height : bounds.width) + (index > 0 ? childGap : 0);
+    }, 0));
+    const parentRect = treePlacementRect(parent, parentPlacement);
+    const parentCrossCenter = horizontal ? parentRect.centerY : parentRect.centerX;
+    const groupCrossStart = parentCrossCenter - Math.max(...sectionSpans) / 2;
+
+    for (const section of sections) {
+      let crossCursor = groupCrossStart;
+      for (const childId of section) {
+        const nodeIds = subtreeIds.get(childId) ?? [];
+        const bounds = treePlacementBounds(nodeIds, next, byId);
+        if (!bounds) continue;
+        const currentCrossStart = horizontal ? bounds.top : bounds.left;
+        const crossDelta = crossCursor - currentCrossStart;
+        moveTreePlacements(
+          nodeIds,
+          next,
+          horizontal ? 0 : crossDelta,
+          horizontal ? crossDelta : 0
+        );
+        const movedBounds = treePlacementBounds(nodeIds, next, byId)!;
+        crossCursor = (horizontal ? movedBounds.bottom : movedBounds.right) + childGap;
+      }
+    }
+
+    if (sections.length < 2) continue;
+    const sectionNodeIds = sections.map((section) => [
+      ...new Set(section.flatMap((childId) => subtreeIds.get(childId) ?? [])),
+    ]);
+    const firstBounds = treePlacementBounds(sectionNodeIds[0], next, byId);
+    if (!firstBounds) continue;
+    let nextMainStart = horizontal ? firstBounds.left : firstBounds.top;
+    for (const nodeIds of sectionNodeIds) {
+      const bounds = treePlacementBounds(nodeIds, next, byId);
+      if (!bounds) continue;
+      const currentMainStart = horizontal ? bounds.left : bounds.top;
+      const mainDelta = nextMainStart - currentMainStart;
+      moveTreePlacements(
+        nodeIds,
+        next,
+        horizontal ? mainDelta : 0,
+        horizontal ? 0 : mainDelta
+      );
+      const movedBounds = treePlacementBounds(nodeIds, next, byId)!;
+      nextMainStart = (horizontal ? movedBounds.right : movedBounds.bottom) + DEFAULT_CHILD_GROUP_GAP;
+    }
+  }
+
+  return next;
 }
 
 function isTreeMode(mode: unknown): mode is "horizontal" | "vertical" | "topDown" {
@@ -173,7 +341,7 @@ export function computeOrthogonalTreeLayout(
       size
     );
   }
-  return wrapChildGroups(placements, hierarchy, byId, () => orientation);
+  return compactFoldedTreePlacements(placements, hierarchy, byId, orientation, spacing);
 }
 
 export interface TreeConnectorBranch {
