@@ -40,6 +40,7 @@ import {
 } from "@/lib/layout/layout-presentation";
 import { computeListLayout } from "@/lib/layout/list-layout";
 import { hasFoldedChildSections } from "@/lib/layout/child-group-wrap";
+import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import {
   computeMatrixLayout,
   getMatrixBaseSize,
@@ -190,7 +191,7 @@ interface CanvasState {
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
   scheduleListReflow: (nodeId: string) => void;
   scheduleMatrixReflow: (nodeId: string) => void;
-  scheduleStructuredReflow: (nodeId: string) => void;
+  scheduleStructuredReflow: (nodeId: string, forceAutomatic?: boolean) => void;
   markListManualOverride: (nodeIds: string[], value: boolean) => void;
   markTreeManualOverride: (nodeIds: string[], value: boolean) => void;
   updateBoardTitle: (title: string) => void;
@@ -204,6 +205,7 @@ let listReflowTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingMatrixReflowNodeIds = new Set<string>();
 let matrixReflowTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingStructuredReflowNodeIds = new Set<string>();
+const pendingForcedStructuredReflowNodeIds = new Set<string>();
 let structuredReflowTimer: ReturnType<typeof setTimeout> | null = null;
 
 function requestNodeInternalsRefresh(nodeIds: string[]): void {
@@ -230,6 +232,7 @@ function cancelPendingLayoutReflows(): void {
   if (structuredReflowTimer) clearTimeout(structuredReflowTimer);
   structuredReflowTimer = null;
   pendingStructuredReflowNodeIds.clear();
+  pendingForcedStructuredReflowNodeIds.clear();
 }
 
 function cloneState(
@@ -2823,7 +2826,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       || Object.prototype.hasOwnProperty.call(data, "layoutFoldBreakAfter")
       || Object.prototype.hasOwnProperty.call(data, "layoutWrapAfter")
     ) {
-      get().scheduleStructuredReflow(nodeId);
+      get().scheduleStructuredReflow(nodeId, true);
     }
   },
 
@@ -3405,13 +3408,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }, 140);
   },
 
-  scheduleStructuredReflow: (nodeId) => {
+  scheduleStructuredReflow: (nodeId, forceAutomatic = false) => {
     pendingStructuredReflowNodeIds.add(nodeId);
+    if (forceAutomatic) pendingForcedStructuredReflowNodeIds.add(nodeId);
     if (structuredReflowTimer) clearTimeout(structuredReflowTimer);
     structuredReflowTimer = setTimeout(() => {
       structuredReflowTimer = null;
       const requestedNodeIds = [...pendingStructuredReflowNodeIds];
+      const forcedNodeIds = new Set(pendingForcedStructuredReflowNodeIds);
       pendingStructuredReflowNodeIds.clear();
+      pendingForcedStructuredReflowNodeIds.clear();
       const state = get();
       const layoutNodes = state.nodes.filter((node) =>
         !isAutoMatrixFrame(node)
@@ -3421,6 +3427,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const hierarchy = buildHierarchy(layoutNodes, state.edges);
       const byId = new Map(layoutNodes.map((node) => [node.id, node]));
       const roots = new Map<string, LayoutMode>();
+      const forcedRootIds = new Set<string>();
       const supportedModes = new Set<LayoutMode>([
         "fromParentFreeForm",
         "horizontal",
@@ -3431,7 +3438,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       for (const requestedNodeId of requestedNodeIds) {
         if (!byId.has(requestedNodeId)) continue;
         const root = findLayoutRoot(requestedNodeId, layoutNodes, hierarchy);
-        if (root.mode && supportedModes.has(root.mode)) roots.set(root.id, root.mode);
+        if (root.mode && supportedModes.has(root.mode)) {
+          roots.set(root.id, root.mode);
+          if (forcedNodeIds.has(requestedNodeId)) forcedRootIds.add(root.id);
+        }
       }
       if (!roots.size) return;
 
@@ -3439,6 +3449,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       let nodes = state.nodes;
       let nextEdges = state.edges;
       for (const [rootId, mode] of roots) {
+        const forceRootLayout = forcedRootIds.has(rootId);
         const styled = applyLayoutPalette(
           nodes,
           nextEdges,
@@ -3461,15 +3472,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nodes = nodes.map((node) => {
           const placement = placements[node.id];
           if (!placement) return node;
-          const data = (node.data ?? {}) as Record<string, unknown>;
-          const hasManualOverride = data.treeManualOverride === true;
-          if (hasManualOverride) return node;
-          if (
-            Math.abs(node.position.x - placement.x) < 0.75
-            && Math.abs(node.position.y - placement.y) < 0.75
-          ) return node;
-          changed = true;
-          return { ...node, position: { x: placement.x, y: placement.y } };
+          const nextNode = applyStructuredReflowPlacement(node, placement, forceRootLayout);
+          if (nextNode !== node) changed = true;
+          return nextNode;
         });
       }
       if (changed || roots.size) set({ nodes, edges: nextEdges, saveStatus: "unsaved" });
