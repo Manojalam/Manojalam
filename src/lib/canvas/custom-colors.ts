@@ -1,6 +1,13 @@
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+const DEFAULT_COLOR_INPUT_VALUE = "#000000";
 
 export const MAX_CUSTOM_COLORS = 18;
+
+/** Return a valid value for an HTML color input without letting the browser reset it to black. */
+export function colorInputValue(value: unknown, fallback = DEFAULT_COLOR_INPUT_VALUE): string {
+  if (typeof value === "string" && HEX_COLOR_PATTERN.test(value)) return value.toLowerCase();
+  return HEX_COLOR_PATTERN.test(fallback) ? fallback.toLowerCase() : DEFAULT_COLOR_INPUT_VALUE;
+}
 
 /** Combine the recent-color lists used by older and newer palette contexts. */
 export function mergeCustomColors(...values: unknown[]): string[] {
