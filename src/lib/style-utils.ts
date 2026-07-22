@@ -367,6 +367,11 @@ export function themeAwareNodeFillColor(renderedFillColor?: string): string | un
   return `color-mix(in oklch, ${renderedFillColor} var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))`;
 }
 
+/** Keep generated hierarchy connectors legible against both board themes. */
+export function themeAwareLayoutConnectorColor(color: string): string {
+  return `color-mix(in srgb, ${color} 62%, var(--foreground))`;
+}
+
 /** Combine a base color + opacity into an rgba() string */
 export function colorWithOpacity(color: string, opacity: number): string {
   const p = parseColor(color);

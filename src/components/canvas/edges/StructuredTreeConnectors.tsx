@@ -8,7 +8,7 @@ import {
   DEFAULT_TREE_CONNECTOR_WIDTH,
   type TreeConnectorModel,
 } from "@/lib/layout/tree-layout";
-import { resolveAccentColor } from "@/lib/style-utils";
+import { resolveAccentColor, themeAwareLayoutConnectorColor } from "@/lib/style-utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
@@ -18,8 +18,16 @@ function edgeData(edge: Edge): VidyaEdgeData {
   return (edge.data ?? {}) as VidyaEdgeData;
 }
 
+function normalEdgeColor(edge: Edge): string {
+  const data = edgeData(edge);
+  return data.color ?? data.layoutColor ?? "#94a3b8";
+}
+
 function edgeColor(edge: Edge, selected = edge.selected): string {
-  return selected ? "#4f46e5" : edgeData(edge).color ?? edgeData(edge).layoutColor ?? "#94a3b8";
+  if (selected) return "#4f46e5";
+  const data = edgeData(edge);
+  if (data.color) return data.color;
+  return data.layoutColor ? themeAwareLayoutConnectorColor(data.layoutColor) : "#94a3b8";
 }
 
 function edgeWidth(edge: Edge): number {
@@ -118,12 +126,13 @@ export function StructuredTreeConnectors() {
             const baseEdge = group.branches[0].edge;
             const data = edgeData(baseEdge);
             const parentData = (nodesById.get(group.parentId)?.data ?? {}) as Record<string, unknown>;
+            const parentAccent = resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
             const trunkColor = group.branches.length === 1
               ? edgeColor(baseEdge)
-              : resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
+              : themeAwareLayoutConnectorColor(parentAccent);
             const trunkNormalColor = group.branches.length === 1
-              ? edgeColor(baseEdge, false)
-              : resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
+              ? normalEdgeColor(baseEdge)
+              : parentAccent;
             const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
             return (
               <g key={group.parentId}>
@@ -143,7 +152,7 @@ export function StructuredTreeConnectors() {
                 {group.branches.map(({ edge, segments }) => {
                   const data = edgeData(edge);
                   const path = branchPath(segments);
-                  const normalColor = data.color ?? data.layoutColor ?? "#94a3b8";
+                  const normalColor = normalEdgeColor(edge);
                   return (
                     <g key={edge.id}>
                       <ConnectorSvgPath
