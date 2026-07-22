@@ -144,6 +144,13 @@ const RADIAL_SEGMENT_COLORS = [
 ];
 const RADIAL_CHART_MIN_SIZE = 420;
 
+function hasPositiveDimensionOverride(value: unknown): boolean {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
+  return Number.isFinite(numeric) && numeric > 0;
+}
+
 function concentricInset(index: number, total: number): number {
   const step = Math.min(CONCENTRIC_INSET_STEP, 48 / Math.max(1, total + 1));
   return step * (index + 1);
@@ -1060,6 +1067,19 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? nodes.find((node) => node.id === matrixRootId) ?? null
     : null;
   const matrixBranchIds = matrixRootNode ? getSubtree(matrixRootNode.id, hierarchy) : [];
+  const matrixBranchIdSet = new Set(matrixBranchIds);
+  const selectedMatrixBranchNodes = selectedNode && matrixRootNode
+    ? getSubtree(selectedNode.id, hierarchy)
+        .filter((nodeId) => matrixBranchIdSet.has(nodeId))
+        .map((nodeId) => nodes.find((node) => node.id === nodeId))
+        .filter((node): node is Node => !!node)
+    : [];
+  const matrixHeightOverrideCount = selectedMatrixBranchNodes.filter((node) => (
+    hasPositiveDimensionOverride((node.data as Record<string, unknown> | undefined)?.matrixHeightOverride)
+  )).length;
+  const matrixWidthOverrideCount = selectedMatrixBranchNodes.filter((node) => (
+    hasPositiveDimensionOverride((node.data as Record<string, unknown> | undefined)?.matrixWidthOverride)
+  )).length;
   const explicitMatrixOrientation = d.matrixOrientation === "horizontal" || d.matrixOrientation === "vertical"
     ? d.matrixOrientation
     : null;
@@ -1079,6 +1099,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
     }
   }
+  const resetSelectedMatrixBranchSize = (axis: "height" | "width") => {
+    if (!matrixRootNode || !selectedMatrixBranchNodes.length) return;
+    const field = axis === "height" ? "matrixHeightOverride" : "matrixWidthOverride";
+    const affectedNodes = selectedMatrixBranchNodes.filter((node) => (
+      hasPositiveDimensionOverride((node.data as Record<string, unknown> | undefined)?.[field])
+    ));
+    if (!affectedNodes.length) return;
+    pushHistory();
+    affectedNodes.forEach((node) => updateNodeData(node.id, { [field]: undefined }));
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+      detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+    })));
+    toast.success(`Returned ${affectedNodes.length} Matrix ${axis} override${affectedNodes.length === 1 ? "" : "s"} to automatic sizing.`);
+  };
   const structuredLayoutRootNode = (() => {
     if (matrixRootNode) return matrixRootNode;
     if (!selectedNode) return null;
@@ -3764,6 +3798,33 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     Inherit
                   </button>
                 )}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Selected branch size
+              </p>
+              <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
+                Manual row and column sizes remain saved until you return this cell and its descendants to automatic sizing.
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  disabled={matrixHeightOverrideCount === 0}
+                  onClick={() => resetSelectedMatrixBranchSize("height")}
+                  className="flex items-center justify-center gap-1 rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Rows3 className="h-3 w-3" /> Auto height{matrixHeightOverrideCount ? ` (${matrixHeightOverrideCount})` : ""}
+                </button>
+                <button
+                  type="button"
+                  disabled={matrixWidthOverrideCount === 0}
+                  onClick={() => resetSelectedMatrixBranchSize("width")}
+                  className="flex items-center justify-center gap-1 rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <ArrowLeftRight className="h-3 w-3" /> Auto width{matrixWidthOverrideCount ? ` (${matrixWidthOverrideCount})` : ""}
+                </button>
               </div>
             </div>
 

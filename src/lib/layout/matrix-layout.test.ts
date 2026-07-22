@@ -404,6 +404,17 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
   );
   assert.equal(resized.cells.find((cell) => cell.nodeId === "rule")!.height, 220);
   assertClean(resized);
+
+  const resetNodes = resizedNodes.map((node) => node.id === "rule"
+    ? { ...node, data: { ...node.data, matrixHeightOverride: undefined } }
+    : node);
+  const reset = computeMatrixLayout(
+    "root",
+    buildHierarchy(resetNodes, fixture.edges),
+    new Map(resetNodes.map((node) => [node.id, node]))
+  );
+  assert.equal(reset.cells.find((cell) => cell.nodeId === "rule")!.height, rule.height);
+  assertClean(reset);
 });
 
 test("a nested vertical Fold uses the normal Matrix cell gap", () => {
@@ -461,6 +472,45 @@ test("a compact nested Fold keeps the next large branch in the outer right secti
   assert.ok(cells.get("guna")!.x > cells.get("savarna")!.x);
   assert.equal(cells.get("guna")!.x, cells.get("para")!.x);
   assert.equal(cells.get("varna")!.y, cells.get("guna")!.y);
+  assertClean(result);
+});
+
+test("balanced top-level Fold sections keep nested Matrix branches content-sized", () => {
+  const groups = [
+    ["varna", 4],
+    ["yant", 4],
+    ["savarna", 4],
+    ["guna", 4],
+    ["vrddhi", 4],
+    ["purva", 2],
+    ["para", 2],
+  ] as const;
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    ...groups.flatMap(([groupId, exampleCount]) => [
+      { id: groupId, parentId: "root" },
+      { id: `${groupId}-rule`, parentId: groupId },
+      ...Array.from({ length: exampleCount }, (_, index) => ({
+        id: `${groupId}-example-${index}`,
+        parentId: `${groupId}-rule`,
+      })),
+    ]),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "root") return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    if (node.id.endsWith("-rule")) return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const savarna = cells.get("savarna")!;
+  const guna = cells.get("guna")!;
+  const savarnaExample = cells.get("savarna-example-0")!;
+
+  assert.equal(savarna.height, guna.height);
+  assert.equal(savarnaExample.height, savarnaExample.requiredHeight);
+  assert.ok(cells.get("guna")!.x > savarna.x);
   assertClean(result);
 });
 
