@@ -44,6 +44,8 @@ import {
   computeMatrixLayout,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixNodeSizeDiffersFromPlacement,
+  matrixRenderedSizeChanged,
   type MatrixCellGeometry,
   type MatrixLayoutResult,
 } from "@/lib/layout/matrix-layout";
@@ -516,7 +518,8 @@ function applyMatrixResultToNodes(
     }> | undefined;
     const sizeChanged = currentOverride?.mode !== "matrix"
       || Math.abs((currentOverride.width ?? 0) - placement.width) > 0.5
-      || Math.abs((currentOverride.height ?? 0) - placement.height) > 0.5;
+      || Math.abs((currentOverride.height ?? 0) - placement.height) > 0.5
+      || matrixNodeSizeDiffersFromPlacement(node, placement);
     let data: Record<string, unknown> = {
       ...originalData,
       parentId: h?.parentId ?? null,
@@ -571,6 +574,7 @@ function matrixGeometryChanged(before: Node[], after: Node[], rootId: string): b
     if (
       Math.abs(previous.position.x - node.position.x) > 0.5
       || Math.abs(previous.position.y - node.position.y) > 0.5
+      || matrixRenderedSizeChanged(previous, node)
       || Math.abs((previousSize?.width ?? numericDimension(previous.style?.width, 0)) - (size?.width ?? numericDimension(node.style?.width, 0))) > 0.5
       || Math.abs((previousSize?.height ?? numericDimension(previous.style?.height, 0)) - (size?.height ?? numericDimension(node.style?.height, 0))) > 0.5
       || previousData.matrixCellRole !== data.matrixCellRole

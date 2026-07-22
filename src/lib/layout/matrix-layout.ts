@@ -173,6 +173,34 @@ export function getMatrixBaseSize(node: Node): { width: number; height: number }
   return getNodeDimensions(node);
 }
 
+/**
+ * React Flow writes live resize dimensions onto the node before Matrix has a
+ * chance to recompute the full table. Detect that temporary size even when the
+ * persisted Matrix allocation itself did not change, so the store can clear it
+ * and restore the cell to the row/column geometry owned by Matrix.
+ */
+export function matrixNodeSizeDiffersFromPlacement(
+  node: Node,
+  placement: Pick<MatrixPlacement, "width" | "height">,
+  tolerance = 0.5
+): boolean {
+  const rendered = getNodeDimensions(node);
+  return Math.abs(rendered.width - placement.width) > tolerance
+    || Math.abs(rendered.height - placement.height) > tolerance;
+}
+
+/** Return whether two node snapshots resolve to different rendered sizes. */
+export function matrixRenderedSizeChanged(
+  before: Node,
+  after: Node,
+  tolerance = 0.5
+): boolean {
+  const previous = getNodeDimensions(before);
+  const next = getNodeDimensions(after);
+  return Math.abs(previous.width - next.width) > tolerance
+    || Math.abs(previous.height - next.height) > tolerance;
+}
+
 function stripRichText(value: string): string {
   return value
     .replace(/<br\s*\/?>/gi, "\n")
