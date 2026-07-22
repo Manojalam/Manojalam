@@ -3,7 +3,12 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "./hierarchy";
 import { applyLayoutPalette } from "./layout-palette";
-import { computeLayoutNodeSizes, resolveLayoutFontSize } from "./layout-presentation";
+import {
+  computeLayoutNodeSizes,
+  layoutPresentationShapeType,
+  resolveLayoutFontSize,
+  usesRoundedCardLayoutPresentation,
+} from "./layout-presentation";
 
 function fixture(): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [
@@ -136,4 +141,36 @@ test("structured layouts respect fixed and keep-width manual sizing modes", () =
   assert.deepEqual(sizes.get("short"), { width: 310, height: 96 });
   assert.equal(sizes.get("long")?.width, 360);
   assert.ok((sizes.get("long")?.height ?? 0) >= 64);
+});
+
+test("structured layouts present authored shapes as rounded cards without changing them", () => {
+  const structuredModes = ["horizontal", "vertical", "list", "topDown", "linear"] as const;
+
+  for (const mode of structuredModes) {
+    assert.equal(usesRoundedCardLayoutPresentation(mode), true);
+    assert.equal(layoutPresentationShapeType(mode, "circle"), "rounded");
+  }
+
+  assert.equal(layoutPresentationShapeType("matrix", "circle"), "rectangle");
+  assert.equal(layoutPresentationShapeType("freeForm", "circle"), "circle");
+  assert.equal(layoutPresentationShapeType("fromParentFreeForm", "circle"), "circle");
+  assert.equal(layoutPresentationShapeType("radial", "circle"), "circle");
+});
+
+test("structured layout sizing uses card proportions for authored circles", () => {
+  const { nodes, edges } = fixture();
+  const circleNodes = nodes.map((node) => ({
+    ...node,
+    data: { ...node.data, shapeType: "circle" },
+  }));
+  const hierarchy = buildHierarchy(circleNodes, edges);
+
+  for (const mode of ["horizontal", "vertical", "list", "topDown", "linear"] as const) {
+    const sizes = computeLayoutNodeSizes(circleNodes, hierarchy, "root", mode);
+    const rootSize = sizes.get("root");
+    assert.ok(rootSize);
+    assert.ok(rootSize.width > rootSize.height, `${mode} should size circles as cards`);
+  }
+
+  assert.equal((circleNodes[0].data as Record<string, unknown>).shapeType, "circle");
 });
