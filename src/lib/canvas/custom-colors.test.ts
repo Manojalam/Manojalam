@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  colorInputValue,
   MAX_CUSTOM_COLORS,
   mergeCustomColors,
   normalizeCustomColors,
   rememberCustomColor,
 } from "./custom-colors";
+
+test("keeps native color inputs synchronized with the selected color", () => {
+  assert.equal(colorInputValue("#AABBCC", "#111827"), "#aabbcc");
+  assert.equal(colorInputValue(undefined, "#111827"), "#111827");
+  assert.equal(colorInputValue("mixed", "not-a-color"), "#000000");
+});
 
 test("merges shared and legacy recent-color lists", () => {
   assert.deepEqual(

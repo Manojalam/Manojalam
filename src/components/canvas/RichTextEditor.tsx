@@ -25,7 +25,7 @@ import {
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
-import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { colorInputValue, rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
   correctedGuideContentScale,
   correctedShapeFlowHorizontalOffset,
@@ -1150,6 +1150,8 @@ export function RichTextEditor({
   const currentHighlight = selectedHighlight === "mixed"
     ? null
     : selectedHighlight ?? editor?.getAttributes("highlight").color ?? null;
+  const nativeTextColor = colorInputValue(currentColor, "#111827");
+  const nativeHighlightColor = colorInputValue(currentHighlight, "#fde68a");
   const boldState = editor ? selectedMarkValue(editor, "bold") : null;
   const italicState = editor ? selectedMarkValue(editor, "italic") : null;
   const underlineState = editor ? selectedMarkValue(editor, "underline") : null;
@@ -1340,6 +1342,7 @@ export function RichTextEditor({
                   <input ref={customColorRef} type="color" className="sr-only" tabIndex={-1}
                     aria-label="Choose custom text color"
                     name="custom-text-color"
+                    value={nativeTextColor}
                     onChange={(event) => chooseCustomTextColor(event.target.value)} />
                 </div>
               </div>
@@ -1384,6 +1387,7 @@ export function RichTextEditor({
                   <input ref={customHighlightRef} type="color" className="sr-only" tabIndex={-1}
                     aria-label="Choose custom highlight color"
                     name="custom-highlight-color"
+                    value={nativeHighlightColor}
                     onChange={(event) => chooseCustomHighlightColor(event.target.value)} />
                 </div>
               </div>
