@@ -16,11 +16,12 @@ const RELATIONSHIP_DIAGRAM_PALETTES: Record<
   Exclude<RelationshipDiagramPalette, "source">,
   string[]
 > = {
-  spectrum: ["#ef4444", "#f59e0b", "#84cc16", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"],
-  warm: ["#b91c1c", "#dc2626", "#ea580c", "#d97706", "#ca8a04", "#be123c"],
-  cool: ["#0f766e", "#0891b2", "#0284c7", "#2563eb", "#4f46e5", "#7c3aed"],
-  pastel: ["#f9a8d4", "#c4b5fd", "#93c5fd", "#99f6e4", "#bef264", "#fde68a", "#fdba74"],
-  monochrome: ["#1e293b", "#334155", "#475569", "#64748b", "#94a3b8"],
+  calm: ["#d08a83", "#d3a462", "#a6b575", "#69aa9c", "#6f9fc0", "#8b84b8", "#bd839f"],
+  spectrum: ["#dc7774", "#dda15e", "#a8b85f", "#55ad9b", "#5d9fc6", "#8178c4", "#c875a1"],
+  warm: ["#c77974", "#cf8768", "#d39b62", "#c4a66a", "#b88779", "#bd748a"],
+  cool: ["#5f9f96", "#62a6b4", "#659bc1", "#748ac0", "#8582b8", "#9a7eae"],
+  pastel: ["#eab7c8", "#d5c2e8", "#b8d3e7", "#b8ded5", "#d5e0b2", "#eadbad", "#e9c5ae"],
+  monochrome: ["#536472", "#687986", "#7e8e99", "#96a4ad", "#b1bbc1"],
 };
 
 export function relationshipDiagramPaletteColor(
@@ -28,7 +29,7 @@ export function relationshipDiagramPaletteColor(
   palette: RelationshipDiagramPalette
 ): string {
   const colors = palette === "source"
-    ? RELATIONSHIP_DIAGRAM_PALETTES.spectrum
+    ? RELATIONSHIP_DIAGRAM_PALETTES.calm
     : RELATIONSHIP_DIAGRAM_PALETTES[palette];
   const normalizedIndex = ((index % colors.length) + colors.length) % colors.length;
   return colors[normalizedIndex];

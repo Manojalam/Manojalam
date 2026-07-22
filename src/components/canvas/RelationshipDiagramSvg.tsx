@@ -1023,7 +1023,7 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
               width={cardWidth - 72}
               height={40}
               fontSize={Math.max(12, style.fontSize ?? spec.textSize)}
-              fill="#ffffff"
+              fill={contrastText(color)}
               fillOverride={style.textColor}
               weight={750}
               anchor="start"

@@ -15,7 +15,16 @@ const item = {
 test("resolved item color follows the visible palette color", () => {
   assert.equal(relationshipDiagramItemColor(item, 2, {
     palette: "pastel",
-  }), "#93c5fd");
+  }), "#b8d3e7");
+});
+
+test("calm palette cycles through coordinated muted colors", () => {
+  assert.equal(relationshipDiagramItemColor({ ...item, sourceColor: undefined }, 0, {
+    palette: "calm",
+  }), "#d08a83");
+  assert.equal(relationshipDiagramItemColor({ ...item, sourceColor: undefined }, 7, {
+    palette: "calm",
+  }), "#d08a83");
 });
 
 test("source palette uses the item's source color", () => {

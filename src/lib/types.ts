@@ -209,6 +209,7 @@ export type RelationshipDiagramScopeMode =
 
 export type RelationshipDiagramPalette =
   | "source"
+  | "calm"
   | "spectrum"
   | "warm"
   | "cool"
