@@ -594,6 +594,33 @@ type OrientedChildEntry = {
   layout: OrientedBranchLayout;
 };
 
+function isTerminalSibling(child: OrientedChildEntry): boolean {
+  return child.layout.cells.length === 1
+    && child.layout.cells[0].nodeId === child.nodeId
+    && child.layout.cells[0].terminal;
+}
+
+/**
+ * Leaf children under one parent are peers in the same Matrix sibling group.
+ * Give them one shared content-aware height before Fold divides the group into
+ * sections, so a shorter final section cannot make its cells look unrelated.
+ */
+function equalizeTerminalSiblingHeights(
+  children: OrientedChildEntry[]
+): { children: OrientedChildEntry[]; equalized: boolean } {
+  if (children.length < 2 || !children.every(isTerminalSibling)) {
+    return { children, equalized: false };
+  }
+  const sharedHeight = Math.max(...children.map((child) => child.layout.height));
+  return {
+    equalized: true,
+    children: children.map((child) => ({
+      ...child,
+      layout: stretchOrientedBranch(child.layout, child.layout.width, sharedHeight),
+    })),
+  };
+}
+
 function sequentialSegmentExtents(
   children: OrientedChildEntry[],
   orientation: MatrixOrientation,
@@ -662,11 +689,22 @@ function layoutOrientedChildSections(
   isRootSectionLayout = false
 ): OrientedBranchLayout {
   if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
-  const sections = orientedChildSections(parentData, children, orientation, settings.cellGap);
+  const siblingGroup = equalizeTerminalSiblingHeights(children);
+  const sections = orientedChildSections(
+    parentData,
+    siblingGroup.children,
+    orientation,
+    settings.cellGap
+  );
   const foldGap = sections.length > 1
     ? settings.cellGap + (isRootSectionLayout ? 32 : 0)
     : 0;
-  const preserveNaturalSectionCrossAxis = isRootSectionLayout && sections.length > 1;
+  const preserveNaturalSectionCrossAxis = sections.length > 1 && (
+    isRootSectionLayout
+    // A Fold with unequal section counts must not make the shorter section's
+    // leaf siblings taller just to fill a rectangular continuation.
+    || (orientation === "horizontal" && siblingGroup.equalized)
+  );
 
   if (orientation === "horizontal") {
     const naturalSections = sections.map((section) => ({
