@@ -522,6 +522,36 @@ test("a nested Fold shrinks its parent to the folded child rows", () => {
   assertClean(reset);
 });
 
+test("leaf siblings keep one equal height across uneven Fold sections", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "rule", parentId: "root" },
+    ...Array.from({ length: 9 }, (_, index) => ({
+      id: `example-${index}`,
+      parentId: "rule",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "rule") {
+      return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    }
+    if (node.id === "example-2") {
+      return { ...node, data: { ...node.data, matrixHeightOverride: 104 } };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const examples = Array.from(
+    { length: 9 },
+    (_, index) => result.cells.find((cell) => cell.nodeId === `example-${index}`)!
+  );
+
+  assert.equal(new Set(examples.map((cell) => cell.height)).size, 1);
+  assert.equal(examples[0].height, 104);
+  assertClean(result);
+});
+
 test("a nested vertical Fold uses the normal Matrix cell gap", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
