@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileImage, FileType2, Gauge, ImageDown, Layers3 } from "lucide-react";
+import { FileImage, FileText, FileType2, Gauge, ImageDown, Layers3, Link2 } from "lucide-react";
 import { useViewport } from "@xyflow/react";
 import { toast } from "sonner";
 
@@ -133,8 +133,8 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     }
   }, [edges, exportScope, nodes, padding, root, viewportTransform]);
 
-  const pngPlanning = useMemo(() => {
-    if (!resolved.value || format !== "png") return { plan: null, error: null };
+  const rasterPlanning = useMemo(() => {
+    if (!resolved.value || format === "svg") return { plan: null, error: null };
     try {
       return {
         plan: createPngExportPlan(resolved.value.bounds, requestedScale),
@@ -143,11 +143,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     } catch (error) {
       return {
         plan: null,
-        error: error instanceof Error ? error.message : "Choose a valid PNG export scale greater than zero.",
+        error: error instanceof Error ? error.message : "Choose a valid export scale greater than zero.",
       };
     }
   }, [format, requestedScale, resolved.value]);
-  const pngPlan = pngPlanning.plan;
+  const rasterPlan = rasterPlanning.plan;
 
   const boardBackground = useMemo(() => {
     if (!root) return { background: "#ffffff", appearanceBackground: "#ffffff" };
@@ -157,9 +157,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const includedBoardBackground = boardBackground.background ?? boardBackground.appearanceBackground;
 
   const fitToSafeSize = () => {
-    if (!pngPlan) return;
+    if (!rasterPlan) return;
     setScaleChoice("custom");
-    setCustomScale(pngPlan.effectiveScale);
+    setCustomScale(rasterPlan.effectiveScale);
   };
 
   const submit = async () => {
@@ -167,8 +167,8 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
       toast.error(resolved.error?.userMessage ?? "The board export area is not ready.");
       return;
     }
-    if (format === "png" && !pngPlan) {
-      toast.error(pngPlanning.error ?? "Choose a valid PNG scale greater than zero.");
+    if (format !== "svg" && !rasterPlan) {
+      toast.error(rasterPlanning.error ?? "Choose a valid export scale greater than zero.");
       return;
     }
 
@@ -189,13 +189,17 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         title: request.title || boardTitle,
         background: includeBackground ? includedBoardBackground : null,
         appearanceBackground: boardBackground.appearanceBackground,
+        viewportTransform,
         signal: abortController.signal,
       });
       const adjusted = result.plan?.adjusted
         ? ` at the safe ${formatScale(result.effectiveScale)} scale`
         : "";
+      const outputSize = format === "pdf"
+        ? `single page, ${result.width.toLocaleString()} × ${result.height.toLocaleString()} pt`
+        : `${result.width.toLocaleString()} × ${result.height.toLocaleString()}`;
       toast.success(
-        `${format.toUpperCase()} download initiated${adjusted} (${result.width.toLocaleString()} × ${result.height.toLocaleString()}).`,
+        `${format.toUpperCase()} download initiated${adjusted} (${outputSize}).`,
         { id: toastId }
       );
       close();
@@ -218,9 +222,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   };
 
   const bounds = resolved.value?.bounds;
-  const outputWidth = format === "png" ? pngPlan?.outputWidth : bounds ? Math.ceil(bounds.width) : null;
-  const outputHeight = format === "png" ? pngPlan?.outputHeight : bounds ? Math.ceil(bounds.height) : null;
-  const megapixels = format === "png" ? pngPlan?.megapixels : null;
+  const outputWidth = format !== "svg" ? rasterPlan?.outputWidth : bounds ? Math.ceil(bounds.width) : null;
+  const outputHeight = format !== "svg" ? rasterPlan?.outputHeight : bounds ? Math.ceil(bounds.height) : null;
+  const megapixels = format !== "svg" ? rasterPlan?.megapixels : null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && closeDialog()}>
@@ -231,10 +235,10 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         <DialogHeader className="border-b px-6 py-5 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <ImageDown className="h-5 w-5 text-primary" />
-            Export board image
+            Export board
           </DialogTitle>
           <DialogDescription>
-            Export any visible board content with tight bounds and a browser-safe resolution.
+            Export any visible board content with tight bounds as PNG, SVG, or a clickable PDF.
           </DialogDescription>
         </DialogHeader>
 
@@ -276,7 +280,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
           <section className="space-y-2.5">
             <Label className="text-xs">Format</Label>
-            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Export file format">
+            <div className="grid grid-cols-3 gap-2" role="group" aria-label="Export file format">
               <button
                 type="button"
                 aria-pressed={format === "png"}
@@ -293,13 +297,21 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               >
                 <FileType2 className="h-4 w-4" /> SVG
               </button>
+              <button
+                type="button"
+                aria-pressed={format === "pdf"}
+                onClick={() => setFormat("pdf")}
+                className={cn("flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs", format === "pdf" ? "border-primary bg-primary/10 text-primary" : "border-border")}
+              >
+                <FileText className="h-4 w-4" /> PDF
+              </button>
             </div>
           </section>
 
-          {format === "png" && (
+          {format !== "svg" && (
             <section className="space-y-3">
               <Label className="text-xs">Resolution</Label>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5" role="group" aria-label="PNG export scale">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5" role="group" aria-label={`${format.toUpperCase()} export scale`}>
                 {(["1", "2", "3", "4", "custom"] as ScaleChoice[]).map((value) => (
                   <button
                     key={value}
@@ -357,8 +369,10 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                   {includeBackground
                     ? boardIsTransparent
                       ? "Using the current theme backdrop."
-                      : "Included in the exported image."
-                    : "Transparent outer pixels (default)."}
+                    : "Included in the exported file."
+                    : format === "pdf"
+                      ? "White page; chart appearance is preserved."
+                      : "Transparent outer pixels (default)."}
                 </p>
               </div>
               <Switch
@@ -376,16 +390,18 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             </div>
             {resolved.error ? (
               <p className="text-xs text-destructive" role="alert">{resolved.error.userMessage}</p>
-            ) : pngPlanning.error ? (
-              <p className="text-xs text-destructive" role="alert">{pngPlanning.error}</p>
+            ) : rasterPlanning.error ? (
+              <p className="text-xs text-destructive" role="alert">{rasterPlanning.error}</p>
             ) : bounds && outputWidth && outputHeight ? (
               <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
                 <span className="text-muted-foreground">Content</span>
                 <span className="text-right font-medium">{formatDimension(bounds.width)} × {formatDimension(bounds.height)}</span>
                 <span className="text-muted-foreground">Scale</span>
-                <span className="text-right font-medium">{format === "png" && pngPlan ? formatScale(pngPlan.effectiveScale) : "Vector"}</span>
-                <span className="text-muted-foreground">Output</span>
-                <span className="text-right font-medium">{outputWidth.toLocaleString()} × {outputHeight.toLocaleString()}</span>
+                <span className="text-right font-medium">{format !== "svg" && rasterPlan ? formatScale(rasterPlan.effectiveScale) : "Vector"}</span>
+                <span className="text-muted-foreground">{format === "pdf" ? "Embedded image" : "Output"}</span>
+                <span className="text-right font-medium">
+                  {outputWidth.toLocaleString()} × {outputHeight.toLocaleString()}{format === "pdf" ? " px" : ""}
+                </span>
                 {megapixels !== null && megapixels !== undefined && (
                   <>
                     <span className="text-muted-foreground">Pixels</span>
@@ -393,19 +409,19 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                   </>
                 )}
                 <span className="text-muted-foreground">Status</span>
-                <span className={cn("text-right font-semibold", pngPlan?.adjusted ? "text-amber-600" : "text-emerald-600")}>
-                  {format === "svg" ? "Vector · no canvas limit" : pngPlan?.adjusted ? "Adjusted to safe size" : "Safe"}
+                <span className={cn("text-right font-semibold", rasterPlan?.adjusted ? "text-amber-600" : "text-emerald-600")}>
+                  {format === "svg" ? "Vector · no canvas limit" : format === "pdf" ? "Single page · clickable links" : rasterPlan?.adjusted ? "Adjusted to safe size" : "Safe"}
                 </span>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">Measuring the visible board content…</p>
             )}
-            {pngPlan?.adjusted && (
+            {rasterPlan?.adjusted && (
               <div className="mt-3 rounded-lg bg-amber-500/10 p-3 text-[10px] leading-relaxed text-amber-800 dark:text-amber-200">
-                This content is too large for {formatScale(pngPlan.requestedScale)} PNG export. It will export at the safe {formatScale(pngPlan.effectiveScale)} scale, producing {pngPlan.outputWidth.toLocaleString()} × {pngPlan.outputHeight.toLocaleString()} pixels.
+                This content is too large for {formatScale(rasterPlan.requestedScale)} {format.toUpperCase()} export. It will export at the safe {formatScale(rasterPlan.effectiveScale)} scale, producing {rasterPlan.outputWidth.toLocaleString()} × {rasterPlan.outputHeight.toLocaleString()} pixels.
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={fitToSafeSize}>
-                    Fit to safe PNG size
+                    Fit to safe {format.toUpperCase()} size
                   </Button>
                   <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => setFormat("svg")}>
                     Export as SVG instead
@@ -416,6 +432,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             {format === "svg" && bounds && (bounds.width > 8_000 || bounds.height > 8_000) && (
               <p className="mt-3 flex items-center gap-2 rounded-lg bg-blue-500/10 p-2 text-[10px] text-blue-700 dark:text-blue-200">
                 <Layers3 className="h-3.5 w-3.5" /> SVG is recommended for very large vector boards.
+              </p>
+            )}
+            {format === "pdf" && (
+              <p className="mt-3 flex items-center gap-2 rounded-lg bg-blue-500/10 p-2 text-[10px] text-blue-700 dark:text-blue-200">
+                <Link2 className="h-3.5 w-3.5" /> Links in chart text remain clickable in the PDF.
               </p>
             )}
           </section>
@@ -429,7 +450,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             <Button className="max-sm:flex-1" variant="outline" onClick={closeDialog}>
               {exporting ? "Cancel export" : "Cancel"}
             </Button>
-            <Button className="max-sm:flex-1" onClick={() => void submit()} disabled={exporting || !resolved.value || (format === "png" && !pngPlan)}>
+            <Button className="max-sm:flex-1" onClick={() => void submit()} disabled={exporting || !resolved.value || (format !== "svg" && !rasterPlan)}>
               {exporting ? "Exporting…" : `Export ${format.toUpperCase()}`}
             </Button>
           </div>

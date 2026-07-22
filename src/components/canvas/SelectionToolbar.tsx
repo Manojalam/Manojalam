@@ -16,6 +16,7 @@ import {
   Copy,
   ChevronDown,
   FileImage,
+  FileText,
   FileType2,
   Group,
   Lock,
@@ -676,6 +677,17 @@ export function SelectionToolbar() {
             })}
           >
             <FileType2 className="h-4 w-4" />
+          </ActionButton>
+          <ActionButton
+            label="Export PDF"
+            onClick={() => openBoardExport({
+              scope: selected.length === 1 ? "node" : "selection",
+              nodeIds: selected.map((node) => node.id),
+              format: "pdf",
+              title: exportTitle,
+            })}
+          >
+            <FileText className="h-4 w-4" />
           </ActionButton>
           <Divider />
         </>

@@ -1,4 +1,4 @@
-export type ExportFormat = "png" | "svg";
+export type ExportFormat = "png" | "svg" | "pdf";
 
 export type ExportScopeKind = "selection" | "frame" | "board";
 
@@ -78,6 +78,7 @@ export type ExportStage =
   | "draw-canvas"
   | "encode-png"
   | "create-svg-blob"
+  | "create-pdf-blob"
   | "initiate-download"
   | "unknown";
 
@@ -102,6 +103,7 @@ export type ExportErrorCode =
   | "CANVAS_TAINTED"
   | "PNG_BLOB_CREATION_FAILED"
   | "SVG_BLOB_CREATION_FAILED"
+  | "PDF_BLOB_CREATION_FAILED"
   | "DOWNLOAD_FAILED"
   | "DOWNLOAD_BLOCKED"
   | "ABORTED"
@@ -110,7 +112,8 @@ export type ExportErrorCode =
 export type ExportRenderer =
   | "native-svg"
   | "dom-foreign-object"
-  | "canvas-2d";
+  | "canvas-2d"
+  | "pdf-raster";
 
 export interface ExportErrorSnapshot {
   name: string;
@@ -172,6 +175,9 @@ export interface ExportDiagnostics {
   canvasContextCreated?: boolean;
   blobCreated?: boolean;
   downloadInitiated?: boolean;
+  linkAnnotationCount?: number;
+  pdfPageWidth?: number;
+  pdfPageHeight?: number;
   offendingElement?: string;
   offendingUrl?: string;
   offendingAssetKind?: "image" | "font" | "style";

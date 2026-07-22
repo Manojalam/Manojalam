@@ -25,7 +25,7 @@ export interface BoardExportRequest {
   scope?: "board" | "selection" | "frame" | "node";
   nodeIds?: string[];
   frameId?: string;
-  format?: "png" | "svg";
+  format?: "png" | "svg" | "pdf";
   title?: string;
 }
 
