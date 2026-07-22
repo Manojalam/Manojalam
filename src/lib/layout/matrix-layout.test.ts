@@ -301,6 +301,66 @@ test("a stale text measurement from another Fold width cannot inflate a new chil
   assertClean(freshResult);
 });
 
+test("invisible editor block spacing cannot inflate a measured Matrix label", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "Title" },
+    {
+      id: "rule",
+      parentId: "root",
+      text: "उपसर्गादृति धातौ ६.१.९१ - गुणापवादः\nअ (उपसर्गः) + ऋ - धातुः",
+    },
+  ]);
+  nodes[1] = {
+    ...nodes[1],
+    data: {
+      ...nodes[1].data,
+      matrixIntrinsicSize: {
+        width: 520,
+        height: 260,
+        lineCount: 2,
+        lineHeight: 34,
+        cellWidth: 560,
+      },
+      matrixWidthOverride: 560,
+    },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const rule = result.cells.find((cell) => cell.nodeId === "rule")!;
+
+  assert.ok(rule.requiredHeight >= 90);
+  assert.ok(rule.requiredHeight < 140);
+  assertClean(result);
+});
+
+test("line-based Matrix height still protects authored inline font sizes", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "Title" },
+    { id: "rule", parentId: "root", text: "Large label" },
+  ]);
+  nodes[1] = {
+    ...nodes[1],
+    data: {
+      ...nodes[1].data,
+      richText: '<p><span style="font-size: 48px">Large</span> label</p>',
+      matrixIntrinsicSize: {
+        width: 260,
+        height: 74,
+        lineCount: 1,
+        lineHeight: 24,
+        cellWidth: 560,
+      },
+      matrixWidthOverride: 560,
+    },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const rule = result.cells.find((cell) => cell.nodeId === "rule")!;
+
+  assert.ok(rule.requiredHeight >= 94);
+  assertClean(result);
+});
+
 test("one long unbroken word stays in a single Matrix row", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, text: "Title" },
