@@ -1101,6 +1101,33 @@ function normalizedContentMeasurement(content: ContentSize): ContentSize {
   };
 }
 
+function matrixContentMeasurement(node: Node, content: ContentSize): ContentSize & { cellWidth?: number } {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const override = data.layoutSizeOverride as Partial<{
+    mode: LayoutMode;
+    width: number;
+  }> | undefined;
+  return {
+    ...content,
+    ...(override?.mode === "matrix" && typeof override.width === "number" && override.width > 0
+      ? { cellWidth: override.width }
+      : {}),
+  };
+}
+
+function matrixMeasurementCellWidthChanged(
+  previous: unknown,
+  next: ContentSize & { cellWidth?: number }
+): boolean {
+  const previousCellWidth = previous && typeof previous === "object"
+    ? (previous as { cellWidth?: unknown }).cellWidth
+    : undefined;
+  return Math.abs(
+    (typeof previousCellWidth === "number" ? previousCellWidth : 0)
+      - (next.cellWidth ?? 0)
+  ) > 1;
+}
+
 function createStructuralEdge(nodes: Node[], edges: Edge[], sourceId: string, targetId: string): Edge {
   const source = nodes.find((node) => node.id === sourceId);
   const target = nodes.find((node) => node.id === targetId);
@@ -2987,10 +3014,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         && (reason === "layout" || reason === "format" || reason === "blur");
       if (passiveHydrationMeasurement) {
         const data = (node.data ?? {}) as Record<string, unknown>;
+        const matrixContent = activeLayoutMode === "matrix"
+          ? matrixContentMeasurement(node, normalizedContent)
+          : null;
         const previousIntrinsic = (activeLayoutMode === "matrix"
           ? data.matrixIntrinsicSize
           : data.intrinsicContentSize) as Partial<ContentSize> | undefined;
-        if (!contentMeasurementChanged(previousIntrinsic, normalizedContent)) return {};
+        if (
+          !contentMeasurementChanged(previousIntrinsic, normalizedContent)
+          && !(matrixContent && matrixMeasurementCellWidthChanged(previousIntrinsic, matrixContent))
+        ) return {};
         return {
           nodes: state.nodes.map((candidate) => candidate.id === nodeId
             ? {
@@ -2998,7 +3031,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
                 data: {
                   ...(candidate.data ?? {}),
                   intrinsicContentSize: normalizedContent,
-                  ...(activeLayoutMode === "matrix" ? { matrixIntrinsicSize: normalizedContent } : {}),
+                  ...(matrixContent ? { matrixIntrinsicSize: matrixContent } : {}),
                 },
               }
             : candidate),
@@ -3006,8 +3039,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
       if (activeLayoutMode === "matrix") {
         const data = (node.data ?? {}) as Record<string, unknown>;
+        const matrixContent = matrixContentMeasurement(node, normalizedContent);
         const previousIntrinsic = data.matrixIntrinsicSize as Partial<ContentSize> | undefined;
-        intrinsicChanged = contentMeasurementChanged(previousIntrinsic, normalizedContent);
+        intrinsicChanged = contentMeasurementChanged(previousIntrinsic, normalizedContent)
+          || matrixMeasurementCellWidthChanged(previousIntrinsic, matrixContent);
         if (!intrinsicChanged) return {};
         return {
           nodes: state.nodes.map((candidate) => candidate.id === nodeId
@@ -3016,7 +3051,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
                 data: {
                   ...(candidate.data ?? {}),
                   intrinsicContentSize: normalizedContent,
-                  matrixIntrinsicSize: normalizedContent,
+                  matrixIntrinsicSize: matrixContent,
                 },
               }
             : candidate),
