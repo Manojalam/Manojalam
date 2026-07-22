@@ -9,6 +9,7 @@ function hierarchyFixture(): { nodes: Node[]; edges: Edge[] } {
     { id: "root", parentId: null },
     { id: "branch-a", parentId: "root" },
     { id: "a-1", parentId: "branch-a" },
+    { id: "a-1-child", parentId: "a-1" },
     { id: "a-2", parentId: "branch-a" },
     { id: "branch-b", parentId: "root" },
     { id: "b-1", parentId: "branch-b" },
@@ -112,6 +113,35 @@ test("manual surface overrides survive palette changes and can be reset", () => 
   assert.equal(resetData.layoutAutoFill, undefined);
   assert.equal(resetData.layoutAutoText, undefined);
   assert.equal(resetData.layoutAutoTypography, false);
+});
+
+test("a manual parent fill anchors progressively lighter automatic descendant shades", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const branchIndex = nodes.findIndex((node) => node.id === "branch-a");
+  nodes[branchIndex] = {
+    ...nodes[branchIndex],
+    data: {
+      ...nodes[branchIndex].data,
+      fillColor: "#fef3c7",
+      layoutAutoFill: false,
+    },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "matrix", "ocean");
+  const styleFor = (nodeId: string) => (
+    styled.nodes.find((node) => node.id === nodeId)!.data as Record<string, unknown>
+  ).layoutVisualStyle as { fillColor: string };
+  const lightness = (color: string) => Number(color.match(/,\s*([\d.]+)%\)$/)?.[1]);
+
+  const firstChild = styleFor("a-1").fillColor;
+  const sibling = styleFor("a-2").fillColor;
+  const grandchild = styleFor("a-1-child").fillColor;
+
+  assert.equal(firstChild, sibling);
+  assert.ok(lightness(firstChild) > 89);
+  assert.ok(lightness(grandchild) > lightness(firstChild));
+  assert.equal((styled.nodes[branchIndex].data as Record<string, unknown>).layoutAutoFill, false);
+  assert.equal((styled.nodes[branchIndex].data as Record<string, unknown>).fillColor, "#fef3c7");
 });
 
 test("free form removes only the generated presentation layer", () => {

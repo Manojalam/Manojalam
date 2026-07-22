@@ -60,32 +60,81 @@ function branchIndexes(rootId: string, hierarchy: Hierarchy): Map<string, number
   return indexes;
 }
 
+type ManualFillAnchor = {
+  color: string;
+  depth: number;
+};
+
+function manualLayoutFillColor(data: Record<string, unknown>): string | null {
+  if (data.layoutAutoFill !== false) return null;
+  const color = typeof data.fillColor === "string"
+    ? data.fillColor.trim()
+    : typeof data.color === "string" ? data.color.trim() : "";
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(color)) return color;
+  if (/^hsla?\(/i.test(color)) return color;
+  return null;
+}
+
+function manualFillAnchors(
+  rootId: string,
+  hierarchy: Hierarchy,
+  nodes: readonly Node[]
+): Map<string, ManualFillAnchor> {
+  const dataById = new Map(nodes.map((node) => [
+    node.id,
+    (node.data ?? {}) as Record<string, unknown>,
+  ]));
+  const anchors = new Map<string, ManualFillAnchor>();
+  const rootDepth = hierarchy.get(rootId)?.depth ?? 0;
+  const visited = new Set<string>();
+
+  const visit = (nodeId: string, inherited: ManualFillAnchor | null) => {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+    const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
+    const manualColor = manualLayoutFillColor(dataById.get(nodeId) ?? {});
+    const anchor = manualColor ? { color: manualColor, depth } : inherited;
+    if (anchor) anchors.set(nodeId, anchor);
+    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) visit(childId, anchor);
+  };
+
+  visit(rootId, null);
+  return anchors;
+}
+
 export function buildLayoutVisualStyles(
   rootId: string,
   hierarchy: Hierarchy,
   mode: LayoutMode,
-  schemeId: RadialColorScheme
+  schemeId: RadialColorScheme,
+  nodes: readonly Node[] = []
 ): Map<string, LayoutVisualStyle> {
   const scheme = radialColorScheme(schemeId);
   const rootDepth = hierarchy.get(rootId)?.depth ?? 0;
   const branches = branchIndexes(rootId, hierarchy);
+  const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
 
   for (const nodeId of getSubtree(rootId, hierarchy)) {
     const info = hierarchy.get(nodeId);
     const depth = Math.max(0, (info?.depth ?? rootDepth) - rootDepth);
     const branchIndex = Math.max(0, branches.get(nodeId) ?? 0);
+    const fillAnchor = fillAnchors.get(nodeId);
+    const manualColor = fillAnchor?.depth === depth ? fillAnchor.color : undefined;
     if (nodeId === rootId) {
+      const manualColors = manualColor
+        ? radialSectorColors(scheme, 0, 1, 0, 1, manualColor, manualColor)
+        : null;
       styles.set(nodeId, {
         rootId,
         mode,
         scheme: scheme.id,
         depth,
         branchIndex: -1,
-        fillColor: scheme.rootFill,
-        borderColor: scheme.rootBorder,
-        textColor: scheme.rootText,
-        accentColor: scheme.rootBorder,
+        fillColor: manualColors?.fill ?? scheme.rootFill,
+        borderColor: manualColors?.border ?? scheme.rootBorder,
+        textColor: manualColors?.text ?? scheme.rootText,
+        accentColor: manualColors?.border ?? scheme.rootBorder,
         borderWidth: borderWidthFor(mode, depth),
         borderStyle: "solid",
         fontSize: layoutFontSizeFor(mode, depth),
@@ -99,9 +148,12 @@ export function buildLayoutVisualStyles(
     const colors = radialSectorColors(
       scheme,
       branchIndex,
-      depth,
-      Math.max(0, info?.siblingIndex ?? 0),
-      Math.max(1, parentChildren.length)
+      fillAnchor ? depth - fillAnchor.depth + 1 : depth,
+      fillAnchor ? 0 : Math.max(0, info?.siblingIndex ?? 0),
+      fillAnchor ? 1 : Math.max(1, parentChildren.length),
+      fillAnchor?.color,
+      manualColor,
+      !!fillAnchor
     );
     styles.set(nodeId, {
       rootId,
@@ -176,8 +228,14 @@ export function applyLayoutPalette(
   }
 
   const scheme = selectedLayoutColorScheme(schemeValue);
-  const visualStyles = buildLayoutVisualStyles(rootId, hierarchy, mode, scheme);
   const resetOverrides = options.resetOverrides === true;
+  const visualStyles = buildLayoutVisualStyles(
+    rootId,
+    hierarchy,
+    mode,
+    scheme,
+    resetOverrides ? [] : nodes
+  );
   const nextNodes = nodes.map((node) => {
     const visualStyle = visualStyles.get(node.id);
     if (visualStyle) {

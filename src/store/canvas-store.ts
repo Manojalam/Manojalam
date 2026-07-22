@@ -2751,6 +2751,40 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const nodes = state.nodes.map((node) => node.id === nodeId && updatedNode ? updatedNode : node);
       return { nodes, saveStatus: "unsaved" };
     });
+    const changedManualFill = Object.prototype.hasOwnProperty.call(data, "fillColor")
+      || Object.prototype.hasOwnProperty.call(data, "color");
+    if (changedManualFill) {
+      const { nodes, edges } = get();
+      const editedNode = nodes.find((node) => node.id === nodeId);
+      const editedData = (editedNode?.data ?? {}) as Record<string, unknown>;
+      const visualStyle = editedData.layoutVisualStyle as Partial<{ rootId: string }> | undefined;
+      if (editedData.layoutAutoFill === false && typeof visualStyle?.rootId === "string") {
+        const hierarchyNodes = nodes.filter((node) =>
+          !isAutoMatrixFrame(node)
+          && !isAutoSunburstNode(node)
+          && node.type !== "relationshipDiagram"
+        );
+        const root = hierarchyNodes.find((node) => node.id === visualStyle.rootId);
+        const rootData = (root?.data ?? {}) as Record<string, unknown>;
+        const mode = rootData.layoutMode as LayoutMode | undefined;
+        if (root && supportsAutomaticLayoutColors(mode)) {
+          const hierarchy = buildHierarchy(hierarchyNodes, edges);
+          const styled = applyLayoutPalette(
+            nodes,
+            edges,
+            hierarchy,
+            root.id,
+            mode,
+            rootData.layoutColorScheme
+          );
+          const scopeIds = new Set(getSubtree(root.id, hierarchy));
+          const nextNodes = mode === "matrix"
+            ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(root.id), true)
+            : styled.nodes;
+          set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
+        }
+      }
+    }
     if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
     if (

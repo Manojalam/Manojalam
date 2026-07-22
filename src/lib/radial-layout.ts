@@ -150,7 +150,8 @@ export function radialSectorColors(
   siblingIndex: number,
   siblingCount = 1,
   branchBaseColor?: string,
-  fillOverride?: string
+  fillOverride?: string,
+  preferLighterDepth = false
 ): { fill: string; fillEnd: string; text: string; border: string } {
   const automaticAnchor: HslColor = {
     h: scheme.hues[branchIndex % scheme.hues.length],
@@ -164,11 +165,11 @@ export function radialSectorColors(
   const siblingLightness = depth <= 1 || siblingCount <= 1
     ? 0
     : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 4;
-  const depthOffset = Math.max(0, depth - 1) * (anchor.l >= 72 ? -6 : 8);
+  const depthOffset = Math.max(0, depth - 1) * (preferLighterDepth ? 8 : anchor.l >= 72 ? -6 : 8);
   const derived: HslColor = {
     h: normalizeHue(anchor.h + siblingOffset),
     s: clamp(anchor.s - Math.max(0, depth - 1) * 3, 34, 86),
-    l: clamp(anchor.l + depthOffset + siblingLightness, 24, 86),
+    l: clamp(anchor.l + depthOffset + siblingLightness, 24, preferLighterDepth ? 100 : 86),
   };
   const override = parseColor(fillOverride);
   const start = override ?? derived;
