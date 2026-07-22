@@ -8,7 +8,7 @@ import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
-  ArrowLeftRight, FileImage, FileType2, Link2, Maximize2, Unlink2,
+  ArrowLeftRight, FileImage, FileType2, Link2, Maximize2, Palette, RotateCcw, Unlink2,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { useTheme } from "next-themes";
@@ -25,8 +25,9 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
-import { LAYOUT_OPTIONS, getNodeDimensions } from "@/lib/layout";
+import { LAYOUT_OPTIONS, getNodeDimensions, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import type {
   BorderLayer,
   ConcentricShapeLayer,
@@ -971,6 +972,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const createChildNodes = useCanvasStore((s) => s.createChildNodes);
   const createSiblingNode = useCanvasStore((s) => s.createSiblingNode);
   const moveSiblingNode = useCanvasStore((s) => s.moveSiblingNode);
+  const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
   const setBoardSettings = (patch: Parameters<typeof setSettings>[0]) => {
@@ -1122,14 +1124,19 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     while (currentId && !seen.has(currentId)) {
       seen.add(currentId);
       const candidate = byId.get(currentId) ?? null;
-      const mode = ((candidate?.data ?? {}) as Record<string, unknown>).layoutMode;
-      if (mode === "horizontal" || mode === "vertical" || mode === "topDown" || mode === "list" || mode === "linear") {
+      const mode = ((candidate?.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+      if (candidate && supportsAutomaticLayoutColors(mode)) {
         return candidate;
       }
       currentId = hierarchy.get(currentId)?.parentId ?? null;
     }
     return null;
   })();
+  const structuredLayoutRootData = (structuredLayoutRootNode?.data ?? {}) as Record<string, unknown>;
+  const structuredLayoutMode = structuredLayoutRootData.layoutMode as LayoutMode | undefined;
+  const activeStructuredColorScheme = radialColorScheme(
+    structuredLayoutRootData.layoutColorScheme ?? structuredLayoutRootData.radialColorScheme
+  ).id;
   const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
@@ -3518,6 +3525,65 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </button>
               ))}
             </div>
+          </Section>
+        )}
+
+        {structuredLayoutRootNode && supportsAutomaticLayoutColors(structuredLayoutMode) && !isRadialLayoutSector && (
+          <Section label="Automatic colors" visible={singleNodeTab === "style"}>
+            <div className="rounded-md border border-border bg-muted/30 p-2">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground">
+                <Palette className="h-3.5 w-3.5" />
+                Whole {inspectorLayoutLabel(structuredLayoutMode)} chart
+              </div>
+              <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                Choose a coordinated palette for the entire hierarchy. Individually changed cells keep their colors until you reset them below.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Automatic chart color palette">
+              {RADIAL_COLOR_SCHEMES.map((scheme) => (
+                <button
+                  key={scheme.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={activeStructuredColorScheme === scheme.id}
+                  title={`Apply ${scheme.label} to the whole ${inspectorLayoutLabel(structuredLayoutMode)} chart`}
+                  onClick={() => {
+                    applyLayoutColorScheme(structuredLayoutRootNode.id, scheme.id);
+                    toast.success(`Applied ${scheme.label} automatic colors to the whole chart.`, {
+                      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                    });
+                  }}
+                  className={cn(
+                    "overflow-hidden rounded-md border bg-background text-left transition-colors hover:border-primary/60",
+                    activeStructuredColorScheme === scheme.id
+                      ? "border-primary ring-1 ring-primary/30"
+                      : "border-border"
+                  )}
+                >
+                  <span className="flex h-4 w-full">
+                    {scheme.swatches.map((color) => (
+                      <span key={color} className="h-full flex-1" style={{ backgroundColor: color }} />
+                    ))}
+                  </span>
+                  <span className="block px-2 py-1.5 text-[9px] font-medium text-foreground">{scheme.label}</span>
+                </button>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-full text-[10px]"
+              onClick={() => {
+                applyLayoutColorScheme(structuredLayoutRootNode.id, activeStructuredColorScheme, true);
+                toast.success("Restored automatic colors for every cell in the chart.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Reset every cell to automatic
+            </Button>
           </Section>
         )}
 
