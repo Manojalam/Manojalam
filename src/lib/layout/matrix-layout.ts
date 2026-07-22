@@ -212,6 +212,15 @@ function fontMetrics(node: Node): { fontSize: number; charWidth: number; lineHei
   };
 }
 
+function largestInlineFontSize(node: Node): number {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  if (typeof data.richText !== "string") return 0;
+  const sizes = [...data.richText.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/gi)]
+    .map((match) => Number.parseFloat(match[1]))
+    .filter((size) => Number.isFinite(size) && size > 0);
+  return sizes.length ? Math.max(...sizes) : 0;
+}
+
 function wrappedLineCount(text: string, charsPerLine: number): number {
   const safeChars = Math.max(1, charsPerLine);
   const lines = text.split("\n");
@@ -288,11 +297,18 @@ function requiredCellHeight(
   // measurement will be accepted once React Flow reports it for this width.
   const measurementMatchesCell = !!content?.cellWidth
     && Math.abs(content.cellWidth - width) <= 1;
-  const measuredHeight = measurementMatchesCell && content?.height
+  const hasMeasuredLineMetrics = !!content?.lineCount && !!content?.lineHeight;
+  // The editor's raw block height can include invisible boundary paragraphs
+  // or clipboard spacing even though only the reported text lines render. Use
+  // raw height only as a fallback for older measurements without line metrics.
+  const measuredHeight = measurementMatchesCell && content?.height && !hasMeasuredLineMetrics
     ? content.height + settings.paddingY * 2
     : 0;
-  const measuredLinesHeight = measurementMatchesCell && content?.lineCount && content?.lineHeight
-    ? content.lineCount * content.lineHeight + settings.paddingY * 2
+  const measuredLinesHeight = measurementMatchesCell && hasMeasuredLineMetrics
+    ? content.lineCount * Math.max(
+        content.lineHeight,
+        largestInlineFontSize(node) * 1.38
+      ) + settings.paddingY * 2
     : 0;
   const textHeight = estimatedLines * metrics.lineHeight + settings.paddingY * 2;
   return Math.ceil(Math.max(
