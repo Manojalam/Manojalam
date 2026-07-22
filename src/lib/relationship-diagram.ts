@@ -47,6 +47,7 @@ export const RELATIONSHIP_DIAGRAM_LAYOUTS = [
 
 export const RELATIONSHIP_DIAGRAM_PALETTES = [
   "source",
+  "calm",
   "spectrum",
   "warm",
   "cool",
@@ -72,7 +73,7 @@ export const DEFAULT_RELATIONSHIP_DIAGRAM_SPEC: Readonly<RelationshipDiagramSpec
   subtitle: "",
   showCounts: true,
   showIcons: false,
-  palette: "source",
+  palette: "calm",
   textSize: 16,
   maximizeLabelText: false,
   density: "comfortable",
@@ -275,6 +276,9 @@ function normalizePalette(value: unknown): RelationshipDiagramPalette {
     source: "source",
     "source-color": "source",
     "source-colors": "source",
+    calm: "calm",
+    muted: "calm",
+    soft: "calm",
     spectrum: "spectrum",
     rainbow: "spectrum",
     warm: "warm",

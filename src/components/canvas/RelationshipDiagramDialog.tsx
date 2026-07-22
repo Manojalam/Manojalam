@@ -526,6 +526,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="source">Source colors</SelectItem>
+                    <SelectItem value="calm">Calm (recommended)</SelectItem>
                     <SelectItem value="spectrum">Spectrum</SelectItem>
                     <SelectItem value="warm">Warm</SelectItem>
                     <SelectItem value="cool">Cool</SelectItem>

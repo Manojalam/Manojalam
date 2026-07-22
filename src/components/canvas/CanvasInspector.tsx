@@ -2880,12 +2880,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Palette</p>
               <Select
-                value={typeof diagramSpec.palette === "string" ? diagramSpec.palette : "source"}
+                value={typeof diagramSpec.palette === "string" ? diagramSpec.palette : "calm"}
                 onValueChange={(value) => updateDiagram({ palette: value as RelationshipDiagramPalette })}
               >
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="source">Source colors</SelectItem>
+                  <SelectItem value="calm">Calm (recommended)</SelectItem>
                   <SelectItem value="spectrum">Spectrum</SelectItem>
                   <SelectItem value="warm">Warm</SelectItem>
                   <SelectItem value="cool">Cool</SelectItem>
