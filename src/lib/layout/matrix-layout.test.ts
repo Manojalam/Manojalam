@@ -316,6 +316,58 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   assertClean(result);
 });
 
+test("a stretched nested Fold keeps its section columns equally wide", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "red", parentId: "root" },
+    { id: "red-rule", parentId: "red" },
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `red-example-${index}`, parentId: "red-rule" })),
+    { id: "wide", parentId: "root" },
+    { id: "wide-rule", parentId: "wide" },
+    ...Array.from({ length: 6 }, (_, index) => ({ id: `wide-example-${index}`, parentId: "wide-rule" })),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "red-rule") return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    if (node.id === "wide-rule") return { ...node, data: { ...node.data, layoutFoldCount: 3 } };
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const firstColumn = cells.get("red-example-0")!;
+  const secondColumn = cells.get("red-example-2")!;
+
+  assert.equal(firstColumn.y, secondColumn.y);
+  assert.equal(firstColumn.width, secondColumn.width);
+  assertClean(result);
+});
+
+test("a stretched nested vertical Fold keeps its section rows equally tall", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, orientation: "vertical" },
+    { id: "red", parentId: "root" },
+    { id: "red-rule", parentId: "red" },
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `red-example-${index}`, parentId: "red-rule" })),
+    { id: "tall", parentId: "root" },
+    { id: "tall-rule", parentId: "tall" },
+    ...Array.from({ length: 6 }, (_, index) => ({ id: `tall-example-${index}`, parentId: "tall-rule" })),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "red-rule") return { ...node, data: { ...node.data, layoutFoldCount: 2 } };
+    if (node.id === "tall-rule") return { ...node, data: { ...node.data, layoutFoldCount: 3 } };
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const firstRow = cells.get("red-example-0")!;
+  const secondRow = cells.get("red-example-2")!;
+
+  assert.equal(firstRow.x, secondRow.x);
+  assert.equal(firstRow.height, secondRow.height);
+  assertClean(result);
+});
+
 test("a top-level Fold does not inflate a shorter section to the tallest section", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
