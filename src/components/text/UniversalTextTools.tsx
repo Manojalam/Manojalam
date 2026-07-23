@@ -36,6 +36,7 @@ type EditableTarget = NativeTextTarget | HTMLElement;
 type PaletteTab = "symbols" | "sanskrit" | "scripts";
 
 const TEXT_INPUT_TYPES = new Set(["text", "search", "email", "url", "tel", "password"]);
+const TEXT_TOOL_CHROME_SELECTOR = "[data-universal-text-tools], [data-app-color-picker]";
 const DEFAULT_SYMBOL_APPEARANCE: SymbolAppearance = {
   enclosure: "none",
   fillColor: "#3b82f6",
@@ -102,7 +103,7 @@ function appearanceStyle(
 }
 
 function editableTargetFrom(node: EventTarget | null): EditableTarget | null {
-  if (!(node instanceof Element) || node.closest("[data-universal-text-tools]")) return null;
+  if (!(node instanceof Element) || node.closest(TEXT_TOOL_CHROME_SELECTOR)) return null;
 
   const input = node.closest("input");
   if (input instanceof HTMLInputElement) {
@@ -421,7 +422,7 @@ export function UniversalTextTools() {
   useEffect(() => {
     const selectTarget = (event: FocusEvent) => {
       const eventElement = event.target instanceof Element ? event.target : null;
-      if (eventElement?.closest("[data-universal-text-tools]")) return;
+      if (eventElement?.closest(TEXT_TOOL_CHROME_SELECTOR)) return;
       const candidate = editableTargetFrom(event.target);
       if (!candidate) {
         targetRef.current = null;
@@ -441,7 +442,7 @@ export function UniversalTextTools() {
     const dismissAwayFromTarget = (event: PointerEvent) => {
       const eventElement = event.target instanceof Element ? event.target : null;
       const current = targetRef.current;
-      if (!current || eventElement?.closest("[data-universal-text-tools]") || current.contains(eventElement)) return;
+      if (!current || eventElement?.closest(TEXT_TOOL_CHROME_SELECTOR) || current.contains(eventElement)) return;
       if (editableTargetFrom(event.target)) return;
       targetRef.current = null;
       nativeSelectionRef.current = null;
@@ -540,6 +541,15 @@ export function UniversalTextTools() {
     });
   }, [dispatchToEditable, symbolAppearance]);
 
+  const updateSymbolAppearance = useCallback((appearance: SymbolAppearance) => {
+    setSymbolAppearance(appearance);
+    if (!targetRef.current?.classList.contains("ProseMirror")) return;
+    dispatchToEditable({
+      type: "symbol-style",
+      appearance: normalizeSymbolAppearance(appearance),
+    });
+  }, [dispatchToEditable]);
+
   const clearSymbolAppearance = useCallback(() => {
     dispatchToEditable({ type: "clear-symbol-style" });
   }, [dispatchToEditable]);
@@ -624,6 +634,15 @@ export function UniversalTextTools() {
         className="z-[10001] w-[min(22rem,calc(100vw-1rem))] p-3"
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
+        onInteractOutside={(event) => {
+          const originalTarget = event.detail.originalEvent.target;
+          if (
+            originalTarget instanceof Element
+            && originalTarget.closest("[data-app-color-picker]")
+          ) {
+            event.preventDefault();
+          }
+        }}
         onMouseDownCapture={(event) => {
           const eventElement = event.target instanceof Element ? event.target : null;
           if (eventElement?.closest("[data-symbol-search], [data-symbol-control]")) return;
@@ -677,7 +696,7 @@ export function UniversalTextTools() {
             </label>
             <SymbolAppearanceControls
               appearance={symbolAppearance}
-              onChange={setSymbolAppearance}
+              onChange={updateSymbolAppearance}
               onApply={richText ? applySymbolAppearance : undefined}
               onClear={richText ? clearSymbolAppearance : undefined}
             />

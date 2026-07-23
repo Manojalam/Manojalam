@@ -915,6 +915,8 @@ export function RichTextEditor({
           chain.insertContent(detail.value);
         }
       } else if (detail.type === "symbol-style") {
+        const targetSelection = selection ?? editor.state.selection;
+        if (targetSelection.from === targetSelection.to) return;
         pendingReportReasonRef.current = "format";
         chain.setMark("symbolStyle", normalizeSymbolAppearance(detail.appearance));
       } else if (detail.type === "clear-symbol-style") {

@@ -370,6 +370,7 @@ export function AppColorPicker({
     <Popover open={open} onOpenChange={setOpenState}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
+        data-app-color-picker="true"
         align={align}
         side={side}
         sideOffset={sideOffset}
