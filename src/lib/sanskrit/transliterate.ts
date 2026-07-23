@@ -38,30 +38,7 @@ export function transliterate(
   }
 }
 
-export const IAST_QUICK_INSERT = [
-  { label: "ā", char: "ā" },
-  { label: "ī", char: "ī" },
-  { label: "ū", char: "ū" },
-  { label: "ṛ", char: "ṛ" },
-  { label: "ṝ", char: "ṝ" },
-  { label: "ḷ", char: "ḷ" },
-  { label: "ṅ", char: "ṅ" },
-  { label: "ñ", char: "ñ" },
-  { label: "ṭ", char: "ṭ" },
-  { label: "ḍ", char: "ḍ" },
-  { label: "ṇ", char: "ṇ" },
-  { label: "ś", char: "ś" },
-  { label: "ṣ", char: "ṣ" },
-  { label: "ṃ", char: "ṃ" },
-  { label: "ḥ", char: "ḥ" },
-];
-
-export const DEVANAGARI_QUICK_INSERT = [
-  { label: "ॐ", char: "ॐ" },
-  { label: "ऽ", char: "ऽ" },
-  { label: "।", char: "।" },
-  { label: "॥", char: "॥" },
-];
+export { IAST_QUICK_INSERT, DEVANAGARI_QUICK_INSERT } from "@/lib/text-tools";
 
 export const GRAMMAR_CATEGORY_LABELS: Record<string, string> = {
   sandhi: "Sandhi",

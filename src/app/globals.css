@@ -429,6 +429,22 @@ mark { border-radius: 2px; padding: 0 2px; }
   padding: 0 0.08em;
 }
 
+/* Semantic script marks must survive inherited label typography, including
+   radial labels whose descendants otherwise share one fitted font size. */
+.ProseMirror sup,
+.sunburst-rich-label sup,
+.ProseMirror sub,
+.sunburst-rich-label sub {
+  position: relative;
+  vertical-align: baseline;
+  font-size: 0.72em !important;
+  line-height: 0 !important;
+}
+.ProseMirror sup,
+.sunburst-rich-label sup { top: -0.48em; }
+.ProseMirror sub,
+.sunburst-rich-label sub { top: 0.22em; }
+
 /* ─── Floating panel glass effect ─── */
 .vidya-float-panel {
   background: var(--card);

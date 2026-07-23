@@ -88,3 +88,10 @@ test("keeps safe pasted links and strips executable destinations", () => {
     "<p><a>Unsafe</a></p>"
   );
 });
+
+test("retains semantic superscript and subscript marks from pasted text", () => {
+  assert.equal(
+    sanitizePastedHtml("<p>E = mc<sup>2</sup> and H<sub>2</sub>O</p>"),
+    "<p>E = mc<sup>2</sup> and H<sub>2</sub>O</p>"
+  );
+});

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
-import { Extension, type Editor } from "@tiptap/core";
+import { Extension, Mark, type Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -37,6 +37,7 @@ import {
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
+import { TEXT_TOOL_EVENT, type TextToolAction } from "@/lib/text-tools";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,20 @@ const FontSize = Extension.create({
       },
     }];
   },
+});
+
+const Superscript = Mark.create({
+  name: "superscript",
+  excludes: "subscript",
+  parseHTML() { return [{ tag: "sup" }]; },
+  renderHTML() { return ["sup", 0]; },
+});
+
+const Subscript = Mark.create({
+  name: "subscript",
+  excludes: "superscript",
+  parseHTML() { return [{ tag: "sub" }]; },
+  renderHTML() { return ["sub", 0]; },
 });
 
 const ShapeTextFlowGuides = Extension.create({
@@ -111,6 +126,8 @@ const EXTENSIONS = [
   FontFamily,
   FontSize,
   Underline,
+  Superscript,
+  Subscript,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
@@ -202,6 +219,8 @@ function captureInlineFormat(editor: Editor): InlineTextFormatSnapshot {
     italic: hasMark("italic"),
     strike: hasMark("strike"),
     underline: hasMark("underline"),
+    superscript: hasMark("superscript"),
+    subscript: hasMark("subscript"),
     fontSize: typeof textStyle?.fontSize === "string" ? textStyle.fontSize : undefined,
     fontFamily: typeof textStyle?.fontFamily === "string" ? textStyle.fontFamily : undefined,
     textColor: typeof textStyle?.color === "string" ? textStyle.color : undefined,
@@ -774,6 +793,39 @@ export function RichTextEditor({
   }, [editor]);
 
   useEffect(() => {
+    const element = editor?.view.dom as HTMLElement | undefined;
+    if (!editor || !element) return;
+    const applyTextTool = (event: Event) => {
+      const detail = (event as CustomEvent<TextToolAction>).detail;
+      if (!detail || !editor.isEditable) return;
+      event.stopPropagation();
+      const chain = editor.chain();
+      const selection = savedSelectionRef.current;
+      if (selection) chain.setTextSelection(selection);
+      if (detail.type === "insert") {
+        pendingReportReasonRef.current = "input";
+        chain.insertContent(detail.value);
+      } else if (detail.type === "script") {
+        pendingReportReasonRef.current = "format";
+        const mark = detail.style === "superscript" ? "superscript" : "subscript";
+        const opposite = detail.style === "superscript" ? "subscript" : "superscript";
+        chain.unsetMark(opposite).toggleMark(mark);
+      } else {
+        pendingReportReasonRef.current = "format";
+        chain.unsetMark("superscript").unsetMark("subscript");
+      }
+      chain.focus(undefined, { scrollIntoView: false }).run();
+      savedSelectionRef.current = {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      };
+      publishTextSelection();
+    };
+    element.addEventListener(TEXT_TOOL_EVENT, applyTextTool);
+    return () => element.removeEventListener(TEXT_TOOL_EVENT, applyTextTool);
+  }, [editor, publishTextSelection]);
+
+  useEffect(() => {
     if (!editor) return;
     const wasEditable = previousEditableRef.current;
     previousEditableRef.current = editable;
@@ -869,6 +921,8 @@ export function RichTextEditor({
   const updateToolbar = useCallback(() => {
     if (!editor) { hideToolbar(); return; }
     const { state, view } = editor;
+    const { from, to } = state.selection;
+    savedSelectionRef.current = { from, to };
     if (!canShowInlineTextToolbar({
       nodeId,
       selectedNodeIds,
@@ -880,8 +934,6 @@ export function RichTextEditor({
       return;
     }
     publishTextSelection();
-    const { from, to } = state.selection;
-    savedSelectionRef.current = { from, to };
     const start = view.coordsAtPos(from);
     const end   = view.coordsAtPos(to);
     // Anchor at the very top of the selection; horizontal center of the range.
@@ -949,6 +1001,12 @@ export function RichTextEditor({
   const toggleBold = useCallback(() => { selectionChain()?.toggleBold().run(); }, [selectionChain]);
   const toggleItalic = useCallback(() => { selectionChain()?.toggleItalic().run(); }, [selectionChain]);
   const toggleUnderline = useCallback(() => { selectionChain()?.toggleUnderline().run(); }, [selectionChain]);
+  const toggleSuperscript = useCallback(() => {
+    selectionChain()?.unsetMark("subscript").toggleMark("superscript").run();
+  }, [selectionChain]);
+  const toggleSubscript = useCallback(() => {
+    selectionChain()?.unsetMark("superscript").toggleMark("subscript").run();
+  }, [selectionChain]);
   const alignLeft = useCallback(() => { selectionChain()?.setTextAlign("left").run(); }, [selectionChain]);
   const alignCenter = useCallback(() => { selectionChain()?.setTextAlign("center").run(); }, [selectionChain]);
   const alignRight = useCallback(() => { selectionChain()?.setTextAlign("right").run(); }, [selectionChain]);
@@ -1070,6 +1128,8 @@ export function RichTextEditor({
     if (inlineFormatPainter.italic) chain.setItalic();
     if (inlineFormatPainter.strike) chain.setStrike();
     if (inlineFormatPainter.underline) chain.setUnderline();
+    if (inlineFormatPainter.superscript) chain.setMark("superscript");
+    if (inlineFormatPainter.subscript) chain.setMark("subscript");
     if (inlineFormatPainter.fontSize) {
       chain.setMark("textStyle", { fontSize: inlineFormatPainter.fontSize });
     }
@@ -1155,6 +1215,8 @@ export function RichTextEditor({
   const boldState = editor ? selectedMarkValue(editor, "bold") : null;
   const italicState = editor ? selectedMarkValue(editor, "italic") : null;
   const underlineState = editor ? selectedMarkValue(editor, "underline") : null;
+  const superscriptState = editor ? selectedMarkValue(editor, "superscript") : null;
+  const subscriptState = editor ? selectedMarkValue(editor, "subscript") : null;
   const linkActive = editor?.isActive("link") ?? false;
   const openPopoversBelow = drag
     ? drag.top < window.innerHeight / 2
@@ -1199,6 +1261,8 @@ export function RichTextEditor({
           <FormatButton active={editor.isActive("bold")} mixed={boldState === "mixed"} onAction={toggleBold} title="Bold"><b className="text-xs">B</b></FormatButton>
           <FormatButton active={editor.isActive("italic")} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
           <FormatButton active={editor.isActive("underline")} mixed={underlineState === "mixed"} onAction={toggleUnderline} title="Underline"><u className="text-xs">U</u></FormatButton>
+          <FormatButton active={editor.isActive("superscript")} mixed={superscriptState === "mixed"} onAction={toggleSuperscript} title="Superscript"><span className="text-xs">x<sup>2</sup></span></FormatButton>
+          <FormatButton active={editor.isActive("subscript")} mixed={subscriptState === "mixed"} onAction={toggleSubscript} title="Subscript"><span className="text-xs">x<sub>2</sub></span></FormatButton>
 
           <div className="relative">
             <button

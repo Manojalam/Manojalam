@@ -29,7 +29,7 @@ const EXTERNAL_TYPOGRAPHY_PROPERTIES = [
 const SAFE_EXTERNAL_ELEMENTS = new Set([
   "P", "BR", "STRONG", "B", "EM", "I", "U", "S", "DEL", "SPAN",
   "UL", "OL", "LI", "BLOCKQUOTE", "PRE", "CODE", "H1", "H2", "H3",
-  "H4", "H5", "H6", "A",
+  "H4", "H5", "H6", "A", "SUP", "SUB",
 ]);
 
 function sanitizeFallbackLinks(html: string): string {

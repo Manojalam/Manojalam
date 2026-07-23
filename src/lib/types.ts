@@ -100,6 +100,8 @@ export interface InlineTextFormatSnapshot {
   italic: boolean;
   strike: boolean;
   underline: boolean;
+  superscript: boolean;
+  subscript: boolean;
   fontSize?: string;
   fontFamily?: string;
   textColor?: string;
