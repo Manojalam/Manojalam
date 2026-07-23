@@ -43,18 +43,27 @@ function segmentPath(segment: { x1: number; y1: number; x2: number; y2: number }
   return `M ${segment.x1} ${segment.y1} L ${segment.x2} ${segment.y2}`;
 }
 
-function selectEdge(edgeId: string, additive: boolean): void {
-  useCanvasStore.setState((state) => ({
-    nodes: additive ? state.nodes : state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
-    edges: state.edges.map((edge) => ({
-      ...edge,
-      selected: additive ? edge.selected || edge.id === edgeId : edge.id === edgeId,
-    })),
-    selectedNodeIds: additive ? state.selectedNodeIds : [],
-    selectedEdgeIds: additive
-      ? [...new Set([...state.selectedEdgeIds, edgeId])]
-      : [edgeId],
-  }));
+function selectEdges(edgeIds: string[], additive: boolean): void {
+  useCanvasStore.setState((state) => {
+    const selectedIds = new Set(additive ? state.selectedEdgeIds : []);
+    const wholeGroupSelected = edgeIds.every((edgeId) => selectedIds.has(edgeId));
+    if (additive && wholeGroupSelected) edgeIds.forEach((edgeId) => selectedIds.delete(edgeId));
+    else edgeIds.forEach((edgeId) => selectedIds.add(edgeId));
+    return {
+      nodes: additive ? state.nodes : state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
+      edges: state.edges.map((edge) => ({ ...edge, selected: selectedIds.has(edge.id) })),
+      selectedNodeIds: additive ? state.selectedNodeIds : [],
+      selectedEdgeIds: Array.from(selectedIds),
+    };
+  });
+}
+
+function sharedGroupExplicitColor(edges: Edge[]): string | undefined {
+  const colors = edges.map((edge) => edgeData(edge).color);
+  const first = colors[0];
+  return typeof first === "string" && first.length > 0 && colors.every((color) => color === first)
+    ? first
+    : undefined;
 }
 
 function branchPath(group: { segments: Array<{ x1: number; y1: number; x2: number; y2: number }> }): string {
@@ -118,15 +127,25 @@ export function ListTreeConnectors() {
           {groups.map((group) => {
             const baseEdge = group.branches[0].edge;
             const data = edgeData(baseEdge);
+            const groupEdges = group.branches.map((branch) => branch.edge);
+            const groupEdgeIds = groupEdges.map((edge) => edge.id);
+            const groupSelected = groupEdges.length > 1 && groupEdges.every((edge) => edge.selected);
             const parentData = (nodesById.get(group.parentId)?.data ?? {}) as Record<string, unknown>;
             const parentAccent = resolveAccentColor(parentData) ?? edgeColor(baseEdge, false);
-            const trunkColor = group.branches.length === 1
+            const explicitGroupColor = sharedGroupExplicitColor(groupEdges);
+            const trunkColor = groupSelected
+              ? "#4f46e5"
+              : explicitGroupColor
+                ? explicitGroupColor
+                : group.branches.length === 1
               ? edgeColor(baseEdge)
               : themeAwareLayoutConnectorColor(parentAccent);
-            const trunkNormalColor = group.branches.length === 1
+            const trunkNormalColor = explicitGroupColor
+              ?? (group.branches.length === 1
               ? normalEdgeColor(baseEdge)
-              : parentAccent;
+              : parentAccent);
             const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
+            const sharedPath = branchPath({ segments: group.sharedSegments });
             return (
               <g key={group.parentId}>
                 {group.sharedSegments.map((segment, index) => (
@@ -142,6 +161,19 @@ export function ListTreeConnectors() {
                       : undefined}
                   />
                 ))}
+                <path
+                  d={sharedPath}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={18}
+                  pointerEvents="stroke"
+                  className="cursor-pointer"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    selectEdges(groupEdgeIds, event.shiftKey || event.metaKey || event.ctrlKey);
+                  }}
+                />
                 {group.branches.map(({ edge, segments }) => {
                   const branchData = edgeData(edge);
                   const color = edgeColor(edge);
@@ -166,7 +198,7 @@ export function ListTreeConnectors() {
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => {
                           event.stopPropagation();
-                          selectEdge(edge.id, event.shiftKey || event.metaKey || event.ctrlKey);
+                          selectEdges([edge.id], event.shiftKey || event.metaKey || event.ctrlKey);
                         }}
                       />
                     </g>
