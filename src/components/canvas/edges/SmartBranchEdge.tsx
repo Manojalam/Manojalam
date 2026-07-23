@@ -356,10 +356,25 @@ function SmartBranchEdgeComponent(props: EdgeProps) {
   const data = (props.data ?? {}) as VidyaEdgeData;
   const manualRoute = data.manualRoute === true;
   const hasWaypoints = Array.isArray(data.waypoints) && data.waypoints.length > 0;
+  const wholeSharedGroupSelected = useCanvasStore((state) => {
+    if (!props.selected) return false;
+    const nodesById = new Map(state.nodes.map((node) => [node.id, node]));
+    const groupedSiblings = state.edges.filter((edge) => {
+      if (edge.source !== props.source || edge.hidden) return false;
+      const siblingData = (edge.data ?? {}) as VidyaEdgeData;
+      const siblingTargetData = (nodesById.get(edge.target)?.data ?? {}) as Record<string, unknown>;
+      const siblingHasWaypoints = Array.isArray(siblingData.waypoints) && siblingData.waypoints.length > 0;
+      return siblingData.layoutMode === data.layoutMode
+        && siblingData.manualRoute !== true
+        && !siblingHasWaypoints
+        && siblingTargetData.parentId === edge.source;
+    });
+    return groupedSiblings.length > 1 && groupedSiblings.every((edge) => edge.selected);
+  });
   const isGroupedListEdge = data.layoutMode === "list"
     && !manualRoute
     && !hasWaypoints
-    && !props.selected
+    && (!props.selected || wholeSharedGroupSelected)
     && targetData.parentId === props.source;
   const isGroupedTreeEdge = (
     data.layoutMode === "horizontal"
@@ -368,7 +383,7 @@ function SmartBranchEdgeComponent(props: EdgeProps) {
   )
     && !manualRoute
     && !hasWaypoints
-    && !props.selected
+    && (!props.selected || wholeSharedGroupSelected)
     && targetData.parentId === props.source;
   return isGroupedListEdge || isGroupedTreeEdge ? null : <RoutedSmartBranchEdge {...props} />;
 }

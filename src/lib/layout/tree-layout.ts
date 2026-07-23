@@ -363,11 +363,10 @@ export interface TreeConnectorModel {
   obstacleIntersections: Array<{ parentId: string; obstacleId: string }>;
 }
 
-export function isGroupedTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
+function isAutomaticTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
   const data = (edge.data ?? {}) as Record<string, unknown>;
   if (
     data.manualRoute === true
-    || edge.selected
     || (Array.isArray(data.waypoints) && data.waypoints.length > 0)
   ) return false;
   const source = byId.get(edge.source);
@@ -376,6 +375,10 @@ export function isGroupedTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>):
   const targetData = (target.data ?? {}) as Record<string, unknown>;
   return isTreeMode(data.layoutMode)
     && targetData.parentId === edge.source;
+}
+
+export function isGroupedTreeHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
+  return !edge.selected && isAutomaticTreeHierarchyEdge(edge, byId);
 }
 
 function groupSegments(group: TreeConnectorGroup): OrthogonalSegment[] {
@@ -400,8 +403,18 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
   const hierarchy = buildHierarchy(nodes, edges);
   const renderedRelations = new Set<string>();
   const duplicateHierarchyRelations: string[] = [];
-  const eligible = edges.filter((edge) => {
-    if (!isGroupedTreeHierarchyEdge(edge, byId)) return false;
+  const automaticEdges = edges.filter((edge) => isAutomaticTreeHierarchyEdge(edge, byId));
+  const automaticEdgesByParent = new Map<string, Edge[]>();
+  for (const edge of automaticEdges) {
+    automaticEdgesByParent.set(edge.source, [...(automaticEdgesByParent.get(edge.source) ?? []), edge]);
+  }
+  const fullySelectedParentIds = new Set(
+    [...automaticEdgesByParent.entries()]
+      .filter(([, parentEdges]) => parentEdges.length > 1 && parentEdges.every((edge) => edge.selected))
+      .map(([parentId]) => parentId)
+  );
+  const eligible = automaticEdges.filter((edge) => {
+    if (edge.selected && !fullySelectedParentIds.has(edge.source)) return false;
     const relation = `${edge.source}->${edge.target}`;
     if (renderedRelations.has(relation)) {
       duplicateHierarchyRelations.push(relation);
