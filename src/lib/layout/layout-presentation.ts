@@ -103,7 +103,7 @@ function wrappedLineCount(lines: string[], charactersPerLine: number): number {
 }
 
 function roleFontSize(mode: LayoutMode, depth: number): number {
-  if (mode === "matrix") return depth === 0 ? 24 : depth === 1 ? 20 : 18;
+  if (mode === "matrix") return depth === 0 ? 20 : depth === 1 ? 17 : 15;
   if (mode === "list") return depth === 0 ? 22 : depth === 1 ? 19 : 17;
   if (mode === "linear") return depth === 0 ? 20 : 18;
   return depth === 0 ? 22 : depth === 1 ? 19 : 17;
@@ -121,6 +121,12 @@ export function resolveLayoutFontSize(data: Record<string, unknown>): number | u
     && typeof visualStyle?.fontSize === "number"
     && Number.isFinite(visualStyle.fontSize)
   ) {
+    if (visualStyle.mode === "matrix") {
+      // Matrix is a dense comparative view. Its generated scale is
+      // authoritative unless the user explicitly opts out, otherwise a large
+      // freeform label expands every row and column around it.
+      return visualStyle.fontSize;
+    }
     // Layout typography is a readability floor. It must never shrink text the
     // user already made larger before arranging the branch.
     return Math.max(storedFontSize ?? 0, visualStyle.fontSize);

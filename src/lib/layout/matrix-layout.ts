@@ -85,34 +85,34 @@ type MatrixLogicalSpan = {
   occurrences: number[];
 };
 
-export const MATRIX_MIN_COLUMN_WIDTH = 180;
-export const MATRIX_MAX_COLUMN_WIDTH = 380;
+export const MATRIX_MIN_COLUMN_WIDTH = 112;
+export const MATRIX_MAX_COLUMN_WIDTH = 320;
 export const MATRIX_USER_MIN_COLUMN_WIDTH = 80;
 export const MATRIX_USER_MAX_COLUMN_WIDTH = 1200;
-export const MATRIX_FIRST_COLUMN_MIN_WIDTH = 200;
-export const MATRIX_HEADER_MIN_WIDTH = 280;
+export const MATRIX_FIRST_COLUMN_MIN_WIDTH = 136;
+export const MATRIX_HEADER_MIN_WIDTH = 220;
 
 export const MATRIX_DENSITY_SETTINGS: Record<MatrixTableDensity, DensitySettings> = {
   compact: {
-    cellGap: 2,
-    paddingX: 14,
-    paddingY: 8,
-    minRowHeight: 48,
-    minHeaderHeight: 64,
+    cellGap: 6,
+    paddingX: 10,
+    paddingY: 6,
+    minRowHeight: 40,
+    minHeaderHeight: 50,
   },
   comfortable: {
-    cellGap: 4,
-    paddingX: 20,
-    paddingY: 14,
-    minRowHeight: 64,
-    minHeaderHeight: 72,
+    cellGap: 8,
+    paddingX: 14,
+    paddingY: 9,
+    minRowHeight: 50,
+    minHeaderHeight: 60,
   },
   presentation: {
-    cellGap: 8,
-    paddingX: 24,
-    paddingY: 16,
-    minRowHeight: 76,
-    minHeaderHeight: 84,
+    cellGap: 12,
+    paddingX: 18,
+    paddingY: 12,
+    minRowHeight: 62,
+    minHeaderHeight: 72,
   },
 };
 
@@ -294,7 +294,9 @@ function preferredCellWidth(node: Node, column: number, settings: DensitySetting
   const longestWord = words.reduce((max, word) => Math.max(max, Array.from(word).length), 0);
   const charCount = Math.max(1, Array.from(text.replace(/\s+/g, " ")).length);
   const balancedChars = charCount <= 38 ? charCount : Math.ceil(Math.sqrt(charCount) * 3.2);
-  const preferredChars = clamp(Math.max(longestWord + 3, balancedChars), 18, 52);
+  // A Matrix often contains one-character Sanskrit cells. Giving those cells
+  // the same 18-character floor as prose is what made simple tables enormous.
+  const preferredChars = clamp(Math.max(longestWord + 3, balancedChars), 8, 42);
   const estimatedWidth = preferredChars * charWidth + settings.paddingX * 2;
   const content = matrixContentSize(node);
   const measuredContentWidth = content?.width ? content.width + settings.paddingX * 2 : 0;

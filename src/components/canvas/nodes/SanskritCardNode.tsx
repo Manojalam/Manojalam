@@ -21,6 +21,7 @@ import {
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 
 function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
@@ -28,7 +29,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const mode = d.displayMode ?? "both-stacked";
   const matrixCell = d.matrixCell === true;
   const matrixGridVisible = d.matrixGridVisible !== false;
-  const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
+  const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#d97706";

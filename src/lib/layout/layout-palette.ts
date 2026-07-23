@@ -41,7 +41,7 @@ export function selectedLayoutColorScheme(value: unknown): RadialColorScheme {
 }
 
 function borderWidthFor(mode: LayoutMode, depth: number): number {
-  if (mode === "matrix") return depth === 0 ? 2 : depth === 1 ? 1.5 : 1;
+  if (mode === "matrix") return depth === 0 ? 1.5 : depth === 1 ? 1 : 0.75;
   if (mode === "list") return depth === 0 ? 2.5 : depth === 1 ? 2 : 1.5;
   return depth === 0 ? 2.5 : 1.75;
 }
