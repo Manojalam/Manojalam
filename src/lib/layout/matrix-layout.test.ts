@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "./hierarchy";
+import { getNodeRect } from "./geometry";
+import { packSiblingsAfterNestedMatrix } from "./nested-matrix-spacing";
 import {
   MATRIX_DENSITY_SETTINGS,
   MATRIX_HEADER_MIN_WIDTH,
@@ -24,6 +26,7 @@ type TreeNode = {
   hidden?: boolean;
   collapsed?: boolean;
   orientation?: "horizontal" | "vertical";
+  childFlow?: "row" | "column";
 };
 
 function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
@@ -43,6 +46,7 @@ function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
       childOrder: childOrder.get(spec.id) ?? [],
       ...(spec.collapsed ? { collapsed: true } : {}),
       ...(spec.orientation ? { matrixOrientation: spec.orientation } : {}),
+      ...(spec.childFlow ? { matrixChildFlow: spec.childFlow } : {}),
     },
   }));
   const edges = specs
@@ -899,4 +903,98 @@ test("a child Matrix orientation overrides only its own descendants", () => {
     cells.get("horizontal-2-deep")!.x + cells.get("horizontal-2-deep")!.width
   );
   assertClean(result);
+});
+
+test("a row child flow keeps the parent left while placing direct children sideways", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "hrasva", parentId: "root", orientation: "horizontal", childFlow: "row" },
+    { id: "a", parentId: "hrasva" },
+    { id: "i", parentId: "hrasva" },
+    { id: "u", parentId: "hrasva" },
+    { id: "r", parentId: "hrasva" },
+    { id: "l", parentId: "hrasva" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const parent = cells.get("hrasva")!;
+  const children = ["a", "i", "u", "r", "l"].map((id) => cells.get(id)!);
+
+  assert.ok(children.every((child) => child.x > parent.x + parent.width));
+  assert.ok(children.every((child) => Math.abs(child.y - children[0].y) < 0.5));
+  for (let index = 1; index < children.length; index += 1) {
+    assert.ok(children[index].x >= children[index - 1].x + children[index - 1].width);
+  }
+  assertClean(result);
+});
+
+test("a widened nested Matrix moves following outer branches without breaking their subtrees", () => {
+  const nodes: Node[] = [
+    {
+      id: "outer",
+      type: "shape",
+      position: { x: 80, y: 40 },
+      measured: { width: 180, height: 64 },
+      data: { layoutMode: "vertical", childOrder: ["matrix", "other"] },
+    },
+    {
+      id: "matrix",
+      type: "shape",
+      position: { x: 100, y: 180 },
+      measured: { width: 620, height: 120 },
+      data: { parentId: "outer", childOrder: ["matrix-child"], layoutMode: "matrix" },
+    },
+    {
+      id: "matrix-child",
+      type: "shape",
+      position: { x: 520, y: 300 },
+      measured: { width: 200, height: 80 },
+      data: { parentId: "matrix", childOrder: [] },
+    },
+    {
+      id: "other",
+      type: "shape",
+      position: { x: 440, y: 180 },
+      measured: { width: 180, height: 72 },
+      data: { parentId: "outer", childOrder: ["other-child"] },
+    },
+    {
+      id: "other-child",
+      type: "shape",
+      position: { x: 470, y: 310 },
+      measured: { width: 160, height: 64 },
+      data: { parentId: "other", childOrder: [] },
+    },
+    {
+      id: "unrelated",
+      type: "shape",
+      position: { x: 40, y: 700 },
+      measured: { width: 160, height: 64 },
+      data: { childOrder: [] },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "outer-matrix", source: "outer", target: "matrix" },
+    { id: "matrix-child", source: "matrix", target: "matrix-child" },
+    { id: "outer-other", source: "outer", target: "other" },
+    { id: "other-child", source: "other", target: "other-child" },
+  ];
+  const hierarchy = buildHierarchy(nodes, edges);
+  const originalOther = nodes.find((node) => node.id === "other")!;
+  const originalOtherChild = nodes.find((node) => node.id === "other-child")!;
+  const packed = packSiblingsAfterNestedMatrix(nodes, hierarchy, "matrix");
+  const packedMatrixRight = Math.max(
+    getNodeRect(packed.find((node) => node.id === "matrix")!).right,
+    getNodeRect(packed.find((node) => node.id === "matrix-child")!).right
+  );
+  const packedOther = packed.find((node) => node.id === "other")!;
+  const packedOtherChild = packed.find((node) => node.id === "other-child")!;
+
+  assert.ok(getNodeRect(packedOther).left >= packedMatrixRight + 42);
+  assert.equal(
+    packedOtherChild.position.x - originalOtherChild.position.x,
+    packedOther.position.x - originalOther.position.x
+  );
+  assert.deepEqual(packed.find((node) => node.id === "unrelated")!.position, { x: 40, y: 700 });
 });

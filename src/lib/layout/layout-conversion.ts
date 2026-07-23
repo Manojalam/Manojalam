@@ -11,6 +11,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "matrixDensityUserSet",
   "matrixGridVisible",
   "matrixOrientation",
+  "matrixChildFlow",
   "matrixWidthOverride",
   "matrixHeightOverride",
   "matrixIntrinsicSize",

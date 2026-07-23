@@ -41,6 +41,7 @@ import {
 import { computeListLayout } from "@/lib/layout/list-layout";
 import { hasFoldedChildSections } from "@/lib/layout/child-group-wrap";
 import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
+import { packSiblingsAfterNestedMatrix } from "@/lib/layout/nested-matrix-spacing";
 import {
   clearLayoutEdgeRouting,
   clearLayoutNodeGeometry,
@@ -961,7 +962,7 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow",
   "matrixWidthOverride", "matrixHeightOverride",
 ]);
 const LIST_REFLOW_FIELDS = new Set([
@@ -3352,6 +3353,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       let nextNodes = state.nodes;
       let nextEdges = state.edges;
+      let siblingSpacingChanged = false;
       for (const rootId of rootIds) {
         const previouslyOwnedNodeIds = new Set(nextNodes
           .filter((node) => {
@@ -3381,6 +3383,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         nextNodes = styled.nodes;
         nextEdges = styled.edges;
         nextNodes = withMatrixFrame(nextNodes, scopeIds, matrixFrameKey(rootId), true);
+        const packedNodes = packSiblingsAfterNestedMatrix(nextNodes, currentHierarchy, rootId);
+        if (packedNodes !== nextNodes) siblingSpacingChanged = true;
+        nextNodes = packedNodes;
         nextEdges = nextEdges.map((edge) => {
           const data = (edge.data ?? {}) as Record<string, unknown>;
           const ownedByRoot = data.hiddenInMatrixFor === rootId
@@ -3413,7 +3418,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
       const geometryChanged = [...rootIds].some((rootId) => matrixGeometryChanged(state.nodes, nextNodes, rootId));
       const edgesChanged = nextEdges.some((edge, index) => edge !== state.edges[index]);
-      if (geometryChanged || edgesChanged) {
+      if (geometryChanged || edgesChanged || siblingSpacingChanged) {
         set({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
       }
     }, 140);
@@ -3734,8 +3739,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const selectedNodes = mode === "matrix"
       ? newNodes.map((node) => ({ ...node, selected: node.id === rootId }))
       : newNodes;
+    const spacedNodes = mode === "matrix"
+      ? packSiblingsAfterNestedMatrix(selectedNodes, hierarchy, rootId)
+      : selectedNodes;
     set({
-      nodes: selectedNodes,
+      nodes: spacedNodes,
       edges: mode === "matrix"
         ? paletteResult.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
         : paletteResult.edges,

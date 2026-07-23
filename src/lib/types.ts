@@ -56,6 +56,7 @@ export type EdgeCurveStyle = "smooth" | "straight" | "step";
 export type ConnectorPathStyle = "solid" | "dashed" | "dotted" | "double";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
+export type MatrixChildFlow = "row" | "column";
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
 export type BoardColorMode = "auto" | "custom" | "transparent";
 
@@ -453,6 +454,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixDensityUserSet?: boolean;
   /** Direction in which this Matrix cell's descendants grow. Inherits from its parent. */
   matrixOrientation?: MatrixOrientation;
+  /** Arrangement of this Matrix cell's direct children. Defaults perpendicular to branch direction. */
+  matrixChildFlow?: MatrixChildFlow;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
   /** Controls how authored text and manually chosen node dimensions interact. */
