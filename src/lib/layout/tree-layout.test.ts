@@ -394,3 +394,42 @@ test("selected hierarchy edges leave the shared bus for full connector editing",
   };
   assert.deepEqual(buildTreeConnectorModel(nodes, [bentEdge]).groups, []);
 });
+
+test("a fully selected multi-branch connector remains one shared bus", () => {
+  const nodes: Node[] = [{
+    id: "parent",
+    type: "shape",
+    position: { x: 0, y: 0 },
+    measured: { width: 120, height: 70 },
+    data: { text: "Parent", parentId: null, childOrder: ["first", "second"] },
+  }, {
+    id: "first",
+    type: "shape",
+    position: { x: 0, y: 220 },
+    measured: { width: 100, height: 60 },
+    data: { text: "First", parentId: "parent", childOrder: [] },
+  }, {
+    id: "second",
+    type: "shape",
+    position: { x: 180, y: 220 },
+    measured: { width: 100, height: 60 },
+    data: { text: "Second", parentId: "parent", childOrder: [] },
+  }];
+  const edges: Edge[] = ["first", "second"].map((target) => ({
+    id: `parent-${target}`,
+    source: "parent",
+    target,
+    selected: true,
+    type: "branch",
+    data: { layoutMode: "vertical", curveStyle: "step" },
+  }));
+
+  const groups = buildTreeConnectorModel(nodes, edges).groups;
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].branches.length, 2);
+  assert.deepEqual(groups[0].branches.map((branch) => branch.edge.id), [
+    "parent-first",
+    "parent-second",
+  ]);
+});

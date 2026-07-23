@@ -5,7 +5,7 @@ import {
   arrangeColorPalette,
   COLOR_SWATCH_GROUPS,
   colorInputValue,
-  groupColorPalette,
+  colorSwatchMatches,
   hexToHsv,
   hexToRgb,
   hsvToHex,
@@ -28,6 +28,13 @@ test("accepts exact six-digit hex colors with or without a hash", () => {
   assert.equal(normalizeHexColor("17A052"), "#17a052");
   assert.equal(normalizeHexColor("#fff"), null);
   assert.equal(normalizeHexColor("not-a-color"), null);
+});
+
+test("matches the active swatch after normalizing exact colors", () => {
+  assert.equal(colorSwatchMatches("#4F9DA7", "#4f9da7"), true);
+  assert.equal(colorSwatchMatches("4f9da7", "#4F9DA7"), true);
+  assert.equal(colorSwatchMatches("#4f9da7", "#3b82f6"), false);
+  assert.equal(colorSwatchMatches("#4f9da7", "#4f9da7", true), false);
 });
 
 test("offers general bright, light, strong, and neutral swatches", () => {
@@ -74,28 +81,6 @@ test("arranges palette colors as neutrals followed by the hue wheel", () => {
       "#00ff00",
       "#0000ff",
       "#ff00ff",
-    ]
-  );
-});
-
-test("groups related palette colors into labeled families", () => {
-  assert.deepEqual(
-    groupColorPalette([
-      "#ff00aa",
-      "#ffffff",
-      "#8b5cf6",
-      "#3b82f6",
-      "#14b8a6",
-      "#f97316",
-      "#111827",
-    ]),
-    [
-      { name: "Neutral", colors: ["#ffffff", "#111827"] },
-      { name: "Warm", colors: ["#f97316"] },
-      { name: "Green", colors: ["#14b8a6"] },
-      { name: "Blue", colors: ["#3b82f6"] },
-      { name: "Purple", colors: ["#8b5cf6"] },
-      { name: "Pink", colors: ["#ff00aa"] },
     ]
   );
 });
