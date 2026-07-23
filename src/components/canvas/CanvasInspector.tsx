@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -377,38 +377,68 @@ function ExactNumberField({
   const displayedValue = typeof value === "number"
     ? String(Math.round(value * 10) / 10)
     : "";
+  const [draftValue, setDraftValue] = useState(displayedValue);
+  const [editing, setEditing] = useState(false);
+  const changedWhileEditingRef = useRef(false);
+  const cancelNextBlurRef = useRef(false);
+
   return (
     <Input
-      key={`${label}-${displayedValue}-${mixed ? "mixed" : "single"}`}
       type="number"
       inputMode="decimal"
       aria-label={label}
       min={min}
       max={max}
       step={1}
-      defaultValue={displayedValue}
+      value={editing ? draftValue : displayedValue}
       placeholder={mixed ? "Mixed" : "Auto"}
       className="h-7 px-2 text-[10px]"
+      onFocus={() => {
+        changedWhileEditingRef.current = false;
+        cancelNextBlurRef.current = false;
+        setDraftValue(displayedValue);
+        setEditing(true);
+      }}
+      onChange={(event) => {
+        changedWhileEditingRef.current = true;
+        setDraftValue(event.currentTarget.value);
+      }}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
         if (event.key === "Escape") {
-          event.currentTarget.value = displayedValue;
+          event.preventDefault();
+          changedWhileEditingRef.current = false;
+          cancelNextBlurRef.current = true;
+          setDraftValue(displayedValue);
           event.currentTarget.blur();
         }
       }}
       onBlur={(event) => {
+        if (cancelNextBlurRef.current) {
+          cancelNextBlurRef.current = false;
+          setEditing(false);
+          return;
+        }
+        if (!changedWhileEditingRef.current) {
+          setEditing(false);
+          return;
+        }
+
         const raw = event.currentTarget.value.trim();
         if (!raw) {
           if (value !== undefined || mixed) onCommit(undefined);
+          setEditing(false);
           return;
         }
         const parsed = Number.parseFloat(raw);
         if (!Number.isFinite(parsed)) {
-          event.currentTarget.value = displayedValue;
+          setDraftValue(displayedValue);
+          setEditing(false);
           return;
         }
         const next = clampControlValue(parsed, min, max);
-        event.currentTarget.value = String(next);
+        setDraftValue(String(next));
+        setEditing(false);
         if (value === undefined || Math.abs(next - value) > 0.05 || mixed) onCommit(next);
       }}
     />
