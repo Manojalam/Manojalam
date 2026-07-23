@@ -63,6 +63,10 @@ import {
   usesAutomaticBoardColor,
   type BoardColorTheme,
 } from "@/lib/canvas/board-colors";
+import {
+  BOARD_TEXTURE_PRESETS,
+  boardTextureStyle,
+} from "@/lib/canvas/board-textures";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import {
   buildRelationshipGroupsForSpec,
@@ -1169,6 +1173,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
   const selectedEdgeIds = useCanvasStore((s) => s.selectedEdgeIds);
   const settings        = useCanvasStore((s) => s.settings);
+  const resolvedCanvasBackgroundColor = resolvedBoardColor(
+    settings.canvasBackgroundColor,
+    "canvas",
+    boardTheme,
+    settings.canvasBackgroundMode
+  );
   const setSettings     = useCanvasStore((s) => s.setSettings);
   const setBoardFontSize = useCanvasStore((s) => s.setBoardFontSize);
   const updateNodeData  = useCanvasStore((s) => s.updateNodeData);
@@ -2350,12 +2360,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </button>
               </div>
               <ColorSwatchPicker
-                value={resolvedBoardColor(
-                  settings.canvasBackgroundColor,
-                  "canvas",
-                  boardTheme,
-                  settings.canvasBackgroundMode
-                )}
+                value={resolvedCanvasBackgroundColor}
                 onChange={(value) => setBoardSettings({
                   canvasBackgroundMode: "custom",
                   canvasBackgroundColor: value,
@@ -2365,6 +2370,38 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   canvasBackgroundColor: "transparent",
                 })}
               />
+            </div>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Canvas texture
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BOARD_TEXTURE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    title={preset.description}
+                    aria-pressed={(settings.canvasTexture ?? "none") === preset.id}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md border p-1.5 text-left text-[10px] transition-colors hover:bg-muted",
+                      (settings.canvasTexture ?? "none") === preset.id
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground"
+                    )}
+                    onClick={() => setBoardSettings({ canvasTexture: preset.id })}
+                  >
+                    <span
+                      aria-hidden
+                      className="h-7 w-9 flex-none rounded border border-black/15"
+                      style={{
+                        backgroundColor: resolvedCanvasBackgroundColor,
+                        ...boardTextureStyle(preset.id),
+                      }}
+                    />
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
             {settings.background !== "plain" && (
               <div>

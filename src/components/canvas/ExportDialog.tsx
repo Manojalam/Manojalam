@@ -21,6 +21,7 @@ import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
 import { resolveElementExportBackground } from "@/lib/export/background";
+import { boardTextureStyle } from "@/lib/canvas/board-textures";
 import type { ExportFormat, ExportScope } from "@/lib/export/types";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -73,6 +74,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
   const boardTitle = useCanvasStore((state) => state.board?.title ?? "board");
+  const canvasTexture = useCanvasStore((state) => state.settings.canvasTexture);
   const viewportTransform = useViewport();
   const requestedNodeIds = request.nodeIds?.length ? request.nodeIds : selectedNodeIds;
   const requestedEdgeIds = request.scope === "node" ? EMPTY_IDS : selectedEdgeIds;
@@ -188,6 +190,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         filename: request.title || boardTitle,
         title: request.title || boardTitle,
         background: includeBackground ? includedBoardBackground : null,
+        backgroundTexture: includeBackground ? boardTextureStyle(canvasTexture) : null,
         appearanceBackground: boardBackground.appearanceBackground,
         viewportTransform,
         signal: abortController.signal,

@@ -102,6 +102,12 @@ export interface CloneReactFlowViewportOptions extends DomCloneSelection {
   background?: string | null;
 }
 
+export interface ExportBackgroundTexture {
+  backgroundImage?: string;
+  backgroundSize?: string;
+  backgroundPosition?: string;
+}
+
 export interface SanitizedViewportClone {
   sourceViewport: HTMLElement;
   clone: HTMLElement;
@@ -119,6 +125,8 @@ export interface PrepareDomExportSvgOptions extends CloneReactFlowViewportOption
   padding?: number;
   /** Omit or pass null for a transparent export. */
   background?: string | null;
+  /** Optional CSS texture layered over an included background color. */
+  backgroundTexture?: ExportBackgroundTexture | null;
   title?: string;
   onStageComplete?: (
     stage: "clone-content" | "prepare-assets",
@@ -829,6 +837,7 @@ function createStandaloneSvg(
   bounds: ExportBounds,
   padding: number,
   background: string | null | undefined,
+  backgroundTexture: ExportBackgroundTexture | null | undefined,
   title: string | undefined,
   fontFaceCss: string
 ): { svg: SVGSVGElement; width: number; height: number } {
@@ -871,7 +880,18 @@ function createStandaloneSvg(
   wrapper.style.height = `${height}px`;
   wrapper.style.overflow = "hidden";
   wrapper.style.boxSizing = "border-box";
-  if (background) wrapper.style.background = background;
+  if (background) {
+    wrapper.style.backgroundColor = background;
+    if (backgroundTexture?.backgroundImage) {
+      wrapper.style.backgroundImage = backgroundTexture.backgroundImage;
+      if (backgroundTexture.backgroundSize) {
+        wrapper.style.backgroundSize = backgroundTexture.backgroundSize;
+      }
+      if (backgroundTexture.backgroundPosition) {
+        wrapper.style.backgroundPosition = backgroundTexture.backgroundPosition;
+      }
+    }
+  }
   appendExportStyle(wrapper, fontFaceCss);
 
   clone.style.setProperty("position", "absolute", "important");
@@ -955,6 +975,7 @@ export async function prepareReactFlowDomSvg(
       options.bounds,
       padding,
       options.background,
+      options.backgroundTexture,
       options.title,
       assets.fontFaceCss
     );

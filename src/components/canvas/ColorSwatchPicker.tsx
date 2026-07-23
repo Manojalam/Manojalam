@@ -3,7 +3,7 @@
 import { X } from "lucide-react";
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
 import {
-  arrangeColorPalette,
+  groupColorPalette,
   normalizeHexColor,
 } from "@/lib/canvas/custom-colors";
 import { cn } from "@/lib/utils";
@@ -55,7 +55,7 @@ export function ColorSwatchPicker({
   const ringOffset = size === "sm" ? "ring-offset-[1px]" : "ring-offset-2";
   const normalizedValue = normalizeHexColor(value);
 
-  const allColors = arrangeColorPalette([
+  const colorFamilies = groupColorPalette([
     ...PRESET_COLORS,
     ...sharedCustomColors,
     ...legacyTextColors,
@@ -75,71 +75,90 @@ export function ColorSwatchPicker({
   };
 
   return (
-    <div className="grid grid-cols-8 gap-1.5">
-      <button
-        type="button"
-        title="Clear color"
-        aria-label="Clear color"
-        aria-pressed={isCleared}
-        onClick={() => (onClear ?? (() => onChange("")))()}
-        className={cn(
-          "relative flex items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:z-10 hover:scale-110 hover:text-foreground",
-          swatchSize,
-          isCleared && `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
-        )}
-        style={{
-          backgroundColor: "#ffffff",
-          backgroundImage: "linear-gradient(45deg,#e2e8f0 25%,transparent 25%),linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e2e8f0 75%),linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)",
-          backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
-          backgroundSize: "8px 8px",
-        }}
-      >
-        <X className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
-      </button>
-
-      {allColors.map((hex) => {
-        const selected = !mixed && (normalizedValue
-          ? normalizedValue === hex
-          : value?.trim().toLowerCase() === hex.toLowerCase());
-        return (
-          <button
-            type="button"
-            key={hex}
-            title={selected ? `Selected color ${hex}` : hex}
-            aria-label={selected ? `Selected color ${hex}` : `Select color ${hex}`}
-            aria-pressed={selected}
-            onClick={() => handleSwatch(hex)}
-            className={cn(
-              "relative rounded-full border transition-transform hover:z-10 hover:scale-110",
-              swatchSize,
-              selected
-                ? `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
-                : "border-border/40"
-            )}
-            style={{ backgroundColor: hex }}
-          />
-        );
-      })}
-
-      <AppColorPicker
-        value={value}
-        extraColors={[...legacyTextColors, ...legacyHighlightColors, ...extra]}
-        onChange={applyCustomColor}
-      >
-        <button
-          type="button"
-          title="More colors"
-          aria-label="More colors"
-          className={cn(
-            "flex flex-none items-center justify-center rounded-full border border-border/40",
-            "bg-gradient-to-br from-red-500 via-green-500 to-blue-600 text-[10px] font-bold text-white",
-            "transition-transform hover:scale-110",
-            swatchSize
-          )}
+    <div className="space-y-1.5">
+      {colorFamilies.map((family) => (
+        <section
+          key={family.name}
+          className="grid grid-cols-[3rem_1fr] items-start gap-1.5"
+          aria-label={`${family.name} colors`}
         >
-          +
-        </button>
-      </AppColorPicker>
+          <p className="pt-1 text-[8px] font-medium uppercase tracking-wide text-muted-foreground">
+            {family.name}
+          </p>
+          <div className="grid grid-cols-7 gap-1.5">
+            {family.name === "Neutral" && (
+              <button
+                type="button"
+                title="Clear color"
+                aria-label="Clear color"
+                aria-pressed={isCleared}
+                onClick={() => (onClear ?? (() => onChange("")))()}
+                className={cn(
+                  "relative flex items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:z-10 hover:scale-110 hover:text-foreground",
+                  swatchSize,
+                  isCleared && `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
+                )}
+                style={{
+                  backgroundColor: "#ffffff",
+                  backgroundImage: "linear-gradient(45deg,#e2e8f0 25%,transparent 25%),linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e2e8f0 75%),linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)",
+                  backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
+                  backgroundSize: "8px 8px",
+                }}
+              >
+                <X className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
+              </button>
+            )}
+            {family.colors.map((hex) => {
+              const selected = !mixed && (normalizedValue
+                ? normalizedValue === hex
+                : value?.trim().toLowerCase() === hex.toLowerCase());
+              return (
+                <button
+                  type="button"
+                  key={hex}
+                  title={selected ? `Selected color ${hex}` : hex}
+                  aria-label={selected ? `Selected color ${hex}` : `Select color ${hex}`}
+                  aria-pressed={selected}
+                  onClick={() => handleSwatch(hex)}
+                  className={cn(
+                    "relative rounded-full border transition-transform hover:z-10 hover:scale-110",
+                    swatchSize,
+                    selected
+                      ? `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
+                      : "border-border/40"
+                  )}
+                  style={{ backgroundColor: hex }}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      <section className="grid grid-cols-[3rem_1fr] items-start gap-1.5" aria-label="More colors">
+        <p className="pt-1 text-[8px] font-medium uppercase tracking-wide text-muted-foreground">More</p>
+        <div>
+          <AppColorPicker
+            value={value}
+            extraColors={[...legacyTextColors, ...legacyHighlightColors, ...extra]}
+            onChange={applyCustomColor}
+          >
+            <button
+              type="button"
+              title="More colors"
+              aria-label="More colors"
+              className={cn(
+                "flex items-center justify-center rounded-full border border-border/40",
+                "bg-gradient-to-br from-red-500 via-green-500 to-blue-600 text-[10px] font-bold text-white",
+                "transition-transform hover:scale-110",
+                swatchSize
+              )}
+            >
+              +
+            </button>
+          </AppColorPicker>
+        </div>
+      </section>
     </div>
   );
 }

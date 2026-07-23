@@ -59,6 +59,7 @@ export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
 export type BoardColorMode = "auto" | "custom" | "transparent";
+export type BoardTexture = "none" | "paper" | "linen" | "grain";
 
 export type RadialColorScheme =
   | "spectrum"
@@ -160,6 +161,8 @@ export interface BoardSettings {
   /** Whether the canvas follows the app theme, uses a fixed color, or is transparent. */
   canvasBackgroundMode?: BoardColorMode;
   canvasBackgroundColor?: string;
+  /** Optional CSS-only texture layered over the canvas color. */
+  canvasTexture?: BoardTexture;
   /** Whether dots/grid follow the app theme, use a fixed color, or are transparent. */
   gridColorMode?: BoardColorMode;
   gridColor?: string;
@@ -699,6 +702,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   defaultFont: "Inter",
   defaultFontSize: 14,
   canvasBackgroundMode: "auto",
+  canvasTexture: "none",
   gridColorMode: "auto",
   gridSpacing: 32,
   gridSize: 32,

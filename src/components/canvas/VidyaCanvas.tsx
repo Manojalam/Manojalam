@@ -60,6 +60,7 @@ import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
 import { boardColorCssValue } from "@/lib/canvas/board-colors";
+import { boardTextureStyle } from "@/lib/canvas/board-textures";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import {
   isExternalNoteNode,
@@ -1362,6 +1363,7 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
     "canvas",
     settings.canvasBackgroundMode
   );
+  const canvasTextureStyle = boardTextureStyle(settings.canvasTexture);
   const gridColor = boardColorCssValue(settings.gridColor, "grid", settings.gridColorMode);
 
   const clearLongPressPan = useCallback(() => {
@@ -1544,7 +1546,10 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       }}
       onMoveEnd={(_, viewport) => setStoredViewport(viewport)}
       className="vidya-canvas-bg"
-      style={{ "--board-canvas-bg": canvasBackgroundColor } as React.CSSProperties}
+      style={{
+        "--board-canvas-bg": canvasBackgroundColor,
+        ...canvasTextureStyle,
+      } as React.CSSProperties}
     >
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
