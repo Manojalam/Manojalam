@@ -24,8 +24,12 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import {
   transliterate,
+  DEVANAGARI_CONSONANTS,
+  DEVANAGARI_NUMERALS,
   IAST_QUICK_INSERT,
   DEVANAGARI_QUICK_INSERT,
+  DEVANAGARI_VOWEL_MARKS,
+  DEVANAGARI_VOWELS,
   type InputScheme,
   type OutputScheme,
 } from "@/lib/sanskrit/transliterate";
@@ -167,6 +171,47 @@ export function SanskritToolsPanel() {
               <div className="mt-1 flex flex-wrap gap-1">
                 {IAST_QUICK_INSERT.map(({ label, char }) => (
                   <Button key={label} title={`Insert ${label}`} variant="outline" size="sm" className="h-7 px-2 font-iast" onClick={() => insertChar(char)}>
+                    {char}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Devanāgarī vowels</Label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {DEVANAGARI_VOWELS.map((char) => (
+                  <Button key={char} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
+                    {char}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Devanāgarī consonants</Label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {DEVANAGARI_CONSONANTS.map((char) => (
+                  <Button key={char} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
+                    {char}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Vowel marks &amp; virāma</Label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {DEVANAGARI_VOWEL_MARKS.map((char) => (
+                  <Button key={char} variant="outline" size="sm" className="h-7 min-w-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
+                    <span aria-hidden="true">◌{char}</span>
+                    <span className="sr-only">Insert Devanāgarī mark {char}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Devanāgarī numerals</Label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {DEVANAGARI_NUMERALS.map((char) => (
+                  <Button key={char} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
                     {char}
                   </Button>
                 ))}
