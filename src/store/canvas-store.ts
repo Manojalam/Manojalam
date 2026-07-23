@@ -44,6 +44,8 @@ import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import {
   clearLayoutEdgeRouting,
   clearLayoutNodeGeometry,
+  matrixFrameBelongsToLayoutScope,
+  removeStaleGeneratedMatrixFrames,
 } from "@/lib/layout/layout-conversion";
 import {
   computeMatrixLayout,
@@ -728,7 +730,11 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
   const withoutCurrentFrame = nodes.filter((n) => {
     const frameKey = autoMatrixFrameKey(n);
     if (!frameKey) return true;
-    return key !== BOARD_MATRIX_FRAME_KEY && frameKey !== key;
+    if (key === BOARD_MATRIX_FRAME_KEY) return false;
+    // A parent conversion owns every generated frame inside its hierarchy.
+    // Keeping nested matrix frames here leaves empty rectangular enclosures
+    // after the nodes have been regenerated as a tree, list, or other chart.
+    return !matrixFrameBelongsToLayoutScope(frameKey, key, scopeIds);
   });
 
   if (!enabled) return withoutCurrentFrame;
@@ -1681,11 +1687,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       return before.parentId !== after.parentId
         || JSON.stringify(before.childOrder ?? []) !== JSON.stringify(after.childOrder ?? []);
     });
+    const activeLayoutNodes = removeStaleGeneratedMatrixFrames(parentedNodes);
     // Ensure every edge has explicit handles so multi-handle nodes render cleanly.
-    const handledEdges = assignDefaultHandles(parentedNodes, persistedEdges);
-    const normalizedFlowchartEdges = normalizeImplicitFlowchartRoutes(parentedNodes, handledEdges);
-    const flowchartEdges = refreshAutomaticFlowchartHandles(parentedNodes, normalizedFlowchartEdges);
-    const normalizedNodes = normalizeSunburstChartSizes(parentedNodes, buildHierarchy(parentedNodes, flowchartEdges));
+    const handledEdges = assignDefaultHandles(activeLayoutNodes, persistedEdges);
+    const normalizedFlowchartEdges = normalizeImplicitFlowchartRoutes(activeLayoutNodes, handledEdges);
+    const flowchartEdges = refreshAutomaticFlowchartHandles(activeLayoutNodes, normalizedFlowchartEdges);
+    const normalizedNodes = normalizeSunburstChartSizes(activeLayoutNodes, buildHierarchy(activeLayoutNodes, flowchartEdges));
     const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, flowchartEdges);
     const nodes = styledBoard.nodes;
     const edges = styledBoard.edges;
