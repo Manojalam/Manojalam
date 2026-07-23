@@ -309,6 +309,7 @@ function SymbolAppearanceControls({
             value={appearance.fillColor ?? "#3b82f6"}
             onChange={(color) => onChange({ ...appearance, fillColor: color })}
             align="end"
+            contentClassName="z-[10002]"
           >
             <button
               type="button"
@@ -332,6 +333,7 @@ function SymbolAppearanceControls({
             value={appearance.borderColor ?? "#60a5fa"}
             onChange={(color) => onChange({ ...appearance, borderColor: color })}
             align="end"
+            contentClassName="z-[10002]"
           >
             <button
               type="button"
