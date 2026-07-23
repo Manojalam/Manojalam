@@ -45,6 +45,7 @@ export {
   DEVANAGARI_VOWEL_MARKS,
   DEVANAGARI_VOWELS,
   IAST_QUICK_INSERT,
+  PHONETIC_SYMBOLS,
 } from "@/lib/text-tools";
 
 export const GRAMMAR_CATEGORY_LABELS: Record<string, string> = {

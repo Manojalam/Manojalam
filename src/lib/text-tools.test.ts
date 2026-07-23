@@ -49,16 +49,20 @@ test("organizes a broad reusable symbol library", () => {
 
 test("includes Sanskrit phonetic and Vedic signs", () => {
   const characters: readonly string[] = DEVANAGARI_QUICK_INSERT.map(({ char }) => char);
-  for (const character of ["ँ", "ं", "ः", "ᳵ", "ᳶ"]) {
+  for (const character of ["ँ", "ं", "ः", ")(", "ᳶ"]) {
     assert.ok(characters.includes(character), `Expected ${character} in the Devanāgarī palette`);
   }
-  const rareSigns = DEVANAGARI_QUICK_INSERT.filter(({ char }) => char === "ᳵ" || char === "ᳶ");
-  assert.ok(rareSigns.every((symbol) =>
-    "appearance" in symbol && symbol.appearance.font === "tiro-devanagari"
-  ));
-  assert.ok(rareSigns.every((symbol) =>
-    "appearance" in symbol && symbol.appearance.scale === 1.2
-  ));
+  const jihvamuliya = DEVANAGARI_QUICK_INSERT.find((symbol) =>
+    "semanticId" in symbol && symbol.semanticId === "jihvamuliya"
+  );
+  const upadhmaniya = DEVANAGARI_QUICK_INSERT.find((symbol) =>
+    "semanticId" in symbol && symbol.semanticId === "upadhmaniya"
+  );
+  assert.equal(jihvamuliya?.char, ")(");
+  assert.equal(jihvamuliya?.appearance.scale, 1.1);
+  assert.equal(upadhmaniya?.char, "ᳶ");
+  assert.equal(upadhmaniya?.appearance.scale, 1.2);
+  assert.equal("font" in (upadhmaniya?.appearance ?? {}), false);
 });
 
 test("includes semantic breath and articulation markers", () => {
@@ -96,8 +100,9 @@ test("includes full Sanskrit character groups for chart authoring", () => {
   assert.deepEqual(DEVANAGARI_NUMERALS, ["०", "१", "२", "३", "४", "५", "६", "७", "८", "९"]);
   assert.deepEqual(
     SANSKRIT_SYMBOL_GROUPS.map(({ id }) => id),
-    ["iast", "vowels", "consonants", "vowel-marks", "numerals", "vedic"]
+    ["articulation", "iast", "vowels", "consonants", "vowel-marks", "numerals", "vedic"]
   );
+  assert.equal(SANSKRIT_SYMBOL_GROUPS[0].symbols, PHONETIC_SYMBOLS);
 });
 
 test("converts supported characters to superscript and subscript", () => {

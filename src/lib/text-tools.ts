@@ -100,17 +100,17 @@ export const DEVANAGARI_QUICK_INSERT = [
   { label: "Visarga", char: "ः" },
   {
     label: "Jihvāmūlīya · जिह्वामूलीय",
-    char: "ᳵ",
-    keywords: ["jihvamuliya", "jihvāmūlīya", "velar", "visarga"],
+    char: ")(",
+    keywords: ["jihvamuliya", "jihvāmūlīya", "velar", "visarga", "rotated parentheses"],
     semanticId: "jihvamuliya",
-    appearance: { font: "tiro-devanagari", scale: 1.2 },
+    appearance: { scale: 1.1 },
   },
   {
     label: "Upadhmānīya · उपध्मानीय",
     char: "ᳶ",
     keywords: ["upadhmaniya", "upadhmānīya", "labial", "visarga"],
     semanticId: "upadhmaniya",
-    appearance: { font: "tiro-devanagari", scale: 1.2 },
+    appearance: { scale: 1.2 },
   },
   { label: "Daṇḍa", char: "।" },
   { label: "Double daṇḍa", char: "॥" },
@@ -229,6 +229,7 @@ export const GENERAL_SYMBOL_GROUPS = [
 ] as const satisfies readonly SymbolPaletteGroup[];
 
 export const SANSKRIT_SYMBOL_GROUPS = [
+  { id: "articulation", label: "Articulation markers", symbols: PHONETIC_SYMBOLS },
   { id: "iast", label: "IAST", symbols: IAST_QUICK_INSERT },
   { id: "vowels", label: "Devanāgarī vowels", symbols: DEVANAGARI_VOWELS },
   { id: "consonants", label: "Devanāgarī consonants", symbols: DEVANAGARI_CONSONANTS },

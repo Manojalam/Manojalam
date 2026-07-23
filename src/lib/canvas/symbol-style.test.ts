@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { hasVisibleSymbolStyle, symbolMarkStyle } from "./symbol-style";
+import {
+  hasVisibleSymbolStyle,
+  semanticSymbolRotation,
+  symbolMarkStyle,
+} from "./symbol-style";
 
 test("serializes an enclosed filled Tiro symbol into durable inline styles", () => {
   const style = symbolMarkStyle({
@@ -32,4 +36,13 @@ test("semantic identity keeps a plain articulation marker editable", () => {
     hasVisibleSymbolStyle({ enclosure: "none", scale: 1 }, "alpaprana"),
     true
   );
+});
+
+test("Jihvāmūlīya always renders the literal parenthesis pair rotated 90 degrees", () => {
+  assert.equal(semanticSymbolRotation("jihvamuliya"), 90);
+  assert.match(
+    symbolMarkStyle({ semanticId: "jihvamuliya", scale: 1.1 }),
+    /transform:rotate\(90deg\)/
+  );
+  assert.equal(semanticSymbolRotation("upadhmaniya"), 0);
 });
