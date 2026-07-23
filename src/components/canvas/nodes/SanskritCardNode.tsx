@@ -70,7 +70,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
         data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
-          matrixCell ? "rounded-md shadow-none" : "",
+          matrixCell ? "overflow-hidden rounded-md shadow-none" : "",
           "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}

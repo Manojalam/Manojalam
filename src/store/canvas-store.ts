@@ -964,7 +964,7 @@ const AUTOFIT_FIELDS = new Set([
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
   "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow",
-  "matrixWidthOverride", "matrixHeightOverride",
+  "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,

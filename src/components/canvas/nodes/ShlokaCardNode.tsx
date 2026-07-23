@@ -80,7 +80,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
-          matrixCell ? "rounded-md shadow-none" : "",
+          matrixCell ? "overflow-hidden rounded-md shadow-none" : "",
           "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}

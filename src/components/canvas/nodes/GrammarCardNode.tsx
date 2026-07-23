@@ -54,7 +54,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
-          matrixCell ? "rounded-md shadow-none" : "",
+          matrixCell ? "overflow-hidden rounded-md shadow-none" : "",
           "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}

@@ -91,6 +91,12 @@ export const MATRIX_USER_MIN_COLUMN_WIDTH = 80;
 export const MATRIX_USER_MAX_COLUMN_WIDTH = 1200;
 export const MATRIX_FIRST_COLUMN_MIN_WIDTH = 136;
 export const MATRIX_HEADER_MIN_WIDTH = 220;
+export const MATRIX_MIN_SIBLING_GAP = 0;
+export const MATRIX_MAX_SIBLING_GAP = 240;
+export const MATRIX_MIN_TABLE_WIDTH = 160;
+export const MATRIX_MAX_TABLE_WIDTH = 6000;
+export const MATRIX_MIN_TABLE_HEIGHT = 100;
+export const MATRIX_MAX_TABLE_HEIGHT = 6000;
 
 export const MATRIX_DENSITY_SETTINGS: Record<MatrixTableDensity, DensitySettings> = {
   compact: {
@@ -125,6 +131,15 @@ function positiveNumber(value: unknown): number | null {
   if (typeof value === "string") {
     const parsed = Number.parseFloat(value);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function nonNegativeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
   }
   return null;
 }
@@ -315,7 +330,10 @@ function requiredCellHeight(
   minimum = settings.minRowHeight
 ): number {
   const data = (node.data ?? {}) as Record<string, unknown>;
-  const userHeight = positiveNumber(data.matrixHeightOverride) ?? 0;
+  const userHeight = positiveNumber(data.matrixHeightOverride);
+  if (userHeight) {
+    return Math.ceil(clamp(userHeight, MATRIX_DENSITY_SETTINGS.compact.minRowHeight, MATRIX_MAX_TABLE_HEIGHT));
+  }
   const text = nodeText(node);
   const metrics = fontMetrics(node);
   const usableWidth = Math.max(48, width - settings.paddingX * 2);
@@ -344,7 +362,6 @@ function requiredCellHeight(
   const textHeight = estimatedLines * metrics.lineHeight + settings.paddingY * 2;
   return Math.ceil(Math.max(
     minimum,
-    userHeight,
     textHeight,
     measuredHeight,
     measuredLinesHeight
@@ -542,6 +559,18 @@ function hasVerticalMatrixBranch(
   return visit(rootId, "horizontal", new Set());
 }
 
+function matrixSiblingGapForNode(
+  nodeId: string,
+  fallback: number,
+  byId: Map<string, Node>
+): number {
+  const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+  const storedGap = nonNegativeNumber(data.matrixSiblingGap);
+  return storedGap === null
+    ? fallback
+    : clamp(storedGap, MATRIX_MIN_SIBLING_GAP, MATRIX_MAX_SIBLING_GAP);
+}
+
 function hasFoldedMatrixBranch(
   rootId: string,
   hierarchy: Hierarchy,
@@ -582,6 +611,27 @@ function translateOrientedCells(
   dy: number
 ): OrientedBranchCell[] {
   return cells.map((cell) => ({ ...cell, x: cell.x + dx, y: cell.y + dy }));
+}
+
+function hasExplicitMatrixGeometry(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): boolean {
+  const visit = (nodeId: string, ancestors: Set<string>): boolean => {
+    if (ancestors.has(nodeId)) return false;
+    const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+    if (
+      positiveNumber(data.matrixWidthOverride)
+      || positiveNumber(data.matrixHeightOverride)
+      || nonNegativeNumber(data.matrixSiblingGap) !== null
+    ) return true;
+    const nextAncestors = new Set(ancestors).add(nodeId);
+    return visibleChildren(nodeId, hierarchy, byId)
+      .filter((childId) => !nextAncestors.has(childId))
+      .some((childId) => visit(childId, nextAncestors));
+  };
+  return visit(rootId, new Set());
 }
 
 type StretchTrack = { start: number; end: number };
@@ -810,6 +860,7 @@ function layoutOrientedChildSections(
   children: OrientedChildEntry[],
   childFlow: MatrixChildFlow,
   settings: DensitySettings,
+  siblingGap: number,
   minimumWidth = 0,
   minimumHeight = 0
 ): OrientedBranchLayout {
@@ -819,19 +870,19 @@ function layoutOrientedChildSections(
     parentData,
     siblingGroup.children,
     childFlow,
-    settings.cellGap
+    siblingGap
   );
   // Fold is a continuation of the same Matrix, so it uses the same thin gap as
   // every other cell boundary. A larger separator exposes the canvas between
   // cells and makes the continuation look like a broken table.
-  const foldGap = sections.length > 1 ? settings.cellGap : 0;
+  const foldGap = sections.length > 1 ? siblingGap : 0;
 
   if (childFlow === "column") {
     const naturalSections = sections.map((section) => ({
       children: section,
       width: Math.max(...section.map((child) => child.layout.width)),
       height: section.reduce((sum, child) => sum + child.layout.height, 0)
-        + settings.cellGap * (section.length - 1),
+        + siblingGap * (section.length - 1),
     }));
     const naturalWidth = naturalSections.reduce((sum, section) => sum + section.width, 0)
       + foldGap * (naturalSections.length - 1);
@@ -853,7 +904,7 @@ function layoutOrientedChildSections(
           + proportionalShare(extraHeight, childIndex, section.children.length);
         const stretched = stretchOrientedBranch(child.layout, sectionWidth, childHeight);
         cells.push(...translateOrientedCells(stretched.cells, sectionX, childY));
-        childY += stretched.height + settings.cellGap;
+        childY += stretched.height + siblingGap;
       });
       sectionX += sectionWidth + foldGap;
     });
@@ -863,7 +914,7 @@ function layoutOrientedChildSections(
   const naturalSections = sections.map((section) => ({
     children: section,
     width: section.reduce((sum, child) => sum + child.layout.width, 0)
-      + settings.cellGap * (section.length - 1),
+      + siblingGap * (section.length - 1),
     height: Math.max(...section.map((child) => child.layout.height)),
   }));
   const naturalHeight = naturalSections.reduce((sum, section) => sum + section.height, 0)
@@ -884,7 +935,7 @@ function layoutOrientedChildSections(
         + proportionalShare(extraWidth, childIndex, section.children.length);
       const stretched = stretchOrientedBranch(child.layout, childWidth, sectionHeight);
       cells.push(...translateOrientedCells(stretched.cells, childX, sectionY));
-      childX += stretched.width + settings.cellGap;
+      childX += stretched.width + siblingGap;
     });
     sectionY += sectionHeight + foldGap;
   });
@@ -922,10 +973,13 @@ function computeOrientedMatrixLayout(
   ): OrientedBranchLayout => {
     const node = byId.get(nodeId);
     if (!node || ancestors.has(nodeId)) return { width: 0, height: 0, cells: [] };
+    const data = (node.data ?? {}) as Record<string, unknown>;
     const orientation = matrixOrientationForNode(nodeId, inherited, byId);
     const childFlow = matrixChildFlowForNode(nodeId, orientation, byId);
-    const width = columnWidths[column]
-      ?? preferredCellWidth(node, column, settings);
+    const exactWidth = positiveNumber(data.matrixWidthOverride);
+    const width = exactWidth
+      ? Math.ceil(clamp(exactWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH))
+      : columnWidths[column] ?? preferredCellWidth(node, column, settings);
     const ownRequiredHeight = requiredCellHeight(node, width, settings);
     const nextAncestors = new Set(ancestors).add(nodeId);
     const children = visibleChildren(nodeId, hierarchy, byId)
@@ -954,12 +1008,13 @@ function computeOrientedMatrixLayout(
       };
     }
 
-    const data = (node.data ?? {}) as Record<string, unknown>;
+    const siblingGap = matrixSiblingGapForNode(nodeId, settings.cellGap, byId);
     const childArea = layoutOrientedChildSections(
       data,
       children,
       childFlow,
       settings,
+      siblingGap,
       orientation === "vertical" ? width : 0,
       orientation === "horizontal" ? ownRequiredHeight : 0
     );
@@ -1021,6 +1076,7 @@ function computeOrientedMatrixLayout(
     builtRootChildren,
     rootChildFlow,
     settings,
+    matrixSiblingGapForNode(rootId, settings.cellGap, byId),
     preferredHeaderWidth,
     0
   );
@@ -1107,6 +1163,57 @@ function computeOrientedMatrixLayout(
   };
 }
 
+function applyMatrixTableSizeOverrides(
+  result: MatrixLayoutResult,
+  root: Node,
+  byId: Map<string, Node>
+): MatrixLayoutResult {
+  const data = (root.data ?? {}) as Record<string, unknown>;
+  const requestedWidth = positiveNumber(data.matrixTableWidthOverride);
+  const requestedHeight = positiveNumber(data.matrixTableHeightOverride);
+  if (!requestedWidth && !requestedHeight) return result;
+
+  const targetWidth = requestedWidth
+    ? clamp(requestedWidth, MATRIX_MIN_TABLE_WIDTH, MATRIX_MAX_TABLE_WIDTH)
+    : result.bounds.width;
+  const targetHeight = requestedHeight
+    ? clamp(requestedHeight, MATRIX_MIN_TABLE_HEIGHT, MATRIX_MAX_TABLE_HEIGHT)
+    : result.bounds.height;
+  const scaleX = targetWidth / Math.max(1, result.bounds.width);
+  const scaleY = targetHeight / Math.max(1, result.bounds.height);
+  const originX = result.bounds.left;
+  const originY = result.bounds.top;
+  const scaleCell = (cell: MatrixCellGeometry): MatrixCellGeometry => ({
+    ...cell,
+    x: originX + (cell.x - originX) * scaleX,
+    y: originY + (cell.y - originY) * scaleY,
+    width: cell.width * scaleX,
+    height: cell.height * scaleY,
+    requiredHeight: cell.requiredHeight * scaleY,
+  });
+  const header = scaleCell(result.header);
+  const cells = result.cells.map(scaleCell);
+  const placements: Record<string, MatrixPlacement> = {};
+  for (const cell of [header, ...cells]) {
+    const node = byId.get(cell.nodeId);
+    if (!node) continue;
+    const position = nodePositionForRect(node, cell.x, cell.y, cell.width, cell.height);
+    placements[cell.nodeId] = { ...position, width: cell.width, height: cell.height };
+  }
+
+  return {
+    ...result,
+    cells,
+    placements,
+    columnWidths: result.columnWidths.map((width) => width * scaleX),
+    columnX: result.columnX.map((x) => originX + (x - originX) * scaleX),
+    rowHeights: result.rowHeights.map((height) => height * scaleY),
+    rowY: result.rowY.map((y) => originY + (y - originY) * scaleY),
+    header,
+    bounds: createNodeRect(result.bounds.id, originX, originY, targetWidth, targetHeight),
+  };
+}
+
 export function computeMatrixLayout(
   rootId: string,
   hierarchy: Hierarchy,
@@ -1182,8 +1289,9 @@ export function computeMatrixLayout(
     hasVerticalMatrixBranch(rootId, hierarchy, byId)
     || hasFoldedMatrixBranch(rootId, hierarchy, byId)
     || hasExplicitMatrixChildFlow(rootId, hierarchy, byId)
+    || hasExplicitMatrixGeometry(rootId, hierarchy, byId)
   ) {
-    return computeOrientedMatrixLayout(
+    return applyMatrixTableSizeOverrides(computeOrientedMatrixLayout(
       rootId,
       hierarchy,
       byId,
@@ -1195,7 +1303,7 @@ export function computeMatrixLayout(
       settings,
       tableX,
       tableY
-    );
+    ), root, byId);
   }
 
   const columnX: number[] = [];
@@ -1308,7 +1416,7 @@ export function computeMatrixLayout(
     console.warn("[matrix-layout] geometry diagnostics", diagnostics);
   }
 
-  return {
+  return applyMatrixTableSizeOverrides({
     rootId,
     density,
     orientation: storedOrientation(rootData.matrixOrientation) ?? "horizontal",
@@ -1322,5 +1430,5 @@ export function computeMatrixLayout(
     header,
     bounds,
     diagnostics,
-  };
+  }, root, byId);
 }
