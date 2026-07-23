@@ -24,7 +24,10 @@ import {
   type TextToolAction,
 } from "@/lib/text-tools";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { semanticSymbolRotation } from "@/lib/canvas/symbol-style";
+import {
+  semanticSymbolFontFamily,
+  semanticSymbolRotation,
+} from "@/lib/canvas/symbol-style";
 
 type NativeTextTarget = HTMLInputElement | HTMLTextAreaElement;
 type EditableTarget = NativeTextTarget | HTMLElement;
@@ -69,6 +72,7 @@ function appearanceStyle(
   const normalized = normalizeSymbolAppearance(appearance);
   const enclosed = normalized.enclosure !== "none";
   const rotation = semanticSymbolRotation(semanticId);
+  const semanticFont = semanticSymbolFontFamily(semanticId);
   return {
     alignItems: "center",
     backgroundColor: enclosed ? normalized.fillColor ?? "transparent" : undefined,
@@ -78,9 +82,9 @@ function appearanceStyle(
       : normalized.enclosure === "rounded-square" ? "0.38em" : normalized.enclosure === "square" ? "0.12em" : undefined,
     boxSizing: "border-box",
     display: "inline-flex",
-    fontFamily: normalized.font === "tiro-devanagari"
+    fontFamily: semanticFont ?? (normalized.font === "tiro-devanagari"
       ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
-      : undefined,
+      : undefined),
     fontSize: `${normalized.scale ?? 1}em`,
     height: enclosed ? "1.45em" : "1.15em",
     justifyContent: "center",

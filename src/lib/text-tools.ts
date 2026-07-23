@@ -8,6 +8,9 @@ export type SemanticSymbolId =
   | "jihvamuliya"
   | "upadhmaniya";
 
+/** Keep the authored Unicode character stable; presentation is handled separately. */
+export const UPADHMANIYA_CHARACTER = "\u1cf6";
+
 export interface SymbolAppearance {
   enclosure?: SymbolEnclosure;
   fillColor?: string;
@@ -103,11 +106,11 @@ export const DEVANAGARI_QUICK_INSERT = [
     char: ")(",
     keywords: ["jihvamuliya", "jihvāmūlīya", "velar", "visarga", "rotated parentheses"],
     semanticId: "jihvamuliya",
-    appearance: { scale: 1.1 },
+    appearance: { scale: 1.2 },
   },
   {
     label: "Upadhmānīya · उपध्मानीय",
-    char: "ᳶ",
+    char: UPADHMANIYA_CHARACTER,
     keywords: ["upadhmaniya", "upadhmānīya", "labial", "visarga"],
     semanticId: "upadhmaniya",
     appearance: { scale: 1.2 },

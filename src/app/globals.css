@@ -330,6 +330,15 @@ body {
 /* Inline span styles from TextStyle extension must override inherited values */
 .ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
 
+/* U+1CF6 must keep the exact authored character, but Noto draws only its
+   upper half and Tiro substitutes a Bengali form. These local font fallbacks
+   contain the complete Upadhmānīya curves. The raw-symbol attribute comes
+   from an editor decoration and is deliberately absent from saved HTML. */
+[data-vidya-raw-symbol="upadhmaniya"],
+[data-vidya-symbol="true"][data-symbol-id="upadhmaniya"] {
+  font-family: Siddhanta, "Nirmala UI", "Noto Sans Devanagari", sans-serif !important;
+}
+
 /* Every shape label uses the same word-boundary wrapping policy. A phrase may
    wrap at whitespace; one unbroken token is fitted instead of split. */
 [data-shape-label-content="true"] .ProseMirror {

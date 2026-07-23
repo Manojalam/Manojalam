@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   hasVisibleSymbolStyle,
+  semanticSymbolFontFamily,
   semanticSymbolRotation,
   symbolMarkStyle,
 } from "./symbol-style";
@@ -45,4 +46,16 @@ test("Jihvāmūlīya always renders the literal parenthesis pair rotated 90 degr
     /transform:rotate\(90deg\)/
   );
   assert.equal(semanticSymbolRotation("upadhmaniya"), 0);
+});
+
+test("Upadhmānīya uses a full-glyph font fallback without changing its character", () => {
+  assert.equal(
+    semanticSymbolFontFamily("upadhmaniya"),
+    "Siddhanta,'Nirmala UI','Noto Sans Devanagari',sans-serif"
+  );
+  assert.match(
+    symbolMarkStyle({ semanticId: "upadhmaniya", scale: 1.2 }),
+    /font-family:Siddhanta,'Nirmala UI','Noto Sans Devanagari',sans-serif/
+  );
+  assert.equal(semanticSymbolFontFamily("jihvamuliya"), undefined);
 });

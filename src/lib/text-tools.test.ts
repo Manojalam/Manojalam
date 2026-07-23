@@ -19,6 +19,7 @@ import {
   SANSKRIT_SYMBOL_GROUPS,
   STATUS_SYMBOLS,
   transformTextRange,
+  UPADHMANIYA_CHARACTER,
 } from "./text-tools";
 
 test("includes the visual markers used by annotated charts", () => {
@@ -59,8 +60,9 @@ test("includes Sanskrit phonetic and Vedic signs", () => {
     "semanticId" in symbol && symbol.semanticId === "upadhmaniya"
   );
   assert.equal(jihvamuliya?.char, ")(");
-  assert.equal(jihvamuliya?.appearance.scale, 1.1);
-  assert.equal(upadhmaniya?.char, "ᳶ");
+  assert.equal(jihvamuliya?.appearance.scale, 1.2);
+  assert.equal(upadhmaniya?.char, UPADHMANIYA_CHARACTER);
+  assert.equal(UPADHMANIYA_CHARACTER, "\u1cf6");
   assert.equal(upadhmaniya?.appearance.scale, 1.2);
   assert.equal("font" in (upadhmaniya?.appearance ?? {}), false);
 });

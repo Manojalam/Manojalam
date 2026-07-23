@@ -12,10 +12,24 @@ export function semanticSymbolRotation(semanticId?: SemanticSymbolId | null): nu
   return semanticId === "jihvamuliya" ? 90 : 0;
 }
 
+/**
+ * Noto and Tiro only draw part of U+1CF6 (or use the Bengali form). Siddhanta
+ * and Nirmala UI retain the full upper and lower curves. This changes only
+ * the glyph face; the underlying keyboard-entered character remains U+1CF6.
+ */
+export function semanticSymbolFontFamily(
+  semanticId?: SemanticSymbolId | null
+): string | undefined {
+  return semanticId === "upadhmaniya"
+    ? "Siddhanta,'Nirmala UI','Noto Sans Devanagari',sans-serif"
+    : undefined;
+}
+
 export function symbolMarkStyle(attributes: SymbolMarkAttributes): string {
   const appearance = normalizeSymbolAppearance(attributes);
   const enclosed = appearance.enclosure !== "none";
   const rotation = semanticSymbolRotation(attributes.semanticId);
+  const semanticFont = semanticSymbolFontFamily(attributes.semanticId);
   const styles = [
     "align-items:center",
     "box-sizing:border-box",
@@ -31,7 +45,9 @@ export function symbolMarkStyle(attributes: SymbolMarkAttributes): string {
     rotation ? "transform-origin:center" : "",
     rotation ? "white-space:nowrap" : "",
   ];
-  if (appearance.font === "tiro-devanagari") {
+  if (semanticFont) {
+    styles.push(`font-family:${semanticFont}`);
+  } else if (appearance.font === "tiro-devanagari") {
     styles.push("font-family:var(--font-tiro-devanagari),'Tiro Devanagari Sanskrit',serif");
   }
   if (enclosed) {
