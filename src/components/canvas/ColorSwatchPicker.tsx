@@ -1,10 +1,16 @@
 "use client";
 
-import { useRef } from "react";
-import { X } from "lucide-react";
+import { useId, useState } from "react";
+import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import {
+  colorInputValue,
+  normalizeHexColor,
+  rememberCustomColor,
+  VIVID_CHART_COLORS,
+} from "@/lib/canvas/custom-colors";
 import { useCanvasStore } from "@/store/canvas-store";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const PRESET_COLORS = [
   "#ffffff", // White
@@ -27,7 +33,7 @@ interface ColorSwatchPickerProps {
   onChange: (color: string) => void;
   /** Clears the color using caller-specific semantics. Defaults to onChange(""). */
   onClear?: () => void;
-  /** Called only for a color chosen through the native custom picker. */
+  /** Called for a color chosen through the vivid or exact custom-color panel. */
   onCustomColor?: (color: string) => void;
   /** Extra colors to show (e.g. recently used) */
   extra?: string[];
@@ -42,7 +48,9 @@ export function ColorSwatchPicker({
   extra = [],
   size = "md",
 }: ColorSwatchPickerProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [moreColorsOpen, setMoreColorsOpen] = useState(false);
+  const [hexDraft, setHexDraft] = useState("");
+  const exactColorInputId = useId();
   const sharedCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
   const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const legacyHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
@@ -61,10 +69,18 @@ export function ColorSwatchPicker({
   const handleSwatch = (hex: string) => {
     onChange(hex);
   };
-  const nativeValue = typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
-    ? value
-    : "#6366f1";
+  const nativeValue = colorInputValue(value, "#6366f1");
   const isCleared = !value || value === "transparent";
+  const exactColor = normalizeHexColor(hexDraft);
+
+  const applyCustomColor = (color: string) => {
+    const normalized = normalizeHexColor(color);
+    if (!normalized) return;
+    setSettings({ customColors: rememberCustomColor(sharedCustomColors, normalized) });
+    onCustomColor?.(normalized);
+    onChange(normalized);
+    setMoreColorsOpen(false);
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -105,42 +121,100 @@ export function ColorSwatchPicker({
         />
       ))}
 
-      {/* Custom color + button */}
-      <button
-        type="button"
-        title="Custom color…"
-        onClick={() => {
-          const input = inputRef.current;
-          if (!input) return;
-          try {
-            if (typeof input.showPicker === "function") input.showPicker();
-            else input.click();
-          } catch {
-            try { input.click(); } catch {}
-          }
+      <Popover
+        open={moreColorsOpen}
+        onOpenChange={(open) => {
+          setMoreColorsOpen(open);
+          if (open) setHexDraft(nativeValue);
         }}
-        className={cn(
-          "flex-none rounded-full border border-border/40 bg-gradient-to-br from-red-400 via-green-400 to-blue-400",
-          "flex items-center justify-center text-white text-[10px] font-bold hover:scale-110 transition-transform",
-          swatchSize
-        )}
-      >+</button>
-
-      {/* Hidden native color picker */}
-      <input
-        ref={inputRef}
-        type="color"
-        aria-label="Choose custom color"
-        name="custom-swatch-color"
-        value={nativeValue}
-        onChange={(event) => {
-          const color = event.target.value;
-          setSettings({ customColors: rememberCustomColor(sharedCustomColors, color) });
-          onCustomColor?.(color);
-          onChange(color);
-        }}
-        className="sr-only"
-      />
+      >
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            title="More vivid and exact colors"
+            aria-label="More vivid and exact colors"
+            className={cn(
+              "flex flex-none items-center justify-center rounded-full border border-border/40",
+              "bg-gradient-to-br from-red-500 via-green-500 to-blue-600 text-[10px] font-bold text-white",
+              "transition-transform hover:scale-110",
+              swatchSize
+            )}
+          >
+            +
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" sideOffset={6} className="w-64 space-y-3 p-3">
+          <div>
+            <p className="text-[11px] font-semibold text-foreground">Vivid chart colors</p>
+            <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+              Saturated colors designed for high-contrast diagrams.
+            </p>
+          </div>
+          <div className="grid grid-cols-8 gap-1.5" role="list" aria-label="Vivid chart colors">
+            {VIVID_CHART_COLORS.map(({ name, value: color }) => (
+              <button
+                key={color}
+                type="button"
+                title={`${name} · ${color}`}
+                aria-label={`${name} ${color}`}
+                onClick={() => applyCustomColor(color)}
+                className={cn(
+                  "relative h-5 w-5 rounded-full border border-white/25 shadow-sm transition-transform hover:scale-110",
+                  value?.toLowerCase() === color && "ring-2 ring-primary ring-offset-1 ring-offset-background"
+                )}
+                style={{ backgroundColor: color }}
+              >
+                {value?.toLowerCase() === color && (
+                  <Check className="absolute inset-0 m-auto h-3 w-3 text-white drop-shadow" />
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor={exactColorInputId} className="text-[10px] font-medium text-foreground">
+              Exact hex color
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                aria-label="Choose exact color visually"
+                value={colorInputValue(exactColor, nativeValue)}
+                onChange={(event) => setHexDraft(event.target.value)}
+                className="h-8 w-9 cursor-pointer rounded-md border border-input bg-background p-0.5"
+              />
+              <input
+                id={exactColorInputId}
+                type="text"
+                value={hexDraft}
+                spellCheck={false}
+                inputMode="text"
+                placeholder="#F0443E"
+                onChange={(event) => setHexDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && exactColor) applyCustomColor(exactColor);
+                }}
+                className={cn(
+                  "h-8 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[11px] uppercase outline-none",
+                  exactColor ? "border-input focus:border-primary" : "border-destructive/70"
+                )}
+              />
+              <button
+                type="button"
+                disabled={!exactColor}
+                title="Apply exact color"
+                aria-label="Apply exact color"
+                onClick={() => exactColor && applyCustomColor(exactColor)}
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-[9px] text-muted-foreground">
+              Enter six hex digits, with or without #.
+            </p>
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
