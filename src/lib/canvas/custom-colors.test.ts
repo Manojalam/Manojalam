@@ -47,15 +47,18 @@ test("converts generated HSL and RGB fills into visible hex swatches", () => {
   assert.equal(colorSwatchHex("transparent"), null);
 });
 
-test("offers general bright, light, strong, and neutral swatches", () => {
+test("offers general bright, light, strong, neutral, and metallic swatches", () => {
   assert.deepEqual(
     COLOR_SWATCH_GROUPS.map(({ name }) => name),
-    ["Bright", "Light", "Strong", "Neutral"]
+    ["Bright", "Light", "Strong", "Neutral", "Metallic"]
   );
   assert.ok(COLOR_SWATCH_GROUPS[0].colors.includes("#16b364"));
   assert.ok(COLOR_SWATCH_GROUPS[1].colors.includes("#c9f3d8"));
   assert.ok(COLOR_SWATCH_GROUPS[2].colors.includes("#087f5b"));
   assert.ok(COLOR_SWATCH_GROUPS[3].colors.includes("#ffffff"));
+  assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#d4af37"));
+  assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#c0c0c0"));
+  assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#2a3439"));
 });
 
 test("converts exact colors between hex, RGB, and HSV", () => {
