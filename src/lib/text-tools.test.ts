@@ -2,11 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CHART_MARKERS,
   clearScriptCharacters,
   convertToScript,
+  DEVANAGARI_QUICK_INSERT,
   replaceTextRange,
   transformTextRange,
 } from "./text-tools";
+
+test("includes the visual markers used by annotated charts", () => {
+  assert.deepEqual(CHART_MARKERS.map(({ char }) => char), ["🅰️", "Ⓜ️", "🌟", "🌼"]);
+});
+
+test("includes Sanskrit phonetic and Vedic signs", () => {
+  const characters: readonly string[] = DEVANAGARI_QUICK_INSERT.map(({ char }) => char);
+  for (const character of ["ँ", "ं", "ः", "ᳵ", "ᳶ"]) {
+    assert.ok(characters.includes(character), `Expected ${character} in the Devanāgarī palette`);
+  }
+});
 
 test("converts supported characters to superscript and subscript", () => {
   assert.equal(convertToScript("x2+y", "superscript"), "ˣ²⁺ʸ");

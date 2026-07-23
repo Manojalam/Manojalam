@@ -166,18 +166,18 @@ export function SanskritToolsPanel() {
               <Label className="text-xs text-muted-foreground">IAST diacritics</Label>
               <div className="mt-1 flex flex-wrap gap-1">
                 {IAST_QUICK_INSERT.map(({ label, char }) => (
-                  <Button key={label} variant="outline" size="sm" className="h-7 px-2 font-iast" onClick={() => insertChar(char)}>
-                    {label}
+                  <Button key={label} title={`Insert ${label}`} variant="outline" size="sm" className="h-7 px-2 font-iast" onClick={() => insertChar(char)}>
+                    {char}
                   </Button>
                 ))}
               </div>
             </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Devanāgarī symbols</Label>
+              <Label className="text-xs text-muted-foreground">Devanāgarī &amp; Vedic symbols</Label>
               <div className="mt-1 flex flex-wrap gap-1">
                 {DEVANAGARI_QUICK_INSERT.map(({ label, char }) => (
-                  <Button key={label} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
-                    {label}
+                  <Button key={label} title={`Insert ${label}`} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
+                    {char}
                   </Button>
                 ))}
               </div>
