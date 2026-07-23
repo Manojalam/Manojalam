@@ -1132,3 +1132,66 @@ test("a widened nested Matrix moves following outer branches without breaking th
   );
   assert.deepEqual(packed.find((node) => node.id === "unrelated")!.position, { x: 40, y: 700 });
 });
+
+test("a shrunken nested Matrix closes a stale outer-layout gap exactly once", () => {
+  const nodes: Node[] = [
+    {
+      id: "outer",
+      type: "shape",
+      position: { x: 80, y: 40 },
+      measured: { width: 180, height: 64 },
+      data: { layoutMode: "vertical", childOrder: ["matrix", "other"] },
+    },
+    {
+      id: "matrix",
+      type: "shape",
+      position: { x: 100, y: 180 },
+      measured: { width: 360, height: 120 },
+      data: { parentId: "outer", childOrder: ["matrix-child"], layoutMode: "matrix" },
+    },
+    {
+      id: "matrix-child",
+      type: "shape",
+      position: { x: 300, y: 300 },
+      measured: { width: 160, height: 80 },
+      data: { parentId: "matrix", childOrder: [] },
+    },
+    {
+      id: "other",
+      type: "shape",
+      position: { x: 1200, y: 180 },
+      measured: { width: 180, height: 72 },
+      data: { parentId: "outer", childOrder: ["other-child"] },
+    },
+    {
+      id: "other-child",
+      type: "shape",
+      position: { x: 1230, y: 310 },
+      measured: { width: 160, height: 64 },
+      data: { parentId: "other", childOrder: [] },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "outer-matrix", source: "outer", target: "matrix" },
+    { id: "matrix-child", source: "matrix", target: "matrix-child" },
+    { id: "outer-other", source: "outer", target: "other" },
+    { id: "other-child", source: "other", target: "other-child" },
+  ];
+  const hierarchy = buildHierarchy(nodes, edges);
+  const originalOther = nodes.find((node) => node.id === "other")!;
+  const originalOtherChild = nodes.find((node) => node.id === "other-child")!;
+  const packed = packSiblingsAfterNestedMatrix(nodes, hierarchy, "matrix");
+  const matrixRight = Math.max(
+    getNodeRect(packed.find((node) => node.id === "matrix")!).right,
+    getNodeRect(packed.find((node) => node.id === "matrix-child")!).right
+  );
+  const packedOther = packed.find((node) => node.id === "other")!;
+  const packedOtherChild = packed.find((node) => node.id === "other-child")!;
+
+  assert.equal(getNodeRect(packedOther).left, matrixRight + 42);
+  assert.equal(
+    packedOtherChild.position.x - originalOtherChild.position.x,
+    packedOther.position.x - originalOther.position.x
+  );
+  assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
+});
