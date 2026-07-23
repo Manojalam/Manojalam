@@ -97,6 +97,7 @@ import {
   normalizeBoardColorOverride,
   resolveBoardColorMode,
 } from "@/lib/canvas/board-colors";
+import { normalizeBoardTexture } from "@/lib/canvas/board-textures";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import { createExternalNoteNode } from "@/lib/canvas/node-note";
 import {
@@ -1905,6 +1906,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         "canvas",
         canvasBackgroundMode
       ),
+      canvasTexture: normalizeBoardTexture(rawSettings.canvasTexture),
       gridColorMode,
       gridColor: normalizeBoardColorOverride(rawSettings.gridColor, "grid", gridColorMode),
     };

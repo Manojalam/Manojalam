@@ -94,6 +94,10 @@ export function hexToHsv(value: unknown): HsvColor | null {
   return rgb ? rgbToHsv(rgb) : null;
 }
 
+function isPaletteNeutral({ s, v }: HsvColor): boolean {
+  return s < 12 || v < 18;
+}
+
 /**
  * Arrange a mixed palette into a predictable visual sequence:
  * light-to-dark neutrals, then colors around the hue wheel from red to pink.
@@ -121,8 +125,8 @@ export function arrangeColorPalette(values: readonly string[]): string[] {
         return left.hsv ? -1 : 1;
       }
 
-      const leftNeutral = left.hsv.s < 12;
-      const rightNeutral = right.hsv.s < 12;
+      const leftNeutral = isPaletteNeutral(left.hsv);
+      const rightNeutral = isPaletteNeutral(right.hsv);
       if (leftNeutral !== rightNeutral) return leftNeutral ? -1 : 1;
       if (leftNeutral && rightNeutral) {
         return right.hsv.v - left.hsv.v || left.index - right.index;
@@ -137,6 +141,41 @@ export function arrangeColorPalette(values: readonly string[]): string[] {
         || left.index - right.index;
     })
     .map(({ color }) => color);
+}
+
+export interface ColorPaletteFamily {
+  name: string;
+  colors: string[];
+}
+
+/** Keep related colors in labeled families while retaining the hue ordering within each family. */
+export function groupColorPalette(values: readonly string[]): ColorPaletteFamily[] {
+  const groups = new Map<string, string[]>([
+    ["Neutral", []],
+    ["Warm", []],
+    ["Green", []],
+    ["Blue", []],
+    ["Purple", []],
+    ["Pink", []],
+    ["Other", []],
+  ]);
+
+  for (const color of arrangeColorPalette(values)) {
+    const hsv = hexToHsv(color);
+    let family = "Other";
+    if (hsv) {
+      if (isPaletteNeutral(hsv)) family = "Neutral";
+      else if (hsv.h >= 345 || hsv.h < 70) family = "Warm";
+      else if (hsv.h < 190) family = "Green";
+      else if (hsv.h < 255) family = "Blue";
+      else if (hsv.h < 310) family = "Purple";
+      else family = "Pink";
+    }
+    groups.get(family)?.push(color);
+  }
+
+  return Array.from(groups, ([name, colors]) => ({ name, colors }))
+    .filter(({ colors }) => colors.length > 0);
 }
 
 export function hsvToHex({ h, s, v }: HsvColor): string {

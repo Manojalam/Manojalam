@@ -1,7 +1,10 @@
 import { classifyExportError, ExportError, toExportError } from "./errors";
 import { createPngExportPlan } from "./limits";
 import { collectPdfLinkAnnotations, createBoardPdf } from "./pdf";
-import { prepareReactFlowDomSvg } from "./dom-renderer";
+import {
+  prepareReactFlowDomSvg,
+  type ExportBackgroundTexture,
+} from "./dom-renderer";
 import { createSvgRasterDataUrl } from "./svg-raster-source";
 import type { ExportAssetWarning } from "./resources";
 import type {
@@ -28,6 +31,8 @@ export interface ExportBoardVisualOptions {
   filename: string;
   title?: string;
   background?: string | null;
+  /** CSS texture layered over the exported background. */
+  backgroundTexture?: ExportBackgroundTexture | null;
   /** Preserve translucent object colors against this matte even when the outer export is transparent. */
   appearanceBackground?: string | null;
   viewportTransform?: { x: number; y: number; zoom: number };
@@ -433,6 +438,7 @@ export async function exportBoardVisual(
       edgeIds: options.edgeIds,
       padding: 0,
       background: options.background,
+      backgroundTexture: options.backgroundTexture,
       appearanceBackground: options.appearanceBackground,
       title: options.title,
       signal: options.signal,
