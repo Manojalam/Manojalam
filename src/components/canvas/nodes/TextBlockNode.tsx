@@ -27,6 +27,7 @@ import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
+import { surfaceEffectStyle } from "@/lib/canvas/surface-effects";
 
 function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -144,6 +145,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
             border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
             borderRadius: bRadius,
+            ...surfaceEffectStyle(dd, borderColor),
             ...objectRotationStyle("text", dd),
           }}
           onDoubleClick={(event) => {

@@ -34,6 +34,7 @@ import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
+import { surfaceEffectStyle } from "@/lib/canvas/surface-effects";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -78,6 +79,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
+  const hasSurfaceEffect = typeof dd.surfaceEffect === "string";
 
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
@@ -153,12 +155,14 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
           className={cn(
             "absolute inset-0 p-1 transition-shadow",
             matrixCell && "overflow-hidden",
-            matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
+            selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+            !matrixCell && !hasSurfaceEffect && (selected ? "shadow-lg" : "shadow-md")
           )}
           style={{
             backgroundColor: themeAwareNodeFillColor(bg),
             border: `${bWidth}px ${bStyle} ${border}`,
             borderRadius: bRadius,
+            ...surfaceEffectStyle(dd, border),
             ...objectRotationStyle("sticky", dd),
           }}
           onDoubleClick={(event) => {

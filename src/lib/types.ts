@@ -387,6 +387,14 @@ export interface RadialChartData {
   rings?: RadialChartRing[];
 }
 
+export type SurfaceEffectPreset =
+  | "flat"
+  | "soft"
+  | "raised"
+  | "bevel"
+  | "glass"
+  | "glow";
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   color?: string;
@@ -400,6 +408,14 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** @deprecated Legacy pixel radius retained for old board compatibility. */
   borderRadius?: number;
   borderStyle?: "solid" | "dashed" | "dotted";
+  /** Reusable dimensional treatment for the node surface. */
+  surfaceEffect?: SurfaceEffectPreset;
+  /** Apparent extrusion or shadow distance in canvas pixels. */
+  surfaceEffectDepth?: number;
+  /** 0–100 opacity/intensity of the dimensional treatment. */
+  surfaceEffectStrength?: number;
+  /** Direction of the cast shadow in degrees; 0 points right and 90 points down. */
+  surfaceEffectAngle?: number;
   /** Whole-object visual rotation. Kept separate from chart and item-level rotations. */
   objectRotation?: number;
   /** @deprecated Legacy whole-object rotation retained for old boards. */

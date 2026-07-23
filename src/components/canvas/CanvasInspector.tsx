@@ -42,6 +42,7 @@ import type {
   RelationshipDiagramPalette,
   RelationshipDiagramItemStyle,
   AutoSizeMode,
+  SurfaceEffectPreset,
   VidyaEdgeData,
 } from "@/lib/types";
 import type { Edge, Node } from "@xyflow/react";
@@ -111,6 +112,13 @@ import {
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 import { lightenColor } from "@/lib/style-utils";
 import { FoldBranchControls } from "./FoldBranchControls";
+import {
+  normalizeSurfaceEffect,
+  SURFACE_EFFECT_PRESETS,
+  surfaceEffectPresetPatch,
+  surfaceEffectStyle,
+  type SurfaceEffectSettings,
+} from "@/lib/canvas/surface-effects";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -559,6 +567,10 @@ function supportsCornerRadius(node: Node): boolean {
   return ["rounded", "rectangle"].includes(shapeType);
 }
 
+function supportsSurfaceEffects(node: Node): boolean {
+  return ["mindmap", "shape", "sticky", "text"].includes(node.type ?? "");
+}
+
 function cornerRadiusPercentForNode(node: Node, fallback?: number): number {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const shapeType = data.shapeType as string | undefined;
@@ -733,6 +745,106 @@ function BorderStylePicker({ value, onChange }: {
           {s}
         </button>
       ))}
+    </div>
+  );
+}
+
+function SurfaceEffectsControl({
+  settings,
+  mixed = false,
+  onPreset,
+  onChange,
+  onChangeStart,
+}: {
+  settings: SurfaceEffectSettings;
+  mixed?: boolean;
+  onPreset: (preset: SurfaceEffectPreset) => void;
+  onChange: (
+    key: "surfaceEffectDepth" | "surfaceEffectStrength" | "surfaceEffectAngle",
+    value: number
+  ) => void;
+  onChangeStart?: () => void;
+}) {
+  const directional = !["flat", "glow"].includes(settings.preset);
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Surface effect">
+        {SURFACE_EFFECT_PRESETS.map((preset) => {
+          const active = !mixed && settings.preset === preset.id;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              title={preset.description}
+              className={cn(
+                "flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg border px-1 py-1.5 text-[9px] transition-colors",
+                active
+                  ? "border-primary bg-primary/10 font-medium text-primary"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+              onClick={() => onPreset(preset.id)}
+            >
+              <span
+                className="block h-4 w-8 rounded-[5px] border border-current bg-muted"
+                style={surfaceEffectStyle(surfaceEffectPresetPatch(preset.id), "#6366f1")}
+              />
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+      {mixed && (
+        <p className="text-[9px] leading-snug text-muted-foreground">
+          The selection contains mixed effects. Choose a preset to make them consistent.
+        </p>
+      )}
+      {settings.preset !== "flat" && !mixed && (
+        <>
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Depth</p>
+            <SliderControl
+              value={settings.depth}
+              min={0}
+              max={24}
+              step={1}
+              suffix="px"
+              onChangeStart={onChangeStart}
+              onChange={(value) => onChange("surfaceEffectDepth", value)}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Strength</p>
+            <SliderControl
+              value={settings.strength}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+              onChangeStart={onChangeStart}
+              onChange={(value) => onChange("surfaceEffectStrength", value)}
+            />
+          </div>
+          {directional && (
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Direction</p>
+              <SliderControl
+                value={settings.angle}
+                min={-180}
+                max={180}
+                step={5}
+                suffix="°"
+                onChangeStart={onChangeStart}
+                onChange={(value) => onChange("surfaceEffectAngle", value)}
+              />
+            </div>
+          )}
+        </>
+      )}
+      <p className="text-[9px] leading-snug text-muted-foreground">
+        Effects are visual only: box size, layout, text wrapping, and connector anchors stay unchanged.
+      </p>
     </div>
   );
 }
@@ -1678,6 +1790,25 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       ? commonValue("borderWidth") as number
       : isRadialMultiSelection ? 1 : 2;
     const commonBorderStyle = typeof commonValue("borderStyle") === "string" ? commonValue("borderStyle") as string : "solid";
+    const surfaceEffectNodes = selectedNodes.filter(supportsSurfaceEffects);
+    const selectedSurfaceEffects = surfaceEffectNodes.map((node) =>
+      normalizeSurfaceEffect((node.data ?? {}) as Record<string, unknown>)
+    );
+    const commonSurfaceEffect = selectedSurfaceEffects[0] ?? normalizeSurfaceEffect({});
+    const surfaceEffectsMixed = selectedSurfaceEffects.some((settings) =>
+      settings.preset !== commonSurfaceEffect.preset
+      || settings.depth !== commonSurfaceEffect.depth
+      || settings.strength !== commonSurfaceEffect.strength
+      || settings.angle !== commonSurfaceEffect.angle
+    );
+    const updateSelectedSurfaceEffects = (
+      patch: Record<string, unknown>,
+      captureHistory = false
+    ) => {
+      if (!surfaceEffectNodes.length) return;
+      if (captureHistory) pushHistory();
+      for (const node of surfaceEffectNodes) updateNodeData(node.id, patch);
+    };
     const multiFontGroups = groupFontsByCategory(FONT_OPTIONS);
     const radiusNodes = selectedNodes.filter(supportsCornerRadius);
     const firstRadius = radiusNodes.length ? cornerRadiusPercentForNode(radiusNodes[0]) : undefined;
@@ -2048,6 +2179,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </Button>
             )}
           </Section>
+
+          {surfaceEffectNodes.length > 0 && !isRadialMultiSelection && (
+            <Section label="Effects">
+              <SurfaceEffectsControl
+                settings={commonSurfaceEffect}
+                mixed={surfaceEffectsMixed}
+                onPreset={(preset) => updateSelectedSurfaceEffects(
+                  surfaceEffectPresetPatch(preset),
+                  true
+                )}
+                onChange={(key, value) => updateSelectedSurfaceEffects({ [key]: value })}
+                onChangeStart={pushHistory}
+              />
+            </Section>
+          )}
 
           <Section label="Border">
             <div>
@@ -3415,6 +3561,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ?? ((isRadialLayoutSector ? d.radialTextColor : d.textColor) as string | undefined)
     ?? "";
   const activeHighlightColor = selectedTextRange?.highlightColor ?? ((d.textHighlightColor as string) || "");
+  const surfaceEffectSettings = normalizeSurfaceEffect(d);
   const setRadialChart = (chart: RadialChartData) => setField("radialChart", chart);
   const enableRadialChart = (chart: RadialChartData) => {
     setRadialChart({ ...chart, enabled: true });
@@ -4723,6 +4870,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 suffix="%"
               />
             </div>
+          </Section>
+        )}
+
+        {isContentNode && !isRadialLayoutSector && (
+          <Section label="Effects" visible={singleNodeTab === "style"}>
+            <SurfaceEffectsControl
+              settings={surfaceEffectSettings}
+              onPreset={(preset) => {
+                pushHistory();
+                updateNodeData(selectedNode.id, surfaceEffectPresetPatch(preset));
+              }}
+              onChange={(key, value) => updateNodeData(selectedNode.id, { [key]: value })}
+              onChangeStart={pushHistory}
+            />
           </Section>
         )}
 
