@@ -144,6 +144,20 @@ function nonNegativeNumber(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Exact cell dimensions conflict with scaling the same table axis, so changing
+ * one releases that axis from an overall-size override. Sibling spacing does
+ * not: it must reflow inside the table's existing outer dimensions.
+ */
+export function matrixTableOverrideResetAxes(
+  patch: Record<string, unknown>
+): { width: boolean; height: boolean } {
+  return {
+    width: positiveNumber(patch.matrixWidthOverride) !== null,
+    height: positiveNumber(patch.matrixHeightOverride) !== null,
+  };
+}
+
 function storedSize(value: unknown): { width: number; height: number } | null {
   if (!value || typeof value !== "object") return null;
   const size = value as Record<string, unknown>;

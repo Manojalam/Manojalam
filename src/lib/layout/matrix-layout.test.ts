@@ -19,6 +19,7 @@ import {
   isMatrixHierarchyEdge,
   matrixNodeSizeDiffersFromPlacement,
   matrixRenderedSizeChanged,
+  matrixTableOverrideResetAxes,
   type MatrixLayoutResult,
 } from "./matrix-layout";
 
@@ -1002,6 +1003,21 @@ test("a parent's exact sibling gap is preserved between its direct children", ()
     assert.equal(gap, 24);
   }
   assertClean(result);
+});
+
+test("changing a sibling gap preserves overall Matrix size overrides", () => {
+  assert.deepEqual(
+    matrixTableOverrideResetAxes({ matrixSiblingGap: 2 }),
+    { width: false, height: false }
+  );
+  assert.deepEqual(
+    matrixTableOverrideResetAxes({ matrixWidthOverride: 310 }),
+    { width: true, height: false }
+  );
+  assert.deepEqual(
+    matrixTableOverrideResetAxes({ matrixHeightOverride: 100 }),
+    { width: false, height: true }
+  );
 });
 
 test("explicit Matrix cell dimensions are exact for selected leaf cells", () => {
