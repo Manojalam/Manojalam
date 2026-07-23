@@ -9,6 +9,7 @@ import {
 import { fittedContentScale } from "./canvas/node-sizing";
 import type { Size } from "./canvas/node-geometry";
 import { BOARD_THEME_COLORS } from "./canvas/board-colors";
+import { colorSwatchHex } from "./canvas/custom-colors";
 import { resolveLayoutFontSize } from "./layout/layout-presentation";
 
 /** CSS applied to the text-content container of a node.
@@ -279,12 +280,16 @@ function parseCssColor(color: string): { r: number; g: number; b: number; a: num
   const rgb = normalized.match(
     /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)$/
   );
-  if (!rgb) return null;
-  const channels = rgb.slice(1, 4).map(Number);
-  if (channels.some((channel) => channel < 0 || channel > 255)) return null;
-  const alpha = rgb[4] === undefined ? 1 : Number(rgb[4]);
-  if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
-  return { r: channels[0], g: channels[1], b: channels[2], a: alpha };
+  if (rgb) {
+    const channels = rgb.slice(1, 4).map(Number);
+    if (channels.some((channel) => channel < 0 || channel > 255)) return null;
+    const alpha = rgb[4] === undefined ? 1 : Number(rgb[4]);
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
+    return { r: channels[0], g: channels[1], b: channels[2], a: alpha };
+  }
+
+  const converted = colorSwatchHex(normalized);
+  return converted ? parseColor(converted) : null;
 }
 
 function compositeColor(
@@ -319,8 +324,6 @@ function contrastRatio(first: number, second: number): number {
 
 const AUTOMATIC_DARK_TEXT = "#111827";
 const AUTOMATIC_LIGHT_TEXT = "#f8fafc";
-const DARK_MODE_OPAQUE_FILL_STRENGTH = 0.82;
-
 function readableTextColor(background: { r: number; g: number; b: number }): string {
   const backgroundLuminance = relativeLuminance(background);
   const darkLuminance = relativeLuminance(parseColor(AUTOMATIC_DARK_TEXT)!);
@@ -344,27 +347,15 @@ export function automaticNodeTextColor(renderedBackgroundColor?: string): string
   const darkCanvas = parseCssColor(BOARD_THEME_COLORS.dark.canvas)!;
   const lightModeText = readableTextColor(compositeColor(fill, lightCanvas));
   const darkModeFill = fill.a >= 0.999
-    ? {
-        r: fill.r * DARK_MODE_OPAQUE_FILL_STRENGTH + darkCanvas.r * (1 - DARK_MODE_OPAQUE_FILL_STRENGTH),
-        g: fill.g * DARK_MODE_OPAQUE_FILL_STRENGTH + darkCanvas.g * (1 - DARK_MODE_OPAQUE_FILL_STRENGTH),
-        b: fill.b * DARK_MODE_OPAQUE_FILL_STRENGTH + darkCanvas.b * (1 - DARK_MODE_OPAQUE_FILL_STRENGTH),
-        a: 1,
-      }
+    ? fill
     : compositeColor(fill, darkCanvas);
   const darkModeText = readableTextColor(darkModeFill);
   return lightModeText === darkModeText ? lightModeText : "var(--foreground)";
 }
 
-/**
- * Tone fully opaque node surfaces toward the visible canvas in dark mode.
- * Saved colors stay exact, while transparent and already-soft fills retain
- * their authored alpha instead of picking up a dark matte.
- */
+/** Keep authored node fills exact in every theme. */
 export function themeAwareNodeFillColor(renderedFillColor?: string): string | undefined {
-  if (!renderedFillColor) return undefined;
-  const fill = parseCssColor(renderedFillColor);
-  if (!fill || fill.a < 0.999) return renderedFillColor;
-  return `color-mix(in oklch, ${renderedFillColor} var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))`;
+  return renderedFillColor;
 }
 
 /** Keep generated hierarchy connectors legible against both board themes. */
@@ -374,9 +365,10 @@ export function themeAwareLayoutConnectorColor(color: string): string {
 
 /** Combine a base color + opacity into an rgba() string */
 export function colorWithOpacity(color: string, opacity: number): string {
-  const p = parseColor(color);
-  if (!p) return color; // non-hex (e.g. named/rgba) — return as-is
-  return `rgba(${p.r}, ${p.g}, ${p.b}, ${opacity})`;
+  const parsed = parseCssColor(color);
+  if (!parsed || parsed.a <= 0) return color;
+  const alpha = Math.max(0, Math.min(1, opacity));
+  return `rgba(${Math.round(parsed.r)}, ${Math.round(parsed.g)}, ${Math.round(parsed.b)}, ${alpha})`;
 }
 
 /** Return a pale tint of a color by mixing it with white. */

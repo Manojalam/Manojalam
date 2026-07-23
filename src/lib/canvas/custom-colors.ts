@@ -111,7 +111,7 @@ export function arrangeColorPalette(values: readonly string[]): string[] {
   const seen = new Set<string>();
 
   values.forEach((value, index) => {
-    const color = normalizeHexColor(value) ?? value.trim();
+    const color = colorSwatchHex(value) ?? value.trim();
     const identity = color.toLowerCase();
     if (!color || seen.has(identity)) return;
     seen.add(identity);
@@ -177,19 +177,69 @@ export function normalizeHexColor(value: unknown): string | null {
   return HEX_COLOR_PATTERN.test(candidate) ? candidate.toLowerCase() : null;
 }
 
-/** Compare picker values without letting casing or an omitted leading hash hide the selection marker. */
+function hslToRgbColor(hue: number, saturation: number, lightness: number): RgbColor {
+  const h = ((hue % 360) + 360) % 360;
+  const s = clamp(saturation, 0, 100) / 100;
+  const l = clamp(lightness, 0, 100) / 100;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const segment = h / 60;
+  const second = chroma * (1 - Math.abs((segment % 2) - 1));
+  const offset = l - chroma / 2;
+  const [red, green, blue] = segment < 1 ? [chroma, second, 0]
+    : segment < 2 ? [second, chroma, 0]
+      : segment < 3 ? [0, chroma, second]
+        : segment < 4 ? [0, second, chroma]
+          : segment < 5 ? [second, 0, chroma]
+            : [chroma, 0, second];
+  return {
+    r: (red + offset) * 255,
+    g: (green + offset) * 255,
+    b: (blue + offset) * 255,
+  };
+}
+
+/** Convert the CSS color forms used by generated layouts into a selectable opaque swatch. */
+export function colorSwatchHex(value: unknown): string | null {
+  const hex = normalizeHexColor(value);
+  if (hex) return hex;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === "transparent") return null;
+
+  const rgb = normalized.match(
+    /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(?:\d*\.?\d+))?\s*\)$/
+  );
+  if (rgb) {
+    const channels = rgb.slice(1, 4).map(Number);
+    return channels.every((channel) => channel >= 0 && channel <= 255)
+      ? rgbToHex({ r: channels[0], g: channels[1], b: channels[2] })
+      : null;
+  }
+
+  const hsl = normalized.match(
+    /^hsla?\(\s*(-?[\d.]+)(?:deg)?\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%(?:\s*,\s*(?:\d*\.?\d+))?\s*\)$/
+  );
+  if (!hsl) return null;
+  const hue = Number(hsl[1]);
+  const saturation = Number(hsl[2]);
+  const lightness = Number(hsl[3]);
+  if (![hue, saturation, lightness].every(Number.isFinite)) return null;
+  return rgbToHex(hslToRgbColor(hue, saturation, lightness));
+}
+
+/** Compare picker values without letting CSS syntax differences hide the selection marker. */
 export function colorSwatchMatches(value: unknown, swatch: unknown, mixed = false): boolean {
   if (mixed || typeof value !== "string" || typeof swatch !== "string") return false;
-  const normalizedValue = normalizeHexColor(value);
-  const normalizedSwatch = normalizeHexColor(swatch);
+  const normalizedValue = colorSwatchHex(value);
+  const normalizedSwatch = colorSwatchHex(swatch);
   if (normalizedValue && normalizedSwatch) return normalizedValue === normalizedSwatch;
   return value.trim().toLowerCase() === swatch.trim().toLowerCase();
 }
 
 /** Return a valid value for an HTML color input without letting the browser reset it to black. */
 export function colorInputValue(value: unknown, fallback = DEFAULT_COLOR_INPUT_VALUE): string {
-  return normalizeHexColor(value)
-    ?? normalizeHexColor(fallback)
+  return colorSwatchHex(value)
+    ?? colorSwatchHex(fallback)
     ?? DEFAULT_COLOR_INPUT_VALUE;
 }
 
