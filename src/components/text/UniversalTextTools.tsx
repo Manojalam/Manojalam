@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   ARROW_SYMBOLS,
+  CHART_MARKERS,
   clearScriptCharacters,
   convertToScript,
   DEVANAGARI_QUICK_INSERT,
@@ -18,6 +19,7 @@ import {
   TEXT_TOOL_EVENT,
   transformTextRange,
   type ScriptStyle,
+  type InsertSymbol,
   type TextRangeEdit,
   type TextToolAction,
 } from "@/lib/text-tools";
@@ -85,23 +87,28 @@ function SymbolGrid({
   onInsert,
   className,
 }: {
-  symbols: readonly string[];
+  symbols: readonly (string | InsertSymbol)[];
   onInsert: (value: string) => void;
   className?: string;
 }) {
   return (
     <div className={cn("grid grid-cols-8 gap-1", className)}>
-      {symbols.map((symbol) => (
-        <button
-          key={symbol}
-          type="button"
-          title={`Insert ${symbol}`}
-          className="flex h-8 min-w-0 items-center justify-center rounded-md border border-border/70 bg-background text-base transition-colors hover:border-primary/50 hover:bg-accent"
-          onClick={() => onInsert(symbol)}
-        >
-          {symbol}
-        </button>
-      ))}
+      {symbols.map((symbol) => {
+        const char = typeof symbol === "string" ? symbol : symbol.char;
+        const label = typeof symbol === "string" ? symbol : symbol.label;
+        return (
+          <button
+            key={`${label}-${char}`}
+            type="button"
+            aria-label={`Insert ${label}`}
+            title={`Insert ${label}`}
+            className="flex h-8 min-w-0 items-center justify-center rounded-md border border-border/70 bg-background text-base transition-colors hover:border-primary/50 hover:bg-accent"
+            onClick={() => onInsert(char)}
+          >
+            {char}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -371,6 +378,10 @@ export function UniversalTextTools() {
         {tab === "symbols" && (
           <div className="space-y-3">
             <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Chart markers</p>
+              <SymbolGrid symbols={CHART_MARKERS} onInsert={insert} className="grid-cols-4" />
+            </div>
+            <div>
               <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Math</p>
               <SymbolGrid symbols={MATH_SYMBOLS} onInsert={insert} />
             </div>
@@ -389,14 +400,14 @@ export function UniversalTextTools() {
           <div className="space-y-3">
             <div>
               <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">IAST</p>
-              <SymbolGrid symbols={IAST_QUICK_INSERT.map(({ char }) => char)} onInsert={insert} />
+              <SymbolGrid symbols={IAST_QUICK_INSERT} onInsert={insert} />
             </div>
             <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Devanāgarī</p>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Devanāgarī &amp; Vedic</p>
               <SymbolGrid
-                symbols={DEVANAGARI_QUICK_INSERT.map(({ char }) => char)}
+                symbols={DEVANAGARI_QUICK_INSERT}
                 onInsert={insert}
-                className="grid-cols-4"
+                className="grid-cols-5"
               />
             </div>
           </div>

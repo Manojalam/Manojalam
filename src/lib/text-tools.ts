@@ -1,5 +1,10 @@
 export type ScriptStyle = "superscript" | "subscript";
 
+export interface InsertSymbol {
+  char: string;
+  label: string;
+}
+
 export const TEXT_TOOL_EVENT = "vidya:apply-text-tool";
 
 export type TextToolAction =
@@ -26,11 +31,23 @@ export const IAST_QUICK_INSERT = [
 ] as const;
 
 export const DEVANAGARI_QUICK_INSERT = [
-  { label: "ॐ", char: "ॐ" },
-  { label: "ऽ", char: "ऽ" },
-  { label: "।", char: "।" },
-  { label: "॥", char: "॥" },
+  { label: "Om", char: "ॐ" },
+  { label: "Avagraha", char: "ऽ" },
+  { label: "Candrabindu", char: "ँ" },
+  { label: "Anusvāra", char: "ं" },
+  { label: "Visarga", char: "ः" },
+  { label: "Jihvāmūlīya", char: "ᳵ" },
+  { label: "Upadhmānīya", char: "ᳶ" },
+  { label: "Daṇḍa", char: "।" },
+  { label: "Double daṇḍa", char: "॥" },
 ] as const;
+
+export const CHART_MARKERS = [
+  { label: "A marker", char: "🅰️" },
+  { label: "M marker", char: "Ⓜ️" },
+  { label: "Glowing star", char: "🌟" },
+  { label: "Blossom", char: "🌼" },
+] as const satisfies readonly InsertSymbol[];
 
 export const MATH_SYMBOLS = [
   "±", "×", "÷", "≠", "≈", "≤", "≥", "∞", "√", "∑", "∏", "∫",
