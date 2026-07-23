@@ -3,7 +3,7 @@ const DEFAULT_COLOR_INPUT_VALUE = "#000000";
 
 export const MAX_CUSTOM_COLORS = 18;
 
-/** General-purpose swatches: saturated defaults first, then light tints and neutrals. */
+/** General-purpose swatches grouped by visual family, including flat metallic hues. */
 export const COLOR_SWATCH_GROUPS = [
   {
     name: "Bright",
@@ -31,6 +31,13 @@ export const COLOR_SWATCH_GROUPS = [
     colors: [
       "#ffffff", "#f8fafc", "#e2e8f0", "#cbd5e1", "#94a3b8",
       "#64748b", "#475569", "#334155", "#1e293b", "#0f172a",
+    ],
+  },
+  {
+    name: "Metallic",
+    colors: [
+      "#d4af37", "#c9b37e", "#b08d32", "#cd7f32", "#b87333",
+      "#b76e79", "#e5e4e2", "#c0c0c0", "#71797e", "#2a3439",
     ],
   },
 ] as const;
