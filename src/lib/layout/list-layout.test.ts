@@ -288,12 +288,48 @@ test("List connectors use one vertical trunk per parent with short child stubs",
   const model = buildListConnectorModel(positionedNodes(tree.nodes, placements), tree.edges);
 
   assert.ok(model.groups.every((group) => group.orientation === "vertical"));
+  assert.ok(model.groups.every((group) => group.sharedSegments.length === 3));
+  assert.ok(model.groups.every((group) => new Set(
+    group.branches.map((branch) => branch.segments[0].x1)
+  ).size === 1));
   assert.ok(model.groups.every((group) => group.branches.every((branch) => {
     const segment = branch.segments[0];
     return Math.abs(segment.x2 - segment.x1) <= LIST_DENSITIES.compact.connectorGutterX;
   })));
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
   assert.deepEqual(model.obstacleIntersections, []);
+});
+
+test("Matrix-root siblings share one List trunk despite different left edges and stale edge modes", () => {
+  const tree = buildTree([
+    { id: "root", parentId: null, width: 220, height: 88 },
+    { id: "matrix-a", parentId: "root", width: 640, height: 180 },
+    { id: "matrix-b", parentId: "root", width: 820, height: 220 },
+    { id: "matrix-c", parentId: "root", width: 710, height: 200 },
+  ]);
+  const childPositions = new Map([
+    ["matrix-a", { x: 320, y: 360 }],
+    ["matrix-b", { x: 332, y: 650 }],
+    ["matrix-c", { x: 326, y: 970 }],
+  ]);
+  const nodes = tree.nodes.map((node) => ({
+    ...node,
+    position: childPositions.get(node.id) ?? node.position,
+    data: node.id.startsWith("matrix-")
+      ? { ...node.data, layoutMode: "matrix" }
+      : node.data,
+  }));
+  const edges = tree.edges.map((edge, index) => index === 0
+    ? { ...edge, data: { ...edge.data, layoutMode: "matrix" } }
+    : edge);
+  const model = buildListConnectorModel(nodes, edges);
+  const rootGroup = model.groups.find((group) => group.parentId === "root");
+
+  assert.ok(rootGroup);
+  assert.equal(rootGroup!.branches.length, 3);
+  assert.equal(rootGroup!.sharedSegments.length, 3);
+  assert.equal(new Set(rootGroup!.branches.map((branch) => branch.segments[0].x1)).size, 1);
+  assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
 test("manually moved List endpoints remain on shared hierarchy trunks", () => {

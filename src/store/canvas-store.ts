@@ -615,6 +615,27 @@ function findLayoutRoot(nodeId: string, nodes: Node[], hierarchy: ReturnType<typ
   return { id: fallback };
 }
 
+function normalizeAutomaticHierarchyEdgeLayoutModes(nodes: Node[], edges: Edge[]): Edge[] {
+  const hierarchy = buildHierarchy(nodes, edges);
+  return edges.map((edge) => {
+    const data = (edge.data ?? {}) as Record<string, unknown>;
+    if (
+      data.manualRoute === true
+      || hierarchy.get(edge.target)?.parentId !== edge.source
+    ) return edge;
+    const sourceMode = findLayoutRoot(edge.source, nodes, hierarchy).mode;
+    if (!sourceMode || data.layoutMode === sourceMode) return edge;
+    return {
+      ...edge,
+      data: {
+        ...data,
+        layoutMode: sourceMode,
+        ...(sourceMode === "list" ? { curveStyle: "step" } : {}),
+      },
+    };
+  });
+}
+
 function layoutSchemeValue(nodes: Node[], rootId: string): unknown {
   const data = (nodes.find((node) => node.id === rootId)?.data ?? {}) as Record<string, unknown>;
   return data.layoutColorScheme ?? data.radialColorScheme;
@@ -1825,11 +1846,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const normalizedFlowchartEdges = normalizeImplicitFlowchartRoutes(activeLayoutNodes, handledEdges);
     const flowchartEdges = refreshAutomaticFlowchartHandles(activeLayoutNodes, normalizedFlowchartEdges);
     const rebuiltMatrixBoard = rebuildPersistedMatrixLayouts(activeLayoutNodes, flowchartEdges);
+    const normalizedHierarchyEdges = normalizeAutomaticHierarchyEdgeLayoutModes(
+      rebuiltMatrixBoard.nodes,
+      rebuiltMatrixBoard.edges
+    );
     const normalizedNodes = normalizeSunburstChartSizes(
       rebuiltMatrixBoard.nodes,
-      buildHierarchy(rebuiltMatrixBoard.nodes, rebuiltMatrixBoard.edges)
+      buildHierarchy(rebuiltMatrixBoard.nodes, normalizedHierarchyEdges)
     );
-    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, rebuiltMatrixBoard.edges);
+    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, normalizedHierarchyEdges);
     const nodes = styledBoard.nodes;
     const edges = styledBoard.edges;
     const { relationships, relationshipFans } = normalizeRelationshipState(
@@ -3802,6 +3827,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const edgeData = (edge.data ?? {}) as Record<string, unknown>;
       const baseHidden = !!edge.hidden && edgeData.hiddenInMatrix !== true && edgeData.hiddenInSunburst !== true;
       if (!insideScope) {
+        const boundaryMode = scopeIds.has(edge.source)
+          ? mode
+          : findLayoutRoot(edge.source, preparedLayoutNodes, hierarchy).mode
+            ?? edgeData.layoutMode as LayoutMode | undefined;
         return {
           ...edge,
           hidden: baseHidden,
@@ -3811,7 +3840,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             hiddenInMatrixFor: undefined,
             hiddenInSunburst: false,
             hiddenInSunburstFor: undefined,
-            layoutMode: mode,
+            ...(boundaryMode ? { layoutMode: boundaryMode } : {}),
           },
         };
       }
