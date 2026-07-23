@@ -1263,7 +1263,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         : typeof data.matrixRootId === "string" ? data.matrixRootId : null;
       return rootId ? [rootId] : [];
     }));
-    rootIds.forEach(requestMatrixReflow);
+    // A measured-layout event intentionally replaces the previous pending
+    // request. Multi-selection can span several independent Matrix roots, so
+    // use the store queue that batches and reflows every affected root.
+    rootIds.forEach((rootId) => useCanvasStore.getState().scheduleMatrixReflow(rootId));
   };
   const structuredLayoutRootNode = (() => {
     if (matrixRootNode) return matrixRootNode;
@@ -4216,13 +4219,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </div>
             )}
 
-            {selectedNode.id !== matrixRootNode.id && (
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Selected cell size
+                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell size"}
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                Exact box dimensions take priority over overall Matrix scaling. Peer rows with the same structure share aligned column tracks.
+                {selectedNode.id === matrixRootNode.id
+                  ? "Sets this Matrix header's exact height and preferred width. The header can still stretch across the body; Overall Matrix size below controls the whole table."
+                  : "Exact box dimensions take priority over overall Matrix scaling. Peer rows with the same structure share aligned column tracks."}
               </p>
               <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
@@ -4283,7 +4287,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </div>
               )}
             </div>
-            )}
 
             {selectedNode.id === matrixRootNode.id && (
               <>
