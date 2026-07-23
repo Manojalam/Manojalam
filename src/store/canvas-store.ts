@@ -53,6 +53,7 @@ import {
   computeMatrixLayout,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixTableOverrideResetAxes,
   matrixNodeSizeDiffersFromPlacement,
   matrixRenderedSizeChanged,
   type MatrixCellGeometry,
@@ -1105,19 +1106,6 @@ const MATRIX_REFLOW_FIELDS = new Set([
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 
-function isPositiveFiniteNumber(value: unknown): boolean {
-  const numeric = typeof value === "number"
-    ? value
-    : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
-  return Number.isFinite(numeric) && numeric > 0;
-}
-
-function isNonNegativeFiniteNumber(value: unknown): boolean {
-  const numeric = typeof value === "number"
-    ? value
-    : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
-  return Number.isFinite(numeric) && numeric >= 0;
-}
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
   "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "listDensity",
@@ -2958,10 +2946,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const matrixRootId = sourceData.layoutMode === "matrix"
         ? sourceNode.id
         : typeof sourceData.matrixRootId === "string" ? sourceData.matrixRootId : null;
-      const clearTableWidth = isPositiveFiniteNumber(data.matrixWidthOverride)
-        || isNonNegativeFiniteNumber(data.matrixSiblingGap);
-      const clearTableHeight = isPositiveFiniteNumber(data.matrixHeightOverride)
-        || isNonNegativeFiniteNumber(data.matrixSiblingGap);
+      const resetTableAxes = matrixTableOverrideResetAxes(data);
       const nodes = state.nodes.map((node) => {
         let nextData = node.data;
         let changed = false;
@@ -2969,11 +2954,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           nextData = { ...nextData, ...data };
           changed = true;
         }
-        if (matrixRootId && node.id === matrixRootId && (clearTableWidth || clearTableHeight)) {
+        if (
+          matrixRootId
+          && node.id === matrixRootId
+          && (resetTableAxes.width || resetTableAxes.height)
+        ) {
           nextData = {
             ...nextData,
-            ...(clearTableWidth ? { matrixTableWidthOverride: undefined } : {}),
-            ...(clearTableHeight ? { matrixTableHeightOverride: undefined } : {}),
+            ...(resetTableAxes.width ? { matrixTableWidthOverride: undefined } : {}),
+            ...(resetTableAxes.height ? { matrixTableHeightOverride: undefined } : {}),
           };
           changed = true;
         }

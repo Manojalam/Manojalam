@@ -4510,7 +4510,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Overall Matrix size</p>
                   <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                    Sets the exact outer table size. Entering a cell size or sibling gap later returns the conflicting overall dimension to Auto.
+                    Sets the exact outer table size. Entering an exact cell width or height later returns only the conflicting overall dimension to Auto. Sibling gaps reflow inside this size.
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
