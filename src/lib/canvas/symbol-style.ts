@@ -13,6 +13,17 @@ export function semanticSymbolRotation(semanticId?: SemanticSymbolId | null): nu
 }
 
 /**
+ * Jihvāmūlīya is represented by the two-character pair `)(` and then rotated.
+ * Its unrotated width becomes its rendered height, so it needs a smaller
+ * optical scale than a single glyph.
+ */
+export function semanticSymbolScaleFactor(
+  semanticId?: SemanticSymbolId | null
+): number {
+  return semanticId === "jihvamuliya" ? 0.6 : 1;
+}
+
+/**
  * Noto and Tiro only draw part of U+1CF6 (or use the Bengali form). Siddhanta
  * and Nirmala UI retain the full upper and lower curves. This changes only
  * the glyph face; the underlying keyboard-entered character remains U+1CF6.
@@ -29,12 +40,13 @@ export function symbolMarkStyle(attributes: SymbolMarkAttributes): string {
   const appearance = normalizeSymbolAppearance(attributes);
   const enclosed = appearance.enclosure !== "none";
   const rotation = semanticSymbolRotation(attributes.semanticId);
+  const scale = (appearance.scale ?? 1) * semanticSymbolScaleFactor(attributes.semanticId);
   const semanticFont = semanticSymbolFontFamily(attributes.semanticId);
   const styles = [
     "align-items:center",
     "box-sizing:border-box",
     "display:inline-flex",
-    `font-size:${appearance.scale ?? 1}em`,
+    `font-size:${scale}em`,
     enclosed ? "height:1.45em" : "",
     "justify-content:center",
     "line-height:1",

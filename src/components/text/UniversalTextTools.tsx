@@ -28,6 +28,7 @@ import { AppColorPicker } from "@/components/canvas/AppColorPicker";
 import {
   semanticSymbolFontFamily,
   semanticSymbolRotation,
+  semanticSymbolScaleFactor,
 } from "@/lib/canvas/symbol-style";
 
 type NativeTextTarget = HTMLInputElement | HTMLTextAreaElement;
@@ -73,6 +74,7 @@ function appearanceStyle(
   const normalized = normalizeSymbolAppearance(appearance);
   const enclosed = normalized.enclosure !== "none";
   const rotation = semanticSymbolRotation(semanticId);
+  const scale = (normalized.scale ?? 1) * semanticSymbolScaleFactor(semanticId);
   const semanticFont = semanticSymbolFontFamily(semanticId);
   return {
     alignItems: "center",
@@ -86,7 +88,7 @@ function appearanceStyle(
     fontFamily: semanticFont ?? (normalized.font === "tiro-devanagari"
       ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
       : undefined),
-    fontSize: `${normalized.scale ?? 1}em`,
+    fontSize: `${scale}em`,
     height: enclosed ? "1.45em" : "1.15em",
     justifyContent: "center",
     lineHeight: 1,
