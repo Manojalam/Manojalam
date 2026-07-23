@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  arrangeColorPalette,
   COLOR_SWATCH_GROUPS,
   colorInputValue,
   hexToHsv,
@@ -49,6 +50,31 @@ test("converts exact colors between hex, RGB, and HSV", () => {
   assert.equal(Math.round(blue.h), 240);
   assert.equal(Math.round(blue.s), 100);
   assert.equal(Math.round(blue.v), 100);
+});
+
+test("arranges palette colors as neutrals followed by the hue wheel", () => {
+  assert.deepEqual(
+    arrangeColorPalette([
+      "#0000ff",
+      "#ff00ff",
+      "#000000",
+      "#00ff00",
+      "#808080",
+      "#ff0000",
+      "#ffffff",
+      "#ffff00",
+    ]),
+    [
+      "#ffffff",
+      "#808080",
+      "#000000",
+      "#ff0000",
+      "#ffff00",
+      "#00ff00",
+      "#0000ff",
+      "#ff00ff",
+    ]
+  );
 });
 
 test("merges shared and legacy recent-color lists", () => {

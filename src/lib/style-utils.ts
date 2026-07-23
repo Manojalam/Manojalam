@@ -395,17 +395,31 @@ export function resolveFillOpacity(d: Record<string, unknown>): number {
   return typeof d.fillOpacity === "number" ? d.fillOpacity : DEFAULT_FILL_OPACITY;
 }
 
+/** Resolve the unmodified color represented by the fill controls. */
+export function resolveFillSourceColor(d: Record<string, unknown>): string | undefined {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (layoutStyle && d.layoutAutoFill !== false) return layoutStyle.fillColor;
+  if (typeof d.fillColor === "string" && d.fillColor) return d.fillColor;
+  if (typeof d.color === "string" && d.color) return d.color;
+  return undefined;
+}
+
+/** Resolve the opacity that is actually rendered for the node's current fill source. */
+export function resolveEffectiveFillOpacity(d: Record<string, unknown>): number {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  return layoutStyle && d.layoutAutoFill !== false ? 1 : resolveFillOpacity(d);
+}
+
 /**
  * Resolve a node's fill color, applying its fill opacity so any chosen
  * color keeps the same softness as the rest of the fill system.
  */
 export function resolveFillColor(d: Record<string, unknown>): string | undefined {
   const layoutStyle = resolveLayoutVisualStyle(d);
-  if (layoutStyle && d.layoutAutoFill !== false) return layoutStyle.fillColor;
-  const opacity = resolveFillOpacity(d);
-  if (d.fillColor) return colorWithOpacity(d.fillColor as string, opacity);
-  if (d.color)     return colorWithOpacity(d.color as string, opacity);
-  return undefined;
+  const color = resolveFillSourceColor(d);
+  if (!color) return undefined;
+  if (layoutStyle && d.layoutAutoFill !== false) return color;
+  return colorWithOpacity(color, resolveFillOpacity(d));
 }
 
 /** Resolve a node's border color: uses explicit borderColor or accent color */
