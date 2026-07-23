@@ -13,6 +13,8 @@ import {
   ENCLOSED_LETTERS,
   FLOWER_SYMBOLS,
   GENERAL_SYMBOL_GROUPS,
+  normalizeSymbolAppearance,
+  PHONETIC_SYMBOLS,
   replaceTextRange,
   SANSKRIT_SYMBOL_GROUPS,
   STATUS_SYMBOLS,
@@ -21,12 +23,15 @@ import {
 
 test("includes the visual markers used by annotated charts", () => {
   assert.deepEqual(CHART_MARKERS.map(({ char }) => char), ["🅰️", "Ⓜ️", "🌟", "🌼"]);
+  assert.equal(CHART_MARKERS[1].appearance.scale, 1.2);
 });
 
 test("organizes a broad reusable symbol library", () => {
   const statuses = new Set<string>(STATUS_SYMBOLS);
   const flowers = new Set<string>(FLOWER_SYMBOLS);
-  const letters = new Set<string>(ENCLOSED_LETTERS);
+  const letters = new Set<string>(ENCLOSED_LETTERS.map((symbol) =>
+    typeof symbol === "string" ? symbol : symbol.char
+  ));
 
   assert.ok(statuses.has("✓"));
   assert.ok(statuses.has("❌"));
@@ -37,8 +42,8 @@ test("organizes a broad reusable symbol library", () => {
   assert.ok(letters.has("Ⓐ"));
   assert.ok(letters.has("Ⓩ"));
   assert.deepEqual(
-    GENERAL_SYMBOL_GROUPS.slice(0, 5).map(({ id }) => id),
-    ["status", "flowers", "stars", "letters", "shapes"]
+    GENERAL_SYMBOL_GROUPS.slice(0, 6).map(({ id }) => id),
+    ["status", "phonetics", "flowers", "stars", "letters", "shapes"]
   );
 });
 
@@ -47,6 +52,40 @@ test("includes Sanskrit phonetic and Vedic signs", () => {
   for (const character of ["ँ", "ं", "ः", "ᳵ", "ᳶ"]) {
     assert.ok(characters.includes(character), `Expected ${character} in the Devanāgarī palette`);
   }
+  const rareSigns = DEVANAGARI_QUICK_INSERT.filter(({ char }) => char === "ᳵ" || char === "ᳶ");
+  assert.ok(rareSigns.every((symbol) =>
+    "appearance" in symbol && symbol.appearance.font === "tiro-devanagari"
+  ));
+  assert.ok(rareSigns.every((symbol) =>
+    "appearance" in symbol && symbol.appearance.scale === 1.2
+  ));
+});
+
+test("includes semantic breath and articulation markers", () => {
+  assert.deepEqual(
+    PHONETIC_SYMBOLS.map(({ semanticId, char }) => [semanticId, char]),
+    [
+      ["mahaprana", "💨"],
+      ["alpaprana", "○"],
+      ["karkasha", "🪨"],
+    ]
+  );
+});
+
+test("normalizes reusable symbol appearance controls", () => {
+  assert.deepEqual(normalizeSymbolAppearance({
+    enclosure: "circle",
+    fillColor: "#3B82F6",
+    borderColor: "#not-a-color",
+    scale: 9,
+    font: "tiro-devanagari",
+  }), {
+    enclosure: "circle",
+    fillColor: "#3b82f6",
+    borderColor: undefined,
+    scale: 1.6,
+    font: "tiro-devanagari",
+  });
 });
 
 test("includes full Sanskrit character groups for chart authoring", () => {

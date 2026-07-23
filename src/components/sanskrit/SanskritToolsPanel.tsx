@@ -220,9 +220,16 @@ export function SanskritToolsPanel() {
             <div>
               <Label className="text-xs text-muted-foreground">Devanāgarī &amp; Vedic symbols</Label>
               <div className="mt-1 flex flex-wrap gap-1">
-                {DEVANAGARI_QUICK_INSERT.map(({ label, char }) => (
+                {DEVANAGARI_QUICK_INSERT.map(({ label, char, ...symbol }) => (
                   <Button key={label} title={`Insert ${label}`} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
-                    {char}
+                    <span style={{
+                      fontFamily: "appearance" in symbol && symbol.appearance.font === "tiro-devanagari"
+                        ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
+                        : undefined,
+                      fontSize: "appearance" in symbol ? `${symbol.appearance.scale ?? 1}em` : undefined,
+                    }}>
+                      {char}
+                    </span>
                   </Button>
                 ))}
               </div>

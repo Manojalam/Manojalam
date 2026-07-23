@@ -5,6 +5,7 @@ import {
   Noto_Serif,
   Hind, Mukta,
   Lora,
+  Tiro_Devanagari_Sanskrit,
   Yatra_One,
 } from "next/font/google";
 import "./globals.css";
@@ -57,6 +58,12 @@ const lora = Lora({
   weight: ["400", "600"],
 });
 
+const tiroDevanagari = Tiro_Devanagari_Sanskrit({
+  variable: "--font-tiro-devanagari",
+  subsets: ["devanagari"],
+  weight: "400",
+});
+
 // Display font used ONLY for the "Manojalam" logo / branding text.
 const yatraOne = Yatra_One({
   variable: "--font-yatra-one",
@@ -83,6 +90,7 @@ export default function RootLayout({
       notoDevanagari.variable, notoSerifDevanagari.variable,
       hind.variable, mukta.variable,
       notoSerif.variable, lora.variable,
+      tiroDevanagari.variable,
       yatraOne.variable,
       "h-full",
     ].join(" ")}>
