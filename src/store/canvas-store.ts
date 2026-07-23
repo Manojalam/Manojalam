@@ -870,6 +870,120 @@ function withSunburstNode(
   return [...hiddenNodes, chartNode];
 }
 
+function matrixRootIdsInHierarchyOrder(
+  nodes: Node[],
+  hierarchy: ReturnType<typeof buildHierarchy>
+): string[] {
+  const matrixRootIds = new Set(nodes
+    .filter((node) => ((node.data ?? {}) as Record<string, unknown>).layoutMode === "matrix")
+    .map((node) => node.id));
+  const ordered: string[] = [];
+  const visited = new Set<string>();
+  const visit = (nodeId: string) => {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+    if (matrixRootIds.has(nodeId)) ordered.push(nodeId);
+    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) visit(childId);
+  };
+
+  for (const node of nodes) {
+    if (!hierarchy.get(node.id)?.parentId) visit(node.id);
+  }
+  for (const node of nodes) visit(node.id);
+  return ordered;
+}
+
+function discardForeignLayoutPresentationForMatrix(node: Node): Node {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const override = data.layoutSizeOverride as { mode?: LayoutMode } | undefined;
+  if (!override?.mode || override.mode === "matrix") return node;
+
+  const authoredSize = storedNodeSize(data.userSize);
+  const fallback = defaultVisualSize(node);
+  const { layoutSizeOverride: _layoutSizeOverride, listManualOverride: _listManualOverride,
+    listDensity: _listDensity, treeManualOverride: _treeManualOverride, ...nextData } = data;
+  void _layoutSizeOverride;
+  void _listManualOverride;
+  void _listDensity;
+  void _treeManualOverride;
+  return resetNodeDimensions(
+    { ...node, data: nextData },
+    authoredSize?.width ?? fallback.w,
+    authoredSize?.height ?? fallback.h
+  );
+}
+
+/**
+ * Generated Matrix geometry is derived state. Rebuild it from hierarchy while
+ * hydrating so the first canvas frame never reuses positions, sizes, frames, or
+ * spacing left by the source layout that was converted previously.
+ */
+function rebuildPersistedMatrixLayouts(
+  nodes: Node[],
+  edges: Edge[]
+): { nodes: Node[]; edges: Edge[] } {
+  const hierarchyNodes = nodes.filter((node) =>
+    !isAutoMatrixFrame(node)
+    && !isAutoSunburstNode(node)
+    && node.type !== "relationshipDiagram"
+  );
+  const initialHierarchy = buildHierarchy(hierarchyNodes, edges);
+  const rootIds = matrixRootIdsInHierarchyOrder(hierarchyNodes, initialHierarchy);
+  if (!rootIds.length) return { nodes, edges };
+
+  let nextNodes = nodes;
+  let nextEdges = edges;
+  for (const rootId of rootIds) {
+    let currentLayoutNodes = nextNodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    let currentHierarchy = buildHierarchy(currentLayoutNodes, nextEdges);
+    const root = currentLayoutNodes.find((node) => node.id === rootId);
+    if (!root || ((root.data ?? {}) as Record<string, unknown>).layoutMode !== "matrix") continue;
+
+    const scopeIds = new Set(getSubtree(rootId, currentHierarchy));
+    nextNodes = nextNodes.map((node) => scopeIds.has(node.id)
+      ? discardForeignLayoutPresentationForMatrix(node)
+      : node);
+    currentLayoutNodes = nextNodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    currentHierarchy = buildHierarchy(currentLayoutNodes, nextEdges);
+    const byId = new Map(currentLayoutNodes.map((node) => [node.id, node]));
+    const result = computeMatrixLayout(rootId, currentHierarchy, byId);
+    nextNodes = applyMatrixResultToNodes(nextNodes, result, currentHierarchy, scopeIds);
+    nextNodes = withMatrixFrame(nextNodes, scopeIds, matrixFrameKey(rootId), true);
+    nextNodes = packSiblingsAfterNestedMatrix(nextNodes, currentHierarchy, rootId);
+
+    nextEdges = nextEdges.map((edge) => {
+      const data = (edge.data ?? {}) as Record<string, unknown>;
+      const previouslyOwned = data.hiddenInMatrixFor === rootId;
+      const hiddenInMatrix = isMatrixHierarchyEdge(edge, currentHierarchy, scopeIds);
+      if (!previouslyOwned && !hiddenInMatrix) return edge;
+
+      const baseHidden = !!edge.hidden
+        && data.hiddenInMatrix !== true
+        && data.hiddenInSunburst !== true;
+      return {
+        ...edge,
+        hidden: baseHidden || hiddenInMatrix || data.hiddenInSunburst === true,
+        data: {
+          ...data,
+          hiddenInMatrix,
+          hiddenInMatrixFor: hiddenInMatrix ? rootId : undefined,
+          ...(hiddenInMatrix ? { layoutMode: "matrix" as LayoutMode } : {}),
+        },
+      };
+    });
+  }
+
+  return { nodes: nextNodes, edges: nextEdges };
+}
+
 /**
  * Migrate legacy "mindmap" nodes into rounded shapes so every node is a
  * unified, connectable shape. Preserves all data; adds a shapeType default.
@@ -1710,8 +1824,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const handledEdges = assignDefaultHandles(activeLayoutNodes, persistedEdges);
     const normalizedFlowchartEdges = normalizeImplicitFlowchartRoutes(activeLayoutNodes, handledEdges);
     const flowchartEdges = refreshAutomaticFlowchartHandles(activeLayoutNodes, normalizedFlowchartEdges);
-    const normalizedNodes = normalizeSunburstChartSizes(activeLayoutNodes, buildHierarchy(activeLayoutNodes, flowchartEdges));
-    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, flowchartEdges);
+    const rebuiltMatrixBoard = rebuildPersistedMatrixLayouts(activeLayoutNodes, flowchartEdges);
+    const normalizedNodes = normalizeSunburstChartSizes(
+      rebuiltMatrixBoard.nodes,
+      buildHierarchy(rebuiltMatrixBoard.nodes, rebuiltMatrixBoard.edges)
+    );
+    const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, rebuiltMatrixBoard.edges);
     const nodes = styledBoard.nodes;
     const edges = styledBoard.edges;
     const { relationships, relationshipFans } = normalizeRelationshipState(

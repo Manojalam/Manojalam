@@ -78,8 +78,9 @@ function subtreeBounds(
 
 /**
  * A nested Matrix can become wider or taller without changing its outer
- * hierarchy. Move only the following sibling subtrees far enough to preserve
- * the outer structured layout's order and spacing.
+ * hierarchy. Repack following sibling subtrees to the exact generated gap so
+ * stale positions from an older or larger source layout cannot survive a
+ * conversion or refresh.
  */
 export function packSiblingsAfterNestedMatrix(
   nodes: Node[],
@@ -100,9 +101,9 @@ export function packSiblingsAfterNestedMatrix(
     const bounds = subtreeBounds(siblingId, hierarchy, byId);
     if (!bounds) continue;
     const start = packing.axis === "x" ? bounds.left : bounds.top;
-    const delta = Math.max(0, cursor + packing.gap - start);
+    const delta = cursor + packing.gap - start;
     const branchIds = new Set(getSubtree(siblingId, hierarchy));
-    if (delta > 0) {
+    if (Math.abs(delta) > 0.5) {
       for (const nodeId of branchIds) {
         deltas.set(nodeId, packing.axis === "x" ? { x: delta, y: 0 } : { x: 0, y: delta });
       }
