@@ -1101,6 +1101,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
     }
   }
+  const explicitMatrixChildFlow = d.matrixChildFlow === "row" || d.matrixChildFlow === "column"
+    ? d.matrixChildFlow
+    : null;
+  const effectiveMatrixChildFlow = explicitMatrixChildFlow
+    ?? (effectiveMatrixOrientation === "horizontal" ? "column" : "row");
   const resetSelectedMatrixBranchSize = (axis: "height" | "width") => {
     if (!matrixRootNode || !selectedMatrixBranchNodes.length) return;
     const field = axis === "height" ? "matrixHeightOverride" : "matrixWidthOverride";
@@ -3829,12 +3834,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Matrix table" visible={singleNodeTab === "layout"}>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Branch orientation
+                Branch direction
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
                 {selectedNode.id === matrixRootNode.id
-                  ? "Sets the Matrix direction; children inherit it until overridden."
-                  : "Sets how this cell's descendants grow inside the Matrix."}
+                  ? "Sets whether the child group sits right of or below the Matrix root."
+                  : "Sets whether this cell's child group sits to its right or below it."}
               </p>
               <div className={cn("grid gap-1", selectedNode.id === matrixRootNode.id ? "grid-cols-2" : "grid-cols-3")}>
                 <button
@@ -3853,7 +3858,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       : "border-border hover:bg-muted"
                   )}
                 >
-                  <ArrowRight className="h-3 w-3" /> Across
+                  <ArrowRight className="h-3 w-3" /> Right
                 </button>
                 <button
                   type="button"
@@ -3871,7 +3876,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       : "border-border hover:bg-muted"
                   )}
                 >
-                  <ArrowDown className="h-3 w-3" /> Down
+                  <ArrowDown className="h-3 w-3" /> Below
                 </button>
                 {selectedNode.id !== matrixRootNode.id && (
                   <button
@@ -3895,6 +3900,76 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 )}
               </div>
             </div>
+
+            {childIds.length > 1 && (
+              <div>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Direct children
+                </p>
+                <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
+                  Arrange siblings as a sideways row or vertical column without moving their parent.
+                </p>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    title="Place direct children side by side"
+                    onClick={() => {
+                      pushHistory();
+                      updateNodeData(selectedNode.id, { matrixChildFlow: "row" });
+                      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                        detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                      })));
+                    }}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                      effectiveMatrixChildFlow === "row" && explicitMatrixChildFlow === "row"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    <ArrowRight className="h-3 w-3" /> Row
+                  </button>
+                  <button
+                    type="button"
+                    title="Stack direct children vertically"
+                    onClick={() => {
+                      pushHistory();
+                      updateNodeData(selectedNode.id, { matrixChildFlow: "column" });
+                      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                        detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                      })));
+                    }}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                      effectiveMatrixChildFlow === "column" && explicitMatrixChildFlow === "column"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    <ArrowDown className="h-3 w-3" /> Column
+                  </button>
+                  <button
+                    type="button"
+                    title={`Use the automatic ${effectiveMatrixOrientation === "horizontal" ? "column" : "row"} arrangement`}
+                    onClick={() => {
+                      pushHistory();
+                      updateNodeData(selectedNode.id, { matrixChildFlow: undefined });
+                      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                        detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                      })));
+                    }}
+                    className={cn(
+                      "rounded-md border px-1 py-1.5 text-[9px]",
+                      explicitMatrixChildFlow === null
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    Auto
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">

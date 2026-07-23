@@ -16,6 +16,7 @@ import {
 
 export type MatrixTableDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
+export type MatrixChildFlow = "row" | "column";
 
 export interface MatrixRow {
   index: number;
@@ -358,6 +359,10 @@ function storedOrientation(value: unknown): MatrixOrientation | null {
   return value === "horizontal" || value === "vertical" ? value : null;
 }
 
+function storedChildFlow(value: unknown): MatrixChildFlow | null {
+  return value === "row" || value === "column" ? value : null;
+}
+
 function isVisible(nodeId: string, byId: Map<string, Node>): boolean {
   const node = byId.get(nodeId);
   return !!node && !node.hidden;
@@ -508,6 +513,16 @@ function matrixOrientationForNode(
   return storedOrientation(data.matrixOrientation) ?? inherited;
 }
 
+function matrixChildFlowForNode(
+  nodeId: string,
+  orientation: MatrixOrientation,
+  byId: Map<string, Node>
+): MatrixChildFlow {
+  const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+  return storedChildFlow(data.matrixChildFlow)
+    ?? (orientation === "horizontal" ? "column" : "row");
+}
+
 function hasVerticalMatrixBranch(
   rootId: string,
   hierarchy: Hierarchy,
@@ -538,6 +553,23 @@ function hasFoldedMatrixBranch(
     if (resolvedFoldSectionCount(data, children.length) > 1) return true;
     const nextAncestors = new Set(ancestors).add(nodeId);
     return children.some((childId) => visit(childId, nextAncestors));
+  };
+  return visit(rootId, new Set());
+}
+
+function hasExplicitMatrixChildFlow(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): boolean {
+  const visit = (nodeId: string, ancestors: Set<string>): boolean => {
+    if (ancestors.has(nodeId)) return false;
+    const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+    if (storedChildFlow(data.matrixChildFlow)) return true;
+    const nextAncestors = new Set(ancestors).add(nodeId);
+    return visibleChildren(nodeId, hierarchy, byId)
+      .filter((childId) => !nextAncestors.has(childId))
+      .some((childId) => visit(childId, nextAncestors));
   };
   return visit(rootId, new Set());
 }
@@ -715,7 +747,7 @@ function equalizeTerminalSiblingHeights(
 
 function sequentialSegmentExtents(
   children: OrientedChildEntry[],
-  orientation: MatrixOrientation,
+  childFlow: MatrixChildFlow,
   cellGap: number
 ): number[][] {
   const extents = Array.from(
@@ -726,7 +758,7 @@ function sequentialSegmentExtents(
     let extent = 0;
     for (let end = start; end < children.length; end += 1) {
       if (end > start) extent += cellGap;
-      extent += orientation === "horizontal"
+      extent += childFlow === "column"
         ? children[end].layout.height
         : children[end].layout.width;
       extents[start][end + 1] = extent;
@@ -738,7 +770,7 @@ function sequentialSegmentExtents(
 function orientedChildSections(
   parentData: Record<string, unknown>,
   children: OrientedChildEntry[],
-  orientation: MatrixOrientation,
+  childFlow: MatrixChildFlow,
   cellGap: number
 ): OrientedChildEntry[][] {
   const childIds = children.map((child) => child.nodeId);
@@ -760,7 +792,7 @@ function orientedChildSections(
     idSections = balancedFoldSectionsByExtent(
       childIds,
       sectionCount,
-      sequentialSegmentExtents(children, orientation, cellGap)
+      sequentialSegmentExtents(children, childFlow, cellGap)
     );
   }
   const byChildId = new Map(children.map((child) => [child.nodeId, child]));
@@ -774,7 +806,7 @@ function proportionalShare(total: number, index: number, count: number): number 
 function layoutOrientedChildSections(
   parentData: Record<string, unknown>,
   children: OrientedChildEntry[],
-  orientation: MatrixOrientation,
+  childFlow: MatrixChildFlow,
   settings: DensitySettings,
   minimumWidth = 0,
   minimumHeight = 0
@@ -784,7 +816,7 @@ function layoutOrientedChildSections(
   const sections = orientedChildSections(
     parentData,
     siblingGroup.children,
-    orientation,
+    childFlow,
     settings.cellGap
   );
   // Fold is a continuation of the same Matrix, so it uses the same thin gap as
@@ -792,7 +824,7 @@ function layoutOrientedChildSections(
   // cells and makes the continuation look like a broken table.
   const foldGap = sections.length > 1 ? settings.cellGap : 0;
 
-  if (orientation === "horizontal") {
+  if (childFlow === "column") {
     const naturalSections = sections.map((section) => ({
       children: section,
       width: Math.max(...section.map((child) => child.layout.width)),
@@ -858,10 +890,9 @@ function layoutOrientedChildSections(
 }
 
 /**
- * Builds the mixed-orientation form of Matrix. Horizontal branches retain the
- * familiar merged-cell table direction (parent left, descendants right), while
- * Vertical branches transpose only that branch (parent above, descendants
- * below). An unset child inherits its nearest ancestor's direction.
+ * Builds the mixed Matrix form. Branch direction decides whether the direct
+ * child area sits right of or below its parent, while child flow independently
+ * decides whether direct siblings form a row or a column.
  */
 function computeOrientedMatrixLayout(
   rootId: string,
@@ -879,6 +910,7 @@ function computeOrientedMatrixLayout(
   const root = byId.get(rootId)!;
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const rootOrientation = storedOrientation(rootData.matrixOrientation) ?? "horizontal";
+  const rootChildFlow = matrixChildFlowForNode(rootId, rootOrientation, byId);
 
   const buildBranch = (
     nodeId: string,
@@ -889,6 +921,7 @@ function computeOrientedMatrixLayout(
     const node = byId.get(nodeId);
     if (!node || ancestors.has(nodeId)) return { width: 0, height: 0, cells: [] };
     const orientation = matrixOrientationForNode(nodeId, inherited, byId);
+    const childFlow = matrixChildFlowForNode(nodeId, orientation, byId);
     const width = columnWidths[column]
       ?? preferredCellWidth(node, column, settings);
     const ownRequiredHeight = requiredCellHeight(node, width, settings);
@@ -923,7 +956,7 @@ function computeOrientedMatrixLayout(
     const childArea = layoutOrientedChildSections(
       data,
       children,
-      orientation,
+      childFlow,
       settings,
       orientation === "vertical" ? width : 0,
       orientation === "horizontal" ? ownRequiredHeight : 0
@@ -984,7 +1017,7 @@ function computeOrientedMatrixLayout(
   const body = layoutOrientedChildSections(
     rootData,
     builtRootChildren,
-    rootOrientation,
+    rootChildFlow,
     settings,
     preferredHeaderWidth,
     0
@@ -1146,6 +1179,7 @@ export function computeMatrixLayout(
   if (
     hasVerticalMatrixBranch(rootId, hierarchy, byId)
     || hasFoldedMatrixBranch(rootId, hierarchy, byId)
+    || hasExplicitMatrixChildFlow(rootId, hierarchy, byId)
   ) {
     return computeOrientedMatrixLayout(
       rootId,

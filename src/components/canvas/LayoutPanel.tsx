@@ -135,6 +135,11 @@ export function LayoutPanel() {
       if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
     }
   }
+  const explicitMatrixChildFlow = selectedData.matrixChildFlow === "row" || selectedData.matrixChildFlow === "column"
+    ? selectedData.matrixChildFlow
+    : null;
+  const effectiveMatrixChildFlow = explicitMatrixChildFlow
+    ?? (effectiveMatrixOrientation === "horizontal" ? "column" : "row");
   let paletteRoot = matrixRoot;
   if (!paletteRoot && selectedNode) {
     const nodesById = new Map(nodes.map((node) => [node.id, node]));
@@ -515,11 +520,11 @@ export function LayoutPanel() {
 
             <div className="mb-2 rounded-md border border-border/70 bg-background/60 p-1.5">
               <div className="mb-1.5">
-                <div className="text-[10px] font-medium text-foreground">Branch orientation</div>
+                <div className="text-[10px] font-medium text-foreground">Branch direction</div>
                 <div className="truncate text-[9px] text-muted-foreground">
                   {selectedNode?.id === matrixRoot.id
-                    ? "Sets the Matrix and is inherited by its children"
-                    : `Children of ${nodeTitle(selectedNode)}`}
+                    ? "Where the Matrix places each child group"
+                    : `Where children of ${nodeTitle(selectedNode)} are placed`}
                 </div>
               </div>
               <div className={cn("grid gap-1", selectedNode?.id === matrixRoot.id ? "grid-cols-2" : "grid-cols-3")}>
@@ -539,7 +544,7 @@ export function LayoutPanel() {
                       : "border-border bg-background hover:bg-muted"
                   )}
                 >
-                  <ArrowRight className="h-3 w-3" /> Across
+                  <ArrowRight className="h-3 w-3" /> Right
                 </button>
                 <button
                   type="button"
@@ -557,12 +562,12 @@ export function LayoutPanel() {
                       : "border-border bg-background hover:bg-muted"
                   )}
                 >
-                  <ArrowDown className="h-3 w-3" /> Down
+                  <ArrowDown className="h-3 w-3" /> Below
                 </button>
                 {selectedNode?.id !== matrixRoot.id && (
                   <button
                     type="button"
-                    title={`Inherit ${effectiveMatrixOrientation === "vertical" ? "Down" : "Across"} from the parent`}
+                    title={`Inherit ${effectiveMatrixOrientation === "vertical" ? "Below" : "Right"} from the parent`}
                     onClick={() => {
                       if (!selectedNode) return;
                       useCanvasStore.getState().pushHistory();
@@ -581,6 +586,70 @@ export function LayoutPanel() {
                 )}
               </div>
             </div>
+
+            {selectedNode && selectedChildCount > 1 && (
+              <div className="mb-2 rounded-md border border-border/70 bg-background/60 p-1.5">
+                <div className="mb-1.5">
+                  <div className="text-[10px] font-medium text-foreground">Direct children</div>
+                  <div className="text-[9px] leading-snug text-muted-foreground">
+                    Arrange siblings as a sideways row or a vertical column without moving their parent.
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    title="Place direct children side by side"
+                    onClick={() => {
+                      useCanvasStore.getState().pushHistory();
+                      updateNodeData(selectedNode.id, { matrixChildFlow: "row" });
+                      requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                    }}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                      effectiveMatrixChildFlow === "row" && explicitMatrixChildFlow === "row"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background hover:bg-muted"
+                    )}
+                  >
+                    <ArrowRight className="h-3 w-3" /> Row
+                  </button>
+                  <button
+                    type="button"
+                    title="Stack direct children vertically"
+                    onClick={() => {
+                      useCanvasStore.getState().pushHistory();
+                      updateNodeData(selectedNode.id, { matrixChildFlow: "column" });
+                      requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                    }}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                      effectiveMatrixChildFlow === "column" && explicitMatrixChildFlow === "column"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background hover:bg-muted"
+                    )}
+                  >
+                    <ArrowDown className="h-3 w-3" /> Column
+                  </button>
+                  <button
+                    type="button"
+                    title={`Use the automatic ${effectiveMatrixOrientation === "horizontal" ? "column" : "row"} arrangement`}
+                    onClick={() => {
+                      useCanvasStore.getState().pushHistory();
+                      updateNodeData(selectedNode.id, { matrixChildFlow: undefined });
+                      requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                    }}
+                    className={cn(
+                      "rounded-md border px-1 py-1.5 text-[9px]",
+                      explicitMatrixChildFlow === null
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background hover:bg-muted"
+                    )}
+                  >
+                    Auto
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-1">
               {(["compact", "comfortable", "presentation"] as const).map((density) => (
