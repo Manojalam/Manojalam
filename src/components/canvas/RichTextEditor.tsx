@@ -931,7 +931,10 @@ export function RichTextEditor({
         pendingReportReasonRef.current = "format";
         chain.unsetMark("superscript").unsetMark("subscript");
       }
-      chain.focus(undefined, { scrollIntoView: false }).run();
+      const keepToolFocus = detail.type === "symbol-style"
+        || detail.type === "clear-symbol-style";
+      if (keepToolFocus) chain.run();
+      else chain.focus(undefined, { scrollIntoView: false }).run();
       savedSelectionRef.current = {
         from: editor.state.selection.from,
         to: editor.state.selection.to,

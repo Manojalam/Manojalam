@@ -32,6 +32,7 @@ interface ToolbarPosition {
 export interface MovableToolbarControls {
   dragging: boolean;
   positionStyle: CSSProperties | undefined;
+  ensureVisible: () => void;
   resetPosition: () => void;
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -71,6 +72,43 @@ export function useMovableToolbar(
     setDragging({ resetKey, active: false });
     setPosition({ resetKey, offset: ZERO_TOOLBAR_OFFSET });
   }, [resetKey]);
+
+  const ensureVisible = useCallback(() => {
+    const container = document.querySelector<HTMLElement>(containerSelector);
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_MARGIN * 2);
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_MARGIN * 2);
+    const left = rect.width > availableWidth
+      ? VIEWPORT_MARGIN
+      : clamp(
+          rect.left,
+          VIEWPORT_MARGIN,
+          window.innerWidth - rect.width - VIEWPORT_MARGIN
+        );
+    const top = rect.height > availableHeight
+      ? VIEWPORT_MARGIN
+      : clamp(
+          rect.top,
+          VIEWPORT_MARGIN,
+          window.innerHeight - rect.height - VIEWPORT_MARGIN
+        );
+    const deltaX = left - rect.left;
+    const deltaY = top - rect.top;
+    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
+    setPosition((current) => {
+      const currentOffset = Object.is(current.resetKey, resetKey)
+        ? current.offset
+        : ZERO_TOOLBAR_OFFSET;
+      return {
+        resetKey,
+        offset: {
+          x: currentOffset.x + deltaX,
+          y: currentOffset.y + deltaY,
+        },
+      };
+    });
+  }, [containerSelector, resetKey]);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     const container = event.currentTarget.closest<HTMLElement>(containerSelector);
@@ -139,6 +177,7 @@ export function useMovableToolbar(
     positionStyle: offset.x || offset.y
       ? { translate: `${offset.x}px ${offset.y}px` }
       : undefined,
+    ensureVisible,
     resetPosition,
     onPointerDown,
     onPointerMove,

@@ -25,6 +25,7 @@ import {
 } from "@/lib/text-tools";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
+import { useCanvasStore } from "@/store/canvas-store";
 import {
   semanticSymbolFontFamily,
   semanticSymbolRotation,
@@ -374,12 +375,16 @@ function SymbolAppearanceControls({
 }
 
 export function UniversalTextTools() {
+  const storedSymbolAppearance = useCanvasStore((state) => state.settings.symbolAppearance);
+  const setSettings = useCanvasStore((state) => state.setSettings);
   const [target, setTarget] = useState<EditableTarget | null>(null);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<PaletteTab>("symbols");
   const [query, setQuery] = useState("");
-  const [symbolAppearance, setSymbolAppearance] = useState<SymbolAppearance>(DEFAULT_SYMBOL_APPEARANCE);
+  const symbolAppearance = normalizeSymbolAppearance(
+    storedSymbolAppearance ?? DEFAULT_SYMBOL_APPEARANCE
+  );
   const targetRef = useRef<EditableTarget | null>(null);
   const nativeSelectionRef = useRef<{ target: NativeTextTarget; start: number; end: number } | null>(null);
   const toolbarMove = useMovableToolbar(
@@ -552,13 +557,14 @@ export function UniversalTextTools() {
   }, [dispatchToEditable, symbolAppearance]);
 
   const updateSymbolAppearance = useCallback((appearance: SymbolAppearance) => {
-    setSymbolAppearance(appearance);
+    const normalized = normalizeSymbolAppearance(appearance);
+    setSettings({ symbolAppearance: normalized });
     if (!targetRef.current?.classList.contains("ProseMirror")) return;
     dispatchToEditable({
       type: "symbol-style",
-      appearance: normalizeSymbolAppearance(appearance),
+      appearance: normalized,
     });
-  }, [dispatchToEditable]);
+  }, [dispatchToEditable, setSettings]);
 
   const clearSymbolAppearance = useCallback(() => {
     dispatchToEditable({ type: "clear-symbol-style" });
@@ -620,6 +626,11 @@ export function UniversalTextTools() {
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (!nextOpen) setQuery("");
+        else {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(toolbarMove.ensureVisible);
+          });
+        }
       }}
     >
       <PopoverTrigger asChild>
@@ -641,7 +652,8 @@ export function UniversalTextTools() {
         side="bottom"
         align="end"
         sideOffset={8}
-        className="z-[10001] w-[min(22rem,calc(100vw-1rem))] p-3"
+        collisionPadding={8}
+        className="z-[10001] max-h-[calc(100vh-1rem)] w-[min(22rem,calc(100vw-1rem))] overflow-y-auto p-3"
         style={toolbarMove.positionStyle}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
@@ -660,40 +672,43 @@ export function UniversalTextTools() {
           event.preventDefault();
         }}
       >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <MovableToolbarHandle
-            controls={toolbarMove}
-            label="Move symbol toolbar"
-            className="-ml-1 -mt-1"
-          />
-          <div>
-            <p className="text-sm font-semibold">Insert symbols and scripts</p>
-            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-              {richText
-                ? "Script buttons format selected text or your next characters."
-                : "Script buttons convert selected text to Unicode characters."}
-            </p>
+        <div className="sticky -top-3 z-20 -mx-3 -mt-3 mb-3 border-b border-border bg-popover px-3 pb-3 pt-3">
+          <div className="flex items-start justify-between gap-3">
+            <MovableToolbarHandle
+              controls={toolbarMove}
+              label="Move symbol toolbar"
+              className="-ml-1 -mt-1"
+            />
+            <div>
+              <p className="text-sm font-semibold">Insert symbols and scripts</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                {richText
+                  ? "Script buttons format selected text or your next characters."
+                  : "Script buttons convert selected text to Unicode characters."}
+              </p>
+            </div>
+            <CaseSensitive className="mt-0.5 h-4 w-4 flex-none text-muted-foreground" />
           </div>
-          <CaseSensitive className="mt-0.5 h-4 w-4 flex-none text-muted-foreground" />
-        </div>
 
-        <div className="mb-3 grid grid-cols-3 rounded-lg bg-muted p-1">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={cn(
-                "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                tab === item.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-              onClick={() => {
-                setTab(item.id);
-                setQuery("");
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+          <div className="mt-3 grid grid-cols-3 rounded-lg bg-muted p-1">
+            {tabs.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                  tab === item.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => {
+                  setTab(item.id);
+                  setQuery("");
+                  requestAnimationFrame(toolbarMove.ensureVisible);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {tab !== "scripts" && (
