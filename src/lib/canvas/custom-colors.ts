@@ -143,41 +143,6 @@ export function arrangeColorPalette(values: readonly string[]): string[] {
     .map(({ color }) => color);
 }
 
-export interface ColorPaletteFamily {
-  name: string;
-  colors: string[];
-}
-
-/** Keep related colors in labeled families while retaining the hue ordering within each family. */
-export function groupColorPalette(values: readonly string[]): ColorPaletteFamily[] {
-  const groups = new Map<string, string[]>([
-    ["Neutral", []],
-    ["Warm", []],
-    ["Green", []],
-    ["Blue", []],
-    ["Purple", []],
-    ["Pink", []],
-    ["Other", []],
-  ]);
-
-  for (const color of arrangeColorPalette(values)) {
-    const hsv = hexToHsv(color);
-    let family = "Other";
-    if (hsv) {
-      if (isPaletteNeutral(hsv)) family = "Neutral";
-      else if (hsv.h >= 345 || hsv.h < 70) family = "Warm";
-      else if (hsv.h < 190) family = "Green";
-      else if (hsv.h < 255) family = "Blue";
-      else if (hsv.h < 310) family = "Purple";
-      else family = "Pink";
-    }
-    groups.get(family)?.push(color);
-  }
-
-  return Array.from(groups, ([name, colors]) => ({ name, colors }))
-    .filter(({ colors }) => colors.length > 0);
-}
-
 export function hsvToHex({ h, s, v }: HsvColor): string {
   const hue = ((h % 360) + 360) % 360;
   const saturation = clamp(s, 0, 100) / 100;

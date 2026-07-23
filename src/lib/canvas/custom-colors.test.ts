@@ -6,7 +6,6 @@ import {
   COLOR_SWATCH_GROUPS,
   colorInputValue,
   colorSwatchMatches,
-  groupColorPalette,
   hexToHsv,
   hexToRgb,
   hsvToHex,
@@ -82,28 +81,6 @@ test("arranges palette colors as neutrals followed by the hue wheel", () => {
       "#00ff00",
       "#0000ff",
       "#ff00ff",
-    ]
-  );
-});
-
-test("groups related palette colors into labeled families", () => {
-  assert.deepEqual(
-    groupColorPalette([
-      "#ff00aa",
-      "#ffffff",
-      "#8b5cf6",
-      "#3b82f6",
-      "#14b8a6",
-      "#f97316",
-      "#111827",
-    ]),
-    [
-      { name: "Neutral", colors: ["#ffffff", "#111827"] },
-      { name: "Warm", colors: ["#f97316"] },
-      { name: "Green", colors: ["#14b8a6"] },
-      { name: "Blue", colors: ["#3b82f6"] },
-      { name: "Purple", colors: ["#8b5cf6"] },
-      { name: "Pink", colors: ["#ff00aa"] },
     ]
   );
 });
