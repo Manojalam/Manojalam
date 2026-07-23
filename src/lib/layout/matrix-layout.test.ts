@@ -1021,6 +1021,31 @@ test("explicit Matrix cell dimensions are exact for selected leaf cells", () => 
   assertClean(result);
 });
 
+test("peer Matrix rows share aligned tracks while preserving an exact column width", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "group", parentId: "root", childFlow: "column" },
+    { id: "row-a", parentId: "group", childFlow: "row" },
+    { id: "a-1", parentId: "row-a", matrixWidth: 220 },
+    { id: "a-2", parentId: "row-a", text: "A much longer automatic label" },
+    { id: "row-b", parentId: "group", childFlow: "row" },
+    { id: "b-1", parentId: "row-b" },
+    { id: "b-2", parentId: "row-b", text: "B" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(cells.get("row-a")?.x, cells.get("row-b")?.x);
+  assert.equal(cells.get("row-a")?.width, cells.get("row-b")?.width);
+  assert.equal(cells.get("a-1")?.x, cells.get("b-1")?.x);
+  assert.equal(cells.get("a-1")?.width, 220);
+  assert.equal(cells.get("b-1")?.width, 220);
+  assert.equal(cells.get("a-2")?.x, cells.get("b-2")?.x);
+  assert.equal(cells.get("a-2")?.width, cells.get("b-2")?.width);
+  assertClean(result);
+});
+
 test("overall Matrix width and height overrides scale the composed table exactly", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, matrixTableWidth: 760, matrixTableHeight: 420 },
