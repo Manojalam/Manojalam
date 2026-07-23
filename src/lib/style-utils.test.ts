@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   automaticNodeTextColor,
+  colorWithOpacity,
   getTextStyle,
   lightenColor,
   resolveBorderColor,
@@ -78,16 +79,22 @@ test("explicit text colors remain unchanged", () => {
   assert.equal(getTextStyle({}, "#ffffff").color, "#111827");
 });
 
-test("opaque node fills are theme toned without changing saved colors", () => {
-  assert.equal(
-    themeAwareNodeFillColor("#fbbf24"),
-    "color-mix(in oklch, #fbbf24 var(--node-opaque-fill-strength, 100%), var(--board-canvas-bg, var(--canvas-bg)))"
-  );
+test("opaque node fills remain exact in every theme", () => {
+  assert.equal(themeAwareNodeFillColor("#fbbf24"), "#fbbf24");
 });
 
 test("transparent and soft node fills are not darkened", () => {
   assert.equal(themeAwareNodeFillColor("transparent"), "transparent");
   assert.equal(themeAwareNodeFillColor("rgba(251, 191, 36, 0.18)"), "rgba(251, 191, 36, 0.18)");
+});
+
+test("opacity applies to generated HSL fills instead of only hex colors", () => {
+  assert.equal(colorWithOpacity("hsl(184, 54%, 58%)", 0.42), "rgba(90, 198, 206, 0.42)");
+  assert.equal(resolveFillColor({
+    fillColor: "hsl(184, 54%, 58%)",
+    fillOpacity: 0.42,
+    layoutAutoFill: false,
+  }), "rgba(90, 198, 206, 0.42)");
 });
 
 test("generated hierarchy connectors mix toward the active theme foreground", () => {
