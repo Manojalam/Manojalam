@@ -489,6 +489,8 @@ type OrientedBranchCell = {
   height: number;
   requiredHeight: number;
   terminal: boolean;
+  horizontalTerminal: boolean;
+  verticalTerminal: boolean;
 };
 
 type OrientedBranchLayout = {
@@ -550,34 +552,81 @@ function translateOrientedCells(
 
 type StretchTrack = { start: number; end: number };
 
-function terminalStretchTracks(
+function uniqueStretchTracks(
   cells: OrientedBranchCell[],
   axis: "horizontal" | "vertical"
 ): StretchTrack[] {
-  const candidates: StretchTrack[] = [];
-  for (const cell of cells) {
-    if (!cell.terminal) continue;
+  return cells.map((cell) => {
     const start = axis === "horizontal" ? cell.x : cell.y;
     const end = start + (axis === "horizontal" ? cell.width : cell.height);
-    if (candidates.some((track) => (
-      Math.abs(track.start - start) <= 0.5 && Math.abs(track.end - end) <= 0.5
-    ))) continue;
-    candidates.push({ start, end });
-  }
+    return { start, end };
+  })
+    .sort((first, second) => first.start - second.start || first.end - second.end)
+    .filter((track, index, tracks) => index === 0
+      || Math.abs(tracks[index - 1].start - track.start) > 0.5
+      || Math.abs(tracks[index - 1].end - track.end) > 0.5);
+}
 
-  // A shallow terminal can already span the same trailing area as a deeper
-  // terminal. Keep the narrower contained band so both cells grow once rather
-  // than counting their overlapping allocation twice.
-  return candidates
-    .filter((candidate, candidateIndex) => !candidates.some((other, otherIndex) => {
-      if (candidateIndex === otherIndex) return false;
-      const contains = candidate.start <= other.start + 0.5
-        && candidate.end >= other.end - 0.5;
-      const strictlyLarger = candidate.start < other.start - 0.5
-        || candidate.end > other.end + 0.5;
-      return contains && strictlyLarger;
-    }))
-    .sort((first, second) => first.start - second.start || first.end - second.end);
+function cellPerpendicularRange(
+  cell: OrientedBranchCell,
+  axis: "horizontal" | "vertical"
+): StretchTrack {
+  const start = axis === "horizontal" ? cell.y : cell.x;
+  return {
+    start,
+    end: start + (axis === "horizontal" ? cell.height : cell.width),
+  };
+}
+
+function stretchTracksForCell(
+  cells: OrientedBranchCell[],
+  cell: OrientedBranchCell,
+  axis: "horizontal" | "vertical"
+): StretchTrack[] {
+  const perpendicular = cellPerpendicularRange(cell, axis);
+  const midpoint = (perpendicular.start + perpendicular.end) / 2;
+  const overlappingTerminals = cells.filter((candidate) => {
+    const axisTerminal = axis === "horizontal"
+      ? candidate.horizontalTerminal
+      : candidate.verticalTerminal;
+    if (!axisTerminal) return false;
+    const range = cellPerpendicularRange(candidate, axis);
+    return range.start < perpendicular.end - 0.5
+      && range.end > perpendicular.start + 0.5;
+  });
+
+  // Mixed Fold rows can divide the same allocation into incompatible column
+  // counts. Stretch against one visible cross-axis slice instead of combining
+  // every terminal interval into a false global grid. This keeps each row
+  // contiguous while cells spanning that row still absorb the same total.
+  const slice = overlappingTerminals.length
+    ? cellPerpendicularRange(
+      overlappingTerminals.reduce((nearest, candidate) => {
+        const nearestRange = cellPerpendicularRange(nearest, axis);
+        const candidateRange = cellPerpendicularRange(candidate, axis);
+        const nearestExtent = nearestRange.end - nearestRange.start;
+        const candidateExtent = candidateRange.end - candidateRange.start;
+        if (candidateExtent < nearestExtent - 0.5) return candidate;
+        if (candidateExtent > nearestExtent + 0.5) return nearest;
+        const nearestDistance = Math.abs((nearestRange.start + nearestRange.end) / 2 - midpoint);
+        const candidateDistance = Math.abs((candidateRange.start + candidateRange.end) / 2 - midpoint);
+        return candidateDistance < nearestDistance ? candidate : nearest;
+      }),
+      axis
+    )
+    : perpendicular;
+  const coordinate = (slice.start + slice.end) / 2;
+  const activeTerminals = overlappingTerminals.filter((candidate) => {
+    const range = cellPerpendicularRange(candidate, axis);
+    return range.start <= coordinate + 0.5 && range.end >= coordinate - 0.5;
+  });
+  const activeCells = activeTerminals.length
+    ? activeTerminals
+    : cells.filter((candidate) => {
+      const range = cellPerpendicularRange(candidate, axis);
+      return range.start <= coordinate + 0.5 && range.end >= coordinate - 0.5;
+    });
+  return uniqueStretchTracks(activeCells, axis);
 }
 
 function stretchCellAxis(
@@ -613,13 +662,12 @@ function stretchOrientedBranch(
   const extraWidth = width - branch.width;
   const extraHeight = height - branch.height;
   if (extraWidth <= 0 && extraHeight <= 0) return branch;
-  const horizontalTracks = terminalStretchTracks(branch.cells, "horizontal");
-  const verticalTracks = terminalStretchTracks(branch.cells, "vertical");
-
   return {
     width,
     height,
     cells: branch.cells.map((cell) => {
+      const horizontalTracks = stretchTracksForCell(branch.cells, cell, "horizontal");
+      const verticalTracks = stretchTracksForCell(branch.cells, cell, "vertical");
       const horizontal = stretchCellAxis(cell.x, cell.width, horizontalTracks, extraWidth);
       const vertical = stretchCellAxis(cell.y, cell.height, verticalTracks, extraHeight);
       return {
@@ -865,6 +913,8 @@ function computeOrientedMatrixLayout(
           height: ownRequiredHeight,
           requiredHeight: ownRequiredHeight,
           terminal: true,
+          horizontalTerminal: true,
+          verticalTerminal: true,
         }],
       };
     }
@@ -892,6 +942,8 @@ function computeOrientedMatrixLayout(
             height: ownRequiredHeight,
             requiredHeight: ownRequiredHeight,
             terminal: false,
+            horizontalTerminal: true,
+            verticalTerminal: false,
           },
           ...translateOrientedCells(childArea.cells, 0, ownRequiredHeight + settings.cellGap),
         ],
@@ -910,6 +962,8 @@ function computeOrientedMatrixLayout(
           height: childArea.height,
           requiredHeight: ownRequiredHeight,
           terminal: false,
+          horizontalTerminal: false,
+          verticalTerminal: true,
         },
         ...translateOrientedCells(childArea.cells, width + settings.cellGap, 0),
       ],

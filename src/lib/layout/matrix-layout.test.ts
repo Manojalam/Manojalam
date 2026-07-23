@@ -794,6 +794,45 @@ test("balanced top-level Fold sections tile nested Matrix branches without backg
   assertClean(result);
 });
 
+test("mixed nested Fold row counts tile when a wider sibling stretches the branch", () => {
+  const mixedRuleCounts = [4, 2, 1, 2, 5, 6, 1] as const;
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "mixed", parentId: "root" },
+    ...mixedRuleCounts.flatMap((exampleCount, ruleIndex) => [
+      { id: `mixed-rule-${ruleIndex}`, parentId: "mixed" },
+      ...Array.from({ length: exampleCount }, (_, exampleIndex) => ({
+        id: `mixed-rule-${ruleIndex}-example-${exampleIndex}`,
+        parentId: `mixed-rule-${ruleIndex}`,
+      })),
+    ]),
+    { id: "wide", parentId: "root" },
+    { id: "wide-rule", parentId: "wide" },
+    ...Array.from({ length: 8 }, (_, index) => ({
+      id: `wide-example-${index}`,
+      parentId: "wide-rule",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id.startsWith("mixed-rule-") && !node.id.includes("-example-")) {
+      const ruleIndex = Number(node.id.slice("mixed-rule-".length));
+      return {
+        ...node,
+        data: { ...node.data, layoutFoldCount: mixedRuleCounts[ruleIndex] },
+      };
+    }
+    if (node.id === "wide-rule") {
+      return { ...node, data: { ...node.data, layoutFoldCount: 8 } };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+
+  assertMatrixBodyTiled(result);
+  assertClean(result);
+});
+
 test("user-resized cells persist column width and row height overrides", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },
