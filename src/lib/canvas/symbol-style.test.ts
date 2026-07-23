@@ -5,6 +5,7 @@ import {
   hasVisibleSymbolStyle,
   semanticSymbolFontFamily,
   semanticSymbolRotation,
+  semanticSymbolScaleFactor,
   symbolMarkStyle,
 } from "./symbol-style";
 
@@ -39,13 +40,14 @@ test("semantic identity keeps a plain articulation marker editable", () => {
   );
 });
 
-test("Jihvāmūlīya always renders the literal parenthesis pair rotated 90 degrees", () => {
+test("Jihvāmūlīya renders the literal parenthesis pair rotated and optically reduced", () => {
   assert.equal(semanticSymbolRotation("jihvamuliya"), 90);
-  assert.match(
-    symbolMarkStyle({ semanticId: "jihvamuliya", scale: 1.1 }),
-    /transform:rotate\(90deg\)/
-  );
+  assert.equal(semanticSymbolScaleFactor("jihvamuliya"), 0.6);
+  const style = symbolMarkStyle({ semanticId: "jihvamuliya", scale: 1.2 });
+  assert.match(style, /font-size:0\.72em/);
+  assert.match(style, /transform:rotate\(90deg\)/);
   assert.equal(semanticSymbolRotation("upadhmaniya"), 0);
+  assert.equal(semanticSymbolScaleFactor("upadhmaniya"), 1);
 });
 
 test("Upadhmānīya uses a full-glyph font fallback without changing its character", () => {
