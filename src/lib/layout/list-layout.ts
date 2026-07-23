@@ -6,7 +6,6 @@ import {
   resolvedFoldSections,
 } from "./child-group-wrap";
 import {
-  getNodeDimensions,
   getNodeRect,
   inflateRect,
   segmentIntersectsRect,
@@ -341,7 +340,7 @@ export function computeListLayout(
 
   arrangeSubtree(rootId);
 
-  let placements: ListPlacements = {};
+  const placements: ListPlacements = {};
   for (const entry of traversal) {
     const node = byId.get(entry.nodeId)!;
     placements[entry.nodeId] = preserveManualOverrides
@@ -365,8 +364,10 @@ export function computeListLayout(
 export function isListHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
   const data = (edge.data ?? {}) as Record<string, unknown>;
   if (data.manualRoute === true) return false;
+  const source = byId.get(edge.source);
   const target = byId.get(edge.target);
-  return data.layoutMode === "list"
+  const sourceData = (source?.data ?? {}) as Record<string, unknown>;
+  return (data.layoutMode === "list" || sourceData.layoutMode === "list")
     && !edge.hidden
     && !!target
     && (target.data as Record<string, unknown>).parentId === edge.source;
@@ -461,38 +462,29 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
       parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
     );
     const parentAnchorX = parentRect.left + Math.min(14, parentRect.width / 2);
-    const lanes: Array<{ left: number; items: typeof childRects }> = [];
-    for (const item of childRects) {
-      const lane = lanes.find((candidate) => Math.abs(candidate.left - item.rect.left) < 1);
-      if (lane) lane.items.push(item);
-      else lanes.push({ left: item.rect.left, items: [item] });
-    }
-    lanes.sort((a, b) => a.left - b.left);
-    const trunkByChildId = new Map<string, number>();
-    const trunks = lanes.map((lane) => {
-      const trunkX = lane.left - density.connectorGutterX;
-      lane.items.forEach((item) => trunkByChildId.set(item.edge.target, trunkX));
-      return {
-        x1: trunkX,
-        y1: junctionY,
-        x2: trunkX,
-        y2: Math.max(junctionY, ...lane.items.map((item) => item.rect.centerY)),
-      };
-    });
-    const railEndX = Math.max(...trunks.map((trunk) => trunk.x1));
+    // A List parent owns one outline bus. Slightly different child X positions
+    // (especially Matrix roots with different widths) must not create parallel
+    // trunks that appear as duplicate connectors.
+    const trunkX = Math.min(...childRects.map((item) => item.rect.left)) - density.connectorGutterX;
+    const trunk = {
+      x1: trunkX,
+      y1: junctionY,
+      x2: trunkX,
+      y2: Math.max(junctionY, ...childRects.map((item) => item.rect.centerY)),
+    };
     const group: ListConnectorGroup = {
       parentId,
       orientation: "vertical",
       sharedSegments: [
         { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
-        { x1: parentAnchorX, y1: junctionY, x2: railEndX, y2: junctionY },
-        ...trunks,
+        { x1: parentAnchorX, y1: junctionY, x2: trunkX, y2: junctionY },
+        trunk,
       ],
       branches: childRects.map(({ edge, rect }) => ({
         edge,
         childId: edge.target,
         segments: [{
-          x1: trunkByChildId.get(edge.target) ?? rect.left - density.connectorGutterX,
+          x1: trunkX,
           y1: rect.centerY,
           x2: rect.left,
           y2: rect.centerY,
