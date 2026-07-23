@@ -37,7 +37,11 @@ import {
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
-import { hasVisibleSymbolStyle, symbolMarkStyle } from "@/lib/canvas/symbol-style";
+import {
+  hasVisibleSymbolStyle,
+  symbolMarkStyle,
+  type SymbolMarkAttributes,
+} from "@/lib/canvas/symbol-style";
 import {
   normalizeSymbolAppearance,
   TEXT_TOOL_EVENT,
@@ -134,7 +138,7 @@ const SymbolStyle = Mark.create({
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-vidya-symbol": "true",
-        style: symbolMarkStyle(mark.attrs as SymbolAppearance),
+        style: symbolMarkStyle(mark.attrs as SymbolMarkAttributes),
       }),
       0,
     ];

@@ -24,6 +24,7 @@ import {
   type TextToolAction,
 } from "@/lib/text-tools";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { semanticSymbolRotation } from "@/lib/canvas/symbol-style";
 
 type NativeTextTarget = HTMLInputElement | HTMLTextAreaElement;
 type EditableTarget = NativeTextTarget | HTMLElement;
@@ -61,9 +62,13 @@ function resolvedSymbolAppearance(symbol: SymbolPaletteItem, selected: SymbolApp
   });
 }
 
-function appearanceStyle(appearance: SymbolAppearance): CSSProperties {
+function appearanceStyle(
+  appearance: SymbolAppearance,
+  semanticId?: ReturnType<typeof symbolValue>["semanticId"]
+): CSSProperties {
   const normalized = normalizeSymbolAppearance(appearance);
   const enclosed = normalized.enclosure !== "none";
+  const rotation = semanticSymbolRotation(semanticId);
   return {
     alignItems: "center",
     backgroundColor: enclosed ? normalized.fillColor ?? "transparent" : undefined,
@@ -82,7 +87,10 @@ function appearanceStyle(appearance: SymbolAppearance): CSSProperties {
     lineHeight: 1,
     minWidth: enclosed ? "1.45em" : undefined,
     padding: enclosed ? "0.08em" : undefined,
+    transform: rotation ? `rotate(${rotation}deg)` : undefined,
+    transformOrigin: rotation ? "center" : undefined,
     verticalAlign: "middle",
+    whiteSpace: rotation ? "nowrap" : undefined,
   };
 }
 
@@ -151,7 +159,7 @@ function SymbolGrid({
   return (
     <div className={cn("grid grid-cols-8 gap-1", className)}>
       {symbols.map((symbol) => {
-        const { char, label } = symbolValue(symbol);
+        const { char, label, semanticId } = symbolValue(symbol);
         const previewAppearance = resolvedSymbolAppearance(symbol, appearance);
         return (
           <button
@@ -162,7 +170,7 @@ function SymbolGrid({
             className="flex h-10 min-w-0 items-center justify-center overflow-visible rounded-md border border-border/70 bg-background text-base transition-colors hover:border-primary/50 hover:bg-accent"
             onClick={() => onInsert(symbol)}
           >
-            <span style={appearanceStyle(previewAppearance)}>{char}</span>
+            <span style={appearanceStyle(previewAppearance, semanticId)}>{char}</span>
           </button>
         );
       })}

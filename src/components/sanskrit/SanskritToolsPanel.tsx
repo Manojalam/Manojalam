@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Copy, Plus, ArrowRight } from "lucide-react";
 import {
   Dialog,
@@ -30,11 +30,29 @@ import {
   DEVANAGARI_QUICK_INSERT,
   DEVANAGARI_VOWEL_MARKS,
   DEVANAGARI_VOWELS,
+  PHONETIC_SYMBOLS,
   type InputScheme,
   type OutputScheme,
 } from "@/lib/sanskrit/transliterate";
 import { generateId } from "@/lib/utils";
 import { toast } from "sonner";
+import { semanticSymbolRotation } from "@/lib/canvas/symbol-style";
+import type { InsertSymbol } from "@/lib/text-tools";
+
+function symbolPreviewStyle(
+  symbol: Pick<InsertSymbol, "appearance" | "semanticId">
+): CSSProperties {
+  const rotation = semanticSymbolRotation(symbol.semanticId);
+  return {
+    fontFamily: symbol.appearance?.font === "tiro-devanagari"
+      ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
+      : undefined,
+    fontSize: `${symbol.appearance?.scale ?? 1}em`,
+    transform: rotation ? `rotate(${rotation}deg)` : undefined,
+    transformOrigin: rotation ? "center" : undefined,
+    whiteSpace: rotation ? "nowrap" : undefined,
+  };
+}
 
 export function SanskritToolsPanel() {
   const { sanskritPanelOpen, setSanskritPanelOpen } = useUIStore();
@@ -218,16 +236,31 @@ export function SanskritToolsPanel() {
               </div>
             </div>
             <div>
+              <Label className="text-xs text-muted-foreground">Articulation markers</Label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {PHONETIC_SYMBOLS.map((symbol) => (
+                  <Button
+                    key={symbol.semanticId}
+                    title={`Insert ${symbol.label}`}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 px-2"
+                    onClick={() => insertChar(symbol.char)}
+                  >
+                    <span className="inline-flex items-center justify-center text-base" style={symbolPreviewStyle(symbol)}>
+                      {symbol.char}
+                    </span>
+                    <span className="text-[10px]">{symbol.label.split("·")[0].trim()}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
               <Label className="text-xs text-muted-foreground">Devanāgarī &amp; Vedic symbols</Label>
               <div className="mt-1 flex flex-wrap gap-1">
                 {DEVANAGARI_QUICK_INSERT.map(({ label, char, ...symbol }) => (
                   <Button key={label} title={`Insert ${label}`} variant="outline" size="sm" className="h-7 px-2 font-devanagari" onClick={() => insertChar(char)}>
-                    <span style={{
-                      fontFamily: "appearance" in symbol && symbol.appearance.font === "tiro-devanagari"
-                        ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
-                        : undefined,
-                      fontSize: "appearance" in symbol ? `${symbol.appearance.scale ?? 1}em` : undefined,
-                    }}>
+                    <span className="inline-flex items-center justify-center" style={symbolPreviewStyle(symbol)}>
                       {char}
                     </span>
                   </Button>

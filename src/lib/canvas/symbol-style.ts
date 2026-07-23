@@ -4,9 +4,18 @@ import {
   type SymbolAppearance,
 } from "../text-tools";
 
-export function symbolMarkStyle(attributes: SymbolAppearance): string {
+export interface SymbolMarkAttributes extends SymbolAppearance {
+  semanticId?: SemanticSymbolId | null;
+}
+
+export function semanticSymbolRotation(semanticId?: SemanticSymbolId | null): number {
+  return semanticId === "jihvamuliya" ? 90 : 0;
+}
+
+export function symbolMarkStyle(attributes: SymbolMarkAttributes): string {
   const appearance = normalizeSymbolAppearance(attributes);
   const enclosed = appearance.enclosure !== "none";
+  const rotation = semanticSymbolRotation(attributes.semanticId);
   const styles = [
     "align-items:center",
     "box-sizing:border-box",
@@ -18,6 +27,9 @@ export function symbolMarkStyle(attributes: SymbolAppearance): string {
     enclosed ? "min-width:1.45em" : "",
     enclosed ? "padding:0.08em" : "",
     "vertical-align:middle",
+    rotation ? `transform:rotate(${rotation}deg)` : "",
+    rotation ? "transform-origin:center" : "",
+    rotation ? "white-space:nowrap" : "",
   ];
   if (appearance.font === "tiro-devanagari") {
     styles.push("font-family:var(--font-tiro-devanagari),'Tiro Devanagari Sanskrit',serif");
