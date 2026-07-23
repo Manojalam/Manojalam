@@ -38,7 +38,14 @@ export function transliterate(
   }
 }
 
-export { IAST_QUICK_INSERT, DEVANAGARI_QUICK_INSERT } from "@/lib/text-tools";
+export {
+  DEVANAGARI_CONSONANTS,
+  DEVANAGARI_NUMERALS,
+  DEVANAGARI_QUICK_INSERT,
+  DEVANAGARI_VOWEL_MARKS,
+  DEVANAGARI_VOWELS,
+  IAST_QUICK_INSERT,
+} from "@/lib/text-tools";
 
 export const GRAMMAR_CATEGORY_LABELS: Record<string, string> = {
   sandhi: "Sandhi",

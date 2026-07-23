@@ -1,25 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CaseSensitive, RemoveFormatting } from "lucide-react";
+import { CaseSensitive, RemoveFormatting, Search } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-  ARROW_SYMBOLS,
-  CHART_MARKERS,
   clearScriptCharacters,
   convertToScript,
-  DEVANAGARI_QUICK_INSERT,
-  GREEK_SYMBOLS,
-  IAST_QUICK_INSERT,
-  MATH_SYMBOLS,
+  GENERAL_SYMBOL_GROUPS,
   replaceTextRange,
+  SANSKRIT_SYMBOL_GROUPS,
   SUBSCRIPT_CHARACTERS,
   SUPERSCRIPT_CHARACTERS,
   TEXT_TOOL_EVENT,
   transformTextRange,
   type ScriptStyle,
-  type InsertSymbol,
+  type SymbolPaletteGroup,
+  type SymbolPaletteItem,
   type TextRangeEdit,
   type TextToolAction,
 } from "@/lib/text-tools";
@@ -87,7 +84,7 @@ function SymbolGrid({
   onInsert,
   className,
 }: {
-  symbols: readonly (string | InsertSymbol)[];
+  symbols: readonly SymbolPaletteItem[];
   onInsert: (value: string) => void;
   className?: string;
 }) {
@@ -113,11 +110,52 @@ function SymbolGrid({
   );
 }
 
+function SymbolSections({
+  groups,
+  query,
+  onInsert,
+}: {
+  groups: readonly SymbolPaletteGroup[];
+  query: string;
+  onInsert: (value: string) => void;
+}) {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matchingGroups = groups.flatMap((group) => {
+    const groupMatches = group.label.toLocaleLowerCase().includes(normalizedQuery);
+    const symbols = normalizedQuery && !groupMatches
+      ? group.symbols.filter((symbol) => {
+        const char = typeof symbol === "string" ? symbol : symbol.char;
+        const label = typeof symbol === "string" ? symbol : symbol.label;
+        return char.includes(query) || label.toLocaleLowerCase().includes(normalizedQuery);
+      })
+      : group.symbols;
+    return symbols.length ? [{ ...group, symbols }] : [];
+  });
+
+  if (!matchingGroups.length) {
+    return <p className="py-6 text-center text-xs text-muted-foreground">No matching symbols</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {matchingGroups.map((group) => (
+        <div key={group.id}>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {group.label}
+          </p>
+          <SymbolGrid symbols={group.symbols} onInsert={onInsert} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function UniversalTextTools() {
   const [target, setTarget] = useState<EditableTarget | null>(null);
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<PaletteTab>("symbols");
+  const [query, setQuery] = useState("");
   const targetRef = useRef<EditableTarget | null>(null);
   const nativeSelectionRef = useRef<{ target: NativeTextTarget; start: number; end: number } | null>(null);
 
@@ -322,7 +360,13 @@ export function UniversalTextTools() {
   ];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setQuery("");
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -345,7 +389,11 @@ export function UniversalTextTools() {
         className="z-[10001] w-[min(22rem,calc(100vw-1rem))] p-3"
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        onMouseDownCapture={(event) => event.preventDefault()}
+        onMouseDownCapture={(event) => {
+          const eventElement = event.target instanceof Element ? event.target : null;
+          if (eventElement?.closest("[data-symbol-search]")) return;
+          event.preventDefault();
+        }}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
@@ -368,48 +416,40 @@ export function UniversalTextTools() {
                 "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
                 tab === item.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
-              onClick={() => setTab(item.id)}
+              onClick={() => {
+                setTab(item.id);
+                setQuery("");
+              }}
             >
               {item.label}
             </button>
           ))}
         </div>
 
+        {tab !== "scripts" && (
+          <label className="relative mb-3 block">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <span className="sr-only">Search the symbol palette</span>
+            <input
+              data-symbol-search
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={tab === "sanskrit" ? "Search Sanskrit characters…" : "Search symbols or groups…"}
+              className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </label>
+        )}
+
         {tab === "symbols" && (
-          <div className="space-y-3">
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Chart markers</p>
-              <SymbolGrid symbols={CHART_MARKERS} onInsert={insert} className="grid-cols-4" />
-            </div>
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Math</p>
-              <SymbolGrid symbols={MATH_SYMBOLS} onInsert={insert} />
-            </div>
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Greek</p>
-              <SymbolGrid symbols={GREEK_SYMBOLS} onInsert={insert} />
-            </div>
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Arrows</p>
-              <SymbolGrid symbols={ARROW_SYMBOLS} onInsert={insert} />
-            </div>
+          <div className="max-h-[min(24rem,calc(100vh-13rem))] overflow-y-auto pr-1">
+            <SymbolSections groups={GENERAL_SYMBOL_GROUPS} query={query} onInsert={insert} />
           </div>
         )}
 
         {tab === "sanskrit" && (
-          <div className="space-y-3">
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">IAST</p>
-              <SymbolGrid symbols={IAST_QUICK_INSERT} onInsert={insert} />
-            </div>
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Devanāgarī &amp; Vedic</p>
-              <SymbolGrid
-                symbols={DEVANAGARI_QUICK_INSERT}
-                onInsert={insert}
-                className="grid-cols-5"
-              />
-            </div>
+          <div className="max-h-[min(24rem,calc(100vh-13rem))] overflow-y-auto pr-1 font-devanagari">
+            <SymbolSections groups={SANSKRIT_SYMBOL_GROUPS} query={query} onInsert={insert} />
           </div>
         )}
 

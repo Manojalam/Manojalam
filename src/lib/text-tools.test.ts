@@ -5,8 +5,17 @@ import {
   CHART_MARKERS,
   clearScriptCharacters,
   convertToScript,
+  DEVANAGARI_CONSONANTS,
+  DEVANAGARI_NUMERALS,
   DEVANAGARI_QUICK_INSERT,
+  DEVANAGARI_VOWEL_MARKS,
+  DEVANAGARI_VOWELS,
+  ENCLOSED_LETTERS,
+  FLOWER_SYMBOLS,
+  GENERAL_SYMBOL_GROUPS,
   replaceTextRange,
+  SANSKRIT_SYMBOL_GROUPS,
+  STATUS_SYMBOLS,
   transformTextRange,
 } from "./text-tools";
 
@@ -14,11 +23,42 @@ test("includes the visual markers used by annotated charts", () => {
   assert.deepEqual(CHART_MARKERS.map(({ char }) => char), ["🅰️", "Ⓜ️", "🌟", "🌼"]);
 });
 
+test("organizes a broad reusable symbol library", () => {
+  const statuses = new Set<string>(STATUS_SYMBOLS);
+  const flowers = new Set<string>(FLOWER_SYMBOLS);
+  const letters = new Set<string>(ENCLOSED_LETTERS);
+
+  assert.ok(statuses.has("✓"));
+  assert.ok(statuses.has("❌"));
+  assert.ok(flowers.has("🌼"));
+  assert.ok(flowers.has("🪷"));
+  assert.ok(letters.has("🅰️"));
+  assert.ok(letters.has("Ⓜ️"));
+  assert.ok(letters.has("Ⓐ"));
+  assert.ok(letters.has("Ⓩ"));
+  assert.deepEqual(
+    GENERAL_SYMBOL_GROUPS.slice(0, 5).map(({ id }) => id),
+    ["status", "flowers", "stars", "letters", "shapes"]
+  );
+});
+
 test("includes Sanskrit phonetic and Vedic signs", () => {
   const characters: readonly string[] = DEVANAGARI_QUICK_INSERT.map(({ char }) => char);
   for (const character of ["ँ", "ं", "ः", "ᳵ", "ᳶ"]) {
     assert.ok(characters.includes(character), `Expected ${character} in the Devanāgarī palette`);
   }
+});
+
+test("includes full Sanskrit character groups for chart authoring", () => {
+  assert.equal(DEVANAGARI_VOWELS.length, 14);
+  assert.ok(DEVANAGARI_CONSONANTS.includes("क"));
+  assert.ok(DEVANAGARI_CONSONANTS.includes("ज्ञ"));
+  assert.ok(DEVANAGARI_VOWEL_MARKS.includes("्"));
+  assert.deepEqual(DEVANAGARI_NUMERALS, ["०", "१", "२", "३", "४", "५", "६", "७", "८", "९"]);
+  assert.deepEqual(
+    SANSKRIT_SYMBOL_GROUPS.map(({ id }) => id),
+    ["iast", "vowels", "consonants", "vowel-marks", "numerals", "vedic"]
+  );
 });
 
 test("converts supported characters to superscript and subscript", () => {

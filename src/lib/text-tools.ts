@@ -5,6 +5,14 @@ export interface InsertSymbol {
   label: string;
 }
 
+export type SymbolPaletteItem = string | InsertSymbol;
+
+export interface SymbolPaletteGroup {
+  id: string;
+  label: string;
+  symbols: readonly SymbolPaletteItem[];
+}
+
 export const TEXT_TOOL_EVENT = "vidya:apply-text-tool";
 
 export type TextToolAction =
@@ -42,12 +50,57 @@ export const DEVANAGARI_QUICK_INSERT = [
   { label: "Double daṇḍa", char: "॥" },
 ] as const;
 
+export const DEVANAGARI_VOWELS = [
+  "अ", "आ", "इ", "ई", "उ", "ऊ", "ऋ", "ॠ", "ऌ", "ॡ", "ए", "ऐ", "ओ", "औ",
+] as const;
+
+export const DEVANAGARI_CONSONANTS = [
+  "क", "ख", "ग", "घ", "ङ", "च", "छ", "ज", "झ", "ञ",
+  "ट", "ठ", "ड", "ढ", "ण", "त", "थ", "द", "ध", "न",
+  "प", "फ", "ब", "भ", "म", "य", "र", "ल", "व", "श",
+  "ष", "स", "ह", "ळ", "क्ष", "ज्ञ",
+] as const;
+
+export const DEVANAGARI_VOWEL_MARKS = [
+  "ा", "ि", "ी", "ु", "ू", "ृ", "ॄ", "ॢ", "ॣ", "े", "ै", "ो", "ौ", "्",
+] as const;
+
+export const DEVANAGARI_NUMERALS = [
+  "०", "१", "२", "३", "४", "५", "६", "७", "८", "९",
+] as const;
+
 export const CHART_MARKERS = [
   { label: "A marker", char: "🅰️" },
   { label: "M marker", char: "Ⓜ️" },
   { label: "Glowing star", char: "🌟" },
   { label: "Blossom", char: "🌼" },
 ] as const satisfies readonly InsertSymbol[];
+
+export const STATUS_SYMBOLS = [
+  "✓", "✔", "☑", "✅", "✕", "✖", "✗", "✘", "❌", "☐", "☒", "⚠️", "ℹ️", "❗", "❓",
+] as const;
+
+export const FLOWER_SYMBOLS = [
+  "🌼", "🌸", "🌺", "🌻", "🌹", "🪷", "💐", "❀", "✿", "❁", "✾", "❃",
+] as const;
+
+export const STAR_SYMBOLS = [
+  "★", "☆", "✦", "✧", "✨", "⭐", "🌟", "💫", "✪", "✯", "✰", "※",
+] as const;
+
+export const SHAPE_SYMBOLS = [
+  "●", "○", "◉", "◌", "■", "□", "▪", "▫", "◆", "◇", "▲", "△", "▼", "▽", "▶", "◀",
+] as const;
+
+export const ENCLOSED_LETTERS = [
+  "🅰️", "🅱️", "Ⓜ️", "🅾️", "🅿️",
+  "Ⓐ", "Ⓑ", "Ⓒ", "Ⓓ", "Ⓔ", "Ⓕ", "Ⓖ", "Ⓗ", "Ⓘ", "Ⓙ", "Ⓚ", "Ⓛ", "Ⓜ",
+  "Ⓝ", "Ⓞ", "Ⓟ", "Ⓠ", "Ⓡ", "Ⓢ", "Ⓣ", "Ⓤ", "Ⓥ", "Ⓦ", "Ⓧ", "Ⓨ", "Ⓩ",
+] as const;
+
+export const COMMON_SYMBOLS = [
+  "©", "®", "™", "§", "¶", "†", "‡", "•", "·", "…", "‰", "№", "@", "#", "&", "%", "‽", "⁂",
+] as const;
 
 export const MATH_SYMBOLS = [
   "±", "×", "÷", "≠", "≈", "≤", "≥", "∞", "√", "∑", "∏", "∫",
@@ -62,6 +115,27 @@ export const GREEK_SYMBOLS = [
 export const ARROW_SYMBOLS = [
   "←", "↑", "→", "↓", "↔", "↕", "⇐", "⇒", "⇔", "↦", "⟶", "⟵",
 ] as const;
+
+export const GENERAL_SYMBOL_GROUPS = [
+  { id: "status", label: "Checks & status", symbols: STATUS_SYMBOLS },
+  { id: "flowers", label: "Flowers & nature", symbols: FLOWER_SYMBOLS },
+  { id: "stars", label: "Stars & highlights", symbols: STAR_SYMBOLS },
+  { id: "letters", label: "Enclosed letters", symbols: ENCLOSED_LETTERS },
+  { id: "shapes", label: "Shapes", symbols: SHAPE_SYMBOLS },
+  { id: "common", label: "Common marks", symbols: COMMON_SYMBOLS },
+  { id: "math", label: "Math", symbols: MATH_SYMBOLS },
+  { id: "greek", label: "Greek", symbols: GREEK_SYMBOLS },
+  { id: "arrows", label: "Arrows", symbols: ARROW_SYMBOLS },
+] as const satisfies readonly SymbolPaletteGroup[];
+
+export const SANSKRIT_SYMBOL_GROUPS = [
+  { id: "iast", label: "IAST", symbols: IAST_QUICK_INSERT },
+  { id: "vowels", label: "Devanāgarī vowels", symbols: DEVANAGARI_VOWELS },
+  { id: "consonants", label: "Devanāgarī consonants", symbols: DEVANAGARI_CONSONANTS },
+  { id: "vowel-marks", label: "Vowel marks & virāma", symbols: DEVANAGARI_VOWEL_MARKS },
+  { id: "numerals", label: "Devanāgarī numerals", symbols: DEVANAGARI_NUMERALS },
+  { id: "vedic", label: "Sanskrit & Vedic signs", symbols: DEVANAGARI_QUICK_INSERT },
+] as const satisfies readonly SymbolPaletteGroup[];
 
 const SUPERSCRIPT_MAP: Readonly<Record<string, string>> = {
   "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
