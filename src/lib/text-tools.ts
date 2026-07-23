@@ -1,8 +1,27 @@
 export type ScriptStyle = "superscript" | "subscript";
 
+export type SymbolEnclosure = "none" | "circle" | "square" | "rounded-square";
+export type SemanticSymbolId =
+  | "mahaprana"
+  | "alpaprana"
+  | "karkasha"
+  | "jihvamuliya"
+  | "upadhmaniya";
+
+export interface SymbolAppearance {
+  enclosure?: SymbolEnclosure;
+  fillColor?: string;
+  borderColor?: string;
+  scale?: number;
+  font?: "inherit" | "tiro-devanagari";
+}
+
 export interface InsertSymbol {
   char: string;
   label: string;
+  keywords?: readonly string[];
+  semanticId?: SemanticSymbolId;
+  appearance?: SymbolAppearance;
 }
 
 export type SymbolPaletteItem = string | InsertSymbol;
@@ -16,9 +35,44 @@ export interface SymbolPaletteGroup {
 export const TEXT_TOOL_EVENT = "vidya:apply-text-tool";
 
 export type TextToolAction =
-  | { type: "insert"; value: string }
+  | {
+      type: "insert";
+      value: string;
+      semanticId?: SemanticSymbolId;
+      appearance?: SymbolAppearance;
+    }
+  | { type: "symbol-style"; appearance: SymbolAppearance }
+  | { type: "clear-symbol-style" }
   | { type: "script"; style: ScriptStyle }
   | { type: "clear-script" };
+
+const DEFAULT_SYMBOL_APPEARANCE: Required<Pick<SymbolAppearance, "enclosure" | "scale" | "font">> = {
+  enclosure: "none",
+  scale: 1,
+  font: "inherit",
+};
+
+function normalizedHexColor(value: unknown): string | undefined {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : undefined;
+}
+
+export function normalizeSymbolAppearance(value: SymbolAppearance | undefined): SymbolAppearance {
+  const enclosure = value?.enclosure;
+  const scale = typeof value?.scale === "number" && Number.isFinite(value.scale)
+    ? Math.max(0.75, Math.min(1.6, value.scale))
+    : DEFAULT_SYMBOL_APPEARANCE.scale;
+  return {
+    enclosure: enclosure === "circle"
+      || enclosure === "square"
+      || enclosure === "rounded-square"
+      ? enclosure
+      : DEFAULT_SYMBOL_APPEARANCE.enclosure,
+    fillColor: normalizedHexColor(value?.fillColor),
+    borderColor: normalizedHexColor(value?.borderColor),
+    scale,
+    font: value?.font === "tiro-devanagari" ? "tiro-devanagari" : DEFAULT_SYMBOL_APPEARANCE.font,
+  };
+}
 
 export const IAST_QUICK_INSERT = [
   { label: "ā", char: "ā" },
@@ -44,11 +98,23 @@ export const DEVANAGARI_QUICK_INSERT = [
   { label: "Candrabindu", char: "ँ" },
   { label: "Anusvāra", char: "ं" },
   { label: "Visarga", char: "ः" },
-  { label: "Jihvāmūlīya", char: "ᳵ" },
-  { label: "Upadhmānīya", char: "ᳶ" },
+  {
+    label: "Jihvāmūlīya · जिह्वामूलीय",
+    char: "ᳵ",
+    keywords: ["jihvamuliya", "jihvāmūlīya", "velar", "visarga"],
+    semanticId: "jihvamuliya",
+    appearance: { font: "tiro-devanagari", scale: 1.2 },
+  },
+  {
+    label: "Upadhmānīya · उपध्मानीय",
+    char: "ᳶ",
+    keywords: ["upadhmaniya", "upadhmānīya", "labial", "visarga"],
+    semanticId: "upadhmaniya",
+    appearance: { font: "tiro-devanagari", scale: 1.2 },
+  },
   { label: "Daṇḍa", char: "।" },
   { label: "Double daṇḍa", char: "॥" },
-] as const;
+] as const satisfies readonly InsertSymbol[];
 
 export const DEVANAGARI_VOWELS = [
   "अ", "आ", "इ", "ई", "उ", "ऊ", "ऋ", "ॠ", "ऌ", "ॡ", "ए", "ऐ", "ओ", "औ",
@@ -71,9 +137,35 @@ export const DEVANAGARI_NUMERALS = [
 
 export const CHART_MARKERS = [
   { label: "A marker", char: "🅰️" },
-  { label: "M marker", char: "Ⓜ️" },
+  {
+    label: "M marker",
+    char: "Ⓜ️",
+    keywords: ["mahāprāṇa", "mahaprana"],
+    appearance: { scale: 1.2 },
+  },
   { label: "Glowing star", char: "🌟" },
   { label: "Blossom", char: "🌼" },
+] as const satisfies readonly InsertSymbol[];
+
+export const PHONETIC_SYMBOLS = [
+  {
+    label: "Mahāprāṇa · महाप्राण · strong breath",
+    char: "💨",
+    keywords: ["mahaprana", "aspirated", "high wind", "strong breath"],
+    semanticId: "mahaprana",
+  },
+  {
+    label: "Alpaprāṇa · अल्पप्राण · light breath",
+    char: "○",
+    keywords: ["alpaprana", "unaspirated", "no wind", "light breath"],
+    semanticId: "alpaprana",
+  },
+  {
+    label: "Karkaśa · कर्कश · rough stone",
+    char: "🪨",
+    keywords: ["karkasha", "karkaśa", "rough", "stone"],
+    semanticId: "karkasha",
+  },
 ] as const satisfies readonly InsertSymbol[];
 
 export const STATUS_SYMBOLS = [
@@ -93,10 +185,17 @@ export const SHAPE_SYMBOLS = [
 ] as const;
 
 export const ENCLOSED_LETTERS = [
-  "🅰️", "🅱️", "Ⓜ️", "🅾️", "🅿️",
+  "🅰️", "🅱️",
+  {
+    label: "M marker",
+    char: "Ⓜ️",
+    keywords: ["mahāprāṇa", "mahaprana"],
+    appearance: { scale: 1.2 },
+  },
+  "🅾️", "🅿️",
   "Ⓐ", "Ⓑ", "Ⓒ", "Ⓓ", "Ⓔ", "Ⓕ", "Ⓖ", "Ⓗ", "Ⓘ", "Ⓙ", "Ⓚ", "Ⓛ", "Ⓜ",
   "Ⓝ", "Ⓞ", "Ⓟ", "Ⓠ", "Ⓡ", "Ⓢ", "Ⓣ", "Ⓤ", "Ⓥ", "Ⓦ", "Ⓧ", "Ⓨ", "Ⓩ",
-] as const;
+] as const satisfies readonly SymbolPaletteItem[];
 
 export const COMMON_SYMBOLS = [
   "©", "®", "™", "§", "¶", "†", "‡", "•", "·", "…", "‰", "№", "@", "#", "&", "%", "‽", "⁂",
@@ -118,6 +217,7 @@ export const ARROW_SYMBOLS = [
 
 export const GENERAL_SYMBOL_GROUPS = [
   { id: "status", label: "Checks & status", symbols: STATUS_SYMBOLS },
+  { id: "phonetics", label: "Phonetics & articulation", symbols: PHONETIC_SYMBOLS },
   { id: "flowers", label: "Flowers & nature", symbols: FLOWER_SYMBOLS },
   { id: "stars", label: "Stars & highlights", symbols: STAR_SYMBOLS },
   { id: "letters", label: "Enclosed letters", symbols: ENCLOSED_LETTERS },

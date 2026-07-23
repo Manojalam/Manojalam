@@ -36,7 +36,7 @@ export const FONT_OPTIONS: FontOption[] = [
   { label: "Noto Serif Devanagari", value: "var(--font-noto-serif-devanagari), 'Noto Serif Devanagari', serif", category: "Sanskrit / Devanāgarī" },
   { label: "Hind (Devanagari)",   value: "var(--font-hind), Hind, sans-serif",              category: "Sanskrit / Devanāgarī" },
   { label: "Mukta",               value: "var(--font-mukta), Mukta, sans-serif",            category: "Sanskrit / Devanāgarī" },
-  { label: "Tiro Devanagari",     value: "'Tiro Devanagari Sanskrit', serif",               category: "Sanskrit / Devanāgarī" },
+  { label: "Tiro Devanagari",     value: "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif", category: "Sanskrit / Devanāgarī" },
   { label: "Shobhika",            value: "Shobhika, serif",                                 category: "Sanskrit / Devanāgarī" },
   { label: "Siddhanta",           value: "Siddhanta, serif",                                category: "Sanskrit / Devanāgarī" },
   { label: "Sanskrit 2003",       value: "'Sanskrit 2003', serif",                          category: "Sanskrit / Devanāgarī" },

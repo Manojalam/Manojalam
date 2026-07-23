@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
-import { Extension, Mark, type Editor } from "@tiptap/core";
+import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -37,7 +37,13 @@ import {
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
-import { TEXT_TOOL_EVENT, type TextToolAction } from "@/lib/text-tools";
+import { hasVisibleSymbolStyle, symbolMarkStyle } from "@/lib/canvas/symbol-style";
+import {
+  normalizeSymbolAppearance,
+  TEXT_TOOL_EVENT,
+  type SymbolAppearance,
+  type TextToolAction,
+} from "@/lib/text-tools";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -81,6 +87,58 @@ const Subscript = Mark.create({
   excludes: "superscript",
   parseHTML() { return [{ tag: "sub" }]; },
   renderHTML() { return ["sub", 0]; },
+});
+
+const SymbolStyle = Mark.create({
+  name: "symbolStyle",
+  inclusive: false,
+  addAttributes() {
+    return {
+      enclosure: {
+        default: "none",
+        parseHTML: (element) => element.getAttribute("data-symbol-enclosure") ?? "none",
+        renderHTML: (attributes) => ({ "data-symbol-enclosure": attributes.enclosure }),
+      },
+      fillColor: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-symbol-fill"),
+        renderHTML: (attributes) => attributes.fillColor ? { "data-symbol-fill": attributes.fillColor } : {},
+      },
+      borderColor: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-symbol-border"),
+        renderHTML: (attributes) => attributes.borderColor ? { "data-symbol-border": attributes.borderColor } : {},
+      },
+      scale: {
+        default: 1,
+        parseHTML: (element) => Number.parseFloat(element.getAttribute("data-symbol-scale") ?? "1"),
+        renderHTML: (attributes) => ({ "data-symbol-scale": attributes.scale }),
+      },
+      font: {
+        default: "inherit",
+        parseHTML: (element) => element.getAttribute("data-symbol-font") ?? "inherit",
+        renderHTML: (attributes) => ({ "data-symbol-font": attributes.font }),
+      },
+      semanticId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-symbol-id"),
+        renderHTML: (attributes) => attributes.semanticId ? { "data-symbol-id": attributes.semanticId } : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-vidya-symbol]" }];
+  },
+  renderHTML({ HTMLAttributes, mark }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-vidya-symbol": "true",
+        style: symbolMarkStyle(mark.attrs as SymbolAppearance),
+      }),
+      0,
+    ];
+  },
 });
 
 const ShapeTextFlowGuides = Extension.create({
@@ -128,6 +186,7 @@ const EXTENSIONS = [
   Underline,
   Superscript,
   Subscript,
+  SymbolStyle,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
@@ -804,7 +863,25 @@ export function RichTextEditor({
       if (selection) chain.setTextSelection(selection);
       if (detail.type === "insert") {
         pendingReportReasonRef.current = "input";
-        chain.insertContent(detail.value);
+        const appearance = normalizeSymbolAppearance(detail.appearance);
+        if (hasVisibleSymbolStyle(appearance, detail.semanticId)) {
+          chain.insertContent({
+            type: "text",
+            text: detail.value,
+            marks: [{
+              type: "symbolStyle",
+              attrs: { ...appearance, semanticId: detail.semanticId ?? null },
+            }],
+          });
+        } else {
+          chain.insertContent(detail.value);
+        }
+      } else if (detail.type === "symbol-style") {
+        pendingReportReasonRef.current = "format";
+        chain.setMark("symbolStyle", normalizeSymbolAppearance(detail.appearance));
+      } else if (detail.type === "clear-symbol-style") {
+        pendingReportReasonRef.current = "format";
+        chain.unsetMark("symbolStyle");
       } else if (detail.type === "script") {
         pendingReportReasonRef.current = "format";
         const mark = detail.style === "superscript" ? "superscript" : "subscript";
