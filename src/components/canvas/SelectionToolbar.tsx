@@ -57,6 +57,10 @@ import {
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
 import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
+import {
+  MovableToolbarHandle,
+  useMovableToolbar,
+} from "@/components/canvas/MovableToolbar";
 
 function ActionButton({
   label,
@@ -381,6 +385,10 @@ export function SelectionToolbar() {
   const shapeFormatPainter = useUIStore((state) => state.shapeFormatPainter);
   const setShapeFormatPainter = useUIStore((state) => state.setShapeFormatPainter);
   const { screenToFlowPosition } = useReactFlow();
+  const toolbarMove = useMovableToolbar(
+    ".selection-toolbar",
+    selectedNodeIds.join("\u0000")
+  );
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
@@ -517,8 +525,15 @@ export function SelectionToolbar() {
       isVisible
       position={Position.Top}
       offset={14}
+      style={toolbarMove.positionStyle}
       className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
     >
+      <MovableToolbarHandle
+        controls={toolbarMove}
+        label="Move shape toolbar"
+      />
+      <Divider />
+
       {singleIsExternalNote && (
         <>
           <div

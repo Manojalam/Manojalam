@@ -30,6 +30,10 @@ import {
   semanticSymbolRotation,
   semanticSymbolScaleFactor,
 } from "@/lib/canvas/symbol-style";
+import {
+  MovableToolbarHandle,
+  useMovableToolbar,
+} from "@/components/canvas/MovableToolbar";
 
 type NativeTextTarget = HTMLInputElement | HTMLTextAreaElement;
 type EditableTarget = NativeTextTarget | HTMLElement;
@@ -376,6 +380,10 @@ export function UniversalTextTools() {
   const [symbolAppearance, setSymbolAppearance] = useState<SymbolAppearance>(DEFAULT_SYMBOL_APPEARANCE);
   const targetRef = useRef<EditableTarget | null>(null);
   const nativeSelectionRef = useRef<{ target: NativeTextTarget; start: number; end: number } | null>(null);
+  const toolbarMove = useMovableToolbar(
+    '[data-universal-text-tools="palette"]',
+    target
+  );
 
   const rememberNativeSelection = useCallback((candidate = targetRef.current) => {
     if (!candidate || !isNativeTextTarget(candidate)) return;
@@ -632,6 +640,7 @@ export function UniversalTextTools() {
         align="end"
         sideOffset={8}
         className="z-[10001] w-[min(22rem,calc(100vw-1rem))] p-3"
+        style={toolbarMove.positionStyle}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
         onInteractOutside={(event) => {
@@ -650,6 +659,11 @@ export function UniversalTextTools() {
         }}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
+          <MovableToolbarHandle
+            controls={toolbarMove}
+            label="Move symbol toolbar"
+            className="-ml-1 -mt-1"
+          />
           <div>
             <p className="text-sm font-semibold">Insert symbols and scripts</p>
             <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
