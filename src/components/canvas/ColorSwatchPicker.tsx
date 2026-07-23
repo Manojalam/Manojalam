@@ -4,8 +4,8 @@ import { Check, X } from "lucide-react";
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
 import {
   arrangeColorPalette,
+  colorSwatchHex,
   colorSwatchMatches,
-  normalizeHexColor,
 } from "@/lib/canvas/custom-colors";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -53,7 +53,7 @@ export function ColorSwatchPicker({
   const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const legacyHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const swatchSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
-  const normalizedValue = normalizeHexColor(value);
+  const normalizedValue = colorSwatchHex(value);
 
   const colors = arrangeColorPalette([
     ...PRESET_COLORS,
@@ -137,7 +137,7 @@ export function ColorSwatchPicker({
       })}
 
       <AppColorPicker
-        value={value}
+        value={normalizedValue ?? value}
         extraColors={[...legacyTextColors, ...legacyHighlightColors, ...extra]}
         onChange={applyCustomColor}
       >

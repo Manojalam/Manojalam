@@ -62,7 +62,6 @@
 
   --canvas-bg:         #f0eeea;
   --canvas-dot:        #d5d2cb;
-  --node-opaque-fill-strength: 100%;
 
   /* UI shadows */
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
@@ -93,8 +92,6 @@
   --ring:              #6385ff;
   --canvas-bg:         #18181d;
   --canvas-dot:        #303038;
-  /* Preserve hue while reducing glare from fully opaque diagram fills. */
-  --node-opaque-fill-strength: 82%;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.2);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);

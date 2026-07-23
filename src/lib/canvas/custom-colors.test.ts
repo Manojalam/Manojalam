@@ -5,6 +5,7 @@ import {
   arrangeColorPalette,
   COLOR_SWATCH_GROUPS,
   colorInputValue,
+  colorSwatchHex,
   colorSwatchMatches,
   hexToHsv,
   hexToRgb,
@@ -33,8 +34,17 @@ test("accepts exact six-digit hex colors with or without a hash", () => {
 test("matches the active swatch after normalizing exact colors", () => {
   assert.equal(colorSwatchMatches("#4F9DA7", "#4f9da7"), true);
   assert.equal(colorSwatchMatches("4f9da7", "#4F9DA7"), true);
+  assert.equal(colorSwatchMatches("hsl(184, 54%, 58%)", "#5ac6ce"), true);
   assert.equal(colorSwatchMatches("#4f9da7", "#3b82f6"), false);
   assert.equal(colorSwatchMatches("#4f9da7", "#4f9da7", true), false);
+});
+
+test("converts generated HSL and RGB fills into visible hex swatches", () => {
+  assert.equal(colorSwatchHex("hsl(0, 100%, 50%)"), "#ff0000");
+  assert.equal(colorSwatchHex("hsl(184, 54%, 58%)"), "#5ac6ce");
+  assert.equal(colorSwatchHex("rgb(40, 120, 255)"), "#2878ff");
+  assert.equal(colorSwatchHex("rgba(40, 120, 255, 0.42)"), "#2878ff");
+  assert.equal(colorSwatchHex("transparent"), null);
 });
 
 test("offers general bright, light, strong, and neutral swatches", () => {
