@@ -456,6 +456,16 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixOrientation?: MatrixOrientation;
   /** Arrangement of this Matrix cell's direct children. Defaults perpendicular to branch direction. */
   matrixChildFlow?: MatrixChildFlow;
+  /** Exact gap, in canvas pixels, between this Matrix cell's direct children. */
+  matrixSiblingGap?: number;
+  /** Exact rendered width for this Matrix cell while Matrix layout is active. */
+  matrixWidthOverride?: number;
+  /** Exact rendered height for this Matrix cell while Matrix layout is active. */
+  matrixHeightOverride?: number;
+  /** Exact overall width for the composed Matrix, stored on the Matrix root. */
+  matrixTableWidthOverride?: number;
+  /** Exact overall height for the composed Matrix, stored on the Matrix root. */
+  matrixTableHeightOverride?: number;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
   /** Controls how authored text and manually chosen node dimensions interact. */

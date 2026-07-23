@@ -1012,7 +1012,9 @@ function ShapeSurface({
         style={{
           ...shapeStyle,
           backgroundColor: renderedFillColor,
+          backgroundClip: "padding-box",
           border: `${borderWidth}px ${borderStyle} ${borderColor}`,
+          overflow: "hidden",
         }}
       />
       {selected && <div className="absolute inset-0 ring-2 ring-primary ring-offset-1" style={shapeStyle} />}

@@ -25,7 +25,7 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
-import { LAYOUT_OPTIONS, getNodeDimensions, type LayoutMode } from "@/lib/layout";
+import { LAYOUT_OPTIONS, getNodeDimensions, getNodeRect, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import type {
@@ -357,6 +357,62 @@ function IconBtn({ active, onClick, title, children }: {
 
 function clampControlValue(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function ExactNumberField({
+  value,
+  mixed = false,
+  min,
+  max,
+  label,
+  onCommit,
+}: {
+  value?: number;
+  mixed?: boolean;
+  min: number;
+  max: number;
+  label: string;
+  onCommit: (value: number | undefined) => void;
+}) {
+  const displayedValue = typeof value === "number"
+    ? String(Math.round(value * 10) / 10)
+    : "";
+  return (
+    <Input
+      key={`${label}-${displayedValue}-${mixed ? "mixed" : "single"}`}
+      type="number"
+      inputMode="decimal"
+      aria-label={label}
+      min={min}
+      max={max}
+      step={1}
+      defaultValue={displayedValue}
+      placeholder={mixed ? "Mixed" : "Auto"}
+      className="h-7 px-2 text-[10px]"
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.currentTarget.value = displayedValue;
+          event.currentTarget.blur();
+        }
+      }}
+      onBlur={(event) => {
+        const raw = event.currentTarget.value.trim();
+        if (!raw) {
+          if (value !== undefined || mixed) onCommit(undefined);
+          return;
+        }
+        const parsed = Number.parseFloat(raw);
+        if (!Number.isFinite(parsed)) {
+          event.currentTarget.value = displayedValue;
+          return;
+        }
+        const next = clampControlValue(parsed, min, max);
+        event.currentTarget.value = String(next);
+        if (value === undefined || Math.abs(next - value) > 0.05 || mixed) onCommit(next);
+      }}
+    />
+  );
 }
 
 function SliderControl({
@@ -998,6 +1054,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const selectedNodes = selectedNodeIds.length
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
     : [];
+  const selectedMatrixCells = selectedNodes.filter((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    return data.matrixCell === true || data.layoutMode === "matrix";
+  });
+  const isMatrixCellMultiSelection = selectedNodes.length > 1
+    && selectedMatrixCells.length === selectedNodes.length;
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
   const selectedShapeNodes = selectedNodes.filter((node) => node.type === "shape");
   const allShapeNodes = nodes.filter((node) => node.type === "shape" && !node.hidden);
@@ -1082,6 +1144,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const matrixWidthOverrideCount = selectedMatrixBranchNodes.filter((node) => (
     hasPositiveDimensionOverride((node.data as Record<string, unknown> | undefined)?.matrixWidthOverride)
   )).length;
+  const selectedMatrixDimensions = selectedNode && matrixRootNode
+    ? getNodeDimensions(selectedNode)
+    : null;
+  const selectedMatrixWidth = selectedMatrixDimensions
+    ? (hasPositiveDimensionOverride(d.matrixWidthOverride)
+        ? Number(d.matrixWidthOverride)
+        : selectedMatrixDimensions.width)
+    : undefined;
+  const selectedMatrixHeight = selectedMatrixDimensions
+    ? (hasPositiveDimensionOverride(d.matrixHeightOverride)
+        ? Number(d.matrixHeightOverride)
+        : selectedMatrixDimensions.height)
+    : undefined;
+  const matrixRects = matrixBranchIds
+    .map((nodeId) => nodes.find((node) => node.id === nodeId))
+    .filter((node): node is Node => !!node && !node.hidden)
+    .map(getNodeRect);
+  const matrixRenderedWidth = matrixRects.length
+    ? Math.max(...matrixRects.map((rect) => rect.right)) - Math.min(...matrixRects.map((rect) => rect.left))
+    : undefined;
+  const matrixRenderedHeight = matrixRects.length
+    ? Math.max(...matrixRects.map((rect) => rect.bottom)) - Math.min(...matrixRects.map((rect) => rect.top))
+    : undefined;
+  const matrixRootData = (matrixRootNode?.data ?? {}) as Record<string, unknown>;
+  const matrixTableWidth = hasPositiveDimensionOverride(matrixRootData.matrixTableWidthOverride)
+    ? Number(matrixRootData.matrixTableWidthOverride)
+    : matrixRenderedWidth;
+  const matrixTableHeight = hasPositiveDimensionOverride(matrixRootData.matrixTableHeightOverride)
+    ? Number(matrixRootData.matrixTableHeightOverride)
+    : matrixRenderedHeight;
   const explicitMatrixOrientation = d.matrixOrientation === "horizontal" || d.matrixOrientation === "vertical"
     ? d.matrixOrientation
     : null;
@@ -1119,6 +1211,29 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
     })));
     toast.success(`Returned ${affectedNodes.length} Matrix ${axis} override${affectedNodes.length === 1 ? "" : "s"} to automatic sizing.`);
+  };
+  const requestMatrixReflow = (rootId: string) => {
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+      detail: { mode: "matrix", rootId, nodeIds: getSubtree(rootId, hierarchy) },
+    })));
+  };
+  const commitSelectedMatrixCellSize = (
+    axis: "width" | "height",
+    value: number | undefined,
+    targetNodes: Node[] = selectedNode ? [selectedNode] : []
+  ) => {
+    if (!targetNodes.length) return;
+    const field = axis === "width" ? "matrixWidthOverride" : "matrixHeightOverride";
+    pushHistory();
+    targetNodes.forEach((node) => updateNodeData(node.id, { [field]: value }));
+    const rootIds = new Set(targetNodes.flatMap((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const rootId = data.layoutMode === "matrix"
+        ? node.id
+        : typeof data.matrixRootId === "string" ? data.matrixRootId : null;
+      return rootId ? [rootId] : [];
+    }));
+    rootIds.forEach(requestMatrixReflow);
   };
   const structuredLayoutRootNode = (() => {
     if (matrixRootNode) return matrixRootNode;
@@ -1570,6 +1685,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const spaceSelectedNodes = (axis: "x" | "y") => {
       updateSelectedGeometry(compactEqualSpacing(selectedNodes, axis));
     };
+    const selectedMatrixWidthValues = selectedMatrixCells.map((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return hasPositiveDimensionOverride(data.matrixWidthOverride)
+        ? Number(data.matrixWidthOverride)
+        : getNodeDimensions(node).width;
+    });
+    const selectedMatrixHeightValues = selectedMatrixCells.map((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return hasPositiveDimensionOverride(data.matrixHeightOverride)
+        ? Number(data.matrixHeightOverride)
+        : getNodeDimensions(node).height;
+    });
+    const commonMatrixWidth = selectedMatrixWidthValues.length
+      && selectedMatrixWidthValues.every((value) => Math.abs(value - selectedMatrixWidthValues[0]) < 0.05)
+      ? selectedMatrixWidthValues[0]
+      : undefined;
+    const commonMatrixHeight = selectedMatrixHeightValues.length
+      && selectedMatrixHeightValues.every((value) => Math.abs(value - selectedMatrixHeightValues[0]) < 0.05)
+      ? selectedMatrixHeightValues[0]
+      : undefined;
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
@@ -1638,6 +1773,57 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Works on any selected boxes; connectors and hierarchy are not required.
               </p>
+            </Section>
+          )}
+          {isMatrixCellMultiSelection && (
+            <Section label="Matrix cell size" defaultOpen>
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Enter one exact size for all {selectedMatrixCells.length} selected cells. Merged parent cells can still grow across their child span.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Width (px)</span>
+                  <ExactNumberField
+                    label="Selected Matrix cell width"
+                    value={commonMatrixWidth}
+                    mixed={commonMatrixWidth === undefined}
+                    min={80}
+                    max={1200}
+                    onCommit={(value) => commitSelectedMatrixCellSize("width", value, selectedMatrixCells)}
+                  />
+                </label>
+                <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Height (px)</span>
+                  <ExactNumberField
+                    label="Selected Matrix cell height"
+                    value={commonMatrixHeight}
+                    mixed={commonMatrixHeight === undefined}
+                    min={40}
+                    max={6000}
+                    onCommit={(value) => commitSelectedMatrixCellSize("height", value, selectedMatrixCells)}
+                  />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[9px]"
+                  onClick={() => commitSelectedMatrixCellSize("width", undefined, selectedMatrixCells)}
+                >
+                  Auto widths
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[9px]"
+                  onClick={() => commitSelectedMatrixCellSize("height", undefined, selectedMatrixCells)}
+                >
+                  Auto heights
+                </Button>
+              </div>
             </Section>
           )}
           <Section label="Text">
@@ -3968,39 +4154,163 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     Auto
                   </button>
                 </div>
+                <label className="mt-1.5 block space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Sibling gap (px)</span>
+                  <div className="grid grid-cols-[1fr_auto] gap-1">
+                    <ExactNumberField
+                      label="Gap between direct Matrix children"
+                      value={typeof d.matrixSiblingGap === "number" ? d.matrixSiblingGap : undefined}
+                      min={0}
+                      max={240}
+                      onCommit={(value) => {
+                        pushHistory();
+                        updateNodeData(selectedNode.id, { matrixSiblingGap: value });
+                        requestMatrixReflow(matrixRootNode.id);
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[9px]"
+                      onClick={() => {
+                        pushHistory();
+                        updateNodeData(selectedNode.id, { matrixSiblingGap: undefined });
+                        requestMatrixReflow(matrixRootNode.id);
+                      }}
+                    >
+                      Auto
+                    </Button>
+                  </div>
+                </label>
               </div>
             )}
 
+            {selectedNode.id !== matrixRootNode.id && (
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Selected branch size
+                Selected cell size
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                Manual row and column sizes remain saved until you return this cell and its descendants to automatic sizing.
+                Enter exact box dimensions. A merged parent can remain taller or wider when it must span its children.
               </p>
+              <div className="mb-1.5 grid grid-cols-2 gap-1.5">
+                <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Width (px)</span>
+                  <ExactNumberField
+                    label="Selected Matrix cell width"
+                    value={selectedMatrixWidth}
+                    min={80}
+                    max={1200}
+                    onCommit={(value) => commitSelectedMatrixCellSize("width", value)}
+                  />
+                </label>
+                <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Height (px)</span>
+                  <ExactNumberField
+                    label="Selected Matrix cell height"
+                    value={selectedMatrixHeight}
+                    min={40}
+                    max={6000}
+                    onCommit={(value) => commitSelectedMatrixCellSize("height", value)}
+                  />
+                </label>
+              </div>
               <div className="grid grid-cols-2 gap-1">
                 <button
                   type="button"
-                  disabled={matrixHeightOverrideCount === 0}
-                  onClick={() => resetSelectedMatrixBranchSize("height")}
+                  onClick={() => commitSelectedMatrixCellSize("height", undefined)}
                   className="flex items-center justify-center gap-1 rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <Rows3 className="h-3 w-3" /> Auto height{matrixHeightOverrideCount ? ` (${matrixHeightOverrideCount})` : ""}
+                  <Rows3 className="h-3 w-3" /> Auto height
                 </button>
                 <button
                   type="button"
-                  disabled={matrixWidthOverrideCount === 0}
-                  onClick={() => resetSelectedMatrixBranchSize("width")}
+                  onClick={() => commitSelectedMatrixCellSize("width", undefined)}
                   className="flex items-center justify-center gap-1 rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <ArrowLeftRight className="h-3 w-3" /> Auto width{matrixWidthOverrideCount ? ` (${matrixWidthOverrideCount})` : ""}
+                  <ArrowLeftRight className="h-3 w-3" /> Auto width
                 </button>
               </div>
+              {(matrixHeightOverrideCount > 1 || matrixWidthOverrideCount > 1) && (
+                <div className="mt-1.5 grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    disabled={matrixHeightOverrideCount === 0}
+                    onClick={() => resetSelectedMatrixBranchSize("height")}
+                    className="rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:opacity-45"
+                  >
+                    Auto branch heights ({matrixHeightOverrideCount})
+                  </button>
+                  <button
+                    type="button"
+                    disabled={matrixWidthOverrideCount === 0}
+                    onClick={() => resetSelectedMatrixBranchSize("width")}
+                    className="rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:opacity-45"
+                  >
+                    Auto branch widths ({matrixWidthOverrideCount})
+                  </button>
+                </div>
+              )}
             </div>
+            )}
 
             {selectedNode.id === matrixRootNode.id && (
-              <div>
-                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Density</p>
+              <>
+                <div>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Overall Matrix size</p>
+                  <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
+                    Sets the exact outer table size. The composed cells and gaps scale together.
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                      <span>Width (px)</span>
+                      <ExactNumberField
+                        label="Overall Matrix width"
+                        value={matrixTableWidth}
+                        min={160}
+                        max={6000}
+                        onCommit={(value) => {
+                          pushHistory();
+                          updateNodeData(matrixRootNode.id, { matrixTableWidthOverride: value });
+                          requestMatrixReflow(matrixRootNode.id);
+                        }}
+                      />
+                    </label>
+                    <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                      <span>Height (px)</span>
+                      <ExactNumberField
+                        label="Overall Matrix height"
+                        value={matrixTableHeight}
+                        min={100}
+                        max={6000}
+                        onCommit={(value) => {
+                          pushHistory();
+                          updateNodeData(matrixRootNode.id, { matrixTableHeightOverride: value });
+                          requestMatrixReflow(matrixRootNode.id);
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-1.5 h-7 w-full text-[9px]"
+                    onClick={() => {
+                      pushHistory();
+                      updateNodeData(matrixRootNode.id, {
+                        matrixTableWidthOverride: undefined,
+                        matrixTableHeightOverride: undefined,
+                      });
+                      requestMatrixReflow(matrixRootNode.id);
+                    }}
+                  >
+                    Auto overall size
+                  </Button>
+                </div>
+                <div>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Density</p>
                 <div className="grid grid-cols-3 gap-1">
                   {(["compact", "comfortable", "presentation"] as const).map((density) => (
                     <button
@@ -4023,7 +4333,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     </button>
                   ))}
                 </div>
-              </div>
+                </div>
+              </>
             )}
           </Section>
         )}

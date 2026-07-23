@@ -32,6 +32,11 @@ type TreeNode = {
   collapsed?: boolean;
   orientation?: "horizontal" | "vertical";
   childFlow?: "row" | "column";
+  siblingGap?: number;
+  matrixWidth?: number;
+  matrixHeight?: number;
+  matrixTableWidth?: number;
+  matrixTableHeight?: number;
 };
 
 function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
@@ -52,6 +57,11 @@ function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
       ...(spec.collapsed ? { collapsed: true } : {}),
       ...(spec.orientation ? { matrixOrientation: spec.orientation } : {}),
       ...(spec.childFlow ? { matrixChildFlow: spec.childFlow } : {}),
+      ...(spec.siblingGap !== undefined ? { matrixSiblingGap: spec.siblingGap } : {}),
+      ...(spec.matrixWidth ? { matrixWidthOverride: spec.matrixWidth } : {}),
+      ...(spec.matrixHeight ? { matrixHeightOverride: spec.matrixHeight } : {}),
+      ...(spec.matrixTableWidth ? { matrixTableWidthOverride: spec.matrixTableWidth } : {}),
+      ...(spec.matrixTableHeight ? { matrixTableHeightOverride: spec.matrixTableHeight } : {}),
     },
   }));
   const edges = specs
@@ -231,9 +241,9 @@ test("one-letter Sanskrit children stay compact in a sideways Matrix row", () =>
 });
 
 test("Matrix presentation uses rounded cells and a density-aware group frame", () => {
-  assert.equal(matrixCellBorderRadius("header"), 18);
-  assert.equal(matrixCellBorderRadius("category"), 14);
-  assert.equal(matrixCellBorderRadius("cell"), 12);
+  assert.equal(matrixCellBorderRadius("header"), 24);
+  assert.equal(matrixCellBorderRadius("category"), 20);
+  assert.equal(matrixCellBorderRadius("cell"), 18);
   assert.equal(MATRIX_FRAME_RADIUS, 22);
   assert.ok(matrixFramePadding("presentation") > matrixFramePadding("comfortable"));
   assert.ok(matrixFramePadding("comfortable") > matrixFramePadding("compact"));
@@ -971,6 +981,60 @@ test("a row child flow keeps the parent left while placing direct children sidew
   for (let index = 1; index < children.length; index += 1) {
     assert.ok(children[index].x >= children[index - 1].x + children[index - 1].width);
   }
+  assertClean(result);
+});
+
+test("a parent's exact sibling gap is preserved between its direct children", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "group", parentId: "root", childFlow: "row", siblingGap: 24 },
+    { id: "a", parentId: "group" },
+    { id: "b", parentId: "group" },
+    { id: "c", parentId: "group" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const children = ["a", "b", "c"].map((id) => cells.get(id)!);
+
+  for (let index = 1; index < children.length; index += 1) {
+    const gap = children[index].x - (children[index - 1].x + children[index - 1].width);
+    assert.equal(gap, 24);
+  }
+  assertClean(result);
+});
+
+test("explicit Matrix cell dimensions are exact for selected leaf cells", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, childFlow: "row" },
+    { id: "a", parentId: "root", matrixWidth: 148, matrixHeight: 72 },
+    { id: "b", parentId: "root", matrixWidth: 196, matrixHeight: 72 },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(cells.get("a")?.width, 148);
+  assert.equal(cells.get("a")?.height, 72);
+  assert.equal(cells.get("b")?.width, 196);
+  assert.equal(cells.get("b")?.height, 72);
+  assertClean(result);
+});
+
+test("overall Matrix width and height overrides scale the composed table exactly", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, matrixTableWidth: 760, matrixTableHeight: 420 },
+    { id: "a", parentId: "root" },
+    { id: "b", parentId: "root" },
+    { id: "c", parentId: "root" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+
+  assert.equal(result.bounds.width, 760);
+  assert.equal(result.bounds.height, 420);
+  assert.equal(result.header.width, 760);
+  assert.equal(result.header.y, result.bounds.top);
   assertClean(result);
 });
 

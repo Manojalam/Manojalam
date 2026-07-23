@@ -152,6 +152,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
         <div
           className={cn(
             "absolute inset-0 p-1 transition-shadow",
+            matrixCell && "overflow-hidden",
             matrixCell ? "shadow-none" : selected ? "shadow-lg ring-2 ring-primary ring-offset-2 ring-offset-background" : "shadow-md"
           )}
           style={{

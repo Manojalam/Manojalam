@@ -6,9 +6,9 @@ export type MatrixCellRole = "header" | "category" | "cell";
  * only when a cell is naturally short.
  */
 export function matrixCellBorderRadius(role: MatrixCellRole | string | undefined): number {
-  if (role === "header") return 18;
-  if (role === "category") return 14;
-  return 12;
+  if (role === "header") return 24;
+  if (role === "category") return 20;
+  return 18;
 }
 
 export function matrixFramePadding(density: unknown): number {
