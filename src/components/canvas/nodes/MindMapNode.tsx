@@ -25,6 +25,7 @@ import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
+import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 
 function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as MindMapNodeData;
@@ -52,7 +53,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
     height: typeof height === "number" && height > 0 ? height : 72,
   };
   const borderRadius = matrixCell
-    ? (matrixRole === "header" ? 7 : 4)
+    ? matrixCellBorderRadius(matrixRole)
     : resolveNodeBorderRadius(dd, nodeSize, 40);
   const bStyle       = resolveBorderStyle(dd);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];

@@ -42,6 +42,7 @@ import { computeListLayout } from "@/lib/layout/list-layout";
 import { hasFoldedChildSections } from "@/lib/layout/child-group-wrap";
 import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import { packSiblingsAfterNestedMatrix } from "@/lib/layout/nested-matrix-spacing";
+import { matrixFramePadding } from "@/lib/layout/matrix-presentation";
 import {
   clearLayoutEdgeRouting,
   clearLayoutNodeGeometry,
@@ -775,9 +776,9 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
   }> | undefined;
   const frameColor = rootVisualStyle?.borderColor ?? "#334155";
   const frameBackground = rootVisualStyle?.fillColor
-    ? `color-mix(in srgb, ${rootVisualStyle.fillColor} 8%, transparent)`
+    ? `color-mix(in srgb, ${rootVisualStyle.fillColor} 3%, transparent)`
     : "rgba(15, 23, 42, 0.015)";
-  const pad = 4;
+  const pad = matrixFramePadding(rootData.matrixDensity);
   const frame: Node = {
     id: `matrix-frame-${key}`,
     type: "frame",

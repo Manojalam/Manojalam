@@ -26,6 +26,7 @@ import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
+import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 
 function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -52,7 +53,7 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
     height: typeof height === "number" && height > 0 ? height : 56,
   };
   const bRadius      = matrixCell
-    ? (matrixRole === "header" ? 7 : 4)
+    ? matrixCellBorderRadius(matrixRole)
     : resolveNodeBorderRadius(dd, nodeSize, 32);
   const bStyle       = resolveBorderStyle(dd);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];

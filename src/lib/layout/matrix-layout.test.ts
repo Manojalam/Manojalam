@@ -5,6 +5,11 @@ import { buildHierarchy } from "./hierarchy";
 import { getNodeRect } from "./geometry";
 import { packSiblingsAfterNestedMatrix } from "./nested-matrix-spacing";
 import {
+  MATRIX_FRAME_RADIUS,
+  matrixCellBorderRadius,
+  matrixFramePadding,
+} from "./matrix-presentation";
+import {
   MATRIX_DENSITY_SETTINGS,
   MATRIX_HEADER_MIN_WIDTH,
   MATRIX_MAX_COLUMN_WIDTH,
@@ -203,6 +208,37 @@ test("a shallow table grows its body to the readable header width", () => {
   assertClean(result);
 });
 
+test("one-letter Sanskrit children stay compact in a sideways Matrix row", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "स्वरः" },
+    { id: "hrasva", parentId: "root", text: "ह्रस्वः", childFlow: "row" },
+    { id: "a", parentId: "hrasva", text: "अ" },
+    { id: "i", parentId: "hrasva", text: "इ" },
+    { id: "u", parentId: "hrasva", text: "उ" },
+    { id: "r", parentId: "hrasva", text: "ऋ" },
+    { id: "l", parentId: "hrasva", text: "ऌ" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const letters = ["a", "i", "u", "r", "l"].map((id) => cells.get(id)!);
+  const rowWidth = letters.at(-1)!.x + letters.at(-1)!.width - letters[0].x;
+
+  assert.ok(letters.every((cell) => cell.width <= 130));
+  assert.ok(rowWidth < 700);
+  assert.ok(letters.every((cell) => cell.height <= 60));
+  assertClean(result);
+});
+
+test("Matrix presentation uses rounded cells and a density-aware group frame", () => {
+  assert.equal(matrixCellBorderRadius("header"), 18);
+  assert.equal(matrixCellBorderRadius("category"), 14);
+  assert.equal(matrixCellBorderRadius("cell"), 12);
+  assert.equal(MATRIX_FRAME_RADIUS, 22);
+  assert.ok(matrixFramePadding("presentation") > matrixFramePadding("comfortable"));
+  assert.ok(matrixFramePadding("comfortable") > matrixFramePadding("compact"));
+});
+
 test("long Sanskrit content reaches the width cap and increases row height", () => {
   const paragraph = "अथातो धर्मजिज्ञासा संस्कृतव्याकरणस्य विस्तीर्णविवरणम् ".repeat(18).trim();
   const { nodes, edges } = buildTree([
@@ -341,7 +377,10 @@ test("a stale text measurement from another Fold width cannot inflate a new chil
   const freshResult = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const freshCell = freshResult.cells.find((cell) => cell.nodeId === "new-child")!;
 
-  assert.ok(freshCell.requiredHeight >= 248);
+  assert.ok(
+    freshCell.requiredHeight
+      >= 10 * 22 + MATRIX_DENSITY_SETTINGS.comfortable.paddingY * 2
+  );
   assertClean(freshResult);
 });
 
@@ -372,7 +411,10 @@ test("invisible editor block spacing cannot inflate a measured Matrix label", ()
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const rule = result.cells.find((cell) => cell.nodeId === "rule")!;
 
-  assert.ok(rule.requiredHeight >= 90);
+  assert.ok(
+    rule.requiredHeight
+      >= 2 * 34 + MATRIX_DENSITY_SETTINGS.comfortable.paddingY * 2
+  );
   assert.ok(rule.requiredHeight < 140);
   assertClean(result);
 });
@@ -401,7 +443,10 @@ test("line-based Matrix height still protects authored inline font sizes", () =>
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const rule = result.cells.find((cell) => cell.nodeId === "rule")!;
 
-  assert.ok(rule.requiredHeight >= 94);
+  assert.ok(
+    rule.requiredHeight
+      >= 48 * 1.38 + MATRIX_DENSITY_SETTINGS.comfortable.paddingY * 2
+  );
   assertClean(result);
 });
 

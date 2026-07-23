@@ -7,6 +7,7 @@ import type { FrameNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import { MATRIX_FRAME_RADIUS } from "@/lib/layout/matrix-presentation";
 
 function FrameNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as FrameNodeData;
@@ -26,12 +27,13 @@ function FrameNodeComponent({ id, data, selected }: NodeProps) {
         {!d.locked && <NodeQuickActions nodeId={id} color={d.color ?? "#6366f1"} selected={selected} />}
         <div
         className={cn(
-          "absolute inset-0 border-2",
-          isMatrixFrame ? "rounded-md" : "rounded-xl",
+          "absolute inset-0",
+          isMatrixFrame ? "border" : "rounded-xl border-2",
           selected && "ring-2 ring-primary ring-offset-1",
           d.locked && "pointer-events-none"
         )}
         style={{
+          ...(isMatrixFrame ? { borderRadius: MATRIX_FRAME_RADIUS } : {}),
           borderColor: d.color ?? "#6366f1",
           borderStyle: d.borderStyle ?? "dashed",
           backgroundColor: d.background ?? `${d.color ?? "#6366f1"}08`,

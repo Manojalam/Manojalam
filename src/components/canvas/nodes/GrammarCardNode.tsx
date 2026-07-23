@@ -18,12 +18,13 @@ import {
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 
 function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
   const matrixCell = d.matrixCell === true;
   const matrixGridVisible = d.matrixGridVisible !== false;
-  const matrixRadius = d.matrixCellRole === "header" ? 7 : 4;
+  const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#4f46e5";

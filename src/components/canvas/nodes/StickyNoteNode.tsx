@@ -33,6 +33,7 @@ import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
+import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 
 const STICKY_PALETTES: Record<string, { bg: string; border: string; shadow: string }> = {
   yellow: { bg: "#fef9c3", border: "#fde047", shadow: "#fef08a" },
@@ -72,7 +73,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
     height: typeof height === "number" && height > 0 ? height : 90,
   };
   const bRadius  = matrixCell
-    ? (matrixRole === "header" ? 7 : 4)
+    ? matrixCellBorderRadius(matrixRole)
     : resolveNodeBorderRadius(dd, nodeSize, 20);
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
