@@ -25,7 +25,7 @@ import {
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
-import { colorInputValue, rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
   correctedGuideContentScale,
   correctedShapeFlowHorizontalOffset,
@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ColorPickerPanel } from "@/components/canvas/AppColorPicker";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
 const FontSize = Extension.create({
@@ -236,12 +237,6 @@ const EXTENSIONS = [
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
-];
-
-const COLOR_SWATCHES = [
-  "#111827", "#ef4444", "#f97316", "#eab308",
-  "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899",
-  "#6b7280", "#ffffff",
 ];
 
 /** Measure only rendered glyphs; editor decorations must never change text fit. */
@@ -454,13 +449,10 @@ export function RichTextEditor({
   const shapeGuideCorrectionCountRef = useRef(0);
   const shapeGuideFrameRef = useRef(0);
   const richTextRootRef = useRef<HTMLDivElement>(null);
-  const customColorRef = useRef<HTMLInputElement>(null);
-  const customHighlightRef = useRef<HTMLInputElement>(null);
   const linkTextInputRef = useRef<HTMLInputElement>(null);
   const linkHrefInputRef = useRef<HTMLInputElement>(null);
   const linkDialogOpenRef = useRef(false);
   const linkTargetSelectionRef = useRef<{ from: number; to: number } | null>(null);
-  const nativeColorPickerOpenRef = useRef(false);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
   const measurementFontSizeRef = useRef(measurementFontSize);
@@ -596,7 +588,7 @@ export function RichTextEditor({
       const focusMovedToToolbar = toolbarRef.current?.contains(
         event.relatedTarget as globalThis.Node | null
       );
-      if (nativeColorPickerOpenRef.current || focusMovedToToolbar || linkDialogOpenRef.current) return;
+      if (focusMovedToToolbar || linkDialogOpenRef.current) return;
       hideToolbar();
       onBlur?.();
     },
@@ -1269,7 +1261,6 @@ export function RichTextEditor({
   }, [editor, inlineFormatPainter, selectionChain, setInlineFormatPainter]);
 
   const chooseCustomTextColor = useCallback((color: string) => {
-    nativeColorPickerOpenRef.current = false;
     setSettings({
       customColors: rememberCustomColor(customColors, color),
       customTextColors: rememberCustomColor(customTextColors, color),
@@ -1280,7 +1271,6 @@ export function RichTextEditor({
   }, [customColors, customTextColors, selectionChain, setSettings]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
-    nativeColorPickerOpenRef.current = false;
     setSettings({
       customColors: rememberCustomColor(customColors, color),
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
@@ -1290,31 +1280,9 @@ export function RichTextEditor({
     setShowHighlights(false);
   }, [customColors, customHighlightColors, selectionChain, setSettings]);
 
-  const openNativeColorPicker = useCallback((input: HTMLInputElement | null) => {
-    if (!input) return;
-    nativeColorPickerOpenRef.current = true;
-    window.addEventListener("focus", () => {
-      window.setTimeout(() => {
-        const restoreSelection = nativeColorPickerOpenRef.current;
-        nativeColorPickerOpenRef.current = false;
-        if (restoreSelection) selectionChain()?.run();
-      }, 0);
-    }, { once: true });
-    try {
-      if (typeof input.showPicker === "function") input.showPicker();
-      else input.click();
-    } catch {
-      try {
-        input.click();
-      } catch {
-        nativeColorPickerOpenRef.current = false;
-      }
-    }
-  }, [selectionChain]);
-
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
-  const textColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customColors, ...customTextColors]));
-  const highlightColorSwatches = Array.from(new Set([...COLOR_SWATCHES, ...customColors, ...customHighlightColors]));
+  const textColorSwatches = Array.from(new Set([...customColors, ...customTextColors]));
+  const highlightColorSwatches = Array.from(new Set([...customColors, ...customHighlightColors]));
 
   const selectedFontSize = editor ? selectedMarkValue(editor, "textStyle", "fontSize") : null;
   const selectedFamily = editor ? selectedMarkValue(editor, "textStyle", "fontFamily") : null;
@@ -1333,8 +1301,6 @@ export function RichTextEditor({
   const currentHighlight = selectedHighlight === "mixed"
     ? null
     : selectedHighlight ?? editor?.getAttributes("highlight").color ?? null;
-  const nativeTextColor = colorInputValue(currentColor, "#111827");
-  const nativeHighlightColor = colorInputValue(currentHighlight, "#fde68a");
   const boldState = editor ? selectedMarkValue(editor, "bold") : null;
   const italicState = editor ? selectedMarkValue(editor, "italic") : null;
   const underlineState = editor ? selectedMarkValue(editor, "underline") : null;
@@ -1500,7 +1466,7 @@ export function RichTextEditor({
             </button>
             {showColors && (
               <div className={cn(
-                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[20rem] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
               )}>
                 <div className="mb-2 flex items-center justify-between">
@@ -1511,27 +1477,12 @@ export function RichTextEditor({
                     setShowColors(false);
                   }}>Clear color</button>
                 </div>
-                <div className="grid grid-cols-6 gap-2">
-                  {textColorSwatches.map((hex) => (
-                    <button key={hex} title={hex}
-                      onMouseDown={(e) => { e.preventDefault(); selectionChain()?.setColor(hex).run(); setShowColors(false); }}
-                      className={cn("h-7 w-7 flex-none rounded-full border border-border/50 transition-transform hover:scale-110",
-                        currentColor === hex && "ring-2 ring-primary ring-offset-1")}
-                      style={{ backgroundColor: hex }} />
-                  ))}
-                  <button type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => openNativeColorPicker(customColorRef.current)}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-red-400 via-green-400 to-blue-400 text-[10px] font-bold text-white transition-transform hover:scale-110"
-                    title="Add custom color">
-                    +
-                  </button>
-                  <input ref={customColorRef} type="color" className="sr-only" tabIndex={-1}
-                    aria-label="Choose custom text color"
-                    name="custom-text-color"
-                    value={nativeTextColor}
-                    onChange={(event) => chooseCustomTextColor(event.target.value)} />
-                </div>
+                <ColorPickerPanel
+                  value={currentColor ?? "#111827"}
+                  extraColors={textColorSwatches}
+                  showHeading={false}
+                  onChange={chooseCustomTextColor}
+                />
               </div>
             )}
           </div>
@@ -1545,7 +1496,7 @@ export function RichTextEditor({
             </button>
             {showHighlights && (
               <div className={cn(
-                "absolute right-0 z-10 w-60 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[20rem] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
               )}>
                 <div className="mb-2 flex items-center justify-between">
@@ -1556,27 +1507,12 @@ export function RichTextEditor({
                     setShowHighlights(false);
                   }}>Clear highlight</button>
                 </div>
-                <div className="grid grid-cols-6 gap-2">
-                  {highlightColorSwatches.map((hex) => (
-                    <button key={hex} title={hex}
-                      onMouseDown={(e) => { e.preventDefault(); selectionChain()?.setHighlight({ color: hex }).run(); setShowHighlights(false); }}
-                      className={cn("h-7 w-7 flex-none rounded-full border border-border/50 transition-transform hover:scale-110",
-                        currentHighlight === hex && "ring-2 ring-primary ring-offset-1")}
-                      style={{ backgroundColor: hex }} />
-                  ))}
-                  <button type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => openNativeColorPicker(customHighlightRef.current)}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-gradient-to-br from-yellow-200 via-pink-300 to-cyan-300 text-[10px] font-bold text-slate-800 transition-transform hover:scale-110"
-                    title="Add custom highlight">
-                    +
-                  </button>
-                  <input ref={customHighlightRef} type="color" className="sr-only" tabIndex={-1}
-                    aria-label="Choose custom highlight color"
-                    name="custom-highlight-color"
-                    value={nativeHighlightColor}
-                    onChange={(event) => chooseCustomHighlightColor(event.target.value)} />
-                </div>
+                <ColorPickerPanel
+                  value={currentHighlight ?? "#fde68a"}
+                  extraColors={highlightColorSwatches}
+                  showHeading={false}
+                  onChange={chooseCustomHighlightColor}
+                />
               </div>
             )}
           </div>

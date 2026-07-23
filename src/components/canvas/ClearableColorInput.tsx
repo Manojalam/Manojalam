@@ -1,52 +1,62 @@
 "use client";
 
-import type { InputHTMLAttributes } from "react";
 import { X } from "lucide-react";
 
+import { AppColorPicker } from "@/components/canvas/AppColorPicker";
 import { cn } from "@/lib/utils";
-import { rememberCustomColor } from "@/lib/canvas/custom-colors";
-import { useCanvasStore } from "@/store/canvas-store";
 
-type ClearableColorInputProps = Omit<
-  InputHTMLAttributes<HTMLInputElement>,
-  "type" | "value" | "onChange"
-> & {
+type ClearableColorInputProps = {
   value: string;
   onColorChange: (color: string) => void;
   onClear: () => void;
   inputClassName?: string;
   compact?: boolean;
+  id?: string;
+  name?: string;
+  title?: string;
+  disabled?: boolean;
+  "aria-label"?: string;
 };
 
-/** Native color input with an always-available action for removing the override. */
+/** App color chooser with an always-available action for removing the override. */
 export function ClearableColorInput({
   value,
   onColorChange,
   onClear,
   inputClassName,
   compact = false,
-  ...inputProps
+  id,
+  name,
+  title,
+  disabled,
+  "aria-label": ariaLabel,
 }: ClearableColorInputProps) {
-  const nativeValue = /^#[0-9a-f]{6}$/i.test(value) ? value : "#6366f1";
-
   return (
     <span className="relative block min-w-0">
-      <input
-        {...inputProps}
-        type="color"
-        value={nativeValue}
-        onChange={(event) => {
-          const color = event.target.value;
-          const state = useCanvasStore.getState();
-          state.setSettings({ customColors: rememberCustomColor(state.settings.customColors, color) });
-          onColorChange(color);
-        }}
-        className={inputClassName}
-      />
+      <AppColorPicker value={value} onChange={onColorChange}>
+        <button
+          id={id}
+          name={name}
+          type="button"
+          title={title ?? ariaLabel ?? "Choose color"}
+          aria-label={ariaLabel ?? "Choose color"}
+          disabled={disabled}
+          className={cn(
+            "block cursor-pointer border border-border bg-background p-0.5 disabled:cursor-not-allowed disabled:opacity-50",
+            inputClassName
+          )}
+        >
+          <span
+            className="block h-full min-h-3 w-full rounded-[inherit]"
+            style={{ backgroundColor: value }}
+          />
+        </button>
+      </AppColorPicker>
       <button
         type="button"
         title="Clear color"
-        aria-label={`${inputProps["aria-label"] ?? "Color"}: clear color`}
+        aria-label={`${ariaLabel ?? "Color"}: clear color`}
+        disabled={disabled}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();

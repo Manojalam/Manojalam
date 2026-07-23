@@ -24,6 +24,7 @@ import {
   type TextToolAction,
 } from "@/lib/text-tools";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AppColorPicker } from "@/components/canvas/AppColorPicker";
 import {
   semanticSymbolFontFamily,
   semanticSymbolRotation,
@@ -297,26 +298,46 @@ function SymbolAppearanceControls({
           enclosure === "none" && "pointer-events-none opacity-40"
         )}>
           Fill
-          <input
-            data-symbol-control
-            type="color"
+          <AppColorPicker
             value={appearance.fillColor ?? "#3b82f6"}
-            onChange={(event) => onChange({ ...appearance, fillColor: event.target.value })}
-            className="h-6 w-7 cursor-pointer rounded border border-border bg-transparent p-0.5"
-          />
+            onChange={(color) => onChange({ ...appearance, fillColor: color })}
+            align="end"
+          >
+            <button
+              type="button"
+              data-symbol-control
+              aria-label="Symbol fill color"
+              className="h-6 w-7 cursor-pointer rounded border border-border bg-background p-0.5"
+            >
+              <span
+                className="block h-full w-full rounded-sm"
+                style={{ backgroundColor: appearance.fillColor ?? "#3b82f6" }}
+              />
+            </button>
+          </AppColorPicker>
         </label>
         <label className={cn(
           "flex items-center gap-1 text-[10px] text-muted-foreground",
           enclosure === "none" && "pointer-events-none opacity-40"
         )}>
           Line
-          <input
-            data-symbol-control
-            type="color"
+          <AppColorPicker
             value={appearance.borderColor ?? "#60a5fa"}
-            onChange={(event) => onChange({ ...appearance, borderColor: event.target.value })}
-            className="h-6 w-7 cursor-pointer rounded border border-border bg-transparent p-0.5"
-          />
+            onChange={(color) => onChange({ ...appearance, borderColor: color })}
+            align="end"
+          >
+            <button
+              type="button"
+              data-symbol-control
+              aria-label="Symbol border color"
+              className="h-6 w-7 cursor-pointer rounded border border-border bg-background p-0.5"
+            >
+              <span
+                className="block h-full w-full rounded-sm"
+                style={{ backgroundColor: appearance.borderColor ?? "#60a5fa" }}
+              />
+            </button>
+          </AppColorPicker>
         </label>
       </div>
       {onApply && onClear && (

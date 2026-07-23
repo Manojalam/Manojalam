@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  COLOR_SWATCH_GROUPS,
   colorInputValue,
+  hexToHsv,
+  hexToRgb,
+  hsvToHex,
   MAX_CUSTOM_COLORS,
   mergeCustomColors,
   normalizeHexColor,
   normalizeCustomColors,
   rememberCustomColor,
-  VIVID_CHART_COLORS,
+  rgbToHex,
 } from "./custom-colors";
 
 test("keeps native color inputs synchronized with the selected color", () => {
@@ -24,11 +28,27 @@ test("accepts exact six-digit hex colors with or without a hash", () => {
   assert.equal(normalizeHexColor("not-a-color"), null);
 });
 
-test("offers saturated chart colors matching vivid diagram families", () => {
-  const colors = new Set<string>(VIVID_CHART_COLORS.map(({ value }) => value));
-  for (const color of ["#f0443e", "#dc6425", "#17a052", "#177da6", "#bb2f6c"]) {
-    assert.ok(colors.has(color), `Expected vivid chart color ${color}`);
-  }
+test("offers general bright, light, strong, and neutral swatches", () => {
+  assert.deepEqual(
+    COLOR_SWATCH_GROUPS.map(({ name }) => name),
+    ["Bright", "Light", "Strong", "Neutral"]
+  );
+  assert.ok(COLOR_SWATCH_GROUPS[0].colors.includes("#16b364"));
+  assert.ok(COLOR_SWATCH_GROUPS[1].colors.includes("#c9f3d8"));
+  assert.ok(COLOR_SWATCH_GROUPS[2].colors.includes("#087f5b"));
+  assert.ok(COLOR_SWATCH_GROUPS[3].colors.includes("#ffffff"));
+});
+
+test("converts exact colors between hex, RGB, and HSV", () => {
+  assert.deepEqual(hexToRgb("#2878ff"), { r: 40, g: 120, b: 255 });
+  assert.equal(rgbToHex({ r: 40, g: 120, b: 255 }), "#2878ff");
+  assert.equal(hsvToHex({ h: 0, s: 100, v: 100 }), "#ff0000");
+  assert.equal(hsvToHex({ h: 120, s: 100, v: 100 }), "#00ff00");
+  const blue = hexToHsv("#0000ff");
+  assert.ok(blue);
+  assert.equal(Math.round(blue.h), 240);
+  assert.equal(Math.round(blue.s), 100);
+  assert.equal(Math.round(blue.v), 100);
 });
 
 test("merges shared and legacy recent-color lists", () => {
