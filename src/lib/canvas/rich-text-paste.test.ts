@@ -95,3 +95,21 @@ test("retains semantic superscript and subscript marks from pasted text", () => 
     "<p>E = mc<sup>2</sup> and H<sub>2</sub>O</p>"
   );
 });
+
+test("retains internal styled-symbol attributes for rich-text copy and paste", () => {
+  const sanitized = sanitizePastedHtml(
+    '<div data-pm-slice="1 1 []"><span data-vidya-symbol="true"'
+    + ' data-symbol-enclosure="rounded-square" data-symbol-fill="#3b82f6"'
+    + ' data-symbol-border="#60a5fa" data-symbol-scale="1.2"'
+    + ' data-symbol-font="tiro-devanagari" data-symbol-id="jihvamuliya"'
+    + ' style="display:inline-flex;background-color:#3b82f6">)(</span></div>'
+  );
+
+  assert.match(sanitized, /data-vidya-symbol="true"/);
+  assert.match(sanitized, /data-symbol-enclosure="rounded-square"/);
+  assert.match(sanitized, /data-symbol-fill="#3b82f6"/);
+  assert.match(sanitized, /data-symbol-border="#60a5fa"/);
+  assert.match(sanitized, /data-symbol-scale="1.2"/);
+  assert.match(sanitized, /data-symbol-font="tiro-devanagari"/);
+  assert.match(sanitized, /data-symbol-id="jihvamuliya"/);
+});

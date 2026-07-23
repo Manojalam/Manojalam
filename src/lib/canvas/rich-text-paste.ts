@@ -32,6 +32,16 @@ const SAFE_EXTERNAL_ELEMENTS = new Set([
   "H4", "H5", "H6", "A", "SUP", "SUB",
 ]);
 
+const INTERNAL_SYMBOL_ATTRIBUTES = new Set([
+  "data-vidya-symbol",
+  "data-symbol-enclosure",
+  "data-symbol-fill",
+  "data-symbol-border",
+  "data-symbol-scale",
+  "data-symbol-font",
+  "data-symbol-id",
+]);
+
 function sanitizeFallbackLinks(html: string): string {
   return html.replace(/<a\b([^>]*)>/gi, (_match, attributes: string) => {
     const href = attributes.match(/(?:^|\s)href=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
@@ -147,6 +157,9 @@ export function sanitizePastedHtml(html: string): string {
   for (const element of Array.from(parsed.body.querySelectorAll<HTMLElement>("*"))) {
     const fontStyle = element.style.fontStyle;
     const fontWeight = element.style.fontWeight;
+    const internalSymbol = internalTipTapCopy
+      && element.tagName === "SPAN"
+      && element.getAttribute("data-vidya-symbol") === "true";
 
     for (const property of LAYOUT_STYLE_PROPERTIES) element.style.removeProperty(property);
     if (!internalTipTapCopy) {
@@ -162,7 +175,12 @@ export function sanitizePastedHtml(html: string): string {
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
       const safeInternalAttribute = internalTipTapCopy
-        && (name === "style" || name === "data-pm-slice" || name === "data-pm-node");
+        && (
+          name === "style"
+          || name === "data-pm-slice"
+          || name === "data-pm-node"
+          || (internalSymbol && INTERNAL_SYMBOL_ATTRIBUTES.has(name))
+        );
       const safeListAttribute = element.tagName === "OL" && name === "start";
       const safeLinkAttribute = element.tagName === "A"
         && name === "href"

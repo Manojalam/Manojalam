@@ -1,4 +1,5 @@
 import type { Node, Edge, Viewport } from "@xyflow/react";
+import type { SymbolAppearance } from "./text-tools";
 
 export type ScriptMode = "plain" | "devanagari" | "iast" | "mixed";
 export type BoardStorageMode = "local" | "supabase";
@@ -175,6 +176,8 @@ export interface BoardSettings {
   customHighlightColors?: string[];
   /** Shared recent colors shown in every board color palette. */
   customColors?: string[];
+  /** Last chosen symbol treatment, reused until the user changes it. */
+  symbolAppearance?: SymbolAppearance;
   /** @deprecated Legacy alias retained while old boards migrate. */
   gridSize?: number;
 }
@@ -713,6 +716,13 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   customTextColors: [],
   customHighlightColors: [],
   customColors: [],
+  symbolAppearance: {
+    enclosure: "none",
+    fillColor: "#3b82f6",
+    borderColor: "#60a5fa",
+    scale: 1,
+    font: "inherit",
+  },
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

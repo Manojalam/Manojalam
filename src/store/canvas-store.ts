@@ -110,6 +110,7 @@ import {
   normalizeBoardFontSize,
   supportsBoardTypography,
 } from "@/lib/canvas/board-typography";
+import { normalizeSymbolAppearance } from "@/lib/text-tools";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -1888,6 +1889,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         rawSettings.customTextColors,
         rawSettings.customHighlightColors,
       ),
+      symbolAppearance: normalizeSymbolAppearance(rawSettings.symbolAppearance),
       canvasBackgroundMode,
       canvasBackgroundColor: normalizeBoardColorOverride(
         rawSettings.canvasBackgroundColor,
