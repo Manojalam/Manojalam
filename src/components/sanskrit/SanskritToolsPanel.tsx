@@ -36,7 +36,10 @@ import {
 } from "@/lib/sanskrit/transliterate";
 import { generateId } from "@/lib/utils";
 import { toast } from "sonner";
-import { semanticSymbolRotation } from "@/lib/canvas/symbol-style";
+import {
+  semanticSymbolFontFamily,
+  semanticSymbolRotation,
+} from "@/lib/canvas/symbol-style";
 import type { InsertSymbol } from "@/lib/text-tools";
 
 function symbolPreviewStyle(
@@ -44,9 +47,10 @@ function symbolPreviewStyle(
 ): CSSProperties {
   const rotation = semanticSymbolRotation(symbol.semanticId);
   return {
-    fontFamily: symbol.appearance?.font === "tiro-devanagari"
+    fontFamily: semanticSymbolFontFamily(symbol.semanticId)
+      ?? (symbol.appearance?.font === "tiro-devanagari"
       ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
-      : undefined,
+      : undefined),
     fontSize: `${symbol.appearance?.scale ?? 1}em`,
     transform: rotation ? `rotate(${rotation}deg)` : undefined,
     transformOrigin: rotation ? "center" : undefined,

@@ -39,13 +39,14 @@ import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-t
 import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
 import {
   hasVisibleSymbolStyle,
+  semanticSymbolFontFamily,
   symbolMarkStyle,
   type SymbolMarkAttributes,
 } from "@/lib/canvas/symbol-style";
 import {
   normalizeSymbolAppearance,
   TEXT_TOOL_EVENT,
-  type SymbolAppearance,
+  UPADHMANIYA_CHARACTER,
   type TextToolAction,
 } from "@/lib/text-tools";
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, Unlink2 } from "lucide-react";
@@ -170,6 +171,46 @@ const ShapeTextFlowGuides = Extension.create({
   },
 });
 
+/**
+ * Apply a rendering-only font fallback to raw keyboard and paste input. This
+ * uses a ProseMirror decoration, so getHTML(), copy, undo, and persistence keep
+ * the exact U+1CF6 character the user entered—no replacement mark is stored.
+ */
+const UpadhmaniyaPresentation = Extension.create({
+  name: "upadhmaniyaPresentation",
+  addProseMirrorPlugins() {
+    const fontFamily = semanticSymbolFontFamily("upadhmaniya");
+    return [new Plugin({
+      key: new PluginKey("upadhmaniyaPresentation"),
+      props: {
+        decorations(state) {
+          if (!fontFamily) return null;
+          const decorations: Decoration[] = [];
+          state.doc.descendants((node, position) => {
+            if (!node.isText || !node.text?.includes(UPADHMANIYA_CHARACTER)) return;
+            let offset = node.text.indexOf(UPADHMANIYA_CHARACTER);
+            while (offset >= 0) {
+              decorations.push(Decoration.inline(
+                position + offset,
+                position + offset + UPADHMANIYA_CHARACTER.length,
+                {
+                  "data-vidya-raw-symbol": "upadhmaniya",
+                  style: `font-family:${fontFamily}`,
+                }
+              ));
+              offset = node.text.indexOf(
+                UPADHMANIYA_CHARACTER,
+                offset + UPADHMANIYA_CHARACTER.length
+              );
+            }
+          });
+          return DecorationSet.create(state.doc, decorations);
+        },
+      },
+    })];
+  },
+});
+
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
   StarterKit.configure({
@@ -191,6 +232,7 @@ const EXTENSIONS = [
   Superscript,
   Subscript,
   SymbolStyle,
+  UpadhmaniyaPresentation,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
