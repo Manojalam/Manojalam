@@ -545,7 +545,9 @@ function applyMatrixResultToNodes(
       matrixCellRole: node.id === result.rootId ? "header" : h?.parentId === result.rootId ? "category" : "cell",
       matrixRootId: result.rootId,
       matrixColumn: cell.column,
-      matrixColumnWidth: cell.column >= 0 ? result.columnWidths[cell.column] : result.bounds.width,
+      // Manual resizing is based on the visible cell, not the logical depth
+      // column. Oriented/aligned Matrix rows can have a different track width.
+      matrixColumnWidth: cell.width,
       matrixRowStart: cell.rowStart,
       matrixRowSpan: cell.rowSpan,
       matrixGridVisible: gridVisible,
@@ -966,6 +968,20 @@ const MATRIX_REFLOW_FIELDS = new Set([
   "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow",
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
+
+function isPositiveFiniteNumber(value: unknown): boolean {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
+  return Number.isFinite(numeric) && numeric > 0;
+}
+
+function isNonNegativeFiniteNumber(value: unknown): boolean {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
+  return Number.isFinite(numeric) && numeric >= 0;
+}
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
   "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "listDensity",
@@ -2792,10 +2808,32 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   updateNodeData: (nodeId, data) => {
     set((state) => {
       const sourceNode = state.nodes.find((node) => node.id === nodeId);
-      const updatedNode: Node | null = sourceNode
-        ? { ...sourceNode, data: { ...sourceNode.data, ...data } }
-        : null;
-      const nodes = state.nodes.map((node) => node.id === nodeId && updatedNode ? updatedNode : node);
+      if (!sourceNode) return { nodes: state.nodes, saveStatus: "unsaved" };
+      const sourceData = (sourceNode.data ?? {}) as Record<string, unknown>;
+      const matrixRootId = sourceData.layoutMode === "matrix"
+        ? sourceNode.id
+        : typeof sourceData.matrixRootId === "string" ? sourceData.matrixRootId : null;
+      const clearTableWidth = isPositiveFiniteNumber(data.matrixWidthOverride)
+        || isNonNegativeFiniteNumber(data.matrixSiblingGap);
+      const clearTableHeight = isPositiveFiniteNumber(data.matrixHeightOverride)
+        || isNonNegativeFiniteNumber(data.matrixSiblingGap);
+      const nodes = state.nodes.map((node) => {
+        let nextData = node.data;
+        let changed = false;
+        if (node.id === nodeId) {
+          nextData = { ...nextData, ...data };
+          changed = true;
+        }
+        if (matrixRootId && node.id === matrixRootId && (clearTableWidth || clearTableHeight)) {
+          nextData = {
+            ...nextData,
+            ...(clearTableWidth ? { matrixTableWidthOverride: undefined } : {}),
+            ...(clearTableHeight ? { matrixTableHeightOverride: undefined } : {}),
+          };
+          changed = true;
+        }
+        return changed ? { ...node, data: nextData } : node;
+      });
       return { nodes, saveStatus: "unsaved" };
     });
     const changedManualFill = Object.prototype.hasOwnProperty.call(data, "fillColor")
@@ -2926,16 +2964,30 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ));
       const desiredHeight = Math.max(40, Math.round(size.height));
       set((state) => ({
-        nodes: state.nodes.map((candidate) => candidate.id === nodeId
-          ? {
-              ...candidate,
-              data: {
-                ...(candidate.data ?? {}),
-                matrixWidthOverride: desiredColumnWidth,
-                matrixHeightOverride: desiredHeight,
-              },
-            }
-          : candidate),
+        nodes: state.nodes.map((candidate) => {
+          const matrixRootId = nodeData.layoutMode === "matrix"
+            ? nodeId
+            : typeof nodeData.matrixRootId === "string" ? nodeData.matrixRootId : null;
+          let nextData = candidate.data;
+          let changed = false;
+          if (candidate.id === nodeId) {
+            nextData = {
+              ...nextData,
+              matrixWidthOverride: desiredColumnWidth,
+              matrixHeightOverride: desiredHeight,
+            };
+            changed = true;
+          }
+          if (matrixRootId && candidate.id === matrixRootId) {
+            nextData = {
+              ...nextData,
+              matrixTableWidthOverride: undefined,
+              matrixTableHeightOverride: undefined,
+            };
+            changed = true;
+          }
+          return changed ? { ...candidate, data: nextData } : candidate;
+        }),
         saveStatus: "unsaved",
       }));
       requestNodeInternalsRefresh([nodeId]);

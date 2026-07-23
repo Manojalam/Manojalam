@@ -515,6 +515,8 @@ type OrientedBranchCell = {
   terminal: boolean;
   horizontalTerminal: boolean;
   verticalTerminal: boolean;
+  widthLocked?: boolean;
+  heightLocked?: boolean;
 };
 
 type OrientedBranchLayout = {
@@ -634,21 +636,36 @@ function hasExplicitMatrixGeometry(
   return visit(rootId, new Set());
 }
 
-type StretchTrack = { start: number; end: number };
+type StretchTrack = { start: number; end: number; locked: boolean };
 
 function uniqueStretchTracks(
   cells: OrientedBranchCell[],
   axis: "horizontal" | "vertical"
 ): StretchTrack[] {
-  return cells.map((cell) => {
+  const tracks = cells.map((cell) => {
     const start = axis === "horizontal" ? cell.x : cell.y;
     const end = start + (axis === "horizontal" ? cell.width : cell.height);
-    return { start, end };
+    return {
+      start,
+      end,
+      locked: axis === "horizontal" ? cell.widthLocked === true : cell.heightLocked === true,
+    };
   })
-    .sort((first, second) => first.start - second.start || first.end - second.end)
-    .filter((track, index, tracks) => index === 0
-      || Math.abs(tracks[index - 1].start - track.start) > 0.5
-      || Math.abs(tracks[index - 1].end - track.end) > 0.5);
+    .sort((first, second) => first.start - second.start || first.end - second.end);
+  const unique: StretchTrack[] = [];
+  for (const track of tracks) {
+    const previous = unique.at(-1);
+    if (
+      previous
+      && Math.abs(previous.start - track.start) <= 0.5
+      && Math.abs(previous.end - track.end) <= 0.5
+    ) {
+      previous.locked ||= track.locked;
+    } else {
+      unique.push({ ...track });
+    }
+  }
+  return unique;
 }
 
 function cellPerpendicularRange(
@@ -659,6 +676,7 @@ function cellPerpendicularRange(
   return {
     start,
     end: start + (axis === "horizontal" ? cell.height : cell.width),
+    locked: false,
   };
 }
 
@@ -721,10 +739,12 @@ function stretchCellAxis(
 ): { start: number; size: number } {
   if (extra <= 0 || !tracks.length) return { start, size };
   const end = start + size;
+  const flexibleTracks = tracks.filter((track) => !track.locked);
+  if (!flexibleTracks.length) return { start, size };
   let shift = 0;
   let growth = 0;
-  tracks.forEach((track, trackIndex) => {
-    const share = proportionalShare(extra, trackIndex, tracks.length);
+  flexibleTracks.forEach((track, trackIndex) => {
+    const share = proportionalShare(extra, trackIndex, flexibleTracks.length);
     if (track.end <= start + 0.5) shift += share;
     if (start <= track.start + 0.5 && end >= track.end - 0.5) growth += share;
   });
@@ -769,6 +789,83 @@ type OrientedChildEntry = {
   nodeId: string;
   layout: OrientedBranchLayout;
 };
+
+function singleHorizontalBand(
+  child: OrientedChildEntry
+): OrientedBranchCell[] | null {
+  const cells = [...child.layout.cells].sort((first, second) => first.x - second.x);
+  if (cells.length < 2) return null;
+  if (cells.some((cell) => (
+    Math.abs(cell.y) > 0.5
+    || Math.abs(cell.height - child.layout.height) > 0.5
+  ))) return null;
+  for (let index = 1; index < cells.length; index += 1) {
+    if (cells[index].x < cells[index - 1].x + cells[index - 1].width - 0.5) return null;
+  }
+  return cells;
+}
+
+/**
+ * Sibling branches that each render as one horizontal Matrix row share one
+ * column template. Exact widths win; otherwise the widest peer defines the
+ * track. Rows with conflicting explicit widths or custom gaps stay independent
+ * instead of silently changing a user-entered value.
+ */
+function alignSingleBandSiblingRows(
+  children: OrientedChildEntry[]
+): OrientedChildEntry[] {
+  if (children.length < 2) return children;
+  const bands = children.map(singleHorizontalBand);
+  if (bands.some((band) => !band)) return children;
+  const rows = bands as OrientedBranchCell[][];
+  const trackCount = rows[0].length;
+  if (rows.some((row) => row.length !== trackCount)) return children;
+
+  const widths: number[] = [];
+  for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+    const lockedWidths = rows
+      .map((row) => row[trackIndex])
+      .filter((cell) => cell.widthLocked)
+      .map((cell) => cell.width);
+    if (
+      lockedWidths.length > 1
+      && Math.max(...lockedWidths) - Math.min(...lockedWidths) > 0.5
+    ) return children;
+    widths.push(lockedWidths[0] ?? Math.max(...rows.map((row) => row[trackIndex].width)));
+  }
+
+  const gaps: number[] = [];
+  for (let trackIndex = 0; trackIndex < trackCount - 1; trackIndex += 1) {
+    const rowGaps = rows.map((row) => (
+      row[trackIndex + 1].x - (row[trackIndex].x + row[trackIndex].width)
+    ));
+    if (Math.max(...rowGaps) - Math.min(...rowGaps) > 0.5) return children;
+    gaps.push(rowGaps.reduce((sum, gap) => sum + gap, 0) / rowGaps.length);
+  }
+
+  const trackX: number[] = [];
+  let nextX = 0;
+  widths.forEach((width, trackIndex) => {
+    trackX.push(nextX);
+    nextX += width + (gaps[trackIndex] ?? 0);
+  });
+  const alignedWidth = nextX;
+
+  return children.map((child, childIndex) => {
+    const replacements = new Map(rows[childIndex].map((cell, trackIndex) => [
+      cell.nodeId,
+      { ...cell, x: trackX[trackIndex], width: widths[trackIndex] },
+    ]));
+    return {
+      ...child,
+      layout: {
+        ...child.layout,
+        width: alignedWidth,
+        cells: child.layout.cells.map((cell) => replacements.get(cell.nodeId) ?? cell),
+      },
+    };
+  });
+}
 
 function isTerminalSibling(child: OrientedChildEntry): boolean {
   return child.layout.cells.length === 1
@@ -866,12 +963,15 @@ function layoutOrientedChildSections(
 ): OrientedBranchLayout {
   if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
   const siblingGroup = equalizeTerminalSiblingHeights(children);
-  const sections = orientedChildSections(
+  const rawSections = orientedChildSections(
     parentData,
     siblingGroup.children,
     childFlow,
     siblingGap
   );
+  const sections = childFlow === "column"
+    ? rawSections.map(alignSingleBandSiblingRows)
+    : rawSections;
   // Fold is a continuation of the same Matrix, so it uses the same thin gap as
   // every other cell boundary. A larger separator exposes the canvas between
   // cells and makes the continuation look like a broken table.
@@ -977,6 +1077,7 @@ function computeOrientedMatrixLayout(
     const orientation = matrixOrientationForNode(nodeId, inherited, byId);
     const childFlow = matrixChildFlowForNode(nodeId, orientation, byId);
     const exactWidth = positiveNumber(data.matrixWidthOverride);
+    const exactHeight = positiveNumber(data.matrixHeightOverride);
     const width = exactWidth
       ? Math.ceil(clamp(exactWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH))
       : columnWidths[column] ?? preferredCellWidth(node, column, settings);
@@ -1004,6 +1105,8 @@ function computeOrientedMatrixLayout(
           terminal: true,
           horizontalTerminal: true,
           verticalTerminal: true,
+          widthLocked: exactWidth !== null,
+          heightLocked: exactHeight !== null,
         }],
       };
     }
@@ -1034,6 +1137,8 @@ function computeOrientedMatrixLayout(
             terminal: false,
             horizontalTerminal: true,
             verticalTerminal: false,
+            widthLocked: exactWidth !== null,
+            heightLocked: exactHeight !== null,
           },
           ...translateOrientedCells(childArea.cells, 0, ownRequiredHeight + settings.cellGap),
         ],
@@ -1054,6 +1159,8 @@ function computeOrientedMatrixLayout(
           terminal: false,
           horizontalTerminal: false,
           verticalTerminal: true,
+          widthLocked: exactWidth !== null,
+          heightLocked: exactHeight !== null,
         },
         ...translateOrientedCells(childArea.cells, width + settings.cellGap, 0),
       ],

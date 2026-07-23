@@ -4192,7 +4192,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 Selected cell size
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                Enter exact box dimensions. A merged parent can remain taller or wider when it must span its children.
+                Exact box dimensions take priority over overall Matrix scaling. Peer rows with the same structure share aligned column tracks.
               </p>
               <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
@@ -4260,7 +4260,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Overall Matrix size</p>
                   <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                    Sets the exact outer table size. The composed cells and gaps scale together.
+                    Sets the exact outer table size. Entering a cell size or sibling gap later returns the conflicting overall dimension to Auto.
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
