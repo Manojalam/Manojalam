@@ -47,6 +47,10 @@ import {
   layoutPresentationShapeType,
   usesRoundedCardLayoutPresentation,
 } from "@/lib/layout/layout-presentation";
+import {
+  surfaceEffectFilter,
+  surfaceEffectStyle,
+} from "@/lib/canvas/surface-effects";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -979,6 +983,7 @@ function ShapeSurface({
   borderRadius,
   selected,
   petalCount,
+  effectData,
 }: {
   shapeType: string;
   fillColor?: string;
@@ -988,19 +993,26 @@ function ShapeSurface({
   borderRadius: number;
   selected?: boolean;
   petalCount?: number;
+  effectData?: Record<string, unknown>;
 }) {
   const renderedFillColor = themeAwareNodeFillColor(fillColor);
+  const effectStyle = effectData ? surfaceEffectStyle(effectData, borderColor) : {};
   if (isSvgShape(shapeType)) {
     return (
-      <SvgShapeSurface
-        shapeType={shapeType}
-        fillColor={renderedFillColor}
-        borderColor={borderColor}
-        borderWidth={borderWidth}
-        borderStyle={borderStyle}
-        selected={selected}
-        petalCount={petalCount}
-      />
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ filter: effectData ? surfaceEffectFilter(effectData, borderColor) : undefined }}
+      >
+        <SvgShapeSurface
+          shapeType={shapeType}
+          fillColor={renderedFillColor}
+          borderColor={borderColor}
+          borderWidth={borderWidth}
+          borderStyle={borderStyle}
+          selected={selected}
+          petalCount={petalCount}
+        />
+      </div>
     );
   }
 
@@ -1015,6 +1027,7 @@ function ShapeSurface({
           backgroundClip: "padding-box",
           border: `${borderWidth}px ${borderStyle} ${borderColor}`,
           overflow: "hidden",
+          ...effectStyle,
         }}
       />
       {selected && <div className="absolute inset-0 ring-2 ring-primary ring-offset-1" style={shapeStyle} />}
@@ -1304,6 +1317,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
             borderRadius={bRadius}
             selected={selected}
             petalCount={petalCount}
+            effectData={dd}
           />
 
           {showLabelBoxGuides && !radialChart?.enabled && (
