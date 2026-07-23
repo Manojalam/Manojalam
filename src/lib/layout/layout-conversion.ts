@@ -75,3 +75,39 @@ export function clearLayoutEdgeRouting(
 ): Record<string, unknown> {
   return omitFields(data, EDGE_LAYOUT_ROUTING_FIELDS);
 }
+
+/** A generated matrix frame belongs to the converted root or a nested root in its subtree. */
+export function matrixFrameBelongsToLayoutScope(
+  frameRootId: string,
+  layoutRootId: string,
+  scopeIds: ReadonlySet<string>
+): boolean {
+  return frameRootId === layoutRootId || scopeIds.has(frameRootId);
+}
+
+interface LayoutNodeLike {
+  id: string;
+  type?: string;
+  data?: unknown;
+}
+
+/** Drop persisted generated frames whose owning root is no longer a Matrix layout. */
+export function removeStaleGeneratedMatrixFrames<T extends LayoutNodeLike>(
+  nodes: readonly T[]
+): T[] {
+  const activeMatrixRoots = new Set(nodes
+    .filter((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return data.layoutMode === "matrix";
+    })
+    .map((node) => node.id));
+
+  return nodes.filter((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const frameRootId = node.type === "frame" && typeof data.matrixFrameFor === "string"
+      ? data.matrixFrameFor
+      : null;
+    if (!frameRootId || frameRootId === "__board__") return true;
+    return activeMatrixRoots.has(frameRootId);
+  });
+}

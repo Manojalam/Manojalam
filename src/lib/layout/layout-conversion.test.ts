@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   clearLayoutEdgeRouting,
   clearLayoutNodeGeometry,
+  matrixFrameBelongsToLayoutScope,
+  removeStaleGeneratedMatrixFrames,
 } from "./layout-conversion";
 
 test("chart conversion keeps hierarchy and authored content but drops source geometry", () => {
@@ -82,4 +84,27 @@ test("chart conversion keeps edge labels and style but drops source routing", ()
     pathStyle: "dashed",
   });
   assert.equal(source.manualRoute, true);
+});
+
+test("chart conversion removes matrix frames for the root and nested roots only", () => {
+  const scopeIds = new Set(["root", "branch", "leaf"]);
+
+  assert.equal(matrixFrameBelongsToLayoutScope("root", "root", scopeIds), true);
+  assert.equal(matrixFrameBelongsToLayoutScope("branch", "root", scopeIds), true);
+  assert.equal(matrixFrameBelongsToLayoutScope("other-root", "root", scopeIds), false);
+});
+
+test("persisted boards keep active matrix and authored frames but remove stale generated frames", () => {
+  const nodes = [
+    { id: "matrix", type: "shape", data: { layoutMode: "matrix" } },
+    { id: "tree", type: "shape", data: { layoutMode: "vertical" } },
+    { id: "active-frame", type: "frame", data: { matrixFrameFor: "matrix" } },
+    { id: "stale-frame", type: "frame", data: { matrixFrameFor: "tree" } },
+    { id: "authored-frame", type: "frame", data: { title: "Notes" } },
+  ];
+
+  assert.deepEqual(
+    removeStaleGeneratedMatrixFrames(nodes).map((node) => node.id),
+    ["matrix", "tree", "active-frame", "authored-frame"]
+  );
 });
