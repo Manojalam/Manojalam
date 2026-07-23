@@ -1,8 +1,9 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
 import {
+  colorSwatchMatches,
   groupColorPalette,
   normalizeHexColor,
 } from "@/lib/canvas/custom-colors";
@@ -52,7 +53,6 @@ export function ColorSwatchPicker({
   const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const legacyHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const swatchSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
-  const ringOffset = size === "sm" ? "ring-offset-[1px]" : "ring-offset-2";
   const normalizedValue = normalizeHexColor(value);
 
   const colorFamilies = groupColorPalette([
@@ -96,7 +96,10 @@ export function ColorSwatchPicker({
                 className={cn(
                   "relative flex items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:z-10 hover:scale-110 hover:text-foreground",
                   swatchSize,
-                  isCleared && `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
+                  isCleared && [
+                    "z-10 scale-110 border-white/90 ring-[3px] ring-primary ring-offset-background shadow-lg",
+                    size === "sm" ? "ring-offset-[1px]" : "ring-offset-2",
+                  ]
                 )}
                 style={{
                   backgroundColor: "#ffffff",
@@ -109,9 +112,7 @@ export function ColorSwatchPicker({
               </button>
             )}
             {family.colors.map((hex) => {
-              const selected = !mixed && (normalizedValue
-                ? normalizedValue === hex
-                : value?.trim().toLowerCase() === hex.toLowerCase());
+              const selected = colorSwatchMatches(value, hex, mixed);
               return (
                 <button
                   type="button"
@@ -124,11 +125,25 @@ export function ColorSwatchPicker({
                     "relative rounded-full border transition-transform hover:z-10 hover:scale-110",
                     swatchSize,
                     selected
-                      ? `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
+                      ? [
+                          "z-10 scale-110 border-white/90 ring-[3px] ring-primary ring-offset-background shadow-lg",
+                          size === "sm" ? "ring-offset-[1px]" : "ring-offset-2",
+                        ]
                       : "border-border/40"
                   )}
                   style={{ backgroundColor: hex }}
-                />
+                >
+                  {selected && (
+                    <Check
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute inset-0 m-auto text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]",
+                        size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"
+                      )}
+                      strokeWidth={3}
+                    />
+                  )}
+                </button>
               );
             })}
           </div>

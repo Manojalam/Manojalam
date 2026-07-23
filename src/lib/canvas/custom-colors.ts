@@ -212,6 +212,15 @@ export function normalizeHexColor(value: unknown): string | null {
   return HEX_COLOR_PATTERN.test(candidate) ? candidate.toLowerCase() : null;
 }
 
+/** Compare picker values without letting casing or an omitted leading hash hide the selection marker. */
+export function colorSwatchMatches(value: unknown, swatch: unknown, mixed = false): boolean {
+  if (mixed || typeof value !== "string" || typeof swatch !== "string") return false;
+  const normalizedValue = normalizeHexColor(value);
+  const normalizedSwatch = normalizeHexColor(swatch);
+  if (normalizedValue && normalizedSwatch) return normalizedValue === normalizedSwatch;
+  return value.trim().toLowerCase() === swatch.trim().toLowerCase();
+}
+
 /** Return a valid value for an HTML color input without letting the browser reset it to black. */
 export function colorInputValue(value: unknown, fallback = DEFAULT_COLOR_INPUT_VALUE): string {
   return normalizeHexColor(value)

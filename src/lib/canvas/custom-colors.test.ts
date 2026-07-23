@@ -5,6 +5,7 @@ import {
   arrangeColorPalette,
   COLOR_SWATCH_GROUPS,
   colorInputValue,
+  colorSwatchMatches,
   groupColorPalette,
   hexToHsv,
   hexToRgb,
@@ -28,6 +29,13 @@ test("accepts exact six-digit hex colors with or without a hash", () => {
   assert.equal(normalizeHexColor("17A052"), "#17a052");
   assert.equal(normalizeHexColor("#fff"), null);
   assert.equal(normalizeHexColor("not-a-color"), null);
+});
+
+test("matches the active swatch after normalizing exact colors", () => {
+  assert.equal(colorSwatchMatches("#4F9DA7", "#4f9da7"), true);
+  assert.equal(colorSwatchMatches("4f9da7", "#4F9DA7"), true);
+  assert.equal(colorSwatchMatches("#4f9da7", "#3b82f6"), false);
+  assert.equal(colorSwatchMatches("#4f9da7", "#4f9da7", true), false);
 });
 
 test("offers general bright, light, strong, and neutral swatches", () => {
