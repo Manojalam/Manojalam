@@ -30,7 +30,19 @@ test("plain symbols do not receive enclosure paint", () => {
 
   assert.doesNotMatch(style, /background-color/);
   assert.doesNotMatch(style, /border:/);
+  assert.doesNotMatch(style, /translateY/);
   assert.equal(hasVisibleSymbolStyle({ enclosure: "none", scale: 1 }), false);
+});
+
+test("keeps resized symbols optically centered on the surrounding text", () => {
+  assert.match(
+    symbolMarkStyle({ enclosure: "none", scale: 0.75 }),
+    /transform:translateY\(-0\.1167em\)/
+  );
+  assert.match(
+    symbolMarkStyle({ enclosure: "none", scale: 1.6 }),
+    /transform:translateY\(0\.1313em\)/
+  );
 });
 
 test("semantic identity keeps a plain articulation marker editable", () => {
@@ -45,7 +57,7 @@ test("Jihvāmūlīya renders the literal parenthesis pair rotated and optically 
   assert.equal(semanticSymbolScaleFactor("jihvamuliya"), 0.6);
   const style = symbolMarkStyle({ semanticId: "jihvamuliya", scale: 1.2 });
   assert.match(style, /font-size:0\.72em/);
-  assert.match(style, /transform:rotate\(90deg\)/);
+  assert.match(style, /transform:translateY\(-0\.1361em\) rotate\(90deg\)/);
   assert.equal(semanticSymbolRotation("upadhmaniya"), 0);
   assert.equal(semanticSymbolScaleFactor("upadhmaniya"), 1);
 });
