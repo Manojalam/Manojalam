@@ -2,6 +2,10 @@
 
 import { X } from "lucide-react";
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
+import {
+  arrangeColorPalette,
+  normalizeHexColor,
+} from "@/lib/canvas/custom-colors";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 
@@ -31,6 +35,8 @@ interface ColorSwatchPickerProps {
   /** Extra colors to show (e.g. recently used) */
   extra?: string[];
   size?: "sm" | "md";
+  /** Prevents implying that Clear is selected when a multi-selection has mixed colors. */
+  mixed?: boolean;
 }
 
 export function ColorSwatchPicker({
@@ -40,25 +46,28 @@ export function ColorSwatchPicker({
   onCustomColor,
   extra = [],
   size = "md",
+  mixed = false,
 }: ColorSwatchPickerProps) {
   const sharedCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
   const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const legacyHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const swatchSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const ringOffset = size === "sm" ? "ring-offset-[1px]" : "ring-offset-2";
+  const normalizedValue = normalizeHexColor(value);
 
-  const allColors = [...new Set([
+  const allColors = arrangeColorPalette([
     ...PRESET_COLORS,
     ...sharedCustomColors,
     ...legacyTextColors,
     ...legacyHighlightColors,
     ...extra,
-  ])];
+    ...(normalizedValue ? [normalizedValue] : []),
+  ]);
 
   const handleSwatch = (hex: string) => {
     onChange(hex);
   };
-  const isCleared = !value || value === "transparent";
+  const isCleared = !mixed && (!value || value.trim().toLowerCase() === "transparent");
 
   const applyCustomColor = (color: string) => {
     onCustomColor?.(color);
@@ -66,16 +75,17 @@ export function ColorSwatchPicker({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="grid grid-cols-8 gap-1.5">
       <button
         type="button"
         title="Clear color"
         aria-label="Clear color"
+        aria-pressed={isCleared}
         onClick={() => (onClear ?? (() => onChange("")))()}
         className={cn(
-          "flex flex-none items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:scale-110 hover:text-foreground",
+          "relative flex items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:z-10 hover:scale-110 hover:text-foreground",
           swatchSize,
-          isCleared && `ring-2 ring-primary ${ringOffset}`
+          isCleared && `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
         )}
         style={{
           backgroundColor: "#ffffff",
@@ -87,22 +97,29 @@ export function ColorSwatchPicker({
         <X className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
       </button>
 
-      {allColors.map((hex) => (
-        <button
-          type="button"
-          key={hex}
-          title={hex}
-          onClick={() => handleSwatch(hex)}
-          className={cn(
-            "flex-none rounded-full border transition-transform hover:scale-110",
-            swatchSize,
-            value === hex
-              ? `ring-2 ring-primary ${ringOffset} border-foreground/30 scale-110`
-              : "border-border/40"
-          )}
-          style={{ backgroundColor: hex }}
-        />
-      ))}
+      {allColors.map((hex) => {
+        const selected = !mixed && (normalizedValue
+          ? normalizedValue === hex
+          : value?.trim().toLowerCase() === hex.toLowerCase());
+        return (
+          <button
+            type="button"
+            key={hex}
+            title={selected ? `Selected color ${hex}` : hex}
+            aria-label={selected ? `Selected color ${hex}` : `Select color ${hex}`}
+            aria-pressed={selected}
+            onClick={() => handleSwatch(hex)}
+            className={cn(
+              "relative rounded-full border transition-transform hover:z-10 hover:scale-110",
+              swatchSize,
+              selected
+                ? `z-10 scale-110 border-background ring-2 ring-primary ${ringOffset} ring-offset-background shadow-md`
+                : "border-border/40"
+            )}
+            style={{ backgroundColor: hex }}
+          />
+        );
+      })}
 
       <AppColorPicker
         value={value}

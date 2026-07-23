@@ -6,7 +6,9 @@ import {
   getTextStyle,
   lightenColor,
   resolveBorderColor,
+  resolveEffectiveFillOpacity,
   resolveFillColor,
+  resolveFillSourceColor,
   themeAwareLayoutConnectorColor,
   themeAwareNodeFillColor,
 } from "./style-utils";
@@ -37,6 +39,27 @@ test("a cleared node border stays transparent instead of falling back to its acc
     layoutVisualStyle: automaticLayoutStyle,
     layoutAutoBorder: false,
   }), "transparent");
+});
+
+test("fill controls report the effective automatic color and opacity", () => {
+  const data = {
+    fillColor: "#ec4899",
+    fillOpacity: 0.18,
+    layoutVisualStyle: automaticLayoutStyle,
+  };
+  assert.equal(resolveFillSourceColor(data), automaticLayoutStyle.fillColor);
+  assert.equal(resolveEffectiveFillOpacity(data), 1);
+});
+
+test("fill controls report explicit manual color and opacity", () => {
+  const data = {
+    fillColor: "#ec4899",
+    fillOpacity: 0.42,
+    layoutVisualStyle: automaticLayoutStyle,
+    layoutAutoFill: false,
+  };
+  assert.equal(resolveFillSourceColor(data), "#ec4899");
+  assert.equal(resolveEffectiveFillOpacity(data), 0.42);
 });
 
 test("automatic text contrasts with opaque light and dark node fills", () => {

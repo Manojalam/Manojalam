@@ -110,7 +110,11 @@ import {
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
-import { lightenColor } from "@/lib/style-utils";
+import {
+  lightenColor,
+  resolveEffectiveFillOpacity,
+  resolveFillSourceColor,
+} from "@/lib/style-utils";
 import { FoldBranchControls } from "./FoldBranchControls";
 import {
   normalizeSurfaceEffect,
@@ -462,6 +466,7 @@ function SliderControl({
   max = 100,
   step = 1,
   suffix = "",
+  mixed = false,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -471,6 +476,7 @@ function SliderControl({
   max?: number;
   step?: number;
   suffix?: string;
+  mixed?: boolean;
 }) {
   const apply = (next: number) => onChange(clampControlValue(next, min, max));
   const displayPrecision = step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(step)));
@@ -492,6 +498,7 @@ function SliderControl({
         max={max}
         step={step}
         value={value}
+        aria-valuetext={mixed ? "Mixed values" : `${displayValue}${suffix}`}
         onChange={(e) => apply(Number(e.target.value))}
         onPointerDown={onChangeStart}
         onPointerUp={onChangeEnd}
@@ -504,7 +511,9 @@ function SliderControl({
       />
       <button onClick={() => applyStep(value + step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
-      <span className="w-9 text-center text-[10px] text-muted-foreground">{displayValue}{suffix}</span>
+      <span className="w-9 text-center text-[10px] text-muted-foreground">
+        {mixed ? "Mixed" : `${displayValue}${suffix}`}
+      </span>
     </div>
   );
 }
@@ -705,6 +714,13 @@ function fieldPatch(data: Record<string, unknown>, key: string, value: unknown):
   } else patch = { [key]: value };
 
   if (!data.layoutVisualStyle) return patch;
+  if (data.layoutAutoFill !== false && key === "fillColor") {
+    patch.fillOpacity = resolveEffectiveFillOpacity(data);
+  }
+  if (data.layoutAutoFill !== false && key === "fillOpacity") {
+    const currentFillColor = resolveFillSourceColor(data);
+    if (currentFillColor) patch.fillColor = currentFillColor;
+  }
   if (["fillColor", "fillOpacity", "color"].includes(key)) patch.layoutAutoFill = false;
   if (["borderColor", "borderWidth", "borderStyle", "color"].includes(key)) patch.layoutAutoBorder = false;
   if (key === "textColor") patch.layoutAutoText = false;
@@ -1523,7 +1539,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (!selectedNodes.length) return undefined;
     const selectionValue = (node: Node): unknown => {
       const data = (node.data ?? {}) as Record<string, unknown>;
-      if (!isRadialMultiSelection) return data[key];
+      if (!isRadialMultiSelection) {
+        if (key === "fillColor") return resolveFillSourceColor(data);
+        if (key === "fillOpacity") return resolveEffectiveFillOpacity(data);
+        return data[key];
+      }
       if (key === "textColor") return data.radialTextColor ?? data.textColor;
       if (key === "fillColor") return data.radialFillColor;
       if (key === "borderColor") return data.radialBorderColor;
@@ -1785,7 +1805,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   if (selectedNodes.length > 1 || (selectedNodes.length > 0 && selectedEdges.length > 0)) {
     const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
     const commonFontFamily = typeof commonValue("fontFamily") === "string" ? commonValue("fontFamily") as string : "";
-    const commonFillOpacity = typeof commonValue("fillOpacity") === "number" ? commonValue("fillOpacity") as number : 0.18;
+    const commonFillColorValue = commonValue("fillColor");
+    const effectiveFillOpacities = selectedNodes.map((node) =>
+      resolveEffectiveFillOpacity((node.data ?? {}) as Record<string, unknown>)
+    );
+    const fillOpacityMixed = !isRadialMultiSelection
+      && effectiveFillOpacities.some((opacity) => opacity !== effectiveFillOpacities[0]);
+    const commonFillOpacity = effectiveFillOpacities[0] ?? 0.18;
+    const effectiveFillColors = selectedNodes.map((node) =>
+      resolveFillSourceColor((node.data ?? {}) as Record<string, unknown>)
+    );
+    const fillColorMixed = !isRadialMultiSelection
+      && effectiveFillColors.some((color) => color !== effectiveFillColors[0]);
     const commonBorderWidth = typeof commonValue("borderWidth") === "number"
       ? commonValue("borderWidth") as number
       : isRadialMultiSelection ? 1 : 2;
@@ -2159,7 +2190,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </p>
             )}
             <ColorSwatchPicker
-              value={(commonValue("fillColor") as string) ?? ""}
+              value={(commonFillColorValue as string) ?? ""}
+              mixed={fillColorMixed}
               onChange={(v) => setSelectedField("fillColor", v || undefined)}
               onClear={() => setSelectedField("fillColor", "transparent")}
             />
@@ -2169,6 +2201,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </div>
               <SliderControl
                 value={Math.round(commonFillOpacity * 100)}
+                mixed={fillOpacityMixed}
                 onChange={(value) => setSelectedField("fillOpacity", value / 100)}
                 suffix="%"
               />
@@ -4856,7 +4889,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {isContentNode && !isRadialLayoutSector && (
           <Section label="Fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
-              value={(d.fillColor as string) ?? ""}
+              value={resolveFillSourceColor(d) ?? ""}
               onChange={(v) => setField("fillColor", v || undefined)}
               onClear={() => setField("fillColor", "transparent")}
             />
@@ -4865,7 +4898,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
               </div>
               <SliderControl
-                value={Math.round((typeof d.fillOpacity === "number" ? d.fillOpacity : 0.18) * 100)}
+                value={Math.round(resolveEffectiveFillOpacity(d) * 100)}
                 onChange={(value) => setField("fillOpacity", value / 100)}
                 suffix="%"
               />

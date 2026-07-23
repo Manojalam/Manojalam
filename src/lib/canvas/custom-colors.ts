@@ -94,6 +94,51 @@ export function hexToHsv(value: unknown): HsvColor | null {
   return rgb ? rgbToHsv(rgb) : null;
 }
 
+/**
+ * Arrange a mixed palette into a predictable visual sequence:
+ * light-to-dark neutrals, then colors around the hue wheel from red to pink.
+ */
+export function arrangeColorPalette(values: readonly string[]): string[] {
+  const colors: Array<{
+    color: string;
+    hsv: HsvColor | null;
+    index: number;
+  }> = [];
+  const seen = new Set<string>();
+
+  values.forEach((value, index) => {
+    const color = normalizeHexColor(value) ?? value.trim();
+    const identity = color.toLowerCase();
+    if (!color || seen.has(identity)) return;
+    seen.add(identity);
+    colors.push({ color, hsv: hexToHsv(color), index });
+  });
+
+  return colors
+    .sort((left, right) => {
+      if (!left.hsv || !right.hsv) {
+        if (!left.hsv && !right.hsv) return left.index - right.index;
+        return left.hsv ? -1 : 1;
+      }
+
+      const leftNeutral = left.hsv.s < 12;
+      const rightNeutral = right.hsv.s < 12;
+      if (leftNeutral !== rightNeutral) return leftNeutral ? -1 : 1;
+      if (leftNeutral && rightNeutral) {
+        return right.hsv.v - left.hsv.v || left.index - right.index;
+      }
+
+      // Rotate the hue wheel by 15° so reds straddling 0° remain together.
+      const leftHue = (left.hsv.h + 15) % 360;
+      const rightHue = (right.hsv.h + 15) % 360;
+      return leftHue - rightHue
+        || right.hsv.v - left.hsv.v
+        || right.hsv.s - left.hsv.s
+        || left.index - right.index;
+    })
+    .map(({ color }) => color);
+}
+
 export function hsvToHex({ h, s, v }: HsvColor): string {
   const hue = ((h % 360) + 360) % 360;
   const saturation = clamp(s, 0, 100) / 100;
