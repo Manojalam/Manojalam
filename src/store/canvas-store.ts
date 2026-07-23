@@ -42,6 +42,10 @@ import { computeListLayout } from "@/lib/layout/list-layout";
 import { hasFoldedChildSections } from "@/lib/layout/child-group-wrap";
 import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import {
+  clearLayoutEdgeRouting,
+  clearLayoutNodeGeometry,
+} from "@/lib/layout/layout-conversion";
+import {
   computeMatrixLayout,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
@@ -3545,23 +3549,35 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!rootId) return;
     const rawHierarchy = buildHierarchy(rawLayoutNodes, edges);
     const selectedScopeIds = new Set(getSubtree(rootId, rawHierarchy));
+    const sourceLayoutMode = findLayoutRoot(rootId, rawLayoutNodes, rawHierarchy).mode;
+    const convertingLayout = sourceLayoutMode !== mode;
     const visibleLayoutNodes = mode === "radial"
       ? rawLayoutNodes
       : rawLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreSunburstPresentation(node) : node);
     const restoredLayoutNodes = visibleLayoutNodes.map((node) => selectedScopeIds.has(node.id)
       ? restoreGeneratedLayoutPresentation(node)
       : node);
-    const layoutNodes = mode === "matrix"
+    const presentationRestoredNodes = mode === "matrix"
       ? restoredLayoutNodes
       : restoredLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreMatrixPresentation(node) : node);
+    const layoutNodes = convertingLayout
+      ? presentationRestoredNodes.map((node) => selectedScopeIds.has(node.id)
+        ? { ...node, data: clearLayoutNodeGeometry((node.data ?? {}) as Record<string, unknown>) }
+        : node)
+      : presentationRestoredNodes;
     const sunburstEnabled = mode === "radial" && !!rootId;
     const sunburstKey = sunburstFrameKey(rootId);
 
     const hierarchy = buildHierarchy(layoutNodes, edges);
     const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    const layoutEdges = convertingLayout
+      ? edges.map((edge) => scopeIds.has(edge.source) && scopeIds.has(edge.target)
+        ? { ...edge, data: clearLayoutEdgeRouting((edge.data ?? {}) as Record<string, unknown>) }
+        : edge)
+      : edges;
     const paletteSeed = applyLayoutPalette(
       layoutNodes,
-      edges,
+      layoutEdges,
       hierarchy,
       rootId,
       mode,
@@ -3578,12 +3594,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ? computeMatrixLayout(rootId, hierarchy, byId)
       : null;
     const positions = matrixResult?.placements
-      ?? (sunburstEnabled ? {} : computeLayout(preparedLayoutNodes, edges, mode, { rootId }));
+      ?? (sunburstEnabled ? {} : computeLayout(preparedLayoutNodes, layoutEdges, mode, { rootId }));
 
     get().pushHistory();
 
     // Reroute parent→child edges within scope, using post-layout geometry.
-    const newEdges = edges.map((e) => {
+    const newEdges = layoutEdges.map((e) => {
       const originalData = (e.data ?? {}) as Record<string, unknown>;
       let edge = e;
       if (originalData.hiddenInSunburst && (!sunburstEnabled || originalData.hiddenInSunburstFor !== sunburstKey)) {
