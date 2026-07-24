@@ -4,20 +4,7 @@ import type {
   TextCalloutDirection,
   TextFrameStyle,
 } from "@/lib/types";
-import { textFrameBodyBox } from "@/lib/canvas/text-callout";
-
-function speechBubblePath(direction: TextCalloutDirection): string {
-  if (direction === "top") {
-    return "M38 20 L50 2 L62 20 H88 Q96 20 96 28 V88 Q96 96 88 96 H12 Q4 96 4 88 V28 Q4 20 12 20 Z";
-  }
-  if (direction === "right") {
-    return "M12 4 H72 Q80 4 80 12 V38 L98 50 L80 62 V88 Q80 96 72 96 H12 Q4 96 4 88 V12 Q4 4 12 4 Z";
-  }
-  if (direction === "left") {
-    return "M28 4 H88 Q96 4 96 12 V88 Q96 96 88 96 H28 Q20 96 20 88 V62 L2 50 L20 38 V12 Q20 4 28 4 Z";
-  }
-  return "M12 4 H88 Q96 4 96 12 V72 Q96 80 88 80 H62 L50 98 L38 80 H12 Q4 80 4 72 V12 Q4 4 12 4 Z";
-}
+import { speechBubblePath, textFrameBodyBox } from "@/lib/canvas/text-callout";
 
 function thoughtDots(direction: TextCalloutDirection) {
   if (direction === "top") return [{ cx: 38, cy: 12, r: 6 }, { cx: 30, cy: 3, r: 3 }];

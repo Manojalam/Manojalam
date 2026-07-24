@@ -25,6 +25,26 @@ export function textFrameShapeType(style: TextFrameStyle): "rectangle" | "callou
   return "rectangle";
 }
 
+/**
+ * Speech outline in the component's normalized 100 × 100 SVG space.
+ *
+ * Horizontal bubbles are commonly much wider than they are tall. Keep the
+ * bottom tail deliberately narrow in x-space so `preserveAspectRatio="none"`
+ * does not stretch it into a broad centered notch.
+ */
+export function speechBubblePath(direction: TextCalloutDirection): string {
+  if (direction === "top") {
+    return "M38 20 L50 2 L62 20 H88 Q96 20 96 28 V88 Q96 96 88 96 H12 Q4 96 4 88 V28 Q4 20 12 20 Z";
+  }
+  if (direction === "right") {
+    return "M12 4 H72 Q80 4 80 12 V38 L98 50 L80 62 V88 Q80 96 72 96 H12 Q4 96 4 88 V12 Q4 4 12 4 Z";
+  }
+  if (direction === "left") {
+    return "M28 4 H88 Q96 4 96 12 V88 Q96 96 88 96 H28 Q20 96 20 88 V62 L2 50 L20 38 V12 Q20 4 28 4 Z";
+  }
+  return "M12 4 H88 Q96 4 96 12 V72 Q96 80 88 80 H55 L51.5 96 Q50 99 48.5 96 L45 80 H12 Q4 80 4 72 V12 Q4 4 12 4 Z";
+}
+
 /** Body rectangle after reserving space for the speech tail or thought dots. */
 export function textFrameBodyBox(
   style: TextFrameStyle,
