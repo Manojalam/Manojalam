@@ -561,6 +561,19 @@ test("whole-node maximum fitting is opt-in and preserves the authored font size"
   assert.ok(maximized.scale > 1);
 });
 
+test("a Matrix-level fill-labels setting enlarges roomy cell text", () => {
+  const presentation = getFittedTextPresentation(
+    { text: "जिह्वामूलीयः", fontSize: 17, matrixFillCellLabels: true },
+    320,
+    14,
+    { availableHeight: 80, constrain: true }
+  );
+
+  assert.equal(presentation.authoredFontSize, 17);
+  assert.ok(presentation.fontSize > 17);
+  assert.ok(presentation.scale > 1);
+});
+
 test("a stale measurement cannot push a single-word label outside its diamond guide", () => {
   const labelBox = diamondTextLabelBox({ width: 240, height: 240 });
   const data = {

@@ -405,6 +405,7 @@ function clearMatrixPresentationData(data: Record<string, unknown>): Record<stri
     matrixColumnWidth,
     matrixRowStart,
     matrixRowSpan,
+    matrixFillCellLabels,
     ...rest
   } = data;
   void matrixCell;
@@ -414,6 +415,7 @@ function clearMatrixPresentationData(data: Record<string, unknown>): Record<stri
   void matrixColumnWidth;
   void matrixRowStart;
   void matrixRowSpan;
+  void matrixFillCellLabels;
   if ((layoutSizeOverride as { mode?: unknown } | undefined)?.mode !== "matrix") {
     return { ...rest, ...(layoutSizeOverride !== undefined ? { layoutSizeOverride } : {}) };
   }
@@ -499,6 +501,7 @@ function applyMatrixResultToNodes(
   const root = nodes.find((node) => node.id === result.rootId);
   const rootData = (root?.data ?? {}) as Record<string, unknown>;
   const gridVisible = rootData.matrixGridVisible !== false;
+  const fillCellLabels = rootData.matrixFillCellLabels === true;
 
   return nodes.map((node) => {
     const h = hierarchy.get(node.id);
@@ -559,6 +562,7 @@ function applyMatrixResultToNodes(
       matrixRowStart: cell.rowStart,
       matrixRowSpan: cell.rowSpan,
       matrixGridVisible: gridVisible,
+      matrixFillCellLabels: fillCellLabels ? true : undefined,
     };
     if (node.id === result.rootId) {
       data.layoutMode = "matrix";
@@ -1109,7 +1113,7 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixFillCellLabels",
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 
