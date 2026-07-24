@@ -241,6 +241,51 @@ test("one-letter Sanskrit children stay compact in a sideways Matrix row", () =>
   assertClean(result);
 });
 
+test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "वर्णमाला" },
+    { id: "vowels", parentId: "root", text: "स्वराः" },
+    { id: "short-vowels", parentId: "vowels", text: "ह्रस्वाः" },
+    { id: "a", parentId: "short-vowels", text: "अ" },
+    { id: "i", parentId: "short-vowels", text: "इ" },
+    { id: "u", parentId: "short-vowels", text: "उ" },
+    { id: "r", parentId: "short-vowels", text: "ऋ" },
+    { id: "l", parentId: "short-vowels", text: "ऌ" },
+    { id: "consonants", parentId: "root", text: "व्यञ्जनानि" },
+    { id: "ka-varga", parentId: "consonants", text: "कवर्गः" },
+    { id: "ka", parentId: "ka-varga", text: "क" },
+    { id: "kha", parentId: "ka-varga", text: "ख" },
+    { id: "ga", parentId: "ka-varga", text: "ग" },
+    { id: "gha", parentId: "ka-varga", text: "घ" },
+    { id: "nga", parentId: "ka-varga", text: "ङ" },
+    { id: "ca-varga", parentId: "consonants", text: "चवर्गः" },
+    { id: "ca", parentId: "ca-varga", text: "च" },
+    { id: "cha", parentId: "ca-varga", text: "छ" },
+    { id: "ja", parentId: "ca-varga", text: "ज" },
+    { id: "jha", parentId: "ca-varga", text: "झ" },
+    { id: "nya", parentId: "ca-varga", text: "ञ" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  for (const rowIds of [
+    ["a", "i", "u", "r", "l"],
+    ["ka", "kha", "ga", "gha", "nga"],
+    ["ca", "cha", "ja", "jha", "nya"],
+  ]) {
+    const row = rowIds.map((id) => cells.get(id)!);
+    assert.ok(row.every((cell) => Math.abs(cell.y - row[0].y) < 0.5));
+    for (let index = 1; index < row.length; index += 1) {
+      assert.ok(row[index].x > row[index - 1].x);
+    }
+  }
+
+  assert.ok(cells.get("ka")!.y < cells.get("ca")!.y);
+  assert.ok(result.bounds.width > result.bounds.height / 2);
+  assertClean(result);
+});
+
 test("Matrix presentation uses rounded cells and a density-aware group frame", () => {
   assert.equal(matrixCellBorderRadius("header"), 24);
   assert.equal(matrixCellBorderRadius("category"), 20);
