@@ -5,6 +5,7 @@ import {
   Trash2, ChevronDown, ChevronRight, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowDown, ArrowLeft, ArrowRight, Share2,
+  ArrowUp,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
@@ -43,6 +44,8 @@ import type {
   RelationshipDiagramItemStyle,
   AutoSizeMode,
   SurfaceEffectPreset,
+  TextCalloutDirection,
+  TextFrameStyle,
   VidyaEdgeData,
 } from "@/lib/types";
 import type { Edge, Node } from "@xyflow/react";
@@ -127,6 +130,10 @@ import {
   surfaceEffectStyle,
   type SurfaceEffectSettings,
 } from "@/lib/canvas/surface-effects";
+import {
+  normalizeTextCalloutDirection,
+  normalizeTextFrameStyle,
+} from "@/lib/canvas/text-callout";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -751,6 +758,42 @@ const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: "layout", label: "Layout" },
   { id: "data", label: "Data" },
 ];
+
+const TEXT_FRAME_OPTIONS: ReadonlyArray<{ id: TextFrameStyle; label: string }> = [
+  { id: "plain", label: "Plain" },
+  { id: "speech", label: "Speech" },
+  { id: "thought", label: "Thought" },
+];
+
+const TEXT_CALLOUT_DIRECTIONS: ReadonlyArray<{
+  id: TextCalloutDirection;
+  label: string;
+}> = [
+  { id: "top", label: "Top" },
+  { id: "right", label: "Right" },
+  { id: "bottom", label: "Bottom" },
+  { id: "left", label: "Left" },
+];
+
+function TextFramePreview({ style }: { style: TextFrameStyle }) {
+  if (style === "plain") {
+    return <span className="text-[11px] font-semibold leading-none">Aa</span>;
+  }
+  if (style === "thought") {
+    return (
+      <svg viewBox="0 0 28 22" className="h-5 w-7" aria-hidden="true">
+        <rect x="2" y="2" width="22" height="14" rx="5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <circle cx="19" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="23.5" cy="20.5" r="1" fill="currentColor" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 28 22" className="h-5 w-7" aria-hidden="true">
+      <path d="M2 2 H26 V16 H17 L14 21 L11 16 H2 Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 /** Border style selector: Solid | Dashed | Dotted */
 function BorderStylePicker({ value, onChange }: {
@@ -3616,7 +3659,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const borderRadius  = cornerRadiusPercentForNode(selectedNode);
   // Corner-radius only makes sense for rectangular-ish shapes.
   const shapeType     = (d.shapeType as string) ?? "";
-  const supportsRadius = isTextNode || (isShapeNode && ["rounded", "rectangle"].includes(shapeType));
+  const textFrameStyle = normalizeTextFrameStyle(d.textFrameStyle);
+  const textCalloutDirection = normalizeTextCalloutDirection(d.textCalloutDirection);
+  const supportsTextFrame = nodeType === "text" && d.matrixCell !== true;
+  const hasFramedTextObject = supportsTextFrame && textFrameStyle !== "plain";
+  const supportsRadius = (isTextNode && !hasFramedTextObject)
+    || (isShapeNode && ["rounded", "rectangle"].includes(shapeType));
   const borderLayers  = (d.borderLayers as BorderLayer[]) ?? [];
   const fillRegions   = (d.internalFillRegions as InternalFillRegion[]) ?? [];
   const concentricLayers = (d.concentricLayers as ConcentricShapeLayer[]) ?? [];
@@ -5058,6 +5106,75 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
+        {supportsTextFrame && !isRadialLayoutSector && (
+          <Section label="Text frame" visible={singleNodeTab === "shape"}>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Frame
+              </p>
+              <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Text frame style">
+                {TEXT_FRAME_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={textFrameStyle === option.id}
+                    onClick={() => setField("textFrameStyle", option.id)}
+                    className={cn(
+                      "flex min-h-12 flex-col items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[10px] font-medium transition-colors",
+                      textFrameStyle === option.id
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <TextFramePreview style={option.id} />
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {textFrameStyle !== "plain" && (
+              <div>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Pointer direction
+                </p>
+                <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Callout pointer direction">
+                  {TEXT_CALLOUT_DIRECTIONS.map((option) => {
+                    const DirectionIcon = option.id === "top"
+                      ? ArrowUp
+                      : option.id === "right"
+                        ? ArrowRight
+                        : option.id === "left" ? ArrowLeft : ArrowDown;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="radio"
+                        aria-label={`${option.label} pointer`}
+                        aria-checked={textCalloutDirection === option.id}
+                        title={`${option.label} pointer`}
+                        onClick={() => setField("textCalloutDirection", option.id)}
+                        className={cn(
+                          "flex h-9 items-center justify-center rounded-md border transition-colors",
+                          textCalloutDirection === option.id
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        <DirectionIcon className="h-4 w-4" />
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
+                  Point the tail or thought dots toward the related content.
+                </p>
+              </div>
+            )}
+          </Section>
+        )}
+
         {/* ── Shape type (only for shape nodes) ── */}
         {isShapeNode && !isRadialLayoutSector && (
           <Section label="Shape type" visible={singleNodeTab === "shape"}>
@@ -5607,7 +5724,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Extra border layers ── */}
-        {isContentNode && !isRadialLayoutSector && (
+        {isContentNode && !isRadialLayoutSector && !hasFramedTextObject && (
           <Section label="Extra borders" defaultOpen={false} visible={singleNodeTab === "style"}>
             {borderLayers.map((layer, i) => (
               <div key={layer.id} className="rounded-lg border border-border p-2 space-y-2">
@@ -5642,7 +5759,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Internal fill regions ── */}
-        {isContentNode && !isRadialLayoutSector && (
+        {isContentNode && !isRadialLayoutSector && !hasFramedTextObject && (
           <Section label="Fill regions" defaultOpen={false} visible={singleNodeTab === "shape"}>
             {/* Region color */}
             <div>

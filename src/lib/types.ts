@@ -401,6 +401,9 @@ export type SurfaceEffectPreset =
   | "glass"
   | "glow";
 
+export type TextFrameStyle = "plain" | "speech" | "thought";
+export type TextCalloutDirection = "top" | "right" | "bottom" | "left";
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   color?: string;
@@ -543,6 +546,10 @@ export interface TextBlockNodeData extends BaseNodeData {
   text?: string;
   richText?: string;
   scriptMode: ScriptMode;
+  /** Optional frame for standalone explanatory text. */
+  textFrameStyle?: TextFrameStyle;
+  /** Side toward which a speech tail or thought dots point. */
+  textCalloutDirection?: TextCalloutDirection;
 }
 
 export interface ShapeNodeData extends BaseNodeData {

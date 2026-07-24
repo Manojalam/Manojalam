@@ -111,6 +111,10 @@ import {
   supportsBoardTypography,
 } from "@/lib/canvas/board-typography";
 import { normalizeSymbolAppearance } from "@/lib/text-tools";
+import {
+  normalizeTextFrameStyle,
+  textFrameShapeType,
+} from "@/lib/canvas/text-callout";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -1074,6 +1078,7 @@ function inheritStyle(parentData: Record<string, unknown>): Record<string, unkno
     "shapeType", "color", "fillColor", "fillOpacity",
     "borderColor", "borderWidth", "borderStyle", "cornerRadiusPercent", "borderRadius",
     "fontFamily", "fontSize", "maximizeText", "textColor", "scriptMode", "petalCount",
+    "textFrameStyle", "textCalloutDirection",
   ];
   const out: Record<string, unknown> = {};
   for (const k of keys) if (parentData[k] !== undefined) out[k] = parentData[k];
@@ -1394,7 +1399,9 @@ function contentFitSize(
   const data = node.data as Record<string, unknown>;
   const lines = nodeTextLines(data);
   const { w: currentWidth, h: currentHeight } = styleSizeOf(node);
-  const shapeType = (data.shapeType as string | undefined) ?? "";
+  const shapeType = node.type === "text"
+    ? textFrameShapeType(normalizeTextFrameStyle(data.textFrameStyle))
+    : (data.shapeType as string | undefined) ?? "";
 
   if (!lines.length && !measuredContent) {
     if (node.type !== "shape") return null;
@@ -1418,7 +1425,7 @@ function contentFitSize(
     currentSize: { width: currentWidth, height: currentHeight },
     content,
     nodeType: node.type,
-    shapeType: node.type === "shape" ? shapeType : "rectangle",
+    shapeType: node.type === "shape" || node.type === "text" ? shapeType : "rectangle",
     borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : 2,
     cornerRadius: typeof data.borderRadius === "number"
       ? data.borderRadius
@@ -3406,7 +3413,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const matrixMode = findLayoutRoot(nodeId, nodes, hierarchy).mode === "matrix";
     const matrixBase = matrixMode ? getMatrixBaseSize(node) : null;
     const current = matrixBase ?? getNodeDimensions(node);
-    const shapeType = newType === "shape" ? (newData.shapeType as string) ?? "rounded" : "rectangle";
+    const shapeType = newType === "shape"
+      ? (newData.shapeType as string) ?? "rounded"
+      : newType === "text"
+        ? textFrameShapeType(normalizeTextFrameStyle(newData.textFrameStyle))
+        : "rectangle";
     const content = measuredOrEstimatedContent(newData as Record<string, unknown>);
     const fittedSize = fitShapeToContent(shapeType, content, {
       nodeType: newType,
