@@ -15,6 +15,7 @@ import {
   nodeContentPadding,
   resolveShapeTextPadding,
   shapeLabelBox,
+  shapeSurfaceBorderRadius,
   shapeTextFlowLayout,
   shapeTextContentSize,
   shapeTextContentWidth,
@@ -52,6 +53,13 @@ test("top-left growth and center conversion use different anchors", () => {
   const rect = createNodeRect("n", 100, 80, 200, 100);
   assert.deepEqual(resizeAroundAnchor(rect, { width: 300, height: 160 }, "top-left"), { x: 100, y: 80 });
   assert.deepEqual(resizeAroundAnchor(rect, { width: 300, height: 160 }, "center"), { x: 50, y: 50 });
+});
+
+test("curved shape surfaces do not depend on stale box measurements", () => {
+  assert.equal(shapeSurfaceBorderRadius("circle", 24), "50%");
+  assert.equal(shapeSurfaceBorderRadius("ellipse", 24), "50%");
+  assert.equal(shapeSurfaceBorderRadius("capsule", 24), "9999px");
+  assert.equal(shapeSurfaceBorderRadius("rounded", 24), 24);
 });
 
 test("shape fitting gives every supported conversion a safe finite interior", () => {

@@ -13,6 +13,7 @@ import {
 } from "@/lib/style-utils";
 import {
   shapeLabelBox,
+  shapeSurfaceBorderRadius,
   shapeTextFlowLayout,
   resolveShapeTextPadding,
   shouldRenderShapeTextFlow,
@@ -1016,7 +1017,9 @@ function ShapeSurface({
     );
   }
 
-  const shapeStyle: CSSProperties = { borderRadius };
+  const shapeStyle: CSSProperties = {
+    borderRadius: shapeSurfaceBorderRadius(shapeType, borderRadius),
+  };
   return (
     <>
       <div
@@ -1268,7 +1271,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         minWidth={60}
         minHeight={60}
         isVisible={selected && !editing && !isDrawing}
-        keepAspectRatio={!matrixCell && SQUARE_ASPECT_SHAPES.has(renderedShapeType)}
+        keepAspectRatio={SQUARE_ASPECT_SHAPES.has(renderedShapeType)}
         lineStyle={{ borderRadius: bRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
