@@ -551,6 +551,8 @@ function matrixOrientationForNode(
 const MATRIX_AUTO_ROW_MIN_SIBLINGS = 4;
 const MATRIX_AUTO_ROW_MAX_SIBLINGS = 8;
 const MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS = 16;
+const MATRIX_AUTO_ROW_MIN_TABLE_ROWS = 20;
+const DEVANAGARI_CHARACTER = /[\u0900-\u097f]/u;
 
 /**
  * Compact terminal sets such as अ/इ/उ/ऋ/ऌ or क/ख/ग/घ/ङ are semantic table
@@ -571,9 +573,11 @@ function isCompactLeafSiblingGroup(
     if (visibleChildren(childId, hierarchy, byId).length) return false;
     const child = byId.get(childId);
     if (!child) return false;
-    const compactLabelLength = Array.from(nodeText(child).replace(/\s+/g, "")).length;
+    const text = nodeText(child);
+    const compactLabelLength = Array.from(text.replace(/\s+/g, "")).length;
     return compactLabelLength > 0
-      && compactLabelLength <= MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS;
+      && compactLabelLength <= MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS
+      && DEVANAGARI_CHARACTER.test(text);
   });
 }
 
@@ -1468,7 +1472,8 @@ export function computeMatrixLayout(
   }
 
   const hasFoldedBranch = hasFoldedMatrixBranch(rootId, hierarchy, byId);
-  const hasAutomaticCompactRows = !hasFoldedBranch
+  const hasAutomaticCompactRows = rows.length >= MATRIX_AUTO_ROW_MIN_TABLE_ROWS
+    && !hasFoldedBranch
     && hasAutomaticMatrixChildFlow(rootId, hierarchy, byId);
   if (
     hasVerticalMatrixBranch(rootId, hierarchy, byId)
