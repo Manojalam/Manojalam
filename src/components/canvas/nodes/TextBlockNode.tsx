@@ -13,6 +13,12 @@ import {
 import {
   shapeTextContentSize,
 } from "@/lib/canvas/shape-fitting";
+import {
+  normalizeTextCalloutDirection,
+  normalizeTextFrameStyle,
+  textFrameBodyBox,
+  textFrameContentSize,
+} from "@/lib/canvas/text-callout";
 import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type { TextBlockNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -27,7 +33,8 @@ import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
-import { surfaceEffectStyle } from "@/lib/canvas/surface-effects";
+import { surfaceEffectFilter, surfaceEffectStyle } from "@/lib/canvas/surface-effects";
+import { TextCalloutSurface } from "../TextCalloutSurface";
 
 function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d  = data as TextBlockNodeData;
@@ -47,6 +54,8 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const matrixGridVisible = dd.matrixGridVisible !== false;
+  const textFrameStyle = matrixCell ? "plain" : normalizeTextFrameStyle(dd.textFrameStyle);
+  const textCalloutDirection = normalizeTextCalloutDirection(dd.textCalloutDirection);
   const resolvedBorderWidth = resolveBorderWidth(dd);
   const bWidth       = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
   const nodeSize = {
@@ -64,7 +73,9 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
-  const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "text");
+  const availableTextSize = textFrameStyle === "plain"
+    ? shapeTextContentSize("rectangle", nodeSize, "text")
+    : textFrameContentSize(nodeSize, textFrameStyle, textCalloutDirection);
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
@@ -73,6 +84,8 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const textRotation = normalizeTextRotation(dd.textRotation);
   const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
+  const textFrameBody = textFrameBodyBox(textFrameStyle, textCalloutDirection);
+  const hasTextFrame = textFrameStyle !== "plain";
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -137,15 +150,18 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
 
         <div
           className={cn(
-            "absolute inset-0 p-1",
+            "absolute inset-0",
+            !hasTextFrame && "p-1",
             matrixCell && "overflow-hidden",
-            selected && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+            selected && !hasTextFrame && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
           style={{
-            backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
-            border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
-            borderRadius: bRadius,
-            ...surfaceEffectStyle(dd, borderColor),
+            ...(hasTextFrame ? {} : {
+              backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
+              border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
+              borderRadius: bRadius,
+              ...surfaceEffectStyle(dd, borderColor),
+            }),
             ...objectRotationStyle("text", dd),
           }}
           onDoubleClick={(event) => {
@@ -157,11 +173,26 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             setEditing(true);
           }}
         >
+        {hasTextFrame && (
+          <TextCalloutSurface
+            style={textFrameStyle}
+            direction={textCalloutDirection}
+            fillColor={themeAwareNodeFillColor(fillColor) ?? "var(--card)"}
+            borderColor={borderColor ?? "var(--border)"}
+            borderWidth={bWidth}
+            borderStyle={bStyle}
+            selected={selected}
+            filter={surfaceEffectFilter(dd, borderColor)}
+          />
+        )}
+
         {/* Extra border layers */}
-        {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
+        {!matrixCell && !hasTextFrame && (
+          <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />
+        )}
 
         {/* Internal fill regions (clipped to node bounds) */}
-        {!matrixCell && <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
+        {!matrixCell && !hasTextFrame && <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: bRadius }}>
           <InternalFillLayer
             regions={fillRegions}
             isDrawingMode={isDrawing}
@@ -180,9 +211,17 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
           data-node-content-layer="true"
           data-node-owner={id}
           className={cn(
-            "relative z-10 text-sm text-foreground",
+            "z-10 text-sm text-foreground",
+            hasTextFrame ? "absolute flex items-center p-2" : "relative",
             editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
-          )}>
+          )}
+          style={hasTextFrame ? {
+            left: `${textFrameBody.x}%`,
+            top: `${textFrameBody.y}%`,
+            width: `${textFrameBody.width}%`,
+            height: `${textFrameBody.height}%`,
+          } : undefined}
+        >
           <div ref={textRotationTargetRef} className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
             <RichTextEditor
             nodeId={id}
