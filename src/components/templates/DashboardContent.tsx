@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, LayoutTemplate, Lightbulb } from "lucide-react";
+import { Plus, LayoutTemplate, Lightbulb, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { listBoards } from "@/lib/storage/board-store";
@@ -64,7 +64,15 @@ export function DashboardContent() {
                 href={`/app/boards/${board.id}`}
                 className="group rounded-xl border bg-card p-4 transition-shadow hover:shadow-md"
               >
-                <h3 className="font-medium group-hover:text-primary">{board.title}</h3>
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-medium group-hover:text-primary">{board.title}</h3>
+                  {board.accessRole !== "owner" && (
+                    <Badge variant="secondary" className="shrink-0 gap-1 font-normal">
+                      <Users className="h-3 w-3" />
+                      {board.accessRole === "editor" ? "Can edit" : "View only"}
+                    </Badge>
+                  )}
+                </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {formatRelativeDate(board.updatedAt)} · {board.content.nodes.length} nodes
                 </p>

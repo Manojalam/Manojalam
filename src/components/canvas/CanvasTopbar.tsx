@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Undo2, Redo2, Download, Upload, Search,
-  ChevronDown, Share2,
+  ChevronDown, Eye, Share2,
   Languages, Sun, Moon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -26,29 +27,34 @@ import { cn } from "@/lib/utils";
 import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent, VidyaBoard } from "@/lib/types";
 import { UserMenu } from "@/components/layout/UserMenu";
+import { BoardShareDialog } from "@/components/canvas/BoardShareDialog";
 
 /* ── Save status dot ── */
-function SaveStatus({ status }: { status: string }) {
+function SaveStatus({ status, readOnly }: { status: string; readOnly: boolean }) {
   return (
     <span
       className={cn(
         "hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium sm:flex",
-        status === "saved"   && "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
-        status === "saving"  && "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
-        status === "unsaved" && "bg-muted text-muted-foreground",
-        status === "error"   && "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400",
+        readOnly && "bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+        !readOnly && status === "saved"   && "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
+        !readOnly && status === "saving"  && "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+        !readOnly && status === "unsaved" && "bg-muted text-muted-foreground",
+        !readOnly && status === "error"   && "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400",
       )}
     >
       <span
         className={cn(
           "h-1.5 w-1.5 rounded-full",
-          status === "saved"   && "bg-emerald-500",
-          status === "saving"  && "animate-pulse bg-amber-500",
-          status === "unsaved" && "bg-muted-foreground",
-          status === "error"   && "bg-red-500",
+          readOnly && "bg-sky-500",
+          !readOnly && status === "saved"   && "bg-emerald-500",
+          !readOnly && status === "saving"  && "animate-pulse bg-amber-500",
+          !readOnly && status === "unsaved" && "bg-muted-foreground",
+          !readOnly && status === "error"   && "bg-red-500",
         )}
       />
-      {{ saved: "Saved", saving: "Saving…", unsaved: "Unsaved", error: "Error" }[status]}
+      {readOnly
+        ? "View only"
+        : { saved: "Saved", saving: "Saving…", unsaved: "Unsaved", error: "Error" }[status]}
     </span>
   );
 }
@@ -95,6 +101,7 @@ function ThemeToggle() {
 }
 
 export function CanvasTopbar() {
+  const [shareOpen, setShareOpen] = useState(false);
   // Targeted selectors — each only re-renders when its own slice changes
   const board           = useCanvasStore((s) => s.board);
   const saveStatus      = useCanvasStore((s) => s.saveStatus);
@@ -105,6 +112,7 @@ export function CanvasTopbar() {
   const openBoardExport = useUIStore((s) => s.openBoardExport);
   const { setSanskritPanelOpen, setSearchPanelOpen } = useUIStore();
   const router = useRouter();
+  const canEdit = board?.accessRole !== "viewer";
 
   const currentBoardSnapshot = (): VidyaBoard | null => {
     const state = useCanvasStore.getState();
@@ -144,6 +152,7 @@ export function CanvasTopbar() {
   };
 
   return (
+    <>
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 shadow-sm max-sm:gap-1 max-sm:px-2">
       {/* Logo */}
       <Link href="/app" className="mr-1 flex shrink-0 items-center gap-2">
@@ -158,8 +167,8 @@ export function CanvasTopbar() {
 
       {/* Undo / Redo */}
       <div className="flex items-center gap-0.5">
-        <IconBtn icon={<Undo2 className="h-4 w-4" />} label="Undo (⌘Z)" onClick={undo} disabled={Boolean(relationshipSelection)} />
-        <IconBtn icon={<Redo2 className="h-4 w-4" />} label="Redo (⌘⇧Z)" onClick={redo} disabled={Boolean(relationshipSelection)} />
+        <IconBtn icon={<Undo2 className="h-4 w-4" />} label="Undo (⌘Z)" onClick={undo} disabled={!canEdit || Boolean(relationshipSelection)} />
+        <IconBtn icon={<Redo2 className="h-4 w-4" />} label="Redo (⌘⇧Z)" onClick={redo} disabled={!canEdit || Boolean(relationshipSelection)} />
       </div>
 
       {/* Divider */}
@@ -170,11 +179,12 @@ export function CanvasTopbar() {
         <Input
           value={board?.title ?? ""}
           onChange={(e) => updateBoardTitle(e.target.value)}
+          readOnly={!canEdit}
           className="h-8 max-w-[220px] min-w-0 border-transparent bg-transparent text-center text-sm font-semibold text-foreground shadow-none focus-visible:border-primary/40 focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-primary/30 max-sm:max-w-[34vw]"
           aria-label="Board title"
           name="board-title"
         />
-        <SaveStatus status={saveStatus} />
+        <SaveStatus status={saveStatus} readOnly={!canEdit} />
       </div>
 
       {/* Right actions */}
@@ -246,11 +256,26 @@ export function CanvasTopbar() {
         <div className="h-5 w-px bg-border mx-1 max-sm:hidden" />
 
         {/* Share button */}
-        <button className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 max-sm:px-2">
-          <Share2 className="h-3.5 w-3.5" />
+        <button
+          type="button"
+          onClick={() => setShareOpen(true)}
+          disabled={!board}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 max-sm:px-2"
+        >
+          {board?.accessRole === "viewer"
+            ? <Eye className="h-3.5 w-3.5" />
+            : <Share2 className="h-3.5 w-3.5" />}
           <span className="max-sm:hidden">Share</span>
         </button>
       </div>
     </header>
+    {board && (
+      <BoardShareDialog
+        board={board}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
+    )}
+    </>
   );
 }

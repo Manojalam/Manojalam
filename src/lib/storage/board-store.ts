@@ -1,12 +1,12 @@
 import { BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
-import type { BoardContent, VidyaBoard } from "@/lib/types";
+import type { BoardAccessRole, BoardContent, VidyaBoard } from "@/lib/types";
 import { getTemplateById } from "@/lib/templates";
 import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 
-interface BoardRow {
+export interface BoardRow {
   id: string;
   user_id: string | null;
   title: string;
@@ -28,10 +28,14 @@ function normalizeBoardContent(content: BoardContent): BoardContent {
   };
 }
 
-function rowToBoard(row: BoardRow): VidyaBoard {
+export function rowToBoard(
+  row: BoardRow,
+  accessRole: BoardAccessRole = "owner"
+): VidyaBoard {
   return {
     id: row.id,
     userId: row.user_id,
+    accessRole,
     title: row.title,
     description: row.description,
     content: normalizeBoardContent(row.content),
@@ -79,9 +83,40 @@ async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
-/** All boards for the current user, newest first. RLS also enforces ownership. */
+async function rolesForBoards(
+  rows: BoardRow[],
+  currentUserId: string
+): Promise<Map<string, BoardAccessRole>> {
+  const roles = new Map<string, BoardAccessRole>();
+  const sharedBoardIds = rows
+    .filter((row) => row.user_id !== currentUserId)
+    .map((row) => row.id);
+
+  rows.forEach((row) => {
+    if (row.user_id === currentUserId) roles.set(row.id, "owner");
+  });
+  if (!sharedBoardIds.length) return roles;
+
+  const supabase = requireSupabaseClient();
+  const { data, error } = await supabase
+    .from("board_collaborators")
+    .select("board_id, role")
+    .eq("user_id", currentUserId)
+    .in("board_id", sharedBoardIds);
+
+  if (error) throw error;
+  (data ?? []).forEach((row) => {
+    if (row.role === "editor" || row.role === "viewer") {
+      roles.set(row.board_id as string, row.role);
+    }
+  });
+  return roles;
+}
+
+/** All owned and shared boards for the current user, newest first. */
 export async function listBoards(): Promise<VidyaBoard[]> {
   const supabase = requireSupabaseClient();
+  const currentUserId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("boards")
     .select("*")
@@ -89,12 +124,15 @@ export async function listBoards(): Promise<VidyaBoard[]> {
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []).map((r) => rowToBoard(r as BoardRow));
+  const rows = (data ?? []) as BoardRow[];
+  const roles = await rolesForBoards(rows, currentUserId);
+  return rows.map((row) => rowToBoard(row, roles.get(row.id) ?? "viewer"));
 }
 
 /** Returns null when the board doesn't exist OR the user has no access (RLS). */
 export async function getBoard(id: string): Promise<VidyaBoard | null> {
   const supabase = requireSupabaseClient();
+  const currentUserId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("boards")
     .select("*")
@@ -102,7 +140,9 @@ export async function getBoard(id: string): Promise<VidyaBoard | null> {
     .maybeSingle();
 
   if (error || !data) return null;
-  return rowToBoard(data as BoardRow);
+  const row = data as BoardRow;
+  const roles = await rolesForBoards([row], currentUserId);
+  return rowToBoard(row, roles.get(row.id) ?? "viewer");
 }
 
 export async function createBoard(
@@ -134,7 +174,7 @@ export async function createBoard(
     .single();
 
   if (error) throw error;
-  return rowToBoard(data as BoardRow);
+  return rowToBoard(data as BoardRow, "owner");
 }
 
 export async function updateBoard(
@@ -156,7 +196,10 @@ export async function updateBoard(
 
   if (error) throw error;
   if (!data) return null;
-  return rowToBoard(data as BoardRow);
+  const row = data as BoardRow;
+  const currentUserId = await getCurrentUserId();
+  const role: BoardAccessRole = row.user_id === currentUserId ? "owner" : "editor";
+  return rowToBoard(row, role);
 }
 
 /** Convenience wrapper used by autosave. */

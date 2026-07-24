@@ -26,10 +26,12 @@ export default function BoardEditorPage() {
   const beginBoardHydration = useCanvasStore((s) => s.beginBoardHydration);
   const setBoard = useCanvasStore((s) => s.setBoard);
   const pushHistory = useCanvasStore((s) => s.pushHistory);
+  const board = useCanvasStore((s) => s.board);
   const layoutPanelOpen = useUIStore((s) => s.layoutPanelOpen);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const device = useDeviceProfile();
   const isPhone = device.kind === "phone";
+  const canEdit = board?.accessRole !== "viewer";
 
   useEffect(() => {
     let active = true;
@@ -96,10 +98,10 @@ export default function BoardEditorPage() {
       {/* Canvas + floating overlays */}
       <div className="relative flex-1 overflow-hidden">
         {/* Canvas fills entire space */}
-        <VidyaCanvas boardId={boardId} />
+        <VidyaCanvas boardId={boardId} canEdit={canEdit} />
 
         {/* Floating left toolbar */}
-        <div
+        {canEdit && <div
           className={cn(
             "pointer-events-none absolute z-30 flex",
             isPhone
@@ -112,10 +114,10 @@ export default function BoardEditorPage() {
               <CanvasToolbar />
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Floating layout panel (left, next to toolbar) */}
-        <div
+        {canEdit && <div
           className={cn(
             "pointer-events-none absolute z-40 flex",
             isPhone
@@ -128,10 +130,10 @@ export default function BoardEditorPage() {
               <LayoutPanel />
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Floating right inspector */}
-        <div
+        {canEdit && <div
           className={cn(
             "pointer-events-none absolute z-40 flex",
             isPhone
@@ -144,7 +146,15 @@ export default function BoardEditorPage() {
               {!(isPhone && layoutPanelOpen) && <CanvasInspector compact={isPhone} />}
             </div>
           )}
-        </div>
+        </div>}
+
+        {!canEdit && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
+            <div className="rounded-full border border-sky-200 bg-background/95 px-3 py-1.5 text-xs font-medium text-sky-700 shadow-sm backdrop-blur dark:border-sky-900 dark:text-sky-300">
+              View-only access · pan and zoom are available
+            </div>
+          </div>
+        )}
 
         {/* Status bar inside canvas area */}
         <div
@@ -159,8 +169,8 @@ export default function BoardEditorPage() {
         </div>
       </div>
 
-      <SanskritToolsPanel />
-      <CommandPalette />
+      {canEdit && <SanskritToolsPanel />}
+      {canEdit && <CommandPalette />}
       <SearchPanel />
     </div>
   );
