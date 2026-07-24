@@ -4348,6 +4348,27 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 aria-label="Pack compact letter groups in this Matrix"
               />
             </div>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
+              <div>
+                <p className="text-[10px] font-medium text-foreground">Fill cell labels</p>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Expand every label to fill its safe shape interior consistently.
+                </p>
+              </div>
+              <Switch
+                checked={matrixRootData.matrixFillCellLabels === true}
+                onCheckedChange={(checked) => {
+                  pushHistory();
+                  updateNodeData(matrixRootNode.id, {
+                    matrixFillCellLabels: checked ? true : undefined,
+                  });
+                  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                    detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                  })));
+                }}
+                aria-label="Fill labels in this Matrix"
+              />
+            </div>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Branch direction

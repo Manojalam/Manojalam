@@ -119,7 +119,9 @@ export function getFittedTextPresentation(
   const availableHeight = options.availableHeight ?? Number.POSITIVE_INFINITY;
   const minimumFontSize = Math.max(4, Math.min(preferredFontSize, options.minimumFontSize ?? 8));
   const shouldConstrain = options.constrain ?? options.fitMultiline ?? false;
-  const shouldMaximize = d.maximizeText === true && Number.isFinite(availableHeight) && !!plainText;
+  const shouldMaximize = (d.maximizeText === true || d.matrixFillCellLabels === true)
+    && Number.isFinite(availableHeight)
+    && !!plainText;
   let scale = 1;
   const storedCandidate = (d.intrinsicContentSize ?? d.matrixIntrinsicSize) as
     | Partial<{
@@ -144,7 +146,7 @@ export function getFittedTextPresentation(
 
   if (shouldMaximize) {
     const normalScale = getFittedTextPresentation(
-      { ...d, maximizeText: false },
+      { ...d, maximizeText: false, matrixFillCellLabels: false },
       availableWidth,
       fallbackFontSize,
       options

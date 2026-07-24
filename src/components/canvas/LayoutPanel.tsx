@@ -539,6 +539,25 @@ export function LayoutPanel() {
                 aria-label="Pack compact letter groups in this Matrix"
               />
             </div>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
+              <div>
+                <div className="text-[10px] font-medium text-foreground">Fill cell labels</div>
+                <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Expand every label to fill its safe shape interior consistently.
+                </div>
+              </div>
+              <Switch
+                checked={matrixRootData.matrixFillCellLabels === true}
+                onCheckedChange={(checked) => {
+                  useCanvasStore.getState().pushHistory();
+                  updateNodeData(matrixRoot.id, {
+                    matrixFillCellLabels: checked ? true : undefined,
+                  });
+                  requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                }}
+                aria-label="Fill labels in this Matrix"
+              />
+            </div>
 
             <div className="mb-2 rounded-md border border-border/70 bg-background/60 p-1.5">
               <div className="mb-1.5">

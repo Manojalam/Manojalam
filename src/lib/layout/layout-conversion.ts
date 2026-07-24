@@ -15,6 +15,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "matrixOrientation",
   "matrixChildFlow",
   "matrixPackCompactGroups",
+  "matrixFillCellLabels",
   "matrixSiblingGap",
   "matrixWidthOverride",
   "matrixHeightOverride",

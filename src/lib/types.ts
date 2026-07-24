@@ -492,6 +492,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixChildFlow?: MatrixChildFlow;
   /** Packs compact terminal Devanagari groups into rows for this Matrix only. */
   matrixPackCompactGroups?: boolean;
+  /** Expands every Matrix cell label to fill its safe authored-shape interior. */
+  matrixFillCellLabels?: boolean;
   /** Exact gap, in canvas pixels, between this Matrix cell's direct children. */
   matrixSiblingGap?: number;
   /** Exact rendered width for this Matrix cell while Matrix layout is active. */
