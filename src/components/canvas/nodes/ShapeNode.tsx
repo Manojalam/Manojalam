@@ -44,10 +44,7 @@ import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { resolveLabelBoxGuideVisibility } from "@/lib/canvas/label-box-guides";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
-import {
-  layoutPresentationShapeType,
-  usesRoundedCardLayoutPresentation,
-} from "@/lib/layout/layout-presentation";
+import { layoutPresentationShapeType } from "@/lib/layout/layout-presentation";
 import {
   surfaceEffectFilter,
   surfaceEffectStyle,
@@ -1056,9 +1053,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const matrixCell = dd.matrixCell === true;
   const shapeType = (d.shapeType ?? "rounded") as string;
   const presentationMode = matrixCell ? "matrix" : d.layoutSizeOverride?.mode;
-  const roundedLayoutCard = usesRoundedCardLayoutPresentation(presentationMode);
-  // Structured layouts own only the visual surface. The stored shape remains
-  // untouched so switching back to Freeform restores the authored geometry.
+  // Layouts own placement and generated size, while the authored shape remains
+  // directly editable in every chart form.
   const renderedShapeType = layoutPresentationShapeType(presentationMode, shapeType);
   const svgShape = isSvgShape(renderedShapeType);
 
@@ -1078,7 +1074,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     : matrixCell && renderedShapeType === "rounded"
       ? matrixCellBorderRadius(matrixRole)
       : resolveNodeBorderRadius(
-          roundedLayoutCard ? {} : dd,
+          dd,
           nodeSize,
           renderedShapeType === "rectangle" ? 0 : 40
         );

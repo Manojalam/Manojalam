@@ -1,11 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyLayoutConversionShapeDefault,
   clearLayoutEdgeRouting,
   clearLayoutNodeGeometry,
   matrixFrameBelongsToLayoutScope,
   removeStaleGeneratedMatrixFrames,
 } from "./layout-conversion";
+
+test("chart conversion applies its shape default once without creating a presentation restriction", () => {
+  const source = {
+    text: "Category",
+    shapeType: "diamond",
+    cornerRadiusPercent: 0,
+    borderRadius: 12,
+    fillColor: "#123456",
+  };
+
+  for (const mode of ["horizontal", "vertical", "list", "topDown", "linear"] as const) {
+    const converted = applyLayoutConversionShapeDefault(source, "shape", mode);
+    assert.deepEqual(converted, {
+      text: "Category",
+      shapeType: "rounded",
+      cornerRadiusPercent: 40,
+      fillColor: "#123456",
+    });
+  }
+
+  assert.equal(
+    applyLayoutConversionShapeDefault(source, "shape", "matrix"),
+    source
+  );
+  assert.equal(
+    applyLayoutConversionShapeDefault(source, "sticky", "list"),
+    source
+  );
+});
 
 test("chart conversion keeps hierarchy and authored content but drops source geometry", () => {
   const source = {

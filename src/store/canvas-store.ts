@@ -44,6 +44,7 @@ import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import { packSiblingsAfterNestedMatrix } from "@/lib/layout/nested-matrix-spacing";
 import { matrixFramePadding } from "@/lib/layout/matrix-presentation";
 import {
+  applyLayoutConversionShapeDefault,
   clearLayoutEdgeRouting,
   clearLayoutNodeGeometry,
   matrixFrameBelongsToLayoutScope,
@@ -3789,7 +3790,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : restoredLayoutNodes.map((node) => selectedScopeIds.has(node.id) ? restoreMatrixPresentation(node) : node);
     const layoutNodes = convertingLayout
       ? presentationRestoredNodes.map((node) => selectedScopeIds.has(node.id)
-        ? { ...node, data: clearLayoutNodeGeometry((node.data ?? {}) as Record<string, unknown>) }
+        ? {
+            ...node,
+            data: applyLayoutConversionShapeDefault(
+              clearLayoutNodeGeometry((node.data ?? {}) as Record<string, unknown>),
+              node.type,
+              mode
+            ),
+          }
         : node)
       : presentationRestoredNodes;
     const sunburstEnabled = mode === "radial" && !!rootId;
