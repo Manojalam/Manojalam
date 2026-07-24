@@ -4326,6 +4326,27 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {matrixRootNode && selectedNode && (
           <Section label="Matrix table" visible={singleNodeTab === "layout"}>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
+              <div>
+                <p className="text-[10px] font-medium text-foreground">Pack compact letter groups</p>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Place short Devanagari terminal groups in rows on this Matrix only.
+                </p>
+              </div>
+              <Switch
+                checked={matrixRootData.matrixPackCompactGroups === true}
+                onCheckedChange={(checked) => {
+                  pushHistory();
+                  updateNodeData(matrixRootNode.id, {
+                    matrixPackCompactGroups: checked ? true : undefined,
+                  });
+                  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                    detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                  })));
+                }}
+                aria-label="Pack compact letter groups in this Matrix"
+              />
+            </div>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Branch direction

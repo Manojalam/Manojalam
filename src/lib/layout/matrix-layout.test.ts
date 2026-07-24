@@ -33,6 +33,7 @@ type TreeNode = {
   collapsed?: boolean;
   orientation?: "horizontal" | "vertical";
   childFlow?: "row" | "column";
+  packCompactGroups?: boolean;
   siblingGap?: number;
   matrixWidth?: number;
   matrixHeight?: number;
@@ -58,6 +59,7 @@ function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
       ...(spec.collapsed ? { collapsed: true } : {}),
       ...(spec.orientation ? { matrixOrientation: spec.orientation } : {}),
       ...(spec.childFlow ? { matrixChildFlow: spec.childFlow } : {}),
+      ...(spec.packCompactGroups ? { matrixPackCompactGroups: true } : {}),
       ...(spec.siblingGap !== undefined ? { matrixSiblingGap: spec.siblingGap } : {}),
       ...(spec.matrixWidth ? { matrixWidthOverride: spec.matrixWidth } : {}),
       ...(spec.matrixHeight ? { matrixHeightOverride: spec.matrixHeight } : {}),
@@ -241,7 +243,7 @@ test("one-letter Sanskrit children stay compact in a sideways Matrix row", () =>
   assertClean(result);
 });
 
-test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
+test("an opted-in Sanskrit Matrix packs compact sibling sets into rows", () => {
   const consonantGroups = [
     { id: "ka-varga", text: "कवर्गः", letters: ["क", "ख", "ग", "घ", "ङ"] },
     { id: "ca-varga", text: "चवर्गः", letters: ["च", "छ", "ज", "झ", "ञ"] },
@@ -250,7 +252,7 @@ test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
     { id: "pa-varga", text: "पवर्गः", letters: ["प", "फ", "ब", "भ", "म"] },
   ];
   const { nodes, edges } = buildTree([
-    { id: "root", parentId: null, text: "वर्णमाला" },
+    { id: "root", parentId: null, text: "वर्णमाला", packCompactGroups: true },
     { id: "vowels", parentId: "root", text: "स्वराः" },
     { id: "short-vowels", parentId: "vowels", text: "ह्रस्वाः" },
     { id: "a", parentId: "short-vowels", text: "अ" },
@@ -306,6 +308,34 @@ test("a small Sanskrit Matrix keeps its existing hierarchy rows", () => {
   );
 
   assert.equal(result.rows.length, 5);
+  assert.ok(cells.every((cell) => Math.abs(cell.x - cells[0].x) < 0.5));
+  assert.ok(cells.every((cell, index) => index === 0 || cell.y > cells[index - 1].y));
+  assertClean(result);
+});
+
+test("a large Sanskrit Matrix does not change layout algorithms without opt-in", () => {
+  const filler = Array.from({ length: 15 }, (_, index) => ({
+    id: `filler-${index}`,
+    parentId: "root",
+    text: `विषयः ${index + 1}`,
+  }));
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "व्याकरणम्" },
+    { id: "group", parentId: "root", text: "ह्रस्वाः" },
+    { id: "a", parentId: "group", text: "अ" },
+    { id: "i", parentId: "group", text: "इ" },
+    { id: "u", parentId: "group", text: "उ" },
+    { id: "r", parentId: "group", text: "ऋ" },
+    { id: "l", parentId: "group", text: "ऌ" },
+    ...filler,
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = ["a", "i", "u", "r", "l"].map(
+    (id) => result.cells.find((cell) => cell.nodeId === id)!
+  );
+
+  assert.equal(result.rows.length, 20);
   assert.ok(cells.every((cell) => Math.abs(cell.x - cells[0].x) < 0.5));
   assert.ok(cells.every((cell, index) => index === 0 || cell.y > cells[index - 1].y));
   assertClean(result);

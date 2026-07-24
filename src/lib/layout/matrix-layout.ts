@@ -551,7 +551,6 @@ function matrixOrientationForNode(
 const MATRIX_AUTO_ROW_MIN_SIBLINGS = 4;
 const MATRIX_AUTO_ROW_MAX_SIBLINGS = 8;
 const MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS = 16;
-const MATRIX_AUTO_ROW_MIN_TABLE_ROWS = 20;
 const DEVANAGARI_CHARACTER = /[\u0900-\u097f]/u;
 
 /**
@@ -586,11 +585,11 @@ function matrixChildFlowForNode(
   orientation: MatrixOrientation,
   hierarchy: Hierarchy,
   byId: Map<string, Node>,
-  autoCompactRows: boolean
+  packCompactGroups: boolean
 ): MatrixChildFlow {
   const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
   return storedChildFlow(data.matrixChildFlow)
-    ?? (autoCompactRows && isCompactLeafSiblingGroup(nodeId, hierarchy, byId) ? "row" : null)
+    ?? (packCompactGroups && isCompactLeafSiblingGroup(nodeId, hierarchy, byId) ? "row" : null)
     ?? (orientation === "horizontal" ? "column" : "row");
 }
 
@@ -686,7 +685,7 @@ function hasExplicitMatrixGeometry(
   return visit(rootId, new Set());
 }
 
-function hasAutomaticMatrixChildFlow(
+function hasCompactLeafSiblingGroups(
   rootId: string,
   hierarchy: Hierarchy,
   byId: Map<string, Node>
@@ -1125,7 +1124,7 @@ function computeOrientedMatrixLayout(
   settings: DensitySettings,
   tableX: number,
   tableY: number,
-  autoCompactRows: boolean
+  packCompactGroups: boolean
 ): MatrixLayoutResult {
   const root = byId.get(rootId)!;
   const rootData = (root.data ?? {}) as Record<string, unknown>;
@@ -1135,7 +1134,7 @@ function computeOrientedMatrixLayout(
     rootOrientation,
     hierarchy,
     byId,
-    autoCompactRows
+    packCompactGroups
   );
 
   const buildBranch = (
@@ -1153,7 +1152,7 @@ function computeOrientedMatrixLayout(
       orientation,
       hierarchy,
       byId,
-      autoCompactRows
+      packCompactGroups
     );
     const exactWidth = positiveNumber(data.matrixWidthOverride);
     const exactHeight = positiveNumber(data.matrixHeightOverride);
@@ -1472,14 +1471,14 @@ export function computeMatrixLayout(
   }
 
   const hasFoldedBranch = hasFoldedMatrixBranch(rootId, hierarchy, byId);
-  const hasAutomaticCompactRows = rows.length >= MATRIX_AUTO_ROW_MIN_TABLE_ROWS
+  const packCompactGroups = rootData.matrixPackCompactGroups === true
     && !hasFoldedBranch
-    && hasAutomaticMatrixChildFlow(rootId, hierarchy, byId);
+    && hasCompactLeafSiblingGroups(rootId, hierarchy, byId);
   if (
     hasVerticalMatrixBranch(rootId, hierarchy, byId)
     || hasFoldedBranch
     || hasExplicitMatrixChildFlow(rootId, hierarchy, byId)
-    || hasAutomaticCompactRows
+    || packCompactGroups
     || hasExplicitMatrixGeometry(rootId, hierarchy, byId)
   ) {
     return applyMatrixTableSizeOverrides(computeOrientedMatrixLayout(
@@ -1494,7 +1493,7 @@ export function computeMatrixLayout(
       settings,
       tableX,
       tableY,
-      hasAutomaticCompactRows
+      packCompactGroups
     ), root, byId);
   }
 
