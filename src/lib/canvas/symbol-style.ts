@@ -36,36 +36,28 @@ export function semanticSymbolFontFamily(
     : undefined;
 }
 
-/**
- * `vertical-align: middle` follows the surrounding font's x-height, which is
- * visually low beside Devanagari. Compensate as a symbol moves away from its
- * natural size so its optical center stays anchored instead of following the
- * text baseline. The returned unit is relative to the symbol's scaled em.
- */
-function symbolVerticalTranslation(scale: number): number {
-  const translation = ((scale - 1) * 0.35) / scale;
-  return Math.abs(translation) < 0.0005 ? 0 : Number(translation.toFixed(4));
-}
-
 export function symbolMarkStyle(attributes: SymbolMarkAttributes): string {
   const appearance = normalizeSymbolAppearance(attributes);
   const enclosed = appearance.enclosure !== "none";
   const rotation = semanticSymbolRotation(attributes.semanticId);
   const scale = (appearance.scale ?? 1) * semanticSymbolScaleFactor(attributes.semanticId);
-  const verticalTranslation = symbolVerticalTranslation(scale);
   const semanticFont = semanticSymbolFontFamily(attributes.semanticId);
   const transforms = [
-    verticalTranslation ? `translateY(${verticalTranslation}em)` : "",
     rotation ? `rotate(${rotation}deg)` : "",
+    Math.abs(scale - 1) > 0.001 ? `scale(${Number(scale.toFixed(4))})` : "",
   ].filter(Boolean);
+  const growthMargin = scale > 1
+    ? Number(((scale - 1) * (enclosed ? 0.725 : 0.5)).toFixed(4))
+    : 0;
   const styles = [
     "align-items:center",
     "box-sizing:border-box",
     "display:inline-flex",
-    `font-size:${scale}em`,
+    "font-size:1em",
     enclosed ? "height:1.45em" : "",
     "justify-content:center",
     "line-height:1",
+    growthMargin ? `margin-inline:${growthMargin}em` : "",
     enclosed ? "min-width:1.45em" : "",
     enclosed ? "padding:0.08em" : "",
     "vertical-align:middle",

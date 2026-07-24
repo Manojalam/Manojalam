@@ -8,6 +8,9 @@ export interface InlineTextToolbarContext {
 
 export type RichTextAlignment = "left" | "center" | "right" | "justify";
 
+export const TEXT_TOOL_FOCUS_SELECTOR =
+  "[data-universal-text-tools], [data-app-color-picker]";
+
 const RICH_TEXT_ALIGNMENTS: readonly RichTextAlignment[] = [
   "left",
   "center",
@@ -31,6 +34,18 @@ export function resolveCapturedTextAlign(
     if (alignment) return alignment;
   }
   return "left";
+}
+
+/** Treat focus inside a portaled text tool as part of the active editor session. */
+export function isTextToolFocusTarget(target: unknown): boolean {
+  if (
+    !target
+    || (typeof target !== "object" && typeof target !== "function")
+    || !("closest" in target)
+  ) return false;
+  const closest = (target as { closest?: unknown }).closest;
+  return typeof closest === "function"
+    && !!closest.call(target, TEXT_TOOL_FOCUS_SELECTOR);
 }
 
 /** Only a deliberate text selection in the single focused node owns an inline toolbar. */

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   normalizeTextCalloutDirection,
   normalizeTextFrameStyle,
+  speechBubblePath,
   textFrameBodyBox,
   textFrameContentSize,
   textFrameShapeType,
@@ -44,6 +45,13 @@ test("maps frames to conservative auto-size shapes", () => {
   assert.equal(textFrameShapeType("thought"), "cloud");
 });
 
+test("keeps the bottom speech tail narrow with a softly rounded point", () => {
+  const path = speechBubblePath("bottom");
+
+  assert.match(path, /H55 L51\.5 96 Q50 99 48\.5 96 L45 80/);
+  assert.doesNotMatch(path, /H62 L50 98 L38 80/);
+});
+
 test("calculates the editable area inside the bubble body", () => {
   assert.deepEqual(
     textFrameContentSize({ width: 200, height: 100 }, "speech", "left"),
@@ -54,4 +62,3 @@ test("calculates the editable area inside the bubble body", () => {
     { width: 184, height: 84 }
   );
 });
-

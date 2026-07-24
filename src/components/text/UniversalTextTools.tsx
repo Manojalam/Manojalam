@@ -35,13 +35,13 @@ import {
   MovableToolbarHandle,
   useMovableToolbar,
 } from "@/components/canvas/MovableToolbar";
+import { TEXT_TOOL_FOCUS_SELECTOR } from "@/lib/canvas/rich-text-toolbar";
 
 type NativeTextTarget = HTMLInputElement | HTMLTextAreaElement;
 type EditableTarget = NativeTextTarget | HTMLElement;
 type PaletteTab = "symbols" | "sanskrit" | "scripts";
 
 const TEXT_INPUT_TYPES = new Set(["text", "search", "email", "url", "tel", "password"]);
-const TEXT_TOOL_CHROME_SELECTOR = "[data-universal-text-tools], [data-app-color-picker]";
 const DEFAULT_SYMBOL_APPEARANCE: SymbolAppearance = {
   enclosure: "none",
   fillColor: "#3b82f6",
@@ -82,6 +82,10 @@ function appearanceStyle(
   const rotation = semanticSymbolRotation(semanticId);
   const scale = (normalized.scale ?? 1) * semanticSymbolScaleFactor(semanticId);
   const semanticFont = semanticSymbolFontFamily(semanticId);
+  const transforms = [
+    rotation ? `rotate(${rotation}deg)` : "",
+    Math.abs(scale - 1) > 0.001 ? `scale(${Number(scale.toFixed(4))})` : "",
+  ].filter(Boolean);
   return {
     alignItems: "center",
     backgroundColor: enclosed ? normalized.fillColor ?? "transparent" : undefined,
@@ -94,21 +98,21 @@ function appearanceStyle(
     fontFamily: semanticFont ?? (normalized.font === "tiro-devanagari"
       ? "var(--font-tiro-devanagari), 'Tiro Devanagari Sanskrit', serif"
       : undefined),
-    fontSize: `${scale}em`,
+    fontSize: "1em",
     height: enclosed ? "1.45em" : "1.15em",
     justifyContent: "center",
     lineHeight: 1,
     minWidth: enclosed ? "1.45em" : undefined,
     padding: enclosed ? "0.08em" : undefined,
-    transform: rotation ? `rotate(${rotation}deg)` : undefined,
-    transformOrigin: rotation ? "center" : undefined,
+    transform: transforms.length ? transforms.join(" ") : undefined,
+    transformOrigin: transforms.length ? "center" : undefined,
     verticalAlign: "middle",
     whiteSpace: rotation ? "nowrap" : undefined,
   };
 }
 
 function editableTargetFrom(node: EventTarget | null): EditableTarget | null {
-  if (!(node instanceof Element) || node.closest(TEXT_TOOL_CHROME_SELECTOR)) return null;
+  if (!(node instanceof Element) || node.closest(TEXT_TOOL_FOCUS_SELECTOR)) return null;
 
   const input = node.closest("input");
   if (input instanceof HTMLInputElement) {
@@ -437,7 +441,7 @@ export function UniversalTextTools() {
   useEffect(() => {
     const selectTarget = (event: FocusEvent) => {
       const eventElement = event.target instanceof Element ? event.target : null;
-      if (eventElement?.closest(TEXT_TOOL_CHROME_SELECTOR)) return;
+      if (eventElement?.closest(TEXT_TOOL_FOCUS_SELECTOR)) return;
       const candidate = editableTargetFrom(event.target);
       if (!candidate) {
         targetRef.current = null;
@@ -457,7 +461,7 @@ export function UniversalTextTools() {
     const dismissAwayFromTarget = (event: PointerEvent) => {
       const eventElement = event.target instanceof Element ? event.target : null;
       const current = targetRef.current;
-      if (!current || eventElement?.closest(TEXT_TOOL_CHROME_SELECTOR) || current.contains(eventElement)) return;
+      if (!current || eventElement?.closest(TEXT_TOOL_FOCUS_SELECTOR) || current.contains(eventElement)) return;
       if (editableTargetFrom(event.target)) return;
       targetRef.current = null;
       nativeSelectionRef.current = null;
