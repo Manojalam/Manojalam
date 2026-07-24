@@ -3657,6 +3657,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const nodeType      = selectedNode.type ?? "";
   const isTextNode    = ["mindmap", "sticky", "text"].includes(nodeType);
   const isShapeNode   = nodeType === "shape";
+  const canChooseShapeType = isShapeNode || matrixRootNode !== null;
   const isContentNode = isTextNode || isShapeNode;
   const isSanskrit    = ["sanskrit", "shloka", "grammar"].includes(nodeType);
   const currentNodeSize = getNodeDimensions(selectedNode);
@@ -5234,8 +5235,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {/* ── Shape type (only for shape nodes) ── */}
-        {isShapeNode && !isRadialLayoutSector && (
+        {/* Matrix cells of any node type can be converted to an authored shape. */}
+        {canChooseShapeType && !isRadialLayoutSector && (
           <Section label="Shape type" visible={singleNodeTab === "shape"}>
             <div className="grid grid-cols-3 gap-1">
               {SHAPE_TYPES.map(({ label, value }) => (

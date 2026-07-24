@@ -160,7 +160,7 @@ test("structured layouts respect fixed and keep-width manual sizing modes", () =
   assert.ok((sizes.get("long")?.height ?? 0) >= 64);
 });
 
-test("structured layouts present authored shapes as rounded cards without changing them", () => {
+test("structured layouts present authored shapes as cards while Matrix preserves the selected shape", () => {
   const structuredModes = ["horizontal", "vertical", "list", "topDown", "linear"] as const;
 
   for (const mode of structuredModes) {
@@ -168,7 +168,9 @@ test("structured layouts present authored shapes as rounded cards without changi
     assert.equal(layoutPresentationShapeType(mode, "circle"), "rounded");
   }
 
-  assert.equal(layoutPresentationShapeType("matrix", "circle"), "rectangle");
+  assert.equal(layoutPresentationShapeType("matrix", "circle"), "circle");
+  assert.equal(layoutPresentationShapeType("matrix", "diamond"), "diamond");
+  assert.equal(layoutPresentationShapeType("matrix", "cloud"), "cloud");
   assert.equal(layoutPresentationShapeType("freeForm", "circle"), "circle");
   assert.equal(layoutPresentationShapeType("fromParentFreeForm", "circle"), "circle");
   assert.equal(layoutPresentationShapeType("radial", "circle"), "circle");

@@ -145,13 +145,14 @@ export function usesRoundedCardLayoutPresentation(mode: LayoutMode | undefined):
 /**
  * Structured layouts own the rendered node surface without rewriting the
  * authored shape. Returning to Freeform therefore restores the original
- * geometry, while Matrix remains a rectangular cell grid.
+ * geometry. Matrix is the exception: its allocation remains a stable table
+ * cell, but the authored shape is rendered inside that allocation.
  */
 export function layoutPresentationShapeType(
   mode: LayoutMode | undefined,
   authoredShapeType = "rounded"
 ): string {
-  if (mode === "matrix") return "rectangle";
+  if (mode === "matrix") return authoredShapeType;
   return usesRoundedCardLayoutPresentation(mode) ? "rounded" : authoredShapeType;
 }
 

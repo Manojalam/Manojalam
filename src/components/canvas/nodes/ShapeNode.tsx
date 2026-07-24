@@ -1070,10 +1070,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     width: typeof width === "number" && width > 0 ? width : 180,
     height: typeof height === "number" && height > 0 ? height : 80,
   };
-  const bRadius      = matrixCell
-    ? matrixCellBorderRadius(matrixRole)
-    : ["circle", "ellipse", "capsule"].includes(renderedShapeType)
-      ? Math.min(nodeSize.width, nodeSize.height) / 2
+  const bRadius      = ["circle", "ellipse", "capsule"].includes(renderedShapeType)
+    ? Math.min(nodeSize.width, nodeSize.height) / 2
+    : matrixCell && renderedShapeType === "rounded"
+      ? matrixCellBorderRadius(matrixRole)
       : resolveNodeBorderRadius(
           roundedLayoutCard ? {} : dd,
           nodeSize,
