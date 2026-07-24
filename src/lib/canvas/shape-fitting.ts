@@ -11,6 +11,16 @@ export const MAX_FREEFORM_AUTOFIT_NODE_HEIGHT = 4096;
 export const MEASUREMENT_SAFETY_X = 2;
 export const MEASUREMENT_SAFETY_Y = 2;
 
+/** Curved CSS shapes must not depend on a possibly stale measured node size. */
+export function shapeSurfaceBorderRadius(
+  shapeType: string,
+  fallback: number
+): number | string {
+  if (shapeType === "circle" || shapeType === "ellipse") return "50%";
+  if (shapeType === "capsule") return "9999px";
+  return fallback;
+}
+
 export interface ContentMeasurement extends Size {
   lineCount?: number;
   lineHeight?: number;
