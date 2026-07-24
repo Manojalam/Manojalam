@@ -36,7 +36,11 @@ import {
 } from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
-import { canShowInlineTextToolbar } from "@/lib/canvas/rich-text-toolbar";
+import {
+  canShowInlineTextToolbar,
+  resolveCapturedTextAlign,
+  type RichTextAlignment,
+} from "@/lib/canvas/rich-text-toolbar";
 import {
   hasVisibleSymbolStyle,
   semanticSymbolFontFamily,
@@ -297,7 +301,19 @@ function selectedMarkValue(editor: Editor, markName: string, attribute?: string)
   return value && value !== "absent" ? value : null;
 }
 
-function captureInlineFormat(editor: Editor): InlineTextFormatSnapshot {
+function selectedBlockTextAlign(editor: Editor): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const { node } = editor.view.domAtPos(editor.state.selection.from);
+  const element = node instanceof Element ? node : node.parentElement;
+  const block = element?.closest("p,h1,h2,h3,h4,h5,h6");
+  if (!block || !editor.view.dom.contains(block)) return undefined;
+  return window.getComputedStyle(block).textAlign;
+}
+
+function captureInlineFormat(
+  editor: Editor,
+  nodeAlignment?: RichTextAlignment
+): InlineTextFormatSnapshot {
   const { from, to, $from } = editor.state.selection;
   let marks = $from.marks();
   let foundText = false;
@@ -310,10 +326,11 @@ function captureInlineFormat(editor: Editor): InlineTextFormatSnapshot {
   const markAttributes = (name: string) => marks.find((mark) => mark.type.name === name)?.attrs;
   const textStyle = markAttributes("textStyle");
   const highlight = markAttributes("highlight");
-  const candidateAlign = String($from.parent.attrs.textAlign ?? "left");
-  const textAlign = (["left", "center", "right", "justify"] as const).find(
-    (alignment) => alignment === candidateAlign
-  ) ?? "left";
+  const textAlign = resolveCapturedTextAlign(
+    $from.parent.attrs.textAlign,
+    selectedBlockTextAlign(editor),
+    nodeAlignment
+  );
   return {
     bold: hasMark("bold"),
     italic: hasMark("italic"),
@@ -1234,7 +1251,7 @@ export function RichTextEditor({
   const useFormatPainter = useCallback(() => {
     if (!editor) return;
     if (!inlineFormatPainter) {
-      setInlineFormatPainter(captureInlineFormat(editor));
+      setInlineFormatPainter(captureInlineFormat(editor, blockAlign));
       toast.success("Formatting copied", {
         description: "Select the target text and click the brush again.",
       });
@@ -1263,7 +1280,7 @@ export function RichTextEditor({
     chain.run();
     setInlineFormatPainter(null);
     toast.success("Formatting applied");
-  }, [editor, inlineFormatPainter, selectionChain, setInlineFormatPainter]);
+  }, [blockAlign, editor, inlineFormatPainter, selectionChain, setInlineFormatPainter]);
 
   const chooseCustomTextColor = useCallback((color: string) => {
     setSettings({
