@@ -1,10 +1,13 @@
 "use client";
 
+import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useReactFlow } from "@xyflow/react";
 import type {
   TextCalloutDirection,
   TextFrameStyle,
 } from "@/lib/types";
 import { speechBubblePath, textFrameBodyBox } from "@/lib/canvas/text-callout";
+import type { Point, Size } from "@/lib/canvas/node-geometry";
 
 function thoughtDots(direction: TextCalloutDirection) {
   if (direction === "top") return [{ cx: 38, cy: 12, r: 6 }, { cx: 30, cy: 3, r: 3 }];
@@ -22,6 +25,10 @@ interface TextCalloutSurfaceProps {
   borderStyle: "solid" | "dashed" | "dotted";
   selected?: boolean;
   filter?: string;
+  size: Size;
+  tailTip: Point;
+  onTailDragStart?: () => void;
+  onTailTipChange?: (anchor: Point) => void;
 }
 
 export function TextCalloutSurface({
@@ -33,7 +40,13 @@ export function TextCalloutSurface({
   borderStyle,
   selected,
   filter,
+  size,
+  tailTip,
+  onTailDragStart,
+  onTailTipChange,
 }: TextCalloutSurfaceProps) {
+  const { screenToFlowPosition } = useReactFlow();
+  const anchorPointerIdRef = useRef<number | null>(null);
   const strokeDasharray = borderStyle === "dashed"
     ? `${Math.max(1, borderWidth) * 2.5} ${Math.max(1, borderWidth) * 1.5}`
     : borderStyle === "dotted" ? `0.1 ${Math.max(1, borderWidth) * 2}` : undefined;
@@ -55,6 +68,14 @@ export function TextCalloutSurface({
   };
   const thoughtBody = textFrameBodyBox("thought", direction);
   const dots = thoughtDots(direction);
+  const speechPath = speechBubblePath(direction, size, tailTip);
+  const finishAnchorDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (anchorPointerIdRef.current !== event.pointerId) return;
+    anchorPointerIdRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   return (
     <div
@@ -64,15 +85,17 @@ export function TextCalloutSurface({
       data-text-callout-direction={direction}
     >
       <svg
-        viewBox="0 0 100 100"
+        viewBox={style === "speech"
+          ? `0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}`
+          : "0 0 100 100"}
         preserveAspectRatio="none"
         className="h-full w-full overflow-visible"
         aria-hidden="true"
       >
         {style === "speech" ? (
           <>
-            <path d={speechBubblePath(direction)} {...outline} />
-            {selected && <path d={speechBubblePath(direction)} {...selectionOutline} />}
+            <path data-export-bounds d={speechPath} {...outline} />
+            {selected && <path data-export-ignore d={speechPath} {...selectionOutline} />}
           </>
         ) : (
           <>
@@ -100,6 +123,37 @@ export function TextCalloutSurface({
           </>
         )}
       </svg>
+      {style === "speech" && selected && (
+        <button
+          data-export-ignore
+          type="button"
+          aria-label="Move speech pointer tip"
+          title="Drag to point this callout at related content"
+          className="nodrag nopan pointer-events-auto absolute z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-white bg-primary shadow-md ring-1 ring-primary/40"
+          style={{ left: tailTip.x, top: tailTip.y }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            anchorPointerIdRef.current = event.pointerId;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            onTailDragStart?.();
+          }}
+          onPointerMove={(event) => {
+            if (anchorPointerIdRef.current !== event.pointerId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onTailTipChange?.(screenToFlowPosition({
+              x: event.clientX,
+              y: event.clientY,
+            }));
+          }}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+            finishAnchorDrag(event);
+          }}
+          onPointerCancel={finishAnchorDrag}
+        />
+      )}
     </div>
   );
 }

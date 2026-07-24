@@ -114,6 +114,7 @@ import { normalizeSymbolAppearance } from "@/lib/text-tools";
 import {
   normalizeTextFrameStyle,
   textFrameShapeType,
+  translateTextCalloutAnchor,
 } from "@/lib/canvas/text-callout";
 
 interface HistoryEntry {
@@ -1690,6 +1691,16 @@ function duplicateNodeStyle(node: Node) {
   return { ...(node.style ?? {}), width: w, height: h };
 }
 
+function translateDuplicatedTextCalloutData(
+  data: Record<string, unknown>,
+  offset: { x: number; y: number }
+): Record<string, unknown> {
+  const translatedAnchor = translateTextCalloutAnchor(data.textCalloutAnchor, offset);
+  return translatedAnchor
+    ? { ...data, textCalloutAnchor: translatedAnchor }
+    : data;
+}
+
 function findFreeDuplicateOffset(selectedNodes: Node[], allNodes: Node[]) {
   if (!selectedNodes.length) return { x: 40, y: 40 };
   const selectedIds = new Set(selectedNodes.map((node) => node.id));
@@ -1750,12 +1761,12 @@ function buildDuplicateSelection(selectedNodes: Node[], selectedEdges: Edge[], a
 
   const nodes = selectedNodes.map((node) => {
     const newId = idMap.get(node.id)!;
-    const data = clearDuplicatedContent(
+    const data = translateDuplicatedTextCalloutData(clearDuplicatedContent(
       node.data as Record<string, unknown>,
       node.id,
       idMap,
       node.type === "relationshipDiagram"
-    );
+    ), offset);
     return {
       ...structuredClone(node),
       id: newId,
@@ -2240,6 +2251,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const newNodes = preparedNodes.map((node) => ({
       ...node,
       position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
+      data: translateDuplicatedTextCalloutData(
+        node.data as Record<string, unknown>,
+        offset
+      ),
     }));
     const newEdges = source.edges.map((e) => ({
       ...structuredClone(e),

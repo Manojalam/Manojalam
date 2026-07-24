@@ -131,6 +131,8 @@ import {
   type SurfaceEffectSettings,
 } from "@/lib/canvas/surface-effects";
 import {
+  defaultTextCalloutAnchor,
+  normalizeTextCalloutAnchor,
   normalizeTextCalloutDirection,
   normalizeTextFrameStyle,
 } from "@/lib/canvas/text-callout";
@@ -2431,13 +2433,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border text-muted-foreground"
                     )}
-                    onClick={() => setBoardSettings({ canvasTexture: preset.id })}
+                    onClick={() => setBoardSettings({
+                      canvasTexture: preset.id,
+                      ...(preset.recommendedBackground ? {
+                        background: "plain" as const,
+                        canvasBackgroundMode: "custom" as const,
+                        canvasBackgroundColor: preset.recommendedBackground,
+                      } : {}),
+                    })}
                   >
                     <span
                       aria-hidden
                       className="h-7 w-9 flex-none rounded border border-black/15"
                       style={{
-                        backgroundColor: resolvedCanvasBackgroundColor,
+                        backgroundColor: preset.recommendedBackground ?? resolvedCanvasBackgroundColor,
                         ...boardTextureStyle(preset.id),
                       }}
                     />
@@ -3661,6 +3670,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const shapeType     = (d.shapeType as string) ?? "";
   const textFrameStyle = normalizeTextFrameStyle(d.textFrameStyle);
   const textCalloutDirection = normalizeTextCalloutDirection(d.textCalloutDirection);
+  const textCalloutAnchor = normalizeTextCalloutAnchor(d.textCalloutAnchor);
   const supportsTextFrame = nodeType === "text" && d.matrixCell !== true;
   const hasFramedTextObject = supportsTextFrame && textFrameStyle !== "plain";
   const supportsRadius = (isTextNode && !hasFramedTextObject)
@@ -5119,7 +5129,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     type="button"
                     role="radio"
                     aria-checked={textFrameStyle === option.id}
-                    onClick={() => setField("textFrameStyle", option.id)}
+                    onClick={() => {
+                      if (!selectedNode) return;
+                      pushHistory();
+                      const rect = getNodeRect(selectedNode);
+                      const anchor = option.id === "speech"
+                        ? textCalloutAnchor ?? defaultTextCalloutAnchor(
+                            { x: rect.x, y: rect.y },
+                            getNodeDimensions(selectedNode),
+                            textCalloutDirection
+                          )
+                        : undefined;
+                      updateNodeData(selectedNode.id, {
+                        textFrameStyle: option.id,
+                        textCalloutAnchor: anchor,
+                      });
+                    }}
                     className={cn(
                       "flex min-h-12 flex-col items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[10px] font-medium transition-colors",
                       textFrameStyle === option.id
@@ -5168,8 +5193,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   })}
                 </div>
                 <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
-                  Point the tail or thought dots toward the related content.
+                  {textFrameStyle === "speech"
+                    ? "Drag the blue tip to related content. Moving the bubble stretches only its tail."
+                    : "Point the thought dots toward the related content."}
                 </p>
+                {textFrameStyle === "speech" && textCalloutAnchor && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-7 w-full gap-1.5 text-[10px]"
+                    onClick={() => setField("textCalloutAnchor", undefined)}
+                  >
+                    <RotateCcw className="h-3 w-3" /> Reset pointer tip
+                  </Button>
+                )}
               </div>
             )}
           </Section>
