@@ -48,10 +48,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="border-t p-2">
-          <UserMenu />
+          <UserMenu side="top" />
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-3 md:hidden">
+          <Link href="/app" className="flex min-w-0 items-center gap-2">
+            <div className="logo-font flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-base text-primary-foreground">
+              म
+            </div>
+            <span className="logo-font truncate text-lg">{APP_NAME}</span>
+          </Link>
+          <UserMenu compact align="end" side="bottom" />
+        </header>
+        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+      </main>
     </div>
   );
 }

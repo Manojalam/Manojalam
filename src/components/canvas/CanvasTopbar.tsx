@@ -3,7 +3,7 @@
 import Link from "next/link";
 import {
   Undo2, Redo2, Download, Upload, Search,
-  ChevronDown, Share2, MoreHorizontal,
+  ChevronDown, Share2,
   Languages, Sun, Moon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -25,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent, VidyaBoard } from "@/lib/types";
+import { UserMenu } from "@/components/layout/UserMenu";
 
 /* ── Save status dot ── */
 function SaveStatus({ status }: { status: string }) {
@@ -235,22 +236,7 @@ export function CanvasTopbar() {
           className="max-sm:hidden"
         />
 
-        {/* More options */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-xl">
-            <DropdownMenuItem asChild>
-              <Link href="/app/settings">Settings</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/help/shortcuts">Keyboard shortcuts</Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <UserMenu compact align="end" side="bottom" />
 
         <div className="h-5 w-px bg-border mx-1 max-sm:hidden" />
 
