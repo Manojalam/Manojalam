@@ -309,6 +309,7 @@ export interface BoardContent {
 export interface VidyaBoard {
   id: string;
   userId?: string | null;
+  accessRole: BoardAccessRole;
   title: string;
   description?: string | null;
   content: BoardContent;
@@ -317,6 +318,8 @@ export interface VidyaBoard {
   updatedAt: string;
   storageMode: BoardStorageMode;
 }
+
+export type BoardAccessRole = "owner" | "editor" | "viewer";
 
 export interface BorderLayer {
   id: string;

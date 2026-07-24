@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Copy, Trash2, ExternalLink } from "lucide-react";
+import { Plus, Copy, Trash2, ExternalLink, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { listBoards, deleteBoard, duplicateBoard } from "@/lib/storage/board-store";
 import { formatRelativeDate } from "@/lib/utils";
 import type { VidyaBoard } from "@/lib/types";
@@ -41,7 +42,7 @@ export default function BoardsPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Boards</h1>
-            <p className="text-muted-foreground">All your knowledge canvases</p>
+            <p className="text-muted-foreground">Boards you own and boards shared with you</p>
           </div>
           <Button asChild>
             <Link href="/app/boards/new"><Plus className="mr-2 h-4 w-4" /> New board</Link>
@@ -66,7 +67,15 @@ export default function BoardsPage() {
             {boards.map((board) => (
               <div key={board.id} className="flex items-center gap-4 rounded-xl border bg-card p-4">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium truncate">{board.title}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate font-medium">{board.title}</h3>
+                    {board.accessRole !== "owner" && (
+                      <Badge variant="secondary" className="shrink-0 gap-1 font-normal">
+                        <Users className="h-3 w-3" />
+                        {board.accessRole === "editor" ? "Shared · Can edit" : "Shared · View only"}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Updated {formatRelativeDate(board.updatedAt)} · {board.content.nodes.length} nodes
                   </p>
@@ -80,9 +89,17 @@ export default function BoardsPage() {
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDuplicate(board.id)}>
                     <Copy className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(board.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {board.accessRole === "owner" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      aria-label={`Delete ${board.title}`}
+                      onClick={() => handleDelete(board.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

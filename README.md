@@ -2,12 +2,12 @@
 
 **A visual knowledge canvas for study, Sanskrit, and structured thinking.**
 
-Manojalam is a mind-map and infinite-canvas whiteboard app built with Next.js, React Flow, and a Supabase backend. Each user signs in and owns their own boards, protected by row-level security.
+Manojalam is a mind-map and infinite-canvas whiteboard app built with Next.js, React Flow, and a Supabase backend. Users can securely share boards with view-only or editing access.
 
 ## Local Supabase Setup
 
 1. Create a Supabase project.
-2. Run `database/migrations/001_supabase_auth_boards.sql` in the Supabase SQL Editor.
+2. Run `database/migrations/001_supabase_auth_boards.sql`, then `database/migrations/002_board_collaboration.sql`, in the Supabase SQL Editor.
 3. In Supabase Authentication → URL Configuration:
    - Site URL: `http://localhost:3005`
    - Redirect URL: `http://localhost:3005/auth/callback`
@@ -36,6 +36,8 @@ Vercel deployment will be configured later.
 - 19+ templates including Sanskrit study maps
 - Export JSON and Markdown; import JSON backup
 - Undo/redo, search, command palette (⌘/Ctrl+K)
+- Board sharing with owner, editor, and viewer roles
+- Live refresh when a collaborator saves an open board
 - Light/dark mode with scholarly indigo/saffron theme
 - Local demo mode or Supabase cloud sync
 
@@ -65,9 +67,10 @@ Leave empty for demo mode. Once both are set, the app automatically uses Supabas
 ## Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Open **SQL Editor** and run the migration file:
+2. Open **SQL Editor** and run the migration files in order:
    ```
-   database/migrations/001_initial_schema.sql
+   database/migrations/001_supabase_auth_boards.sql
+   database/migrations/002_board_collaboration.sql
    ```
 3. Copy your project URL and anon key from **Settings → API**
 4. Add them to `.env.local`
@@ -97,7 +100,7 @@ When Supabase is configured:
 
 - Board CRUD uses the `boards` table
 - Auth callback route handles OAuth/magic link sessions
-- RLS ensures users only access their own data
+- RLS ensures users only access boards they own or have been invited to
 
 ## Tech stack
 
