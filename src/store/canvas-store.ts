@@ -1109,7 +1109,7 @@ const AUTOFIT_FIELDS = new Set([
 ]);
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups",
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 

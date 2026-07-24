@@ -10,6 +10,7 @@ import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 import {
   routeTidiedFlowchartEdges,
   tidyFlowchart,
@@ -114,6 +115,7 @@ export function LayoutPanel() {
   const matrixRoot = matrixRootId
     ? nodes.find((node) => node.id === matrixRootId) ?? null
     : currentMode === "matrix" ? selectedNode : null;
+  const matrixRootData = (matrixRoot?.data ?? {}) as Record<string, unknown>;
   const matrixBranchIds = matrixRoot ? getSubtree(matrixRoot.id, hierarchy) : [];
   const explicitMatrixOrientation = selectedData.matrixOrientation === "vertical"
     || selectedData.matrixOrientation === "horizontal"
@@ -516,6 +518,26 @@ export function LayoutPanel() {
               >
                 <Grid3X3 className="h-3.5 w-3.5" />
               </button>
+            </div>
+
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
+              <div>
+                <div className="text-[10px] font-medium text-foreground">Pack compact letter groups</div>
+                <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Place short Devanagari terminal groups in rows on this Matrix only.
+                </div>
+              </div>
+              <Switch
+                checked={matrixRootData.matrixPackCompactGroups === true}
+                onCheckedChange={(checked) => {
+                  useCanvasStore.getState().pushHistory();
+                  updateNodeData(matrixRoot.id, {
+                    matrixPackCompactGroups: checked ? true : undefined,
+                  });
+                  requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                }}
+                aria-label="Pack compact letter groups in this Matrix"
+              />
             </div>
 
             <div className="mb-2 rounded-md border border-border/70 bg-background/60 p-1.5">

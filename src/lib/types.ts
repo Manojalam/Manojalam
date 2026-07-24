@@ -490,6 +490,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixOrientation?: MatrixOrientation;
   /** Arrangement of this Matrix cell's direct children. Defaults perpendicular to branch direction. */
   matrixChildFlow?: MatrixChildFlow;
+  /** Packs compact terminal Devanagari groups into rows for this Matrix only. */
+  matrixPackCompactGroups?: boolean;
   /** Exact gap, in canvas pixels, between this Matrix cell's direct children. */
   matrixSiblingGap?: number;
   /** Exact rendered width for this Matrix cell while Matrix layout is active. */

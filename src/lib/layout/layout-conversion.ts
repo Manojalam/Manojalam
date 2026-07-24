@@ -12,6 +12,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "matrixGridVisible",
   "matrixOrientation",
   "matrixChildFlow",
+  "matrixPackCompactGroups",
   "matrixSiblingGap",
   "matrixWidthOverride",
   "matrixHeightOverride",
