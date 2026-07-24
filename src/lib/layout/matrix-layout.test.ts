@@ -242,6 +242,13 @@ test("one-letter Sanskrit children stay compact in a sideways Matrix row", () =>
 });
 
 test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
+  const consonantGroups = [
+    { id: "ka-varga", text: "कवर्गः", letters: ["क", "ख", "ग", "घ", "ङ"] },
+    { id: "ca-varga", text: "चवर्गः", letters: ["च", "छ", "ज", "झ", "ञ"] },
+    { id: "tta-varga", text: "टवर्गः", letters: ["ट", "ठ", "ड", "ढ", "ण"] },
+    { id: "ta-varga", text: "तवर्गः", letters: ["त", "थ", "द", "ध", "न"] },
+    { id: "pa-varga", text: "पवर्गः", letters: ["प", "फ", "ब", "भ", "म"] },
+  ];
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, text: "वर्णमाला" },
     { id: "vowels", parentId: "root", text: "स्वराः" },
@@ -252,18 +259,14 @@ test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
     { id: "r", parentId: "short-vowels", text: "ऋ" },
     { id: "l", parentId: "short-vowels", text: "ऌ" },
     { id: "consonants", parentId: "root", text: "व्यञ्जनानि" },
-    { id: "ka-varga", parentId: "consonants", text: "कवर्गः" },
-    { id: "ka", parentId: "ka-varga", text: "क" },
-    { id: "kha", parentId: "ka-varga", text: "ख" },
-    { id: "ga", parentId: "ka-varga", text: "ग" },
-    { id: "gha", parentId: "ka-varga", text: "घ" },
-    { id: "nga", parentId: "ka-varga", text: "ङ" },
-    { id: "ca-varga", parentId: "consonants", text: "चवर्गः" },
-    { id: "ca", parentId: "ca-varga", text: "च" },
-    { id: "cha", parentId: "ca-varga", text: "छ" },
-    { id: "ja", parentId: "ca-varga", text: "ज" },
-    { id: "jha", parentId: "ca-varga", text: "झ" },
-    { id: "nya", parentId: "ca-varga", text: "ञ" },
+    ...consonantGroups.flatMap((group) => [
+      { id: group.id, parentId: "consonants", text: group.text },
+      ...group.letters.map((letter, index) => ({
+        id: `${group.id}-${index}`,
+        parentId: group.id,
+        text: letter,
+      })),
+    ]),
   ]);
   const hierarchy = buildHierarchy(nodes, edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
@@ -271,8 +274,8 @@ test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
 
   for (const rowIds of [
     ["a", "i", "u", "r", "l"],
-    ["ka", "kha", "ga", "gha", "nga"],
-    ["ca", "cha", "ja", "jha", "nya"],
+    Array.from({ length: 5 }, (_, index) => `ka-varga-${index}`),
+    Array.from({ length: 5 }, (_, index) => `ca-varga-${index}`),
   ]) {
     const row = rowIds.map((id) => cells.get(id)!);
     assert.ok(row.every((cell) => Math.abs(cell.y - row[0].y) < 0.5));
@@ -281,8 +284,30 @@ test("compact Sanskrit sibling sets automatically form Matrix rows", () => {
     }
   }
 
-  assert.ok(cells.get("ka")!.y < cells.get("ca")!.y);
+  assert.ok(cells.get("ka-varga-0")!.y < cells.get("ca-varga-0")!.y);
   assert.ok(result.bounds.width > result.bounds.height / 2);
+  assertClean(result);
+});
+
+test("a small Sanskrit Matrix keeps its existing hierarchy rows", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "स्वराः" },
+    { id: "group", parentId: "root", text: "ह्रस्वाः" },
+    { id: "a", parentId: "group", text: "अ" },
+    { id: "i", parentId: "group", text: "इ" },
+    { id: "u", parentId: "group", text: "उ" },
+    { id: "r", parentId: "group", text: "ऋ" },
+    { id: "l", parentId: "group", text: "ऌ" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = ["a", "i", "u", "r", "l"].map(
+    (id) => result.cells.find((cell) => cell.nodeId === id)!
+  );
+
+  assert.equal(result.rows.length, 5);
+  assert.ok(cells.every((cell) => Math.abs(cell.x - cells[0].x) < 0.5));
+  assert.ok(cells.every((cell, index) => index === 0 || cell.y > cells[index - 1].y));
   assertClean(result);
 });
 
