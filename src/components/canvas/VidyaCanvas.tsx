@@ -37,6 +37,7 @@ import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS, type BoardContent } from "@/lib/types";
 import {
+  getNodeDimensions,
   getNodeRect,
   isMatrixHierarchyEdge,
   resolveInsertedNodeCollisions,
@@ -84,6 +85,12 @@ import {
   shouldHandleCanvasClipboard,
   visibleBoardSelection,
 } from "@/lib/canvas/clipboard";
+import {
+  defaultTextCalloutAnchor,
+  normalizeTextCalloutAnchor,
+  normalizeTextCalloutDirection,
+  normalizeTextFrameStyle,
+} from "@/lib/canvas/text-callout";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -574,6 +581,28 @@ function VidyaCanvasInner({ boardId }: { boardId: string }) {
       state.selectedNodeIds,
       moveOnly
     );
+    useCanvasStore.setState((current) => ({
+      nodes: current.nodes.map((node) => {
+        if (!movingIds.includes(node.id) || node.type !== "text") return node;
+        const data = (node.data ?? {}) as Record<string, unknown>;
+        if (
+          normalizeTextFrameStyle(data.textFrameStyle) !== "speech"
+          || normalizeTextCalloutAnchor(data.textCalloutAnchor)
+        ) return node;
+        const rect = getNodeRect(node);
+        return {
+          ...node,
+          data: {
+            ...data,
+            textCalloutAnchor: defaultTextCalloutAnchor(
+              { x: rect.x, y: rect.y },
+              getNodeDimensions(node),
+              normalizeTextCalloutDirection(data.textCalloutDirection)
+            ),
+          },
+        };
+      }),
+    }));
     dragStartRef.current = {
       source: { ...draggedNode.position },
       positions: new Map(state.nodes

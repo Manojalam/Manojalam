@@ -10,15 +10,27 @@ export const BOARD_TEXTURE_PRESETS: ReadonlyArray<{
   id: BoardTexture;
   label: string;
   description: string;
+  recommendedBackground?: string;
 }> = [
   { id: "none", label: "None", description: "Solid canvas color" },
   { id: "paper", label: "Paper", description: "Fine natural fibers" },
   { id: "linen", label: "Linen", description: "Soft woven crosshatch" },
   { id: "grain", label: "Grain", description: "Subtle scattered speckles" },
+  {
+    id: "chalkboard",
+    label: "Chalkboard",
+    description: "Dark woven classroom-board texture",
+    recommendedBackground: "#303332",
+  },
 ];
 
 export function normalizeBoardTexture(value: unknown): BoardTexture {
-  return value === "paper" || value === "linen" || value === "grain" ? value : "none";
+  return value === "paper"
+    || value === "linen"
+    || value === "grain"
+    || value === "chalkboard"
+    ? value
+    : "none";
 }
 
 /** CSS-only patterns remain sharp at every zoom and require no external image assets. */
@@ -53,6 +65,19 @@ export function boardTextureStyle(value: unknown): BoardTextureStyle {
       ].join(","),
       backgroundSize: "9px 9px, 11px 11px, 13px 13px",
       backgroundPosition: "0 0, 3px 4px, 7px 2px",
+    };
+  }
+  if (texture === "chalkboard") {
+    return {
+      backgroundImage: [
+        "repeating-linear-gradient(0deg, rgba(255,255,255,0.026) 0 1px, transparent 1px 3px)",
+        "repeating-linear-gradient(90deg, rgba(0,0,0,0.055) 0 1px, transparent 1px 4px)",
+        "repeating-linear-gradient(91deg, transparent 0 18px, rgba(255,255,255,0.018) 19px, transparent 21px)",
+        "radial-gradient(circle at 35% 28%, rgba(255,255,255,0.055) 0 0.65px, transparent 0.9px)",
+        "radial-gradient(circle at 72% 68%, rgba(0,0,0,0.11) 0 0.7px, transparent 1px)",
+      ].join(","),
+      backgroundSize: "auto, auto, 47px 100%, 11px 13px, 17px 19px",
+      backgroundPosition: "0 0, 0 0, 0 0, 2px 3px, 7px 5px",
     };
   }
   return {};

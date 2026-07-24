@@ -1,5 +1,6 @@
 import { getNodesBounds, type Edge, type Node } from "@xyflow/react";
 
+import { normalizeTextCalloutAnchor } from "../canvas/text-callout";
 import { ExportError } from "./errors";
 import type { ExportBounds, ExportScope, ExportScopeKind } from "./types";
 
@@ -287,9 +288,21 @@ function modelBounds(
   const normalized = target.nodes
     .filter((node) => !excludedNodeIds.has(node.id))
     .map((node) => {
-      const rect = target.modelNodeRects.get(node.id);
-      if (!rect) return null;
-      if (!isFiniteRect(rect)) return null;
+      const bodyRect = target.modelNodeRects.get(node.id);
+      if (!bodyRect) return null;
+      if (!isFiniteRect(bodyRect)) return null;
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const anchor = data.textFrameStyle === "speech"
+        ? normalizeTextCalloutAnchor(data.textCalloutAnchor)
+        : null;
+      const rect = anchor
+        ? {
+            x: Math.min(bodyRect.x, anchor.x),
+            y: Math.min(bodyRect.y, anchor.y),
+            width: Math.max(bodyRect.x + bodyRect.width, anchor.x) - Math.min(bodyRect.x, anchor.x),
+            height: Math.max(bodyRect.y + bodyRect.height, anchor.y) - Math.min(bodyRect.y, anchor.y),
+          }
+        : bodyRect;
       return {
         ...node,
         parentId: undefined,

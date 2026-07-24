@@ -144,6 +144,25 @@ test("model bounds remain the fallback for a target without rendered DOM", () =>
   assert.deepEqual(bounds, { x: 40, y: 60, width: 240, height: 180 });
 });
 
+test("model fallback bounds include an anchored speech tail", () => {
+  const node: Node = {
+    id: "anchored-callout",
+    type: "text",
+    position: { x: 200, y: 180 },
+    data: {
+      textFrameStyle: "speech",
+      textCalloutAnchor: { x: 80, y: 120 },
+    },
+    measured: { width: 240, height: 80 },
+  };
+  const target = resolveExportTarget({ kind: "board" }, [node], []);
+
+  assert.deepEqual(
+    computeTightExportBounds(target, { padding: 0 }),
+    { x: 80, y: 120, width: 360, height: 140 }
+  );
+});
+
 test("explicit chart ink bounds still extend the authoritative node DOM rectangle", () => {
   const node: Node = {
     id: "chart-with-overflow",

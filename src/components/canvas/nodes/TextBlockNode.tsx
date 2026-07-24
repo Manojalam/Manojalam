@@ -15,7 +15,9 @@ import {
 } from "@/lib/canvas/shape-fitting";
 import {
   normalizeTextCalloutDirection,
+  normalizeTextCalloutAnchor,
   normalizeTextFrameStyle,
+  relativeTextCalloutTip,
   textFrameBodyBox,
   textFrameContentSize,
 } from "@/lib/canvas/text-callout";
@@ -36,7 +38,15 @@ import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import { surfaceEffectFilter, surfaceEffectStyle } from "@/lib/canvas/surface-effects";
 import { TextCalloutSurface } from "../TextCalloutSurface";
 
-function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps) {
+function TextBlockNodeComponent({
+  id,
+  data,
+  selected,
+  width,
+  height,
+  positionAbsoluteX,
+  positionAbsoluteY,
+}: NodeProps) {
   const d  = data as TextBlockNodeData;
   const dd = d as Record<string, unknown>;
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -86,6 +96,13 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
   const resizeControls = useNodeManualResize(id);
   const textFrameBody = textFrameBodyBox(textFrameStyle, textCalloutDirection);
   const hasTextFrame = textFrameStyle !== "plain";
+  const textCalloutAnchor = normalizeTextCalloutAnchor(dd.textCalloutAnchor);
+  const textCalloutTailTip = relativeTextCalloutTip(
+    { x: positionAbsoluteX, y: positionAbsoluteY },
+    nodeSize,
+    textCalloutDirection,
+    textCalloutAnchor
+  );
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -183,6 +200,10 @@ function TextBlockNodeComponent({ id, data, selected, width, height }: NodeProps
             borderStyle={bStyle}
             selected={selected}
             filter={surfaceEffectFilter(dd, borderColor)}
+            size={nodeSize}
+            tailTip={textCalloutTailTip}
+            onTailDragStart={pushHistory}
+            onTailTipChange={(anchor) => updateNodeData(id, { textCalloutAnchor: anchor })}
           />
         )}
 

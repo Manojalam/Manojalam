@@ -60,7 +60,7 @@ export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
 export type BoardColorMode = "auto" | "custom" | "transparent";
-export type BoardTexture = "none" | "paper" | "linen" | "grain";
+export type BoardTexture = "none" | "paper" | "linen" | "grain" | "chalkboard";
 
 export type RadialColorScheme =
   | "spectrum"
@@ -403,6 +403,12 @@ export type SurfaceEffectPreset =
 
 export type TextFrameStyle = "plain" | "speech" | "thought";
 export type TextCalloutDirection = "top" | "right" | "bottom" | "left";
+export interface TextCalloutAnchor {
+  /** Absolute x-coordinate in React Flow canvas space. */
+  x: number;
+  /** Absolute y-coordinate in React Flow canvas space. */
+  y: number;
+}
 
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
@@ -550,6 +556,8 @@ export interface TextBlockNodeData extends BaseNodeData {
   textFrameStyle?: TextFrameStyle;
   /** Side toward which a speech tail or thought dots point. */
   textCalloutDirection?: TextCalloutDirection;
+  /** Fixed canvas point reached by an independently movable speech tail. */
+  textCalloutAnchor?: TextCalloutAnchor;
 }
 
 export interface ShapeNodeData extends BaseNodeData {
