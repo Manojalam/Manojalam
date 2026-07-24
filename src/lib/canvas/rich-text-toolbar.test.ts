@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   canShowInlineTextToolbar,
+  isTextToolFocusTarget,
   resolveCapturedTextAlign,
+  TEXT_TOOL_FOCUS_SELECTOR,
 } from "./rich-text-toolbar";
 
 const focusedSelection = {
@@ -51,4 +53,12 @@ test("explicit paragraph alignment wins over inherited node alignment", () => {
 test("format capture uses the node fallback before defaulting to left", () => {
   assert.equal(resolveCapturedTextAlign(undefined, "start", "center"), "center");
   assert.equal(resolveCapturedTextAlign(undefined, undefined, undefined), "left");
+});
+
+test("portaled symbol and color controls remain part of the text editing session", () => {
+  assert.equal(isTextToolFocusTarget({
+    closest: (selector: string) => selector === TEXT_TOOL_FOCUS_SELECTOR ? {} : null,
+  }), true);
+  assert.equal(isTextToolFocusTarget({ closest: () => null }), false);
+  assert.equal(isTextToolFocusTarget(null), false);
 });

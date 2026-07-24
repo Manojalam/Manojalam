@@ -38,6 +38,7 @@ import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import {
   canShowInlineTextToolbar,
+  isTextToolFocusTarget,
   resolveCapturedTextAlign,
   type RichTextAlignment,
 } from "@/lib/canvas/rich-text-toolbar";
@@ -605,7 +606,8 @@ export function RichTextEditor({
       const focusMovedToToolbar = toolbarRef.current?.contains(
         event.relatedTarget as globalThis.Node | null
       );
-      if (focusMovedToToolbar || linkDialogOpenRef.current) return;
+      const focusMovedToTextTool = isTextToolFocusTarget(event.relatedTarget);
+      if (focusMovedToToolbar || focusMovedToTextTool || linkDialogOpenRef.current) return;
       hideToolbar();
       onBlur?.();
     },
