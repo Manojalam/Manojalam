@@ -1,3 +1,5 @@
+import type { LayoutMode } from "../types";
+
 const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "layoutMode",
   "layoutFoldCount",
@@ -72,6 +74,33 @@ export function clearLayoutNodeGeometry(
   data: Record<string, unknown>
 ): Record<string, unknown> {
   return omitFields(data, NODE_LAYOUT_GEOMETRY_FIELDS);
+}
+
+const ROUNDED_SHAPE_DEFAULT_LAYOUTS = new Set<LayoutMode>([
+  "horizontal",
+  "vertical",
+  "list",
+  "topDown",
+  "linear",
+]);
+
+/**
+ * Apply a target chart's initial shape once during conversion. Reflows do not
+ * call this helper, so a shape selected afterward remains fully user-owned.
+ */
+export function applyLayoutConversionShapeDefault(
+  data: Record<string, unknown>,
+  nodeType: string | undefined,
+  targetMode: LayoutMode
+): Record<string, unknown> {
+  if (nodeType !== "shape" || !ROUNDED_SHAPE_DEFAULT_LAYOUTS.has(targetMode)) return data;
+  const { borderRadius: _borderRadius, ...rest } = data;
+  void _borderRadius;
+  return {
+    ...rest,
+    shapeType: "rounded",
+    cornerRadiusPercent: 40,
+  };
 }
 
 /** Remove route anchors owned by the source chart while retaining edge content and style. */

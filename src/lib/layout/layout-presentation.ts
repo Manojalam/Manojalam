@@ -20,14 +20,6 @@ const SIZED_LAYOUT_MODES = new Set<LayoutMode>([
   "linear",
 ]);
 
-const ROUNDED_CARD_LAYOUT_MODES = new Set<LayoutMode>([
-  "horizontal",
-  "vertical",
-  "list",
-  "topDown",
-  "linear",
-]);
-
 const SQUARE_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 const NON_UNIFORM_SHAPES = new Set([
   ...SQUARE_SHAPES,
@@ -138,22 +130,16 @@ export function supportsGeneratedLayoutSizing(mode: LayoutMode): boolean {
   return SIZED_LAYOUT_MODES.has(mode);
 }
 
-export function usesRoundedCardLayoutPresentation(mode: LayoutMode | undefined): boolean {
-  return mode !== undefined && ROUNDED_CARD_LAYOUT_MODES.has(mode);
-}
-
 /**
- * Structured layouts own the rendered node surface without rewriting the
- * authored shape. Returning to Freeform therefore restores the original
- * geometry. Matrix is the exception: its allocation remains a stable table
- * cell, but the authored shape is rendered inside that allocation.
+ * Layout engines own placement and generated size, never the rendered shape.
+ * Conversion may choose a target-layout default once, but every subsequent
+ * shape change must be rendered directly in every layout.
  */
 export function layoutPresentationShapeType(
-  mode: LayoutMode | undefined,
+  _mode: LayoutMode | undefined,
   authoredShapeType = "rounded"
 ): string {
-  if (mode === "matrix") return authoredShapeType;
-  return usesRoundedCardLayoutPresentation(mode) ? "rounded" : authoredShapeType;
+  return authoredShapeType;
 }
 
 function sizingPreset(mode: LayoutMode, depth: number) {

@@ -7,7 +7,6 @@ import {
   computeLayoutNodeSizes,
   layoutPresentationShapeType,
   resolveLayoutFontSize,
-  usesRoundedCardLayoutPresentation,
 } from "./layout-presentation";
 
 function fixture(): { nodes: Node[]; edges: Edge[] } {
@@ -160,23 +159,27 @@ test("structured layouts respect fixed and keep-width manual sizing modes", () =
   assert.ok((sizes.get("long")?.height ?? 0) >= 64);
 });
 
-test("structured layouts present authored shapes as cards while Matrix preserves the selected shape", () => {
-  const structuredModes = ["horizontal", "vertical", "list", "topDown", "linear"] as const;
+test("every layout presents the selected authored shape", () => {
+  const modes = [
+    "horizontal",
+    "vertical",
+    "list",
+    "topDown",
+    "linear",
+    "matrix",
+    "freeForm",
+    "fromParentFreeForm",
+    "radial",
+  ] as const;
 
-  for (const mode of structuredModes) {
-    assert.equal(usesRoundedCardLayoutPresentation(mode), true);
-    assert.equal(layoutPresentationShapeType(mode, "circle"), "rounded");
+  for (const mode of modes) {
+    assert.equal(layoutPresentationShapeType(mode, "circle"), "circle");
+    assert.equal(layoutPresentationShapeType(mode, "diamond"), "diamond");
+    assert.equal(layoutPresentationShapeType(mode, "cloud"), "cloud");
   }
-
-  assert.equal(layoutPresentationShapeType("matrix", "circle"), "circle");
-  assert.equal(layoutPresentationShapeType("matrix", "diamond"), "diamond");
-  assert.equal(layoutPresentationShapeType("matrix", "cloud"), "cloud");
-  assert.equal(layoutPresentationShapeType("freeForm", "circle"), "circle");
-  assert.equal(layoutPresentationShapeType("fromParentFreeForm", "circle"), "circle");
-  assert.equal(layoutPresentationShapeType("radial", "circle"), "circle");
 });
 
-test("structured layout sizing uses card proportions for authored circles", () => {
+test("structured layout sizing follows authored circle proportions", () => {
   const { nodes, edges } = fixture();
   const circleNodes = nodes.map((node) => ({
     ...node,
@@ -188,7 +191,7 @@ test("structured layout sizing uses card proportions for authored circles", () =
     const sizes = computeLayoutNodeSizes(circleNodes, hierarchy, "root", mode);
     const rootSize = sizes.get("root");
     assert.ok(rootSize);
-    assert.ok(rootSize.width > rootSize.height, `${mode} should size circles as cards`);
+    assert.equal(rootSize.width, rootSize.height, `${mode} should preserve a circle`);
   }
 
   assert.equal((circleNodes[0].data as Record<string, unknown>).shapeType, "circle");
