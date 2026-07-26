@@ -9,6 +9,7 @@ import {
   normalizeTextFrameStyle,
   relativeTextCalloutTip,
   speechBubblePath,
+  textCalloutDirectionForTip,
   textFrameBodyBox,
   textFrameContentSize,
   textFrameShapeType,
@@ -72,6 +73,30 @@ test("keeps an anchored pointer fixed when the speech body moves", () => {
   assert.deepEqual(
     relativeTextCalloutTip({ x: 180, y: 260 }, size, "left", anchor),
     { x: -110.4, y: -20 }
+  );
+});
+
+test("moves the speech tail base to the side nearest the dragged tip", () => {
+  const size = { width: 240, height: 80 };
+
+  assert.equal(textCalloutDirectionForTip(size, { x: 360, y: 40 }), "right");
+  assert.equal(textCalloutDirectionForTip(size, { x: -120, y: 40 }), "left");
+  assert.equal(textCalloutDirectionForTip(size, { x: 120, y: -80 }), "top");
+  assert.equal(textCalloutDirectionForTip(size, { x: 120, y: 160 }), "bottom");
+});
+
+test("uses the bubble aspect ratio and avoids flicker near a corner boundary", () => {
+  const size = { width: 240, height: 80 };
+
+  assert.equal(textCalloutDirectionForTip(size, { x: 300, y: 200 }), "bottom");
+  assert.equal(textCalloutDirectionForTip(size, { x: 350, y: 100 }), "right");
+  assert.equal(
+    textCalloutDirectionForTip(size, { x: 240, y: 80 }, "right"),
+    "right"
+  );
+  assert.equal(
+    textCalloutDirectionForTip(size, { x: 240, y: 80 }, "bottom"),
+    "bottom"
   );
 });
 

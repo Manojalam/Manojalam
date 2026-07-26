@@ -80,6 +80,44 @@ export function relativeTextCalloutTip(
     : defaultTextCalloutTip(size, direction);
 }
 
+/**
+ * Select the body edge reached by a ray from the bubble center to its tip.
+ * Normalizing by half-width/half-height keeps the switching boundary aligned
+ * with the bubble's corners even for very wide or very tall callouts.
+ */
+export function textCalloutDirectionForTip(
+  requestedSize: Size,
+  tip: Point,
+  preferredDirection: TextCalloutDirection = "bottom"
+): TextCalloutDirection {
+  const size = finiteSize(requestedSize);
+  const halfWidth = size.width / 2;
+  const halfHeight = size.height / 2;
+  const horizontalScore = Math.abs(tip.x - halfWidth) / halfWidth;
+  const verticalScore = Math.abs(tip.y - halfHeight) / halfHeight;
+
+  if (horizontalScore < 0.001 && verticalScore < 0.001) {
+    return preferredDirection;
+  }
+
+  const horizontalDirection: TextCalloutDirection =
+    tip.x < halfWidth ? "left" : "right";
+  const verticalDirection: TextCalloutDirection =
+    tip.y < halfHeight ? "top" : "bottom";
+  const scoreDifference = horizontalScore - verticalScore;
+
+  // Keep the current side briefly around a diagonal boundary so a slow drag
+  // does not make the tail flicker between two neighboring edges.
+  if (
+    Math.abs(scoreDifference) <= 0.12
+    && (preferredDirection === horizontalDirection || preferredDirection === verticalDirection)
+  ) {
+    return preferredDirection;
+  }
+
+  return scoreDifference > 0 ? horizontalDirection : verticalDirection;
+}
+
 /** Shift an absolute speech anchor when its node is copied or duplicated. */
 export function translateTextCalloutAnchor(
   anchor: unknown,

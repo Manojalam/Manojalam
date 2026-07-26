@@ -18,6 +18,7 @@ import {
   normalizeTextCalloutAnchor,
   normalizeTextFrameStyle,
   relativeTextCalloutTip,
+  textCalloutDirectionForTip,
   textFrameBodyBox,
   textFrameContentSize,
 } from "@/lib/canvas/text-callout";
@@ -80,12 +81,22 @@ function TextBlockNodeComponent({
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
+  const textCalloutAnchor = normalizeTextCalloutAnchor(dd.textCalloutAnchor);
+  const textCalloutTailTip = relativeTextCalloutTip(
+    { x: positionAbsoluteX, y: positionAbsoluteY },
+    nodeSize,
+    textCalloutDirection,
+    textCalloutAnchor
+  );
+  const renderedTextCalloutDirection = textFrameStyle === "speech"
+    ? textCalloutDirectionForTip(nodeSize, textCalloutTailTip, textCalloutDirection)
+    : textCalloutDirection;
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
   const availableTextSize = textFrameStyle === "plain"
     ? shapeTextContentSize("rectangle", nodeSize, "text")
-    : textFrameContentSize(nodeSize, textFrameStyle, textCalloutDirection);
+    : textFrameContentSize(nodeSize, textFrameStyle, renderedTextCalloutDirection);
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
@@ -94,15 +105,8 @@ function TextBlockNodeComponent({
   const textRotation = normalizeTextRotation(dd.textRotation);
   const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
-  const textFrameBody = textFrameBodyBox(textFrameStyle, textCalloutDirection);
+  const textFrameBody = textFrameBodyBox(textFrameStyle, renderedTextCalloutDirection);
   const hasTextFrame = textFrameStyle !== "plain";
-  const textCalloutAnchor = normalizeTextCalloutAnchor(dd.textCalloutAnchor);
-  const textCalloutTailTip = relativeTextCalloutTip(
-    { x: positionAbsoluteX, y: positionAbsoluteY },
-    nodeSize,
-    textCalloutDirection,
-    textCalloutAnchor
-  );
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -193,7 +197,7 @@ function TextBlockNodeComponent({
         {hasTextFrame && (
           <TextCalloutSurface
             style={textFrameStyle}
-            direction={textCalloutDirection}
+            direction={renderedTextCalloutDirection}
             fillColor={themeAwareNodeFillColor(fillColor) ?? "var(--card)"}
             borderColor={borderColor ?? "var(--border)"}
             borderWidth={bWidth}
@@ -203,7 +207,20 @@ function TextBlockNodeComponent({
             size={nodeSize}
             tailTip={textCalloutTailTip}
             onTailDragStart={pushHistory}
-            onTailTipChange={(anchor) => updateNodeData(id, { textCalloutAnchor: anchor })}
+            onTailTipChange={(anchor) => {
+              const nextTip = {
+                x: anchor.x - positionAbsoluteX,
+                y: anchor.y - positionAbsoluteY,
+              };
+              updateNodeData(id, {
+                textCalloutAnchor: anchor,
+                textCalloutDirection: textCalloutDirectionForTip(
+                  nodeSize,
+                  nextTip,
+                  renderedTextCalloutDirection
+                ),
+              });
+            }}
           />
         )}
 
