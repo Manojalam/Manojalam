@@ -2,6 +2,7 @@ import { classifyExportError, ExportError, toExportError } from "./errors";
 import { createPngExportPlan } from "./limits";
 import { collectPdfLinkAnnotations, createBoardPdf } from "./pdf";
 import {
+  isTransparentExportBackground,
   prepareReactFlowDomSvg,
   type ExportBackgroundTexture,
 } from "./dom-renderer";
@@ -440,6 +441,14 @@ export async function exportBoardVisual(
       background: options.background,
       backgroundTexture: options.backgroundTexture,
       appearanceBackground: options.appearanceBackground,
+      transparentContentBackground:
+        isTransparentExportBackground(options.background)
+          ? "#ffffff"
+          : null,
+      transparentContentMatte:
+        isTransparentExportBackground(options.background)
+          ? options.appearanceBackground
+          : null,
       title: options.title,
       signal: options.signal,
       // A cross-origin font must never make an otherwise self-contained chart
