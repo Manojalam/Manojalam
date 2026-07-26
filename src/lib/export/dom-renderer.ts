@@ -543,6 +543,32 @@ function restoreExportElements(clone: HTMLElement): void {
   }
 }
 
+/**
+ * Replace export-only surface effect metadata after computed styles have been
+ * captured. CSS filters follow rounded/irregular alpha silhouettes in the
+ * foreignObject renderer; outer box shadows can become rectangular bands.
+ */
+export function normalizeExportSurfaceEffects(clone: HTMLElement): number {
+  const selector = "[data-export-surface-effect-filter]";
+  const elements = [
+    ...(clone.matches(selector) ? [clone] : []),
+    ...Array.from(clone.querySelectorAll<HTMLElement>(selector)),
+  ];
+
+  for (const element of elements) {
+    const filter = element.getAttribute("data-export-surface-effect-filter");
+    const insetShadow = element.getAttribute("data-export-surface-effect-shadow");
+    if (filter) element.style.setProperty("filter", filter, "important");
+    else element.style.removeProperty("filter");
+    if (insetShadow) element.style.setProperty("box-shadow", insetShadow, "important");
+    else element.style.removeProperty("box-shadow");
+    element.removeAttribute("data-export-surface-effect-filter");
+    element.removeAttribute("data-export-surface-effect-shadow");
+  }
+
+  return elements.length;
+}
+
 const EDITOR_RING_STYLE_PROPERTIES = [
   "--tw-ring-color",
   "--tw-ring-inset",
@@ -764,6 +790,7 @@ export function cloneReactFlowViewport(
     }
 
     restoreExportElements(clone);
+    normalizeExportSurfaceEffects(clone);
     for (const fill of Array.from(clone.querySelectorAll<HTMLElement>("[data-export-fill-node]"))) {
       fill.style.setProperty("width", "100%", "important");
       fill.style.setProperty("height", "100%", "important");

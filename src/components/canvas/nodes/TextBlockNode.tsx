@@ -36,7 +36,11 @@ import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
-import { surfaceEffectFilter, surfaceEffectStyle } from "@/lib/canvas/surface-effects";
+import {
+  surfaceEffectExportStyle,
+  surfaceEffectFilter,
+  surfaceEffectStyle,
+} from "@/lib/canvas/surface-effects";
 import { TextCalloutSurface } from "../TextCalloutSurface";
 
 function TextBlockNodeComponent({
@@ -107,6 +111,7 @@ function TextBlockNodeComponent({
   const resizeControls = useNodeManualResize(id);
   const textFrameBody = textFrameBodyBox(textFrameStyle, renderedTextCalloutDirection);
   const hasTextFrame = textFrameStyle !== "plain";
+  const exportEffectStyle = surfaceEffectExportStyle(hasTextFrame ? {} : dd, borderColor);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -176,6 +181,8 @@ function TextBlockNodeComponent({
             matrixCell && "overflow-hidden",
             selected && !hasTextFrame && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
+          data-export-surface-effect-filter={exportEffectStyle.filter}
+          data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
           style={{
             ...(hasTextFrame ? {} : {
               backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",

@@ -14,6 +14,10 @@ export interface SurfaceEffectStyle {
   boxShadow?: string;
 }
 
+export interface SurfaceEffectExportStyle extends SurfaceEffectStyle {
+  filter?: string;
+}
+
 export const SURFACE_EFFECT_PRESETS: ReadonlyArray<{
   id: SurfaceEffectPreset;
   label: string;
@@ -175,4 +179,48 @@ export function surfaceEffectFilter(
     ].join(" ");
   }
   return `drop-shadow(${dx}px ${dy}px ${rounded(Math.max(1, blur * 0.42))}px ${rgba(2, 6, 23, 0.08 + strength * 0.32)})`;
+}
+
+function splitCssLayers(value: string): string[] {
+  const layers: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") depth = Math.max(0, depth - 1);
+    else if (character === "," && depth === 0) {
+      layers.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  layers.push(value.slice(start).trim());
+  return layers.filter(Boolean);
+}
+
+/**
+ * Exported HTML is embedded in an SVG foreignObject. Chromium can rasterize
+ * outer box-shadow layers there as rectangular bands, especially when several
+ * rounded cells sit next to one another. Use the element's alpha silhouette
+ * for exported depth while retaining inset bevel/glass lighting.
+ */
+export function surfaceEffectExportStyle(
+  data: Record<string, unknown>,
+  accentColor?: string
+): SurfaceEffectExportStyle {
+  const filter = surfaceEffectFilter(data, accentColor);
+  if (!filter) return {};
+
+  const { boxShadow, ...surfaceStyle } = surfaceEffectStyle(data, accentColor);
+  const insetShadow = boxShadow
+    ? splitCssLayers(boxShadow)
+        .filter((layer) => /(?:^|\s)inset(?:\s|$)/i.test(layer))
+        .join(",")
+    : "";
+
+  return {
+    ...surfaceStyle,
+    ...(insetShadow ? { boxShadow: insetShadow } : {}),
+    filter,
+  };
 }
