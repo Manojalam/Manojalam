@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   compositeExportColor,
+  configureStandaloneSvgViewport,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
@@ -150,6 +151,45 @@ test("recognizes explicit transparent export backgrounds", () => {
   assert.equal(isTransparentExportBackground("transparent"), true);
   assert.equal(isTransparentExportBackground("rgba(0, 0, 0, 0)"), true);
   assert.equal(isTransparentExportBackground("rgb(255, 255, 255)"), false);
+});
+
+test("fills and centers a downloaded SVG in a standalone browser viewport", () => {
+  const svg = fakeSvgNode("svg");
+
+  configureStandaloneSvgViewport(
+    svg as unknown as Pick<SVGSVGElement, "setAttribute" | "style">,
+    697,
+    450,
+    true,
+    "rgb(59, 60, 64)"
+  );
+
+  assert.equal(svg.attributes.get("width"), "100%");
+  assert.equal(svg.attributes.get("height"), "100%");
+  assert.equal(svg.attributes.get("preserveAspectRatio"), "xMidYMid meet");
+  assert.equal(svg.attributes.get("style:display"), "block");
+  assert.equal(svg.attributes.get("style:width"), "100vw");
+  assert.equal(svg.attributes.get("style:height"), "100vh");
+  assert.equal(svg.attributes.get("style:background-color"), "rgb(59, 60, 64)");
+});
+
+test("retains intrinsic SVG dimensions for PNG and PDF rasterization", () => {
+  const svg = fakeSvgNode("svg");
+
+  configureStandaloneSvgViewport(
+    svg as unknown as Pick<SVGSVGElement, "setAttribute" | "style">,
+    697,
+    450,
+    false,
+    "rgb(59, 60, 64)"
+  );
+
+  assert.equal(svg.attributes.get("width"), "697");
+  assert.equal(svg.attributes.get("height"), "450");
+  assert.equal(svg.attributes.has("preserveAspectRatio"), false);
+  assert.equal(svg.attributes.has("style:width"), false);
+  assert.equal(svg.attributes.has("style:height"), false);
+  assert.equal(svg.attributes.has("style:background-color"), false);
 });
 
 test("parses modern computed color syntax used by color-mix", () => {
