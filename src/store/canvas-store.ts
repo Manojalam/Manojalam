@@ -41,7 +41,7 @@ import {
 import { computeListLayout } from "@/lib/layout/list-layout";
 import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import { packSiblingsAfterNestedMatrix } from "@/lib/layout/nested-matrix-spacing";
-import { matrixFramePadding } from "@/lib/layout/matrix-presentation";
+import { buildMatrixFrameNodes } from "@/lib/layout/matrix-frames";
 import {
   applyLayoutConversionShapeDefault,
   clearLayoutEdgeRouting,
@@ -784,55 +784,7 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
     return node.id === key || data.matrixRootId === key;
   });
   if (!scopedNodes.length) return withoutCurrentFrame;
-
-  const rects = scopedNodes.map((node) => {
-    const data = (node.data ?? {}) as Record<string, unknown>;
-    const override = data.layoutSizeOverride as Partial<{ mode: string; width: number; height: number }> | undefined;
-    if (override?.mode !== "matrix" || !override.width || !override.height) return getNodeRect(node);
-    return getNodeRect({
-      ...node,
-      width: undefined,
-      height: undefined,
-      measured: undefined,
-      style: { ...(node.style ?? {}), width: override.width, height: override.height },
-    });
-  });
-  const minX = Math.min(...rects.map((r) => r.x));
-  const minY = Math.min(...rects.map((r) => r.y));
-  const maxX = Math.max(...rects.map((r) => r.x + r.width));
-  const maxY = Math.max(...rects.map((r) => r.y + r.height));
-  const root = scopedNodes.find((node) => node.id === key);
-  const rootData = (root?.data ?? {}) as Record<string, unknown>;
-  const rootVisualStyle = rootData.layoutVisualStyle as Partial<{
-    fillColor: string;
-    borderColor: string;
-  }> | undefined;
-  const frameColor = rootVisualStyle?.borderColor ?? "#334155";
-  const frameBackground = rootVisualStyle?.fillColor
-    ? `color-mix(in srgb, ${rootVisualStyle.fillColor} 3%, transparent)`
-    : "rgba(15, 23, 42, 0.015)";
-  const pad = matrixFramePadding(rootData.matrixDensity);
-  const frame: Node = {
-    id: `matrix-frame-${key}`,
-    type: "frame",
-    position: { x: minX - pad, y: minY - pad },
-    data: {
-      title: "",
-      color: frameColor,
-      background: frameBackground,
-      borderStyle: "solid",
-      locked: true,
-      matrixFrameFor: key,
-      matrixGridVisible: rootData.matrixGridVisible !== false,
-      tags: [],
-    },
-    style: { width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 },
-    zIndex: -10,
-    selectable: false,
-    draggable: false,
-  };
-
-  return [...withoutCurrentFrame, frame];
+  return [...withoutCurrentFrame, ...buildMatrixFrameNodes(scopedNodes, key)];
 }
 
 function withSunburstNode(

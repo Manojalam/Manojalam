@@ -7,11 +7,15 @@ import type { FrameNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
-import { MATRIX_FRAME_RADIUS } from "@/lib/layout/matrix-presentation";
+import {
+  MATRIX_DIVISION_FRAME_RADIUS,
+  MATRIX_FRAME_RADIUS,
+} from "@/lib/layout/matrix-presentation";
 
 function FrameNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as FrameNodeData;
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
+  const isMatrixDivision = typeof d.matrixDivisionFor === "string";
   const resizeControls = useNodeManualResize(id);
 
   return (
@@ -33,7 +37,10 @@ function FrameNodeComponent({ id, data, selected }: NodeProps) {
           d.locked && "pointer-events-none"
         )}
         style={{
-          ...(isMatrixFrame ? { borderRadius: MATRIX_FRAME_RADIUS } : {}),
+          ...(isMatrixFrame ? {
+            borderRadius: isMatrixDivision ? MATRIX_DIVISION_FRAME_RADIUS : MATRIX_FRAME_RADIUS,
+            borderWidth: d.borderWidth,
+          } : {}),
           borderColor: d.color ?? "#6366f1",
           borderStyle: d.borderStyle ?? "dashed",
           backgroundColor: d.background ?? `${d.color ?? "#6366f1"}08`,
