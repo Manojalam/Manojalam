@@ -100,6 +100,10 @@ export interface CloneReactFlowViewportOptions extends DomCloneSelection {
   appearanceBackground?: string | null;
   /** The actual exported background. Null means the area outside objects remains transparent. */
   background?: string | null;
+  /** Opaque display color that may show through transparent text surfaces. */
+  transparentContentBackground?: string | null;
+  /** Board appearance color used to back low-contrast transparent text surfaces. */
+  transparentContentMatte?: string | null;
 }
 
 export interface ExportBackgroundTexture {
@@ -342,6 +346,86 @@ function flattenTransparentObjectPaint(clone: HTMLElement, matte: string): void 
       }
     }
   }
+}
+
+function exportRelativeLuminance(color: ExportRgba): number {
+  const linear = (channel: number) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b);
+}
+
+function exportOpaqueComposite(foreground: ExportRgba, background: ExportRgba): ExportRgba {
+  return {
+    r: foreground.r * foreground.a + background.r * (1 - foreground.a),
+    g: foreground.g * foreground.a + background.g * (1 - foreground.a),
+    b: foreground.b * foreground.a + background.b * (1 - foreground.a),
+    a: 1,
+  };
+}
+
+function exportContrastRatio(foreground: ExportRgba, background: ExportRgba): number {
+  const paintedForeground = exportOpaqueComposite(foreground, background);
+  const foregroundLuminance = exportRelativeLuminance(paintedForeground);
+  const backgroundLuminance = exportRelativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * No-background PNG, SVG, and PDF exports are commonly displayed on an opaque
+ * white surface. Back only transparent text-bearing surfaces whose authored
+ * text would disappear there, preserving their on-board appearance without
+ * filling the area outside the chart.
+ */
+export function preserveTransparentTextContrast(
+  clone: HTMLElement,
+  pageBackground: string | null | undefined,
+  appearanceMatte: string | null | undefined
+): number {
+  const surfaces = [
+    ...(clone.matches("[data-export-contrast-surface]") ? [clone] : []),
+    ...Array.from(clone.querySelectorAll<HTMLElement | SVGElement>(
+      "[data-export-contrast-surface]"
+    )),
+  ];
+  const pageColor = pageBackground ? parseExportCssColor(pageBackground) : null;
+  const matteColor = appearanceMatte ? parseExportCssColor(appearanceMatte) : null;
+  let preservedCount = 0;
+
+  for (const surface of surfaces) {
+    const paintKind = surface.getAttribute("data-export-contrast-surface");
+    surface.removeAttribute("data-export-contrast-surface");
+    if (!pageColor || !matteColor || (paintKind !== "background" && paintKind !== "fill")) {
+      continue;
+    }
+
+    const paintProperty = paintKind === "fill" ? "fill" : "background-color";
+    const surfacePaint = surface.style.getPropertyValue(paintProperty)
+      || surface.getAttribute(paintProperty)
+      || "";
+    if ((parseExportCssColor(surfacePaint)?.a ?? 1) > 0.01) continue;
+
+    const node = surface.closest(".react-flow__node");
+    const content = node?.querySelector<HTMLElement>('[data-node-content-layer="true"]');
+    if (!content?.textContent?.trim()) continue;
+    const textColor = parseExportCssColor(content.style.color);
+    if (!textColor) continue;
+
+    const pageContrast = exportContrastRatio(textColor, pageColor);
+    const matteContrast = exportContrastRatio(textColor, matteColor);
+    if (pageContrast >= 3 || matteContrast <= pageContrast) continue;
+
+    surface.style.setProperty(paintProperty, appearanceMatte as string, "important");
+    if (paintKind === "fill") surface.setAttribute("fill", appearanceMatte as string);
+    preservedCount += 1;
+  }
+
+  return preservedCount;
 }
 
 function validateBounds(bounds: ExportBounds): void {
@@ -925,6 +1009,11 @@ export function cloneReactFlowViewport(
 
     restoreExportElements(clone);
     normalizeExportSurfaceEffects(clone);
+    preserveTransparentTextContrast(
+      clone,
+      options.transparentContentBackground,
+      options.transparentContentMatte
+    );
     for (const fill of Array.from(clone.querySelectorAll<HTMLElement>("[data-export-fill-node]"))) {
       fill.style.setProperty("width", "100%", "important");
       fill.style.setProperty("height", "100%", "important");

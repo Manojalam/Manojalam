@@ -168,6 +168,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             exportShadowLayers.length ? JSON.stringify(exportShadowLayers) : undefined
           }
           data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
+          data-export-contrast-surface="background"
           style={{
             backgroundColor: themeAwareNodeFillColor(bg),
             border: `${bWidth}px ${bStyle} ${border}`,

@@ -375,7 +375,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                     : "Included in the exported file."
                     : format === "pdf"
                       ? "White page; chart appearance is preserved."
-                      : "Transparent outer pixels (default)."}
+                      : "Transparent outer pixels; text contrast is preserved."}
                 </p>
               </div>
               <Switch

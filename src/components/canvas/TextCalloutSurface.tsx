@@ -94,12 +94,18 @@ export function TextCalloutSurface({
       >
         {style === "speech" ? (
           <>
-            <path data-export-bounds d={speechPath} {...outline} />
+            <path
+              data-export-bounds
+              data-export-contrast-surface="fill"
+              d={speechPath}
+              {...outline}
+            />
             {selected && <path data-export-ignore d={speechPath} {...selectionOutline} />}
           </>
         ) : (
           <>
             <rect
+              data-export-contrast-surface="fill"
               x={thoughtBody.x}
               y={thoughtBody.y}
               width={thoughtBody.width}
