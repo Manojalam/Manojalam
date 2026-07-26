@@ -46,6 +46,7 @@ import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rota
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import { layoutPresentationShapeType } from "@/lib/layout/layout-presentation";
 import {
+  surfaceEffectExportStyle,
   surfaceEffectFilter,
   surfaceEffectStyle,
 } from "@/lib/canvas/surface-effects";
@@ -995,6 +996,7 @@ function ShapeSurface({
 }) {
   const renderedFillColor = themeAwareNodeFillColor(fillColor);
   const effectStyle = effectData ? surfaceEffectStyle(effectData, borderColor) : {};
+  const exportEffectStyle = surfaceEffectExportStyle(effectData ?? {}, borderColor);
   if (isSvgShape(shapeType)) {
     return (
       <div
@@ -1021,6 +1023,8 @@ function ShapeSurface({
     <>
       <div
         className="absolute inset-0"
+        data-export-surface-effect-filter={exportEffectStyle.filter}
+        data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
         style={{
           ...shapeStyle,
           backgroundColor: renderedFillColor,

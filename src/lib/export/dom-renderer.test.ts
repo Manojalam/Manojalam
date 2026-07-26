@@ -4,6 +4,7 @@ import {
   compositeExportColor,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
   isTransparentExportBackground,
+  normalizeExportSurfaceEffects,
   parseExportCssColor,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
@@ -129,4 +130,31 @@ test("parses modern computed color syntax used by color-mix", () => {
     b: 153,
     a: 0.25,
   });
+});
+
+test("normalizes authored surface effects for foreign-object export", () => {
+  const attributes = new Map([
+    ["data-export-surface-effect-filter", "drop-shadow(4px 4px 6px rgba(2,6,23,.3))"],
+    ["data-export-surface-effect-shadow", "inset 0 1px 0 rgba(255,255,255,.5)"],
+  ]);
+  const styles = new Map<string, string>([
+    ["box-shadow", "4px 4px 14px rgba(2,6,23,.3)"],
+  ]);
+  const surface = {
+    getAttribute: (name: string) => attributes.get(name) ?? null,
+    removeAttribute: (name: string) => attributes.delete(name),
+    style: {
+      setProperty: (name: string, value: string) => styles.set(name, value),
+      removeProperty: (name: string) => styles.delete(name),
+    },
+  } as unknown as HTMLElement;
+  const clone = {
+    matches: () => false,
+    querySelectorAll: () => [surface],
+  } as unknown as HTMLElement;
+
+  assert.equal(normalizeExportSurfaceEffects(clone), 1);
+  assert.equal(styles.get("filter"), "drop-shadow(4px 4px 6px rgba(2,6,23,.3))");
+  assert.equal(styles.get("box-shadow"), "inset 0 1px 0 rgba(255,255,255,.5)");
+  assert.equal(attributes.size, 0);
 });
