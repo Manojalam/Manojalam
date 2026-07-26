@@ -1069,9 +1069,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
   const matrixRole   = dd.matrixCellRole as string | undefined;
-  const matrixGridVisible = dd.matrixGridVisible !== false;
   const resolvedBorderWidth = resolveBorderWidth(dd);
-  const bWidth       = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
+  const bWidth       = resolvedBorderWidth;
   const bStyle       = resolveBorderStyle(dd);
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 180,

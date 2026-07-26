@@ -420,8 +420,14 @@ export function resolveFillColor(d: Record<string, unknown>): string | undefined
 /** Resolve a node's border color: uses explicit borderColor or accent color */
 export function resolveBorderColor(d: Record<string, unknown>): string | undefined {
   const layoutStyle = resolveLayoutVisualStyle(d);
-  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderColor;
-  return (d.borderColor as string) ?? (d.color as string) ?? undefined;
+  const color = layoutStyle && d.layoutAutoBorder !== false
+    ? layoutStyle.borderColor
+    : (d.borderColor as string) ?? (d.color as string) ?? undefined;
+  if (d.matrixCell !== true) return color;
+  const parsed = typeof color === "string" ? parseCssColor(color) : null;
+  return !color || parsed?.a === 0
+    ? layoutStyle?.borderColor ?? "#64748b"
+    : color;
 }
 
 /** Resolve effective border width (default 2) */
@@ -431,7 +437,6 @@ export function resolveBorderWidth(d: Record<string, unknown>): number {
     ? layoutStyle.borderWidth
     : typeof d.borderWidth === "number" ? d.borderWidth : 2;
   if (d.matrixCell !== true) return authoredWidth;
-  if (d.matrixGridVisible === false) return 0;
   return Math.max(MATRIX_DIVISION_BORDER_MIN_WIDTH, authoredWidth);
 }
 

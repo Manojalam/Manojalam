@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowRight, Grid3X3, Maximize2, Palette, RefreshCw, RotateCcw, Sparkles, Ungroup, X } from "lucide-react";
+import { ArrowDown, ArrowRight, Maximize2, Palette, RefreshCw, RotateCcw, Sparkles, Ungroup, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -498,27 +498,7 @@ export function LayoutPanel() {
 
         {matrixRoot && (
           <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-medium text-foreground">Matrix table</div>
-              <button
-                type="button"
-                title="Show or hide cell borders"
-                aria-label="Show or hide cell borders"
-                onClick={() => {
-                  const rootMatrixData = (matrixRoot.data ?? {}) as Record<string, unknown>;
-                  updateNodeData(matrixRoot.id, { matrixGridVisible: rootMatrixData.matrixGridVisible === false });
-                  requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
-                }}
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-md border",
-                  ((matrixRoot.data as Record<string, unknown>).matrixGridVisible ?? true)
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground"
-                )}
-              >
-                <Grid3X3 className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <div className="mb-2 text-xs font-medium text-foreground">Matrix table</div>
 
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
               <div>

@@ -45,9 +45,8 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const borderColor  = resolveBorderColor(dd);
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
-  const matrixGridVisible = dd.matrixGridVisible !== false;
   const resolvedBorderWidth = resolveBorderWidth(dd);
-  const borderWidth  = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
+  const borderWidth  = resolvedBorderWidth;
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 180,
     height: typeof height === "number" && height > 0 ? height : 72,

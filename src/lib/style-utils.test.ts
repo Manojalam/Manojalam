@@ -43,7 +43,7 @@ test("a cleared node border stays transparent instead of falling back to its acc
   }), "transparent");
 });
 
-test("Matrix divisions retain a visible outline unless the grid is hidden", () => {
+test("every Matrix cell retains a visible outline", () => {
   assert.equal(resolveBorderWidth({
     borderWidth: 0,
     matrixCell: true,
@@ -53,12 +53,18 @@ test("Matrix divisions retain a visible outline unless the grid is hidden", () =
     borderWidth: 0,
     matrixCell: true,
     matrixGridVisible: false,
-  }), 0);
+  }), 1.5);
   assert.equal(resolveBorderWidth({
     borderWidth: 3,
     matrixCell: true,
     matrixGridVisible: true,
   }), 3);
+  assert.equal(resolveBorderColor({
+    borderColor: "transparent",
+    layoutAutoBorder: false,
+    layoutVisualStyle: automaticLayoutStyle,
+    matrixCell: true,
+  }), automaticLayoutStyle.borderColor);
 });
 
 test("fill controls report the effective automatic color and opacity", () => {
