@@ -37,6 +37,7 @@ import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import {
+  surfaceEffectExportShadowLayers,
   surfaceEffectExportStyle,
   surfaceEffectFilter,
   surfaceEffectStyle,
@@ -112,6 +113,10 @@ function TextBlockNodeComponent({
   const textFrameBody = textFrameBodyBox(textFrameStyle, renderedTextCalloutDirection);
   const hasTextFrame = textFrameStyle !== "plain";
   const exportEffectStyle = surfaceEffectExportStyle(hasTextFrame ? {} : dd, borderColor);
+  const exportShadowLayers = surfaceEffectExportShadowLayers(
+    hasTextFrame ? {} : dd,
+    borderColor
+  );
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
   const captureTextHistory = useCallback(() => {
@@ -181,7 +186,9 @@ function TextBlockNodeComponent({
             matrixCell && "overflow-hidden",
             selected && !hasTextFrame && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
-          data-export-surface-effect-filter={exportEffectStyle.filter}
+          data-export-surface-effect-shadow-layers={
+            exportShadowLayers.length ? JSON.stringify(exportShadowLayers) : undefined
+          }
           data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
           style={{
             ...(hasTextFrame ? {} : {

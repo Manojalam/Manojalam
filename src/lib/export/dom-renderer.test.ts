@@ -20,6 +20,34 @@ function fontFailure(code: "FONT_LOAD_TIMEOUT" | "FONT_LOAD_FAILED"): ExportErro
   });
 }
 
+interface FakeSvgNode {
+  tagName: string;
+  id: string;
+  attributes: Map<string, string>;
+  children: FakeSvgNode[];
+  style: {
+    setProperty: (name: string, value: string) => void;
+  };
+  setAttribute: (name: string, value: string) => void;
+  append: (...children: FakeSvgNode[]) => void;
+}
+
+function fakeSvgNode(tagName: string): FakeSvgNode {
+  const attributes = new Map<string, string>();
+  const children: FakeSvgNode[] = [];
+  return {
+    tagName,
+    id: "",
+    attributes,
+    children,
+    style: {
+      setProperty: (name, value) => attributes.set(`style:${name}`, value),
+    },
+    setAttribute: (name, value) => attributes.set(name, value),
+    append: (...appended) => children.push(...appended),
+  };
+}
+
 test("continues a non-strict export after the font readiness wait times out", async () => {
   const timeout = fontFailure("FONT_LOAD_TIMEOUT");
   const warnings = await waitForDomExportFontReadiness(
@@ -134,19 +162,31 @@ test("parses modern computed color syntax used by color-mix", () => {
 
 test("normalizes authored surface effects for foreign-object export", () => {
   const attributes = new Map([
-    ["data-export-surface-effect-filter", "drop-shadow(4px 4px 6px rgba(2,6,23,.3))"],
+    ["data-export-surface-effect-shadow-layers", JSON.stringify([{
+      dx: 4,
+      dy: 4,
+      blur: 6,
+      color: "#020617",
+      opacity: 0.3,
+    }])],
     ["data-export-surface-effect-shadow", "inset 0 1px 0 rgba(255,255,255,.5)"],
   ]);
   const styles = new Map<string, string>([
     ["box-shadow", "4px 4px 14px rgba(2,6,23,.3)"],
+    ["filter", "drop-shadow(4px 4px 6px rgba(2,6,23,.3))"],
   ]);
   const surface = {
     getAttribute: (name: string) => attributes.get(name) ?? null,
     removeAttribute: (name: string) => attributes.delete(name),
     style: {
+      width: "",
+      height: "",
+      borderTopLeftRadius: "",
       setProperty: (name: string, value: string) => styles.set(name, value),
       removeProperty: (name: string) => styles.delete(name),
+      getPropertyValue: (name: string) => styles.get(name) ?? "",
     },
+    parentElement: null,
   } as unknown as HTMLElement;
   const clone = {
     matches: () => false,
@@ -154,7 +194,77 @@ test("normalizes authored surface effects for foreign-object export", () => {
   } as unknown as HTMLElement;
 
   assert.equal(normalizeExportSurfaceEffects(clone), 1);
-  assert.equal(styles.get("filter"), "drop-shadow(4px 4px 6px rgba(2,6,23,.3))");
+  assert.equal(styles.get("filter"), undefined);
   assert.equal(styles.get("box-shadow"), "inset 0 1px 0 rgba(255,255,255,.5)");
+  assert.equal(styles.get("backdrop-filter"), "none");
   assert.equal(attributes.size, 0);
+});
+
+test("inserts a rounded native SVG shadow behind the exported HTML surface", () => {
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const insertedShadows: FakeSvgNode[] = [];
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElementNS: (_namespace: string, tagName: string) => fakeSvgNode(tagName),
+    },
+  });
+
+  try {
+    const attributes = new Map([
+      ["data-export-surface-effect-shadow-layers", JSON.stringify([{
+        dx: 4,
+        dy: 5,
+        blur: 7,
+        color: "#020617",
+        opacity: 0.3,
+      }])],
+    ]);
+    const styles = new Map<string, string>([
+      ["filter", "drop-shadow(4px 5px 7px rgba(2,6,23,.3))"],
+    ]);
+    const surface = {
+      getAttribute: (name: string) => attributes.get(name) ?? null,
+      removeAttribute: (name: string) => attributes.delete(name),
+      style: {
+        width: "240px",
+        height: "80px",
+        borderTopLeftRadius: "40px",
+        setProperty: (name: string, value: string) => styles.set(name, value),
+        removeProperty: (name: string) => styles.delete(name),
+        getPropertyValue: (name: string) => styles.get(name) ?? "",
+      },
+    } as unknown as HTMLElement;
+    const parent = {
+      insertBefore: (node: Node) => {
+        insertedShadows.push(node as unknown as FakeSvgNode);
+        return node;
+      },
+    } as unknown as HTMLElement;
+    Object.defineProperty(surface, "parentElement", { value: parent });
+    const clone = {
+      matches: () => false,
+      querySelectorAll: () => [surface],
+    } as unknown as HTMLElement;
+
+    assert.equal(normalizeExportSurfaceEffects(clone), 1);
+    const insertedShadow = insertedShadows[0];
+    assert.ok(insertedShadow);
+    assert.equal(insertedShadow.tagName, "svg");
+    assert.equal(insertedShadow.attributes.get("viewBox"), "0 0 240 80");
+    assert.equal(insertedShadow.attributes.get("style:overflow"), "visible");
+    const defs = insertedShadow.children[0];
+    const rect = insertedShadow.children[1];
+    const filter = defs?.children[0];
+    assert.equal(defs?.tagName, "defs");
+    assert.equal(rect?.tagName, "rect");
+    assert.equal(rect?.attributes.get("rx"), "40px");
+    assert.equal(rect?.attributes.get("filter"), "url(#export-surface-shadow-0)");
+    assert.equal(filter?.tagName, "filter");
+    assert.equal(filter?.children[filter.children.length - 1]?.tagName, "feMerge");
+    assert.equal(styles.get("filter"), undefined);
+  } finally {
+    if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
 });

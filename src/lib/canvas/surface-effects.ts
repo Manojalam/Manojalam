@@ -14,8 +14,12 @@ export interface SurfaceEffectStyle {
   boxShadow?: string;
 }
 
-export interface SurfaceEffectExportStyle extends SurfaceEffectStyle {
-  filter?: string;
+export interface SurfaceEffectShadowLayer {
+  dx: number;
+  dy: number;
+  blur: number;
+  color: string;
+  opacity: number;
 }
 
 export const SURFACE_EFFECT_PRESETS: ReadonlyArray<{
@@ -88,11 +92,15 @@ function rgba(red: number, green: number, blue: number, alpha: number): string {
 }
 
 function glowColor(accentColor: string | undefined, strength: number): string {
+  const accent = surfaceEffectAccentColor(accentColor);
+  return `color-mix(in srgb, ${accent} ${Math.round(clamp(strength * 100, 0, 100))}%, transparent)`;
+}
+
+function surfaceEffectAccentColor(accentColor: string | undefined): string {
   const requested = accentColor?.trim();
-  const accent = !requested || requested.toLowerCase() === "transparent"
+  return !requested || requested.toLowerCase() === "transparent"
     ? "#6366f1"
     : requested;
-  return `color-mix(in srgb, ${accent} ${Math.round(clamp(strength * 100, 0, 100))}%, transparent)`;
 }
 
 export function surfaceEffectStyle(
@@ -181,6 +189,47 @@ export function surfaceEffectFilter(
   return `drop-shadow(${dx}px ${dy}px ${rounded(Math.max(1, blur * 0.42))}px ${rgba(2, 6, 23, 0.08 + strength * 0.32)})`;
 }
 
+/**
+ * Structured outer shadows used by the native SVG export paint layer.
+ * `blur` retains the CSS blur-radius convention; the SVG renderer converts it
+ * to a Gaussian standard deviation when it builds filter primitives.
+ */
+export function surfaceEffectExportShadowLayers(
+  data: Record<string, unknown>,
+  accentColor?: string
+): SurfaceEffectShadowLayer[] {
+  const settings = normalizeSurfaceEffect(data);
+  if (settings.preset === "flat" || settings.depth <= 0 || settings.strength <= 0) return [];
+
+  const { dx, dy, blur, strength } = effectGeometry(settings);
+  if (settings.preset === "glow") {
+    return [
+      {
+        dx: 0,
+        dy: 0,
+        blur: rounded(blur * 0.45),
+        color: surfaceEffectAccentColor(accentColor),
+        opacity: rounded(clamp(0.3 + strength * 0.5, 0, 1)),
+      },
+      {
+        dx: 0,
+        dy: 0,
+        blur: rounded(blur),
+        color: surfaceEffectAccentColor(accentColor),
+        opacity: rounded(clamp(0.12 + strength * 0.25, 0, 1)),
+      },
+    ];
+  }
+
+  return [{
+    dx,
+    dy,
+    blur: rounded(Math.max(1, blur * 0.42)),
+    color: "#020617",
+    opacity: rounded(clamp(0.08 + strength * 0.32, 0, 1)),
+  }];
+}
+
 function splitCssLayers(value: string): string[] {
   const layers: string[] = [];
   let depth = 0;
@@ -199,17 +248,15 @@ function splitCssLayers(value: string): string[] {
 }
 
 /**
- * Exported HTML is embedded in an SVG foreignObject. Chromium can rasterize
- * outer box-shadow layers there as rectangular bands, especially when several
- * rounded cells sit next to one another. Use the element's alpha silhouette
- * for exported depth while retaining inset bevel/glass lighting.
+ * Retain only surface-local paint on the exported HTML element. Outer depth is
+ * rendered separately by native SVG because HTML shadows and filters can both
+ * become rectangular bands inside an SVG foreignObject.
  */
 export function surfaceEffectExportStyle(
   data: Record<string, unknown>,
   accentColor?: string
-): SurfaceEffectExportStyle {
-  const filter = surfaceEffectFilter(data, accentColor);
-  if (!filter) return {};
+): SurfaceEffectStyle {
+  if (surfaceEffectExportShadowLayers(data, accentColor).length === 0) return {};
 
   const { boxShadow, ...surfaceStyle } = surfaceEffectStyle(data, accentColor);
   const insetShadow = boxShadow
@@ -221,6 +268,5 @@ export function surfaceEffectExportStyle(
   return {
     ...surfaceStyle,
     ...(insetShadow ? { boxShadow: insetShadow } : {}),
-    filter,
   };
 }
