@@ -5,10 +5,14 @@ import { buildHierarchy } from "./hierarchy";
 import { getNodeRect } from "./geometry";
 import { packSiblingsAfterNestedMatrix } from "./nested-matrix-spacing";
 import {
+  MATRIX_DIVISION_FRAME_BORDER_WIDTH,
+  MATRIX_DIVISION_FRAME_RADIUS,
   MATRIX_FRAME_RADIUS,
   matrixCellBorderRadius,
+  matrixDivisionFramePadding,
   matrixFramePadding,
 } from "./matrix-presentation";
+import { buildMatrixFrameNodes } from "./matrix-frames";
 import {
   MATRIX_DENSITY_SETTINGS,
   MATRIX_HEADER_MIN_WIDTH,
@@ -345,9 +349,96 @@ test("Matrix presentation uses rounded cells and a density-aware group frame", (
   assert.equal(matrixCellBorderRadius("header"), 24);
   assert.equal(matrixCellBorderRadius("category"), 20);
   assert.equal(matrixCellBorderRadius("cell"), 18);
+  assert.equal(MATRIX_DIVISION_FRAME_BORDER_WIDTH, 2);
+  assert.equal(MATRIX_DIVISION_FRAME_RADIUS, 16);
   assert.equal(MATRIX_FRAME_RADIUS, 22);
   assert.ok(matrixFramePadding("presentation") > matrixFramePadding("comfortable"));
   assert.ok(matrixFramePadding("comfortable") > matrixFramePadding("compact"));
+  assert.ok(matrixDivisionFramePadding("comfortable", 1) > matrixDivisionFramePadding("comfortable", 3));
+});
+
+test("Matrix frames enclose every visible non-leaf hierarchy division", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 20, y: 10 },
+      style: { width: 500, height: 60 },
+      data: {
+        parentId: null,
+        matrixCell: true,
+        matrixDensity: "comfortable",
+        layoutVisualStyle: { fillColor: "#047857", borderColor: "#064e3b" },
+      },
+    },
+    {
+      id: "short",
+      type: "shape",
+      position: { x: 20, y: 80 },
+      style: { width: 120, height: 50 },
+      data: {
+        parentId: "root",
+        matrixCell: true,
+        layoutVisualStyle: { borderColor: "#065f46" },
+      },
+    },
+    {
+      id: "a",
+      type: "shape",
+      position: { x: 150, y: 80 },
+      style: { width: 100, height: 50 },
+      data: { parentId: "short", matrixCell: true },
+    },
+    {
+      id: "long",
+      type: "shape",
+      position: { x: 20, y: 140 },
+      style: { width: 120, height: 110 },
+      data: {
+        parentId: "root",
+        matrixCell: true,
+        layoutVisualStyle: { borderColor: "#047857" },
+      },
+    },
+    {
+      id: "aa",
+      type: "shape",
+      position: { x: 150, y: 140 },
+      style: { width: 100, height: 50 },
+      data: { parentId: "long", matrixCell: true },
+    },
+    {
+      id: "ii",
+      type: "shape",
+      position: { x: 150, y: 200 },
+      style: { width: 100, height: 50 },
+      data: { parentId: "long", matrixCell: true },
+    },
+    {
+      id: "standalone",
+      type: "shape",
+      position: { x: 260, y: 80 },
+      style: { width: 100, height: 50 },
+      data: { parentId: "root", matrixCell: true },
+    },
+  ];
+
+  const frames = buildMatrixFrameNodes(nodes, "root");
+  assert.deepEqual(
+    frames.map((frame) => (frame.data as Record<string, unknown>).matrixDivisionFor ?? "root"),
+    ["root", "short", "long"]
+  );
+  const shortFrame = frames.find((frame) =>
+    (frame.data as Record<string, unknown>).matrixDivisionFor === "short"
+  )!;
+  const longFrame = frames.find((frame) =>
+    (frame.data as Record<string, unknown>).matrixDivisionFor === "long"
+  )!;
+  assert.ok(shortFrame.position.x < 20);
+  assert.ok(Number(shortFrame.style?.width) > 230);
+  assert.ok(longFrame.position.y < 140);
+  assert.ok(Number(longFrame.style?.height) > 110);
+  assert.equal((shortFrame.data as Record<string, unknown>).borderWidth, 2);
 });
 
 test("long Sanskrit content reaches the width cap and increases row height", () => {

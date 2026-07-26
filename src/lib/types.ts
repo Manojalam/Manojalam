@@ -612,6 +612,8 @@ export interface FrameNodeData extends BaseNodeData {
   background?: string;
   presentationOrder?: number;
   matrixFrameFor?: string;
+  /** Non-leaf Matrix branch enclosed by this generated nested frame. */
+  matrixDivisionFor?: string;
 }
 
 export interface SunburstNodeData extends BaseNodeData {
