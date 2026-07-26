@@ -206,6 +206,7 @@ interface CanvasState {
   setNodeSize: (nodeId: string, size: { width: number; height: number }) => void;
   resizeNodeToFitBounds: (nodeId: string, bounds: { width: number; height: number }) => void;
   convertNode: (nodeId: string, newType: string, extraData?: Record<string, unknown>) => void;
+  convertNodes: (nodeIds: string[], newType: string, extraData?: Record<string, unknown>) => void;
   scheduleListReflow: (nodeId: string) => void;
   scheduleMatrixReflow: (nodeId: string) => void;
   scheduleStructuredReflow: (nodeId: string, forceAutomatic?: boolean) => void;
@@ -3419,69 +3420,80 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   convertNode: (nodeId, newType, extraData = {}) => {
-    const { nodes } = get();
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
+    get().convertNodes([nodeId], newType, extraData);
+  },
+
+  convertNodes: (nodeIds, newType, extraData = {}) => {
+    const targetIds = new Set(nodeIds);
+    if (!targetIds.size) return;
+    const { nodes, edges } = get();
+    const convertedIds = nodes
+      .filter((node) => targetIds.has(node.id))
+      .map((node) => node.id);
+    if (!convertedIds.length) return;
+    const hierarchy = buildHierarchy(nodes, edges);
     get().pushHistory();
 
-    const newData = { ...node.data, ...extraData };
-    if (newType === "shape" && !newData.shapeType) newData.shapeType = "rounded";
-    if (newType === "mindmap" && !newData.color)   newData.color = "#818cf8";
-    if (newType === "sticky"  && !newData.color)   newData.color = "yellow";
-
-    const hierarchy = buildHierarchy(nodes, get().edges);
-    const matrixMode = findLayoutRoot(nodeId, nodes, hierarchy).mode === "matrix";
-    const matrixBase = matrixMode ? getMatrixBaseSize(node) : null;
-    const current = matrixBase ?? getNodeDimensions(node);
-    const shapeType = newType === "shape"
-      ? (newData.shapeType as string) ?? "rounded"
-      : newType === "text"
-        ? textFrameShapeType(normalizeTextFrameStyle(newData.textFrameStyle))
-        : "rectangle";
-    const content = measuredOrEstimatedContent(newData as Record<string, unknown>);
-    const fittedSize = fitShapeToContent(shapeType, content, {
-      nodeType: newType,
-      currentSize: current,
-      growOnly: false,
-      borderWidth: typeof newData.borderWidth === "number" ? newData.borderWidth : 2,
-      minWidth: newType === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
-      minHeight: newType === "sticky" ? 90 : newType === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
-      maxContentWidth: newType === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
-      maxWidth: MAX_AUTOFIT_NODE_WIDTH,
-      maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
-      cornerRadius: typeof newData.borderRadius === "number"
-        ? newData.borderRadius
-        : effectiveCornerRadius(newData.cornerRadiusPercent, current, 20),
-      textPadding: newType === "shape" && typeof newData.textPadding === "number"
-        ? newData.textPadding
-        : undefined,
-    });
-
-    const convertedData = {
-      ...newData,
-      autoSizeMode: resolveAutoSizeMode(newData as Record<string, unknown>),
-      userSize: fittedSize,
-    };
-    const oldRect = getNodeRect(node);
-    const topLeft = resizeAroundAnchor(oldRect, fittedSize, "center");
-    const convertedNode = resetNodeDimensions({
-      ...node,
-      type: newType,
-      data: convertedData,
-      position: matrixMode
-        ? node.position
-        : nodePositionFromTopLeft(node, topLeft, fittedSize),
-    }, fittedSize.width, fittedSize.height);
     set({
-      nodes: nodes.map((n) => n.id === nodeId
-        ? matrixMode ? { ...convertedNode, style: n.style } : convertedNode
-        : n),
+      nodes: nodes.map((node) => {
+        if (!targetIds.has(node.id)) return node;
+        const newData = { ...node.data, ...extraData };
+        if (newType === "shape" && !newData.shapeType) newData.shapeType = "rounded";
+        if (newType === "mindmap" && !newData.color) newData.color = "#818cf8";
+        if (newType === "sticky" && !newData.color) newData.color = "yellow";
+
+        const matrixMode = findLayoutRoot(node.id, nodes, hierarchy).mode === "matrix";
+        const matrixBase = matrixMode ? getMatrixBaseSize(node) : null;
+        const current = matrixBase ?? getNodeDimensions(node);
+        const shapeType = newType === "shape"
+          ? (newData.shapeType as string) ?? "rounded"
+          : newType === "text"
+            ? textFrameShapeType(normalizeTextFrameStyle(newData.textFrameStyle))
+            : "rectangle";
+        const content = measuredOrEstimatedContent(newData as Record<string, unknown>);
+        const fittedSize = fitShapeToContent(shapeType, content, {
+          nodeType: newType,
+          currentSize: current,
+          growOnly: false,
+          borderWidth: typeof newData.borderWidth === "number" ? newData.borderWidth : 2,
+          minWidth: newType === "sticky" ? 180 : MIN_AUTO_NODE_WIDTH,
+          minHeight: newType === "sticky" ? 90 : newType === "shape" ? 70 : MIN_AUTO_NODE_HEIGHT,
+          maxContentWidth: newType === "text" ? MAX_AUTO_TEXT_WIDTH : MAX_AUTO_CARD_WIDTH,
+          maxWidth: MAX_AUTOFIT_NODE_WIDTH,
+          maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
+          cornerRadius: typeof newData.borderRadius === "number"
+            ? newData.borderRadius
+            : effectiveCornerRadius(newData.cornerRadiusPercent, current, 20),
+          textPadding: newType === "shape" && typeof newData.textPadding === "number"
+            ? newData.textPadding
+            : undefined,
+        });
+
+        const convertedData = {
+          ...newData,
+          autoSizeMode: resolveAutoSizeMode(newData as Record<string, unknown>),
+          userSize: fittedSize,
+        };
+        const oldRect = getNodeRect(node);
+        const topLeft = resizeAroundAnchor(oldRect, fittedSize, "center");
+        const convertedNode = resetNodeDimensions({
+          ...node,
+          type: newType,
+          data: convertedData,
+          position: matrixMode
+            ? node.position
+            : nodePositionFromTopLeft(node, topLeft, fittedSize),
+        }, fittedSize.width, fittedSize.height);
+        return matrixMode ? { ...convertedNode, style: node.style } : convertedNode;
+      }),
       saveStatus: "unsaved",
     });
-    requestNodeInternalsRefresh([nodeId]);
-    get().scheduleListReflow(nodeId);
-    get().scheduleMatrixReflow(nodeId);
-    get().scheduleStructuredReflow(nodeId);
+    requestNodeInternalsRefresh(convertedIds);
+    for (const nodeId of convertedIds) {
+      get().scheduleListReflow(nodeId);
+      get().scheduleMatrixReflow(nodeId);
+      get().scheduleStructuredReflow(nodeId);
+    }
   },
 
   scheduleListReflow: (nodeId) => {
