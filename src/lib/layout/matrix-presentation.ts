@@ -1,5 +1,8 @@
 export type MatrixCellRole = "header" | "category" | "cell";
 
+/** Keep Matrix divisions legible at normal canvas and export scales. */
+export const MATRIX_DIVISION_BORDER_MIN_WIDTH = 1.5;
+
 /**
  * Matrix is presented as a grouped card system rather than a spreadsheet.
  * The radius remains restrained on large merged cells and becomes pill-like

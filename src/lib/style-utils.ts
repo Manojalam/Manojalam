@@ -11,6 +11,7 @@ import type { Size } from "./canvas/node-geometry";
 import { BOARD_THEME_COLORS } from "./canvas/board-colors";
 import { colorSwatchHex } from "./canvas/custom-colors";
 import { resolveLayoutFontSize } from "./layout/layout-presentation";
+import { MATRIX_DIVISION_BORDER_MIN_WIDTH } from "./layout/matrix-presentation";
 
 /** CSS applied to the text-content container of a node.
  *  Always emits explicit values for inheritable properties so CSS
@@ -426,8 +427,12 @@ export function resolveBorderColor(d: Record<string, unknown>): string | undefin
 /** Resolve effective border width (default 2) */
 export function resolveBorderWidth(d: Record<string, unknown>): number {
   const layoutStyle = resolveLayoutVisualStyle(d);
-  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderWidth;
-  return typeof d.borderWidth === "number" ? d.borderWidth : 2;
+  const authoredWidth = layoutStyle && d.layoutAutoBorder !== false
+    ? layoutStyle.borderWidth
+    : typeof d.borderWidth === "number" ? d.borderWidth : 2;
+  if (d.matrixCell !== true) return authoredWidth;
+  if (d.matrixGridVisible === false) return 0;
+  return Math.max(MATRIX_DIVISION_BORDER_MIN_WIDTH, authoredWidth);
 }
 
 export function resolveBorderStyle(d: Record<string, unknown>): "solid" | "dashed" | "dotted" {

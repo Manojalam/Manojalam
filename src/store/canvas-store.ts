@@ -39,7 +39,6 @@ import {
   supportsGeneratedLayoutSizing,
 } from "@/lib/layout/layout-presentation";
 import { computeListLayout } from "@/lib/layout/list-layout";
-import { hasFoldedChildSections } from "@/lib/layout/child-group-wrap";
 import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import { packSiblingsAfterNestedMatrix } from "@/lib/layout/nested-matrix-spacing";
 import { matrixFramePadding } from "@/lib/layout/matrix-presentation";
@@ -785,9 +784,6 @@ function withMatrixFrame(nodes: Node[], scopeIds: Set<string>, key: string, enab
     return node.id === key || data.matrixRootId === key;
   });
   if (!scopedNodes.length) return withoutCurrentFrame;
-  // A folded Matrix is a set of compact sections, not one rectangular table.
-  // Cell borders keep each section legible without framing empty canvas.
-  if (hasFoldedChildSections(scopedNodes)) return withoutCurrentFrame;
 
   const rects = scopedNodes.map((node) => {
     const data = (node.data ?? {}) as Record<string, unknown>;
