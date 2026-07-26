@@ -6,6 +6,7 @@ import {
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
   parseExportCssColor,
+  preserveTransparentTextContrast,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
 import { ExportError } from "./errors";
@@ -267,4 +268,73 @@ test("inserts a rounded native SVG shadow behind the exported HTML surface", () 
     if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
     else Reflect.deleteProperty(globalThis, "document");
   }
+});
+
+test("backs transparent white text on an opaque white export surface", () => {
+  const surfaceAttributes = new Map([
+    ["data-export-contrast-surface", "fill"],
+    ["fill", "rgba(0, 0, 0, 0)"],
+  ]);
+  const surfaceStyles = new Map<string, string>([
+    ["fill", "rgba(0, 0, 0, 0)"],
+  ]);
+  const content = {
+    textContent: "Sun 6:00 AM CST",
+    style: { color: "rgb(255, 255, 255)" },
+  } as unknown as HTMLElement;
+  const node = {
+    querySelector: () => content,
+  } as unknown as Element;
+  const surface = {
+    getAttribute: (name: string) => surfaceAttributes.get(name) ?? null,
+    removeAttribute: (name: string) => surfaceAttributes.delete(name),
+    setAttribute: (name: string, value: string) => surfaceAttributes.set(name, value),
+    closest: () => node,
+    style: {
+      getPropertyValue: (name: string) => surfaceStyles.get(name) ?? "",
+      setProperty: (name: string, value: string) => surfaceStyles.set(name, value),
+    },
+  } as unknown as SVGElement;
+  const clone = {
+    matches: () => false,
+    querySelectorAll: () => [surface],
+  } as unknown as HTMLElement;
+
+  assert.equal(
+    preserveTransparentTextContrast(clone, "#ffffff", "rgb(24, 24, 27)"),
+    1
+  );
+  assert.equal(surfaceStyles.get("fill"), "rgb(24, 24, 27)");
+  assert.equal(surfaceAttributes.get("fill"), "rgb(24, 24, 27)");
+  assert.equal(surfaceAttributes.has("data-export-contrast-surface"), false);
+});
+
+test("leaves readable transparent dark text unchanged on a white export surface", () => {
+  const attributes = new Map([["data-export-contrast-surface", "background"]]);
+  const styles = new Map<string, string>([["background-color", "transparent"]]);
+  const content = {
+    textContent: "Readable label",
+    style: { color: "rgb(15, 23, 42)" },
+  } as unknown as HTMLElement;
+  const surface = {
+    getAttribute: (name: string) => attributes.get(name) ?? null,
+    removeAttribute: (name: string) => attributes.delete(name),
+    getAttributeNames: () => Array.from(attributes.keys()),
+    closest: () => ({ querySelector: () => content }),
+    style: {
+      getPropertyValue: (name: string) => styles.get(name) ?? "",
+      setProperty: (name: string, value: string) => styles.set(name, value),
+    },
+  } as unknown as HTMLElement;
+  const clone = {
+    matches: () => false,
+    querySelectorAll: () => [surface],
+  } as unknown as HTMLElement;
+
+  assert.equal(
+    preserveTransparentTextContrast(clone, "#ffffff", "rgb(24, 24, 27)"),
+    0
+  );
+  assert.equal(styles.get("background-color"), "transparent");
+  assert.equal(attributes.has("data-export-contrast-surface"), false);
 });
