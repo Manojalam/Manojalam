@@ -7,6 +7,7 @@ import {
   getTextStyle,
   lightenColor,
   resolveBorderColor,
+  resolveBorderWidth,
   resolveEffectiveFillOpacity,
   resolveFillColor,
   resolveFillSourceColor,
@@ -40,6 +41,24 @@ test("a cleared node border stays transparent instead of falling back to its acc
     layoutVisualStyle: automaticLayoutStyle,
     layoutAutoBorder: false,
   }), "transparent");
+});
+
+test("Matrix divisions retain a visible outline unless the grid is hidden", () => {
+  assert.equal(resolveBorderWidth({
+    borderWidth: 0,
+    matrixCell: true,
+    matrixGridVisible: true,
+  }), 1.5);
+  assert.equal(resolveBorderWidth({
+    borderWidth: 0,
+    matrixCell: true,
+    matrixGridVisible: false,
+  }), 0);
+  assert.equal(resolveBorderWidth({
+    borderWidth: 3,
+    matrixCell: true,
+    matrixGridVisible: true,
+  }), 3);
 });
 
 test("fill controls report the effective automatic color and opacity", () => {
