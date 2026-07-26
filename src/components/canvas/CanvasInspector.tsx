@@ -136,6 +136,7 @@ import {
   normalizeTextCalloutDirection,
   normalizeTextFrameStyle,
 } from "@/lib/canvas/text-callout";
+import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1244,6 +1245,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
+  const convertNodes    = useCanvasStore((s) => s.convertNodes);
   const setBoardSettings = (patch: Parameters<typeof setSettings>[0]) => {
     pushHistory();
     setSettings(patch);
@@ -1275,6 +1277,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     && selectedMatrixCells.length === selectedNodes.length;
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
   const selectedShapeNodes = selectedNodes.filter((node) => node.type === "shape");
+  const selectedShapeTransformNodes = selectedNodes.filter(supportsShapeTransform);
   const allShapeNodes = nodes.filter((node) => node.type === "shape" && !node.hidden);
   const selectedShapePaddingMax = selectedShapeNodes.length
     ? Math.floor(Math.min(...selectedShapeNodes.map((node) => maximumShapeTextPadding(getNodeDimensions(node)))))
@@ -1955,6 +1958,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       && selectedMatrixHeightValues.every((value) => Math.abs(value - selectedMatrixHeightValues[0]) < 0.05)
       ? selectedMatrixHeightValues[0]
       : undefined;
+    const commonSelectedShapeType = selectedShapeTransformNodes.length
+      && selectedShapeTransformNodes.every((node) =>
+        ((node.data ?? {}) as Record<string, unknown>).shapeType
+          === ((selectedShapeTransformNodes[0].data ?? {}) as Record<string, unknown>).shapeType
+      )
+      ? ((selectedShapeTransformNodes[0].data ?? {}) as Record<string, unknown>).shapeType
+      : undefined;
+    const applySelectedShapeType = (shapeType: ShapeType) => {
+      if (!selectedShapeTransformNodes.length) return;
+      convertNodes(
+        selectedShapeTransformNodes.map((node) => node.id),
+        "shape",
+        {
+          shapeType,
+          borderRadius: undefined,
+          ...(shapeType === "rectangle" ? { cornerRadiusPercent: 0 } : {}),
+          ...(shapeType === "rounded" ? { cornerRadiusPercent: 40 } : {}),
+          ...(shapeType === "flower" ? { petalCount: 8 } : {}),
+        }
+      );
+      toast.success(`Changed ${selectedShapeTransformNodes.length} selected object${
+        selectedShapeTransformNodes.length === 1 ? "" : "s"
+      } to ${SHAPE_TYPES.find((shape) => shape.value === shapeType)?.label ?? shapeType}.`, {
+        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+      });
+    };
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
@@ -2073,6 +2102,32 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 >
                   Auto heights
                 </Button>
+              </div>
+            </Section>
+          )}
+          {!isRadialMultiSelection && selectedShapeTransformNodes.length > 0 && (
+            <Section label="Shape type" defaultOpen>
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Applies to {selectedShapeTransformNodes.length} selected shape object{
+                  selectedShapeTransformNodes.length === 1 ? "" : "s"
+                }. Unrelated callouts, frames, and chart objects stay unchanged.
+              </p>
+              <div className="grid grid-cols-3 gap-1">
+                {SHAPE_TYPES.map(({ label, value }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => applySelectedShapeType(value as ShapeType)}
+                    className={cn(
+                      "rounded-lg border px-1 py-1.5 text-center text-[10px] hover:bg-muted",
+                      commonSelectedShapeType === value
+                        ? "border-primary bg-primary/10 font-medium text-primary"
+                        : "border-border"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </Section>
           )}

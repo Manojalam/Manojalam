@@ -57,6 +57,7 @@ import {
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
 import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
+import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
 import {
   MovableToolbarHandle,
   useMovableToolbar,
@@ -113,24 +114,24 @@ function nodeDisplayLabel(node: Node | undefined): string {
 }
 
 function ShapeChanger({
-  nodeId,
+  nodeIds,
   shapeType,
   cornerRadiusPercent,
   petalCount,
 }: {
-  nodeId: string;
-  shapeType: ShapeType;
+  nodeIds: string[];
+  shapeType?: ShapeType;
   cornerRadiusPercent?: number;
   petalCount?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const convertNode = useCanvasStore((state) => state.convertNode);
+  const convertNodes = useCanvasStore((state) => state.convertNodes);
   const currentShape = FLOWCHART_SHAPES.find((shape) => shape.variant === shapeType)
     ?? FLOWCHART_SHAPES[1];
 
   const changeShape = (nextShape: ShapeType) => {
-    if (nextShape !== shapeType) {
-      convertNode(nodeId, "shape", {
+    if (nodeIds.length > 1 || nextShape !== shapeType) {
+      convertNodes(nodeIds, "shape", {
         shapeType: nextShape,
         borderRadius: undefined,
         ...(nextShape === "rectangle" ? { cornerRadiusPercent: 0 } : {}),
@@ -139,6 +140,13 @@ function ShapeChanger({
           : {}),
         ...(nextShape === "flower" ? { petalCount: petalCount ?? 8 } : {}),
       });
+      if (nodeIds.length > 1) {
+        toast.success(`Changed ${nodeIds.length} selected objects to ${FLOWCHART_SHAPES.find(
+          (shape) => shape.variant === nextShape
+        )?.label ?? nextShape}.`, {
+          action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+        });
+      }
     }
     setOpen(false);
   };
@@ -148,8 +156,12 @@ function ShapeChanger({
       <PopoverTrigger asChild>
         <button
           type="button"
-          title={`Change shape (currently ${currentShape.label})`}
-          aria-label={`Change shape. Current shape: ${currentShape.label}`}
+          title={shapeType
+            ? `Change shape (currently ${currentShape.label})`
+            : `Change shape for ${nodeIds.length} selected objects (mixed shapes)`}
+          aria-label={shapeType
+            ? `Change shape. Current shape: ${currentShape.label}`
+            : `Change shape for ${nodeIds.length} selected objects. Current shapes are mixed`}
           aria-expanded={open}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
@@ -394,6 +406,28 @@ export function SelectionToolbar() {
   if (!selected.length) return null;
   const selectedShapes = selected.filter((node) => node.type === "shape");
   const allSelectedAreShapes = selectedShapes.length === selected.length;
+  const shapeTransformTargets = selected.filter(supportsShapeTransform);
+  const commonSelectedShape = shapeTransformTargets.length
+    && shapeTransformTargets.every((node) =>
+      ((node.data ?? {}) as Record<string, unknown>).shapeType
+        === ((shapeTransformTargets[0].data ?? {}) as Record<string, unknown>).shapeType
+    )
+    ? ((((shapeTransformTargets[0].data ?? {}) as Record<string, unknown>).shapeType as ShapeType | undefined) ?? "rounded")
+    : undefined;
+  const commonCornerRadius = shapeTransformTargets.length
+    && shapeTransformTargets.every((node) =>
+      ((node.data ?? {}) as Record<string, unknown>).cornerRadiusPercent
+        === ((shapeTransformTargets[0].data ?? {}) as Record<string, unknown>).cornerRadiusPercent
+    )
+    ? ((shapeTransformTargets[0].data ?? {}) as Record<string, unknown>).cornerRadiusPercent
+    : undefined;
+  const commonPetalCount = shapeTransformTargets.length
+    && shapeTransformTargets.every((node) =>
+      ((node.data ?? {}) as Record<string, unknown>).petalCount
+        === ((shapeTransformTargets[0].data ?? {}) as Record<string, unknown>).petalCount
+    )
+    ? ((shapeTransformTargets[0].data ?? {}) as Record<string, unknown>).petalCount
+    : undefined;
 
   const useShapeFormatPainter = () => {
     if (!shapeFormatPainter) {
@@ -612,7 +646,7 @@ export function SelectionToolbar() {
           )}
           {singleShapeData && (
             <ShapeChanger
-              nodeId={singleId}
+              nodeIds={[singleId]}
               shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
               cornerRadiusPercent={typeof singleShapeData.cornerRadiusPercent === "number"
                 ? singleShapeData.cornerRadiusPercent
@@ -632,6 +666,18 @@ export function SelectionToolbar() {
           >
             <Share2 className="h-4 w-4" />
           </ActionButton>
+          <Divider />
+        </>
+      )}
+
+      {selected.length > 1 && shapeTransformTargets.length > 0 && (
+        <>
+          <ShapeChanger
+            nodeIds={shapeTransformTargets.map((node) => node.id)}
+            shapeType={commonSelectedShape}
+            cornerRadiusPercent={typeof commonCornerRadius === "number" ? commonCornerRadius : undefined}
+            petalCount={typeof commonPetalCount === "number" ? commonPetalCount : undefined}
+          />
           <Divider />
         </>
       )}
