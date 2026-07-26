@@ -35,6 +35,7 @@ import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import {
+  surfaceEffectExportShadowLayers,
   surfaceEffectExportStyle,
   surfaceEffectStyle,
 } from "@/lib/canvas/surface-effects";
@@ -84,6 +85,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
   const hasSurfaceEffect = typeof dd.surfaceEffect === "string";
   const exportEffectStyle = surfaceEffectExportStyle(dd, border);
+  const exportShadowLayers = surfaceEffectExportShadowLayers(dd, border);
 
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
@@ -162,7 +164,9 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
             !matrixCell && !hasSurfaceEffect && (selected ? "shadow-lg" : "shadow-md")
           )}
-          data-export-surface-effect-filter={exportEffectStyle.filter}
+          data-export-surface-effect-shadow-layers={
+            exportShadowLayers.length ? JSON.stringify(exportShadowLayers) : undefined
+          }
           data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
           style={{
             backgroundColor: themeAwareNodeFillColor(bg),

@@ -543,28 +543,162 @@ function restoreExportElements(clone: HTMLElement): void {
   }
 }
 
+interface ExportSurfaceShadowLayer {
+  dx: number;
+  dy: number;
+  blur: number;
+  color: string;
+  opacity: number;
+}
+
+function parseExportSurfaceShadowLayers(value: string | null): ExportSurfaceShadowLayer[] {
+  if (!value) return [];
+  try {
+    const requested = JSON.parse(value) as unknown;
+    if (!Array.isArray(requested)) return [];
+    return requested.flatMap((layer) => {
+      if (!layer || typeof layer !== "object") return [];
+      const candidate = layer as Partial<ExportSurfaceShadowLayer>;
+      if (
+        !Number.isFinite(candidate.dx)
+        || !Number.isFinite(candidate.dy)
+        || !Number.isFinite(candidate.blur)
+        || !Number.isFinite(candidate.opacity)
+        || typeof candidate.color !== "string"
+        || !candidate.color.trim()
+      ) return [];
+      return [{
+        dx: candidate.dx as number,
+        dy: candidate.dy as number,
+        blur: Math.max(0, candidate.blur as number),
+        color: candidate.color,
+        opacity: Math.min(1, Math.max(0, candidate.opacity as number)),
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function exportSurfaceDimension(value: string): number | null {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function appendNativeExportSurfaceShadow(
+  element: HTMLElement,
+  layers: readonly ExportSurfaceShadowLayer[],
+  index: number
+): boolean {
+  const parent = element.parentElement;
+  const width = exportSurfaceDimension(element.style.width);
+  const height = exportSurfaceDimension(element.style.height);
+  if (!parent || !width || !height || layers.length === 0) return false;
+
+  const svg = svgElement("svg");
+  const filter = svgElement("filter");
+  const filterId = `export-surface-shadow-${index}`;
+  const padX = Math.max(4, ...layers.map((layer) => Math.abs(layer.dx) + layer.blur * 2));
+  const padY = Math.max(4, ...layers.map((layer) => Math.abs(layer.dy) + layer.blur * 2));
+  filter.id = filterId;
+  filter.setAttribute("filterUnits", "userSpaceOnUse");
+  filter.setAttribute("primitiveUnits", "userSpaceOnUse");
+  filter.setAttribute("color-interpolation-filters", "sRGB");
+  filter.setAttribute("x", String(-padX));
+  filter.setAttribute("y", String(-padY));
+  filter.setAttribute("width", String(width + padX * 2));
+  filter.setAttribute("height", String(height + padY * 2));
+
+  const merge = svgElement("feMerge");
+  layers.forEach((layer, layerIndex) => {
+    const blur = svgElement("feGaussianBlur");
+    const offset = svgElement("feOffset");
+    const flood = svgElement("feFlood");
+    const composite = svgElement("feComposite");
+    const mergeNode = svgElement("feMergeNode");
+    const blurResult = `blur-${layerIndex}`;
+    const offsetResult = `offset-${layerIndex}`;
+    const colorResult = `color-${layerIndex}`;
+    const shadowResult = `shadow-${layerIndex}`;
+
+    blur.setAttribute("in", "SourceAlpha");
+    blur.setAttribute("stdDeviation", String(Math.max(0.01, layer.blur / 2)));
+    blur.setAttribute("result", blurResult);
+    offset.setAttribute("in", blurResult);
+    offset.setAttribute("dx", String(layer.dx));
+    offset.setAttribute("dy", String(layer.dy));
+    offset.setAttribute("result", offsetResult);
+    flood.setAttribute("flood-color", layer.color);
+    flood.setAttribute("flood-opacity", String(layer.opacity));
+    flood.setAttribute("result", colorResult);
+    composite.setAttribute("in", colorResult);
+    composite.setAttribute("in2", offsetResult);
+    composite.setAttribute("operator", "in");
+    composite.setAttribute("result", shadowResult);
+    mergeNode.setAttribute("in", shadowResult);
+    filter.append(blur, offset, flood, composite);
+    merge.append(mergeNode);
+  });
+  filter.append(merge);
+
+  const rect = svgElement("rect");
+  const radius = element.style.borderTopLeftRadius.trim().split(/\s+/)[0] || "0";
+  rect.setAttribute("x", "0");
+  rect.setAttribute("y", "0");
+  rect.setAttribute("width", String(width));
+  rect.setAttribute("height", String(height));
+  rect.setAttribute("rx", radius);
+  rect.setAttribute("ry", radius);
+  rect.setAttribute("fill", "#000");
+  rect.setAttribute("filter", `url(#${filterId})`);
+
+  const defs = svgElement("defs");
+  defs.append(filter);
+  svg.append(defs, rect);
+  svg.setAttribute("data-export-generated-surface-shadow", "true");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.style.setProperty("position", "absolute");
+  svg.style.setProperty("inset", "0");
+  svg.style.setProperty("width", `${width}px`);
+  svg.style.setProperty("height", `${height}px`);
+  svg.style.setProperty("overflow", "visible");
+  svg.style.setProperty("pointer-events", "none");
+  for (const property of ["transform", "transform-origin", "transform-box", "translate", "rotate", "scale"]) {
+    const value = element.style.getPropertyValue(property);
+    if (value && value !== "none") svg.style.setProperty(property, value);
+  }
+  parent.insertBefore(svg, element);
+  return true;
+}
+
 /**
  * Replace export-only surface effect metadata after computed styles have been
- * captured. CSS filters follow rounded/irregular alpha silhouettes in the
- * foreignObject renderer; outer box shadows can become rectangular bands.
+ * captured. HTML box shadows and filters can both become rectangular bands in
+ * the foreignObject renderer, so outer depth is painted by a native SVG layer.
  */
 export function normalizeExportSurfaceEffects(clone: HTMLElement): number {
-  const selector = "[data-export-surface-effect-filter]";
+  const selector = "[data-export-surface-effect-shadow-layers]";
   const elements = [
     ...(clone.matches(selector) ? [clone] : []),
     ...Array.from(clone.querySelectorAll<HTMLElement>(selector)),
   ];
 
-  for (const element of elements) {
-    const filter = element.getAttribute("data-export-surface-effect-filter");
+  elements.forEach((element, index) => {
+    const layers = parseExportSurfaceShadowLayers(
+      element.getAttribute("data-export-surface-effect-shadow-layers")
+    );
     const insetShadow = element.getAttribute("data-export-surface-effect-shadow");
-    if (filter) element.style.setProperty("filter", filter, "important");
-    else element.style.removeProperty("filter");
+    appendNativeExportSurfaceShadow(element, layers, index);
+    element.style.removeProperty("filter");
+    element.style.setProperty("backdrop-filter", "none", "important");
+    element.style.setProperty("-webkit-backdrop-filter", "none", "important");
     if (insetShadow) element.style.setProperty("box-shadow", insetShadow, "important");
     else element.style.removeProperty("box-shadow");
-    element.removeAttribute("data-export-surface-effect-filter");
+    element.removeAttribute("data-export-surface-effect-shadow-layers");
     element.removeAttribute("data-export-surface-effect-shadow");
-  }
+  });
 
   return elements.length;
 }

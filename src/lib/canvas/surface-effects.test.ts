@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   normalizeSurfaceEffect,
+  surfaceEffectExportShadowLayers,
   surfaceEffectExportStyle,
   surfaceEffectFilter,
   surfaceEffectPresetPatch,
@@ -50,32 +51,53 @@ test("glow uses the node accent and SVG shapes receive a drop shadow filter", ()
   assert.match(filter ?? "", /#22c55e/);
 });
 
-test("exported soft effects use the rounded alpha silhouette instead of box shadow", () => {
+test("exported soft effects leave outer depth to the native SVG layer", () => {
   const style = surfaceEffectExportStyle(surfaceEffectPresetPatch("soft"));
 
-  assert.match(style.filter ?? "", /drop-shadow/);
-  assert.equal(style.boxShadow, undefined);
+  assert.deepEqual(style, {});
 });
 
 test("exported raised effects preserve inset lighting without the outer shadow layer", () => {
   const style = surfaceEffectExportStyle(surfaceEffectPresetPatch("raised"));
 
-  assert.match(style.filter ?? "", /drop-shadow/);
   assert.match(style.boxShadow ?? "", /inset 0 1px 0/);
   assert.equal((style.boxShadow ?? "").split("inset").length - 1, 2);
 });
 
-test("exported glow effects keep the inner glow and move both halos to filters", () => {
+test("exported glow effects keep only the inner glow on the HTML surface", () => {
   const style = surfaceEffectExportStyle(surfaceEffectPresetPatch("glow"), "#22c55e");
 
-  assert.match(style.filter ?? "", /drop-shadow/);
-  assert.match(style.filter ?? "", /#22c55e/);
   assert.match(style.boxShadow ?? "", /inset/);
   assert.equal((style.boxShadow ?? "").split("color-mix").length - 1, 1);
+});
+
+test("native export shadow layers preserve directional depth without HTML filters", () => {
+  assert.deepEqual(
+    surfaceEffectExportShadowLayers(surfaceEffectPresetPatch("raised")),
+    [{
+      dx: 4.38,
+      dy: 4.38,
+      blur: 6.51,
+      color: "#020617",
+      opacity: 0.26,
+    }]
+  );
+});
+
+test("native glow exports retain two accent-colored halos", () => {
+  const layers = surfaceEffectExportShadowLayers(
+    surfaceEffectPresetPatch("glow"),
+    "#22c55e"
+  );
+
+  assert.equal(layers.length, 2);
+  assert.deepEqual(layers.map((layer) => layer.color), ["#22c55e", "#22c55e"]);
+  assert.ok((layers[1]?.blur ?? 0) > (layers[0]?.blur ?? 0));
 });
 
 test("flat surfaces add no paint and preserve legacy boards", () => {
   assert.deepEqual(surfaceEffectStyle({}), {});
   assert.equal(surfaceEffectFilter({}), undefined);
   assert.deepEqual(surfaceEffectExportStyle({}), {});
+  assert.deepEqual(surfaceEffectExportShadowLayers({}), []);
 });
