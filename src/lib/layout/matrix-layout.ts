@@ -918,35 +918,82 @@ type OrientedChildEntry = {
   layout: OrientedBranchLayout;
 };
 
-function singleHorizontalBand(
-  child: OrientedChildEntry
-): OrientedBranchCell[] | null {
-  const cells = [...child.layout.cells].sort((first, second) => first.x - second.x);
-  if (cells.length < 2) return null;
-  if (cells.some((cell) => (
-    Math.abs(cell.y) > 0.5
-    || Math.abs(cell.height - child.layout.height) > 0.5
-  ))) return null;
-  for (let index = 1; index < cells.length; index += 1) {
-    if (cells[index].x < cells[index - 1].x + cells[index - 1].width - 0.5) return null;
+type HorizontalBand = {
+  y: number;
+  height: number;
+  cells: OrientedBranchCell[];
+};
+
+/**
+ * Split one horizontal Matrix branch into its visible row bands. Prefix cells
+ * that span several Fold rows are repeated only in the temporary band model;
+ * the authored cell remains a single merged cell in the returned layout.
+ */
+function horizontalBands(child: OrientedChildEntry): HorizontalBand[] | null {
+  const terminalCells = child.layout.cells
+    .filter((cell) => cell.horizontalTerminal)
+    .sort((first, second) => first.y - second.y || first.x - second.x);
+  if (!terminalCells.length) return null;
+
+  const grouped: Array<{
+    y: number;
+    bottom: number;
+    cells: OrientedBranchCell[];
+  }> = [];
+  for (const cell of terminalCells) {
+    const bottom = cell.y + cell.height;
+    const band = grouped.find((candidate) =>
+      Math.abs(candidate.y - cell.y) <= 0.5
+      && Math.abs(candidate.bottom - bottom) <= 0.5
+    );
+    if (band) band.cells.push(cell);
+    else grouped.push({ y: cell.y, bottom, cells: [cell] });
   }
-  return cells;
+
+  const bands = grouped
+    .sort((first, second) => first.y - second.y)
+    .map<HorizontalBand>((band) => {
+      const midpoint = (band.y + band.bottom) / 2;
+      const spanningPrefix = child.layout.cells.filter((cell) =>
+        !cell.horizontalTerminal
+        && cell.y <= midpoint + 0.5
+        && cell.y + cell.height >= midpoint - 0.5
+      );
+      return {
+        y: band.y,
+        height: band.bottom - band.y,
+        cells: [...spanningPrefix, ...band.cells]
+          .sort((first, second) => first.x - second.x),
+      };
+    });
+
+  for (const band of bands) {
+    if (band.cells.length < 2) return null;
+    for (let index = 1; index < band.cells.length; index += 1) {
+      const previous = band.cells[index - 1];
+      if (band.cells[index].x < previous.x + previous.width - 0.5) return null;
+    }
+  }
+  return bands;
 }
 
 /**
- * Sibling branches that each render as one horizontal Matrix row share one
- * column template. Exact widths win; otherwise the widest peer defines the
- * track. Rows with conflicting explicit widths or custom gaps stay independent
- * instead of silently changing a user-entered value.
+ * Every horizontal band under sibling branches shares one Matrix column
+ * template, including Fold continuations. Exact widths win; otherwise the
+ * widest peer defines the track. Rows with conflicting explicit widths or
+ * custom gaps stay independent instead of silently changing a user-entered
+ * value.
  */
-function alignSingleBandSiblingRows(
+function alignSiblingRowBands(
   children: OrientedChildEntry[],
   preserveEmptySlots: boolean
 ): OrientedChildEntry[] {
   if (children.length < 2) return children;
-  const bands = children.map(singleHorizontalBand);
-  if (bands.some((band) => !band)) return children;
-  const rows = bands as OrientedBranchCell[][];
+  const childBands = children.map(horizontalBands);
+  if (childBands.some((bands) => !bands)) return children;
+  const rows = (childBands as HorizontalBand[][]).flatMap((bands) =>
+    bands.map((band) => band.cells)
+  );
   const trackCount = preserveEmptySlots
     ? Math.max(...rows.map((row) => row.length))
     : rows[0].length;
@@ -988,27 +1035,38 @@ function alignSingleBandSiblingRows(
   const alignedWidth = nextX;
 
   return children.map((child, childIndex) => {
-    const row = rows[childIndex];
-    const replacements = new Map(row.map((cell, trackIndex) => [
-      cell.nodeId,
-      { ...cell, x: trackX[trackIndex], width: widths[trackIndex] },
-    ]));
-    const placeholders = preserveEmptySlots
-      ? Array.from({ length: trackCount - row.length }, (_, index): OrientedBranchCell => {
-        const trackIndex = row.length + index;
-        return {
-          nodeId: `__matrix-empty-${child.nodeId}-${trackIndex}`,
+    const bands = (childBands as HorizontalBand[][])[childIndex];
+    const replacements = new Map<string, OrientedBranchCell>();
+    for (const band of bands) {
+      band.cells.forEach((cell, trackIndex) => {
+        replacements.set(cell.nodeId, {
+          ...cell,
           x: trackX[trackIndex],
-          y: 0,
           width: widths[trackIndex],
-          height: child.layout.height,
-          requiredHeight: child.layout.height,
-          terminal: true,
-          horizontalTerminal: true,
-          verticalTerminal: true,
-          placeholder: true,
-        };
-      })
+        });
+      });
+    }
+    const placeholders = preserveEmptySlots
+      ? bands.flatMap((band, bandIndex) =>
+        Array.from(
+          { length: trackCount - band.cells.length },
+          (_, index): OrientedBranchCell => {
+            const trackIndex = band.cells.length + index;
+            return {
+              nodeId: `__matrix-empty-${child.nodeId}-${bandIndex}-${trackIndex}`,
+              x: trackX[trackIndex],
+              y: band.y,
+              width: widths[trackIndex],
+              height: band.height,
+              requiredHeight: band.height,
+              terminal: true,
+              horizontalTerminal: true,
+              verticalTerminal: true,
+              placeholder: true,
+            };
+          }
+        )
+      )
       : [];
     return {
       ...child,
@@ -1207,7 +1265,7 @@ function layoutOrientedChildSections(
     siblingGap
   );
   const sections = childFlow === "column"
-    ? rawSections.map((section) => alignSingleBandSiblingRows(section, preserveEmptySlots))
+    ? rawSections.map((section) => alignSiblingRowBands(section, preserveEmptySlots))
     : alignFoldedTerminalRows(rawSections, preserveEmptySlots);
   // Fold is a continuation of the same Matrix, so it uses the same thin gap as
   // every other cell boundary. A larger separator exposes the canvas between

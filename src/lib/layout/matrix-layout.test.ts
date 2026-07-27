@@ -376,6 +376,75 @@ test("incomplete folded child rows preserve an empty trailing grid slot", () => 
   assertClean(result);
 });
 
+test("folded sibling groups share the Matrix-wide five-column template", () => {
+  const fixture = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      packCompactGroups: true,
+      incompleteRowMode: "empty",
+    },
+    { id: "groups", parentId: "root" },
+    { id: "short", parentId: "groups", childFlow: "row" },
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `short-${index}`,
+      parentId: "short",
+      text: "अ",
+    })),
+    { id: "long", parentId: "groups", childFlow: "row" },
+    ...Array.from({ length: 8 }, (_, index) => ({
+      id: `long-${index}`,
+      parentId: "long",
+      text: "आ",
+    })),
+    { id: "pluta", parentId: "groups", childFlow: "row" },
+    ...Array.from({ length: 9 }, (_, index) => ({
+      id: `pluta-${index}`,
+      parentId: "pluta",
+      text: "अ३",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) =>
+    node.id === "long" || node.id === "pluta"
+      ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+      : node
+  );
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const leafCells = result.cells.filter((cell) =>
+    /^(short|long|pluta)-\d+$/.test(cell.nodeId)
+  );
+  const rows = new Map<number, Array<{ x: number; placeholder: boolean }>>();
+  for (const cell of leafCells) {
+    const rowY = Math.round(cell.y * 2) / 2;
+    rows.set(rowY, [
+      ...(rows.get(rowY) ?? []),
+      { x: cell.x, placeholder: false },
+    ]);
+  }
+  for (const cell of result.emptyCells) {
+    const rowY = Math.round(cell.y * 2) / 2;
+    rows.set(rowY, [
+      ...(rows.get(rowY) ?? []),
+      { x: cell.x, placeholder: true },
+    ]);
+  }
+
+  assert.equal(rows.size, 5);
+  assert.deepEqual(
+    [...rows.values()].map((row) => row.length),
+    [5, 5, 5, 5, 5]
+  );
+  assert.equal(result.emptyCells.length, 3);
+  const fifthColumnX = Math.max(
+    ...leafCells
+      .filter((cell) => cell.nodeId.startsWith("short-"))
+      .map((cell) => cell.x)
+  );
+  assert.ok(result.emptyCells.every((cell) => Math.abs(cell.x - fifthColumnX) < 0.5));
+  assertClean(result);
+});
+
 test("incomplete compact rows stretch existing children by default", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, packCompactGroups: true },
