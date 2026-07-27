@@ -15,6 +15,30 @@ function dataOf(node: Node): Record<string, unknown> {
   return (node.data ?? {}) as Record<string, unknown>;
 }
 
+export function unselectedHierarchyDescendants(
+  nodes: Node[],
+  edges: Edge[],
+  selectedNodeIds: ReadonlySet<string>
+): string[] {
+  const hierarchy = buildHierarchy(nodes, edges);
+  return [...new Set([...selectedNodeIds].flatMap((nodeId) =>
+    getSubtree(nodeId, hierarchy).filter((descendantId) => !selectedNodeIds.has(descendantId))
+  ))];
+}
+
+export function hierarchyDeletionNodeIds(
+  nodes: Node[],
+  edges: Edge[],
+  selectedNodeIds: ReadonlySet<string>,
+  includeDescendants: boolean
+): Set<string> {
+  if (!includeDescendants) return new Set(selectedNodeIds);
+  return new Set([
+    ...selectedNodeIds,
+    ...unselectedHierarchyDescendants(nodes, edges, selectedNodeIds),
+  ]);
+}
+
 /** Move a hierarchy branch to a new parent while preserving its descendants. */
 export function reparentHierarchy(
   nodes: Node[],

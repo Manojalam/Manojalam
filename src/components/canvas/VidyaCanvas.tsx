@@ -57,6 +57,7 @@ import { SelectionToolbar } from "./SelectionToolbar";
 import { RelationshipSelectionToolbar } from "./RelationshipSelectionToolbar";
 import { RelationshipDiagramDialog } from "./RelationshipDiagramDialog";
 import { ExportDialog } from "./ExportDialog";
+import { HierarchyDeleteDialog } from "./HierarchyDeleteDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
@@ -1660,6 +1661,7 @@ function VidyaCanvasInner({
     </ReactFlow>
     <RelationshipDiagramDialog />
     <ExportDialog />
+    <HierarchyDeleteDialog />
     </>
   );
 }

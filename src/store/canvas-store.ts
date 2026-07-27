@@ -56,6 +56,7 @@ import {
   matrixTableOverrideResetAxes,
   matrixNodeSizeDiffersFromPlacement,
   matrixRenderedSizeChanged,
+  resolveMatrixCellResize,
   type MatrixCellGeometry,
   type MatrixLayoutResult,
 } from "@/lib/layout/matrix-layout";
@@ -107,7 +108,9 @@ import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import { createExternalNoteNode } from "@/lib/canvas/node-note";
 import {
   deleteNodesPreservingHierarchy,
+  hierarchyDeletionNodeIds,
   reparentHierarchy,
+  unselectedHierarchyDescendants,
 } from "@/lib/canvas/hierarchy-mutations";
 import {
   applyBoardFontSize,
@@ -127,6 +130,14 @@ interface HistoryEntry {
   relationships: NodeRelationship[];
   relationshipFans: RelationshipFanState[];
   settings: BoardSettings;
+}
+
+export type HierarchyDeleteMode = "promote-children" | "delete-branch";
+
+export interface PendingHierarchyDelete {
+  selectedNodeIds: string[];
+  selectedEdgeIds: string[];
+  descendantNodeIds: string[];
 }
 
 type ContentSize = ContentMeasurement;
@@ -152,6 +163,7 @@ interface CanvasState {
   clipboard: { nodes: Node[]; edges: Edge[] } | null;
   searchQuery: string;
   searchResults: string[];
+  pendingHierarchyDelete: PendingHierarchyDelete | null;
 
   beginBoardHydration: () => void;
   setBoard: (board: VidyaBoard) => void;
@@ -191,7 +203,8 @@ interface CanvasState {
     patch: Partial<RelationshipDiagramSpec>,
     frameSize?: RelationshipDiagramFrameSize
   ) => void;
-  deleteSelected: () => void;
+  deleteSelected: (mode?: HierarchyDeleteMode) => void;
+  cancelHierarchyDelete: () => void;
   reparentNode: (nodeId: string, newParentId: string) => boolean;
   deleteEdges: (ids: string[]) => void;
   clearConnectorJunction: (junctionId: string) => void;
@@ -1732,6 +1745,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   clipboard: null,
   searchQuery: "",
   searchResults: [],
+  pendingHierarchyDelete: null,
 
   beginBoardHydration: () => {
     cancelPendingLayoutReflows();
@@ -1743,6 +1757,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "saved",
       selectedNodeIds: [],
       selectedEdgeIds: [],
+      pendingHierarchyDelete: null,
     });
   },
 
@@ -1865,6 +1880,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       relationshipFans,
       selectedNodeIds: [],
       selectedEdgeIds: [],
+      pendingHierarchyDelete: null,
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings,
       saveStatus: "saved",
@@ -2338,11 +2354,46 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
-  deleteSelected: () => {
-    const { selectedNodeIds, selectedEdgeIds, nodes, edges, relationships, relationshipFans } = get();
+  deleteSelected: (mode) => {
+    const {
+      selectedNodeIds: liveSelectedNodeIds,
+      selectedEdgeIds: liveSelectedEdgeIds,
+      pendingHierarchyDelete,
+      nodes,
+      edges,
+      relationships,
+      relationshipFans,
+    } = get();
+    const selectedNodeIds = mode && pendingHierarchyDelete
+      ? pendingHierarchyDelete.selectedNodeIds
+      : liveSelectedNodeIds;
+    const selectedEdgeIds = mode && pendingHierarchyDelete
+      ? pendingHierarchyDelete.selectedEdgeIds
+      : liveSelectedEdgeIds;
     if (!selectedNodeIds.length && !selectedEdgeIds.length) return;
+    const directlySelectedNodes = new Set(selectedNodeIds);
+    const descendantNodeIds = unselectedHierarchyDescendants(
+      nodes,
+      edges,
+      directlySelectedNodes
+    );
+    if (!mode && descendantNodeIds.length) {
+      set({
+        pendingHierarchyDelete: {
+          selectedNodeIds: [...selectedNodeIds],
+          selectedEdgeIds: [...selectedEdgeIds],
+          descendantNodeIds,
+        },
+      });
+      return;
+    }
     get().pushHistory();
-    const selectedNodes = new Set(selectedNodeIds);
+    const selectedNodes = hierarchyDeletionNodeIds(
+      nodes,
+      edges,
+      directlySelectedNodes,
+      mode === "delete-branch"
+    );
     const selectedEdges = new Set(selectedEdgeIds);
     const hierarchyMutation = deleteNodesPreservingHierarchy(
       nodes,
@@ -2460,6 +2511,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       relationshipFans: nextRelationshipFans,
       selectedNodeIds: [],
       selectedEdgeIds: [],
+      pendingHierarchyDelete: null,
       saveStatus: "unsaved",
     });
     affectedMatrixRoots.forEach((rootId) => get().scheduleMatrixReflow(rootId));
@@ -2469,6 +2521,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       get().scheduleStructuredReflow(parentId);
     });
   },
+
+  cancelHierarchyDelete: () => set({ pendingHierarchyDelete: null }),
 
   reparentNode: (nodeId, newParentId) => {
     const state = get();
@@ -3025,10 +3079,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const currentColumnWidth = typeof nodeData.matrixColumnWidth === "number"
         ? nodeData.matrixColumnWidth
         : currentSize.width;
-      const desiredColumnWidth = Math.max(80, Math.min(1200,
-        Math.round(currentColumnWidth + size.width - currentSize.width)
-      ));
-      const desiredHeight = Math.max(40, Math.round(size.height));
+      const resize = resolveMatrixCellResize(currentSize, currentColumnWidth, size);
+      if (!resize.resetTableWidth && !resize.resetTableHeight) return;
       set((state) => ({
         nodes: state.nodes.map((candidate) => {
           const matrixRootId = nodeData.layoutMode === "matrix"
@@ -3039,16 +3091,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           if (candidate.id === nodeId) {
             nextData = {
               ...nextData,
-              matrixWidthOverride: desiredColumnWidth,
-              matrixHeightOverride: desiredHeight,
+              ...(resize.width !== undefined ? { matrixWidthOverride: resize.width } : {}),
+              ...(resize.height !== undefined ? { matrixHeightOverride: resize.height } : {}),
             };
             changed = true;
           }
           if (matrixRootId && candidate.id === matrixRootId) {
             nextData = {
               ...nextData,
-              matrixTableWidthOverride: undefined,
-              matrixTableHeightOverride: undefined,
+              ...(resize.resetTableWidth ? { matrixTableWidthOverride: undefined } : {}),
+              ...(resize.resetTableHeight ? { matrixTableHeightOverride: undefined } : {}),
             };
             changed = true;
           }

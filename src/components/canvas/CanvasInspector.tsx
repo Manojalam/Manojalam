@@ -1992,7 +1992,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </Button>
               </>
             )}
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={() => deleteSelected()}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -2388,7 +2388,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 {selectedEdges.length === 1 ? selectedEdges[0].id.slice(0, 8) : `${selectedEdges.length} selected`}
               </p>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={deleteSelected}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => deleteSelected()}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -2781,7 +2781,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               size="icon"
               className="h-7 w-7 text-destructive hover:bg-destructive/10"
               title="Delete chart"
-              onClick={deleteSelected}
+              onClick={() => deleteSelected()}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -3129,7 +3129,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             >
               <Copy className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={() => deleteSelected()}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -3827,7 +3827,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             onClick={() => setField("locked", !d.locked)}>
             {d.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={deleteSelected}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => deleteSelected()}>
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -5122,7 +5122,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
-        {isContentNode && !isRadialLayoutSector && (
+        {isContentNode && !isRadialLayoutSector && !matrixRootNode && (
           <Section label="Size" visible={singleNodeTab === "shape"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fit</p>
