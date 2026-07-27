@@ -15,6 +15,7 @@ const SHORTCUTS = [
   { keys: ["⌘/Ctrl", "S"], desc: "Save board" },
   { keys: ["⌘/Ctrl", "F"], desc: "Search board" },
   { keys: ["⌘/Ctrl", "K"], desc: "Command palette" },
+  { keys: ["⌘/Ctrl", "drag / double-click"], desc: "Add another text range while editing" },
   { keys: ["Space", "drag"], desc: "Pan canvas" },
   { keys: ["+"], desc: "Zoom in" },
   { keys: ["-"], desc: "Zoom out" },

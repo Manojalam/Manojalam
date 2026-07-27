@@ -8,6 +8,11 @@ export interface InlineTextToolbarContext {
 
 export type RichTextAlignment = "left" | "center" | "right" | "justify";
 
+export interface RichTextSelectionRange {
+  from: number;
+  to: number;
+}
+
 export const TEXT_TOOL_FOCUS_SELECTOR =
   "[data-universal-text-tools], [data-app-color-picker]";
 
@@ -17,6 +22,55 @@ const RICH_TEXT_ALIGNMENTS: readonly RichTextAlignment[] = [
   "right",
   "justify",
 ];
+
+/**
+ * ProseMirror has one native selection. Keep additive selections as normalized,
+ * disjoint document ranges so toolbar commands can replay against each range.
+ */
+export function normalizeRichTextSelectionRanges(
+  ranges: readonly RichTextSelectionRange[],
+  maximumPosition = Number.MAX_SAFE_INTEGER
+): RichTextSelectionRange[] {
+  const maximum = Number.isFinite(maximumPosition)
+    ? Math.max(0, Math.floor(maximumPosition))
+    : Number.MAX_SAFE_INTEGER;
+  const normalized = ranges
+    .map(({ from, to }) => ({
+      from: Math.max(0, Math.min(maximum, Math.floor(Math.min(from, to)))),
+      to: Math.max(0, Math.min(maximum, Math.floor(Math.max(from, to)))),
+    }))
+    .filter(({ from, to }) => from < to)
+    .sort((left, right) => left.from - right.from || left.to - right.to);
+
+  const merged: RichTextSelectionRange[] = [];
+  for (const range of normalized) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.from <= previous.to) {
+      previous.to = Math.max(previous.to, range.to);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+}
+
+export function appendRichTextSelectionRange(
+  ranges: readonly RichTextSelectionRange[],
+  nextRange: RichTextSelectionRange,
+  maximumPosition = Number.MAX_SAFE_INTEGER
+): RichTextSelectionRange[] {
+  return normalizeRichTextSelectionRanges(
+    [...ranges, nextRange],
+    maximumPosition
+  );
+}
+
+/** Compare CSS colors persisted by TipTap without changing their authored form. */
+export function comparableRichTextColor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, "");
+  return normalized || null;
+}
 
 /**
  * Prefer stored paragraph alignment, then what the selected block visibly
