@@ -463,7 +463,7 @@ test("Matrix presentation keeps rounded shapes inside a flat table grid", () => 
   assert.equal(matrixCellDivisionPadding("presentation"), 6);
 });
 
-test("Matrix creates one continuous grid with merged-cell-aware separators", () => {
+test("Matrix creates one continuous grid with every merged-cell division", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -538,10 +538,10 @@ test("Matrix creates one continuous grid with merged-cell-aware separators", () 
   assert.equal(frameData.borderWidth, 1);
   assert.deepEqual(frameData.matrixGridLines, [
     { x1: 0, y1: 72, x2: 344, y2: 72 },
-    { x1: 0, y1: 134, x2: 236, y2: 134 },
+    { x1: 0, y1: 134, x2: 344, y2: 134 },
     { x1: 128, y1: 192, x2: 236, y2: 192 },
-    { x1: 128, y1: 76, x2: 128, y2: 250 },
-    { x1: 236, y1: 76, x2: 236, y2: 134 },
+    { x1: 128, y1: 72, x2: 128, y2: 250 },
+    { x1: 236, y1: 72, x2: 236, y2: 250 },
   ]);
 });
 
@@ -614,10 +614,11 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
   }>;
 
   assert.equal(frameData.matrixEmptyCells, undefined);
-  assert.ok(lines.some((line) => (
-    Math.abs(line.x1 - line.x2) < 0.5
-    && Math.abs(frames[0].position.x + line.x1 - 120) < 0.5
-  )));
+  assert.deepEqual(lines, [
+    { x1: 0, y1: 69, x2: 308, y2: 69 },
+    { x1: 104, y1: 69, x2: 104, y2: 128 },
+    { x1: 208, y1: 69, x2: 208, y2: 128 },
+  ]);
 });
 
 test("long Sanskrit content reaches the width cap and increases row height", () => {

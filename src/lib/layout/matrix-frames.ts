@@ -8,7 +8,6 @@ import type { FrameNodeData, MatrixGeneratedEmptySlot } from "../types";
 
 type MatrixGridLine = NonNullable<FrameNodeData["matrixGridLines"]>[number];
 type AxisSegment = { position: number; start: number; end: number };
-type Interval = { start: number; end: number };
 const GRID_ALIGNMENT_TOLERANCE = 0.5;
 
 function matrixPresentationRect(node: Node): NodeRect {
@@ -112,24 +111,75 @@ function mergeAxisSegments(segments: readonly AxisSegment[]): AxisSegment[] {
   return merged;
 }
 
-function subtractIntervals(base: Interval, exclusions: readonly Interval[]): Interval[] {
-  let remaining = [base];
-  for (const exclusion of exclusions) {
-    remaining = remaining.flatMap((interval) => {
-      const start = Math.max(interval.start, exclusion.start);
-      const end = Math.min(interval.end, exclusion.end);
-      if (end - start <= GRID_ALIGNMENT_TOLERANCE) return [interval];
-      return [
-        ...(start - interval.start > GRID_ALIGNMENT_TOLERANCE
-          ? [{ start: interval.start, end: start }]
-          : []),
-        ...(interval.end - end > GRID_ALIGNMENT_TOLERANCE
-          ? [{ start: end, end: interval.end }]
-          : []),
-      ];
-    });
-  }
-  return remaining;
+function rangesOverlap(
+  firstStart: number,
+  firstEnd: number,
+  secondStart: number,
+  secondEnd: number
+): boolean {
+  return Math.min(firstEnd, secondEnd) - Math.max(firstStart, secondStart)
+    > GRID_ALIGNMENT_TOLERANCE;
+}
+
+/**
+ * Resolve the rectangular grid cell surrounding one inset Matrix shape.
+ * Facing sides meet halfway across any custom gap, while exposed sides retain
+ * the normal density-aware inset. This produces one shared divider instead of
+ * two parallel outlines and still preserves every authored cell boundary.
+ */
+function matrixDivisionRect(
+  rect: NodeRect,
+  rects: readonly NodeRect[],
+  bounds: NodeRect,
+  padding: number
+): Pick<NodeRect, "left" | "top" | "right" | "bottom"> {
+  const horizontalPeers = rects.filter((candidate) =>
+    candidate.id !== rect.id
+    && rangesOverlap(rect.top, rect.bottom, candidate.top, candidate.bottom)
+  );
+  const verticalPeers = rects.filter((candidate) =>
+    candidate.id !== rect.id
+    && rangesOverlap(rect.left, rect.right, candidate.left, candidate.right)
+  );
+  const leftNeighborEdge = Math.max(
+    ...horizontalPeers
+      .filter((candidate) => candidate.right <= rect.left + GRID_ALIGNMENT_TOLERANCE)
+      .map((candidate) => candidate.right),
+    Number.NEGATIVE_INFINITY
+  );
+  const rightNeighborEdge = Math.min(
+    ...horizontalPeers
+      .filter((candidate) => candidate.left >= rect.right - GRID_ALIGNMENT_TOLERANCE)
+      .map((candidate) => candidate.left),
+    Number.POSITIVE_INFINITY
+  );
+  const topNeighborEdge = Math.max(
+    ...verticalPeers
+      .filter((candidate) => candidate.bottom <= rect.top + GRID_ALIGNMENT_TOLERANCE)
+      .map((candidate) => candidate.bottom),
+    Number.NEGATIVE_INFINITY
+  );
+  const bottomNeighborEdge = Math.min(
+    ...verticalPeers
+      .filter((candidate) => candidate.top >= rect.bottom - GRID_ALIGNMENT_TOLERANCE)
+      .map((candidate) => candidate.top),
+    Number.POSITIVE_INFINITY
+  );
+
+  return {
+    left: Number.isFinite(leftNeighborEdge)
+      ? (leftNeighborEdge + rect.left) / 2
+      : Math.max(bounds.left, rect.left - padding),
+    right: Number.isFinite(rightNeighborEdge)
+      ? (rect.right + rightNeighborEdge) / 2
+      : Math.min(bounds.right, rect.right + padding),
+    top: Number.isFinite(topNeighborEdge)
+      ? (topNeighborEdge + rect.top) / 2
+      : Math.max(bounds.top, rect.top - padding),
+    bottom: Number.isFinite(bottomNeighborEdge)
+      ? (rect.bottom + bottomNeighborEdge) / 2
+      : Math.min(bounds.bottom, rect.bottom + padding),
+  };
 }
 
 function matrixGridLines(
@@ -140,84 +190,44 @@ function matrixGridLines(
   const rects = scopedNodes.map(matrixPresentationRect);
   const vertical: AxisSegment[] = [];
   const horizontal: AxisSegment[] = [];
-  for (const first of rects) {
-    for (const second of rects) {
-      if (first.id === second.id) continue;
-
-      if (first.bottom <= second.top + GRID_ALIGNMENT_TOLERANCE) {
-        const shared = {
-          start: Math.max(first.left - padding, second.left - padding),
-          end: Math.min(first.right + padding, second.right + padding),
-        };
-        if (shared.end - shared.start > GRID_ALIGNMENT_TOLERANCE) {
-          const blockers = rects
-            .filter((candidate) =>
-              candidate.id !== first.id
-              && candidate.id !== second.id
-              && candidate.top < second.top - GRID_ALIGNMENT_TOLERANCE
-              && candidate.bottom > first.bottom + GRID_ALIGNMENT_TOLERANCE
-            )
-            .map((candidate) => ({
-              start: candidate.left - padding,
-              end: candidate.right + padding,
-            }));
-          for (const interval of subtractIntervals(shared, blockers)) {
-            horizontal.push({
-              position: (first.bottom + second.top) / 2 - bounds.top,
-              start: interval.start - bounds.left,
-              end: interval.end - bounds.left,
-            });
-          }
-        }
-      }
-
-      if (first.right <= second.left + GRID_ALIGNMENT_TOLERANCE) {
-        const shared = {
-          start: Math.max(first.top - padding, second.top - padding),
-          end: Math.min(first.bottom + padding, second.bottom + padding),
-        };
-        if (shared.end - shared.start > GRID_ALIGNMENT_TOLERANCE) {
-          const blockers = rects
-            .filter((candidate) =>
-              candidate.id !== first.id
-              && candidate.id !== second.id
-              && candidate.left < second.left - GRID_ALIGNMENT_TOLERANCE
-              && candidate.right > first.right + GRID_ALIGNMENT_TOLERANCE
-            )
-            .map((candidate) => ({
-              start: candidate.top - padding,
-              end: candidate.bottom + padding,
-            }));
-          for (const interval of subtractIntervals(shared, blockers)) {
-            vertical.push({
-              position: (first.right + second.left) / 2 - bounds.left,
-              start: interval.start - bounds.top,
-              end: interval.end - bounds.top,
-            });
-          }
-        }
-      }
-    }
+  for (const rect of rects) {
+    const division = matrixDivisionRect(rect, rects, bounds, padding);
+    vertical.push(
+      { position: division.left, start: division.top, end: division.bottom },
+      { position: division.right, start: division.top, end: division.bottom }
+    );
+    horizontal.push(
+      { position: division.top, start: division.left, end: division.right },
+      { position: division.bottom, start: division.left, end: division.right }
+    );
   }
 
   const internalVertical = mergeAxisSegments(vertical)
+    .filter((line) =>
+      Math.abs(line.position - bounds.left) > GRID_ALIGNMENT_TOLERANCE
+      && Math.abs(line.position - bounds.right) > GRID_ALIGNMENT_TOLERANCE
+    )
     .map<MatrixGridLine>((line) => ({
-      x1: line.position,
-      y1: line.start,
-      x2: line.position,
-      y2: line.end,
+      x1: line.position - bounds.left,
+      y1: line.start - bounds.top,
+      x2: line.position - bounds.left,
+      y2: line.end - bounds.top,
     }));
   const internalHorizontal = mergeAxisSegments(horizontal)
+    .filter((line) =>
+      Math.abs(line.position - bounds.top) > GRID_ALIGNMENT_TOLERANCE
+      && Math.abs(line.position - bounds.bottom) > GRID_ALIGNMENT_TOLERANCE
+    )
     .map<MatrixGridLine>((line) => ({
-      x1: line.start,
-      y1: line.position,
-      x2: line.end,
-      y2: line.position,
+      x1: line.start - bounds.left,
+      y1: line.position - bounds.top,
+      x2: line.end - bounds.left,
+      y2: line.position - bounds.top,
     }));
   return [...internalHorizontal, ...internalVertical];
 }
 
-/** Builds one flat Matrix table grid with merged-cell-aware separator segments. */
+/** Builds one flat Matrix table grid with complete, de-duplicated cell edges. */
 export function buildMatrixFrameNodes(
   scopedNodes: readonly Node[],
   rootId: string
