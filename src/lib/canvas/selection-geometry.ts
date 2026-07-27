@@ -209,8 +209,9 @@ export function compactEqualSpacing(
 }
 
 /**
- * Pack an arbitrary selection into top-aligned columns without changing the
- * sequence supplied by the board.
+ * Pack an arbitrary selection into columns without changing the sequence
+ * supplied by the board. Multi-item columns share top and bottom edges, with
+ * an equal edge-to-edge gap inside each column.
  */
 export function arrangeSelectionInColumns(
   nodes: Node[],
@@ -233,10 +234,18 @@ export function arrangeSelectionInColumns(
   const top = Math.min(...entries.map(({ rect }) => rect.top));
   const columnGap = Math.max(0, options.columnGap ?? COMPACT_COLUMN_GAP);
   const rowGap = Math.max(0, options.rowGap ?? COMPACT_SELECTION_GAP);
+  const sharedColumnHeight = Math.max(...columns.map((column) => (
+    column.reduce((sum, { rect }) => sum + rect.height, 0)
+      + rowGap * Math.max(0, column.length - 1)
+  )));
   let cursorX = left;
 
   for (const column of columns) {
     const columnWidth = Math.max(...column.map(({ rect }) => rect.width));
+    const occupiedHeight = column.reduce((sum, { rect }) => sum + rect.height, 0);
+    const distributedRowGap = column.length > 1
+      ? (sharedColumnHeight - occupiedHeight) / (column.length - 1)
+      : 0;
     let cursorY = top;
     for (const { node, rect } of column) {
       const itemWidth = options.matchColumnWidths ? columnWidth : rect.width;
@@ -247,7 +256,7 @@ export function arrangeSelectionInColumns(
         { width: itemWidth, height: rect.height }
       ));
       if (options.matchColumnWidths) widths.set(node.id, columnWidth);
-      cursorY += rect.height + rowGap;
+      cursorY += rect.height + distributedRowGap;
     }
     cursorX += columnWidth + columnGap;
   }
