@@ -1232,6 +1232,13 @@ test("changing a sibling gap preserves overall Matrix size overrides", () => {
     matrixTableOverrideResetAxes({ matrixHeightOverride: 100 }),
     { width: false, height: true }
   );
+  assert.deepEqual(
+    matrixTableOverrideResetAxes(
+      { matrixWidthOverride: 310, matrixHeightOverride: 100 },
+      true
+    ),
+    { width: false, height: false }
+  );
 });
 
 test("width-only Matrix resizing preserves a merged cell's rendered height", () => {
@@ -1305,6 +1312,29 @@ test("overall Matrix width and height overrides scale the composed table exactly
   assert.equal(result.bounds.height, 420);
   assert.equal(result.header.width, 760);
   assert.equal(result.header.y, result.bounds.top);
+  assertClean(result);
+});
+
+test("a locked overall Matrix keeps its bounds while a child receives more width", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, matrixTableWidth: 760, matrixTableHeight: 420 },
+    { id: "a", parentId: "root", childFlow: "row" },
+    { id: "a-1", parentId: "a", matrixWidth: 320 },
+    { id: "a-2", parentId: "a" },
+    { id: "a-3", parentId: "a" },
+  ]);
+  nodes[0] = {
+    ...nodes[0],
+    data: { ...nodes[0].data, matrixTableSizeLocked: true },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(result.bounds.width, 760);
+  assert.equal(result.bounds.height, 420);
+  assert.ok(cells.get("a-1")!.width > cells.get("a-2")!.width);
+  assert.ok(cells.get("a-1")!.width > cells.get("a-3")!.width);
   assertClean(result);
 });
 

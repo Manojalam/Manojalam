@@ -1359,6 +1359,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? Math.max(...matrixRects.map((rect) => rect.bottom)) - Math.min(...matrixRects.map((rect) => rect.top))
     : undefined;
   const matrixRootData = (matrixRootNode?.data ?? {}) as Record<string, unknown>;
+  const matrixTableSizeLocked = matrixRootData.matrixTableSizeLocked === true;
   const matrixTableWidth = hasPositiveDimensionOverride(matrixRootData.matrixTableWidthOverride)
     ? Number(matrixRootData.matrixTableWidthOverride)
     : matrixRenderedWidth;
@@ -4632,7 +4633,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
                 {selectedNode.id === matrixRootNode.id
                   ? "Sets this Matrix header's exact height and preferred width. The header can still stretch across the body; Overall Matrix size below controls the whole table."
-                  : "Exact box dimensions take priority over overall Matrix scaling. Peer rows with the same structure share aligned column tracks."}
+                  : matrixTableSizeLocked
+                    ? "The overall Matrix is locked. Increasing this cell gives it more space while the other cells adjust inside the same outer size."
+                    : "Exact box dimensions take priority over overall Matrix scaling. Peer rows with the same structure share aligned column tracks."}
               </p>
               <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
@@ -4699,7 +4702,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Overall Matrix size</p>
                   <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                    Sets the exact outer table size. Entering an exact cell width or height later returns only the conflicting overall dimension to Auto. Sibling gaps reflow inside this size.
+                    {matrixTableSizeLocked
+                      ? "Locked at this outer size. Resizing a child or grandchild redistributes space inside the Matrix without changing its boundary."
+                      : "Set an exact outer size, or lock the current size before resizing cells. Without the lock, an exact cell size returns only the conflicting overall dimension to Auto."}
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
@@ -4731,22 +4736,51 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       />
                     </label>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-1.5 h-7 w-full text-[9px]"
-                    onClick={() => {
-                      pushHistory();
-                      updateNodeData(matrixRootNode.id, {
-                        matrixTableWidthOverride: undefined,
-                        matrixTableHeightOverride: undefined,
-                      });
-                      requestMatrixReflow(matrixRootNode.id);
-                    }}
-                  >
-                    Auto overall size
-                  </Button>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    <Button
+                      type="button"
+                      variant={matrixTableSizeLocked ? "secondary" : "outline"}
+                      size="sm"
+                      className="h-7 gap-1 px-1 text-[9px]"
+                      aria-pressed={matrixTableSizeLocked}
+                      title={matrixTableSizeLocked
+                        ? "Allow later cell resizing to change the overall Matrix size"
+                        : "Keep the current overall width and height while redistributing space between cells"}
+                      onClick={() => {
+                        pushHistory();
+                        updateNodeData(matrixRootNode.id, matrixTableSizeLocked
+                          ? { matrixTableSizeLocked: undefined }
+                          : {
+                              matrixTableSizeLocked: true,
+                              matrixTableWidthOverride: matrixTableWidth,
+                              matrixTableHeightOverride: matrixTableHeight,
+                            });
+                        requestMatrixReflow(matrixRootNode.id);
+                      }}
+                    >
+                      {matrixTableSizeLocked
+                        ? <Unlock className="h-3 w-3" />
+                        : <Lock className="h-3 w-3" />}
+                      {matrixTableSizeLocked ? "Unlock size" : "Lock current size"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-1 text-[9px]"
+                      onClick={() => {
+                        pushHistory();
+                        updateNodeData(matrixRootNode.id, {
+                          matrixTableSizeLocked: undefined,
+                          matrixTableWidthOverride: undefined,
+                          matrixTableHeightOverride: undefined,
+                        });
+                        requestMatrixReflow(matrixRootNode.id);
+                      }}
+                    >
+                      Auto overall size
+                    </Button>
+                  </div>
                 </div>
                 <div>
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Density</p>
