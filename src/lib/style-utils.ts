@@ -418,6 +418,9 @@ export function borderMatchedFillPatch(
 
   return {
     fillColor,
+    // The color is already mixed into a light pastel. Rendering it through the
+    // normal 18% fill opacity would wash it out a second time.
+    fillOpacity: 1,
     ...(data.layoutVisualStyle ? { layoutAutoFill: false } : {}),
   };
 }
