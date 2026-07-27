@@ -37,6 +37,7 @@ type TreeNode = {
   orientation?: "horizontal" | "vertical";
   childFlow?: "row" | "column";
   packCompactGroups?: boolean;
+  incompleteRowMode?: "stretch" | "empty";
   siblingGap?: number;
   matrixWidth?: number;
   matrixHeight?: number;
@@ -63,6 +64,7 @@ function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
       ...(spec.orientation ? { matrixOrientation: spec.orientation } : {}),
       ...(spec.childFlow ? { matrixChildFlow: spec.childFlow } : {}),
       ...(spec.packCompactGroups ? { matrixPackCompactGroups: true } : {}),
+      ...(spec.incompleteRowMode ? { matrixIncompleteRowMode: spec.incompleteRowMode } : {}),
       ...(spec.siblingGap !== undefined ? { matrixSiblingGap: spec.siblingGap } : {}),
       ...(spec.matrixWidth ? { matrixWidthOverride: spec.matrixWidth } : {}),
       ...(spec.matrixHeight ? { matrixHeightOverride: spec.matrixHeight } : {}),
@@ -294,6 +296,70 @@ test("an opted-in Sanskrit Matrix packs compact sibling sets into rows", () => {
   assertClean(result);
 });
 
+test("incomplete compact rows can preserve a generated empty trailing cell", () => {
+  const specs: TreeNode[] = [
+    {
+      id: "root",
+      parentId: null,
+      text: "व्यञ्जनानि",
+      packCompactGroups: true,
+      incompleteRowMode: "empty",
+    },
+    { id: "groups", parentId: "root", text: "वर्गाः" },
+    { id: "five", parentId: "groups", text: "पञ्च" },
+    ...["क", "ख", "ग", "घ", "ङ"].map((text, index) => ({
+      id: `five-${index}`,
+      parentId: "five",
+      text,
+    })),
+    { id: "four", parentId: "groups", text: "चत्वारः" },
+    ...["य", "व", "र", "ल"].map((text, index) => ({
+      id: `four-${index}`,
+      parentId: "four",
+      text,
+    })),
+  ];
+  const { nodes, edges } = buildTree(specs);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(result.emptyCells.length, 1);
+  const empty = result.emptyCells[0];
+  assert.equal(empty.styleSourceNodeId, "four-3");
+  assert.ok(Math.abs(empty.x - cells.get("five-4")!.x) < 0.5);
+  assert.ok(Math.abs(empty.y - cells.get("four-3")!.y) < 0.5);
+  assert.ok(Math.abs(empty.width - cells.get("five-4")!.width) < 0.5);
+  assert.ok(cells.get("four-3")!.x + cells.get("four-3")!.width < empty.x);
+  assertClean(result);
+});
+
+test("incomplete compact rows stretch existing children by default", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, packCompactGroups: true },
+    { id: "groups", parentId: "root" },
+    { id: "five", parentId: "groups" },
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `five-${index}`,
+      parentId: "five",
+      text: "क",
+    })),
+    { id: "four", parentId: "groups" },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `four-${index}`,
+      parentId: "four",
+      text: "य",
+    })),
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(result.emptyCells.length, 0);
+  assert.ok(cells.get("four-0")!.width > cells.get("five-0")!.width);
+  assertClean(result);
+});
+
 test("a small Sanskrit Matrix keeps its existing hierarchy rows", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, text: "स्वराः" },
@@ -462,6 +528,51 @@ test("hiding Matrix divisions keeps the single outer grid rectangle", () => {
   const frames = buildMatrixFrameNodes(nodes, "root");
   assert.equal(frames.length, 1);
   assert.deepEqual((frames[0].data as Record<string, unknown>).matrixGridLines, []);
+});
+
+test("generated Matrix empty slots inherit the neighboring cell appearance", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 20, y: 10 },
+      style: { width: 300, height: 60 },
+      data: {
+        matrixCell: true,
+        matrixDensity: "comfortable",
+        matrixEmptySlots: [{
+          x: 220,
+          y: 70,
+          width: 100,
+          height: 50,
+          styleSourceNodeId: "leaf",
+        }],
+        layoutVisualStyle: { fillColor: "#2563eb", borderColor: "#1e40af" },
+      },
+    },
+    {
+      id: "leaf",
+      type: "shape",
+      position: { x: 20, y: 80 },
+      style: { width: 100, height: 50 },
+      data: {
+        parentId: "root",
+        matrixCell: true,
+        layoutVisualStyle: { fillColor: "#bfdbfe", borderColor: "#3b82f6" },
+      },
+    },
+  ];
+
+  const frames = buildMatrixFrameNodes(nodes, "root");
+  const frameData = frames[0].data as Record<string, unknown>;
+  assert.deepEqual(frameData.matrixEmptyCells, [{
+    x: 224,
+    y: 74,
+    width: 100,
+    height: 50,
+    fillColor: "#bfdbfe",
+    borderColor: "#3b82f6",
+  }]);
 });
 
 test("long Sanskrit content reaches the width cap and increases row height", () => {

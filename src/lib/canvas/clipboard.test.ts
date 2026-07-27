@@ -147,6 +147,8 @@ test("shape duplication preserves style and content by default", () => {
     parentId: "parent",
     childOrder: ["child"],
     matrixRootId: "parent",
+    matrixIncompleteRowMode: "empty",
+    matrixEmptySlots: [{ x: 10, y: 20, width: 30, height: 40 }],
     layoutVisualStyle: {
       rootId: "parent",
       mode: "matrix",
@@ -169,6 +171,8 @@ test("shape duplication preserves style and content by default", () => {
   assert.equal(duplicated.parentId, "parent-copy");
   assert.deepEqual(duplicated.childOrder, ["child-copy"]);
   assert.equal(duplicated.matrixRootId, "parent-copy");
+  assert.equal(duplicated.matrixIncompleteRowMode, "empty");
+  assert.equal(duplicated.matrixEmptySlots, undefined);
   assert.equal(
     (duplicated.layoutVisualStyle as Record<string, unknown>).rootId,
     "parent-copy"

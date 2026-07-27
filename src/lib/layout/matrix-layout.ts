@@ -37,6 +37,14 @@ export interface MatrixCellGeometry {
   requiredHeight: number;
 }
 
+export interface MatrixEmptyCellGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  styleSourceNodeId?: string;
+}
+
 export interface MatrixPlacement {
   x: number;
   y: number;
@@ -59,6 +67,8 @@ export interface MatrixLayoutResult {
   orientation: MatrixOrientation;
   rows: MatrixRow[];
   cells: MatrixCellGeometry[];
+  /** Generated visual cells that preserve missing trailing row positions. */
+  emptyCells: MatrixEmptyCellGeometry[];
   placements: Record<string, MatrixPlacement>;
   columnWidths: number[];
   columnX: number[];
@@ -584,6 +594,8 @@ type OrientedBranchCell = {
   verticalTerminal: boolean;
   widthLocked?: boolean;
   heightLocked?: boolean;
+  placeholder?: boolean;
+  styleSourceNodeId?: string;
 };
 
 type OrientedBranchLayout = {
@@ -930,33 +942,41 @@ function singleHorizontalBand(
  * instead of silently changing a user-entered value.
  */
 function alignSingleBandSiblingRows(
-  children: OrientedChildEntry[]
+  children: OrientedChildEntry[],
+  preserveEmptySlots: boolean
 ): OrientedChildEntry[] {
   if (children.length < 2) return children;
   const bands = children.map(singleHorizontalBand);
   if (bands.some((band) => !band)) return children;
   const rows = bands as OrientedBranchCell[][];
-  const trackCount = rows[0].length;
-  if (rows.some((row) => row.length !== trackCount)) return children;
+  const trackCount = preserveEmptySlots
+    ? Math.max(...rows.map((row) => row.length))
+    : rows[0].length;
+  if (!preserveEmptySlots && rows.some((row) => row.length !== trackCount)) return children;
 
   const widths: number[] = [];
   for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
     const lockedWidths = rows
-      .map((row) => row[trackIndex])
+      .flatMap((row) => row[trackIndex] ?? [])
       .filter((cell) => cell.widthLocked)
       .map((cell) => cell.width);
     if (
       lockedWidths.length > 1
       && Math.max(...lockedWidths) - Math.min(...lockedWidths) > 0.5
     ) return children;
-    widths.push(lockedWidths[0] ?? Math.max(...rows.map((row) => row[trackIndex].width)));
+    const trackCells = rows.flatMap((row) => row[trackIndex] ?? []);
+    if (!trackCells.length) return children;
+    widths.push(lockedWidths[0] ?? Math.max(...trackCells.map((cell) => cell.width)));
   }
 
   const gaps: number[] = [];
   for (let trackIndex = 0; trackIndex < trackCount - 1; trackIndex += 1) {
-    const rowGaps = rows.map((row) => (
-      row[trackIndex + 1].x - (row[trackIndex].x + row[trackIndex].width)
+    const rowGaps = rows.flatMap((row) => (
+      row[trackIndex] && row[trackIndex + 1]
+        ? [row[trackIndex + 1].x - (row[trackIndex].x + row[trackIndex].width)]
+        : []
     ));
+    if (!rowGaps.length) return children;
     if (Math.max(...rowGaps) - Math.min(...rowGaps) > 0.5) return children;
     gaps.push(rowGaps.reduce((sum, gap) => sum + gap, 0) / rowGaps.length);
   }
@@ -970,16 +990,41 @@ function alignSingleBandSiblingRows(
   const alignedWidth = nextX;
 
   return children.map((child, childIndex) => {
-    const replacements = new Map(rows[childIndex].map((cell, trackIndex) => [
+    const row = rows[childIndex];
+    const replacements = new Map(row.map((cell, trackIndex) => [
       cell.nodeId,
       { ...cell, x: trackX[trackIndex], width: widths[trackIndex] },
     ]));
+    const styleSourceNodeId = [...row]
+      .reverse()
+      .find((cell) => !cell.placeholder)?.nodeId;
+    const placeholders = preserveEmptySlots
+      ? Array.from({ length: trackCount - row.length }, (_, index): OrientedBranchCell => {
+        const trackIndex = row.length + index;
+        return {
+          nodeId: `__matrix-empty-${child.nodeId}-${trackIndex}`,
+          x: trackX[trackIndex],
+          y: 0,
+          width: widths[trackIndex],
+          height: child.layout.height,
+          requiredHeight: child.layout.height,
+          terminal: true,
+          horizontalTerminal: true,
+          verticalTerminal: true,
+          placeholder: true,
+          styleSourceNodeId,
+        };
+      })
+      : [];
     return {
       ...child,
       layout: {
         ...child.layout,
         width: alignedWidth,
-        cells: child.layout.cells.map((cell) => replacements.get(cell.nodeId) ?? cell),
+        cells: [
+          ...child.layout.cells.map((cell) => replacements.get(cell.nodeId) ?? cell),
+          ...placeholders,
+        ],
       },
     };
   });
@@ -1076,6 +1121,7 @@ function layoutOrientedChildSections(
   childFlow: MatrixChildFlow,
   settings: DensitySettings,
   siblingGap: number,
+  preserveEmptySlots: boolean,
   minimumWidth = 0,
   minimumHeight = 0
 ): OrientedBranchLayout {
@@ -1088,7 +1134,7 @@ function layoutOrientedChildSections(
     siblingGap
   );
   const sections = childFlow === "column"
-    ? rawSections.map(alignSingleBandSiblingRows)
+    ? rawSections.map((section) => alignSingleBandSiblingRows(section, preserveEmptySlots))
     : rawSections;
   // Fold is a continuation of the same Matrix, so it uses the same thin gap as
   // every other cell boundary. A larger separator exposes the canvas between
@@ -1182,6 +1228,7 @@ function computeOrientedMatrixLayout(
 ): MatrixLayoutResult {
   const root = byId.get(rootId)!;
   const rootData = (root.data ?? {}) as Record<string, unknown>;
+  const preserveEmptySlots = rootData.matrixIncompleteRowMode === "empty";
   const rootOrientation = storedOrientation(rootData.matrixOrientation) ?? "horizontal";
   const rootChildFlow = matrixChildFlowForNode(
     rootId,
@@ -1250,6 +1297,7 @@ function computeOrientedMatrixLayout(
       childFlow,
       settings,
       siblingGap,
+      preserveEmptySlots,
       orientation === "vertical" ? width : 0,
       orientation === "horizontal" ? ownRequiredHeight : 0
     );
@@ -1316,6 +1364,7 @@ function computeOrientedMatrixLayout(
     rootChildFlow,
     settings,
     matrixSiblingGapForNode(rootId, settings.cellGap, byId),
+    preserveEmptySlots,
     preferredHeaderWidth,
     0
   );
@@ -1326,16 +1375,27 @@ function computeOrientedMatrixLayout(
   const bodyX = tableX;
   const orientedCells = translateOrientedCells(body.cells, bodyX, bodyY);
 
-  const cells = orientedCells.map<MatrixCellGeometry>((cell) => {
-    const span = spanMap.get(cell.nodeId);
-    return {
-      ...cell,
-      column: span?.column ?? 0,
-      rowStart: span?.rowStart ?? 0,
-      rowEnd: span?.rowEnd ?? 0,
-      rowSpan: span ? span.rowEnd - span.rowStart + 1 : 1,
-    };
-  });
+  const emptyCells = orientedCells
+    .filter((cell) => cell.placeholder)
+    .map<MatrixEmptyCellGeometry>((cell) => ({
+      x: cell.x,
+      y: cell.y,
+      width: cell.width,
+      height: cell.height,
+      styleSourceNodeId: cell.styleSourceNodeId,
+    }));
+  const cells = orientedCells
+    .filter((cell) => !cell.placeholder)
+    .map<MatrixCellGeometry>((cell) => {
+      const span = spanMap.get(cell.nodeId);
+      return {
+        ...cell,
+        column: span?.column ?? 0,
+        rowStart: span?.rowStart ?? 0,
+        rowEnd: span?.rowEnd ?? 0,
+        rowSpan: span ? span.rowEnd - span.rowStart + 1 : 1,
+      };
+    });
   const header: MatrixCellGeometry = {
     nodeId: rootId,
     column: -1,
@@ -1391,6 +1451,7 @@ function computeOrientedMatrixLayout(
     orientation: rootOrientation,
     rows,
     cells,
+    emptyCells,
     placements,
     columnWidths,
     columnX,
@@ -1432,6 +1493,13 @@ function applyMatrixTableSizeOverrides(
   });
   const header = scaleCell(result.header);
   const cells = result.cells.map(scaleCell);
+  const emptyCells = result.emptyCells.map((cell) => ({
+    ...cell,
+    x: originX + (cell.x - originX) * scaleX,
+    y: originY + (cell.y - originY) * scaleY,
+    width: cell.width * scaleX,
+    height: cell.height * scaleY,
+  }));
   const placements: Record<string, MatrixPlacement> = {};
   for (const cell of [header, ...cells]) {
     const node = byId.get(cell.nodeId);
@@ -1443,6 +1511,7 @@ function applyMatrixTableSizeOverrides(
   return {
     ...result,
     cells,
+    emptyCells,
     placements,
     columnWidths: result.columnWidths.map((width) => width * scaleX),
     columnX: result.columnX.map((x) => originX + (x - originX) * scaleX),
@@ -1679,6 +1748,7 @@ export function computeMatrixLayout(
     orientation: storedOrientation(rootData.matrixOrientation) ?? "horizontal",
     rows,
     cells,
+    emptyCells: [],
     placements,
     columnWidths,
     columnX,

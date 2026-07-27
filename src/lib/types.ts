@@ -61,6 +61,15 @@ export type ConnectorPathStyle = "solid" | "dashed" | "dotted" | "double";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
+export type MatrixIncompleteRowMode = "stretch" | "empty";
+export interface MatrixGeneratedEmptySlot {
+  /** Position relative to the Matrix root's top-left presentation bounds. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  styleSourceNodeId?: string;
+}
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
 export type BoardColorMode = "auto" | "custom" | "transparent";
 export type BoardTexture = "none" | "paper" | "linen" | "grain" | "chalkboard";
@@ -495,6 +504,10 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixChildFlow?: MatrixChildFlow;
   /** Packs compact terminal Devanagari groups into rows for this Matrix only. */
   matrixPackCompactGroups?: boolean;
+  /** Visual treatment for rows with fewer terminal cells than their peers. */
+  matrixIncompleteRowMode?: MatrixIncompleteRowMode;
+  /** Generated empty-cell geometry retained while Matrix presentation is active. */
+  matrixEmptySlots?: MatrixGeneratedEmptySlot[];
   /** Expands every Matrix cell label to fill its safe authored-shape interior. */
   matrixFillCellLabels?: boolean;
   /** Exact gap, in canvas pixels, between this Matrix cell's direct children. */
@@ -623,6 +636,15 @@ export interface FrameNodeData extends BaseNodeData {
     y1: number;
     x2: number;
     y2: number;
+  }>;
+  /** Empty Matrix cells rendered by the generated frame without hierarchy nodes. */
+  matrixEmptyCells?: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fillColor?: string;
+    borderColor?: string;
   }>;
 }
 

@@ -4437,6 +4437,44 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 aria-label="Pack compact letter groups in this Matrix"
               />
             </div>
+            <div className="mb-2 rounded-md border border-border/70 bg-muted/35 p-2">
+              <p className="text-[10px] font-medium text-foreground">Incomplete rows</p>
+              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                Stretch existing children across the row, or preserve missing trailing positions as empty cells.
+              </p>
+              <div className="mt-1.5 grid grid-cols-2 gap-1">
+                {([
+                  ["stretch", "Stretch cells"],
+                  ["empty", "Empty slots"],
+                ] as const).map(([mode, label]) => {
+                  const active = (matrixRootData.matrixIncompleteRowMode ?? "stretch") === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        pushHistory();
+                        updateNodeData(matrixRootNode.id, {
+                          matrixIncompleteRowMode: mode === "stretch" ? undefined : "empty",
+                        });
+                        requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                          detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                        })));
+                      }}
+                      className={cn(
+                        "rounded-md border px-1 py-1.5 text-[9px]",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-background hover:bg-muted"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
                 <p className="text-[10px] font-medium text-foreground">Fill cell labels</p>

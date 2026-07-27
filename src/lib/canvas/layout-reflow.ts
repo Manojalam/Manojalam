@@ -7,7 +7,7 @@ const AUTOFIT_REFLOW_FIELDS = new Set([
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_REFLOW_FIELDS,
   "fillColor", "fillOpacity", "color", "layoutAutoFill",
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixFillCellLabels",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixIncompleteRowMode", "matrixFillCellLabels",
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 

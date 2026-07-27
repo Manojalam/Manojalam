@@ -538,6 +538,42 @@ export function LayoutPanel() {
                 aria-label="Pack compact letter groups in this Matrix"
               />
             </div>
+            <div className="mb-2 rounded-md border border-border/70 bg-background/60 p-1.5">
+              <div className="text-[10px] font-medium text-foreground">Incomplete rows</div>
+              <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                Stretch existing children or preserve missing trailing positions as empty cells.
+              </div>
+              <div className="mt-1.5 grid grid-cols-2 gap-1">
+                {([
+                  ["stretch", "Stretch cells"],
+                  ["empty", "Empty slots"],
+                ] as const).map(([mode, label]) => {
+                  const active = (matrixRootData.matrixIncompleteRowMode ?? "stretch") === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        useCanvasStore.getState().pushHistory();
+                        updateNodeData(matrixRoot.id, {
+                          matrixIncompleteRowMode: mode === "stretch" ? undefined : "empty",
+                        });
+                        requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                      }}
+                      className={cn(
+                        "rounded-md border px-1 py-1.5 text-[9px]",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-background hover:bg-muted"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
               <div>
                 <div className="text-[10px] font-medium text-foreground">Fill cell labels</div>

@@ -7,12 +7,16 @@ import type { FrameNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
-import { MATRIX_GRID_RADIUS } from "@/lib/layout/matrix-presentation";
+import {
+  MATRIX_GRID_RADIUS,
+  matrixCellBorderRadius,
+} from "@/lib/layout/matrix-presentation";
 
 function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d = data as FrameNodeData;
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
   const matrixGridLines = Array.isArray(d.matrixGridLines) ? d.matrixGridLines : null;
+  const matrixEmptyCells = Array.isArray(d.matrixEmptyCells) ? d.matrixEmptyCells : [];
   const isMatrixGrid = isMatrixFrame && matrixGridLines !== null;
   const frameWidth = typeof width === "number" && width > 0 ? width : 1;
   const frameHeight = typeof height === "number" && height > 0 ? height : 1;
@@ -54,6 +58,20 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
             preserveAspectRatio="none"
             shapeRendering="geometricPrecision"
           >
+            {matrixEmptyCells.map((cell, index) => (
+              <rect
+                key={`empty-${cell.x}-${cell.y}-${index}`}
+                x={cell.x}
+                y={cell.y}
+                width={cell.width}
+                height={cell.height}
+                rx={matrixCellBorderRadius("cell")}
+                fill={cell.fillColor ?? "transparent"}
+                stroke={cell.borderColor ?? d.color ?? "#6366f1"}
+                strokeWidth={gridStrokeWidth}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
             <rect
               x={gridStrokeWidth / 2}
               y={gridStrokeWidth / 2}

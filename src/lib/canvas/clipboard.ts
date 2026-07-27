@@ -139,6 +139,9 @@ export function prepareDuplicatedNodeData(
   idMap: ReadonlyMap<string, string>
 ): Record<string, unknown> {
   const next = structuredClone(data);
+  // Matrix empty slots are generated from live row geometry and must be
+  // recomputed for the duplicated hierarchy.
+  delete next.matrixEmptySlots;
 
   const parentId = typeof next.parentId === "string" ? next.parentId : null;
   next.parentId = parentId && idMap.has(parentId) ? idMap.get(parentId)! : null;
