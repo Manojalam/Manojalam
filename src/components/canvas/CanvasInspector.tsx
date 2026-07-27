@@ -2130,7 +2130,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Tidy into columns</p>
                   <p className="text-[9px] leading-snug text-muted-foreground">
-                    Packs the selection top-to-bottom while keeping its current left-to-right order.
+                    Packs the selection top-to-bottom without changing the board&apos;s shape order.
                   </p>
                 </div>
                 <div>

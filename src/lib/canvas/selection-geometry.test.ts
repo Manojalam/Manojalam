@@ -46,13 +46,13 @@ test("vertical compact spacing supports centered node origins", () => {
   assert.equal(after[1].left, 200);
 });
 
-test("column arrangement preserves rough columns and packs variable-height cards", () => {
+test("column arrangement preserves board order despite rough positions and varying widths", () => {
   const nodes = [
-    node("left-2", 80, 260, 120, 90),
-    node("right-1", 520, 40, 180, 70),
-    node("left-1", 40, 20, 200, 60),
-    node("right-2", 540, 320, 140, 110),
-    node("left-3", 70, 500, 140, 50),
+    node("1", 520, 40, 180, 70),
+    node("2", 80, 260, 120, 90),
+    node("3", 540, 320, 140, 110),
+    node("4", 40, 20, 200, 60),
+    node("5", 70, 500, 140, 50),
   ];
   const result = arrangeSelectionInColumns(nodes, {
     columnCount: 2,
@@ -65,15 +65,34 @@ test("column arrangement preserves rough columns and packs variable-height cards
   ]));
 
   assert.deepEqual(result.columns, [
-    ["left-1", "left-2", "left-3"],
-    ["right-1", "right-2"],
+    ["1", "2", "3"],
+    ["4", "5"],
   ]);
-  assert.equal(after.get("left-1")!.top, 20);
-  assert.equal(after.get("left-2")!.top - after.get("left-1")!.bottom, 24);
-  assert.equal(after.get("left-3")!.top - after.get("left-2")!.bottom, 24);
-  assert.equal(after.get("right-1")!.top, 20);
-  assert.equal(after.get("right-2")!.top - after.get("right-1")!.bottom, 24);
-  assert.equal(after.get("right-1")!.left, 40 + 200 + 80);
+  assert.equal(after.get("1")!.top, 20);
+  assert.equal(after.get("2")!.top - after.get("1")!.bottom, 24);
+  assert.equal(after.get("3")!.top - after.get("2")!.bottom, 24);
+  assert.equal(after.get("4")!.top, 20);
+  assert.equal(after.get("5")!.top - after.get("4")!.bottom, 24);
+  assert.equal(after.get("4")!.left, 40 + 180 + 80);
+});
+
+test("fifteen ordered cards split into three consecutive columns", () => {
+  const nodes = Array.from({ length: 15 }, (_, index) => (
+    node(
+      String(index + 1),
+      index % 2 === 0 ? 600 - index * 11 : 40 + index * 13,
+      700 - index * 29,
+      120 + (index % 4) * 30,
+      50 + (index % 3) * 20
+    )
+  ));
+  const result = arrangeSelectionInColumns(nodes, { columnCount: 3 });
+
+  assert.deepEqual(result.columns, [
+    ["1", "2", "3", "4", "5"],
+    ["6", "7", "8", "9", "10"],
+    ["11", "12", "13", "14", "15"],
+  ]);
 });
 
 test("matched column widths use each column's widest card and support centered origins", () => {
