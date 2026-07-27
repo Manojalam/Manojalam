@@ -51,6 +51,7 @@ import {
   surfaceEffectFilter,
   surfaceEffectStyle,
 } from "@/lib/canvas/surface-effects";
+import { SHAPE_POLYGON_POINTS } from "@/lib/canvas/shape-connection-geometry";
 
 const CLIP_PATHS: Partial<Record<string, string>> = {
   diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -62,19 +63,6 @@ const CLIP_PATHS: Partial<Record<string, string>> = {
   trapezoid: "polygon(18% 0%, 82% 0%, 100% 100%, 0% 100%)",
   offPageConnector: "polygon(0% 0%, 100% 0%, 100% 76%, 50% 100%, 0% 76%)",
   callout: "polygon(0% 0%, 100% 0%, 100% 78%, 64% 78%, 50% 100%, 38% 78%, 0% 78%)",
-};
-
-// SVG polygon points (in a 0–100 viewBox) matching the clip paths above.
-const POLYGON_POINTS: Partial<Record<string, string>> = {
-  diamond:  "50,1 99,50 50,99 1,50",
-  triangle: "50,1 1,99 99,99",
-  hexagon:  "25,1 75,1 99,50 75,99 25,99 1,50",
-  star:     "50,1 61,35 98,35 68,57 79,91 50,70 21,91 32,57 2,35 39,35",
-  arrow:    "1,25 60,25 60,1 99,50 60,99 60,75 1,75",
-  parallelogram: "16,1 99,1 84,99 1,99",
-  trapezoid: "18,1 82,1 99,99 1,99",
-  offPageConnector: "1,1 99,1 99,76 50,99 1,76",
-  callout: "1,1 99,1 99,78 64,78 50,99 38,78 1,78",
 };
 
 const CUSTOM_SVG_SHAPES = new Set([
@@ -101,7 +89,7 @@ function dashArray(style: string, w: number): string | undefined {
 }
 
 function isSvgShape(shapeType: string): boolean {
-  return shapeType in POLYGON_POINTS || CUSTOM_SVG_SHAPES.has(shapeType);
+  return shapeType in SHAPE_POLYGON_POINTS || CUSTOM_SVG_SHAPES.has(shapeType);
 }
 
 function concentricInset(index: number, total: number): number {
@@ -893,8 +881,8 @@ function SvgShapeSurface({
     strokeLinecap: "round" as const,
   };
 
-  if (POLYGON_POINTS[shapeType]) {
-    const points = POLYGON_POINTS[shapeType];
+  if (SHAPE_POLYGON_POINTS[shapeType]) {
+    const points = SHAPE_POLYGON_POINTS[shapeType];
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
         <polygon points={points} fill={fillColor ?? "transparent"} {...commonStroke} />
@@ -1291,7 +1279,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           setEditing(true);
         }}
       >
-        <NodeHandles color={borderColor} selected={selected} />
+        <NodeHandles color={borderColor} selected={selected} shapeType={renderedShapeType} />
         <NodeQuickActions nodeId={id} color={borderColor} selected={selected} />
 
         {/* Add connected child */}
