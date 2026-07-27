@@ -36,6 +36,7 @@ export interface SymbolPaletteGroup {
 }
 
 export const TEXT_TOOL_EVENT = "vidya:apply-text-tool";
+export const OPEN_TEXT_TOOL_EVENT = "vidya:open-text-tool";
 
 export type TextToolAction =
   | {

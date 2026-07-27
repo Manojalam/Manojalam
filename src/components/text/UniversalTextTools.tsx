@@ -9,6 +9,7 @@ import {
   convertToScript,
   GENERAL_SYMBOL_GROUPS,
   normalizeSymbolAppearance,
+  OPEN_TEXT_TOOL_EVENT,
   replaceTextRange,
   SANSKRIT_SYMBOL_GROUPS,
   SUBSCRIPT_CHARACTERS,
@@ -456,6 +457,16 @@ export function UniversalTextTools() {
       rememberNativeSelection(candidate);
       requestAnimationFrame(() => positionForTarget(candidate));
     };
+    const openForTarget = (event: Event) => {
+      const candidate = editableTargetFrom(event.target);
+      if (!candidate) return;
+      targetRef.current = candidate;
+      setTarget(candidate);
+      rememberNativeSelection(candidate);
+      setQuery("");
+      positionForTarget(candidate);
+      setOpen(true);
+    };
     const rememberSelection = () => rememberNativeSelection();
     const reposition = () => positionForTarget();
     const dismissAwayFromTarget = (event: PointerEvent) => {
@@ -476,6 +487,7 @@ export function UniversalTextTools() {
     };
 
     document.addEventListener("focusin", selectTarget, true);
+    document.addEventListener(OPEN_TEXT_TOOL_EVENT, openForTarget, true);
     document.addEventListener("selectionchange", rememberSelection);
     document.addEventListener("select", rememberSelection, true);
     document.addEventListener("keyup", rememberSelection, true);
@@ -487,6 +499,7 @@ export function UniversalTextTools() {
     window.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("focusin", selectTarget, true);
+      document.removeEventListener(OPEN_TEXT_TOOL_EVENT, openForTarget, true);
       document.removeEventListener("selectionchange", rememberSelection);
       document.removeEventListener("select", rememberSelection, true);
       document.removeEventListener("keyup", rememberSelection, true);
@@ -498,6 +511,18 @@ export function UniversalTextTools() {
       window.removeEventListener("scroll", reposition, true);
     };
   }, [positionForTarget, rememberNativeSelection]);
+
+  useEffect(() => {
+    if (!open) return;
+    let innerFrame = 0;
+    const outerFrame = requestAnimationFrame(() => {
+      innerFrame = requestAnimationFrame(toolbarMove.ensureVisible);
+    });
+    return () => {
+      cancelAnimationFrame(outerFrame);
+      cancelAnimationFrame(innerFrame);
+    };
+  }, [open, toolbarMove.ensureVisible]);
 
   const applyNativeEdit = useCallback((candidate: NativeTextTarget, edit: TextRangeEdit, inputType: string) => {
     candidate.focus({ preventScroll: true });
@@ -630,11 +655,6 @@ export function UniversalTextTools() {
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (!nextOpen) setQuery("");
-        else {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(toolbarMove.ensureVisible);
-          });
-        }
       }}
     >
       <PopoverTrigger asChild>
