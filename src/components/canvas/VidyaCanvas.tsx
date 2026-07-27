@@ -83,6 +83,7 @@ import {
   createManojalamClipboardPayload,
   MANOJALAM_NODES_MIME,
   parseManojalamClipboard,
+  selectionWithHierarchyDescendants,
   serializeManojalamClipboard,
   shouldHandleCanvasClipboard,
   visibleBoardSelection,
@@ -1274,10 +1275,15 @@ function VidyaCanvasInner({
       if (!shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
       const store = useCanvasStore.getState();
       if (!event.clipboardData || !store.selectedNodeIds.length) return;
-      const selected = new Set(store.selectedNodeIds);
-      const selectedNodes = store.nodes.filter((node) => selected.has(node.id));
+      const {
+        nodes: selectedNodes,
+        edges: selectedEdges,
+      } = selectionWithHierarchyDescendants(
+        store.nodes,
+        store.edges,
+        store.selectedNodeIds
+      );
       if (!selectedNodes.length) return;
-      const selectedEdges = store.edges.filter((edge) => selected.has(edge.source) && selected.has(edge.target));
       const payload = createManojalamClipboardPayload(selectedNodes, selectedEdges);
       try {
         event.clipboardData.setData(MANOJALAM_NODES_MIME, serializeManojalamClipboard(payload));

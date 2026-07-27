@@ -81,6 +81,7 @@ import {
 import {
   clearSelectedNodeContents,
   prepareDuplicatedNodeData,
+  selectionWithHierarchyDescendants,
   type ManojalamClipboardPayload,
 } from "@/lib/canvas/clipboard";
 import { mergeCustomColors, normalizeCustomColors } from "@/lib/canvas/custom-colors";
@@ -1637,6 +1638,65 @@ function translateDuplicatedTextCalloutData(
     : data;
 }
 
+function translatedConnectorPoints(
+  value: unknown,
+  offset: { x: number; y: number }
+): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((point) => {
+    if (
+      !point
+      || typeof point !== "object"
+      || typeof (point as { x?: unknown }).x !== "number"
+      || typeof (point as { y?: unknown }).y !== "number"
+    ) return point;
+    const { x, y } = point as { x: number; y: number };
+    return { ...point, x: x + offset.x, y: y + offset.y };
+  });
+}
+
+function prepareDuplicatedEdgeData(
+  edge: Edge,
+  nodeIdMap: ReadonlyMap<string, string>,
+  edgeIdMap: ReadonlyMap<string, string>,
+  connectorGroupIdMap: ReadonlyMap<string, string>,
+  offset: { x: number; y: number }
+): Record<string, unknown> {
+  const data = structuredClone((edge.data ?? {}) as Record<string, unknown>);
+  data.waypoints = translatedConnectorPoints(data.waypoints, offset);
+  data.junctionUserWaypoints = translatedConnectorPoints(
+    data.junctionUserWaypoints,
+    offset
+  );
+
+  for (const field of [
+    "connectorJunctionId",
+    "hiddenInMatrixFor",
+    "hiddenInSunburstFor",
+    "layoutColorRootId",
+  ]) {
+    const referencedId = data[field];
+    if (typeof referencedId !== "string") continue;
+    const duplicatedId = nodeIdMap.get(referencedId);
+    if (duplicatedId) data[field] = duplicatedId;
+    else delete data[field];
+  }
+
+  const labelPathEdgeId = data.labelPathEdgeId;
+  if (typeof labelPathEdgeId === "string") {
+    const duplicatedId = edgeIdMap.get(labelPathEdgeId);
+    if (duplicatedId) data.labelPathEdgeId = duplicatedId;
+    else delete data.labelPathEdgeId;
+  }
+
+  const connectorGroupId = data.connectorGroupId;
+  if (typeof connectorGroupId === "string") {
+    data.connectorGroupId = connectorGroupIdMap.get(connectorGroupId) ?? connectorGroupId;
+  }
+
+  return data;
+}
+
 function findFreeDuplicateOffset(selectedNodes: Node[], allNodes: Node[]) {
   if (!selectedNodes.length) return { x: 40, y: 40 };
   const selectedIds = new Set(selectedNodes.map((node) => node.id));
@@ -1698,6 +1758,18 @@ function buildDuplicateSelection(
 ) {
   const offset = findFreeDuplicateOffset(selectedNodes, allNodes);
   const idMap = new Map(selectedNodes.map((node) => [node.id, generateId()]));
+  const internalEdges = selectedEdges.filter(
+    (edge) => idMap.has(edge.source) && idMap.has(edge.target)
+  );
+  const edgeIdMap = new Map(internalEdges.map((edge) => [edge.id, generateId()]));
+  const connectorGroupIds = new Set(internalEdges.flatMap((edge) => {
+    const connectorGroupId = (edge.data as { connectorGroupId?: unknown } | undefined)
+      ?.connectorGroupId;
+    return typeof connectorGroupId === "string" ? [connectorGroupId] : [];
+  }));
+  const connectorGroupIdMap = new Map(
+    [...connectorGroupIds].map((connectorGroupId) => [connectorGroupId, generateId()])
+  );
 
   const nodes = selectedNodes.map((node) => {
     const newId = idMap.get(node.id)!;
@@ -1716,13 +1788,18 @@ function buildDuplicateSelection(
     };
   });
 
-  const edges = selectedEdges
-    .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
-    .map((edge) => ({
+  const edges = internalEdges.map((edge) => ({
       ...structuredClone(edge),
-      id: generateId(),
+      id: edgeIdMap.get(edge.id)!,
       source: idMap.get(edge.source)!,
       target: idMap.get(edge.target)!,
+      data: prepareDuplicatedEdgeData(
+        edge,
+        idMap,
+        edgeIdMap,
+        connectorGroupIdMap,
+        offset
+      ),
       selected: false,
     }));
 
@@ -2160,11 +2237,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   copySelected: () => {
     const { nodes, edges, selectedNodeIds } = get();
     if (!selectedNodeIds.length) return;
-    const selectedNodes = nodes.filter((n) => selectedNodeIds.includes(n.id));
-    const selectedEdges = edges.filter(
-      (e) => selectedNodeIds.includes(e.source) && selectedNodeIds.includes(e.target)
+    const selection = selectionWithHierarchyDescendants(
+      nodes,
+      edges,
+      selectedNodeIds
     );
-    set({ clipboard: { nodes: structuredClone(selectedNodes), edges: structuredClone(selectedEdges) } });
+    set({
+      clipboard: {
+        nodes: structuredClone(selection.nodes),
+        edges: structuredClone(selection.edges),
+      },
+    });
   },
 
   paste: (payload) => {
@@ -2172,56 +2255,33 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const source = payload ?? clipboard;
     if (!source) return;
     get().pushHistory();
-    const idMap = new Map(source.nodes.map((node) => [node.id, generateId()]));
-    const preparedNodes = source.nodes.map((n) => {
-      const newId = idMap.get(n.id)!;
-      const data = structuredClone((n.data ?? {}) as Record<string, unknown>);
-      if (typeof data.parentId === "string") data.parentId = idMap.get(data.parentId) ?? null;
-      if (Array.isArray(data.childOrder)) {
-        data.childOrder = data.childOrder
-          .filter((id): id is string => typeof id === "string" && idMap.has(id))
-          .map((id) => idMap.get(id)!);
-      }
-      return {
-        ...structuredClone(n),
-        id: newId,
-        data,
-        style: duplicateNodeStyle(n),
-        selected: true,
-      };
-    });
-    const offset = findFreeDuplicateOffset(preparedNodes, nodes);
-    const newNodes = preparedNodes.map((node) => ({
-      ...node,
-      position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
-      data: translateDuplicatedTextCalloutData(
-        node.data as Record<string, unknown>,
-        offset
-      ),
-    }));
-    const newEdges = source.edges.map((e) => ({
-      ...structuredClone(e),
-      id: generateId(),
-      source: idMap.get(e.source) ?? e.source,
-      target: idMap.get(e.target) ?? e.target,
-    }));
+    const { nodes: newNodes, edges: newEdges } = buildDuplicateSelection(
+      source.nodes,
+      source.edges,
+      nodes
+    );
     set({
       nodes: [...nodes.map((n) => ({ ...n, selected: false })), ...newNodes],
-      edges: [...edges, ...newEdges],
+      edges: [...edges.map((edge) => ({ ...edge, selected: false })), ...newEdges],
       selectedNodeIds: newNodes.map((n) => n.id),
+      selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
   },
 
   duplicateNode: (nodeId) => {
     const { nodes, edges } = get();
-    const source = nodes.find((node) => node.id === nodeId);
-    if (!source) return;
+    const selection = selectionWithHierarchyDescendants(nodes, edges, [nodeId]);
+    if (!selection.nodes.length) return;
     get().pushHistory();
-    const { nodes: newNodes } = buildDuplicateSelection([source], [], nodes);
+    const { nodes: newNodes, edges: newEdges } = buildDuplicateSelection(
+      selection.nodes,
+      selection.edges,
+      nodes
+    );
     set({
       nodes: [...nodes.map((node) => ({ ...node, selected: false })), ...newNodes],
-      edges: edges.map((edge) => ({ ...edge, selected: false })),
+      edges: [...edges.map((edge) => ({ ...edge, selected: false })), ...newEdges],
       selectedNodeIds: newNodes.map((node) => node.id),
       selectedEdgeIds: [],
       saveStatus: "unsaved",
@@ -2232,12 +2292,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const { nodes, edges, selectedNodeIds } = get();
     if (!selectedNodeIds.length) return;
     get().pushHistory();
-    const selectedSet = new Set(selectedNodeIds);
-    const selectedNodes = nodes.filter((node) => selectedSet.has(node.id));
-    const selectedEdges = edges.filter((edge) => selectedSet.has(edge.source) && selectedSet.has(edge.target));
+    const selection = selectionWithHierarchyDescendants(
+      nodes,
+      edges,
+      selectedNodeIds
+    );
     const { nodes: newNodes, edges: newEdges } = buildDuplicateSelection(
-      selectedNodes,
-      selectedEdges,
+      selection.nodes,
+      selection.edges,
       nodes
     );
     set({
