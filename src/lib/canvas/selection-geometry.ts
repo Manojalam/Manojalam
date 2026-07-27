@@ -209,8 +209,8 @@ export function compactEqualSpacing(
 }
 
 /**
- * Pack an arbitrary selection into top-aligned columns while preserving its
- * current left-to-right grouping and top-to-bottom reading order.
+ * Pack an arbitrary selection into top-aligned columns without changing the
+ * sequence supplied by the board.
  */
 export function arrangeSelectionInColumns(
   nodes: Node[],
@@ -220,26 +220,14 @@ export function arrangeSelectionInColumns(
   const widths = new Map<string, number>();
   if (!nodes.length) return { positions, widths, columns: [] };
 
-  const entries = nodes
-    .map((node) => ({ node, rect: getNodeRect(node) }))
-    .sort((first, second) => (
-      first.rect.centerX - second.rect.centerX
-      || first.rect.centerY - second.rect.centerY
-      || first.node.id.localeCompare(second.node.id)
-    ));
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
   const columnCount = Math.max(
     1,
     Math.min(nodes.length, Math.round(options.columnCount) || 1)
   );
   const columnCapacity = Math.ceil(entries.length / columnCount);
   const columns = Array.from({ length: columnCount }, (_, columnIndex) => (
-    entries
-      .slice(columnIndex * columnCapacity, (columnIndex + 1) * columnCapacity)
-      .sort((first, second) => (
-        first.rect.centerY - second.rect.centerY
-        || first.rect.centerX - second.rect.centerX
-        || first.node.id.localeCompare(second.node.id)
-      ))
+    entries.slice(columnIndex * columnCapacity, (columnIndex + 1) * columnCapacity)
   )).filter((column) => column.length > 0);
   const left = Math.min(...entries.map(({ rect }) => rect.left));
   const top = Math.min(...entries.map(({ rect }) => rect.top));
