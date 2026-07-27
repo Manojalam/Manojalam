@@ -510,6 +510,44 @@ test("mixed-width folded groups do not combine unrelated column maxima", () => {
   assertClean(result);
 });
 
+test("empty-slot mode derives tracks from the longest logical sibling row", () => {
+  const { nodes, edges } = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      incompleteRowMode: "empty",
+    },
+    { id: "group", parentId: "root", childFlow: "column" },
+    { id: "heading", parentId: "group", text: "Merged heading" },
+    { id: "row-three", parentId: "group", childFlow: "row" },
+    { id: "three-0", parentId: "row-three" },
+    { id: "three-1", parentId: "row-three" },
+    { id: "three-2", parentId: "row-three" },
+    { id: "row-two", parentId: "group", childFlow: "row" },
+    { id: "two-0", parentId: "row-two", matrixWidth: 280 },
+    { id: "two-1", parentId: "row-two", matrixWidth: 280 },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const empty = result.emptyCells[0];
+
+  assert.equal(result.emptyCells.length, 1);
+  assert.ok(empty);
+  assert.ok(Math.abs(cells.get("two-0")!.width - cells.get("three-0")!.width) < 0.5);
+  assert.ok(Math.abs(cells.get("two-1")!.width - cells.get("three-1")!.width) < 0.5);
+  assert.ok(Math.abs(empty.x - cells.get("three-2")!.x) < 0.5);
+  assert.ok(Math.abs(empty.y - cells.get("two-0")!.y) < 0.5);
+  assert.ok(Math.abs(empty.width - cells.get("three-2")!.width) < 0.5);
+  assert.ok(
+    Math.abs(
+      cells.get("heading")!.x + cells.get("heading")!.width
+      - (cells.get("three-2")!.x + cells.get("three-2")!.width)
+    ) < 0.5
+  );
+  assertClean(result);
+});
+
 test("incomplete compact rows stretch existing children by default", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, packCompactGroups: true },
