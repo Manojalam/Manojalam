@@ -231,7 +231,17 @@ function RoutedSmartBranchEdge({
             targetRect,
             d.layoutMode,
             obstacles,
-            routeOptionsForEdge(id, source, target, d.layoutMode, nodes, edges)
+            {
+              ...routeOptionsForEdge(id, source, target, d.layoutMode, nodes, edges),
+              sourceEndpoint: {
+                point: { x: sourceX, y: sourceY },
+                side: positionSide(sourcePosition),
+              },
+              targetEndpoint: {
+                point: { x: targetX, y: targetY },
+                side: positionSide(targetPosition),
+              },
+            }
           );
     if (!routed.path) return null;
     path = routed.path;

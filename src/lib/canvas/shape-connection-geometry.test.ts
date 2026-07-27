@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SHAPE_POLYGON_POINTS,
+  nodePolygonConnectionPoint,
+  nodeShapeConnectionPoint,
   shapeConnectionPoint,
   type ConnectionSide,
   type ShapeConnectionPoint,
@@ -49,4 +51,20 @@ test("non-polygon shapes keep the standard rectangular handle positions", () => 
   assert.deepEqual(shapeConnectionPoint("circle", "right"), { x: 100, y: 50 });
   assert.deepEqual(shapeConnectionPoint(undefined, "bottom"), { x: 50, y: 100 });
   assert.deepEqual(shapeConnectionPoint("rectangle", "left"), { x: 0, y: 50 });
+});
+
+test("node outline points convert normalized star geometry into canvas coordinates", () => {
+  const node = { type: "shape", data: { shapeType: "star" } };
+  const rect = { x: 100, y: 200, width: 400, height: 400 };
+
+  assertPointClose(nodeShapeConnectionPoint(node, rect, "bottom"), { x: 300, y: 480 }, "node bottom");
+  assertPointClose(nodeShapeConnectionPoint(node, rect, "left"), { x: 189.818182, y: 400 }, "node left");
+  assert.equal(
+    nodePolygonConnectionPoint(
+      { type: "shape", data: { shapeType: "rounded" } },
+      rect,
+      "bottom"
+    ),
+    null
+  );
 });

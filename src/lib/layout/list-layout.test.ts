@@ -332,6 +332,33 @@ test("Matrix-root siblings share one List trunk despite different left edges and
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
+test("List buses start and end on polygon silhouettes instead of node rectangles", () => {
+  const tree = buildTree([
+    { id: "root", parentId: null, width: 500, height: 500 },
+    { id: "child", parentId: "root", width: 200, height: 200 },
+  ]);
+  const nodes = tree.nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        position: { x: 100, y: 100 },
+        data: { ...node.data, shapeType: "star" },
+      }
+    : {
+        ...node,
+        position: { x: 360, y: 760 },
+        data: { ...node.data, shapeType: "star" },
+      });
+  const group = buildListConnectorModel(nodes, tree.edges).groups[0];
+
+  assert.ok(group);
+  assert.deepEqual(
+    { x: group.sharedSegments[0].x1, y: group.sharedSegments[0].y1 },
+    { x: 350, y: 450 }
+  );
+  assert.ok(Math.abs(group.branches[0].segments[0].x2 - 404.909091) < 0.001);
+  assert.equal(group.branches[0].segments[0].y2, 860);
+});
+
 test("manually moved List endpoints remain on shared hierarchy trunks", () => {
   const tree = buildTree(referenceSpecs);
   const hierarchy = buildHierarchy(tree.nodes, tree.edges);
