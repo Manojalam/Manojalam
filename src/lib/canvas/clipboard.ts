@@ -167,6 +167,19 @@ export function prepareDuplicatedNodeData(
     if (duplicatedId) next[field] = duplicatedId;
     else if (referencedId !== "__board__") delete next[field];
   }
+  const layoutVisualStyle = next.layoutVisualStyle;
+  if (
+    layoutVisualStyle
+    && typeof layoutVisualStyle === "object"
+    && !Array.isArray(layoutVisualStyle)
+  ) {
+    const visualStyle = layoutVisualStyle as Record<string, unknown>;
+    const visualRootId = typeof visualStyle.rootId === "string" ? visualStyle.rootId : null;
+    const duplicatedRootId = visualRootId ? idMap.get(visualRootId) : undefined;
+    if (duplicatedRootId) {
+      next.layoutVisualStyle = { ...visualStyle, rootId: duplicatedRootId };
+    }
+  }
   if (typeof next.noteForNodeId === "string" && idMap.has(next.noteForNodeId)) {
     next.noteForNodeId = idMap.get(next.noteForNodeId)!;
   }

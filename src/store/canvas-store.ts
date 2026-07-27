@@ -117,6 +117,10 @@ import {
   unselectedHierarchyDescendants,
 } from "@/lib/canvas/hierarchy-mutations";
 import {
+  inheritChildNodeStyle,
+  inheritSiblingNodeStyle,
+} from "@/lib/canvas/node-style-inheritance";
+import {
   applyBoardFontSize,
   normalizeBoardFontSize,
   supportsBoardTypography,
@@ -1048,19 +1052,6 @@ function migrateNodes(nodes: Node[]): Node[] {
       data: { ...data, shapeType: (data.shapeType as string) ?? "rounded" },
     };
   });
-}
-
-/** Styling fields a child inherits from its parent (not content or per-node regions). */
-function inheritStyle(parentData: Record<string, unknown>): Record<string, unknown> {
-  const keys = [
-    "shapeType", "color", "fillColor", "fillOpacity",
-    "borderColor", "borderWidth", "borderStyle", "cornerRadiusPercent", "borderRadius",
-    "fontFamily", "fontSize", "maximizeText", "textColor", "scriptMode", "petalCount",
-    "textFrameStyle", "textCalloutDirection",
-  ];
-  const out: Record<string, unknown> = {};
-  for (const k of keys) if (parentData[k] !== undefined) out[k] = parentData[k];
-  return out;
 }
 
 /** Node types that can act as connectable mind-map shapes. Others default to shape. */
@@ -2731,7 +2722,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         y: parentRect.centerY - parentSize.height / 2 + (existingChildCount + index) * (parentSize.height + 28),
       },
       data: {
-        ...inheritStyle(parentData),
+        ...inheritChildNodeStyle(parentData),
         fontSize: typeof parentData.fontSize === "number" ? parentData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],
@@ -2880,7 +2871,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       origin: node.origin,
       position: nodePositionFromTopLeft(node, siblingTopLeft, siblingSize),
       data: {
-        ...inheritStyle(nodeData),
+        ...inheritSiblingNodeStyle(nodeData),
         fontSize: typeof nodeData.fontSize === "number" ? nodeData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],

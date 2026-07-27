@@ -8,6 +8,10 @@ import {
   reparentHierarchy,
   unselectedHierarchyDescendants,
 } from "./hierarchy-mutations";
+import {
+  inheritChildNodeStyle,
+  inheritSiblingNodeStyle,
+} from "./node-style-inheritance";
 
 function node(id: string, parentId: string | null, childOrder: string[] = []): Node {
   return { id, type: "shape", position: { x: 0, y: 0 }, data: { parentId, childOrder } };
@@ -18,6 +22,40 @@ function edge(source: string, target: string): Edge {
 }
 
 const createEdge = (source: string, target: string): Edge => edge(source, target);
+
+test("a new sibling preserves manual colors without copying generated palette ownership", () => {
+  const source = {
+    text: "अ",
+    fillColor: "#d9468d",
+    borderColor: "#f8fafc",
+    textColor: "#1d4ed8",
+    fontSize: 22,
+    layoutAutoFill: false,
+    layoutAutoBorder: false,
+    layoutAutoText: false,
+    layoutAutoTypography: false,
+    layoutVisualStyle: {
+      rootId: "matrix-root",
+      mode: "matrix",
+      fillColor: "#ffffff",
+    },
+    matrixRootId: "matrix-root",
+  };
+
+  const childStyle = inheritChildNodeStyle(source);
+  const siblingStyle = inheritSiblingNodeStyle(source);
+
+  assert.equal(childStyle.fillColor, "#d9468d");
+  assert.equal(childStyle.layoutAutoFill, undefined);
+  assert.equal(siblingStyle.fillColor, "#d9468d");
+  assert.equal(siblingStyle.layoutAutoFill, false);
+  assert.equal(siblingStyle.layoutAutoBorder, false);
+  assert.equal(siblingStyle.layoutAutoText, false);
+  assert.equal(siblingStyle.layoutAutoTypography, false);
+  assert.equal(siblingStyle.layoutVisualStyle, undefined);
+  assert.equal(siblingStyle.matrixRootId, undefined);
+  assert.equal(siblingStyle.text, undefined);
+});
 
 test("deleting a parent promotes its children to the grandparent in sibling order", () => {
   const nodes = [

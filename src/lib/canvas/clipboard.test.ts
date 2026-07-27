@@ -147,6 +147,11 @@ test("shape duplication preserves style and content by default", () => {
     parentId: "parent",
     childOrder: ["child"],
     matrixRootId: "parent",
+    layoutVisualStyle: {
+      rootId: "parent",
+      mode: "matrix",
+      fillColor: "#fef3c7",
+    },
   };
   const duplicated = prepareDuplicatedNodeData(
     data,
@@ -164,6 +169,10 @@ test("shape duplication preserves style and content by default", () => {
   assert.equal(duplicated.parentId, "parent-copy");
   assert.deepEqual(duplicated.childOrder, ["child-copy"]);
   assert.equal(duplicated.matrixRootId, "parent-copy");
+  assert.equal(
+    (duplicated.layoutVisualStyle as Record<string, unknown>).rootId,
+    "parent-copy"
+  );
   assert.notEqual(duplicated.examples, data.examples);
 });
 
