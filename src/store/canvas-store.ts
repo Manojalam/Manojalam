@@ -32,6 +32,7 @@ import {
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import {
   applyLayoutPalette,
+  resetDescendantLayoutFillOverrides,
   supportsAutomaticLayoutColors,
 } from "@/lib/layout/layout-palette";
 import {
@@ -222,6 +223,7 @@ interface CanvasState {
   createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+  resetMatrixDescendantFillOverrides: (nodeId: string) => number;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
   fitNodeToContent: (nodeId: string, contentSize: ContentSize, reason?: ContentResizeReason) => void;
   fitNodeToStoredContent: (nodeId: string) => void;
@@ -3047,6 +3049,37 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     ) {
       get().scheduleStructuredReflow(nodeId, true);
     }
+  },
+
+  resetMatrixDescendantFillOverrides: (nodeId) => {
+    const { nodes, edges } = get();
+    const layoutNodes = nodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    const hierarchy = buildHierarchy(layoutNodes, edges);
+    const root = findLayoutRoot(nodeId, layoutNodes, hierarchy);
+    if (root.mode !== "matrix") return 0;
+
+    const reset = resetDescendantLayoutFillOverrides(nodes, hierarchy, nodeId);
+    if (!reset.resetNodeIds.length) return 0;
+
+    get().pushHistory();
+    const styled = applyLayoutPalette(
+      reset.nodes,
+      edges,
+      hierarchy,
+      root.id,
+      "matrix",
+      layoutSchemeValue(reset.nodes, root.id)
+    );
+    set({
+      nodes: styled.nodes,
+      edges: styled.edges,
+      saveStatus: "unsaved",
+    });
+    return reset.resetNodeIds.length;
   },
 
   setNodeLocked: (nodeId, locked) => {

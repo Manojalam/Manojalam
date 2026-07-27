@@ -1213,6 +1213,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const createSiblingNode = useCanvasStore((s) => s.createSiblingNode);
   const moveSiblingNode = useCanvasStore((s) => s.moveSiblingNode);
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
+  const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
   const convertNodes    = useCanvasStore((s) => s.convertNodes);
@@ -1324,6 +1325,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         .map((nodeId) => nodes.find((node) => node.id === nodeId))
         .filter((node): node is Node => !!node)
     : [];
+  const selectedMatrixDescendantNodes = selectedMatrixBranchNodes.filter((node) => node.id !== selectedNode?.id);
+  const matrixDescendantFillOverrideCount = selectedMatrixDescendantNodes.filter((node) => (
+    ((node.data ?? {}) as Record<string, unknown>).layoutAutoFill === false
+  )).length;
   const matrixHeightOverrideCount = selectedMatrixBranchNodes.filter((node) => (
     hasPositiveDimensionOverride((node.data as Record<string, unknown> | undefined)?.matrixHeightOverride)
   )).length;
@@ -5145,6 +5150,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </Button>
               )}
             </div>
+            {matrixRootNode && selectedMatrixDescendantNodes.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 w-full gap-1.5 text-[10px]"
+                disabled={matrixDescendantFillOverrideCount === 0}
+                title="Clear manual fill overrides below this parent and restore progressively lighter Matrix shades"
+                onClick={() => {
+                  const resetCount = resetMatrixDescendantFillOverrides(selectedNode.id);
+                  if (resetCount > 0) {
+                    toast.success(`Restored automatic Matrix shades for ${resetCount} descendant${resetCount === 1 ? "" : "s"}.`);
+                  }
+                }}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset descendant shades
+                {matrixDescendantFillOverrideCount > 0 ? ` (${matrixDescendantFillOverrideCount})` : ""}
+              </Button>
+            )}
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>

@@ -32,6 +32,40 @@ export interface LayoutPaletteResult {
   edges: Edge[];
 }
 
+export interface DescendantFillOverrideReset {
+  nodes: Node[];
+  resetNodeIds: string[];
+}
+
+export function resetDescendantLayoutFillOverrides(
+  nodes: Node[],
+  hierarchy: Hierarchy,
+  ancestorId: string
+): DescendantFillOverrideReset {
+  const descendantIds = new Set(getSubtree(ancestorId, hierarchy).filter((nodeId) => nodeId !== ancestorId));
+  const resetNodeIds = nodes
+    .filter((node) => (
+      descendantIds.has(node.id)
+      && ((node.data ?? {}) as Record<string, unknown>).layoutAutoFill === false
+    ))
+    .map((node) => node.id);
+  if (!resetNodeIds.length) return { nodes, resetNodeIds };
+
+  const resetNodeIdSet = new Set(resetNodeIds);
+  return {
+    nodes: nodes.map((node) => {
+      if (!resetNodeIdSet.has(node.id)) return node;
+      const {
+        layoutAutoFill: _layoutAutoFill,
+        ...data
+      } = (node.data ?? {}) as Record<string, unknown>;
+      void _layoutAutoFill;
+      return { ...node, data };
+    }),
+    resetNodeIds,
+  };
+}
+
 export function supportsAutomaticLayoutColors(mode: LayoutMode | undefined): mode is LayoutMode {
   return mode !== undefined && AUTOMATIC_COLOR_MODES.has(mode);
 }
