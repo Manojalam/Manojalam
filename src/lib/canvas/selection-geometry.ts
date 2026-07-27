@@ -10,13 +10,22 @@ export interface ColumnArrangementOptions {
   columnCount: number;
   columnGap?: number;
   rowGap?: number;
-  matchColumnWidths?: boolean;
 }
 
 export interface ColumnArrangementResult {
   positions: Map<string, Point>;
-  widths: Map<string, number>;
   columns: string[][];
+}
+
+export interface RowArrangementOptions {
+  rowCount: number;
+  columnGap?: number;
+  rowGap?: number;
+}
+
+export interface RowArrangementResult {
+  positions: Map<string, Point>;
+  rows: string[][];
 }
 
 export interface DistributionResult {
@@ -344,8 +353,7 @@ export function arrangeSelectionInColumns(
   options: ColumnArrangementOptions
 ): ColumnArrangementResult {
   const positions = new Map<string, Point>();
-  const widths = new Map<string, number>();
-  if (!nodes.length) return { positions, widths, columns: [] };
+  if (!nodes.length) return { positions, columns: [] };
 
   const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
   const columnCount = Math.max(
@@ -374,14 +382,12 @@ export function arrangeSelectionInColumns(
       : 0;
     let cursorY = top;
     for (const { node, rect } of column) {
-      const itemWidth = options.matchColumnWidths ? columnWidth : rect.width;
-      const itemLeft = cursorX + (columnWidth - itemWidth) / 2;
+      const itemLeft = cursorX + (columnWidth - rect.width) / 2;
       positions.set(node.id, nodePositionFromTopLeft(
         node,
         { x: itemLeft, y: cursorY },
-        { width: itemWidth, height: rect.height }
+        rect
       ));
-      if (options.matchColumnWidths) widths.set(node.id, columnWidth);
       cursorY += rect.height + distributedRowGap;
     }
     cursorX += columnWidth + columnGap;
@@ -389,8 +395,62 @@ export function arrangeSelectionInColumns(
 
   return {
     positions,
-    widths,
     columns: columns.map((column) => column.map(({ node }) => node.id)),
+  };
+}
+
+/**
+ * Pack an arbitrary selection into rows without changing object sizes or the
+ * sequence supplied by the board. The widest compact row defines the shared
+ * outer span; shorter rows are horizontally distributed inside that span.
+ */
+export function arrangeSelectionInRows(
+  nodes: Node[],
+  options: RowArrangementOptions
+): RowArrangementResult {
+  const positions = new Map<string, Point>();
+  if (!nodes.length) return { positions, rows: [] };
+
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
+  const rowCount = Math.max(
+    1,
+    Math.min(nodes.length, Math.round(options.rowCount) || 1)
+  );
+  const rowCapacity = Math.ceil(entries.length / rowCount);
+  const rows = Array.from({ length: rowCount }, (_, rowIndex) => (
+    entries.slice(rowIndex * rowCapacity, (rowIndex + 1) * rowCapacity)
+  )).filter((row) => row.length > 0);
+  const left = Math.min(...rows.map((row) => row[0].rect.left));
+  const top = Math.min(...entries.map(({ rect }) => rect.top));
+  const columnGap = Math.max(0, options.columnGap ?? COMPACT_COLUMN_GAP);
+  const rowGap = Math.max(0, options.rowGap ?? COMPACT_SELECTION_GAP);
+  const sharedRowWidth = Math.max(...rows.map((row) => (
+    row.reduce((sum, { rect }) => sum + rect.width, 0)
+      + columnGap * Math.max(0, row.length - 1)
+  )));
+  let cursorY = top;
+
+  for (const row of rows) {
+    const rowHeight = Math.max(...row.map(({ rect }) => rect.height));
+    const occupiedWidth = row.reduce((sum, { rect }) => sum + rect.width, 0);
+    const distributedColumnGap = row.length > 1
+      ? (sharedRowWidth - occupiedWidth) / (row.length - 1)
+      : 0;
+    let cursorX = left;
+    for (const { node, rect } of row) {
+      positions.set(node.id, nodePositionFromTopLeft(
+        node,
+        { x: cursorX, y: cursorY },
+        rect
+      ));
+      cursorX += rect.width + distributedColumnGap;
+    }
+    cursorY += rowHeight + rowGap;
+  }
+
+  return {
+    positions,
+    rows: rows.map((row) => row.map(({ node }) => node.id)),
   };
 }
 
