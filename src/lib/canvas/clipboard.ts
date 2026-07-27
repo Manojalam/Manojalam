@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
+import { includeAttachedExternalNoteIds } from "./node-note";
 
 export const MANOJALAM_NODES_MIME = "application/x-manojalam-nodes";
 export const MANOJALAM_CLIPBOARD_VERSION = 1;
@@ -83,7 +84,8 @@ export function visibleBoardSelection(nodes: readonly Node[], edges: readonly Ed
 }
 
 /**
- * Expand selected hierarchy parents to their complete descendant branches.
+ * Expand selected hierarchy parents to their complete descendant branches and
+ * include every external text box owned by any copied shape.
  * Connections are copied only when both endpoints belong to the copied branch,
  * so the duplicate never remains attached to an object outside the selection.
  */
@@ -103,6 +105,9 @@ export function selectionWithHierarchyDescendants(
     for (const descendantId of getSubtree(selectedNodeId, hierarchy)) {
       copiedNodeIds.add(descendantId);
     }
+  }
+  for (const noteId of includeAttachedExternalNoteIds(nodes, [...copiedNodeIds])) {
+    copiedNodeIds.add(noteId);
   }
 
   return {
@@ -125,7 +130,8 @@ export function createManojalamClipboardPayload(
 }
 
 /**
- * Clone a node's complete data for duplication while remapping its selected hierarchy.
+ * Clone a node's complete data for duplication while remapping its selected
+ * hierarchy and owned annotations.
  */
 export function prepareDuplicatedNodeData(
   data: Record<string, unknown>,
@@ -160,6 +166,9 @@ export function prepareDuplicatedNodeData(
     const duplicatedId = idMap.get(referencedId);
     if (duplicatedId) next[field] = duplicatedId;
     else if (referencedId !== "__board__") delete next[field];
+  }
+  if (typeof next.noteForNodeId === "string" && idMap.has(next.noteForNodeId)) {
+    next.noteForNodeId = idMap.get(next.noteForNodeId)!;
   }
   if (originalId === parentId || mappedChildOrder.length === 0) delete next.layoutMode;
 
