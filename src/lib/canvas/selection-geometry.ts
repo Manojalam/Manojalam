@@ -335,9 +335,9 @@ export function pushNodesRightOfSelectionGrowth(
 
 /**
  * Pack an arbitrary selection into columns without changing the sequence
- * supplied by the board. The first and last cards define shared outer anchors;
- * cards inside every multi-item column are then vertically distributed between
- * those anchors with equal edge-to-edge gaps.
+ * supplied by the board. The tallest compact column defines the shared outer
+ * span; shorter multi-item columns are vertically distributed inside that span
+ * with equal edge-to-edge gaps.
  */
 export function arrangeSelectionInColumns(
   nodes: Node[],
@@ -358,14 +358,12 @@ export function arrangeSelectionInColumns(
   )).filter((column) => column.length > 0);
   const left = Math.min(...entries.map(({ rect }) => rect.left));
   const top = Math.min(...columns.map((column) => column[0].rect.top));
-  const bottom = Math.max(...columns.map((column) => column[column.length - 1].rect.bottom));
   const columnGap = Math.max(0, options.columnGap ?? COMPACT_COLUMN_GAP);
   const rowGap = Math.max(0, options.rowGap ?? COMPACT_SELECTION_GAP);
-  const minimumColumnHeight = Math.max(...columns.map((column) => (
+  const sharedColumnHeight = Math.max(...columns.map((column) => (
     column.reduce((sum, { rect }) => sum + rect.height, 0)
       + rowGap * Math.max(0, column.length - 1)
   )));
-  const sharedColumnHeight = Math.max(minimumColumnHeight, bottom - top);
   let cursorX = left;
 
   for (const column of columns) {

@@ -2263,7 +2263,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Tidy into columns</p>
                   <p className="text-[9px] leading-snug text-muted-foreground">
-                    Aligns the first and last cards to shared outer lines, then distributes each column vertically.
+                    Keeps normal gaps in the tallest column, aligns the outer cards, and distributes shorter columns evenly.
                   </p>
                 </div>
                 <div>
