@@ -21,7 +21,6 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
@@ -69,7 +68,6 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
     backgroundColor: fillColor,
   });
   const textRotation = normalizeTextRotation(dd.textRotation);
-  const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -174,7 +172,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
             "relative z-10 text-sm font-medium",
             editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
           )}>
-          <div ref={textRotationTargetRef} className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
+          <div className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
             <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
@@ -199,14 +197,6 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
             onBlur={commitEdit}
             />
           </div>
-          {selected && !editing && !isDrawing && !matrixCell && d.locked !== true && (
-            <TextRotationHandle
-              nodeId={id}
-              targetRef={textRotationTargetRef}
-              rotation={textRotation}
-              color={borderColor ?? nodeColor}
-            />
-          )}
         </div>
 
         {d.tags && d.tags.length > 0 && (

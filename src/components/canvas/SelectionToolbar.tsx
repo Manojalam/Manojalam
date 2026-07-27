@@ -57,6 +57,10 @@ import {
   resolveObjectRotation,
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
+import {
+  normalizeTextRotation,
+  supportsTextRotation,
+} from "@/lib/canvas/text-rotation";
 import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
 import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
 import {
@@ -213,6 +217,111 @@ function ShapeChanger({
   );
 }
 
+function RotationControls({
+  label,
+  description,
+  value,
+  inputKey,
+  separated = false,
+  applyUnchanged = false,
+  normalize,
+  onChange,
+  onChangeStart,
+  onChangeEnd,
+  onRotateBy,
+}: {
+  label: string;
+  description: string;
+  value: number;
+  inputKey: string;
+  separated?: boolean;
+  applyUnchanged?: boolean;
+  normalize: (value: number) => number;
+  onChange: (value: number) => void;
+  onChangeStart: () => void;
+  onChangeEnd: () => void;
+  onRotateBy: (delta: number) => void;
+}) {
+  return (
+    <div className={cn(separated && "mt-4 border-t border-border pt-3")}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold">{label}</p>
+          <p className="text-[10px] text-muted-foreground">{description}</p>
+        </div>
+        <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          Angle
+          <input
+            key={inputKey}
+            type="number"
+            min={-180}
+            max={180}
+            step={1}
+            defaultValue={value}
+            className="h-7 w-16 rounded-md border border-input bg-background px-2 text-right text-xs text-foreground"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            onBlur={(event) => {
+              const nextValue = Number(event.currentTarget.value);
+              if (
+                Number.isFinite(nextValue)
+                && (applyUnchanged || normalize(nextValue) !== value)
+              ) {
+                onChange(nextValue);
+              }
+              onChangeEnd();
+            }}
+          />
+        </label>
+      </div>
+      <input
+        aria-label={`${label} angle`}
+        type="range"
+        min={-180}
+        max={180}
+        step={1}
+        value={value}
+        className="h-1.5 w-full accent-primary"
+        onPointerDown={onChangeStart}
+        onPointerUp={onChangeEnd}
+        onPointerCancel={onChangeEnd}
+        onKeyDown={(event) => {
+          if (!event.repeat) onChangeStart();
+        }}
+        onKeyUp={onChangeEnd}
+        onChange={(event) => onChange(Number(event.currentTarget.value))}
+      />
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <button
+          type="button"
+          className="flex h-8 items-center justify-center gap-1 rounded-md border border-border text-xs hover:bg-muted"
+          onClick={() => onRotateBy(-90)}
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> 90°
+        </button>
+        <button
+          type="button"
+          className="h-8 rounded-md border border-border text-xs hover:bg-muted"
+          onClick={() => {
+            onChange(0);
+            onChangeEnd();
+          }}
+        >
+          Reset
+        </button>
+        <button
+          type="button"
+          className="flex h-8 items-center justify-center gap-1 rounded-md border border-border text-xs hover:bg-muted"
+          onClick={() => onRotateBy(90)}
+        >
+          <RotateCw className="h-3.5 w-3.5" /> 90°
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RotationPicker({ nodes }: { nodes: Node[] }) {
   const [open, setOpen] = useState(false);
   const historyCaptured = useRef(false);
@@ -220,14 +329,24 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
     node.type,
     (node.data ?? {}) as Record<string, unknown>
   ));
-  if (!rotatable.length) return null;
+  const textRotatable = nodes.length === 1
+    && supportsTextRotation(
+      nodes[0].type,
+      (nodes[0].data ?? {}) as Record<string, unknown>
+    )
+    ? nodes[0]
+    : null;
+  if (!rotatable.length && !textRotatable) return null;
 
   const rotations = rotatable.map((node) => resolveObjectRotation(
     node.type,
     (node.data ?? {}) as Record<string, unknown>
   ));
   const mixed = rotations.some((rotation) => rotation !== rotations[0]);
-  const displayedRotation = mixed ? 0 : rotations[0];
+  const displayedRotation = mixed ? 0 : rotations[0] ?? 0;
+  const displayedTextRotation = normalizeTextRotation(
+    (textRotatable?.data as Record<string, unknown> | undefined)?.textRotation
+  );
   const selectedIds = new Set(rotatable.map((node) => node.id));
 
   const captureHistory = () => {
@@ -269,6 +388,43 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
       saveStatus: "unsaved",
     }));
   };
+  const applyTextAbsolute = (value: number) => {
+    if (!textRotatable) return;
+    captureHistory();
+    const textRotation = normalizeTextRotation(value);
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => node.id === textRotatable.id
+        ? { ...node, data: { ...(node.data ?? {}), textRotation } }
+        : node),
+      saveStatus: "unsaved",
+    }));
+  };
+  const rotateTextBy = (delta: number) => {
+    if (!textRotatable) return;
+    historyCaptured.current = false;
+    useCanvasStore.getState().pushHistory();
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => node.id === textRotatable.id
+        ? {
+            ...node,
+            data: {
+              ...(node.data ?? {}),
+              textRotation: normalizeTextRotation(
+                normalizeTextRotation(
+                  ((node.data ?? {}) as Record<string, unknown>).textRotation
+                ) + delta
+              ),
+            },
+          }
+        : node),
+      saveStatus: "unsaved",
+    }));
+  };
+  const pickerTitle = textRotatable
+    ? `Rotation (object ${displayedRotation}°, text ${displayedTextRotation}°)`
+    : mixed
+      ? "Rotate selected objects (mixed angles)"
+      : `Rotate object (${displayedRotation}°)`;
 
   return (
     <Popover open={open} onOpenChange={(next) => {
@@ -278,14 +434,15 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          title={mixed ? "Rotate selected objects (mixed angles)" : `Rotate object (${displayedRotation}°)`}
-          aria-label="Rotate selected objects"
+          title={pickerTitle}
+          aria-label={textRotatable ? "Rotate object or text" : "Rotate selected objects"}
           aria-expanded={open}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           className={cn(
             "relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            (mixed || displayedRotation !== 0) && "bg-primary/10 text-primary"
+            (mixed || displayedRotation !== 0 || displayedTextRotation !== 0)
+              && "bg-primary/10 text-primary"
           )}
         >
           <RotateCw className="h-4 w-4" />
@@ -299,80 +456,36 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
         className="nodrag nopan w-72 p-3"
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold">Object rotation</p>
-            <p className="text-[10px] text-muted-foreground">
-              {mixed ? "Mixed angles — moving the slider makes them equal." : `${displayedRotation}°`}
-            </p>
-          </div>
-          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            Angle
-            <input
-              key={`${rotatable.map((node) => node.id).join("-")}-${mixed ? "mixed" : displayedRotation}`}
-              type="number"
-              min={-180}
-              max={180}
-              step={1}
-              defaultValue={displayedRotation}
-              className="h-7 w-16 rounded-md border border-input bg-background px-2 text-right text-xs text-foreground"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-              onBlur={(event) => {
-                const value = Number(event.currentTarget.value);
-                if (Number.isFinite(value) && (mixed || normalizeObjectRotation(value) !== displayedRotation)) {
-                  applyAbsolute(value);
-                }
-                finishChange();
-              }}
-            />
-          </label>
-        </div>
-        <input
-          aria-label="Object rotation angle"
-          type="range"
-          min={-180}
-          max={180}
-          step={1}
-          value={displayedRotation}
-          className="h-1.5 w-full accent-primary"
-          onPointerDown={captureHistory}
-          onPointerUp={finishChange}
-          onPointerCancel={finishChange}
-          onKeyDown={(event) => {
-            if (!event.repeat) captureHistory();
-          }}
-          onKeyUp={finishChange}
-          onChange={(event) => applyAbsolute(Number(event.currentTarget.value))}
-        />
-        <div className="mt-3 grid grid-cols-3 gap-1.5">
-          <button
-            type="button"
-            className="flex h-8 items-center justify-center gap-1 rounded-md border border-border text-xs hover:bg-muted"
-            onClick={() => rotateBy(-90)}
-          >
-            <RotateCcw className="h-3.5 w-3.5" /> 90°
-          </button>
-          <button
-            type="button"
-            className="h-8 rounded-md border border-border text-xs hover:bg-muted"
-            onClick={() => {
-              historyCaptured.current = false;
-              applyAbsolute(0);
-              finishChange();
-            }}
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            className="flex h-8 items-center justify-center gap-1 rounded-md border border-border text-xs hover:bg-muted"
-            onClick={() => rotateBy(90)}
-          >
-            <RotateCw className="h-3.5 w-3.5" /> 90°
-          </button>
-        </div>
+        {rotatable.length > 0 && (
+          <RotationControls
+            label="Object rotation"
+            description={mixed
+              ? "Mixed angles — moving the slider makes them equal."
+              : `${displayedRotation}°`}
+            value={displayedRotation}
+            inputKey={`${rotatable.map((node) => node.id).join("-")}-${mixed ? "mixed" : displayedRotation}`}
+            applyUnchanged={mixed}
+            normalize={normalizeObjectRotation}
+            onChange={applyAbsolute}
+            onChangeStart={captureHistory}
+            onChangeEnd={finishChange}
+            onRotateBy={rotateBy}
+          />
+        )}
+        {textRotatable && (
+          <RotationControls
+            label="Text rotation"
+            description={`${displayedTextRotation}°`}
+            value={displayedTextRotation}
+            inputKey={`${textRotatable.id}-${displayedTextRotation}`}
+            separated={rotatable.length > 0}
+            normalize={normalizeTextRotation}
+            onChange={applyTextAbsolute}
+            onChangeStart={captureHistory}
+            onChangeEnd={finishChange}
+            onRotateBy={rotateTextBy}
+          />
+        )}
       </PopoverContent>
     </Popover>
   );

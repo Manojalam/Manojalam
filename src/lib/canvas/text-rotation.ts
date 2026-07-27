@@ -3,6 +3,23 @@ import type { CSSProperties } from "react";
 export const TEXT_ROTATION_MIN = -180;
 export const TEXT_ROTATION_MAX = 180;
 
+const TEXT_ROTATION_NODE_TYPES = new Set([
+  "mindmap",
+  "shape",
+  "sticky",
+  "text",
+]);
+
+export function supportsTextRotation(
+  nodeType: string | null | undefined,
+  data: Record<string, unknown> | null | undefined
+): boolean {
+  return !!nodeType
+    && TEXT_ROTATION_NODE_TYPES.has(nodeType)
+    && data?.matrixCell !== true
+    && data?.locked !== true;
+}
+
 /** Keep user-authored text rotation in the same signed range as object rotation. */
 export function normalizeTextRotation(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;

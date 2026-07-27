@@ -28,7 +28,6 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -96,7 +95,6 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
     backgroundColor: bg,
   });
   const textRotation = normalizeTextRotation(dd.textRotation);
-  const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
   const editHistoryCaptured = useRef(false);
   const editDirty = useRef(false);
@@ -215,7 +213,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
           )}
           style={{ color: "#374151" }}>
-          <div ref={textRotationTargetRef} className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
+          <div className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
             <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
@@ -240,14 +238,6 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             onBlur={finishEditing}
             />
           </div>
-          {selected && !editing && !isDrawing && !matrixCell && d.locked !== true && (
-            <TextRotationHandle
-              nodeId={id}
-              targetRef={textRotationTargetRef}
-              rotation={textRotation}
-              color={border}
-            />
-          )}
         </div>
         </div>
       </div>
