@@ -31,6 +31,7 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
       <div className="relative h-full w-full">
         {!d.locked && <NodeQuickActions nodeId={id} color={d.color ?? "#6366f1"} selected={selected} />}
         <div
+        data-export-board-dependent-background={isMatrixFrame ? "true" : undefined}
         className={cn(
           "absolute inset-0",
           isMatrixGrid ? "" : isMatrixFrame ? "border" : "rounded-xl border-2",
