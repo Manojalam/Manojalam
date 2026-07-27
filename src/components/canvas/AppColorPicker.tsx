@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
 } from "react";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -30,6 +30,8 @@ interface ColorPickerPanelProps {
   extraColors?: string[];
   className?: string;
   showHeading?: boolean;
+  onCancel?: () => void;
+  stickyActions?: boolean;
 }
 
 function ColorSwatch({
@@ -76,6 +78,8 @@ export function ColorPickerPanel({
   extraColors = [],
   className,
   showHeading = true,
+  onCancel,
+  stickyActions = false,
 }: ColorPickerPanelProps) {
   const exactColorInputId = useId();
   const normalizedValue = normalizeHexColor(value);
@@ -252,7 +256,16 @@ export function ColorPickerPanel({
         </section>
       )}
 
-      <section className="space-y-2" aria-label="Exact color">
+      <section
+        className={cn(
+          "space-y-2",
+          stickyActions && [
+            "sticky bottom-0 z-20 -mx-3 -mb-3 border-t border-border bg-popover/95 p-3 pt-2",
+            "shadow-[0_-10px_18px_-16px_rgba(0,0,0,0.75)] backdrop-blur",
+          ]
+        )}
+        aria-label="Exact color"
+      >
         <div className="flex items-end gap-1.5">
           <span
             className="h-8 w-9 flex-none rounded-md border border-black/20 shadow-sm"
@@ -310,15 +323,28 @@ export function ColorPickerPanel({
             </label>
           ))}
         </div>
-        <button
-          type="button"
-          title="Apply color"
-          onClick={() => onChange(draftColor)}
-          className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          <Check className="h-3.5 w-3.5" />
-          Apply color
-        </button>
+        <div className={cn("grid gap-1.5", onCancel ? "grid-cols-[auto_1fr]" : "grid-cols-1")}>
+          {onCancel && (
+            <button
+              type="button"
+              title="Cancel color selection"
+              onClick={onCancel}
+              className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            title="Apply color"
+            onClick={() => onChange(draftColor)}
+            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Check className="h-3.5 w-3.5" />
+            Apply color
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -374,12 +400,16 @@ export function AppColorPicker({
         align={align}
         side={side}
         sideOffset={sideOffset}
-        className={cn("max-h-[min(80vh,36rem)] w-[19rem] overflow-y-auto p-3", contentClassName)}
+        collisionPadding={8}
+        className={cn("w-[19rem] overflow-y-auto overscroll-contain p-3", contentClassName)}
+        style={{ maxHeight: "min(36rem, var(--radix-popover-content-available-height))" }}
       >
         <ColorPickerPanel
           value={value}
           extraColors={allRecentColors}
           onChange={chooseColor}
+          onCancel={() => setOpenState(false)}
+          stickyActions
         />
       </PopoverContent>
     </Popover>

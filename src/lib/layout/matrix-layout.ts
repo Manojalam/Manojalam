@@ -152,13 +152,16 @@ function nonNegativeNumber(value: unknown): number | null {
 }
 
 /**
- * Exact cell dimensions conflict with scaling the same table axis, so changing
- * one releases that axis from an overall-size override. Sibling spacing does
- * not: it must reflow inside the table's existing outer dimensions.
+ * Exact cell dimensions normally release the same overall table axis so the
+ * entered cell size can remain exact. When overall size is locked, the table
+ * axis stays fixed and the entered cell size instead changes its share of the
+ * available space.
  */
 export function matrixTableOverrideResetAxes(
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  tableSizeLocked = false
 ): { width: boolean; height: boolean } {
+  if (tableSizeLocked) return { width: false, height: false };
   return {
     width: positiveNumber(patch.matrixWidthOverride) !== null,
     height: positiveNumber(patch.matrixHeightOverride) !== null,
@@ -356,10 +359,17 @@ function wrappedLineCount(text: string, charsPerLine: number): number {
   return Math.max(1, count);
 }
 
-function preferredCellWidth(node: Node, column: number, settings: DensitySettings): number {
+function preferredCellWidth(
+  node: Node,
+  column: number,
+  settings: DensitySettings,
+  includeUserOverride = true
+): number {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const userWidth = positiveNumber(data.matrixWidthOverride);
-  if (userWidth) return Math.ceil(clamp(userWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH));
+  if (includeUserOverride && userWidth) {
+    return Math.ceil(clamp(userWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH));
+  }
   const text = nodeText(node);
   const { charWidth } = fontMetrics(node);
   const words = text.split(/\s+/).filter(Boolean);
@@ -1163,6 +1173,7 @@ function computeOrientedMatrixLayout(
   spanMap: Map<string, MatrixLogicalSpan>,
   duplicateNodeIds: Set<string>,
   columnWidths: number[],
+  automaticColumnWidths: number[],
   density: MatrixTableDensity,
   settings: DensitySettings,
   tableX: number,
@@ -1201,7 +1212,7 @@ function computeOrientedMatrixLayout(
     const exactHeight = positiveNumber(data.matrixHeightOverride);
     const width = exactWidth
       ? Math.ceil(clamp(exactWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH))
-      : columnWidths[column] ?? preferredCellWidth(node, column, settings);
+      : automaticColumnWidths[column] ?? preferredCellWidth(node, column, settings, false);
     const ownRequiredHeight = requiredCellHeight(node, width, settings);
     const nextAncestors = new Set(ancestors).add(nodeId);
     const children = visibleChildren(nodeId, hierarchy, byId)
@@ -1494,6 +1505,17 @@ export function computeMatrixLayout(
     const minimum = column === 0 ? MATRIX_FIRST_COLUMN_MIN_WIDTH : MATRIX_MIN_COLUMN_WIDTH;
     return Math.max(minimum, ...nodes.map((node) => preferredCellWidth(node, column, settings)));
   });
+  const automaticColumnWidths = Array.from({ length: columnCount }, (_, column) => {
+    const nodes = [...spanMap.values()]
+      .filter((span) => span.column === column)
+      .map((span) => byId.get(span.nodeId))
+      .filter((node): node is Node => !!node);
+    const minimum = column === 0 ? MATRIX_FIRST_COLUMN_MIN_WIDTH : MATRIX_MIN_COLUMN_WIDTH;
+    return Math.max(
+      minimum,
+      ...nodes.map((node) => preferredCellWidth(node, column, settings, false))
+    );
+  });
   if (columnWidths.length) {
     const naturalBodyWidth = columnWidths.reduce((sum, width) => sum + width, 0)
       + settings.cellGap * (columnWidths.length - 1);
@@ -1532,6 +1554,7 @@ export function computeMatrixLayout(
       spanMap,
       duplicateNodeIds,
       columnWidths,
+      automaticColumnWidths,
       density,
       settings,
       tableX,

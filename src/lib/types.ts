@@ -507,6 +507,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixTableWidthOverride?: number;
   /** Exact overall height for the composed Matrix, stored on the Matrix root. */
   matrixTableHeightOverride?: number;
+  /** Keeps overall Matrix dimensions fixed while individual cells are resized. */
+  matrixTableSizeLocked?: boolean;
   /** Normal editable size retained while a structured layout owns the rendered cell size. */
   userSize?: { width: number; height: number };
   /** Controls how authored text and manually chosen node dimensions interact. */

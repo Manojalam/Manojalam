@@ -3012,7 +3012,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const matrixRootId = sourceData.layoutMode === "matrix"
         ? sourceNode.id
         : typeof sourceData.matrixRootId === "string" ? sourceData.matrixRootId : null;
-      const resetTableAxes = matrixTableOverrideResetAxes(data);
+      const matrixRootData = matrixRootId
+        ? (state.nodes.find((node) => node.id === matrixRootId)?.data ?? {}) as Record<string, unknown>
+        : {};
+      const resetTableAxes = matrixTableOverrideResetAxes(
+        data,
+        matrixRootData.matrixTableSizeLocked === true
+      );
       const nodes = state.nodes.map((node) => {
         let nextData = node.data;
         let changed = false;
@@ -3162,11 +3168,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         : currentSize.width;
       const resize = resolveMatrixCellResize(currentSize, currentColumnWidth, size);
       if (!resize.resetTableWidth && !resize.resetTableHeight) return;
+      const matrixRootId = nodeData.layoutMode === "matrix"
+        ? nodeId
+        : typeof nodeData.matrixRootId === "string" ? nodeData.matrixRootId : null;
+      const matrixRootData = matrixRootId
+        ? (get().nodes.find((item) => item.id === matrixRootId)?.data ?? {}) as Record<string, unknown>
+        : {};
+      const tableSizeLocked = matrixRootData.matrixTableSizeLocked === true;
       set((state) => ({
         nodes: state.nodes.map((candidate) => {
-          const matrixRootId = nodeData.layoutMode === "matrix"
-            ? nodeId
-            : typeof nodeData.matrixRootId === "string" ? nodeData.matrixRootId : null;
           let nextData = candidate.data;
           let changed = false;
           if (candidate.id === nodeId) {
@@ -3177,7 +3187,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             };
             changed = true;
           }
-          if (matrixRootId && candidate.id === matrixRootId) {
+          if (matrixRootId && candidate.id === matrixRootId && !tableSizeLocked) {
             nextData = {
               ...nextData,
               ...(resize.resetTableWidth ? { matrixTableWidthOverride: undefined } : {}),
