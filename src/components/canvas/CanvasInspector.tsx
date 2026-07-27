@@ -5114,18 +5114,37 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={(v) => setField("fillColor", v || undefined)}
               onClear={() => setField("fillColor", "transparent")}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 w-full gap-1.5 text-[10px]"
-              disabled={!borderMatchedFillColor(resolveBorderColor(d))}
-              title="Set the fill to a lighter shade of the border"
-              onClick={() => syncSelectedFillToBorder([selectedNode])}
-            >
-              <RefreshCw className="h-3 w-3" />
-              Match border
-            </Button>
+            <div className={cn(
+              "grid gap-1.5",
+              matrixRootNode && parentNode ? "grid-cols-2" : "grid-cols-1"
+            )}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-[10px]"
+                disabled={!borderMatchedFillColor(resolveBorderColor(d))}
+                title="Set the fill to a lighter shade of the border"
+                onClick={() => syncSelectedFillToBorder([selectedNode])}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Match border
+              </Button>
+              {matrixRootNode && parentNode && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-[10px]"
+                  disabled={d.layoutAutoFill !== false}
+                  title="Remove this fill override and derive its color from the parent"
+                  onClick={() => setField("layoutAutoFill", undefined)}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Use parent color
+                </Button>
+              )}
+            </div>
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
