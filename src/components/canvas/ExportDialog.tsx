@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { resolveExportTargetWithBounds } from "@/lib/export/bounds";
+import { resolveExportTarget, resolveExportTargetWithBounds } from "@/lib/export/bounds";
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore, type BoardExportRequest } from "@/store/ui-store";
 
-type DialogScope = "board" | "selection" | "frame";
+type DialogScope = "board" | "selection" | "subtree" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 type OpaqueFallback = "black" | "white";
 
@@ -49,8 +49,13 @@ function formatScale(value: number): string {
   return `${formatted}×`;
 }
 
-function requestInitialScope(request: BoardExportRequest, hasSelection: boolean): DialogScope {
+function requestInitialScope(
+  request: BoardExportRequest,
+  hasSelection: boolean,
+  hasSubtree: boolean
+): DialogScope {
   if (request.scope === "frame") return "frame";
+  if (request.scope === "subtree") return hasSubtree ? "subtree" : "selection";
   if (request.scope === "node" || request.scope === "selection") return "selection";
   return request.scope === "board" ? "board" : hasSelection ? "selection" : "board";
 }
@@ -84,11 +89,25 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const requestedNodeIds = request.nodeIds?.length ? request.nodeIds : selectedNodeIds;
   const requestedEdgeIds = request.scope === "node" ? EMPTY_IDS : selectedEdgeIds;
   const hasSelection = requestedNodeIds.length > 0 || requestedEdgeIds.length > 0;
+  const subtreeRootId = requestedNodeIds.length === 1 ? requestedNodeIds[0] : null;
+  const subtreeTarget = useMemo(() => {
+    if (!subtreeRootId) return null;
+    try {
+      return resolveExportTarget(
+        { kind: "subtree", rootId: subtreeRootId },
+        nodes,
+        edges
+      );
+    } catch {
+      return null;
+    }
+  }, [edges, nodes, subtreeRootId]);
+  const hasSubtree = !!subtreeTarget?.nodeIds.some((nodeId) => nodeId !== subtreeRootId);
   const selectedFrameId = request.frameId
     ?? nodes.find((node) => requestedNodeIds.includes(node.id) && node.type === "frame")?.id;
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [scopeKind, setScopeKind] = useState<DialogScope>(() =>
-    requestInitialScope(request, hasSelection)
+    requestInitialScope(request, hasSelection, hasSubtree)
   );
   const requestedFormat = request.format ?? "png";
   const [format, setFormat] = useState<ExportFormat>(requestedFormat);
@@ -115,12 +134,15 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     if (scopeKind === "frame") {
       return selectedFrameId ? { kind: "frame", frameId: selectedFrameId } : null;
     }
+    if (scopeKind === "subtree") {
+      return subtreeRootId ? { kind: "subtree", rootId: subtreeRootId } : null;
+    }
     return {
       kind: "selection",
       nodeIds: requestedNodeIds,
       edgeIds: requestedEdgeIds,
     };
-  }, [requestedEdgeIds, requestedNodeIds, scopeKind, selectedFrameId]);
+  }, [requestedEdgeIds, requestedNodeIds, scopeKind, selectedFrameId, subtreeRootId]);
 
   const resolved = useMemo(() => {
     if (!root || !exportScope) return { value: null, error: null };
@@ -271,18 +293,26 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         <div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain px-6 py-5 touch-pan-y">
           <section className="space-y-2.5">
             <Label className="text-xs">Content</Label>
-            <div className="grid grid-cols-3 gap-2" role="group" aria-label="Export content scope">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Export content scope">
               {([
-                ["board", "Whole board"],
-                ["selection", "Selection"],
-                ["frame", "Selected frame"],
-              ] as Array<[DialogScope, string]>).map(([value, label]) => {
-                const disabled = value === "selection" ? !hasSelection : value === "frame" ? !selectedFrameId : false;
+                ["board", "Whole board", "Export every visible board object"],
+                ["selection", "Selection", "Export only the selected objects"],
+                ["subtree", "Parent + children", "Include visible descendants, attached text notes, and internal connections"],
+                ["frame", "Selected frame", "Export the selected frame and its visible contents"],
+              ] as Array<[DialogScope, string, string]>).map(([value, label, title]) => {
+                const disabled = value === "selection"
+                  ? !hasSelection
+                  : value === "subtree"
+                    ? !hasSubtree
+                    : value === "frame"
+                      ? !selectedFrameId
+                      : false;
                 return (
                   <button
                     key={value}
                     type="button"
                     disabled={disabled}
+                    title={title}
                     aria-pressed={scopeKind === value}
                     onClick={() => setScopeKind(value)}
                     className={cn(
@@ -300,6 +330,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <p className="text-[10px] text-muted-foreground">
                 {resolved.value.target.nodeIds.length} visible node{resolved.value.target.nodeIds.length === 1 ? "" : "s"}
                 {" · "}{resolved.value.target.edgeIds.length} connection{resolved.value.target.edgeIds.length === 1 ? "" : "s"}
+              </p>
+            )}
+            {scopeKind === "subtree" && hasSubtree && (
+              <p className="text-[10px] text-muted-foreground">
+                Includes the parent, all visible descendants, attached text notes, and connections within the branch.
               </p>
             )}
           </section>

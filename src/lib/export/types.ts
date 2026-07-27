@@ -1,12 +1,16 @@
 export type ExportFormat = "png" | "jpg" | "svg" | "pdf";
 
-export type ExportScopeKind = "selection" | "frame" | "board";
+export type ExportScopeKind = "selection" | "subtree" | "frame" | "board";
 
 export type ExportScope =
   | {
       kind: "selection";
       nodeIds: string[];
       edgeIds?: string[];
+    }
+  | {
+      kind: "subtree";
+      rootId: string;
     }
   | {
       kind: "frame";

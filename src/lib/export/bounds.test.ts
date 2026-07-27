@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 
 import { computeTightExportBounds, resolveExportTarget } from "./bounds";
 
@@ -23,6 +23,91 @@ function mockElement({
     matches: () => false,
   };
 }
+
+test("selected subtree includes descendants, attached text, and internal connections", () => {
+  const nodes: Node[] = [
+    {
+      id: "parent",
+      position: { x: 0, y: 0 },
+      data: { parentId: null, childOrder: ["child"] },
+    },
+    {
+      id: "child",
+      position: { x: 100, y: 0 },
+      data: { parentId: "parent", childOrder: ["grandchild"] },
+    },
+    {
+      id: "grandchild",
+      position: { x: 200, y: 0 },
+      data: { parentId: "child", text: "Grandchild text" },
+    },
+    {
+      id: "child-note",
+      type: "text",
+      position: { x: 100, y: 100 },
+      data: {
+        parentId: null,
+        externalNote: true,
+        noteForNodeId: "child",
+        text: "Attached explanation",
+      },
+    },
+    {
+      id: "hidden-child",
+      position: { x: 300, y: 0 },
+      data: { parentId: "parent", text: "Hidden child" },
+      hidden: true,
+    },
+    {
+      id: "hidden-child-note",
+      type: "text",
+      position: { x: 300, y: 100 },
+      data: {
+        parentId: null,
+        externalNote: true,
+        noteForNodeId: "hidden-child",
+        text: "Note for hidden child",
+      },
+    },
+    {
+      id: "other-parent",
+      position: { x: 0, y: 200 },
+      data: { parentId: null, childOrder: ["outside"] },
+    },
+    {
+      id: "outside",
+      position: { x: 100, y: 200 },
+      data: { parentId: "other-parent" },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "parent-child", source: "parent", target: "child" },
+    { id: "child-grandchild", source: "child", target: "grandchild" },
+    { id: "internal-cross-link", source: "parent", target: "grandchild" },
+    { id: "hidden-branch", source: "parent", target: "hidden-child" },
+    { id: "external-cross-link", source: "parent", target: "outside" },
+    { id: "other-branch", source: "other-parent", target: "outside" },
+  ];
+
+  const target = resolveExportTarget(
+    { kind: "subtree", rootId: "parent" },
+    nodes,
+    edges
+  );
+
+  assert.equal(target.scopeKind, "subtree");
+  assert.deepEqual(target.nodeIds, [
+    "parent",
+    "child",
+    "grandchild",
+    "child-note",
+  ]);
+  assert.deepEqual(target.edgeIds, [
+    "parent-child",
+    "child-grandchild",
+    "internal-cross-link",
+  ]);
+});
 
 test("live chart DOM bounds replace stale React Flow measurements", () => {
   const node: Node = {

@@ -24,7 +24,7 @@ export interface RelationshipDiagramRequest {
 }
 
 export interface BoardExportRequest {
-  scope?: "board" | "selection" | "frame" | "node";
+  scope?: "board" | "selection" | "subtree" | "frame" | "node";
   nodeIds?: string[];
   frameId?: string;
   format?: ExportFormat;
