@@ -66,6 +66,7 @@ import { boardTextureStyle } from "@/lib/canvas/board-textures";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import {
   isExternalNoteNode,
+  preserveAttachedExternalNoteOffsets,
 } from "@/lib/canvas/node-note";
 import { planNodeDragMovement } from "@/lib/canvas/drag-movement";
 import { findReparentDropTarget } from "@/lib/canvas/reparent-drop-target";
@@ -535,7 +536,10 @@ function VidyaCanvasInner({
         const dimensionChanges = changes.filter((change) => change.type === "dimensions");
         if (dimensionChanges.length) {
           useCanvasStore.setState((state) => ({
-            nodes: applySynchronizedNodeChanges(dimensionChanges, state.nodes),
+            nodes: preserveAttachedExternalNoteOffsets(
+              state.nodes,
+              applySynchronizedNodeChanges(dimensionChanges, state.nodes)
+            ),
           }));
         }
         return;
@@ -567,7 +571,10 @@ function VidyaCanvasInner({
       } else {
         // Dimension / position / select — update nodes WITHOUT touching saveStatus
         useCanvasStore.setState((state) => ({
-          nodes: applySynchronizedNodeChanges(acceptedChanges, state.nodes),
+          nodes: preserveAttachedExternalNoteOffsets(
+            state.nodes,
+            applySynchronizedNodeChanges(acceptedChanges, state.nodes)
+          ),
         }));
       }
 
@@ -782,7 +789,7 @@ function VidyaCanvasInner({
         return node;
       });
       return {
-        nodes: nextNodes,
+        nodes: preserveAttachedExternalNoteOffsets(current.nodes, nextNodes),
         edges: refreshConnectorJunctionHandles(nextNodes, current.edges, movingJunctionIds),
       };
     });
@@ -1243,11 +1250,14 @@ function VidyaCanvasInner({
       const candidateNodes = [...state.nodes, newNode];
       const placements = resolveInsertedNodeCollisions(candidateNodes, id);
       return {
-        nodes: candidateNodes.map((node) => ({
-          ...node,
-          selected: node.id === id,
-          ...(placements[node.id] ? { position: placements[node.id] } : {}),
-        })),
+        nodes: preserveAttachedExternalNoteOffsets(
+          state.nodes,
+          candidateNodes.map((node) => ({
+            ...node,
+            selected: node.id === id,
+            ...(placements[node.id] ? { position: placements[node.id] } : {}),
+          }))
+        ),
         edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
         selectedNodeIds: [id],
         selectedEdgeIds: [],
@@ -1412,9 +1422,12 @@ function VidyaCanvasInner({
         const dy = e.key === "ArrowUp" ? -amount : e.key === "ArrowDown" ? amount : 0;
         const selected = new Set(cs.selectedNodeIds);
         useCanvasStore.setState((state) => ({
-          nodes: state.nodes.map((node) => selected.has(node.id)
-            ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } }
-            : node),
+          nodes: preserveAttachedExternalNoteOffsets(
+            state.nodes,
+            state.nodes.map((node) => selected.has(node.id)
+              ? { ...node, position: { x: node.position.x + dx, y: node.position.y + dy } }
+              : node)
+          ),
           saveStatus: "unsaved",
         }));
       }

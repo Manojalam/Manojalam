@@ -105,7 +105,10 @@ import {
 } from "@/lib/canvas/board-colors";
 import { normalizeBoardTexture } from "@/lib/canvas/board-textures";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
-import { createExternalNoteNode } from "@/lib/canvas/node-note";
+import {
+  createExternalNoteNode,
+  preserveAttachedExternalNoteOffsets,
+} from "@/lib/canvas/node-note";
 import {
   deleteNodesPreservingHierarchy,
   hierarchyDeletionNodeIds,
@@ -384,7 +387,7 @@ function normalizeRelationshipState(
 }
 
 function applyPlacements(nodes: Node[], placements: Record<string, LayoutPlacement>): Node[] {
-  return nodes.map((n) => {
+  const placedNodes = nodes.map((n) => {
     const placement = placements[n.id];
     if (!placement) return n;
     const nextStyle = placement.width || placement.height
@@ -396,6 +399,7 @@ function applyPlacements(nodes: Node[], placements: Record<string, LayoutPlaceme
       style: nextStyle,
     };
   });
+  return preserveAttachedExternalNoteOffsets(nodes, placedNodes);
 }
 
 function storedNodeSize(value: unknown): { width: number; height: number } | null {
@@ -1895,7 +1899,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setNodes: (nodesOrFn) =>
     set((state) => {
-      const nodes = typeof nodesOrFn === "function" ? nodesOrFn(state.nodes) : nodesOrFn;
+      const requestedNodes = typeof nodesOrFn === "function" ? nodesOrFn(state.nodes) : nodesOrFn;
+      const nodes = preserveAttachedExternalNoteOffsets(state.nodes, requestedNodes);
       const relationshipState = normalizeRelationshipState(
         nodes,
         state.relationships,
@@ -3504,7 +3509,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           return { ...node, position: { x: placement.x, y: placement.y } };
         });
       }
-      if (changed || rootIds.size) set({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
+      if (changed || rootIds.size) {
+        set({
+          nodes: preserveAttachedExternalNoteOffsets(state.nodes, nextNodes),
+          edges: nextEdges,
+          saveStatus: "unsaved",
+        });
+      }
     }, 96);
   },
 
@@ -3605,7 +3616,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const geometryChanged = [...rootIds].some((rootId) => matrixGeometryChanged(state.nodes, nextNodes, rootId));
       const edgesChanged = nextEdges.some((edge, index) => edge !== state.edges[index]);
       if (geometryChanged || edgesChanged || siblingSpacingChanged) {
-        set({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
+        set({
+          nodes: preserveAttachedExternalNoteOffsets(state.nodes, nextNodes),
+          edges: nextEdges,
+          saveStatus: "unsaved",
+        });
       }
     }, 140);
   },
@@ -3679,7 +3694,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           return nextNode;
         });
       }
-      if (changed || roots.size) set({ nodes, edges: nextEdges, saveStatus: "unsaved" });
+      if (changed || roots.size) {
+        set({
+          nodes: preserveAttachedExternalNoteOffsets(state.nodes, nodes),
+          edges: nextEdges,
+          saveStatus: "unsaved",
+        });
+      }
     }, 96);
   },
 
@@ -3940,7 +3961,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ? packSiblingsAfterNestedMatrix(selectedNodes, hierarchy, rootId)
       : selectedNodes;
     set({
-      nodes: spacedNodes,
+      nodes: preserveAttachedExternalNoteOffsets(nodes, spacedNodes),
       edges: mode === "matrix"
         ? paletteResult.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
         : paletteResult.edges,
