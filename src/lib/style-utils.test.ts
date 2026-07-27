@@ -48,23 +48,50 @@ test("every Matrix cell retains a visible outline", () => {
     borderWidth: 0,
     matrixCell: true,
     matrixGridVisible: true,
-  }), 1.5);
+  }), 2.5);
   assert.equal(resolveBorderWidth({
     borderWidth: 0,
     matrixCell: true,
     matrixGridVisible: false,
-  }), 1.5);
+  }), 2.5);
   assert.equal(resolveBorderWidth({
     borderWidth: 3,
     matrixCell: true,
     matrixGridVisible: true,
   }), 3);
   assert.equal(resolveBorderColor({
+    fillColor: "#4ca45e",
+    fillOpacity: 1,
+    borderColor: "#4ca45e",
+    layoutAutoFill: false,
+    layoutAutoBorder: false,
+    matrixCell: true,
+  }), "#111827");
+  assert.equal(resolveBorderColor({
+    layoutVisualStyle: {
+      ...automaticLayoutStyle,
+      fillColor: "hsl(132, 58%, 47%)",
+      borderColor: "hsla(132, 48%, 29%, 0.62)",
+    },
+    matrixCell: true,
+  }), "#111827");
+  assert.equal(resolveBorderColor({
+    fillColor: "#111827",
+    fillOpacity: 1,
     borderColor: "transparent",
+    layoutAutoFill: false,
     layoutAutoBorder: false,
     layoutVisualStyle: automaticLayoutStyle,
     matrixCell: true,
-  }), automaticLayoutStyle.borderColor);
+  }), "#f8fafc");
+  assert.equal(resolveBorderColor({
+    fillColor: "#ffffff",
+    fillOpacity: 1,
+    borderColor: "#111827",
+    layoutAutoFill: false,
+    layoutAutoBorder: false,
+    matrixCell: true,
+  }), "#111827");
 });
 
 test("fill controls report the effective automatic color and opacity", () => {

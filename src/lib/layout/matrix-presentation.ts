@@ -1,7 +1,7 @@
 export type MatrixCellRole = "header" | "category" | "cell";
 
-/** Keep Matrix divisions legible at normal canvas and export scales. */
-export const MATRIX_DIVISION_BORDER_MIN_WIDTH = 1.5;
+/** Keep every Matrix cell outline legible at normal canvas and export scales. */
+export const MATRIX_DIVISION_BORDER_MIN_WIDTH = 2.5;
 export const MATRIX_DIVISION_FRAME_BORDER_WIDTH = 2;
 export const MATRIX_DIVISION_FRAME_RADIUS = 16;
 
