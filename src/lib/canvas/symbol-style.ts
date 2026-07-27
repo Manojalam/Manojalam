@@ -3,9 +3,19 @@ import {
   type SemanticSymbolId,
   type SymbolAppearance,
 } from "../text-tools";
+import { automaticNodeTextColor } from "../style-utils";
 
 export interface SymbolMarkAttributes extends SymbolAppearance {
   semanticId?: SemanticSymbolId | null;
+}
+
+export function defaultEnclosedSymbolTextColor(
+  appearance: Pick<SymbolAppearance, "enclosure" | "fillColor">
+): string | undefined {
+  const normalized = normalizeSymbolAppearance(appearance);
+  return normalized.enclosure !== "none" && normalized.fillColor
+    ? automaticNodeTextColor(normalized.fillColor)
+    : undefined;
 }
 
 export function semanticSymbolRotation(semanticId?: SemanticSymbolId | null): number {

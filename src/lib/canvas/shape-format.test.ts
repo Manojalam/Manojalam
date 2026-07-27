@@ -25,13 +25,13 @@ test("captures shape appearance without content or structural data", () => {
 
   assert.equal(format.fillColor, "#fef3c7");
   assert.equal(format.borderWidth, 3);
+  assert.equal(format.fontSize, 18);
+  assert.equal(format.fontFamily, "serif");
+  assert.equal(format.fontWeight, "bold");
+  assert.equal(format.textColor, "#451a03");
+  assert.equal(format.textAlign, "center");
   assert.deepEqual(format.borderLayers, borderLayers);
   assert.notEqual(format.borderLayers, borderLayers);
-  assert.equal("fontSize" in format, false);
-  assert.equal("fontFamily" in format, false);
-  assert.equal("fontWeight" in format, false);
-  assert.equal("textColor" in format, false);
-  assert.equal("textAlign" in format, false);
   assert.equal("text" in format, false);
   assert.equal("richText" in format, false);
   assert.equal("parentId" in format, false);
@@ -57,11 +57,11 @@ test("captures the visible generated layout style as an explicit format", () => 
   assert.equal(format.fillOpacity, 1);
   assert.equal(format.borderColor, "#2563eb");
   assert.equal(format.borderWidth, 4);
-  assert.equal("textColor" in format, false);
-  assert.equal("fontSize" in format, false);
+  assert.equal(format.textColor, "#172554");
+  assert.equal(format.fontSize, 16);
 });
 
-test("applies independent surface copies without changing embedded text styling", () => {
+test("copies whole-shape text formatting without changing embedded sticker markup", () => {
   const format = captureShapeFormat({
     fillColor: "#ecfccb",
     borderLayers: [{ id: "layer", color: "#4d7c0f", width: 1, style: "solid" }],
@@ -85,13 +85,13 @@ test("applies independent surface copies without changing embedded text styling"
   assert.equal(first.fillColor, "#ecfccb");
   assert.equal(first.layoutAutoFill, false);
   assert.equal(first.layoutAutoBorder, false);
-  assert.equal("layoutAutoText" in first, false);
-  assert.equal("layoutAutoTypography" in first, false);
+  assert.equal(first.layoutAutoText, false);
+  assert.equal(first.layoutAutoTypography, false);
   assert.equal(updated.richText, target.richText);
-  assert.equal(updated.fontSize, target.fontSize);
-  assert.equal(updated.textColor, target.textColor);
-  assert.equal(updated.layoutAutoText, target.layoutAutoText);
-  assert.equal(updated.layoutAutoTypography, target.layoutAutoTypography);
+  assert.equal(updated.fontSize, 28);
+  assert.equal(updated.textColor, "#854d0e");
+  assert.equal(updated.layoutAutoText, false);
+  assert.equal(updated.layoutAutoTypography, false);
   assert.equal("text" in first, false);
   assert.equal("shapeType" in first, false);
   assert.notEqual(first.borderLayers, second.borderLayers);

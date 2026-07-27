@@ -117,6 +117,7 @@ import {
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { defaultEnclosedSymbolTextColor } from "@/lib/canvas/symbol-style";
 import {
   lightenColor,
   resolveEffectiveFillOpacity,
@@ -625,6 +626,36 @@ function inspectorLayoutLabel(value: unknown): string {
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 
+function inlineAuthoredColor(element: HTMLElement): string | undefined {
+  const styleColor = element.style.color.trim();
+  if (styleColor) return styleColor;
+  const legacyColor = element.getAttribute("color")?.trim();
+  return legacyColor || undefined;
+}
+
+function symbolTextColor(
+  symbol: HTMLElement,
+  container: HTMLElement
+): string | undefined {
+  const walker = document.createTreeWalker(symbol, NodeFilter.SHOW_TEXT);
+  const textNode = walker.nextNode() as Text | null;
+  let current: HTMLElement | null = textNode?.parentElement ?? symbol;
+  while (current && current !== container) {
+    const authoredColor = inlineAuthoredColor(current);
+    if (authoredColor) return authoredColor;
+    current = current.parentElement;
+  }
+  const enclosure = symbol.getAttribute("data-symbol-enclosure");
+  return defaultEnclosedSymbolTextColor({
+    enclosure: enclosure === "circle"
+      || enclosure === "square"
+      || enclosure === "rounded-square"
+      ? enclosure
+      : "none",
+    fillColor: symbol.getAttribute("data-symbol-fill") ?? undefined,
+  });
+}
+
 function normalizeWholeTextFormat(
   data: Record<string, unknown>,
   key: "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
@@ -647,6 +678,13 @@ function normalizeWholeTextFormat(
 
   const container = document.createElement("div");
   container.innerHTML = data.richText;
+  const protectedSymbolColors = key === "textColor"
+    ? new Map(
+        Array.from(container.querySelectorAll<HTMLElement>("[data-vidya-symbol]"))
+          .map((symbol) => [symbol, symbolTextColor(symbol, container)] as const)
+          .filter((entry): entry is readonly [HTMLElement, string] => !!entry[1])
+      )
+    : new Map<HTMLElement, string>();
   container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
     element.style.removeProperty(cssProperty);
     if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
@@ -659,6 +697,9 @@ function normalizeWholeTextFormat(
   }
   if (key === "textAlign") {
     container.querySelectorAll<HTMLElement>("[align]").forEach((element) => element.removeAttribute("align"));
+  }
+  for (const [symbol, color] of protectedSymbolColors) {
+    symbol.style.color = color;
   }
   if (key === "fontWeight" && value !== "bold") {
     container.querySelectorAll("strong, b").forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
@@ -4104,10 +4145,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Presets" visible={singleNodeTab === "style"}>
             <div className="grid grid-cols-2 gap-1.5">
               {([
-                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, cornerRadiusPercent: 25 }],
-                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 15 }],
-                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 20 }],
-                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, cornerRadiusPercent: 5 }],
+                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, cornerRadiusPercent: 25, textColor: "#111827", fontSize: 15 }],
+                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 15, textColor: "#1f2937" }],
+                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 20, textColor: "#1e1b4b", fontSize: 14 }],
+                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, cornerRadiusPercent: 5, textColor: "#431407", fontFamily: "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif", fontSize: 16 }],
               ] as Array<[string, Record<string, unknown>]>).map(([label, patch]) => (
                 <button
                   key={label}

@@ -2,12 +2,37 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  defaultEnclosedSymbolTextColor,
   hasVisibleSymbolStyle,
   semanticSymbolFontFamily,
   semanticSymbolRotation,
   semanticSymbolScaleFactor,
   symbolMarkStyle,
 } from "./symbol-style";
+
+test("chooses a stable readable foreground for enclosed sticker symbols", () => {
+  assert.equal(
+    defaultEnclosedSymbolTextColor({
+      enclosure: "rounded-square",
+      fillColor: "#be2f78",
+    }),
+    "#f8fafc"
+  );
+  assert.equal(
+    defaultEnclosedSymbolTextColor({
+      enclosure: "rounded-square",
+      fillColor: "#fef9c3",
+    }),
+    "#111827"
+  );
+  assert.equal(
+    defaultEnclosedSymbolTextColor({
+      enclosure: "none",
+      fillColor: "#be2f78",
+    }),
+    undefined
+  );
+});
 
 test("serializes an enclosed filled Tiro symbol into durable inline styles", () => {
   const style = symbolMarkStyle({
