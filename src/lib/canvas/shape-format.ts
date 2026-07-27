@@ -8,6 +8,18 @@ const SHAPE_FORMAT_KEYS = [
   "cornerRadiusPercent",
   "borderRadius",
   "borderLayers",
+  "fontSize",
+  "fontFamily",
+  "fontStyle",
+  "fontWeight",
+  "maximizeText",
+  "textColor",
+  "textHighlightColor",
+  "textAlign",
+  "textVerticalAlign",
+  "textPadding",
+  "textRotation",
+  "scriptMode",
 ] as const;
 
 type ShapeFormatKey = typeof SHAPE_FORMAT_KEYS[number];
@@ -19,6 +31,8 @@ type GeneratedShapeStyle = Partial<{
   borderColor: string;
   borderWidth: number;
   borderStyle: "solid" | "dashed" | "dotted";
+  textColor: string;
+  fontSize: number;
 }>;
 
 function cloneFormatValue<T>(value: T): T {
@@ -45,6 +59,13 @@ export function captureShapeFormat(data: Record<string, unknown>): ShapeFormatSn
     format.borderWidth = generated.borderWidth;
     format.borderStyle = generated.borderStyle;
   }
+  if (generated && data.layoutAutoText !== false) {
+    format.textColor = generated.textColor;
+  }
+  if (generated && data.layoutAutoTypography !== false) {
+    format.fontSize = generated.fontSize;
+  }
+
   return format;
 }
 
@@ -60,6 +81,8 @@ export function shapeFormatPatch(
   if (targetData.layoutVisualStyle) {
     patch.layoutAutoFill = false;
     patch.layoutAutoBorder = false;
+    patch.layoutAutoText = false;
+    patch.layoutAutoTypography = false;
   }
 
   return patch;
