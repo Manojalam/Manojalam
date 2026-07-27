@@ -17,7 +17,7 @@ test("chart conversion applies its shape default once without creating a present
     fillColor: "#123456",
   };
 
-  for (const mode of ["horizontal", "vertical", "list", "topDown", "linear"] as const) {
+  for (const mode of ["horizontal", "vertical", "list", "topDown", "linear", "matrix"] as const) {
     const converted = applyLayoutConversionShapeDefault(source, "shape", mode);
     assert.deepEqual(converted, {
       text: "Category",
@@ -27,10 +27,6 @@ test("chart conversion applies its shape default once without creating a present
     });
   }
 
-  assert.equal(
-    applyLayoutConversionShapeDefault(source, "shape", "matrix"),
-    source
-  );
   assert.equal(
     applyLayoutConversionShapeDefault(source, "sticky", "list"),
     source
