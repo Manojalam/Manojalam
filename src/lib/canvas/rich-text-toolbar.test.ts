@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  appendRichTextSelectionRange,
   canShowInlineTextToolbar,
+  comparableRichTextColor,
   isTextToolFocusTarget,
+  normalizeRichTextSelectionRanges,
   resolveCapturedTextAlign,
   TEXT_TOOL_FOCUS_SELECTOR,
 } from "./rich-text-toolbar";
@@ -61,4 +64,35 @@ test("portaled symbol and color controls remain part of the text editing session
   }), true);
   assert.equal(isTextToolFocusTarget({ closest: () => null }), false);
   assert.equal(isTextToolFocusTarget(null), false);
+});
+
+test("additive text ranges are ordered, clamped, and merged", () => {
+  assert.deepEqual(normalizeRichTextSelectionRanges([
+    { from: 12, to: 18 },
+    { from: 8, to: 4 },
+    { from: 7, to: 14 },
+    { from: 25, to: 25 },
+    { from: 40, to: 60 },
+  ], 50), [
+    { from: 4, to: 18 },
+    { from: 40, to: 50 },
+  ]);
+});
+
+test("an additive text range remains separate when it is disjoint", () => {
+  assert.deepEqual(appendRichTextSelectionRange([
+    { from: 2, to: 5 },
+    { from: 12, to: 18 },
+  ], { from: 7, to: 9 }, 30), [
+    { from: 2, to: 5 },
+    { from: 7, to: 9 },
+    { from: 12, to: 18 },
+  ]);
+});
+
+test("persisted rich-text colors compare case and whitespace insensitively", () => {
+  assert.equal(comparableRichTextColor(" #22C55E "), "#22c55e");
+  assert.equal(comparableRichTextColor("rgb(34, 197, 94)"), "rgb(34,197,94)");
+  assert.equal(comparableRichTextColor("   "), null);
+  assert.equal(comparableRichTextColor(undefined), null);
 });

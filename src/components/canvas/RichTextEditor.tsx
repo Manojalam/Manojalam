@@ -37,9 +37,13 @@ import {
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import {
+  appendRichTextSelectionRange,
   canShowInlineTextToolbar,
+  comparableRichTextColor,
   isTextToolFocusTarget,
+  normalizeRichTextSelectionRanges,
   resolveCapturedTextAlign,
+  type RichTextSelectionRange,
   type RichTextAlignment,
 } from "@/lib/canvas/rich-text-toolbar";
 import {
@@ -55,7 +59,7 @@ import {
   UPADHMANIYA_CHARACTER,
   type TextToolAction,
 } from "@/lib/text-tools";
-import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, Unlink2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, RefreshCw, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -243,6 +247,45 @@ const UpadhmaniyaPresentation = Extension.create({
   },
 });
 
+const additiveTextSelectionKey = new PluginKey<DecorationSet>("additiveTextSelection");
+
+/**
+ * ProseMirror intentionally models one native selection. These decorations
+ * render the retained ranges used by Ctrl/Cmd-additive selection without
+ * changing document content or persistence.
+ */
+const AdditiveTextSelection = Extension.create({
+  name: "additiveTextSelection",
+  addProseMirrorPlugins() {
+    return [new Plugin<DecorationSet>({
+      key: additiveTextSelectionKey,
+      state: {
+        init: () => DecorationSet.empty,
+        apply(transaction, decorations) {
+          const ranges = transaction.getMeta(additiveTextSelectionKey) as
+            | RichTextSelectionRange[]
+            | undefined;
+          if (ranges) {
+            return DecorationSet.create(
+              transaction.doc,
+              ranges.map(({ from, to }) => Decoration.inline(from, to, {
+                class: "vidya-additive-text-selection",
+                "data-vidya-additive-text-selection": "true",
+              }))
+            );
+          }
+          return decorations.map(transaction.mapping, transaction.doc);
+        },
+      },
+      props: {
+        decorations(state) {
+          return additiveTextSelectionKey.getState(state) ?? null;
+        },
+      },
+    })];
+  },
+});
+
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
   StarterKit.configure({
@@ -268,6 +311,7 @@ const EXTENSIONS = [
   ScopedHighlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
+  AdditiveTextSelection,
 ];
 
 /** Measure only rendered glyphs; editor decorations must never change text fit. */
@@ -313,20 +357,49 @@ const SIZE_PRESETS = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 /** Gap in px kept between the selection and the bottom of the floating toolbar. */
 const TOOLBAR_GAP = 10;
 
-function selectedMarkValue(editor: Editor, markName: string, attribute?: string): string | null | "mixed" {
-  const { from, to, empty } = editor.state.selection;
-  if (empty) return null;
+function selectedMarkValue(
+  editor: Editor,
+  markName: string,
+  attribute?: string,
+  selectedRanges?: readonly RichTextSelectionRange[]
+): string | null | "mixed" {
+  const ranges = selectedRanges?.length
+    ? selectedRanges
+    : editor.state.selection.empty
+      ? []
+      : [{
+          from: editor.state.selection.from,
+          to: editor.state.selection.to,
+        }];
+  if (!ranges.length) return null;
   const values = new Set<string>();
-  editor.state.doc.nodesBetween(from, to, (node) => {
-    if (!node.isText) return;
-    const mark = node.marks.find((candidate) => candidate.type.name === markName);
-    if (!attribute) values.add(mark ? "present" : "absent");
-    else values.add(mark?.attrs?.[attribute] == null ? "absent" : String(mark.attrs[attribute]));
-  });
+  for (const { from, to } of ranges) {
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (!node.isText) return;
+      const mark = node.marks.find((candidate) => candidate.type.name === markName);
+      if (!attribute) values.add(mark ? "present" : "absent");
+      else values.add(mark?.attrs?.[attribute] == null ? "absent" : String(mark.attrs[attribute]));
+    });
+  }
   if (values.size > 1) return "mixed";
   const value = values.values().next().value;
   return value && value !== "absent" ? value : null;
 }
+
+function explicitTextColors(editor: Editor): string[] {
+  const colors = new Map<string, string>();
+  editor.state.doc.descendants((node) => {
+    if (!node.isText) return;
+    const color = node.marks.find((mark) => mark.type.name === "textStyle")?.attrs?.color;
+    const comparable = comparableRichTextColor(color);
+    if (comparable && typeof color === "string" && !colors.has(comparable)) {
+      colors.set(comparable, color);
+    }
+  });
+  return [...colors.values()];
+}
+
+type RichTextCommandChain = ReturnType<Editor["chain"]>;
 
 function selectedBlockTextAlign(editor: Editor): string | undefined {
   if (typeof window === "undefined") return undefined;
@@ -479,6 +552,10 @@ export function RichTextEditor({
   const [showFonts,   setShowFonts]   = useState(false);
   const [showSizes,   setShowSizes]   = useState(false);
   const [showLink, setShowLink] = useState(false);
+  const [showColorReplace, setShowColorReplace] = useState(false);
+  const [replaceFromColor, setReplaceFromColor] = useState("");
+  const [replaceToColor, setReplaceToColor] = useState("#ef4444");
+  const [additiveSelectionRanges, setAdditiveSelectionRanges] = useState<RichTextSelectionRange[]>([]);
   const [linkText, setLinkText] = useState("");
   const [linkHref, setLinkHref] = useState("");
   const [linkEditing, setLinkEditing] = useState(false);
@@ -496,7 +573,12 @@ export function RichTextEditor({
   const linkTextInputRef = useRef<HTMLInputElement>(null);
   const linkHrefInputRef = useRef<HTMLInputElement>(null);
   const linkDialogOpenRef = useRef(false);
+  const colorReplaceDialogOpenRef = useRef(false);
   const linkTargetSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const additiveSelectionRangesRef = useRef<RichTextSelectionRange[]>([]);
+  const additivePointerRef = useRef<{
+    baseRanges: RichTextSelectionRange[];
+  } | null>(null);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
   const measurementFontSizeRef = useRef(measurementFontSize);
@@ -634,11 +716,66 @@ export function RichTextEditor({
         event.relatedTarget as globalThis.Node | null
       );
       const focusMovedToTextTool = isTextToolFocusTarget(event.relatedTarget);
-      if (focusMovedToToolbar || focusMovedToTextTool || linkDialogOpenRef.current) return;
+      if (
+        focusMovedToToolbar
+        || focusMovedToTextTool
+        || linkDialogOpenRef.current
+        || colorReplaceDialogOpenRef.current
+      ) return;
       hideToolbar();
       onBlur?.();
     },
   });
+
+  const currentTextSelectionRanges = useCallback((): RichTextSelectionRange[] => {
+    if (!editor) return [];
+    if (additiveSelectionRangesRef.current.length) {
+      return additiveSelectionRangesRef.current;
+    }
+    const { from, to, empty } = editor.state.selection;
+    if (!empty) return [{ from, to }];
+    const saved = savedSelectionRef.current;
+    return saved && saved.from < saved.to ? [saved] : [];
+  }, [editor]);
+
+  const commitAdditiveSelectionRanges = useCallback((
+    ranges: readonly RichTextSelectionRange[]
+  ) => {
+    if (!editor) return;
+    const normalized = normalizeRichTextSelectionRanges(
+      ranges,
+      editor.state.doc.content.size
+    );
+    additiveSelectionRangesRef.current = normalized;
+    setAdditiveSelectionRanges(normalized);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(additiveTextSelectionKey, normalized)
+    );
+  }, [editor]);
+
+  const clearAdditiveSelectionRanges = useCallback(() => {
+    if (!editor || !additiveSelectionRangesRef.current.length) return;
+    commitAdditiveSelectionRanges([]);
+  }, [commitAdditiveSelectionRanges, editor]);
+
+  const runAcrossTextSelectionRanges = useCallback((
+    command: (chain: RichTextCommandChain) => RichTextCommandChain,
+    options: { focus?: boolean } = {}
+  ) => {
+    if (!editor) return false;
+    const ranges = currentTextSelectionRanges();
+    if (!ranges.length) return false;
+    let chain = editor.chain();
+    for (const range of ranges) {
+      chain = chain.setTextSelection(range);
+      chain = command(chain);
+    }
+    chain = chain.setTextSelection(ranges[ranges.length - 1]);
+    if (options.focus !== false) {
+      chain = chain.focus(undefined, { scrollIntoView: false });
+    }
+    return chain.run();
+  }, [currentTextSelectionRanges, editor]);
 
   const guidePresentation = `${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`;
   const hasShapeTextFlow = !!shapeTextFlow;
@@ -846,7 +983,7 @@ export function RichTextEditor({
     const parsedFontSize = typeof fontSizeValue === "string" ? Number.parseFloat(fontSizeValue) : undefined;
     setActiveTextSelection({
       nodeId,
-      hasSelection: !editor.state.selection.empty,
+      hasSelection: !editor.state.selection.empty || additiveSelectionRangesRef.current.length > 0,
       bold: editor.isActive("bold"),
       italic: editor.isActive("italic"),
       fontSize: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
@@ -863,54 +1000,53 @@ export function RichTextEditor({
       const detail = (event as CustomEvent<InlineTextFormatDetail>).detail;
       if (!detail || detail.nodeId !== nodeId) return;
       const savedSelection = savedSelectionRef.current;
-      if (editor.state.selection.empty && !savedSelection) return;
+      if (
+        editor.state.selection.empty
+        && !savedSelection
+        && !additiveSelectionRangesRef.current.length
+      ) return;
 
       const wasEditable = editor.isEditable;
       if (!wasEditable) editor.setEditable(true, false);
-      const chain = editor.chain();
-      if (editor.state.selection.empty && savedSelection) chain.setTextSelection(savedSelection);
-      switch (detail.key) {
-        case "fontWeight":
-          if (detail.value === "bold") chain.setBold();
-          else chain.unsetBold();
-          break;
-        case "fontStyle":
-          if (detail.value === "italic") chain.setItalic();
-          else chain.unsetItalic();
-          break;
-        case "fontSize":
-          chain.setMark("textStyle", { fontSize: `${Number(detail.value) || 14}px` });
-          break;
-        case "fontFamily":
-          if (detail.value) chain.setFontFamily(String(detail.value));
-          else chain.unsetFontFamily();
-          break;
-        case "textColor":
-          if (detail.value) chain.setColor(String(detail.value));
-          else chain.unsetColor();
-          break;
-        case "textHighlightColor":
-          if (detail.value) {
-            chain.setMark("highlight", {
-              color: String(detail.value),
-              vidyaScope: "explicit",
-            });
-          }
-          else chain.unsetHighlight();
-          break;
-        case "textAlign":
-          chain.setTextAlign(String(detail.value));
-          break;
-      }
       pendingReportReasonRef.current = "format";
-      chain.run();
+      runAcrossTextSelectionRanges((chain) => {
+        switch (detail.key) {
+          case "fontWeight":
+            return detail.value === "bold" ? chain.setBold() : chain.unsetBold();
+          case "fontStyle":
+            return detail.value === "italic" ? chain.setItalic() : chain.unsetItalic();
+          case "fontSize":
+            return chain.setMark("textStyle", { fontSize: `${Number(detail.value) || 14}px` });
+          case "fontFamily":
+            return detail.value
+              ? chain.setFontFamily(String(detail.value))
+              : chain.unsetFontFamily();
+          case "textColor":
+            return detail.value ? chain.setColor(String(detail.value)) : chain.unsetColor();
+          case "textHighlightColor":
+            return detail.value
+              ? chain.setMark("highlight", {
+                  color: String(detail.value),
+                  vidyaScope: "explicit",
+                })
+              : chain.unsetHighlight();
+          case "textAlign":
+            return chain.setTextAlign(String(detail.value));
+        }
+      });
       if (!wasEditable) editor.setEditable(false, false);
       publishTextSelection();
       scheduleContentReport(editor, "format");
     };
     window.addEventListener("vidya:apply-inline-text-format", applyFormat);
     return () => window.removeEventListener("vidya:apply-inline-text-format", applyFormat);
-  }, [editor, nodeId, publishTextSelection, scheduleContentReport]);
+  }, [
+    editor,
+    nodeId,
+    publishTextSelection,
+    runAcrossTextSelectionRanges,
+    scheduleContentReport,
+  ]);
 
   useEffect(() => {
     if (!editor) return;
@@ -939,6 +1075,78 @@ export function RichTextEditor({
       element.removeEventListener("paste", markPaste, true);
     };
   }, [editor]);
+
+  useEffect(() => {
+    const element = editor?.view.dom as HTMLElement | undefined;
+    if (!editor || !element) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      if (event.ctrlKey || event.metaKey) {
+        const { from, to, empty } = editor.state.selection;
+        additivePointerRef.current = {
+          baseRanges: additiveSelectionRangesRef.current.length
+            ? additiveSelectionRangesRef.current
+            : empty ? [] : [{ from, to }],
+        };
+        return;
+      }
+      additivePointerRef.current = null;
+      clearAdditiveSelectionRanges();
+    };
+
+    const onPointerUp = () => {
+      const pending = additivePointerRef.current;
+      additivePointerRef.current = null;
+      if (!pending) return;
+      requestAnimationFrame(() => {
+        if (editor.isDestroyed) return;
+        const { from, to, empty } = editor.state.selection;
+        const ranges = empty
+          ? pending.baseRanges
+          : appendRichTextSelectionRange(
+              pending.baseRanges,
+              { from, to },
+              editor.state.doc.content.size
+            );
+        if (ranges.length) commitAdditiveSelectionRanges(ranges);
+      });
+    };
+
+    const onBeforeInput = () => clearAdditiveSelectionRanges();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        clearAdditiveSelectionRanges();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        clearAdditiveSelectionRanges();
+      }
+    };
+
+    element.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    element.addEventListener("beforeinput", onBeforeInput, true);
+    element.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      element.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup", onPointerUp, true);
+      element.removeEventListener("beforeinput", onBeforeInput, true);
+      element.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [
+    clearAdditiveSelectionRanges,
+    commitAdditiveSelectionRanges,
+    editor,
+  ]);
+
+  useEffect(() => {
+    if (
+      editable
+      && (!nodeId || (selectedNodeIds.length === 1 && selectedNodeIds[0] === nodeId))
+    ) return;
+    clearAdditiveSelectionRanges();
+  }, [clearAdditiveSelectionRanges, editable, nodeId, selectedNodeIds]);
 
   useEffect(() => {
     const element = editor?.view.dom as HTMLElement | undefined;
@@ -1112,26 +1320,35 @@ export function RichTextEditor({
     const { state, view } = editor;
     const { from, to } = state.selection;
     savedSelectionRef.current = { from, to };
+    const selectedRanges = currentTextSelectionRanges();
     if (!canShowInlineTextToolbar({
       nodeId,
       selectedNodeIds,
       editorEditable: editor.isEditable,
       editorFocused: editor.isFocused,
-      hasTextSelection: !state.selection.empty,
+      hasTextSelection: selectedRanges.length > 0,
     })) {
       hideToolbar();
       return;
     }
     publishTextSelection();
-    const start = view.coordsAtPos(from);
-    const end   = view.coordsAtPos(to);
-    // Anchor at the very top of the selection; horizontal center of the range.
+    const lastRange = selectedRanges[selectedRanges.length - 1];
+    const start = view.coordsAtPos(lastRange.from);
+    const end   = view.coordsAtPos(lastRange.to);
+    // Keep the toolbar nearest to the most recently added range.
     setAnchor({
       top:  Math.min(start.top, end.top),
       bottom: Math.max(start.bottom, end.bottom),
       left: (start.left + end.right) / 2,
     });
-  }, [editor, hideToolbar, nodeId, publishTextSelection, selectedNodeIds]);
+  }, [
+    currentTextSelectionRanges,
+    editor,
+    hideToolbar,
+    nodeId,
+    publishTextSelection,
+    selectedNodeIds,
+  ]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1180,26 +1397,71 @@ export function RichTextEditor({
     try { (e.target as Element).releasePointerCapture(e.pointerId); } catch {}
   }, []);
 
-  const selectionChain = useCallback(() => {
-    if (!editor) return null;
-    const chain = editor.chain();
-    const selection = savedSelectionRef.current;
-    if (selection) chain.setTextSelection(selection);
-    return chain.focus(undefined, { scrollIntoView: false });
-  }, [editor]);
-  const toggleBold = useCallback(() => { selectionChain()?.toggleBold().run(); }, [selectionChain]);
-  const toggleItalic = useCallback(() => { selectionChain()?.toggleItalic().run(); }, [selectionChain]);
-  const toggleUnderline = useCallback(() => { selectionChain()?.toggleUnderline().run(); }, [selectionChain]);
+  const applySelectionCommand = useCallback((
+    command: (chain: RichTextCommandChain) => RichTextCommandChain
+  ) => {
+    pendingReportReasonRef.current = "format";
+    return runAcrossTextSelectionRanges(command);
+  }, [runAcrossTextSelectionRanges]);
+
+  const toggleInlineMark = useCallback((markName: string) => {
+    if (!editor) return;
+    const state = selectedMarkValue(
+      editor,
+      markName,
+      undefined,
+      currentTextSelectionRanges()
+    );
+    applySelectionCommand((chain) => state === "present"
+      ? chain.unsetMark(markName)
+      : chain.setMark(markName));
+  }, [applySelectionCommand, currentTextSelectionRanges, editor]);
+
+  const toggleBold = useCallback(() => toggleInlineMark("bold"), [toggleInlineMark]);
+  const toggleItalic = useCallback(() => toggleInlineMark("italic"), [toggleInlineMark]);
+  const toggleUnderline = useCallback(() => toggleInlineMark("underline"), [toggleInlineMark]);
   const toggleSuperscript = useCallback(() => {
-    selectionChain()?.unsetMark("subscript").toggleMark("superscript").run();
-  }, [selectionChain]);
+    if (!editor) return;
+    const state = selectedMarkValue(
+      editor,
+      "superscript",
+      undefined,
+      currentTextSelectionRanges()
+    );
+    applySelectionCommand((chain) => {
+      const cleared = chain.unsetMark("subscript");
+      return state === "present"
+        ? cleared.unsetMark("superscript")
+        : cleared.setMark("superscript");
+    });
+  }, [applySelectionCommand, currentTextSelectionRanges, editor]);
   const toggleSubscript = useCallback(() => {
-    selectionChain()?.unsetMark("superscript").toggleMark("subscript").run();
-  }, [selectionChain]);
-  const alignLeft = useCallback(() => { selectionChain()?.setTextAlign("left").run(); }, [selectionChain]);
-  const alignCenter = useCallback(() => { selectionChain()?.setTextAlign("center").run(); }, [selectionChain]);
-  const alignRight = useCallback(() => { selectionChain()?.setTextAlign("right").run(); }, [selectionChain]);
-  const clearFormatting = useCallback(() => { selectionChain()?.unsetAllMarks().run(); }, [selectionChain]);
+    if (!editor) return;
+    const state = selectedMarkValue(
+      editor,
+      "subscript",
+      undefined,
+      currentTextSelectionRanges()
+    );
+    applySelectionCommand((chain) => {
+      const cleared = chain.unsetMark("superscript");
+      return state === "present"
+        ? cleared.unsetMark("subscript")
+        : cleared.setMark("subscript");
+    });
+  }, [applySelectionCommand, currentTextSelectionRanges, editor]);
+  const alignLeft = useCallback(() => {
+    applySelectionCommand((chain) => chain.setTextAlign("left"));
+  }, [applySelectionCommand]);
+  const alignCenter = useCallback(() => {
+    applySelectionCommand((chain) => chain.setTextAlign("center"));
+  }, [applySelectionCommand]);
+  const alignRight = useCallback(() => {
+    applySelectionCommand((chain) => chain.setTextAlign("right"));
+  }, [applySelectionCommand]);
+  const clearFormatting = useCallback(() => {
+    applySelectionCommand((chain) => chain.unsetAllMarks());
+  }, [applySelectionCommand]);
 
   const closeLinkEditor = useCallback(() => {
     linkDialogOpenRef.current = false;
@@ -1214,6 +1476,12 @@ export function RichTextEditor({
 
   const openLinkEditor = useCallback(() => {
     if (!editor) return;
+    if (currentTextSelectionRanges().length > 1) {
+      toast.info("Choose one text range for a link", {
+        description: "Other formatting can be applied to every retained range at once.",
+      });
+      return;
+    }
     linkDialogOpenRef.current = true;
     const savedSelection = savedSelectionRef.current ?? {
       from: editor.state.selection.from,
@@ -1236,7 +1504,7 @@ export function RichTextEditor({
     setShowFonts(false);
     setShowSizes(false);
     setShowLink(true);
-  }, [editor]);
+  }, [currentTextSelectionRanges, editor]);
 
   const applyLink = useCallback(() => {
     if (!editor) return;
@@ -1310,61 +1578,196 @@ export function RichTextEditor({
       return;
     }
 
-    const chain = selectionChain();
-    if (!chain) return;
-    chain.unsetAllMarks();
-    if (inlineFormatPainter.bold) chain.setBold();
-    if (inlineFormatPainter.italic) chain.setItalic();
-    if (inlineFormatPainter.strike) chain.setStrike();
-    if (inlineFormatPainter.underline) chain.setUnderline();
-    if (inlineFormatPainter.superscript) chain.setMark("superscript");
-    if (inlineFormatPainter.subscript) chain.setMark("subscript");
-    if (inlineFormatPainter.fontSize) {
-      chain.setMark("textStyle", { fontSize: inlineFormatPainter.fontSize });
-    }
-    if (inlineFormatPainter.fontFamily) chain.setFontFamily(inlineFormatPainter.fontFamily);
-    if (inlineFormatPainter.textColor) chain.setColor(inlineFormatPainter.textColor);
-    if (inlineFormatPainter.highlightColor) {
-      chain.setMark("highlight", {
-        color: inlineFormatPainter.highlightColor,
-        vidyaScope: "explicit",
-      });
-    }
-    chain.setTextAlign(inlineFormatPainter.textAlign);
-    pendingReportReasonRef.current = "format";
-    chain.run();
+    applySelectionCommand((chain) => {
+      let next = chain.unsetAllMarks();
+      if (inlineFormatPainter.bold) next = next.setBold();
+      if (inlineFormatPainter.italic) next = next.setItalic();
+      if (inlineFormatPainter.strike) next = next.setStrike();
+      if (inlineFormatPainter.underline) next = next.setUnderline();
+      if (inlineFormatPainter.superscript) next = next.setMark("superscript");
+      if (inlineFormatPainter.subscript) next = next.setMark("subscript");
+      if (inlineFormatPainter.fontSize) {
+        next = next.setMark("textStyle", { fontSize: inlineFormatPainter.fontSize });
+      }
+      if (inlineFormatPainter.fontFamily) {
+        next = next.setFontFamily(inlineFormatPainter.fontFamily);
+      }
+      if (inlineFormatPainter.textColor) {
+        next = next.setColor(inlineFormatPainter.textColor);
+      }
+      if (inlineFormatPainter.highlightColor) {
+        next = next.setMark("highlight", {
+          color: inlineFormatPainter.highlightColor,
+          vidyaScope: "explicit",
+        });
+      }
+      return next.setTextAlign(inlineFormatPainter.textAlign);
+    });
     setInlineFormatPainter(null);
     toast.success("Formatting applied");
-  }, [blockAlign, editor, inlineFormatPainter, selectionChain, setInlineFormatPainter]);
+  }, [
+    applySelectionCommand,
+    blockAlign,
+    editor,
+    inlineFormatPainter,
+    setInlineFormatPainter,
+  ]);
 
   const chooseCustomTextColor = useCallback((color: string) => {
     setSettings({
       customColors: rememberCustomColor(customColors, color),
       customTextColors: rememberCustomColor(customTextColors, color),
     });
-    pendingReportReasonRef.current = "format";
-    selectionChain()?.setColor(color).run();
+    applySelectionCommand((chain) => chain.setColor(color));
     setShowColors(false);
-  }, [customColors, customTextColors, selectionChain, setSettings]);
+  }, [
+    applySelectionCommand,
+    customColors,
+    customTextColors,
+    setSettings,
+  ]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
     setSettings({
       customColors: rememberCustomColor(customColors, color),
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
     });
-    pendingReportReasonRef.current = "format";
-    selectionChain()?.setMark("highlight", { color, vidyaScope: "explicit" }).run();
+    applySelectionCommand((chain) => chain.setMark("highlight", {
+      color,
+      vidyaScope: "explicit",
+    }));
     setShowHighlights(false);
-  }, [customColors, customHighlightColors, selectionChain, setSettings]);
+  }, [
+    applySelectionCommand,
+    customColors,
+    customHighlightColors,
+    setSettings,
+  ]);
+
+  const availableTextColors = editor ? explicitTextColors(editor) : [];
+
+  const closeColorReplace = useCallback(() => {
+    colorReplaceDialogOpenRef.current = false;
+    setShowColorReplace(false);
+    requestAnimationFrame(() => {
+      editor?.commands.focus(undefined, { scrollIntoView: false });
+    });
+  }, [editor]);
+
+  const openColorReplace = useCallback(() => {
+    if (!editor) return;
+    const colors = explicitTextColors(editor);
+    if (!colors.length) {
+      toast.info("No explicit text colors in this shape", {
+        description: "Color some words first, then you can replace that color everywhere.",
+      });
+      return;
+    }
+    const selected = selectedMarkValue(
+      editor,
+      "textStyle",
+      "color",
+      currentTextSelectionRanges()
+    );
+    const source = selected && selected !== "mixed"
+      ? colors.find((color) =>
+          comparableRichTextColor(color) === comparableRichTextColor(selected))
+        ?? colors[0]
+      : colors[0];
+    const target = comparableRichTextColor(source) === comparableRichTextColor("#ef4444")
+      ? "#2878ff"
+      : "#ef4444";
+    setReplaceFromColor(source);
+    setReplaceToColor(target);
+    setShowColors(false);
+    colorReplaceDialogOpenRef.current = true;
+    setShowColorReplace(true);
+  }, [currentTextSelectionRanges, editor]);
+
+  const replaceTextColorThroughoutShape = useCallback(() => {
+    if (!editor) return;
+    const source = comparableRichTextColor(replaceFromColor);
+    const target = comparableRichTextColor(replaceToColor);
+    if (!source || !target) return;
+    if (source === target) {
+      toast.error("Choose a different replacement color");
+      return;
+    }
+
+    const replacements: Array<{
+      from: number;
+      to: number;
+      attributes: Record<string, unknown>;
+    }> = [];
+    let characterCount = 0;
+    editor.state.doc.descendants((node, position) => {
+      if (!node.isText) return;
+      const textStyle = node.marks.find((mark) => mark.type.name === "textStyle");
+      if (
+        !textStyle
+        || comparableRichTextColor(textStyle.attrs.color) !== source
+      ) return;
+      replacements.push({
+        from: position,
+        to: position + node.nodeSize,
+        attributes: { ...textStyle.attrs, color: replaceToColor },
+      });
+      characterCount += node.text?.length ?? 0;
+    });
+
+    if (!replacements.length) {
+      toast.info("That color is no longer used in this shape");
+      return;
+    }
+
+    const textStyleMark = editor.schema.marks.textStyle;
+    let transaction = editor.state.tr;
+    for (const replacement of replacements) {
+      transaction = transaction.addMark(
+        replacement.from,
+        replacement.to,
+        textStyleMark.create(replacement.attributes)
+      );
+    }
+    pendingReportReasonRef.current = "format";
+    editor.view.dispatch(transaction);
+    setSettings({
+      customColors: rememberCustomColor(customColors, replaceToColor),
+      customTextColors: rememberCustomColor(customTextColors, replaceToColor),
+    });
+    closeColorReplace();
+    toast.success("Text color replaced", {
+      description: `${characterCount} character${characterCount === 1 ? "" : "s"} updated throughout this shape.`,
+    });
+  }, [
+    closeColorReplace,
+    customColors,
+    customTextColors,
+    editor,
+    replaceFromColor,
+    replaceToColor,
+    setSettings,
+  ]);
 
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
   const textColorSwatches = Array.from(new Set([...customColors, ...customTextColors]));
   const highlightColorSwatches = Array.from(new Set([...customColors, ...customHighlightColors]));
 
-  const selectedFontSize = editor ? selectedMarkValue(editor, "textStyle", "fontSize") : null;
-  const selectedFamily = editor ? selectedMarkValue(editor, "textStyle", "fontFamily") : null;
-  const selectedColor = editor ? selectedMarkValue(editor, "textStyle", "color") : null;
-  const selectedHighlight = editor ? selectedMarkValue(editor, "highlight", "color") : null;
+  const effectiveSelectionRanges = additiveSelectionRanges.length
+    ? additiveSelectionRanges
+    : undefined;
+  const selectedFontSize = editor
+    ? selectedMarkValue(editor, "textStyle", "fontSize", effectiveSelectionRanges)
+    : null;
+  const selectedFamily = editor
+    ? selectedMarkValue(editor, "textStyle", "fontFamily", effectiveSelectionRanges)
+    : null;
+  const selectedColor = editor
+    ? selectedMarkValue(editor, "textStyle", "color", effectiveSelectionRanges)
+    : null;
+  const selectedHighlight = editor
+    ? selectedMarkValue(editor, "highlight", "color", effectiveSelectionRanges)
+    : null;
   const currentFontSize = selectedFontSize === "mixed"
     ? null
     : selectedFontSize ? parseInt(selectedFontSize) : editor?.getAttributes("textStyle").fontSize
@@ -1378,11 +1781,21 @@ export function RichTextEditor({
   const currentHighlight = selectedHighlight === "mixed"
     ? null
     : selectedHighlight ?? editor?.getAttributes("highlight").color ?? null;
-  const boldState = editor ? selectedMarkValue(editor, "bold") : null;
-  const italicState = editor ? selectedMarkValue(editor, "italic") : null;
-  const underlineState = editor ? selectedMarkValue(editor, "underline") : null;
-  const superscriptState = editor ? selectedMarkValue(editor, "superscript") : null;
-  const subscriptState = editor ? selectedMarkValue(editor, "subscript") : null;
+  const boldState = editor
+    ? selectedMarkValue(editor, "bold", undefined, effectiveSelectionRanges)
+    : null;
+  const italicState = editor
+    ? selectedMarkValue(editor, "italic", undefined, effectiveSelectionRanges)
+    : null;
+  const underlineState = editor
+    ? selectedMarkValue(editor, "underline", undefined, effectiveSelectionRanges)
+    : null;
+  const superscriptState = editor
+    ? selectedMarkValue(editor, "superscript", undefined, effectiveSelectionRanges)
+    : null;
+  const subscriptState = editor
+    ? selectedMarkValue(editor, "subscript", undefined, effectiveSelectionRanges)
+    : null;
   const linkActive = editor?.isActive("link") ?? false;
   const openPopoversBelow = drag
     ? drag.top < window.innerHeight / 2
@@ -1423,19 +1836,35 @@ export function RichTextEditor({
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
+          {additiveSelectionRanges.length > 1 && (
+            <>
+              <span
+                className="rounded-md bg-primary/12 px-2 py-1 text-[10px] font-semibold text-primary"
+                title="Formatting applies to every retained text range. Click normally to start over."
+              >
+                {additiveSelectionRanges.length} selections
+              </span>
+              <div className="mx-0.5 h-4 w-px bg-border/70" />
+            </>
+          )}
+
           {/* Inline marks */}
-          <FormatButton active={editor.isActive("bold")} mixed={boldState === "mixed"} onAction={toggleBold} title="Bold"><b className="text-xs">B</b></FormatButton>
-          <FormatButton active={editor.isActive("italic")} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
-          <FormatButton active={editor.isActive("underline")} mixed={underlineState === "mixed"} onAction={toggleUnderline} title="Underline"><u className="text-xs">U</u></FormatButton>
-          <FormatButton active={editor.isActive("superscript")} mixed={superscriptState === "mixed"} onAction={toggleSuperscript} title="Superscript"><span className="text-xs">x<sup>2</sup></span></FormatButton>
-          <FormatButton active={editor.isActive("subscript")} mixed={subscriptState === "mixed"} onAction={toggleSubscript} title="Subscript"><span className="text-xs">x<sub>2</sub></span></FormatButton>
+          <FormatButton active={boldState === "present"} mixed={boldState === "mixed"} onAction={toggleBold} title="Bold"><b className="text-xs">B</b></FormatButton>
+          <FormatButton active={italicState === "present"} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
+          <FormatButton active={underlineState === "present"} mixed={underlineState === "mixed"} onAction={toggleUnderline} title="Underline"><u className="text-xs">U</u></FormatButton>
+          <FormatButton active={superscriptState === "present"} mixed={superscriptState === "mixed"} onAction={toggleSuperscript} title="Superscript"><span className="text-xs">x<sup>2</sup></span></FormatButton>
+          <FormatButton active={subscriptState === "present"} mixed={subscriptState === "mixed"} onAction={toggleSubscript} title="Subscript"><span className="text-xs">x<sub>2</sub></span></FormatButton>
 
           <div className="relative">
             <button
               type="button"
               aria-expanded={showLink}
-              aria-label={linkActive ? "Edit link" : "Add link"}
-              title={linkActive ? "Edit link" : "Add link"}
+              aria-label={additiveSelectionRanges.length > 1
+                ? "Links require one text selection"
+                : linkActive ? "Edit link" : "Add link"}
+              title={additiveSelectionRanges.length > 1
+                ? "Links require one text selection"
+                : linkActive ? "Edit link" : "Add link"}
               onMouseDown={(event) => {
                 event.preventDefault();
                 if (showLink) closeLinkEditor();
@@ -1479,7 +1908,7 @@ export function RichTextEditor({
                     {fonts.map((f) => (
                       <button key={f.value} onMouseDown={(e) => {
                         e.preventDefault();
-                        selectionChain()?.setFontFamily(f.value).run();
+                        applySelectionCommand((chain) => chain.setFontFamily(f.value));
                         setShowFonts(false);
                       }} className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-muted text-left"
                         style={{ fontFamily: f.value }}>
@@ -1488,7 +1917,7 @@ export function RichTextEditor({
                     ))}
                   </div>
                 ))}
-                <button onMouseDown={(e) => { e.preventDefault(); selectionChain()?.unsetFontFamily().run(); setShowFonts(false); }}
+                <button onMouseDown={(e) => { e.preventDefault(); applySelectionCommand((chain) => chain.unsetFontFamily()); setShowFonts(false); }}
                   className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted text-left border-t border-border">
                   Default font
                 </button>
@@ -1500,7 +1929,9 @@ export function RichTextEditor({
           <button onMouseDown={(e) => {
             e.preventDefault();
             const cur = currentFontSize ?? 14;
-            selectionChain()?.setMark("textStyle", { fontSize: `${Math.max(8, cur - 1)}px` }).run();
+            applySelectionCommand((chain) => chain.setMark("textStyle", {
+              fontSize: `${Math.max(8, cur - 1)}px`,
+            }));
           }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">−</button>
 
           <div className="relative">
@@ -1516,7 +1947,9 @@ export function RichTextEditor({
                 {SIZE_PRESETS.map((s) => (
                   <button key={s} onMouseDown={(e) => {
                     e.preventDefault();
-                    selectionChain()?.setMark("textStyle", { fontSize: `${s}px` }).run();
+                    applySelectionCommand((chain) => chain.setMark("textStyle", {
+                      fontSize: `${s}px`,
+                    }));
                     setShowSizes(false);
                   }} className={cn("rounded px-1 py-1 text-[11px] hover:bg-muted", currentFontSize === s && "bg-primary text-primary-foreground")}>
                     {s}
@@ -1529,7 +1962,9 @@ export function RichTextEditor({
           <button onMouseDown={(e) => {
             e.preventDefault();
             const cur = currentFontSize ?? 14;
-            selectionChain()?.setMark("textStyle", { fontSize: `${Math.min(96, cur + 1)}px` }).run();
+            applySelectionCommand((chain) => chain.setMark("textStyle", {
+              fontSize: `${Math.min(96, cur + 1)}px`,
+            }));
           }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">+</button>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
@@ -1546,13 +1981,26 @@ export function RichTextEditor({
                 "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[20rem] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
                 openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
               )}>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Text color</span>
-                  <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground" onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectionChain()?.unsetColor().run();
-                    setShowColors(false);
-                  }}>Clear color</button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        openColorReplace();
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Replace in shape
+                    </button>
+                    <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground" onMouseDown={(e) => {
+                      e.preventDefault();
+                      applySelectionCommand((chain) => chain.unsetColor());
+                      setShowColors(false);
+                    }}>Clear color</button>
+                  </div>
                 </div>
                 <ColorPickerPanel
                   value={currentColor ?? "#111827"}
@@ -1580,7 +2028,7 @@ export function RichTextEditor({
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Highlight</span>
                   <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground" onMouseDown={(e) => {
                     e.preventDefault();
-                    selectionChain()?.unsetHighlight().run();
+                    applySelectionCommand((chain) => chain.unsetHighlight());
                     setShowHighlights(false);
                   }}>Clear highlight</button>
                 </div>
@@ -1690,6 +2138,90 @@ export function RichTextEditor({
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {mounted && editor && (
+        <Dialog
+          open={showColorReplace}
+          onOpenChange={(open) => {
+            if (!open && colorReplaceDialogOpenRef.current) closeColorReplace();
+          }}
+        >
+          <DialogContent
+            className="max-h-[min(88vh,48rem)] w-[min(94vw,36rem)] overflow-y-auto"
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <DialogHeader>
+              <DialogTitle>Replace text color throughout shape</DialogTitle>
+              <DialogDescription>
+                Every explicitly colored word using the source color will change.
+                Other text styling stays intact.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-5">
+              <section className="space-y-2">
+                <Label>Color to replace</Label>
+                <div
+                  className="flex flex-wrap gap-2 rounded-lg border border-border bg-muted/30 p-3"
+                  aria-label="Colors used in this shape"
+                >
+                  {availableTextColors.map((color) => (
+                    <button
+                      key={comparableRichTextColor(color) ?? color}
+                      type="button"
+                      aria-label={`Replace ${color}`}
+                      title={color}
+                      onClick={() => setReplaceFromColor(color)}
+                      className={cn(
+                        "flex h-9 items-center gap-2 rounded-md border bg-background px-2 font-mono text-[10px] transition-colors hover:border-primary/60",
+                        comparableRichTextColor(replaceFromColor)
+                          === comparableRichTextColor(color)
+                          && "border-primary ring-2 ring-primary/20"
+                      )}
+                    >
+                      <span
+                        className="h-5 w-5 rounded border border-black/20 shadow-sm"
+                        style={{ backgroundColor: color }}
+                      />
+                      {color}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <Label>Replacement color</Label>
+                <div className="rounded-lg border border-border p-3">
+                  <ColorPickerPanel
+                    value={replaceToColor}
+                    extraColors={textColorSwatches}
+                    showHeading={false}
+                    onChange={setReplaceToColor}
+                  />
+                </div>
+              </section>
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={closeColorReplace}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={
+                    !replaceFromColor
+                    || comparableRichTextColor(replaceFromColor)
+                      === comparableRichTextColor(replaceToColor)
+                  }
+                  onClick={replaceTextColorThroughoutShape}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Replace color
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       )}
