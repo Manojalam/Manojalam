@@ -445,6 +445,71 @@ test("folded sibling groups share the Matrix-wide five-column template", () => {
   assertClean(result);
 });
 
+test("mixed-width folded groups do not combine unrelated column maxima", () => {
+  const fixture = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      incompleteRowMode: "empty",
+    },
+    { id: "group-a", parentId: "root", childFlow: "row" },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `a-${index}`,
+      parentId: "group-a",
+      text: "लघु",
+    })),
+    { id: "group-b", parentId: "root", childFlow: "row" },
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `b-${index}`,
+      parentId: "group-b",
+      text: "लघु",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "group-a") {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          layoutFoldCount: 2,
+          layoutFoldBreakAfter: ["a-1"],
+        },
+      };
+    }
+    if (node.id === "group-b") {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          layoutFoldCount: 2,
+          layoutFoldBreakAfter: ["b-1"],
+        },
+      };
+    }
+    if (node.id === "a-0" || node.id === "b-1") {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          matrixWidthOverride: 520,
+        },
+      };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(cells.get("a-0")?.width, 520);
+  assert.equal(cells.get("b-1")?.width, 520);
+  assert.ok(
+    result.bounds.width < 900,
+    `mixed Fold tracks inflated the Matrix to ${result.bounds.width}px`
+  );
+  assertClean(result);
+});
+
 test("incomplete compact rows stretch existing children by default", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, packCompactGroups: true },
