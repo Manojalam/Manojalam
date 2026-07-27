@@ -291,6 +291,17 @@ function parseCssColor(color: string): { r: number; g: number; b: number; a: num
     return { r: channels[0], g: channels[1], b: channels[2], a: alpha };
   }
 
+  const hsl = normalized.match(
+    /^hsla?\(\s*-?[\d.]+(?:deg)?\s*,\s*[\d.]+%\s*,\s*[\d.]+%(?:\s*,\s*(\d*\.?\d+))?\s*\)$/
+  );
+  if (hsl) {
+    const converted = colorSwatchHex(normalized);
+    const parsed = converted ? parseColor(converted) : null;
+    const alpha = hsl[1] === undefined ? 1 : Number(hsl[1]);
+    if (!parsed || !Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
+    return { ...parsed, a: alpha };
+  }
+
   const converted = colorSwatchHex(normalized);
   return converted ? parseColor(converted) : null;
 }
@@ -417,17 +428,36 @@ export function resolveFillColor(d: Record<string, unknown>): string | undefined
   return colorWithOpacity(color, resolveFillOpacity(d));
 }
 
-/** Resolve a node's border color: uses explicit borderColor or accent color */
+const MATRIX_BORDER_MIN_CONTRAST = 3;
+
+function visibleMatrixBorderColor(
+  fillColor: string | undefined,
+  borderColor: string | undefined
+): string {
+  const fill = typeof fillColor === "string" ? parseCssColor(fillColor) : null;
+  if (!fill || fill.a < 0.999) return "var(--foreground)";
+
+  const border = typeof borderColor === "string" ? parseCssColor(borderColor) : null;
+  if (border && border.a > 0) {
+    const renderedBorder = border.a < 0.999 ? compositeColor(border, fill) : border;
+    const contrast = contrastRatio(relativeLuminance(fill), relativeLuminance(renderedBorder));
+    if (contrast >= MATRIX_BORDER_MIN_CONTRAST) return borderColor!;
+  }
+
+  return readableTextColor(fill);
+}
+
+/** Resolve a node's border color: uses explicit borderColor or accent color. */
 export function resolveBorderColor(d: Record<string, unknown>): string | undefined {
   const layoutStyle = resolveLayoutVisualStyle(d);
   const color = layoutStyle && d.layoutAutoBorder !== false
     ? layoutStyle.borderColor
     : (d.borderColor as string) ?? (d.color as string) ?? undefined;
   if (d.matrixCell !== true) return color;
-  const parsed = typeof color === "string" ? parseCssColor(color) : null;
-  return !color || parsed?.a === 0
-    ? layoutStyle?.borderColor ?? "#64748b"
-    : color;
+  return visibleMatrixBorderColor(
+    resolveFillColor(d),
+    color ?? layoutStyle?.borderColor ?? "#64748b"
+  );
 }
 
 /** Resolve effective border width (default 2) */
