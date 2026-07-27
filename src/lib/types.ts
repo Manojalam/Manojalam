@@ -612,8 +612,13 @@ export interface FrameNodeData extends BaseNodeData {
   background?: string;
   presentationOrder?: number;
   matrixFrameFor?: string;
-  /** Matrix cell whose allocated area is enclosed by this generated division. */
-  matrixDivisionFor?: string;
+  /** Straight separator segments rendered inside one generated Matrix grid. */
+  matrixGridLines?: Array<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }>;
 }
 
 export interface SunburstNodeData extends BaseNodeData {

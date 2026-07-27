@@ -1,10 +1,14 @@
 import type { Node } from "@xyflow/react";
 import { createNodeRect, getNodeRect, type NodeRect } from "./geometry";
 import {
-  MATRIX_DIVISION_FRAME_BORDER_WIDTH,
+  MATRIX_GRID_STROKE_WIDTH,
   matrixCellDivisionPadding,
-  matrixFramePadding,
 } from "./matrix-presentation";
+import type { FrameNodeData } from "../types";
+
+type MatrixGridLine = NonNullable<FrameNodeData["matrixGridLines"]>[number];
+type AxisSegment = { position: number; start: number; end: number };
+const GRID_ALIGNMENT_TOLERANCE = 0.5;
 
 function matrixPresentationRect(node: Node): NodeRect {
   const data = (node.data ?? {}) as Record<string, unknown>;
@@ -50,38 +54,85 @@ function visualColors(node: Node | undefined): { fillColor?: string; borderColor
   return (data.layoutVisualStyle ?? {}) as { fillColor?: string; borderColor?: string };
 }
 
-function matrixFrameNode(
-  id: string,
-  rootId: string,
-  bounds: NodeRect,
-  color: string,
-  background: string,
-  zIndex: number,
-  divisionFor?: string
-): Node {
-  return {
-    id,
-    type: "frame",
-    position: { x: bounds.left, y: bounds.top },
-    data: {
-      title: "",
-      color,
-      background,
-      borderStyle: "solid",
-      borderWidth: divisionFor ? MATRIX_DIVISION_FRAME_BORDER_WIDTH : undefined,
-      locked: true,
-      matrixFrameFor: rootId,
-      matrixDivisionFor: divisionFor,
-      tags: [],
-    },
-    style: { width: bounds.width, height: bounds.height },
-    zIndex,
-    selectable: false,
-    draggable: false,
-  };
+function mergeAxisSegments(segments: readonly AxisSegment[]): AxisSegment[] {
+  const groups = new Map<number, Array<{ start: number; end: number }>>();
+  for (const segment of segments) {
+    const position = Math.round(segment.position * 2) / 2;
+    groups.set(position, [
+      ...(groups.get(position) ?? []),
+      {
+        start: Math.min(segment.start, segment.end),
+        end: Math.max(segment.start, segment.end),
+      },
+    ]);
+  }
+
+  const merged: AxisSegment[] = [];
+  for (const [position, intervals] of groups) {
+    const ordered = [...intervals].sort((a, b) => a.start - b.start || a.end - b.end);
+    let current = ordered[0];
+    for (const interval of ordered.slice(1)) {
+      if (interval.start <= current.end + GRID_ALIGNMENT_TOLERANCE) {
+        current = { start: current.start, end: Math.max(current.end, interval.end) };
+      } else {
+        merged.push({ position, ...current });
+        current = interval;
+      }
+    }
+    merged.push({ position, ...current });
+  }
+  return merged;
 }
 
-/** Builds the Matrix enclosure plus a separate division around every allocated cell. */
+function matrixGridLines(
+  scopedNodes: readonly Node[],
+  bounds: NodeRect,
+  padding: number
+): MatrixGridLine[] {
+  const vertical: AxisSegment[] = [];
+  const horizontal: AxisSegment[] = [];
+  for (const node of scopedNodes) {
+    const rect = matrixPresentationRect(node);
+    const left = rect.left - padding - bounds.left;
+    const top = rect.top - padding - bounds.top;
+    const right = rect.right + padding - bounds.left;
+    const bottom = rect.bottom + padding - bounds.top;
+    vertical.push(
+      { position: left, start: top, end: bottom },
+      { position: right, start: top, end: bottom }
+    );
+    horizontal.push(
+      { position: top, start: left, end: right },
+      { position: bottom, start: left, end: right }
+    );
+  }
+
+  const internalVertical = mergeAxisSegments(vertical)
+    .filter((line) =>
+      Math.abs(line.position) > GRID_ALIGNMENT_TOLERANCE
+      && Math.abs(line.position - bounds.width) > GRID_ALIGNMENT_TOLERANCE
+    )
+    .map<MatrixGridLine>((line) => ({
+      x1: line.position,
+      y1: line.start,
+      x2: line.position,
+      y2: line.end,
+    }));
+  const internalHorizontal = mergeAxisSegments(horizontal)
+    .filter((line) =>
+      Math.abs(line.position) > GRID_ALIGNMENT_TOLERANCE
+      && Math.abs(line.position - bounds.height) > GRID_ALIGNMENT_TOLERANCE
+    )
+    .map<MatrixGridLine>((line) => ({
+      x1: line.start,
+      y1: line.position,
+      x2: line.end,
+      y2: line.position,
+    }));
+  return [...internalHorizontal, ...internalVertical];
+}
+
+/** Builds one flat Matrix table grid with merged-cell-aware separator segments. */
 export function buildMatrixFrameNodes(
   scopedNodes: readonly Node[],
   rootId: string
@@ -91,39 +142,33 @@ export function buildMatrixFrameNodes(
   const root = byId.get(rootId);
   const rootData = (root?.data ?? {}) as Record<string, unknown>;
   const rootColors = visualColors(root);
-  const outerBounds = enclosingRect(scopedNodes, matrixFramePadding(rootData.matrixDensity));
+  const gridPadding = matrixCellDivisionPadding(rootData.matrixDensity);
+  const outerBounds = enclosingRect(scopedNodes, gridPadding);
   if (!outerBounds) return [];
+  const lines = root && rootData.matrixGridVisible !== false
+    ? matrixGridLines(scopedNodes, outerBounds, gridPadding)
+    : [];
 
-  const frames: Node[] = [
-    matrixFrameNode(
-      `matrix-frame-${rootId}`,
-      rootId,
-      outerBounds,
-      rootColors.borderColor ?? "#334155",
-      rootColors.fillColor
-        ? `color-mix(in srgb, ${rootColors.fillColor} 3%, transparent)`
-        : "rgba(15, 23, 42, 0.015)",
-      -10
-    ),
-  ];
-  if (!root) return frames;
-  if (rootData.matrixGridVisible === false) return frames;
-
-  const divisionPadding = matrixCellDivisionPadding(rootData.matrixDensity);
-  for (const cell of scopedNodes) {
-    const bounds = enclosingRect([cell], divisionPadding);
-    if (!bounds) continue;
-    const colors = visualColors(cell);
-    frames.push(matrixFrameNode(
-      `matrix-cell-division-${rootId}-${cell.id}`,
-      rootId,
-      bounds,
-      colors.borderColor ?? rootColors.borderColor ?? "#334155",
-      "transparent",
-      -2,
-      cell.id
-    ));
-  }
-
-  return frames;
+  return [{
+    id: `matrix-frame-${rootId}`,
+    type: "frame",
+    position: { x: outerBounds.left, y: outerBounds.top },
+    data: {
+      title: "",
+      color: rootColors.borderColor ?? "#334155",
+      background: rootColors.fillColor
+        ? `color-mix(in srgb, ${rootColors.fillColor} 2%, transparent)`
+        : "rgba(15, 23, 42, 0.01)",
+      borderStyle: "solid",
+      borderWidth: MATRIX_GRID_STROKE_WIDTH,
+      locked: true,
+      matrixFrameFor: rootId,
+      matrixGridLines: lines,
+      tags: [],
+    },
+    style: { width: outerBounds.width, height: outerBounds.height },
+    zIndex: -10,
+    selectable: false,
+    draggable: false,
+  }];
 }
