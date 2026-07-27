@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Trash2, ChevronDown, ChevronRight, Lock, Unlock,
+  Trash2, ChevronDown, ChevronRight, Eraser, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowDown, ArrowLeft, ArrowRight, Share2,
   ArrowUp,
@@ -1209,6 +1209,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const deleteEdges     = useCanvasStore((s) => s.deleteEdges);
   const clearConnectorJunction = useCanvasStore((s) => s.clearConnectorJunction);
   const duplicateSelected = useCanvasStore((s) => s.duplicateSelected);
+  const clearSelectedContent = useCanvasStore((s) => s.clearSelectedContent);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
   const createChildNodes = useCanvasStore((s) => s.createChildNodes);
   const createSiblingNode = useCanvasStore((s) => s.createSiblingNode);
@@ -1970,15 +1971,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>
           <div className="flex gap-1">
             {!isRadialMultiSelection && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                title="Duplicate with style and content"
-                onClick={() => duplicateSelected()}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  title="Duplicate with style and content"
+                  onClick={() => duplicateSelected()}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                  title="Clear content from selected objects"
+                  onClick={clearSelectedContent}
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                </Button>
+              </>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
               <Trash2 className="h-3.5 w-3.5" />
@@ -3838,7 +3850,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         ))}
       </div>
 
-      <div className={cn("grid gap-1 border-b bg-muted/25 p-2", isRadialLayoutSector ? "grid-cols-5" : "grid-cols-4")}>
+      <div className={cn("grid gap-1 border-b bg-muted/25 p-2", isRadialLayoutSector ? "grid-cols-6" : "grid-cols-5")}>
         <Button
           variant="outline"
           size="sm"
@@ -3864,6 +3876,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           onClick={() => duplicateSelected()}
         >
           <Copy className="mr-1 h-3 w-3" /> Copy
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-1 text-[10px] text-destructive hover:text-destructive"
+          title="Clear content"
+          onClick={clearSelectedContent}
+        >
+          <Eraser className="mr-1 h-3 w-3" /> Clear
         </Button>
         <Button
           variant="outline"

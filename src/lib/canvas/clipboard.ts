@@ -14,11 +14,7 @@ export interface BoardSelectionIds {
   edgeIds: string[];
 }
 
-export interface DuplicateContentOptions {
-  clearContent?: boolean;
-}
-
-const DUPLICATED_CONTENT_FIELDS = [
+const NODE_CONTENT_FIELDS = [
   "text",
   "richText",
   "label",
@@ -39,11 +35,15 @@ const DUPLICATED_CONTENT_FIELDS = [
   "notes",
 ] as const;
 
-const DUPLICATED_CONTENT_COLLECTIONS = [
+const NODE_CONTENT_COLLECTIONS = [
   "examples",
   "tags",
-  "collapsedSections",
 ] as const;
+
+export interface ClearNodeContentsResult {
+  nodes: Node[];
+  clearedNodeIds: string[];
+}
 
 const TEXT_EDITING_SELECTOR = [
   "input",
@@ -88,25 +88,14 @@ export function createManojalamClipboardPayload(
 }
 
 /**
- * Clone a node's data for duplication while remapping its selected hierarchy.
- * Content is preserved unless the caller explicitly requests a blank copy.
+ * Clone a node's complete data for duplication while remapping its selected hierarchy.
  */
 export function prepareDuplicatedNodeData(
   data: Record<string, unknown>,
   originalId: string,
-  idMap: ReadonlyMap<string, string>,
-  options: DuplicateContentOptions = {}
+  idMap: ReadonlyMap<string, string>
 ): Record<string, unknown> {
   const next = structuredClone(data);
-
-  if (options.clearContent) {
-    for (const field of DUPLICATED_CONTENT_FIELDS) {
-      if (field in next) next[field] = "";
-    }
-    for (const field of DUPLICATED_CONTENT_COLLECTIONS) {
-      if (Array.isArray(next[field])) next[field] = [];
-    }
-  }
 
   const parentId = typeof next.parentId === "string" ? next.parentId : null;
   next.parentId = parentId && idMap.has(parentId) ? idMap.get(parentId)! : null;
@@ -125,6 +114,42 @@ export function prepareDuplicatedNodeData(
   if (originalId === parentId || mappedChildOrder.length === 0) delete next.layoutMode;
 
   return next;
+}
+
+export function hasNodeContent(data: Record<string, unknown>): boolean {
+  return NODE_CONTENT_FIELDS.some((field) =>
+    typeof data[field] === "string" && data[field].length > 0
+  ) || NODE_CONTENT_COLLECTIONS.some((field) =>
+    Array.isArray(data[field]) && data[field].length > 0
+  );
+}
+
+/** Clear authored content while retaining every style, geometry, and hierarchy field. */
+export function clearNodeContent(data: Record<string, unknown>): Record<string, unknown> {
+  const next = structuredClone(data);
+  for (const field of NODE_CONTENT_FIELDS) {
+    if (field in next) next[field] = "";
+  }
+  for (const field of NODE_CONTENT_COLLECTIONS) {
+    if (Array.isArray(next[field])) next[field] = [];
+  }
+  return next;
+}
+
+/** Clear content from every selected content-bearing node in one immutable update. */
+export function clearSelectedNodeContents(
+  nodes: readonly Node[],
+  selectedNodeIds: ReadonlySet<string>
+): ClearNodeContentsResult {
+  const clearedNodeIds: string[] = [];
+  const nextNodes = nodes.map((node) => {
+    if (!selectedNodeIds.has(node.id)) return node;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (!hasNodeContent(data)) return node;
+    clearedNodeIds.push(node.id);
+    return { ...node, data: clearNodeContent(data) };
+  });
+  return { nodes: nextNodes, clearedNodeIds };
 }
 
 export function serializeManojalamClipboard(payload: ManojalamClipboardPayload): string {

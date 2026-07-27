@@ -46,7 +46,6 @@ import {
 } from "@/lib/canvas/selection-geometry";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import { isExternalNoteNode } from "@/lib/canvas/node-note";
-import type { DuplicateContentOptions } from "@/lib/canvas/clipboard";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -97,73 +96,6 @@ function ActionButton({
     >
       {children}
     </button>
-  );
-}
-
-function DuplicateAction({
-  disabled,
-  disabledReason,
-  onDuplicate,
-}: {
-  disabled?: boolean;
-  disabledReason?: string;
-  onDuplicate: (options?: DuplicateContentOptions) => void;
-}) {
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const primaryLabel = disabledReason ?? "Duplicate with style and content";
-
-  return (
-    <div className="flex items-center">
-      <ActionButton
-        label={primaryLabel}
-        disabled={disabled}
-        onClick={() => onDuplicate()}
-      >
-        <Copy className="h-4 w-4" />
-      </ActionButton>
-      <Popover open={optionsOpen} onOpenChange={setOptionsOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            title={disabledReason ?? "Duplicate options"}
-            aria-label={disabledReason ?? "Duplicate options"}
-            aria-expanded={optionsOpen}
-            disabled={disabled}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-            className="flex h-9 w-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-35"
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          data-export-ignore
-          side="top"
-          align="end"
-          sideOffset={10}
-          className="nodrag nopan w-64 p-1.5"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDuplicate({ clearContent: true });
-              setOptionsOpen(false);
-            }}
-          >
-            <Eraser className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>
-              <span className="block text-xs font-medium">Duplicate and clear content</span>
-              <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
-                Keep the object&apos;s style while removing its text and rich content.
-              </span>
-            </span>
-          </button>
-        </PopoverContent>
-      </Popover>
-    </div>
   );
 }
 
@@ -456,6 +388,7 @@ export function SelectionToolbar() {
   const moveSiblingNode = useCanvasStore((state) => state.moveSiblingNode);
   const createNodeNote = useCanvasStore((state) => state.createNodeNote);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
+  const clearSelectedContent = useCanvasStore((state) => state.clearSelectedContent);
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
   const setNodeLocked = useCanvasStore((state) => state.setNodeLocked);
   const setLayoutPanelOpen = useUIStore((state) => state.setLayoutPanelOpen);
@@ -869,13 +802,18 @@ export function SelectionToolbar() {
         </>
       )}
 
-      <DuplicateAction
-        disabled={singleIsSunburst}
-        disabledReason={singleIsSunburst
+      <ActionButton
+        label={singleIsSunburst
           ? "Radial charts cannot be duplicated without their source branch"
-          : undefined}
-        onDuplicate={duplicateSelected}
-      />
+          : "Duplicate with style and content"}
+        disabled={singleIsSunburst}
+        onClick={duplicateSelected}
+      >
+        <Copy className="h-4 w-4" />
+      </ActionButton>
+      <ActionButton label="Clear content" onClick={clearSelectedContent}>
+        <Eraser className="h-4 w-4 text-destructive" />
+      </ActionButton>
       <ActionButton label="Delete" onClick={deleteSelected}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
     </NodeToolbar>
   );
