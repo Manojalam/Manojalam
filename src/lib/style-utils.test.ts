@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   automaticNodeTextColor,
+  borderMatchedFillColor,
+  borderMatchedFillPatch,
   colorWithOpacity,
   getTextStyle,
   lightenColor,
@@ -126,4 +128,43 @@ test("generated hierarchy connectors mix toward the active theme foreground", ()
 test("lightens a border color into a pale matching fill", () => {
   assert.equal(lightenColor("#4262ff"), "#d5dcff");
   assert.equal(lightenColor("transparent"), "transparent");
+});
+
+test("derives a valid lighter fill from a border color", () => {
+  assert.equal(borderMatchedFillColor("#4262ff"), "#d5dcff");
+  assert.equal(borderMatchedFillColor("transparent"), undefined);
+  assert.equal(borderMatchedFillColor("not-a-color"), undefined);
+});
+
+test("only the first border color initializes an untouched fill", () => {
+  assert.deepEqual(
+    borderMatchedFillPatch({ color: "#4262ff" }, "#22c55e"),
+    { fillColor: "#cef2dc" }
+  );
+  assert.deepEqual(
+    borderMatchedFillPatch({ fillColor: "#fef3c7" }, "#22c55e"),
+    {}
+  );
+  assert.deepEqual(
+    borderMatchedFillPatch({ fillOpacity: 0.4 }, "#22c55e"),
+    {}
+  );
+});
+
+test("manual border sync replaces an existing or automatic layout fill", () => {
+  assert.deepEqual(
+    borderMatchedFillPatch({ fillColor: "#fef3c7" }, "#4262ff", true),
+    { fillColor: "#d5dcff" }
+  );
+  assert.deepEqual(
+    borderMatchedFillPatch({
+      layoutVisualStyle: {
+        rootId: "root",
+        fillColor: "#ffffff",
+        borderColor: "#111827",
+        textColor: "#111827",
+      },
+    }, "#4262ff", true),
+    { fillColor: "#d5dcff", layoutAutoFill: false }
+  );
 });

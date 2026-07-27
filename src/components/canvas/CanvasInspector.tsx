@@ -10,6 +10,7 @@ import {
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
   ArrowLeftRight, FileImage, FileText, FileType2, Link2, Maximize2, Palette, RotateCcw, Unlink2,
+  RefreshCw,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { useTheme } from "next-themes";
@@ -123,7 +124,9 @@ import {
   protectEnclosedStickerTextStyles,
 } from "@/lib/canvas/sticker-text-protection";
 import {
-  lightenColor,
+  borderMatchedFillColor,
+  borderMatchedFillPatch,
+  resolveBorderColor,
   resolveEffectiveFillOpacity,
   resolveFillSourceColor,
 } from "@/lib/style-utils";
@@ -886,11 +889,6 @@ function SurfaceEffectsControl({
   );
 }
 
-function defaultShapeFillForBorder(borderColor: unknown): Record<string, unknown> {
-  if (typeof borderColor !== "string" || !borderColor.trim() || borderColor === "transparent") return {};
-  return { fillColor: lightenColor(borderColor) };
-}
-
 function ConnectionInspectorSections({
   connectionEdges,
   commonValue,
@@ -1551,14 +1549,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     }
     const patch = fieldPatch(d, key, value);
     if (selectedNode.type === "shape" && key === "borderColor") {
-      const fillPatch = defaultShapeFillForBorder(value);
+      const fillPatch = borderMatchedFillPatch(d, value);
       if (fillPatch.fillColor !== undefined) {
         updateNodeData(selectedNode.id, patch);
         pushHistory();
-        updateNodeData(selectedNode.id, {
-          ...fillPatch,
-          ...(d.layoutVisualStyle ? { layoutAutoFill: false } : {}),
-        });
+        updateNodeData(selectedNode.id, fillPatch);
         return;
       }
     }
@@ -1595,14 +1590,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const patch = fieldPatch(data, key, value);
       if (!isRadialMultiSelection && node.type === "shape" && key === "borderColor") {
-        const fillPatch = defaultShapeFillForBorder(value);
+        const fillPatch = borderMatchedFillPatch(data, value);
         if (fillPatch.fillColor !== undefined) {
           autoFillUpdates.push({
             nodeId: node.id,
-            patch: {
-              ...fillPatch,
-              ...(data.layoutVisualStyle ? { layoutAutoFill: false } : {}),
-            },
+            patch: fillPatch,
           });
         }
       }
@@ -1630,6 +1622,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       pushHistory();
       for (const update of autoFillUpdates) updateNodeData(update.nodeId, update.patch);
     }
+  };
+
+  const syncSelectedFillToBorder = (targets: Node[]) => {
+    const updates = targets.flatMap((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const patch = borderMatchedFillPatch(data, resolveBorderColor(data), true);
+      return patch.fillColor === undefined ? [] : [{ nodeId: node.id, patch }];
+    });
+    if (!updates.length) return;
+    pushHistory();
+    for (const update of updates) updateNodeData(update.nodeId, update.patch);
   };
 
   const updateShapePadding = (targets: Node[], value: number | undefined) => {
@@ -2294,6 +2297,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={(v) => setSelectedField("fillColor", v || undefined)}
               onClear={() => setSelectedField("fillColor", "transparent")}
             />
+            {!isRadialMultiSelection && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 w-full gap-1.5 text-[10px]"
+                disabled={!selectedNodes.some((node) =>
+                  borderMatchedFillColor(resolveBorderColor((node.data ?? {}) as Record<string, unknown>))
+                )}
+                title="Set each fill to a lighter shade of its border"
+                onClick={() => syncSelectedFillToBorder(selectedNodes)}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Match border
+              </Button>
+            )}
             {!isRadialMultiSelection && <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
@@ -5095,6 +5114,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               onChange={(v) => setField("fillColor", v || undefined)}
               onClear={() => setField("fillColor", "transparent")}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-full gap-1.5 text-[10px]"
+              disabled={!borderMatchedFillColor(resolveBorderColor(d))}
+              title="Set the fill to a lighter shade of the border"
+              onClick={() => syncSelectedFillToBorder([selectedNode])}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Match border
+            </Button>
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Opacity</p>
