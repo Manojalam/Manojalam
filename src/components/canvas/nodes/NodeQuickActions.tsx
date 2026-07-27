@@ -27,7 +27,7 @@ export function NodeQuickActions({
         counterRotate && "-rotate-45"
       )}
       style={{ backgroundColor: color }}
-      title="Duplicate"
+      title="Duplicate with style and content"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();

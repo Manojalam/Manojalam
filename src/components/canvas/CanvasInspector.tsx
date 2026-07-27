@@ -1999,7 +1999,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>
           <div className="flex gap-1">
             {!isRadialMultiSelection && (
-              <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="Duplicate with style and content"
+                onClick={() => duplicateSelected()}
+              >
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -3131,7 +3137,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             >
               {d.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="Duplicate with style and content"
+              onClick={() => duplicateSelected()}
+            >
               <Copy className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
@@ -3877,7 +3889,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           variant="outline"
           size="sm"
           className="h-7 px-1 text-[10px]"
-          onClick={duplicateSelected}
+          title="Copy with style and content"
+          onClick={() => duplicateSelected()}
         >
           <Copy className="mr-1 h-3 w-3" /> Copy
         </Button>
@@ -4091,10 +4104,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Presets" visible={singleNodeTab === "style"}>
             <div className="grid grid-cols-2 gap-1.5">
               {([
-                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, cornerRadiusPercent: 25, textColor: "#111827", fontSize: 15 }],
-                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 15, textColor: "#1f2937" }],
-                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 20, textColor: "#1e1b4b", fontSize: 14 }],
-                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, cornerRadiusPercent: 5, textColor: "#431407", fontFamily: "var(--font-noto-devanagari), 'Noto Sans Devanagari', sans-serif", fontSize: 16 }],
+                ["Clean card", { fillColor: "#ffffff", fillOpacity: 1, borderColor: "#d1d5db", borderWidth: 1, cornerRadiusPercent: 25 }],
+                ["Outline", { fillColor: "#ffffff", fillOpacity: 0, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 15 }],
+                ["Diagram", { fillColor: "#eef2ff", fillOpacity: 1, borderColor: "#4262ff", borderWidth: 2, cornerRadiusPercent: 20 }],
+                ["Sanskrit table", { fillColor: "#fff7ed", fillOpacity: 1, borderColor: "#9a3412", borderWidth: 1, cornerRadiusPercent: 5 }],
               ] as Array<[string, Record<string, unknown>]>).map(([label, patch]) => (
                 <button
                   key={label}

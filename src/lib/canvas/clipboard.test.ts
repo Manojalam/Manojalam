@@ -6,6 +6,7 @@ import {
   isTextEditingTarget,
   MANOJALAM_NODES_MIME,
   parseManojalamClipboard,
+  prepareDuplicatedNodeData,
   serializeManojalamClipboard,
   shouldHandleCanvasClipboard,
   visibleBoardSelection,
@@ -52,6 +53,65 @@ test("custom clipboard payload preserves rich text inside the copied node", () =
   assert.equal(decoded?.nodes.length, 1);
   assert.equal((decoded?.nodes[0].data as Record<string, unknown>).richText, "<p><strong>अग्निः</strong></p>");
   assert.deepEqual(decoded?.nodes[0].position, { x: 30, y: 40 });
+});
+
+test("shape duplication preserves style and content by default", () => {
+  const data = {
+    text: "अग्निः",
+    richText: '<p><span style="color: #dc2626">अ</span>ग्निः</p>',
+    examples: ["अग्निमीळे"],
+    tags: ["vedic"],
+    fillColor: "#fef3c7",
+    borderColor: "#d97706",
+    fontSize: 24,
+    parentId: "parent",
+    childOrder: ["child"],
+  };
+  const duplicated = prepareDuplicatedNodeData(
+    data,
+    "shape",
+    new Map([["parent", "parent-copy"], ["child", "child-copy"]])
+  );
+
+  assert.equal(duplicated.text, data.text);
+  assert.equal(duplicated.richText, data.richText);
+  assert.deepEqual(duplicated.examples, data.examples);
+  assert.deepEqual(duplicated.tags, data.tags);
+  assert.equal(duplicated.fillColor, data.fillColor);
+  assert.equal(duplicated.borderColor, data.borderColor);
+  assert.equal(duplicated.fontSize, data.fontSize);
+  assert.equal(duplicated.parentId, "parent-copy");
+  assert.deepEqual(duplicated.childOrder, ["child-copy"]);
+  assert.notEqual(duplicated.examples, data.examples);
+});
+
+test("blank shape duplication clears content but keeps style", () => {
+  const duplicated = prepareDuplicatedNodeData(
+    {
+      text: "अग्निः",
+      richText: "<p>अग्निः</p>",
+      translation: "fire",
+      examples: ["अग्निमीळे"],
+      tags: ["vedic"],
+      collapsedSections: ["translation"],
+      fillColor: "#fef3c7",
+      borderColor: "#d97706",
+      fontSize: 24,
+    },
+    "shape",
+    new Map([["shape", "shape-copy"]]),
+    { clearContent: true }
+  );
+
+  assert.equal(duplicated.text, "");
+  assert.equal(duplicated.richText, "");
+  assert.equal(duplicated.translation, "");
+  assert.deepEqual(duplicated.examples, []);
+  assert.deepEqual(duplicated.tags, []);
+  assert.deepEqual(duplicated.collapsedSections, []);
+  assert.equal(duplicated.fillColor, "#fef3c7");
+  assert.equal(duplicated.borderColor, "#d97706");
+  assert.equal(duplicated.fontSize, 24);
 });
 
 test("malformed or unsupported clipboard payloads are rejected", () => {

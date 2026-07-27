@@ -31,7 +31,7 @@ const EDITOR_UI_SELECTORS = [
   ".react-flow__accessibility",
   ".selection-toolbar",
   ".sunburst-inline-editor",
-  'button[title="Duplicate"]',
+  'button[title^="Duplicate"]',
   'button[title="Add connected node"]',
   'button[title="Delete connection"]',
   'button[aria-label="Delete connection"]',
