@@ -619,6 +619,18 @@ function supportsMatchedColumnWidth(node: Node): boolean {
   return node.type !== "shape" || !FIXED_ASPECT_COLUMN_SHAPES.has(String(data.shapeType ?? ""));
 }
 
+function supportsMatchedSelectionSize(node: Node): boolean {
+  if (!CONTENT_SIZED_COLUMN_NODE_TYPES.has(node.type ?? "")) return false;
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  return data.matrixCell !== true && !data.layoutSizeOverride && !data.radialChart;
+}
+
+function hasFixedAspectRatio(node: Node): boolean {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  return node.type === "shape"
+    && FIXED_ASPECT_COLUMN_SHAPES.has(String(data.shapeType ?? ""));
+}
+
 function cornerRadiusPercentForNode(node: Node, fallback?: number): number {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const shapeType = data.shapeType as string | undefined;
@@ -1939,6 +1951,68 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       updateSelectedGeometry(compactEqualSpacing(selectedNodes, axis));
     };
     const canMatchColumnWidths = selectedNodes.every(supportsMatchedColumnWidth);
+    const canMatchSelectionSize = selectedNodes.every(supportsMatchedSelectionSize);
+    const matchSelectedSize = (mode: "width" | "height" | "both") => {
+      if (!canMatchSelectionSize) return;
+      const dimensions = selectedNodes.map((node) => ({
+        node,
+        size: getNodeDimensions(node),
+      }));
+      const widest = Math.max(...dimensions.map(({ size }) => size.width));
+      const tallest = Math.max(...dimensions.map(({ size }) => size.height));
+      const fixedAspectSelection = dimensions.some(({ node }) => hasFixedAspectRatio(node));
+      const commonSide = Math.max(widest, tallest);
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+
+      pushHistory();
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => {
+          if (!selectedIds.has(node.id)) return node;
+          const current = getNodeDimensions(node);
+          const fixedAspect = hasFixedAspectRatio(node);
+          const width = mode === "both"
+            ? (fixedAspectSelection ? commonSide : widest)
+            : mode === "width"
+              ? widest
+              : fixedAspect
+                ? tallest
+                : current.width;
+          const height = mode === "both"
+            ? (fixedAspectSelection ? commonSide : tallest)
+            : mode === "height"
+              ? tallest
+              : fixedAspect
+                ? widest
+                : current.height;
+          const autoSizeMode: AutoSizeMode = mode === "width" && !fixedAspect
+            ? "height-only"
+            : "fixed";
+          return resetNodeDimensions({
+            ...node,
+            data: {
+              ...(node.data ?? {}),
+              autoSizeMode,
+              userSize: { width, height },
+            },
+          }, width, height);
+        }),
+        saveStatus: "unsaved",
+      }));
+
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent("vidya:update-node-internals", {
+          detail: { nodeIds: [...selectedIds] },
+        }));
+      });
+      const label = mode === "width"
+        ? "width"
+        : mode === "height"
+          ? "height"
+          : "width and height";
+      toast.success(`Matched ${label} for ${selectedNodes.length} objects.`, {
+        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+      });
+    };
     const effectiveTidyColumnCount = Math.max(
       1,
       Math.min(selectedNodes.length, tidyColumnCount)
@@ -2130,7 +2204,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Tidy into columns</p>
                   <p className="text-[9px] leading-snug text-muted-foreground">
-                    Packs the selection top-to-bottom without changing the board&apos;s shape order.
+                    Preserves shape order, aligns the first and last cards, and spaces each column evenly.
                   </p>
                 </div>
                 <div>
@@ -2199,6 +2273,46 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   <IconBtn onClick={() => alignSelectedNodes("centerY")} title="Align vertical centers"><AlignCenterHorizontal className="h-3.5 w-3.5" /></IconBtn>
                   <IconBtn onClick={() => alignSelectedNodes("bottom")} title="Align bottom"><AlignEndHorizontal className="h-3.5 w-3.5" /></IconBtn>
                 </div>
+              </div>
+              <div>
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Match size</p>
+                <div className="grid grid-cols-3 gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canMatchSelectionSize}
+                    className="h-auto min-h-9 px-1 py-1.5 text-[9px] leading-tight"
+                    onClick={() => matchSelectedSize("width")}
+                  >
+                    Same width
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canMatchSelectionSize}
+                    className="h-auto min-h-9 px-1 py-1.5 text-[9px] leading-tight"
+                    onClick={() => matchSelectedSize("height")}
+                  >
+                    Same height
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canMatchSelectionSize}
+                    className="h-auto min-h-9 px-1 py-1.5 text-[9px] leading-tight"
+                    onClick={() => matchSelectedSize("both")}
+                  >
+                    Same size
+                  </Button>
+                </div>
+                {!canMatchSelectionSize && (
+                  <p className="mt-1.5 text-[9px] leading-snug text-muted-foreground">
+                    Size matching is available when the selection contains only free-form cards and shapes.
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <Button type="button" variant="outline" size="sm" className="h-auto min-h-9 gap-1 px-2 py-1.5 text-[9px] leading-tight" onClick={() => spaceSelectedNodes("x")}>
