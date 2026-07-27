@@ -811,7 +811,8 @@ function cellPerpendicularRange(
 function stretchTracksForCell(
   cells: OrientedBranchCell[],
   cell: OrientedBranchCell,
-  axis: "horizontal" | "vertical"
+  axis: "horizontal" | "vertical",
+  allowLockedTerminalTracks = false
 ): StretchTrack[] {
   const perpendicular = cellPerpendicularRange(cell, axis);
   const midpoint = (perpendicular.start + perpendicular.end) / 2;
@@ -856,7 +857,13 @@ function stretchTracksForCell(
       const range = cellPerpendicularRange(candidate, axis);
       return range.start <= coordinate + 0.5 && range.end >= coordinate - 0.5;
     });
-  return uniqueStretchTracks(activeCells, axis);
+  const tracks = uniqueStretchTracks(activeCells, axis);
+  // An exact terminal size defines its own hierarchy track. When a peer branch
+  // continues to a deeper level, that terminal still has to merge across the
+  // unused descendant tracks; otherwise the table exposes false divisions.
+  return allowLockedTerminalTracks && activeTerminals.length
+    ? tracks.map((track) => ({ ...track, locked: false }))
+    : tracks;
 }
 
 function stretchCellAxis(
@@ -887,7 +894,11 @@ function stretchCellAxis(
 function stretchOrientedBranch(
   branch: OrientedBranchLayout,
   targetWidth: number,
-  targetHeight: number
+  targetHeight: number,
+  options: {
+    allowLockedHorizontalTerminalTracks?: boolean;
+    allowLockedVerticalTerminalTracks?: boolean;
+  } = {}
 ): OrientedBranchLayout {
   const width = Math.max(branch.width, targetWidth);
   const height = Math.max(branch.height, targetHeight);
@@ -898,8 +909,18 @@ function stretchOrientedBranch(
     width,
     height,
     cells: branch.cells.map((cell) => {
-      const horizontalTracks = stretchTracksForCell(branch.cells, cell, "horizontal");
-      const verticalTracks = stretchTracksForCell(branch.cells, cell, "vertical");
+      const horizontalTracks = stretchTracksForCell(
+        branch.cells,
+        cell,
+        "horizontal",
+        options.allowLockedHorizontalTerminalTracks
+      );
+      const verticalTracks = stretchTracksForCell(
+        branch.cells,
+        cell,
+        "vertical",
+        options.allowLockedVerticalTerminalTracks
+      );
       const horizontal = stretchCellAxis(cell.x, cell.width, horizontalTracks, extraWidth);
       const vertical = stretchCellAxis(cell.y, cell.height, verticalTracks, extraHeight);
       return {
@@ -1340,7 +1361,12 @@ function layoutOrientedChildSections(
       section.children.forEach((child, childIndex) => {
         const childHeight = child.layout.height
           + proportionalShare(extraHeight, childIndex, section.children.length);
-        const stretched = stretchOrientedBranch(child.layout, sectionWidth, childHeight);
+        const stretched = stretchOrientedBranch(
+          child.layout,
+          sectionWidth,
+          childHeight,
+          { allowLockedHorizontalTerminalTracks: true }
+        );
         cells.push(...translateOrientedCells(stretched.cells, sectionX, childY));
         childY += stretched.height + siblingGap;
       });
@@ -1371,7 +1397,12 @@ function layoutOrientedChildSections(
     section.children.forEach((child, childIndex) => {
       const childWidth = child.layout.width
         + proportionalShare(extraWidth, childIndex, section.children.length);
-      const stretched = stretchOrientedBranch(child.layout, childWidth, sectionHeight);
+      const stretched = stretchOrientedBranch(
+        child.layout,
+        childWidth,
+        sectionHeight,
+        { allowLockedVerticalTerminalTracks: true }
+      );
       cells.push(...translateOrientedCells(stretched.cells, childX, sectionY));
       childX += stretched.width + siblingGap;
     });

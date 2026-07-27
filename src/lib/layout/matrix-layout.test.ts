@@ -212,6 +212,54 @@ test("uneven horizontal branches stretch terminal cells through later columns", 
   assertClean(result);
 });
 
+test("an exact terminal grandchild spans columns reserved for great-grandchildren", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    { id: "shallow-category", parentId: "root" },
+    { id: "shallow-child", parentId: "shallow-category" },
+    { id: "terminal-grandchild", parentId: "shallow-child", matrixWidth: 180 },
+    { id: "deep-category", parentId: "root" },
+    { id: "deep-child", parentId: "deep-category" },
+    { id: "deep-grandchild", parentId: "deep-child" },
+    { id: "great-grandchild", parentId: "deep-grandchild" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const terminal = result.cells.find((cell) => cell.nodeId === "terminal-grandchild")!;
+  const renderedNodes = [result.header, ...result.cells].map<Node>((cell) => ({
+    id: cell.nodeId,
+    type: "shape",
+    position: { x: cell.x, y: cell.y },
+    style: { width: cell.width, height: cell.height },
+    data: {
+      matrixCell: true,
+      ...(cell.nodeId === "root" ? {} : { parentId: hierarchy.get(cell.nodeId)?.parentId }),
+    },
+  }));
+  const frame = buildMatrixFrameNodes(renderedNodes, "root")[0];
+  const frameData = frame.data as Record<string, unknown>;
+  const gridLines = frameData.matrixGridLines as Array<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }>;
+  const frameLeft = frame.position.x;
+  const frameTop = frame.position.y;
+  const terminalCenterY = terminal.y + terminal.height / 2 - frameTop;
+  const divisionsThroughTerminal = gridLines.filter((line) => (
+    Math.abs(line.x1 - line.x2) < 0.5
+    && line.x1 > terminal.x - frameLeft + 0.5
+    && line.x1 < terminal.x + terminal.width - frameLeft - 0.5
+    && line.y1 <= terminalCenterY
+    && line.y2 >= terminalCenterY
+  ));
+
+  assert.equal(terminal.x + terminal.width, result.bounds.right);
+  assert.deepEqual(divisionsThroughTerminal, []);
+  assertClean(result);
+});
+
 test("a shallow table grows its body to the readable header width", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, text: "A readable Matrix title" },
@@ -1458,7 +1506,7 @@ test("user-resized cells persist column width and row height overrides", () => {
 test("vertical Matrix branches stretch shallow siblings to the body edge", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, orientation: "vertical" },
-    { id: "short", parentId: "root" },
+    { id: "short", parentId: "root", matrixHeight: 80 },
     { id: "deep", parentId: "root" },
     { id: "deep-child", parentId: "deep" },
     { id: "deepest", parentId: "deep-child" },
