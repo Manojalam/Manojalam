@@ -1,5 +1,7 @@
 import { getNodesBounds, type Edge, type Node } from "@xyflow/react";
 
+import { includeAttachedExternalNoteIds } from "../canvas/node-note";
+import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 import { normalizeTextCalloutAnchor } from "../canvas/text-callout";
 import { ExportError } from "./errors";
 import type { ExportBounds, ExportScope, ExportScopeKind } from "./types";
@@ -188,6 +190,23 @@ export function resolveExportTarget<
       if (!explicitlySelectedEdgeIds?.has(edge.id)) continue;
       if (visibleNodeById.has(edge.source)) includedNodeIds.add(edge.source);
       if (visibleNodeById.has(edge.target)) includedNodeIds.add(edge.target);
+    }
+  } else if (scope.kind === "subtree") {
+    const root = visibleNodeById.get(scope.rootId);
+    if (!root) {
+      throwEmptyScope(scope, "The selected parent is not visible or no longer exists.");
+    }
+
+    const hierarchy = buildHierarchy([...nodes], [...edges]);
+    const visibleSubtreeNodeIds = getSubtree(root.id, hierarchy).filter(
+      (nodeId) => visibleNodeById.has(nodeId)
+    );
+    const subtreeWithNotes = includeAttachedExternalNoteIds(
+      [...nodes],
+      visibleSubtreeNodeIds
+    );
+    for (const nodeId of subtreeWithNotes) {
+      if (visibleNodeById.has(nodeId)) includedNodeIds.add(nodeId);
     }
   } else {
     const frame = visibleNodeById.get(scope.frameId);

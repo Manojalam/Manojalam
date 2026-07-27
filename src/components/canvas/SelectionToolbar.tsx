@@ -544,6 +544,9 @@ export function SelectionToolbar() {
         ?? "canvas-object"
       )
     : "canvas-selection";
+  const requestedExportScope = selected.length === 1
+    ? singleHasChildren ? "subtree" : "node"
+    : "selection";
   const relationshipSourceIds = relationshipDiagramSourceIds(
     selected
       .filter((node) => (
@@ -768,7 +771,7 @@ export function SelectionToolbar() {
           <ActionButton
             label="Export PNG"
             onClick={() => openBoardExport({
-              scope: selected.length === 1 ? "node" : "selection",
+              scope: requestedExportScope,
               nodeIds: selected.map((node) => node.id),
               format: "png",
               title: exportTitle,
@@ -779,7 +782,7 @@ export function SelectionToolbar() {
           <ActionButton
             label="Export SVG"
             onClick={() => openBoardExport({
-              scope: selected.length === 1 ? "node" : "selection",
+              scope: requestedExportScope,
               nodeIds: selected.map((node) => node.id),
               format: "svg",
               title: exportTitle,
@@ -790,7 +793,7 @@ export function SelectionToolbar() {
           <ActionButton
             label="Export PDF"
             onClick={() => openBoardExport({
-              scope: selected.length === 1 ? "node" : "selection",
+              scope: requestedExportScope,
               nodeIds: selected.map((node) => node.id),
               format: "pdf",
               title: exportTitle,
