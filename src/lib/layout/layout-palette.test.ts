@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "./hierarchy";
-import { applyLayoutPalette, buildLayoutVisualStyles } from "./layout-palette";
+import {
+  applyLayoutPalette,
+  buildLayoutVisualStyles,
+  resetDescendantLayoutFillOverrides,
+} from "./layout-palette";
 
 function hierarchyFixture(): { nodes: Node[]; edges: Edge[] } {
   const specs = [
@@ -150,6 +154,40 @@ test("a manual parent fill anchors progressively lighter automatic descendant sh
   assert.ok(lightness(grandchild) > lightness(firstChild));
   assert.equal((styled.nodes[branchIndex].data as Record<string, unknown>).layoutAutoFill, false);
   assert.equal((styled.nodes[branchIndex].data as Record<string, unknown>).fillColor, "#fef3c7");
+});
+
+test("resetting descendant fills keeps the selected parent and unrelated branches manual", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const manualNodeIds = new Set(["branch-a", "a-1", "a-1-child", "branch-b"]);
+  const overriddenNodes = nodes.map((node) => manualNodeIds.has(node.id)
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          fillColor: "#fef3c7",
+          layoutAutoFill: false,
+        },
+      }
+    : node);
+  const hierarchy = buildHierarchy(overriddenNodes, edges);
+  const reset = resetDescendantLayoutFillOverrides(overriddenNodes, hierarchy, "branch-a");
+  const dataFor = (nodeId: string) => (
+    reset.nodes.find((node) => node.id === nodeId)!.data as Record<string, unknown>
+  );
+
+  assert.deepEqual(reset.resetNodeIds, ["a-1", "a-1-child"]);
+  assert.equal(dataFor("branch-a").layoutAutoFill, false);
+  assert.equal(dataFor("a-1").layoutAutoFill, undefined);
+  assert.equal(dataFor("a-1-child").layoutAutoFill, undefined);
+  assert.equal(dataFor("branch-b").layoutAutoFill, false);
+  assert.equal(dataFor("a-1").fillColor, "#fef3c7");
+
+  const styled = applyLayoutPalette(reset.nodes, edges, hierarchy, "root", "matrix", "ocean");
+  const styleFor = (nodeId: string) => (
+    styled.nodes.find((node) => node.id === nodeId)!.data as Record<string, unknown>
+  ).layoutVisualStyle as { fillColor: string };
+  assert.notEqual(styleFor("a-1").fillColor, styleFor("branch-a").fillColor);
+  assert.notEqual(styleFor("a-1-child").fillColor, styleFor("a-1").fillColor);
 });
 
 test("free form removes only the generated presentation layer", () => {
