@@ -1033,6 +1033,14 @@ function alignSiblingRowBands(
     nextX += width + (gaps[trackIndex] ?? 0);
   });
   const alignedWidth = nextX;
+  const widestNaturalBand = Math.max(
+    ...rows.map((row) => Math.max(...row.map((cell) => cell.x + cell.width)))
+  );
+  // Column sharing may align existing divisions, but it must not assemble a
+  // width that no authored row actually has. Mixed Fold bands often put one
+  // wide cell in different ordinal positions; summing those unrelated maxima
+  // creates the oversized empty "Frankenstein" grid seen on complex tables.
+  if (alignedWidth > widestNaturalBand + 0.5) return children;
 
   return children.map((child, childIndex) => {
     const bands = (childBands as HorizontalBand[][])[childIndex];
