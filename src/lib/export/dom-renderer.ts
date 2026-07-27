@@ -127,8 +127,6 @@ export interface PrepareDomExportSvgOptions extends CloneReactFlowViewportOption
   viewport: HTMLElement;
   bounds: ExportBounds;
   padding?: number;
-  /** Fill and center within the viewing window when the SVG is opened directly. */
-  responsiveViewport?: boolean;
   /** Omit or pass null for a transparent export. */
   background?: string | null;
   /** Optional CSS texture layered over an included background color. */
@@ -1116,32 +1114,18 @@ ${fontFaceCss}
 }
 
 export function configureStandaloneSvgViewport(
-  svg: Pick<SVGSVGElement, "setAttribute" | "style">,
+  svg: Pick<SVGSVGElement, "setAttribute">,
   width: number,
-  height: number,
-  responsiveViewport: boolean,
-  background: string | null | undefined
+  height: number
 ): void {
-  if (!responsiveViewport) {
-    svg.setAttribute("width", String(width));
-    svg.setAttribute("height", String(height));
-    return;
-  }
-
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", "100%");
-  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  svg.style.setProperty("display", "block");
-  svg.style.setProperty("width", "100vw");
-  svg.style.setProperty("height", "100vh");
-  if (background) svg.style.setProperty("background-color", background);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
 }
 
 function createStandaloneSvg(
   clone: HTMLElement,
   bounds: ExportBounds,
   padding: number,
-  responsiveViewport: boolean,
   background: string | null | undefined,
   backgroundTexture: ExportBackgroundTexture | null | undefined,
   title: string | undefined,
@@ -1153,13 +1137,7 @@ function createStandaloneSvg(
   svg.setAttribute("xmlns", SVG_NAMESPACE);
   svg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  configureStandaloneSvgViewport(
-    svg,
-    width,
-    height,
-    responsiveViewport,
-    background
-  );
+  configureStandaloneSvgViewport(svg, width, height);
   svg.setAttribute("role", "img");
   if (title) {
     const titleElement = svgElement("title");
@@ -1285,7 +1263,6 @@ export async function prepareReactFlowDomSvg(
       preparedClone.clone,
       options.bounds,
       padding,
-      options.responsiveViewport ?? false,
       options.background,
       options.backgroundTexture,
       options.title,

@@ -30,7 +30,7 @@ import { useUIStore, type BoardExportRequest } from "@/store/ui-store";
 type DialogScope = "board" | "selection" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 
-const DEFAULT_PADDING = 32;
+const DEFAULT_PADDING = 0;
 const EMPTY_IDS: string[] = [];
 
 function formatDimension(value: number): string {
