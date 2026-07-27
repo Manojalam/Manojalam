@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import {
+  clearSelectedNodeContents,
   createManojalamClipboardPayload,
   isTextEditingTarget,
   MANOJALAM_NODES_MIME,
@@ -85,33 +86,52 @@ test("shape duplication preserves style and content by default", () => {
   assert.notEqual(duplicated.examples, data.examples);
 });
 
-test("blank shape duplication clears content but keeps style", () => {
-  const duplicated = prepareDuplicatedNodeData(
+test("standalone clear content handles multiple shapes and text boxes without changing style", () => {
+  const nodes: Node[] = [
     {
-      text: "अग्निः",
-      richText: "<p>अग्निः</p>",
-      translation: "fire",
-      examples: ["अग्निमीळे"],
-      tags: ["vedic"],
-      collapsedSections: ["translation"],
-      fillColor: "#fef3c7",
-      borderColor: "#d97706",
-      fontSize: 24,
+      id: "shape",
+      type: "shape",
+      position: { x: 0, y: 0 },
+      data: {
+        text: "अग्निः",
+        richText: "<p>अग्निः</p>",
+        fillColor: "#fef3c7",
+        borderColor: "#d97706",
+      },
     },
-    "shape",
-    new Map([["shape", "shape-copy"]]),
-    { clearContent: true }
-  );
+    {
+      id: "text-box",
+      type: "text",
+      position: { x: 100, y: 0 },
+      data: {
+        text: "fire",
+        richText: "<p>fire</p>",
+        fontSize: 24,
+        textColor: "#dc2626",
+      },
+    },
+    {
+      id: "unselected-shape",
+      type: "shape",
+      position: { x: 200, y: 0 },
+      data: { text: "keep me", fillColor: "#dbeafe" },
+    },
+  ];
 
-  assert.equal(duplicated.text, "");
-  assert.equal(duplicated.richText, "");
-  assert.equal(duplicated.translation, "");
-  assert.deepEqual(duplicated.examples, []);
-  assert.deepEqual(duplicated.tags, []);
-  assert.deepEqual(duplicated.collapsedSections, []);
-  assert.equal(duplicated.fillColor, "#fef3c7");
-  assert.equal(duplicated.borderColor, "#d97706");
-  assert.equal(duplicated.fontSize, 24);
+  const cleared = clearSelectedNodeContents(nodes, new Set(["shape", "text-box"]));
+  const shapeData = cleared.nodes[0].data as Record<string, unknown>;
+  const textData = cleared.nodes[1].data as Record<string, unknown>;
+
+  assert.deepEqual(cleared.clearedNodeIds, ["shape", "text-box"]);
+  assert.equal(shapeData.text, "");
+  assert.equal(shapeData.richText, "");
+  assert.equal(shapeData.fillColor, "#fef3c7");
+  assert.equal(shapeData.borderColor, "#d97706");
+  assert.equal(textData.text, "");
+  assert.equal(textData.richText, "");
+  assert.equal(textData.fontSize, 24);
+  assert.equal(textData.textColor, "#dc2626");
+  assert.equal(cleared.nodes[2], nodes[2]);
 });
 
 test("malformed or unsupported clipboard payloads are rejected", () => {
