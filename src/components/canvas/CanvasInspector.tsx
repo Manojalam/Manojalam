@@ -4120,7 +4120,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 Whole {inspectorLayoutLabel(structuredLayoutMode)} chart
               </div>
               <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                Choose a coordinated palette for the entire hierarchy. A manually colored parent gives its descendants progressively lighter shades; a manually colored child starts its own color branch.
+                Choose a coordinated palette for the entire hierarchy. Ordinary color and style edits stay local to the objects you select.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Automatic chart color palette">
