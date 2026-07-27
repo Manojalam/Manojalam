@@ -502,6 +502,25 @@ export function LayoutPanel() {
 
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
               <div>
+                <div className="text-[10px] font-medium text-foreground">Cell divisions</div>
+                <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Draw Matrix-owned boundaries around every cell without changing shape borders.
+                </div>
+              </div>
+              <Switch
+                checked={matrixRootData.matrixGridVisible !== false}
+                onCheckedChange={(checked) => {
+                  useCanvasStore.getState().pushHistory();
+                  updateNodeData(matrixRoot.id, {
+                    matrixGridVisible: checked ? undefined : false,
+                  });
+                  requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+                }}
+                aria-label="Show Matrix cell divisions"
+              />
+            </div>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
+              <div>
                 <div className="text-[10px] font-medium text-foreground">Pack compact letter groups</div>
                 <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
                   Place short Devanagari terminal groups in rows on this Matrix only.
