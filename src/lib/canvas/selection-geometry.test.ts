@@ -69,11 +69,12 @@ test("column arrangement preserves board order despite rough positions and varyi
     ["4", "5"],
   ]);
   assert.equal(after.get("1")!.top, 20);
-  assert.equal(after.get("2")!.top - after.get("1")!.bottom, 24);
-  assert.equal(after.get("3")!.top - after.get("2")!.bottom, 24);
+  assert.equal(after.get("2")!.top - after.get("1")!.bottom, 130);
+  assert.equal(after.get("3")!.top - after.get("2")!.bottom, 130);
   assert.equal(after.get("4")!.top, 20);
-  assert.equal(after.get("5")!.top - after.get("4")!.bottom, 208);
+  assert.equal(after.get("5")!.top - after.get("4")!.bottom, 420);
   assert.equal(after.get("3")!.bottom, after.get("5")!.bottom);
+  assert.equal(after.get("3")!.bottom, 550, "existing outer bottom remains the anchor");
   assert.equal(after.get("4")!.left, 40 + 180 + 80);
 });
 
@@ -124,10 +125,11 @@ test("matched column widths use each column's widest card and support centered o
   assert.equal(after[0].left, after[1].left);
   assert.equal(after[2].left, after[3].left);
   assert.equal(after[2].left - after[0].right, 72);
-  assert.equal(after[1].top - after[0].bottom, 48);
-  assert.equal(after[3].top - after[2].bottom, 28);
+  assert.equal(after[1].top - after[0].bottom, 125);
+  assert.equal(after[3].top - after[2].bottom, 105);
   assert.equal(after[0].top, after[2].top);
   assert.equal(after[1].bottom, after[3].bottom);
+  assert.equal(after[1].bottom, 310);
 });
 
 test("left alignment uses rendered bounds for mixed node origins", () => {
