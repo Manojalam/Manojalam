@@ -1,3 +1,8 @@
+import {
+  normalizeWholeTextHighlight,
+  protectEnclosedStickerTextStyles,
+} from "./sticker-text-protection";
+
 const SHAPE_FORMAT_KEYS = [
   "color",
   "fillColor",
@@ -77,6 +82,17 @@ export function shapeFormatPatch(
   const patch = Object.fromEntries(
     SHAPE_FORMAT_KEYS.map((key) => [key, cloneFormatValue(format[key])])
   );
+  const protectedRichText = protectEnclosedStickerTextStyles(targetData);
+  const highlightPatch = normalizeWholeTextHighlight(
+    protectedRichText === undefined
+      ? targetData
+      : { ...targetData, richText: protectedRichText },
+    format.textHighlightColor
+  );
+  Object.assign(patch, highlightPatch);
+  if (protectedRichText !== undefined && !("richText" in highlightPatch)) {
+    patch.richText = protectedRichText;
+  }
 
   if (targetData.layoutVisualStyle) {
     patch.layoutAutoFill = false;

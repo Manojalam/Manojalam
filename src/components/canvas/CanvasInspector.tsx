@@ -117,7 +117,11 @@ import {
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
 import { rememberCustomColor } from "@/lib/canvas/custom-colors";
-import { defaultEnclosedSymbolTextColor } from "@/lib/canvas/symbol-style";
+import {
+  isInsideEnclosedSticker,
+  normalizeWholeTextHighlight,
+  protectEnclosedStickerTextStyles,
+} from "@/lib/canvas/sticker-text-protection";
 import {
   lightenColor,
   resolveEffectiveFillOpacity,
@@ -626,36 +630,6 @@ function inspectorLayoutLabel(value: unknown): string {
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 
-function inlineAuthoredColor(element: HTMLElement): string | undefined {
-  const styleColor = element.style.color.trim();
-  if (styleColor) return styleColor;
-  const legacyColor = element.getAttribute("color")?.trim();
-  return legacyColor || undefined;
-}
-
-function symbolTextColor(
-  symbol: HTMLElement,
-  container: HTMLElement
-): string | undefined {
-  const walker = document.createTreeWalker(symbol, NodeFilter.SHOW_TEXT);
-  const textNode = walker.nextNode() as Text | null;
-  let current: HTMLElement | null = textNode?.parentElement ?? symbol;
-  while (current && current !== container) {
-    const authoredColor = inlineAuthoredColor(current);
-    if (authoredColor) return authoredColor;
-    current = current.parentElement;
-  }
-  const enclosure = symbol.getAttribute("data-symbol-enclosure");
-  return defaultEnclosedSymbolTextColor({
-    enclosure: enclosure === "circle"
-      || enclosure === "square"
-      || enclosure === "rounded-square"
-      ? enclosure
-      : "none",
-    fillColor: symbol.getAttribute("data-symbol-fill") ?? undefined,
-  });
-}
-
 function normalizeWholeTextFormat(
   data: Record<string, unknown>,
   key: "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
@@ -677,29 +651,26 @@ function normalizeWholeTextFormat(
   }
 
   const container = document.createElement("div");
-  container.innerHTML = data.richText;
-  const protectedSymbolColors = key === "textColor"
-    ? new Map(
-        Array.from(container.querySelectorAll<HTMLElement>("[data-vidya-symbol]"))
-          .map((symbol) => [symbol, symbolTextColor(symbol, container)] as const)
-          .filter((entry): entry is readonly [HTMLElement, string] => !!entry[1])
-      )
-    : new Map<HTMLElement, string>();
+  container.innerHTML = key === "textAlign"
+    ? data.richText
+    : protectEnclosedStickerTextStyles(data) ?? data.richText;
   container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
+    if (isInsideEnclosedSticker(element)) return;
     element.style.removeProperty(cssProperty);
     if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
   });
   if (key === "textColor") {
-    container.querySelectorAll<HTMLElement>("[color]").forEach((element) => element.removeAttribute("color"));
+    container.querySelectorAll<HTMLElement>("[color]").forEach((element) => {
+      if (!isInsideEnclosedSticker(element)) element.removeAttribute("color");
+    });
   }
   if (key === "fontFamily") {
-    container.querySelectorAll<HTMLElement>("[face]").forEach((element) => element.removeAttribute("face"));
+    container.querySelectorAll<HTMLElement>("[face]").forEach((element) => {
+      if (!isInsideEnclosedSticker(element)) element.removeAttribute("face");
+    });
   }
   if (key === "textAlign") {
     container.querySelectorAll<HTMLElement>("[align]").forEach((element) => element.removeAttribute("align"));
-  }
-  for (const [symbol, color] of protectedSymbolColors) {
-    symbol.style.color = color;
   }
   if (key === "fontWeight" && value !== "bold") {
     container.querySelectorAll("strong, b").forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
@@ -709,47 +680,6 @@ function normalizeWholeTextFormat(
   }
   container.normalize();
   patch.richText = container.innerHTML || fallback;
-  return patch;
-}
-
-function normalizeWholeTextHighlight(data: Record<string, unknown>, value: unknown): Record<string, unknown> {
-  const color = typeof value === "string" && value ? value : undefined;
-  const patch: Record<string, unknown> = { textHighlightColor: color };
-  if (typeof document === "undefined") return patch;
-
-  const container = document.createElement("div");
-  if (typeof data.richText === "string" && data.richText.trim()) {
-    container.innerHTML = data.richText;
-  } else {
-    const fallbackText = ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"]
-      .map((field) => data[field])
-      .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0) ?? "";
-    const lines = fallbackText.split(/\r?\n/);
-    for (const line of lines) {
-      const paragraph = document.createElement("p");
-      paragraph.textContent = line;
-      container.appendChild(paragraph);
-    }
-  }
-
-  container.querySelectorAll("mark").forEach((mark) => mark.replaceWith(...Array.from(mark.childNodes)));
-  container.normalize();
-  if (color) {
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    const textNodes: Text[] = [];
-    while (walker.nextNode()) {
-      const textNode = walker.currentNode as Text;
-      if (textNode.data.trim()) textNodes.push(textNode);
-    }
-    for (const textNode of textNodes) {
-      const mark = document.createElement("mark");
-      mark.dataset.vidyaWholeHighlight = "true";
-      mark.style.backgroundColor = color;
-      textNode.parentNode?.replaceChild(mark, textNode);
-      mark.appendChild(textNode);
-    }
-  }
-  patch.richText = container.innerHTML;
   return patch;
 }
 
@@ -4155,7 +4085,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   type="button"
                   onClick={() => {
                     pushHistory();
-                    updateNodeData(selectedNode.id, patch);
+                    const protectedRichText = protectEnclosedStickerTextStyles(d);
+                    updateNodeData(selectedNode.id, {
+                      ...patch,
+                      ...(protectedRichText === undefined ? {} : { richText: protectedRichText }),
+                    });
                   }}
                   className="rounded-md border border-border px-2 py-2 text-left text-[10px] font-medium hover:border-primary/50 hover:bg-muted"
                 >

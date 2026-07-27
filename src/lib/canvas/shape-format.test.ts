@@ -67,6 +67,7 @@ test("copies whole-shape text formatting without changing embedded sticker marku
     borderLayers: [{ id: "layer", color: "#4d7c0f", width: 1, style: "solid" }],
     fontSize: 28,
     textColor: "#854d0e",
+    textHighlightColor: "#fde68a",
   });
   const target = {
     text: "Destination content",
@@ -74,6 +75,7 @@ test("copies whole-shape text formatting without changing embedded sticker marku
     shapeType: "ellipse",
     fontSize: 20,
     textColor: "#1e3a8a",
+    textHighlightColor: "#bfdbfe",
     layoutAutoText: true,
     layoutAutoTypography: true,
     layoutVisualStyle: { fillColor: "#ffffff" },
@@ -90,6 +92,7 @@ test("copies whole-shape text formatting without changing embedded sticker marku
   assert.equal(updated.richText, target.richText);
   assert.equal(updated.fontSize, 28);
   assert.equal(updated.textColor, "#854d0e");
+  assert.equal(updated.textHighlightColor, "#fde68a");
   assert.equal(updated.layoutAutoText, false);
   assert.equal(updated.layoutAutoTypography, false);
   assert.equal("text" in first, false);
