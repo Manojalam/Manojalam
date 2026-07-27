@@ -1999,7 +1999,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>
           <div className="flex gap-1">
             {!isRadialMultiSelection && (
-              <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="Duplicate with style and content"
+                onClick={() => duplicateSelected()}
+              >
                 <Copy className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -3131,7 +3137,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             >
               {d.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" title="Duplicate" onClick={duplicateSelected}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="Duplicate with style and content"
+              onClick={() => duplicateSelected()}
+            >
               <Copy className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" title="Delete" onClick={deleteSelected}>
@@ -3877,7 +3889,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           variant="outline"
           size="sm"
           className="h-7 px-1 text-[10px]"
-          onClick={duplicateSelected}
+          title="Copy with style and content"
+          onClick={() => duplicateSelected()}
         >
           <Copy className="mr-1 h-3 w-3" /> Copy
         </Button>

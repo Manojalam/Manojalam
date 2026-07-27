@@ -9,7 +9,7 @@ const SHORTCUTS = [
   { keys: ["Delete", "Backspace"], desc: "Delete selected" },
   { keys: ["⌘/Ctrl", "C"], desc: "Copy selected" },
   { keys: ["⌘/Ctrl", "V"], desc: "Paste" },
-  { keys: ["⌘/Ctrl", "D"], desc: "Duplicate selected" },
+  { keys: ["⌘/Ctrl", "D"], desc: "Duplicate selected with style and content" },
   { keys: ["⌘/Ctrl", "Z"], desc: "Undo" },
   { keys: ["⌘/Ctrl", "Shift", "Z"], desc: "Redo" },
   { keys: ["⌘/Ctrl", "S"], desc: "Save board" },
