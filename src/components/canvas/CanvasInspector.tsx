@@ -10,7 +10,7 @@ import {
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignVerticalDistributeCenter, AlignHorizontalDistributeCenter,
   ArrowLeftRight, FileImage, FileText, FileType2, Link2, Maximize2, Palette, RotateCcw, Unlink2,
-  RefreshCw,
+  RefreshCw, Sparkles, Ungroup,
 } from "lucide-react";
 import { MarkerType } from "@xyflow/react";
 import { useTheme } from "next-themes";
@@ -100,6 +100,11 @@ import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
 import { connectorLabelPresetUpdate } from "@/lib/canvas/connector-label-presets";
 import { ConnectorPathStylePreview } from "./edges/ConnectorPathStylePicker";
 import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
+import {
+  routeTidiedFlowchartEdges,
+  tidyFlowchart,
+  type FlowchartTidyDirection,
+} from "@/lib/canvas/flowchart-tidy";
 import {
   CONNECTOR_PATH_STYLES,
   resolveConnectorPathStyle,
@@ -1208,6 +1213,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [tidyDirection, setTidyDirection] = useState<"columns" | "rows">("columns");
   const [tidyLaneCount, setTidyLaneCount] = useState(2);
   const [tidyEqualizeCrossAxis, setTidyEqualizeCrossAxis] = useState(false);
+  const [wholeFlowchartDirection, setWholeFlowchartDirection] = useState<FlowchartTidyDirection>("auto");
   const [canvasSettingsOpen, setCanvasSettingsOpen] = useState(false);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
@@ -1239,6 +1245,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const createChildNodes = useCanvasStore((s) => s.createChildNodes);
   const createSiblingNode = useCanvasStore((s) => s.createSiblingNode);
   const moveSiblingNode = useCanvasStore((s) => s.moveSiblingNode);
+  const applyLayout = useCanvasStore((s) => s.applyLayout);
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
@@ -1476,6 +1483,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   })();
   const structuredLayoutRootData = (structuredLayoutRootNode?.data ?? {}) as Record<string, unknown>;
   const structuredLayoutMode = structuredLayoutRootData.layoutMode as LayoutMode | undefined;
+  const listRootNode = structuredLayoutMode === "list" ? structuredLayoutRootNode : null;
+  const listBranchIds = listRootNode ? getSubtree(listRootNode.id, hierarchy) : [];
   const activeStructuredColorScheme = radialColorScheme(
     structuredLayoutRootData.layoutColorScheme ?? structuredLayoutRootData.radialColorScheme
   ).id;
@@ -1762,6 +1771,108 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       }
     );
   };
+
+  const tidyWholeFlowchart = () => {
+    const layout = tidyFlowchart(nodes, edges, { direction: wholeFlowchartDirection });
+    if (layout.layoutNodeIds.length < 2) {
+      toast.error("Connect at least two flowchart objects before using Tidy up.");
+      return;
+    }
+
+    const layoutIds = new Set(layout.layoutNodeIds);
+    const routeEdgeIndices = edges.flatMap((edge, index) => (
+      !edge.hidden && layoutIds.has(edge.source) && layoutIds.has(edge.target) ? [index] : []
+    ));
+    const preparedEdges = routeEdgeIndices.map((index) => {
+      const edge = edges[index];
+      const sourceRank = layout.rankByNodeId[edge.source];
+      const targetRank = layout.rankByNodeId[edge.target];
+      const adjacent = targetRank - sourceRank === 1;
+      const layoutMode: LayoutMode = adjacent
+        ? layout.direction === "vertical" ? "topDown" : "horizontal"
+        : "freeForm";
+      return {
+        ...edge,
+        data: {
+          ...(edge.data ?? {}),
+          layoutMode,
+          manualRoute: !adjacent,
+        },
+      };
+    });
+    const rerouted = smartRerouteBoardEdges(layout.nodes, preparedEdges, {
+      resetManualAdjustments: true,
+    });
+    const plannedRoutes = routeTidiedFlowchartEdges(layout.nodes, rerouted.edges, layout);
+    const routeEdgeIndexSet = new Set(routeEdgeIndices);
+    let reroutedIndex = 0;
+    const nextEdges = edges.map((edge, index) => (
+      routeEdgeIndexSet.has(index) ? plannedRoutes.edges[reroutedIndex++] : edge
+    ));
+
+    pushHistory();
+    useCanvasStore.setState({
+      nodes: layout.nodes,
+      edges: nextEdges,
+      saveStatus: "unsaved",
+    });
+
+    const details = [
+      `${layout.direction === "vertical" ? "Top-to-bottom" : "Left-to-right"} layers`,
+      layout.componentCount > 1 ? `${layout.componentCount} connected groups packed separately` : null,
+      layout.lockedNodeCount ? `${layout.lockedNodeCount} locked object${layout.lockedNodeCount === 1 ? "" : "s"} kept in place` : null,
+      layout.movedNoteCount ? `${layout.movedNoteCount} attached note${layout.movedNoteCount === 1 ? "" : "s"} spaced with its source` : null,
+      plannedRoutes.semanticBranchCount ? `${plannedRoutes.semanticBranchCount} labeled decision branch${plannedRoutes.semanticBranchCount === 1 ? "" : "es"} separated` : null,
+      plannedRoutes.laneRoutedCount ? `${plannedRoutes.laneRoutedCount} cross-link${plannedRoutes.laneRoutedCount === 1 ? "" : "s"} moved to outer lanes` : null,
+    ].filter(Boolean).join(" · ");
+    toast.success(`Tidied ${layout.layoutNodeIds.length} flowchart object${layout.layoutNodeIds.length === 1 ? "" : "s"}.`, {
+      description: `${details}. Connector labels were re-anchored to rebuilt paths; styles were preserved.`,
+      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+    });
+  };
+
+  const renderWholeFlowchartSettings = () => (
+    <div className="space-y-2">
+      <p className="text-[9px] leading-snug text-muted-foreground">
+        Arrange the whole connected flowchart into clear layers. Card-only tidying remains under Arrange when several cards are selected.
+      </p>
+      <div className="grid grid-cols-3 gap-1">
+        {([
+          ["auto", "Auto"],
+          ["vertical", "Down"],
+          ["horizontal", "Across"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={wholeFlowchartDirection === value}
+            onClick={() => setWholeFlowchartDirection(value)}
+            className={cn(
+              "rounded-md border px-1.5 py-1.5 text-[9px]",
+              wholeFlowchartDirection === value
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-background text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        disabled={!edges.some((edge) => !edge.hidden)}
+        onClick={tidyWholeFlowchart}
+        className="h-8 w-full gap-1.5 text-[10px]"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        Tidy whole flowchart
+      </Button>
+      <p className="text-[9px] leading-snug text-muted-foreground">
+        Locked objects stay fixed. Attached notes keep their relative position. Undo restores placement and connector bends.
+      </p>
+    </div>
+  );
 
   const setSelectedEdgeField = (key: string, value: unknown, captureHistory = true) => {
     if (!editableSelectionEdges.length) return;
@@ -2969,6 +3080,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 />
               </div>
             </div>
+          </Section>
+          <Separator />
+          <Section label="Flowchart">
+            {renderWholeFlowchartSettings()}
           </Section>
           <Separator />
           <Section label="Connector routing">
@@ -4412,8 +4527,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>
         </Section>
 
+        <Section
+          label="Flowchart"
+          visible={singleNodeTab === "layout"
+            && !matrixRootNode
+            && !isRadialLayoutSector
+            && (!d.layoutMode || d.layoutMode === "freeForm" || d.layoutMode === "fromParentFreeForm")}
+        >
+          {renderWholeFlowchartSettings()}
+        </Section>
+
         {canFoldSelectedBranch && (
-          <Section label="Fold branch" visible={false}>
+          <Section label="Fold branch" visible={singleNodeTab === "layout"}>
             <FoldBranchControls
               parentId={selectedNode.id}
               parentData={d}
@@ -4454,7 +4579,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {structuredLayoutRootNode && supportsAutomaticLayoutColors(structuredLayoutMode) && !isRadialLayoutSector && (
-          <Section label="Automatic colors" visible={false}>
+          <Section label="Automatic colors" visible={singleNodeTab === "style"}>
             <div className="rounded-md border border-border bg-muted/30 p-2">
               <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground">
                 <Palette className="h-3.5 w-3.5" />
@@ -4722,81 +4847,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {matrixRootNode && selectedNode && (
-          <Section label="Matrix cell size" visible={singleNodeTab === "layout"}>
-            <p className="text-[9px] leading-snug text-muted-foreground">
-              Exact dimensions belong to the selected cell. Table-wide Matrix settings, density, and direction are now together in Layout settings.
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
-                <span>Width (px)</span>
-                <ExactNumberField
-                  label="Selected Matrix cell width"
-                  value={selectedMatrixWidth}
-                  min={80}
-                  max={1200}
-                  onCommit={(value) => commitSelectedMatrixCellSize("width", value)}
-                />
-              </label>
-              <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
-                <span>Height (px)</span>
-                <ExactNumberField
-                  label="Selected Matrix cell height"
-                  value={selectedMatrixHeight}
-                  min={40}
-                  max={6000}
-                  onCommit={(value) => commitSelectedMatrixCellSize("height", value)}
-                />
-              </label>
-            </div>
-            <div className="grid grid-cols-2 gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-[9px]"
-                onClick={() => commitSelectedMatrixCellSize("width", undefined)}
-              >
-                Auto width
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-[9px]"
-                onClick={() => commitSelectedMatrixCellSize("height", undefined)}
-              >
-                Auto height
-              </Button>
-            </div>
-            {(matrixHeightOverrideCount > 1 || matrixWidthOverrideCount > 1) && (
-              <div className="grid grid-cols-2 gap-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={matrixWidthOverrideCount === 0}
-                  className="h-auto min-h-7 px-1 py-1 text-[9px] leading-tight"
-                  onClick={() => resetSelectedMatrixBranchSize("width")}
-                >
-                  Auto branch widths ({matrixWidthOverrideCount})
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={matrixHeightOverrideCount === 0}
-                  className="h-auto min-h-7 px-1 py-1 text-[9px] leading-tight"
-                  onClick={() => resetSelectedMatrixBranchSize("height")}
-                >
-                  Auto branch heights ({matrixHeightOverrideCount})
-                </Button>
+          <Section label="Matrix table" visible={singleNodeTab === "layout"}>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
+              <div>
+                <p className="text-[10px] font-medium text-foreground">Cell divisions</p>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Draw Matrix-owned boundaries around every cell without changing shape borders.
+                </p>
               </div>
-            )}
-          </Section>
-        )}
-
-        {matrixRootNode && selectedNode && (
-          <Section label="Matrix table" visible={false}>
+              <Switch
+                checked={matrixRootData.matrixGridVisible !== false}
+                onCheckedChange={(checked) => {
+                  pushHistory();
+                  updateNodeData(matrixRootNode.id, {
+                    matrixGridVisible: checked ? undefined : false,
+                  });
+                  requestMatrixReflow(matrixRootNode.id);
+                }}
+                aria-label="Show Matrix cell divisions"
+              />
+            </div>
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
                 <p className="text-[10px] font-medium text-foreground">Pack compact letter groups</p>
@@ -5228,29 +5298,73 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </div>
               </>
             )}
+            <div className="grid grid-cols-3 gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-1 text-[9px]"
+                onClick={() => requestMatrixReflow(matrixRootNode.id)}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Reflow
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-1 text-[9px]"
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                  detail: {
+                    nodeIds: matrixBranchIds,
+                    mode: "matrix",
+                    rootId: matrixRootNode.id,
+                    forceFit: true,
+                  },
+                }))}
+              >
+                <Maximize2 className="h-3 w-3" />
+                Fit
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-1 text-[9px]"
+                onClick={() => {
+                  applyLayout("freeForm", matrixRootNode.id);
+                  toast.success("Converted Matrix to Free Form.", {
+                    action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                  });
+                }}
+              >
+                <Ungroup className="h-3 w-3" />
+                Free
+              </Button>
+            </div>
           </Section>
         )}
 
-        {d.layoutMode === "list" && (
-          <Section label="List density" visible={false}>
+        {listRootNode && (
+          <Section label="List" visible={singleNodeTab === "layout"}>
             <div className="grid grid-cols-2 gap-1">
               {(["compact", "comfortable"] as const).map((density) => (
                 <button
                   key={density}
                   type="button"
                   onClick={() => {
-                    updateNodeData(selectedNode.id, { listDensity: density });
+                    updateNodeData(listRootNode.id, { listDensity: density });
                     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
                       detail: {
                         mode: "list",
-                        rootId: selectedNode.id,
-                        nodeIds: [selectedNode.id, ...descendantIds],
+                        rootId: listRootNode.id,
+                        nodeIds: listBranchIds,
                       },
                     })));
                   }}
                   className={cn(
                     "rounded-md border px-1 py-1.5 text-[9px] capitalize",
-                    ((d.listDensity as string) ?? "compact") === density
+                    (((listRootNode.data ?? {}) as Record<string, unknown>).listDensity ?? "compact") === density
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
@@ -5258,6 +5372,37 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   {density}
                 </button>
               ))}
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-1 text-[9px]"
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                  detail: { mode: "list", rootId: listRootNode.id, nodeIds: listBranchIds },
+                }))}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Reflow
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1 px-1 text-[9px]"
+                onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                  detail: {
+                    nodeIds: listBranchIds,
+                    mode: "list",
+                    rootId: listRootNode.id,
+                    forceFit: true,
+                  },
+                }))}
+              >
+                <Maximize2 className="h-3 w-3" />
+                Fit
+              </Button>
             </div>
           </Section>
         )}
@@ -5355,10 +5500,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {isRadialLayoutSector && (
           <Section
-            label="Radial sector size"
-            visible={singleNodeTab === "layout" && !selectedIsRadialRoot}
+            label="Radial"
+            visible={singleNodeTab === "layout"}
           >
-            <div className="hidden">
+            <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Chart diameter</p>
                 <span className="text-[9px] text-muted-foreground">Whole chart</span>
@@ -5405,7 +5550,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </p>
             </div>
 
-            <div className="hidden">
+            <div>
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Center size</p>
                 <span className="text-[9px] text-muted-foreground">Fixed chart share</span>
@@ -5424,14 +5569,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
-            <div className="hidden rounded-md border border-border bg-muted/30 px-2 py-1.5">
+            <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <p className="text-[10px] font-medium">Compact one-page sizing</p>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Depth controls redistribute the chart radius without changing the diameter above.
               </p>
             </div>
 
-            <div className="hidden items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
               <div>
                 <p className="text-[10px] font-medium">Equal outermost segments</p>
                 <p className="text-[9px] leading-snug text-muted-foreground">
@@ -5449,7 +5594,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
-            <div className="hidden items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
               <div>
                 <p className="text-[10px] font-medium">Smart equal label sizes</p>
                 <p className="text-[9px] leading-snug text-muted-foreground">
@@ -5467,7 +5612,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
-            <div className="hidden items-center justify-between rounded-md border border-border px-2 py-1.5">
+            <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
               <div>
                 <p className="text-[10px] font-medium">Label area guides</p>
                 <p className="text-[9px] text-muted-foreground">
@@ -5561,6 +5706,57 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   onClick={() => setField("radialWeight", undefined)}
                 >
                   Use automatic sector size
+                </Button>
+              </div>
+            )}
+            {radialRootId && radialChartNode && (
+              <div className="grid grid-cols-3 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-1 text-[9px]"
+                  onClick={() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                    detail: {
+                      mode: "matrix",
+                      rootId: radialRootId,
+                      nodeIds: getSubtree(radialRootId, hierarchy),
+                    },
+                  }))}
+                >
+                  Matrix
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-1 text-[9px]"
+                  onClick={() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                    detail: {
+                      mode: "list",
+                      rootId: radialRootId,
+                      nodeIds: getSubtree(radialRootId, hierarchy),
+                    },
+                  }))}
+                >
+                  List
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 px-1 text-[9px]"
+                  onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                    detail: {
+                      nodeIds: [radialChartNode.id],
+                      mode: "radial",
+                      rootId: radialRootId,
+                      forceFit: true,
+                    },
+                  }))}
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  Fit
                 </Button>
               </div>
             )}
