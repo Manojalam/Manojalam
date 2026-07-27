@@ -17,15 +17,21 @@ test("captures shape appearance without content or structural data", () => {
     borderStyle: "dashed",
     borderLayers,
     fontSize: 18,
+    fontFamily: "serif",
+    fontWeight: "bold",
     textColor: "#451a03",
     textAlign: "center",
   });
 
   assert.equal(format.fillColor, "#fef3c7");
   assert.equal(format.borderWidth, 3);
-  assert.equal(format.fontSize, 18);
   assert.deepEqual(format.borderLayers, borderLayers);
   assert.notEqual(format.borderLayers, borderLayers);
+  assert.equal("fontSize" in format, false);
+  assert.equal("fontFamily" in format, false);
+  assert.equal("fontWeight" in format, false);
+  assert.equal("textColor" in format, false);
+  assert.equal("textAlign" in format, false);
   assert.equal("text" in format, false);
   assert.equal("richText" in format, false);
   assert.equal("parentId" in format, false);
@@ -51,28 +57,41 @@ test("captures the visible generated layout style as an explicit format", () => 
   assert.equal(format.fillOpacity, 1);
   assert.equal(format.borderColor, "#2563eb");
   assert.equal(format.borderWidth, 4);
-  assert.equal(format.textColor, "#172554");
-  assert.equal(format.fontSize, 16);
+  assert.equal("textColor" in format, false);
+  assert.equal("fontSize" in format, false);
 });
 
-test("applies independent copies and opts generated targets out of automatic styling", () => {
+test("applies independent surface copies without changing embedded text styling", () => {
   const format = captureShapeFormat({
     fillColor: "#ecfccb",
     borderLayers: [{ id: "layer", color: "#4d7c0f", width: 1, style: "solid" }],
+    fontSize: 28,
+    textColor: "#854d0e",
   });
   const target = {
     text: "Destination content",
+    richText: '<p><span style="color: #1d4ed8">क</span><span style="color: #ffffff">अ</span></p>',
     shapeType: "ellipse",
+    fontSize: 20,
+    textColor: "#1e3a8a",
+    layoutAutoText: true,
+    layoutAutoTypography: true,
     layoutVisualStyle: { fillColor: "#ffffff" },
   };
   const first = shapeFormatPatch(target, format);
   const second = shapeFormatPatch(target, format);
+  const updated = { ...target, ...first };
 
   assert.equal(first.fillColor, "#ecfccb");
   assert.equal(first.layoutAutoFill, false);
   assert.equal(first.layoutAutoBorder, false);
-  assert.equal(first.layoutAutoText, false);
-  assert.equal(first.layoutAutoTypography, false);
+  assert.equal("layoutAutoText" in first, false);
+  assert.equal("layoutAutoTypography" in first, false);
+  assert.equal(updated.richText, target.richText);
+  assert.equal(updated.fontSize, target.fontSize);
+  assert.equal(updated.textColor, target.textColor);
+  assert.equal(updated.layoutAutoText, target.layoutAutoText);
+  assert.equal(updated.layoutAutoTypography, target.layoutAutoTypography);
   assert.equal("text" in first, false);
   assert.equal("shapeType" in first, false);
   assert.notEqual(first.borderLayers, second.borderLayers);
