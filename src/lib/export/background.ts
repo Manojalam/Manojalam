@@ -1,4 +1,31 @@
-import { compositeExportColor, parseExportCssColor } from "./dom-renderer";
+import {
+  compositeExportColor,
+  isTransparentExportBackground,
+  parseExportCssColor,
+} from "./dom-renderer";
+import type { ExportFormat } from "./types";
+
+export const OPAQUE_EXPORT_FALLBACK_BACKGROUND = "#000000";
+
+export function exportFormatSupportsTransparency(format: ExportFormat): boolean {
+  return format === "png" || format === "svg";
+}
+
+/**
+ * PDF pages and JPG images cannot expose a transparent outer canvas. When the
+ * user requests no background, use one predictable black matte behind the
+ * entire authored chart instead of modifying individual transparent objects.
+ */
+export function resolveFormatExportBackground(
+  format: ExportFormat,
+  requestedBackground: string | null | undefined
+): string | null {
+  const background = requestedBackground ?? null;
+  if (exportFormatSupportsTransparency(format)) return background;
+  return isTransparentExportBackground(background)
+    ? OPAQUE_EXPORT_FALLBACK_BACKGROUND
+    : background;
+}
 
 export interface ResolvedExportBackground {
   /** The board paint to include in the output. Null means transparent pixels. */

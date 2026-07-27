@@ -96,7 +96,6 @@ export function TextCalloutSurface({
           <>
             <path
               data-export-bounds
-              data-export-contrast-surface="fill"
               d={speechPath}
               {...outline}
             />
@@ -105,7 +104,6 @@ export function TextCalloutSurface({
         ) : (
           <>
             <rect
-              data-export-contrast-surface="fill"
               x={thoughtBody.x}
               y={thoughtBody.y}
               width={thoughtBody.width}

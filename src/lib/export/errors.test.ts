@@ -27,6 +27,17 @@ test("does not describe a font failure as a remote image", () => {
 test("does not assume every tainted canvas was caused by a remote image", () => {
   const message = exportErrorUserMessage("CANVAS_TAINTED");
 
-  assert.match(message, /PNG/i);
+  assert.match(message, /raster/i);
   assert.doesNotMatch(message, /remote image/i);
+});
+
+test("classifies JPG encoding failures separately from PNG", () => {
+  assert.equal(
+    classifyExportError("encode-png", new Error("encoding failed")),
+    "PNG_BLOB_CREATION_FAILED"
+  );
+  assert.equal(
+    classifyExportError("encode-jpg", new Error("encoding failed")),
+    "JPEG_BLOB_CREATION_FAILED"
+  );
 });

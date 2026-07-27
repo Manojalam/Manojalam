@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 import type { ShapeFormatSnapshot } from "@/lib/canvas/shape-format";
+import type { ExportFormat } from "@/lib/export/types";
 
 export type ShapeVariant = ShapeType;
 
@@ -26,7 +27,7 @@ export interface BoardExportRequest {
   scope?: "board" | "selection" | "frame" | "node";
   nodeIds?: string[];
   frameId?: string;
-  format?: "png" | "svg" | "pdf";
+  format?: ExportFormat;
   title?: string;
 }
 

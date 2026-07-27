@@ -189,7 +189,6 @@ function TextBlockNodeComponent({
             exportShadowLayers.length ? JSON.stringify(exportShadowLayers) : undefined
           }
           data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
-          data-export-contrast-surface={!hasTextFrame ? "background" : undefined}
           style={{
             ...(hasTextFrame ? {} : {
               backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
