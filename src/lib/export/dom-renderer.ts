@@ -430,6 +430,33 @@ export function preserveTransparentTextContrast(
   return preservedCount;
 }
 
+/**
+ * Generated layout enclosures may use a faint board-dependent tint on the live
+ * canvas. A no-background export keeps their outline but must not turn that
+ * tint into an opaque board-colored rectangle.
+ */
+export function clearBoardDependentExportBackgrounds(
+  clone: HTMLElement,
+  transparentOutput: boolean
+): number {
+  const surfaces = [
+    ...(clone.matches("[data-export-board-dependent-background]") ? [clone] : []),
+    ...Array.from(clone.querySelectorAll<HTMLElement>(
+      "[data-export-board-dependent-background]"
+    )),
+  ];
+  let clearedCount = 0;
+
+  for (const surface of surfaces) {
+    surface.removeAttribute("data-export-board-dependent-background");
+    if (!transparentOutput) continue;
+    surface.style.setProperty("background-color", "transparent", "important");
+    clearedCount += 1;
+  }
+
+  return clearedCount;
+}
+
 function validateBounds(bounds: ExportBounds): void {
   if (
     !Number.isFinite(bounds.x)
@@ -1011,6 +1038,10 @@ export function cloneReactFlowViewport(
 
     restoreExportElements(clone);
     normalizeExportSurfaceEffects(clone);
+    clearBoardDependentExportBackgrounds(
+      clone,
+      isTransparentExportBackground(options.background)
+    );
     preserveTransparentTextContrast(
       clone,
       options.transparentContentBackground,

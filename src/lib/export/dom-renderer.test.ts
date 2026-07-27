@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  clearBoardDependentExportBackgrounds,
   compositeExportColor,
   configureStandaloneSvgViewport,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
@@ -377,4 +378,54 @@ test("leaves readable transparent dark text unchanged on a white export surface"
   );
   assert.equal(styles.get("background-color"), "transparent");
   assert.equal(attributes.has("data-export-contrast-surface"), false);
+});
+
+test("clears generated layout-frame paint only for no-background exports", () => {
+  const transparentAttributes = new Map([
+    ["data-export-board-dependent-background", "true"],
+  ]);
+  const transparentStyles = new Map([
+    ["background-color", "rgba(180, 140, 40, 0.08)"],
+  ]);
+  const transparentSurface = {
+    removeAttribute: (name: string) => transparentAttributes.delete(name),
+    style: {
+      setProperty: (name: string, value: string) => transparentStyles.set(name, value),
+    },
+  } as unknown as HTMLElement;
+  const transparentClone = {
+    matches: () => false,
+    querySelectorAll: () => [transparentSurface],
+  } as unknown as HTMLElement;
+
+  assert.equal(clearBoardDependentExportBackgrounds(transparentClone, true), 1);
+  assert.equal(transparentStyles.get("background-color"), "transparent");
+  assert.equal(
+    transparentAttributes.has("data-export-board-dependent-background"),
+    false
+  );
+
+  const includedAttributes = new Map([
+    ["data-export-board-dependent-background", "true"],
+  ]);
+  const includedStyles = new Map([
+    ["background-color", "rgba(180, 140, 40, 0.08)"],
+  ]);
+  const includedSurface = {
+    removeAttribute: (name: string) => includedAttributes.delete(name),
+    style: {
+      setProperty: (name: string, value: string) => includedStyles.set(name, value),
+    },
+  } as unknown as HTMLElement;
+  const includedClone = {
+    matches: () => false,
+    querySelectorAll: () => [includedSurface],
+  } as unknown as HTMLElement;
+
+  assert.equal(clearBoardDependentExportBackgrounds(includedClone, false), 0);
+  assert.equal(
+    includedStyles.get("background-color"),
+    "rgba(180, 140, 40, 0.08)"
+  );
+  assert.equal(includedAttributes.has("data-export-board-dependent-background"), false);
 });
