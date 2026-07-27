@@ -16,28 +16,31 @@ export type GrammarCategory =
   | "alankara"
   | "other";
 export type MemorizationStatus = "new" | "learning" | "memorized";
-export type ShapeType =
-  | "rectangle"
-  | "rounded"
-  | "circle"
-  | "ellipse"
-  | "diamond"
-  | "capsule"
-  | "callout"
-  | "triangle"
-  | "hexagon"
-  | "star"
-  | "arrow"
-  | "parallelogram"
-  | "trapezoid"
-  | "document"
-  | "database"
-  | "predefinedProcess"
-  | "delay"
-  | "cloud"
-  | "offPageConnector"
-  | "flower"
-  | "leaf";
+/** Canonical authored-shape catalog shared by controls, geometry, and tests. */
+export const SHAPE_TYPES = [
+  "rectangle",
+  "rounded",
+  "circle",
+  "ellipse",
+  "diamond",
+  "capsule",
+  "callout",
+  "triangle",
+  "hexagon",
+  "star",
+  "arrow",
+  "parallelogram",
+  "trapezoid",
+  "document",
+  "database",
+  "predefinedProcess",
+  "delay",
+  "cloud",
+  "offPageConnector",
+  "flower",
+  "leaf",
+] as const;
+export type ShapeType = typeof SHAPE_TYPES[number];
 export type CanvasTool =
   | "select"
   | "pan"

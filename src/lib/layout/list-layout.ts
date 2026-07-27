@@ -1,6 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
 import {
-  nodePolygonConnectionPoint,
   nodeShapeConnectionPoint,
 } from "../canvas/shape-connection-geometry";
 import type { Hierarchy } from "./hierarchy";
@@ -468,11 +467,7 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
       Math.min(...childRects.map((item) => item.rect.centerY)),
       parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
     );
-    const polygonParentAnchor = nodePolygonConnectionPoint(parent, parentRect, "bottom");
-    const parentAnchor = polygonParentAnchor ?? {
-      x: parentRect.left + Math.min(14, parentRect.width / 2),
-      y: parentRect.bottom,
-    };
+    const parentAnchor = nodeShapeConnectionPoint(parent, parentRect, "bottom");
     // A List parent owns one outline bus. Slightly different child X positions
     // (especially Matrix roots with different widths) must not create parallel
     // trunks that appear as duplicate connectors.
