@@ -579,6 +579,7 @@ export function RichTextEditor({
   const additivePointerRef = useRef<{
     baseRanges: RichTextSelectionRange[];
   } | null>(null);
+  const clearAdditiveOnPointerUpRef = useRef(false);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
   const measurementFontSizeRef = useRef(measurementFontSize);
@@ -1083,6 +1084,7 @@ export function RichTextEditor({
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       if (event.ctrlKey || event.metaKey) {
+        clearAdditiveOnPointerUpRef.current = false;
         const { from, to, empty } = editor.state.selection;
         additivePointerRef.current = {
           baseRanges: additiveSelectionRangesRef.current.length
@@ -1092,15 +1094,24 @@ export function RichTextEditor({
         return;
       }
       additivePointerRef.current = null;
-      clearAdditiveSelectionRanges();
+      // Removing decorations synchronously can replace the pointer's text-node
+      // target before the browser finishes its native click/drag selection.
+      clearAdditiveOnPointerUpRef.current =
+        additiveSelectionRangesRef.current.length > 0;
     };
 
     const onPointerUp = () => {
       const pending = additivePointerRef.current;
       additivePointerRef.current = null;
-      if (!pending) return;
+      const shouldClear = clearAdditiveOnPointerUpRef.current;
+      clearAdditiveOnPointerUpRef.current = false;
+      if (!pending && !shouldClear) return;
       requestAnimationFrame(() => {
         if (editor.isDestroyed) return;
+        if (!pending) {
+          clearAdditiveSelectionRanges();
+          return;
+        }
         const { from, to, empty } = editor.state.selection;
         const ranges = empty
           ? pending.baseRanges
