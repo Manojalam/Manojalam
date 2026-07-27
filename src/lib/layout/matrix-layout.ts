@@ -69,6 +69,13 @@ export interface MatrixLayoutResult {
   diagnostics: MatrixLayoutDiagnostics;
 }
 
+export interface MatrixCellResizePlan {
+  width?: number;
+  height?: number;
+  resetTableWidth: boolean;
+  resetTableHeight: boolean;
+}
+
 type DensitySettings = {
   cellGap: number;
   paddingX: number;
@@ -155,6 +162,42 @@ export function matrixTableOverrideResetAxes(
   return {
     width: positiveNumber(patch.matrixWidthOverride) !== null,
     height: positiveNumber(patch.matrixHeightOverride) !== null,
+  };
+}
+
+/**
+ * React Flow resize callbacks report both dimensions even when the user edits
+ * only one axis. Matrix cells can span several rows, so copying an unchanged
+ * rendered height back as an exact height would turn the whole span into a new
+ * row-height requirement. Preserve unchanged axes instead.
+ */
+export function resolveMatrixCellResize(
+  currentRenderedSize: { width: number; height: number },
+  currentColumnWidth: number,
+  requestedSize: { width: number; height: number }
+): MatrixCellResizePlan {
+  const widthChanged = Math.abs(requestedSize.width - currentRenderedSize.width) > 0.5;
+  const heightChanged = Math.abs(requestedSize.height - currentRenderedSize.height) > 0.5;
+  return {
+    ...(widthChanged
+      ? {
+          width: Math.round(clamp(
+            currentColumnWidth + requestedSize.width - currentRenderedSize.width,
+            MATRIX_USER_MIN_COLUMN_WIDTH,
+            MATRIX_USER_MAX_COLUMN_WIDTH
+          )),
+        }
+      : {}),
+    ...(heightChanged
+      ? {
+          height: Math.max(
+            MATRIX_DENSITY_SETTINGS.compact.minRowHeight,
+            Math.round(requestedSize.height)
+          ),
+        }
+      : {}),
+    resetTableWidth: widthChanged,
+    resetTableHeight: heightChanged,
   };
 }
 

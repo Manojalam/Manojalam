@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "../layout/hierarchy";
-import { deleteNodesPreservingHierarchy, reparentHierarchy } from "./hierarchy-mutations";
+import {
+  deleteNodesPreservingHierarchy,
+  hierarchyDeletionNodeIds,
+  reparentHierarchy,
+  unselectedHierarchyDescendants,
+} from "./hierarchy-mutations";
 
 function node(id: string, parentId: string | null, childOrder: string[] = []): Node {
   return { id, type: "shape", position: { x: 0, y: 0 }, data: { parentId, childOrder } };
@@ -52,6 +57,38 @@ test("deleting consecutive ancestors promotes surviving descendants to the neare
 
   assert.equal(hierarchy.get("leaf")?.parentId, "root");
   assert.deepEqual(hierarchy.get("root")?.childIds, ["leaf"]);
+});
+
+test("hierarchy deletion choices identify surviving descendants or expand the whole branch", () => {
+  const nodes = [
+    node("root", null, ["parent", "sibling"]),
+    node("parent", "root", ["child-a", "child-b"]),
+    node("child-a", "parent", ["grandchild"]),
+    node("grandchild", "child-a"),
+    node("child-b", "parent"),
+    node("sibling", "root"),
+  ];
+  const edges = [
+    edge("root", "parent"),
+    edge("parent", "child-a"),
+    edge("child-a", "grandchild"),
+    edge("parent", "child-b"),
+    edge("root", "sibling"),
+  ];
+  const selected = new Set(["parent", "child-a"]);
+
+  assert.deepEqual(
+    unselectedHierarchyDescendants(nodes, edges, selected),
+    ["grandchild", "child-b"]
+  );
+  assert.deepEqual(
+    [...hierarchyDeletionNodeIds(nodes, edges, selected, false)],
+    ["parent", "child-a"]
+  );
+  assert.deepEqual(
+    [...hierarchyDeletionNodeIds(nodes, edges, selected, true)],
+    ["parent", "child-a", "grandchild", "child-b"]
+  );
 });
 
 test("drag reparenting moves the canonical edge and rejects descendant cycles", () => {

@@ -814,7 +814,7 @@ export function SelectionToolbar() {
       <ActionButton label="Clear content" onClick={clearSelectedContent}>
         <Eraser className="h-4 w-4 text-destructive" />
       </ActionButton>
-      <ActionButton label="Delete" onClick={deleteSelected}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
+      <ActionButton label="Delete" onClick={() => deleteSelected()}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
     </NodeToolbar>
   );
 }

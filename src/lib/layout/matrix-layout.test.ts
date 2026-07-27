@@ -17,6 +17,7 @@ import {
   MATRIX_MAX_COLUMN_WIDTH,
   buildMatrixLeafRows,
   computeMatrixLayout,
+  resolveMatrixCellResize,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
   matrixNodeSizeDiffersFromPlacement,
@@ -1230,6 +1231,21 @@ test("changing a sibling gap preserves overall Matrix size overrides", () => {
   assert.deepEqual(
     matrixTableOverrideResetAxes({ matrixHeightOverride: 100 }),
     { width: false, height: true }
+  );
+});
+
+test("width-only Matrix resizing preserves a merged cell's rendered height", () => {
+  assert.deepEqual(
+    resolveMatrixCellResize(
+      { width: 250, height: 1119 },
+      250,
+      { width: 300, height: 1119 }
+    ),
+    {
+      width: 300,
+      resetTableWidth: true,
+      resetTableHeight: false,
+    }
   );
 });
 
