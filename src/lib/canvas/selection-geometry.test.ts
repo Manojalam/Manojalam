@@ -5,6 +5,7 @@ import { createNodeRect, getNodeRect } from "../layout/geometry";
 import {
   alignmentSnapThreshold,
   alignSelection,
+  arrangeSelectionInColumns,
   compactEqualSpacing,
   distributeSelection,
   preserveSnappedDragEndPositions,
@@ -43,6 +44,68 @@ test("vertical compact spacing supports centered node origins", () => {
   assert.equal(after[1].top - after[0].bottom, 24);
   assert.equal(after[0].left, 150);
   assert.equal(after[1].left, 200);
+});
+
+test("column arrangement preserves rough columns and packs variable-height cards", () => {
+  const nodes = [
+    node("left-2", 80, 260, 120, 90),
+    node("right-1", 520, 40, 180, 70),
+    node("left-1", 40, 20, 200, 60),
+    node("right-2", 540, 320, 140, 110),
+    node("left-3", 70, 500, 140, 50),
+  ];
+  const result = arrangeSelectionInColumns(nodes, {
+    columnCount: 2,
+    columnGap: 80,
+    rowGap: 24,
+  });
+  const after = new Map(nodes.map((item) => [
+    item.id,
+    getNodeRect({ ...item, position: result.positions.get(item.id)! }),
+  ]));
+
+  assert.deepEqual(result.columns, [
+    ["left-1", "left-2", "left-3"],
+    ["right-1", "right-2"],
+  ]);
+  assert.equal(after.get("left-1")!.top, 20);
+  assert.equal(after.get("left-2")!.top - after.get("left-1")!.bottom, 24);
+  assert.equal(after.get("left-3")!.top - after.get("left-2")!.bottom, 24);
+  assert.equal(after.get("right-1")!.top, 20);
+  assert.equal(after.get("right-2")!.top - after.get("right-1")!.bottom, 24);
+  assert.equal(after.get("right-1")!.left, 40 + 200 + 80);
+});
+
+test("matched column widths use each column's widest card and support centered origins", () => {
+  const nodes = [
+    node("a", 100, 80, 120, 50, [0.5, 0.5]),
+    node("b", 100, 240, 200, 80, [0.5, 0.5]),
+    node("c", 500, 70, 160, 60),
+    node("d", 500, 220, 140, 90),
+  ];
+  const result = arrangeSelectionInColumns(nodes, {
+    columnCount: 2,
+    matchColumnWidths: true,
+    columnGap: 72,
+    rowGap: 28,
+  });
+
+  assert.deepEqual(
+    [...result.widths.entries()],
+    [["a", 200], ["b", 200], ["c", 160], ["d", 160]]
+  );
+  const after = nodes.map((item) => getNodeRect({
+    ...item,
+    position: result.positions.get(item.id)!,
+    style: { ...item.style, width: result.widths.get(item.id) },
+    measured: undefined,
+    width: undefined,
+  }));
+  assert.equal(after[0].left, after[1].left);
+  assert.equal(after[2].left, after[3].left);
+  assert.equal(after[2].left - after[0].right, 72);
+  assert.equal(after[1].top - after[0].bottom, 28);
+  assert.equal(after[3].top - after[2].bottom, 28);
 });
 
 test("left alignment uses rendered bounds for mixed node origins", () => {

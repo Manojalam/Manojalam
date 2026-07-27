@@ -2,8 +2,22 @@ import type { Node, NodeChange } from "@xyflow/react";
 import { getNodeRect, nodePositionFromTopLeft, type NodeRect, type Point } from "../layout/geometry";
 
 export const COMPACT_SELECTION_GAP = 28;
+export const COMPACT_COLUMN_GAP = 72;
 export type SelectionAlignment = "left" | "centerX" | "right" | "top" | "centerY" | "bottom";
 export type DistributionFailure = "too-few-nodes" | "insufficient-span";
+
+export interface ColumnArrangementOptions {
+  columnCount: number;
+  columnGap?: number;
+  rowGap?: number;
+  matchColumnWidths?: boolean;
+}
+
+export interface ColumnArrangementResult {
+  positions: Map<string, Point>;
+  widths: Map<string, number>;
+  columns: string[][];
+}
 
 export interface DistributionResult {
   positions: Map<string, Point>;
@@ -192,6 +206,69 @@ export function compactEqualSpacing(
     cursor += (axis === "x" ? rect.width : rect.height) + safeGap;
   }
   return positions;
+}
+
+/**
+ * Pack an arbitrary selection into top-aligned columns while preserving its
+ * current left-to-right grouping and top-to-bottom reading order.
+ */
+export function arrangeSelectionInColumns(
+  nodes: Node[],
+  options: ColumnArrangementOptions
+): ColumnArrangementResult {
+  const positions = new Map<string, Point>();
+  const widths = new Map<string, number>();
+  if (!nodes.length) return { positions, widths, columns: [] };
+
+  const entries = nodes
+    .map((node) => ({ node, rect: getNodeRect(node) }))
+    .sort((first, second) => (
+      first.rect.centerX - second.rect.centerX
+      || first.rect.centerY - second.rect.centerY
+      || first.node.id.localeCompare(second.node.id)
+    ));
+  const columnCount = Math.max(
+    1,
+    Math.min(nodes.length, Math.round(options.columnCount) || 1)
+  );
+  const columnCapacity = Math.ceil(entries.length / columnCount);
+  const columns = Array.from({ length: columnCount }, (_, columnIndex) => (
+    entries
+      .slice(columnIndex * columnCapacity, (columnIndex + 1) * columnCapacity)
+      .sort((first, second) => (
+        first.rect.centerY - second.rect.centerY
+        || first.rect.centerX - second.rect.centerX
+        || first.node.id.localeCompare(second.node.id)
+      ))
+  )).filter((column) => column.length > 0);
+  const left = Math.min(...entries.map(({ rect }) => rect.left));
+  const top = Math.min(...entries.map(({ rect }) => rect.top));
+  const columnGap = Math.max(0, options.columnGap ?? COMPACT_COLUMN_GAP);
+  const rowGap = Math.max(0, options.rowGap ?? COMPACT_SELECTION_GAP);
+  let cursorX = left;
+
+  for (const column of columns) {
+    const columnWidth = Math.max(...column.map(({ rect }) => rect.width));
+    let cursorY = top;
+    for (const { node, rect } of column) {
+      const itemWidth = options.matchColumnWidths ? columnWidth : rect.width;
+      const itemLeft = cursorX + (columnWidth - itemWidth) / 2;
+      positions.set(node.id, nodePositionFromTopLeft(
+        node,
+        { x: itemLeft, y: cursorY },
+        { width: itemWidth, height: rect.height }
+      ));
+      if (options.matchColumnWidths) widths.set(node.id, columnWidth);
+      cursorY += rect.height + rowGap;
+    }
+    cursorX += columnWidth + columnGap;
+  }
+
+  return {
+    positions,
+    widths,
+    columns: columns.map((column) => column.map(({ node }) => node.id)),
+  };
 }
 
 /**
