@@ -8,6 +8,7 @@ import type { FrameNodeData } from "../types";
 
 type MatrixGridLine = NonNullable<FrameNodeData["matrixGridLines"]>[number];
 type AxisSegment = { position: number; start: number; end: number };
+type Interval = { start: number; end: number };
 const GRID_ALIGNMENT_TOLERANCE = 0.5;
 
 function matrixPresentationRect(node: Node): NodeRect {
@@ -84,34 +85,95 @@ function mergeAxisSegments(segments: readonly AxisSegment[]): AxisSegment[] {
   return merged;
 }
 
+function subtractIntervals(base: Interval, exclusions: readonly Interval[]): Interval[] {
+  let remaining = [base];
+  for (const exclusion of exclusions) {
+    remaining = remaining.flatMap((interval) => {
+      const start = Math.max(interval.start, exclusion.start);
+      const end = Math.min(interval.end, exclusion.end);
+      if (end - start <= GRID_ALIGNMENT_TOLERANCE) return [interval];
+      return [
+        ...(start - interval.start > GRID_ALIGNMENT_TOLERANCE
+          ? [{ start: interval.start, end: start }]
+          : []),
+        ...(interval.end - end > GRID_ALIGNMENT_TOLERANCE
+          ? [{ start: end, end: interval.end }]
+          : []),
+      ];
+    });
+  }
+  return remaining;
+}
+
 function matrixGridLines(
   scopedNodes: readonly Node[],
   bounds: NodeRect,
   padding: number
 ): MatrixGridLine[] {
+  const rects = scopedNodes.map(matrixPresentationRect);
   const vertical: AxisSegment[] = [];
   const horizontal: AxisSegment[] = [];
-  for (const node of scopedNodes) {
-    const rect = matrixPresentationRect(node);
-    const left = rect.left - padding - bounds.left;
-    const top = rect.top - padding - bounds.top;
-    const right = rect.right + padding - bounds.left;
-    const bottom = rect.bottom + padding - bounds.top;
-    vertical.push(
-      { position: left, start: top, end: bottom },
-      { position: right, start: top, end: bottom }
-    );
-    horizontal.push(
-      { position: top, start: left, end: right },
-      { position: bottom, start: left, end: right }
-    );
+  for (const first of rects) {
+    for (const second of rects) {
+      if (first.id === second.id) continue;
+
+      if (first.bottom <= second.top + GRID_ALIGNMENT_TOLERANCE) {
+        const shared = {
+          start: Math.max(first.left - padding, second.left - padding),
+          end: Math.min(first.right + padding, second.right + padding),
+        };
+        if (shared.end - shared.start > GRID_ALIGNMENT_TOLERANCE) {
+          const blockers = rects
+            .filter((candidate) =>
+              candidate.id !== first.id
+              && candidate.id !== second.id
+              && candidate.top < second.top - GRID_ALIGNMENT_TOLERANCE
+              && candidate.bottom > first.bottom + GRID_ALIGNMENT_TOLERANCE
+            )
+            .map((candidate) => ({
+              start: candidate.left - padding,
+              end: candidate.right + padding,
+            }));
+          for (const interval of subtractIntervals(shared, blockers)) {
+            horizontal.push({
+              position: (first.bottom + second.top) / 2 - bounds.top,
+              start: interval.start - bounds.left,
+              end: interval.end - bounds.left,
+            });
+          }
+        }
+      }
+
+      if (first.right <= second.left + GRID_ALIGNMENT_TOLERANCE) {
+        const shared = {
+          start: Math.max(first.top - padding, second.top - padding),
+          end: Math.min(first.bottom + padding, second.bottom + padding),
+        };
+        if (shared.end - shared.start > GRID_ALIGNMENT_TOLERANCE) {
+          const blockers = rects
+            .filter((candidate) =>
+              candidate.id !== first.id
+              && candidate.id !== second.id
+              && candidate.left < second.left - GRID_ALIGNMENT_TOLERANCE
+              && candidate.right > first.right + GRID_ALIGNMENT_TOLERANCE
+            )
+            .map((candidate) => ({
+              start: candidate.top - padding,
+              end: candidate.bottom + padding,
+            }));
+          for (const interval of subtractIntervals(shared, blockers)) {
+            vertical.push({
+              position: (first.right + second.left) / 2 - bounds.left,
+              start: interval.start - bounds.top,
+              end: interval.end - bounds.top,
+            });
+          }
+        }
+      }
+    }
   }
 
   const internalVertical = mergeAxisSegments(vertical)
-    .filter((line) =>
-      Math.abs(line.position) > GRID_ALIGNMENT_TOLERANCE
-      && Math.abs(line.position - bounds.width) > GRID_ALIGNMENT_TOLERANCE
-    )
     .map<MatrixGridLine>((line) => ({
       x1: line.position,
       y1: line.start,
@@ -119,10 +181,6 @@ function matrixGridLines(
       y2: line.end,
     }));
   const internalHorizontal = mergeAxisSegments(horizontal)
-    .filter((line) =>
-      Math.abs(line.position) > GRID_ALIGNMENT_TOLERANCE
-      && Math.abs(line.position - bounds.height) > GRID_ALIGNMENT_TOLERANCE
-    )
     .map<MatrixGridLine>((line) => ({
       x1: line.start,
       y1: line.position,

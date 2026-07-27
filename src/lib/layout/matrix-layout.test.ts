@@ -371,7 +371,7 @@ test("Matrix creates one continuous grid with merged-cell-aware separators", () 
     {
       id: "short",
       type: "shape",
-      position: { x: 20, y: 78 },
+      position: { x: 20, y: 86 },
       style: { width: 120, height: 50 },
       data: {
         parentId: "root",
@@ -382,14 +382,14 @@ test("Matrix creates one continuous grid with merged-cell-aware separators", () 
     {
       id: "a",
       type: "shape",
-      position: { x: 148, y: 78 },
+      position: { x: 148, y: 86 },
       style: { width: 100, height: 50 },
       data: { parentId: "short", matrixCell: true },
     },
     {
       id: "long",
       type: "shape",
-      position: { x: 20, y: 136 },
+      position: { x: 20, y: 144 },
       style: { width: 120, height: 108 },
       data: {
         parentId: "root",
@@ -400,21 +400,21 @@ test("Matrix creates one continuous grid with merged-cell-aware separators", () 
     {
       id: "aa",
       type: "shape",
-      position: { x: 148, y: 136 },
+      position: { x: 148, y: 144 },
       style: { width: 100, height: 50 },
       data: { parentId: "long", matrixCell: true },
     },
     {
       id: "ii",
       type: "shape",
-      position: { x: 148, y: 194 },
+      position: { x: 148, y: 202 },
       style: { width: 100, height: 50 },
       data: { parentId: "long", matrixCell: true },
     },
     {
       id: "standalone",
       type: "shape",
-      position: { x: 256, y: 78 },
+      position: { x: 256, y: 86 },
       style: { width: 100, height: 50 },
       data: { parentId: "root", matrixCell: true },
     },
@@ -424,15 +424,15 @@ test("Matrix creates one continuous grid with merged-cell-aware separators", () 
   assert.equal(frames.length, 1);
   assert.deepEqual(frames[0].position, { x: 16, y: 6 });
   assert.equal(frames[0].style?.width, 344);
-  assert.equal(frames[0].style?.height, 242);
+  assert.equal(frames[0].style?.height, 250);
   const frameData = frames[0].data as Record<string, unknown>;
   assert.equal(frameData.borderWidth, 1);
   assert.deepEqual(frameData.matrixGridLines, [
-    { x1: 0, y1: 68, x2: 344, y2: 68 },
-    { x1: 0, y1: 126, x2: 344, y2: 126 },
-    { x1: 128, y1: 184, x2: 236, y2: 184 },
-    { x1: 128, y1: 68, x2: 128, y2: 242 },
-    { x1: 236, y1: 68, x2: 236, y2: 242 },
+    { x1: 0, y1: 72, x2: 344, y2: 72 },
+    { x1: 0, y1: 134, x2: 236, y2: 134 },
+    { x1: 128, y1: 192, x2: 236, y2: 192 },
+    { x1: 128, y1: 76, x2: 128, y2: 250 },
+    { x1: 236, y1: 76, x2: 236, y2: 134 },
   ]);
 });
 
