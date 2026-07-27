@@ -9,6 +9,7 @@ import {
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
   parseExportCssColor,
+  restoreSelectedNodeExportZIndex,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
 import { ExportError } from "./errors";
@@ -203,6 +204,38 @@ test("removes grouped connector fragments that do not belong to the export", () 
   assert.equal(internalGroup.removed, false);
   assert.equal(externalBranch.removed, true);
   assert.equal(internalBranch.removed, false);
+});
+
+test("removes React Flow's temporary selected-node elevation from exports", () => {
+  const styles = new Map([["z-index", "1000"]]);
+  const selectedNode = {
+    classList: {
+      contains: (className: string) => className === "react-flow__node",
+    },
+    style: {
+      zIndex: "1000",
+      setProperty: (name: string, value: string) => styles.set(name, value),
+    },
+  };
+
+  assert.equal(restoreSelectedNodeExportZIndex(selectedNode), true);
+  assert.equal(styles.get("z-index"), "0");
+});
+
+test("preserves an authored negative layer after removing selection elevation", () => {
+  const styles = new Map([["z-index", "990"]]);
+  const selectedFrame = {
+    classList: {
+      contains: (className: string) => className === "react-flow__node",
+    },
+    style: {
+      zIndex: "990",
+      setProperty: (name: string, value: string) => styles.set(name, value),
+    },
+  };
+
+  assert.equal(restoreSelectedNodeExportZIndex(selectedFrame), true);
+  assert.equal(styles.get("z-index"), "-10");
 });
 
 test("retains intrinsic SVG dimensions when downloaded or rasterized", () => {

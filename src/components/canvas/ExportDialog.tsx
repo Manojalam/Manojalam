@@ -35,7 +35,8 @@ type DialogScope = "board" | "selection" | "subtree" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 type OpaqueFallback = "black" | "white";
 
-const DEFAULT_PADDING = 24;
+const MIN_PADDING = 24;
+const DEFAULT_PADDING = MIN_PADDING;
 const EMPTY_IDS: string[] = [];
 
 function formatDimension(value: number): string {
@@ -423,11 +424,13 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <input
                 id="export-padding"
                 type="range"
-                min="0"
+                min={MIN_PADDING}
                 max="96"
                 step="4"
                 value={padding}
-                onChange={(event) => setPadding(Number(event.target.value))}
+                onChange={(event) => setPadding(
+                  Math.max(MIN_PADDING, Number(event.target.value))
+                )}
                 className="w-full accent-primary"
               />
             </div>

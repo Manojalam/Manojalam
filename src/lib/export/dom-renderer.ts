@@ -752,6 +752,31 @@ const EDITOR_RING_STYLE_PROPERTIES = [
   "--tw-ring-shadow",
 ] as const;
 
+const REACT_FLOW_SELECTED_NODE_ELEVATION = 1_000;
+
+interface ExportNodeStackingElement {
+  classList: Pick<DOMTokenList, "contains">;
+  style: Pick<CSSStyleDeclaration, "zIndex" | "setProperty">;
+}
+
+/**
+ * React Flow temporarily raises a selected node by 1000. Export removes the
+ * selection chrome, so it must also remove that editor-only elevation or the
+ * chosen parent can cover attached notes and later siblings in the SVG.
+ */
+export function restoreSelectedNodeExportZIndex(
+  element: ExportNodeStackingElement
+): boolean {
+  if (!element.classList.contains("react-flow__node")) return false;
+  const selectedZIndex = Number(element.style.zIndex);
+  if (!Number.isFinite(selectedZIndex)) return false;
+  element.style.setProperty(
+    "z-index",
+    String(selectedZIndex - REACT_FLOW_SELECTED_NODE_ELEVATION)
+  );
+  return true;
+}
+
 function hasEditorRingClass(element: Element): boolean {
   return Array.from(element.classList).some((className) => (
     className === "ring"
@@ -827,6 +852,7 @@ function removeEditorSelectionChrome(clone: HTMLElement): number {
   let removedElementCount = 0;
 
   for (const root of selectedRoots) {
+    restoreSelectedNodeExportZIndex(root);
     root.removeAttribute("aria-selected");
     root.style.removeProperty("outline");
     root.style.removeProperty("outline-offset");
