@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 
 export const MANOJALAM_NODES_MIME = "application/x-manojalam-nodes";
 export const MANOJALAM_CLIPBOARD_VERSION = 1;
@@ -12,6 +13,11 @@ export interface ManojalamClipboardPayload {
 export interface BoardSelectionIds {
   nodeIds: string[];
   edgeIds: string[];
+}
+
+export interface CanvasObjectSelection {
+  nodes: Node[];
+  edges: Edge[];
 }
 
 const NODE_CONTENT_FIELDS = [
@@ -76,6 +82,37 @@ export function visibleBoardSelection(nodes: readonly Node[], edges: readonly Ed
   };
 }
 
+/**
+ * Expand selected hierarchy parents to their complete descendant branches.
+ * Connections are copied only when both endpoints belong to the copied branch,
+ * so the duplicate never remains attached to an object outside the selection.
+ */
+export function selectionWithHierarchyDescendants(
+  nodes: Node[],
+  edges: Edge[],
+  selectedNodeIds: readonly string[]
+): CanvasObjectSelection {
+  const existingNodeIds = new Set(nodes.map((node) => node.id));
+  const copiedNodeIds = new Set(
+    selectedNodeIds.filter((nodeId) => existingNodeIds.has(nodeId))
+  );
+  if (!copiedNodeIds.size) return { nodes: [], edges: [] };
+
+  const hierarchy = buildHierarchy(nodes, edges);
+  for (const selectedNodeId of [...copiedNodeIds]) {
+    for (const descendantId of getSubtree(selectedNodeId, hierarchy)) {
+      copiedNodeIds.add(descendantId);
+    }
+  }
+
+  return {
+    nodes: nodes.filter((node) => copiedNodeIds.has(node.id)),
+    edges: edges.filter(
+      (edge) => copiedNodeIds.has(edge.source) && copiedNodeIds.has(edge.target)
+    ),
+  };
+}
+
 export function createManojalamClipboardPayload(
   nodes: Node[],
   edges: Edge[]
@@ -110,6 +147,19 @@ export function prepareDuplicatedNodeData(
       .map((childId) => idMap.get(childId)!);
     if (mappedBreaks.length) next.layoutFoldBreakAfter = mappedBreaks;
     else delete next.layoutFoldBreakAfter;
+  }
+  for (const field of [
+    "matrixRootId",
+    "matrixFrameFor",
+    "rootId",
+    "sunburstFor",
+    "sunburstHiddenFor",
+  ]) {
+    const referencedId = next[field];
+    if (typeof referencedId !== "string") continue;
+    const duplicatedId = idMap.get(referencedId);
+    if (duplicatedId) next[field] = duplicatedId;
+    else if (referencedId !== "__board__") delete next[field];
   }
   if (originalId === parentId || mappedChildOrder.length === 0) delete next.layoutMode;
 

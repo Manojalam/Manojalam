@@ -8,6 +8,7 @@ import {
   MANOJALAM_NODES_MIME,
   parseManojalamClipboard,
   prepareDuplicatedNodeData,
+  selectionWithHierarchyDescendants,
   serializeManojalamClipboard,
   shouldHandleCanvasClipboard,
   visibleBoardSelection,
@@ -39,6 +40,73 @@ test("board select-all includes visible nodes and connectors only", () => {
   });
 });
 
+test("copying a parent includes every descendant and internal connection", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      position: { x: 0, y: 0 },
+      data: { parentId: null, childOrder: ["child"] },
+    },
+    {
+      id: "child",
+      position: { x: 100, y: 0 },
+      data: { parentId: "root", childOrder: ["grandchild"] },
+    },
+    {
+      id: "grandchild",
+      position: { x: 200, y: 0 },
+      data: { parentId: "child" },
+    },
+    {
+      id: "other-root",
+      position: { x: 0, y: 200 },
+      data: { parentId: null, childOrder: ["outside"] },
+    },
+    {
+      id: "outside",
+      position: { x: 100, y: 200 },
+      data: { parentId: "other-root" },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "root-child", source: "root", target: "child" },
+    { id: "child-grandchild", source: "child", target: "grandchild" },
+    { id: "root-grandchild-cross-link", source: "root", target: "grandchild" },
+    { id: "root-outside-cross-link", source: "root", target: "outside" },
+    { id: "other-outside", source: "other-root", target: "outside" },
+  ];
+
+  const selection = selectionWithHierarchyDescendants(nodes, edges, ["root"]);
+
+  assert.deepEqual(selection.nodes.map((node) => node.id), [
+    "root",
+    "child",
+    "grandchild",
+  ]);
+  assert.deepEqual(selection.edges.map((edge) => edge.id), [
+    "root-child",
+    "child-grandchild",
+    "root-grandchild-cross-link",
+  ]);
+});
+
+test("copying a child includes its descendants without pulling in its parent", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 0, y: 0 }, data: { childOrder: ["child"] } },
+    { id: "child", position: { x: 100, y: 0 }, data: { parentId: "root" } },
+    { id: "leaf", position: { x: 200, y: 0 }, data: { parentId: "child" } },
+  ];
+  const edges: Edge[] = [
+    { id: "root-child", source: "root", target: "child" },
+    { id: "child-leaf", source: "child", target: "leaf" },
+  ];
+
+  const selection = selectionWithHierarchyDescendants(nodes, edges, ["child"]);
+
+  assert.deepEqual(selection.nodes.map((node) => node.id), ["child", "leaf"]);
+  assert.deepEqual(selection.edges.map((edge) => edge.id), ["child-leaf"]);
+});
+
 test("custom clipboard payload preserves rich text inside the copied node", () => {
   const nodes: Node[] = [{
     id: "shape-1",
@@ -67,6 +135,7 @@ test("shape duplication preserves style and content by default", () => {
     fontSize: 24,
     parentId: "parent",
     childOrder: ["child"],
+    matrixRootId: "parent",
   };
   const duplicated = prepareDuplicatedNodeData(
     data,
@@ -83,6 +152,7 @@ test("shape duplication preserves style and content by default", () => {
   assert.equal(duplicated.fontSize, data.fontSize);
   assert.equal(duplicated.parentId, "parent-copy");
   assert.deepEqual(duplicated.childOrder, ["child-copy"]);
+  assert.equal(duplicated.matrixRootId, "parent-copy");
   assert.notEqual(duplicated.examples, data.examples);
 });
 
