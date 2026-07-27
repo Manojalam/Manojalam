@@ -1209,6 +1209,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [resetManualRoutes, setResetManualRoutes] = useState(false);
   const [tidyDirection, setTidyDirection] = useState<"columns" | "rows">("columns");
   const [tidyLaneCount, setTidyLaneCount] = useState(2);
+  const [tidyEqualizeCrossAxis, setTidyEqualizeCrossAxis] = useState(false);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const relationships   = useCanvasStore((s) => s.relationships);
@@ -2040,21 +2041,53 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       Math.min(selectedNodes.length, tidyLaneCount)
     );
     const tidySelectedArrangement = () => {
+      const equalizeSizes = tidyEqualizeCrossAxis && canMatchSelectionSize;
+      const widest = Math.max(...selectedNodes.map((node) => getNodeDimensions(node).width));
+      const tallest = Math.max(...selectedNodes.map((node) => getNodeDimensions(node).height));
+      const targetSizes = new Map<string, { width: number; height: number }>();
+      const arrangementNodes = equalizeSizes
+        ? selectedNodes.map((node) => {
+          const current = getNodeDimensions(node);
+          const target = tidyDirection === "columns"
+            ? { width: widest, height: current.height }
+            : { width: current.width, height: tallest };
+          targetSizes.set(node.id, target);
+          return resetNodeDimensions(node, target.width, target.height);
+        })
+        : selectedNodes;
       const plan = tidyDirection === "columns"
-        ? arrangeSelectionInColumns(selectedNodes, {
+        ? arrangeSelectionInColumns(arrangementNodes, {
           columnCount: effectiveTidyLaneCount,
         })
-        : arrangeSelectionInRows(selectedNodes, {
+        : arrangeSelectionInRows(arrangementNodes, {
           rowCount: effectiveTidyLaneCount,
         });
       if (!plan.positions.size) return;
 
-      updateSelectedGeometry(plan.positions);
+      pushHistory();
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => {
+          const position = plan.positions.get(node.id);
+          if (!position) return node;
+          const target = targetSizes.get(node.id);
+          if (!target) return { ...node, position };
+          return resetNodeDimensions({
+            ...node,
+            position,
+            data: {
+              ...(node.data ?? {}),
+              autoSizeMode: "fixed" as AutoSizeMode,
+              userSize: target,
+            },
+          }, target.width, target.height);
+        }),
+        saveStatus: "unsaved",
+      }));
 
       toast.success(
         `Tidied ${selectedNodes.length} cards into ${effectiveTidyLaneCount} ${tidyDirection.slice(0, -1)}${
           effectiveTidyLaneCount === 1 ? "" : "s"
-        }.`,
+        }${equalizeSizes ? ` with equal ${tidyDirection === "columns" ? "widths" : "heights"}` : ""}.`,
         { action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() } }
       );
     };
@@ -2169,7 +2202,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Tidy selection</p>
                   <p className="text-[9px] leading-snug text-muted-foreground">
-                    Moves cards into a compact arrangement without changing any width or height.
+                    Builds a compact layout; optional equal sizing changes only the direction-specific dimension.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-1">
@@ -2213,6 +2246,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background p-2">
+                  <div>
+                    <p className="text-[10px] font-medium text-foreground">
+                      Equal {tidyDirection === "columns" ? "width" : "height"}
+                    </p>
+                    <p className="text-[9px] leading-snug text-muted-foreground">
+                      {tidyDirection === "columns"
+                        ? "Uses the widest selected card; every height stays unchanged."
+                        : "Uses the tallest selected card; every width stays unchanged."}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={tidyEqualizeCrossAxis && canMatchSelectionSize}
+                    disabled={!canMatchSelectionSize}
+                    onCheckedChange={setTidyEqualizeCrossAxis}
+                    aria-label={`Use equal ${tidyDirection === "columns" ? "widths" : "heights"} while tidying`}
+                  />
                 </div>
                 <Button
                   type="button"
