@@ -117,9 +117,9 @@ import {
   unselectedHierarchyDescendants,
 } from "@/lib/canvas/hierarchy-mutations";
 import {
-  inheritChildNodeStyle,
-  inheritSiblingNodeStyle,
-} from "@/lib/canvas/node-style-inheritance";
+  patchNeedsListReflow,
+  patchNeedsMatrixReflow,
+} from "@/lib/canvas/layout-reflow";
 import {
   applyBoardFontSize,
   normalizeBoardFontSize,
@@ -1054,6 +1054,19 @@ function migrateNodes(nodes: Node[]): Node[] {
   });
 }
 
+/** Styling fields a child inherits from its parent (not content or per-node regions). */
+function inheritStyle(parentData: Record<string, unknown>): Record<string, unknown> {
+  const keys = [
+    "shapeType", "color", "fillColor", "fillOpacity",
+    "borderColor", "borderWidth", "borderStyle", "cornerRadiusPercent", "borderRadius",
+    "fontFamily", "fontSize", "maximizeText", "textColor", "scriptMode", "petalCount",
+    "textFrameStyle", "textCalloutDirection",
+  ];
+  const out: Record<string, unknown> = {};
+  for (const k of keys) if (parentData[k] !== undefined) out[k] = parentData[k];
+  return out;
+}
+
 /** Node types that can act as connectable mind-map shapes. Others default to shape. */
 const CONNECTABLE_TYPES = new Set(["shape", "sticky", "text", "mindmap"]);
 
@@ -1070,21 +1083,6 @@ function getNodeText(data: Record<string, unknown>): string {
 }
 
 const AUTOFIT_NODE_TYPES = new Set(["shape", "sticky", "text", "mindmap"]);
-const AUTOFIT_FIELDS = new Set([
-  "text", "richText", "label", "title", "topic", "devanagari", "iast", "translation",
-  "rule", "fontSize", "fontFamily", "fontStyle", "fontWeight", "textAlign",
-  "shapeType", "petalCount", "borderWidth", "cornerRadiusPercent", "borderRadius", "borderStyle",
-]);
-const MATRIX_REFLOW_FIELDS = new Set([
-  ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixFillCellLabels",
-  "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
-]);
-
-const LIST_REFLOW_FIELDS = new Set([
-  ...AUTOFIT_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "listDensity",
-]);
 const MIN_AUTO_NODE_WIDTH = 160;
 const MIN_AUTO_NODE_HEIGHT = 56;
 const MAX_AUTO_TEXT_WIDTH = 480;
@@ -1410,14 +1408,6 @@ function contentFitSize(
     maxHeight: MAX_AUTOFIT_NODE_HEIGHT,
   });
   return fitted.changed ? { width: fitted.width, height: fitted.height } : null;
-}
-
-function patchNeedsMatrixReflow(patch: Record<string, unknown>): boolean {
-  return Object.keys(patch).some((key) => MATRIX_REFLOW_FIELDS.has(key));
-}
-
-function patchNeedsListReflow(patch: Record<string, unknown>): boolean {
-  return Object.keys(patch).some((key) => LIST_REFLOW_FIELDS.has(key));
 }
 
 function normalizeSunburstChartSizes(
@@ -2722,7 +2712,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         y: parentRect.centerY - parentSize.height / 2 + (existingChildCount + index) * (parentSize.height + 28),
       },
       data: {
-        ...inheritChildNodeStyle(parentData),
+        ...inheritStyle(parentData),
         fontSize: typeof parentData.fontSize === "number" ? parentData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],
@@ -2871,7 +2861,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       origin: node.origin,
       position: nodePositionFromTopLeft(node, siblingTopLeft, siblingSize),
       data: {
-        ...inheritSiblingNodeStyle(nodeData),
+        ...inheritStyle(nodeData),
         fontSize: typeof nodeData.fontSize === "number" ? nodeData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],
@@ -3044,10 +3034,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       });
       return { nodes, saveStatus: "unsaved" };
     });
-    // Direct formatting is intentionally local to the edited node. Reapplying
-    // the layout palette here would recolor unselected descendants, including
-    // sticky notes. Whole-hierarchy recoloring remains an explicit action via
-    // applyLayoutColorScheme.
+    // Most direct formatting remains local. Matrix fill edits are the
+    // exception: a manual parent fill anchors the automatic shades of its
+    // descendants, so refresh that Matrix immediately. Explicit descendant
+    // overrides remain untouched by applyLayoutPalette.
     if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
     if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
     if (

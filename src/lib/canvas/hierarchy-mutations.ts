@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
+import { includeAttachedExternalNoteIds } from "./node-note";
 
 export interface HierarchyMutationResult {
   nodes: Node[];
@@ -32,11 +33,11 @@ export function hierarchyDeletionNodeIds(
   selectedNodeIds: ReadonlySet<string>,
   includeDescendants: boolean
 ): Set<string> {
-  if (!includeDescendants) return new Set(selectedNodeIds);
-  return new Set([
+  const hierarchyNodeIds = includeDescendants ? new Set([
     ...selectedNodeIds,
     ...unselectedHierarchyDescendants(nodes, edges, selectedNodeIds),
-  ]);
+  ]) : new Set(selectedNodeIds);
+  return new Set(includeAttachedExternalNoteIds(nodes, [...hierarchyNodeIds]));
 }
 
 /** Move a hierarchy branch to a new parent while preserving its descendants. */
