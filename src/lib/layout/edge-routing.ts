@@ -215,6 +215,8 @@ export interface LayoutRouteOptions {
   targetFraction?: number;
   laneOffset?: number;
   peerSegments?: Segment[];
+  sourceEndpoint?: { point: RoutePoint; side: Side };
+  targetEndpoint?: { point: RoutePoint; side: Side };
 }
 
 function routeMidpoint(points: Pt[]): Pt {
@@ -596,6 +598,16 @@ export function routeLayoutEdge(
   obstacles: NodeRect[],
   options: LayoutRouteOptions = {}
 ): RouteResult {
+  if (options.sourceEndpoint && options.targetEndpoint) {
+    return routeOrthogonalEdge(
+      options.sourceEndpoint.point,
+      options.targetEndpoint.point,
+      options.sourceEndpoint.side,
+      options.targetEndpoint.side,
+      obstacles,
+      options.peerSegments
+    );
+  }
   const direct = centeredDirectRoute(sourceRect, targetRect, layoutMode, obstacles, options);
   if (direct) return direct;
   switch (layoutMode) {

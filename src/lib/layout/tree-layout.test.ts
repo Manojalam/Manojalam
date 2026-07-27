@@ -395,6 +395,53 @@ test("selected hierarchy edges leave the shared bus for full connector editing",
   assert.deepEqual(buildTreeConnectorModel(nodes, [bentEdge]).groups, []);
 });
 
+test("structured tree buses attach to polygon silhouettes", () => {
+  const nodes: Node[] = [{
+    id: "parent",
+    type: "shape",
+    position: { x: 100, y: 100 },
+    measured: { width: 500, height: 500 },
+    data: {
+      text: "Parent",
+      shapeType: "star",
+      parentId: null,
+      childOrder: ["child"],
+    },
+  }, {
+    id: "child",
+    type: "shape",
+    position: { x: 250, y: 760 },
+    measured: { width: 200, height: 200 },
+    data: {
+      text: "Child",
+      shapeType: "star",
+      parentId: "parent",
+      childOrder: [],
+    },
+  }];
+  const edge: Edge = {
+    id: "parent-child",
+    source: "parent",
+    target: "child",
+    type: "branch",
+    data: { layoutMode: "vertical", curveStyle: "step" },
+  };
+  const group = buildTreeConnectorModel(nodes, [edge]).groups[0];
+
+  assert.ok(group);
+  assert.deepEqual(
+    { x: group.sharedSegments[0].x1, y: group.sharedSegments[0].y1 },
+    { x: 350, y: 450 }
+  );
+  assert.deepEqual(
+    {
+      x: group.branches[0].segments[0].x2,
+      y: group.branches[0].segments[0].y2,
+    },
+    { x: 350, y: 762 }
+  );
+});
+
 test("a fully selected multi-branch connector remains one shared bus", () => {
   const nodes: Node[] = [{
     id: "parent",

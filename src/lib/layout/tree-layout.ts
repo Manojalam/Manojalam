@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import { nodeShapeConnectionPoint } from "../canvas/shape-connection-geometry";
 import type { LayoutMode } from "../types";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy, getSubtree } from "./hierarchy";
@@ -447,13 +448,25 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
       - (orderIndex.get(second.target) ?? Number.MAX_SAFE_INTEGER)
     );
     const children = parentEdges
-      .map((edge) => ({ edge, rect: byId.get(edge.target) ? getNodeRect(byId.get(edge.target)!) : null }))
-      .filter((entry): entry is { edge: Edge; rect: NodeRect } => entry.rect !== null);
+      .map((edge) => {
+        const node = byId.get(edge.target);
+        return node ? { edge, node, rect: getNodeRect(node) } : null;
+      })
+      .filter((entry): entry is { edge: Edge; node: Node; rect: NodeRect } => entry !== null);
     if (!children.length) continue;
 
     const mode = ((parentEdges[0].data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
     const orientation = treeOrientationForMode(mode);
     if (!orientation) continue;
+    const parentAnchor = nodeShapeConnectionPoint(
+      parent,
+      parentRect,
+      orientation === "vertical" ? "bottom" : "right"
+    );
+    const childAnchors = new Map(children.map(({ edge, node, rect }) => [
+      edge.target,
+      nodeShapeConnectionPoint(node, rect, orientation === "vertical" ? "top" : "left"),
+    ]));
 
     let group: TreeConnectorGroup;
     if (orientation === "vertical") {
@@ -472,20 +485,23 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
         const nearestChildTop = rows[0].top;
         const clearance = Math.max(0, nearestChildTop - parentRect.bottom);
         const busY = parentRect.bottom + Math.min(56, Math.max(24, clearance / 2));
-        const childCenters = children.map((child) => child.rect.centerX);
-        const connectorCenters = [parentRect.centerX, ...childCenters];
+        const childCenters = children.map((child) => childAnchors.get(child.edge.target)!.x);
+        const connectorCenters = [parentAnchor.x, ...childCenters];
         group = {
           parentId,
           orientation,
           sharedSegments: [
-            { x1: parentRect.centerX, y1: parentRect.bottom, x2: parentRect.centerX, y2: busY },
+            { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: busY },
             { x1: Math.min(...connectorCenters), y1: busY, x2: Math.max(...connectorCenters), y2: busY },
           ],
-          branches: children.map(({ edge, rect }) => ({
-            edge,
-            childId: edge.target,
-            segments: [{ x1: rect.centerX, y1: busY, x2: rect.centerX, y2: rect.top }],
-          })),
+          branches: children.map(({ edge }) => {
+            const anchor = childAnchors.get(edge.target)!;
+            return {
+              edge,
+              childId: edge.target,
+              segments: [{ x1: anchor.x, y1: busY, x2: anchor.x, y2: anchor.y }],
+            };
+          }),
         };
       } else {
         const busByChild = new Map<string, number>();
@@ -499,21 +515,29 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
           parentId,
           orientation,
           sharedSegments: [
-            { x1: parentRect.centerX, y1: parentRect.bottom, x2: parentRect.centerX, y2: rowBuses[0].busY },
-            { x1: corridorX, y1: rowBuses[0].busY, x2: parentRect.centerX, y2: rowBuses[0].busY },
+            { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: rowBuses[0].busY },
+            { x1: corridorX, y1: rowBuses[0].busY, x2: parentAnchor.x, y2: rowBuses[0].busY },
             { x1: corridorX, y1: rowBuses[0].busY, x2: corridorX, y2: rowBuses[rowBuses.length - 1].busY },
             ...rowBuses.map((row) => ({
               x1: corridorX,
               y1: row.busY,
-              x2: Math.max(...row.items.map((item) => item.rect.centerX)),
+              x2: Math.max(...row.items.map((item) => childAnchors.get(item.edge.target)!.x)),
               y2: row.busY,
             })),
           ],
-          branches: children.map(({ edge, rect }) => ({
-            edge,
-            childId: edge.target,
-            segments: [{ x1: rect.centerX, y1: busByChild.get(edge.target)!, x2: rect.centerX, y2: rect.top }],
-          })),
+          branches: children.map(({ edge }) => {
+            const anchor = childAnchors.get(edge.target)!;
+            return {
+              edge,
+              childId: edge.target,
+              segments: [{
+                x1: anchor.x,
+                y1: busByChild.get(edge.target)!,
+                x2: anchor.x,
+                y2: anchor.y,
+              }],
+            };
+          }),
         };
       }
     } else {
@@ -532,20 +556,23 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
         const nearestChildLeft = lanes[0].left;
         const clearance = Math.max(0, nearestChildLeft - parentRect.right);
         const busX = parentRect.right + Math.min(64, Math.max(28, clearance / 2));
-        const childCenters = children.map((child) => child.rect.centerY);
-        const connectorCenters = [parentRect.centerY, ...childCenters];
+        const childCenters = children.map((child) => childAnchors.get(child.edge.target)!.y);
+        const connectorCenters = [parentAnchor.y, ...childCenters];
         group = {
           parentId,
           orientation,
           sharedSegments: [
-            { x1: parentRect.right, y1: parentRect.centerY, x2: busX, y2: parentRect.centerY },
+            { x1: parentAnchor.x, y1: parentAnchor.y, x2: busX, y2: parentAnchor.y },
             { x1: busX, y1: Math.min(...connectorCenters), x2: busX, y2: Math.max(...connectorCenters) },
           ],
-          branches: children.map(({ edge, rect }) => ({
-            edge,
-            childId: edge.target,
-            segments: [{ x1: busX, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
-          })),
+          branches: children.map(({ edge }) => {
+            const anchor = childAnchors.get(edge.target)!;
+            return {
+              edge,
+              childId: edge.target,
+              segments: [{ x1: busX, y1: anchor.y, x2: anchor.x, y2: anchor.y }],
+            };
+          }),
         };
       } else {
         const busByChild = new Map<string, number>();
@@ -559,20 +586,31 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
           parentId,
           orientation,
           sharedSegments: [
-            { x1: parentRect.right, y1: parentRect.centerY, x2: laneBuses[0].busX, y2: parentRect.centerY },
+            { x1: parentAnchor.x, y1: parentAnchor.y, x2: laneBuses[0].busX, y2: parentAnchor.y },
             { x1: laneBuses[0].busX, y1: corridorY, x2: laneBuses[laneBuses.length - 1].busX, y2: corridorY },
             ...laneBuses.map((lane, index) => ({
               x1: lane.busX,
               y1: corridorY,
               x2: lane.busX,
-              y2: Math.max(index === 0 ? parentRect.centerY : corridorY, ...lane.items.map((item) => item.rect.centerY)),
+              y2: Math.max(
+                index === 0 ? parentAnchor.y : corridorY,
+                ...lane.items.map((item) => childAnchors.get(item.edge.target)!.y)
+              ),
             })),
           ],
-          branches: children.map(({ edge, rect }) => ({
-            edge,
-            childId: edge.target,
-            segments: [{ x1: busByChild.get(edge.target)!, y1: rect.centerY, x2: rect.left, y2: rect.centerY }],
-          })),
+          branches: children.map(({ edge }) => {
+            const anchor = childAnchors.get(edge.target)!;
+            return {
+              edge,
+              childId: edge.target,
+              segments: [{
+                x1: busByChild.get(edge.target)!,
+                y1: anchor.y,
+                x2: anchor.x,
+                y2: anchor.y,
+              }],
+            };
+          }),
         };
       }
     }

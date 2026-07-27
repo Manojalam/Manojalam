@@ -1,4 +1,8 @@
 import type { Edge, Node } from "@xyflow/react";
+import {
+  nodePolygonConnectionPoint,
+  nodeShapeConnectionPoint,
+} from "../canvas/shape-connection-geometry";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy, getSubtree } from "./hierarchy";
 import {
@@ -439,8 +443,11 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     const orderIndex = new Map(order.map((id, index) => [id, index]));
     parentEdges.sort((a, b) => (orderIndex.get(a.target) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(b.target) ?? Number.MAX_SAFE_INTEGER));
     const childRects = parentEdges
-      .map((edge) => ({ edge, rect: byId.get(edge.target) ? getNodeRect(byId.get(edge.target)!) : null }))
-      .filter((item): item is { edge: Edge; rect: NodeRect } => !!item.rect);
+      .map((edge) => {
+        const node = byId.get(edge.target);
+        return node ? { edge, node, rect: getNodeRect(node) } : null;
+      })
+      .filter((item): item is { edge: Edge; node: Node; rect: NodeRect } => item !== null);
     if (!childRects.length) continue;
 
     const parentRect = getNodeRect(parent);
@@ -461,7 +468,11 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
       Math.min(...childRects.map((item) => item.rect.centerY)),
       parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
     );
-    const parentAnchorX = parentRect.left + Math.min(14, parentRect.width / 2);
+    const polygonParentAnchor = nodePolygonConnectionPoint(parent, parentRect, "bottom");
+    const parentAnchor = polygonParentAnchor ?? {
+      x: parentRect.left + Math.min(14, parentRect.width / 2),
+      y: parentRect.bottom,
+    };
     // A List parent owns one outline bus. Slightly different child X positions
     // (especially Matrix roots with different widths) must not create parallel
     // trunks that appear as duplicate connectors.
@@ -476,20 +487,23 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
       parentId,
       orientation: "vertical",
       sharedSegments: [
-        { x1: parentAnchorX, y1: parentRect.bottom, x2: parentAnchorX, y2: junctionY },
-        { x1: parentAnchorX, y1: junctionY, x2: trunkX, y2: junctionY },
+        { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: junctionY },
+        { x1: parentAnchor.x, y1: junctionY, x2: trunkX, y2: junctionY },
         trunk,
       ],
-      branches: childRects.map(({ edge, rect }) => ({
-        edge,
-        childId: edge.target,
-        segments: [{
-          x1: trunkX,
-          y1: rect.centerY,
-          x2: rect.left,
-          y2: rect.centerY,
-        }],
-      })),
+      branches: childRects.map(({ edge, node, rect }) => {
+        const childAnchor = nodeShapeConnectionPoint(node, rect, "left");
+        return {
+          edge,
+          childId: edge.target,
+          segments: [{
+            x1: trunkX,
+            y1: childAnchor.y,
+            x2: childAnchor.x,
+            y2: childAnchor.y,
+          }],
+        };
+      }),
     };
 
     const excluded = new Set([parentId, ...childRects.map((item) => item.edge.target)]);

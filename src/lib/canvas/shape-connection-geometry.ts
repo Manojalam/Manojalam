@@ -5,6 +5,18 @@ export type ShapeConnectionPoint = {
   y: number;
 };
 
+export type ShapeConnectionRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type ShapeConnectionNode = {
+  type?: string;
+  data?: unknown;
+};
+
 const SHAPE_POLYGON_VERTICES: Readonly<
   Partial<Record<string, readonly ShapeConnectionPoint[]>>
 > = {
@@ -163,4 +175,46 @@ export function shapeConnectionPoint(
   const polygon = shapeType ? SHAPE_POLYGON_VERTICES[shapeType] : undefined;
   const point = polygon ? polygonConnectionPoint(polygon, side) : null;
   return point ?? DEFAULT_CONNECTION_POINTS[side];
+}
+
+export function polygonShapeConnectionPointOnRect(
+  shapeType: string | undefined,
+  rect: ShapeConnectionRect,
+  side: ConnectionSide
+): ShapeConnectionPoint | null {
+  if (!shapeType || !SHAPE_POLYGON_VERTICES[shapeType]) return null;
+  const normalized = shapeConnectionPoint(shapeType, side);
+  return {
+    x: rect.x + rect.width * normalized.x / 100,
+    y: rect.y + rect.height * normalized.y / 100,
+  };
+}
+
+/** Resolve the visible authored-shape outline point in canvas coordinates. */
+export function nodeShapeConnectionPoint(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  side: ConnectionSide
+): ShapeConnectionPoint {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const shapeType = node.type === "shape"
+    ? typeof data.shapeType === "string" ? data.shapeType : "rounded"
+    : undefined;
+  const normalized = shapeConnectionPoint(shapeType, side);
+  return {
+    x: rect.x + rect.width * normalized.x / 100,
+    y: rect.y + rect.height * normalized.y / 100,
+  };
+}
+
+/** Return an outline point only when the node uses a polygon silhouette. */
+export function nodePolygonConnectionPoint(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  side: ConnectionSide
+): ShapeConnectionPoint | null {
+  if (node.type !== "shape") return null;
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const shapeType = typeof data.shapeType === "string" ? data.shapeType : "rounded";
+  return polygonShapeConnectionPointOnRect(shapeType, rect, side);
 }

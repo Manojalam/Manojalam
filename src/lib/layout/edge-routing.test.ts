@@ -69,6 +69,24 @@ test("structured sibling routes use distinct ordered ports and lanes", () => {
   assert.notEqual(first.points[1].x, second.points[1].x, "siblings need distinct routing lanes");
 });
 
+test("layout routes honor measured silhouette endpoints when supplied", () => {
+  const sourcePoint = { x: 100, y: 170 };
+  const targetPoint = { x: 340, y: 262 };
+  const route = routeLayoutEdge(
+    createNodeRect("source", 0, 0, 200, 200),
+    createNodeRect("target", 240, 260, 200, 200),
+    "vertical",
+    [],
+    {
+      sourceEndpoint: { point: sourcePoint, side: "bottom" },
+      targetEndpoint: { point: targetPoint, side: "top" },
+    }
+  );
+
+  assert.deepEqual(route.points[0], sourcePoint);
+  assert.deepEqual(route.points[route.points.length - 1], targetPoint);
+});
+
 test("near-aligned automatic routes collapse micro-doglegs into one segment", () => {
   const horizontal = routeLayoutEdge(
     createNodeRect("source", 0, 100, 120, 80),
