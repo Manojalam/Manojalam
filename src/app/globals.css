@@ -327,6 +327,16 @@ body {
 /* Inline span styles from TextStyle extension must override inherited values */
 .ProseMirror span[style] { font-size: revert; font-family: revert; color: revert; }
 
+/* Whole-object highlights must not paint enclosed sticker glyphs. Explicit
+   range highlights carry their own marker and remain intentionally visible. */
+[data-vidya-symbol][data-symbol-enclosure]:not([data-symbol-enclosure="none"])
+  mark:not([data-vidya-explicit-highlight]),
+mark:not([data-vidya-explicit-highlight]):has(
+  [data-vidya-symbol][data-symbol-enclosure]:not([data-symbol-enclosure="none"])
+) {
+  background-color: transparent !important;
+}
+
 /* U+1CF6 must keep the exact authored character, but Noto draws only its
    upper half and Tiro substitutes a Bengali form. These local font fallbacks
    contain the complete Upadhmānīya curves. The raw-symbol attribute comes

@@ -43,6 +43,7 @@ import {
   type RichTextAlignment,
 } from "@/lib/canvas/rich-text-toolbar";
 import {
+  defaultEnclosedSymbolTextColor,
   hasVisibleSymbolStyle,
   semanticSymbolFontFamily,
   symbolMarkStyle,
@@ -98,6 +99,31 @@ const Subscript = Mark.create({
   excludes: "superscript",
   parseHTML() { return [{ tag: "sub" }]; },
   renderHTML() { return ["sub", 0]; },
+});
+
+const ScopedHighlight = Highlight.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      vidyaScope: {
+        default: null,
+        parseHTML: (element) => {
+          if (element.getAttribute("data-vidya-whole-highlight") === "true") return "whole";
+          if (element.getAttribute("data-vidya-explicit-highlight") === "true") return "explicit";
+          return null;
+        },
+        renderHTML: (attributes) => {
+          if (attributes.vidyaScope === "whole") {
+            return { "data-vidya-whole-highlight": "true" };
+          }
+          if (attributes.vidyaScope === "explicit") {
+            return { "data-vidya-explicit-highlight": "true" };
+          }
+          return {};
+        },
+      },
+    };
+  },
 });
 
 const SymbolStyle = Mark.create({
@@ -239,7 +265,7 @@ const EXTENSIONS = [
   Subscript,
   SymbolStyle,
   UpadhmaniyaPresentation,
-  Highlight.configure({ multicolor: true }),
+  ScopedHighlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
 ];
@@ -863,7 +889,12 @@ export function RichTextEditor({
           else chain.unsetColor();
           break;
         case "textHighlightColor":
-          if (detail.value) chain.setHighlight({ color: String(detail.value) });
+          if (detail.value) {
+            chain.setMark("highlight", {
+              color: String(detail.value),
+              vidyaScope: "explicit",
+            });
+          }
           else chain.unsetHighlight();
           break;
         case "textAlign":
@@ -922,13 +953,19 @@ export function RichTextEditor({
         pendingReportReasonRef.current = "input";
         const appearance = normalizeSymbolAppearance(detail.appearance);
         if (hasVisibleSymbolStyle(appearance, detail.semanticId)) {
+          const stickerTextColor = defaultEnclosedSymbolTextColor(appearance);
           chain.insertContent({
             type: "text",
             text: detail.value,
-            marks: [{
-              type: "symbolStyle",
-              attrs: { ...appearance, semanticId: detail.semanticId ?? null },
-            }],
+            marks: [
+              {
+                type: "symbolStyle",
+                attrs: { ...appearance, semanticId: detail.semanticId ?? null },
+              },
+              ...(stickerTextColor
+                ? [{ type: "textStyle", attrs: { color: stickerTextColor } }]
+                : []),
+            ],
           });
         } else {
           chain.insertContent(detail.value);
@@ -1275,7 +1312,10 @@ export function RichTextEditor({
     if (inlineFormatPainter.fontFamily) chain.setFontFamily(inlineFormatPainter.fontFamily);
     if (inlineFormatPainter.textColor) chain.setColor(inlineFormatPainter.textColor);
     if (inlineFormatPainter.highlightColor) {
-      chain.setHighlight({ color: inlineFormatPainter.highlightColor });
+      chain.setMark("highlight", {
+        color: inlineFormatPainter.highlightColor,
+        vidyaScope: "explicit",
+      });
     }
     chain.setTextAlign(inlineFormatPainter.textAlign);
     pendingReportReasonRef.current = "format";
@@ -1300,7 +1340,7 @@ export function RichTextEditor({
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
     });
     pendingReportReasonRef.current = "format";
-    selectionChain()?.setHighlight({ color }).run();
+    selectionChain()?.setMark("highlight", { color, vidyaScope: "explicit" }).run();
     setShowHighlights(false);
   }, [customColors, customHighlightColors, selectionChain, setSettings]);
 

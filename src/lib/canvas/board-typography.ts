@@ -1,4 +1,8 @@
 import type { Node } from "@xyflow/react";
+import {
+  isInsideEnclosedSticker,
+  protectEnclosedStickerTextStyles,
+} from "./sticker-text-protection";
 
 export const MIN_BOARD_FONT_SIZE = 8;
 export const MAX_BOARD_FONT_SIZE = 96;
@@ -29,8 +33,9 @@ export function normalizeWholeBoxFontSize(
   }
 
   const container = document.createElement("div");
-  container.innerHTML = data.richText;
+  container.innerHTML = protectEnclosedStickerTextStyles(data) ?? data.richText;
   container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
+    if (isInsideEnclosedSticker(element)) return;
     element.style.removeProperty("font-size");
     if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
   });
