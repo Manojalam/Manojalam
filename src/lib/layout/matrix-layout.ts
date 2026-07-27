@@ -978,40 +978,71 @@ function horizontalBands(child: OrientedChildEntry): HorizontalBand[] | null {
 }
 
 /**
- * Every horizontal band under sibling branches shares one Matrix column
- * template, including Fold continuations. Exact widths win; otherwise the
- * widest peer defines the track. Rows with conflicting explicit widths or
- * custom gaps stay independent instead of silently changing a user-entered
- * value.
+ * Every horizontal band under sibling branches can share one Matrix column
+ * template, including Fold continuations. In empty-slot mode the template
+ * comes from a real row with the greatest logical cell count; shorter rows do
+ * not redefine those tracks with widths that were stretched only to fill their
+ * former allocation. Rows with incompatible complete-row overrides or custom
+ * gaps stay independent instead of inventing a synthetic grid.
  */
 function alignSiblingRowBands(
   children: OrientedChildEntry[],
   preserveEmptySlots: boolean
 ): OrientedChildEntry[] {
   if (children.length < 2) return children;
-  const childBands = children.map(horizontalBands);
-  if (childBands.some((bands) => !bands)) return children;
-  const rows = (childBands as HorizontalBand[][]).flatMap((bands) =>
-    bands.map((band) => band.cells)
-  );
+  const rowChildren = children.flatMap((child, childIndex) => {
+    const bands = horizontalBands(child);
+    return bands ? [{ childIndex, bands }] : [];
+  });
+  const rows = rowChildren.flatMap(({ bands }) => bands.map((band) => band.cells));
+  if (rows.length < 2) return children;
   const trackCount = preserveEmptySlots
     ? Math.max(...rows.map((row) => row.length))
     : rows[0].length;
   if (!preserveEmptySlots && rows.some((row) => row.length !== trackCount)) return children;
 
-  const widths: number[] = [];
-  for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
-    const lockedWidths = rows
-      .flatMap((row) => row[trackIndex] ?? [])
-      .filter((cell) => cell.widthLocked)
-      .map((cell) => cell.width);
-    if (
+  let widths: number[];
+  if (preserveEmptySlots) {
+    const completeRows = rows.filter((row) => row.length === trackCount);
+    const lockedWidthsByTrack = Array.from({ length: trackCount }, (_, trackIndex) =>
+      completeRows
+        .map((row) => row[trackIndex])
+        .filter((cell) => cell.widthLocked)
+        .map((cell) => cell.width)
+    );
+    if (lockedWidthsByTrack.some((lockedWidths) => (
       lockedWidths.length > 1
       && Math.max(...lockedWidths) - Math.min(...lockedWidths) > 0.5
-    ) return children;
-    const trackCells = rows.flatMap((row) => row[trackIndex] ?? []);
-    if (!trackCells.length) return children;
-    widths.push(lockedWidths[0] ?? Math.max(...trackCells.map((cell) => cell.width)));
+    ))) return children;
+
+    const template = [...completeRows]
+      .sort((first, second) => {
+        const firstLocks = first.filter((cell) => cell.widthLocked).length;
+        const secondLocks = second.filter((cell) => cell.widthLocked).length;
+        if (firstLocks !== secondLocks) return secondLocks - firstLocks;
+        const firstWidth = Math.max(...first.map((cell) => cell.x + cell.width));
+        const secondWidth = Math.max(...second.map((cell) => cell.x + cell.width));
+        return secondWidth - firstWidth;
+      })
+      .find((row) => lockedWidthsByTrack.every((lockedWidths, trackIndex) => (
+        !lockedWidths.length
+        || Math.abs(row[trackIndex].width - lockedWidths[0]) <= 0.5
+      )));
+    if (!template) return children;
+    widths = template.map((cell) => cell.width);
+  } else {
+    widths = [];
+    for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+      const lockedWidths = rows
+        .map((row) => row[trackIndex])
+        .filter((cell) => cell.widthLocked)
+        .map((cell) => cell.width);
+      if (
+        lockedWidths.length > 1
+        && Math.max(...lockedWidths) - Math.min(...lockedWidths) > 0.5
+      ) return children;
+      widths.push(lockedWidths[0] ?? Math.max(...rows.map((row) => row[trackIndex].width)));
+    }
   }
 
   const gaps: number[] = [];
@@ -1042,8 +1073,12 @@ function alignSiblingRowBands(
   // creates the oversized empty "Frankenstein" grid seen on complex tables.
   if (alignedWidth > widestNaturalBand + 0.5) return children;
 
+  const bandsByChildIndex = new Map(
+    rowChildren.map(({ childIndex, bands }) => [childIndex, bands])
+  );
   return children.map((child, childIndex) => {
-    const bands = (childBands as HorizontalBand[][])[childIndex];
+    const bands = bandsByChildIndex.get(childIndex);
+    if (!bands) return child;
     const replacements = new Map<string, OrientedBranchCell>();
     for (const band of bands) {
       band.cells.forEach((cell, trackIndex) => {
