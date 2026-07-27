@@ -40,7 +40,10 @@ import { NodeQuickActions } from "./NodeQuickActions";
 import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
-import { objectRotationStyle } from "@/lib/canvas/object-rotation";
+import {
+  objectRotationStyle,
+  resolveObjectRotation,
+} from "@/lib/canvas/object-rotation";
 import { resolveLabelBoxGuideVisibility } from "@/lib/canvas/label-box-guides";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
@@ -51,29 +54,15 @@ import {
   surfaceEffectFilter,
   surfaceEffectStyle,
 } from "@/lib/canvas/surface-effects";
-import { SHAPE_POLYGON_POINTS } from "@/lib/canvas/shape-connection-geometry";
-
-const CLIP_PATHS: Partial<Record<string, string>> = {
-  diamond:  "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
-  triangle: "polygon(50% 0%, 0% 100%, 100% 100%)",
-  hexagon:  "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-  star:     "polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)",
-  arrow:    "polygon(0% 25%,60% 25%,60% 0%,100% 50%,60% 100%,60% 75%,0% 75%)",
-  parallelogram: "polygon(16% 0%, 100% 0%, 84% 100%, 0% 100%)",
-  trapezoid: "polygon(18% 0%, 82% 0%, 100% 100%, 0% 100%)",
-  offPageConnector: "polygon(0% 0%, 100% 0%, 100% 76%, 50% 100%, 0% 76%)",
-  callout: "polygon(0% 0%, 100% 0%, 100% 78%, 64% 78%, 50% 100%, 38% 78%, 0% 78%)",
-};
-
-const CUSTOM_SVG_SHAPES = new Set([
-  "document",
-  "database",
-  "predefinedProcess",
-  "delay",
-  "cloud",
-  "flower",
-  "leaf",
-]);
+import {
+  FLOWER_SHAPE,
+  isSvgShapeType,
+  normalizeShapePetalCount,
+  PREDEFINED_PROCESS_SHAPE,
+  SHAPE_POLYGON_CLIP_PATHS,
+  SHAPE_POLYGON_POINTS,
+  SHAPE_SVG_PATHS,
+} from "@/lib/canvas/shape-connection-geometry";
 
 const SQUARE_ASPECT_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 const CONCENTRIC_INSET_STEP = 6;
@@ -88,17 +77,9 @@ function dashArray(style: string, w: number): string | undefined {
   return undefined;
 }
 
-function isSvgShape(shapeType: string): boolean {
-  return shapeType in SHAPE_POLYGON_POINTS || CUSTOM_SVG_SHAPES.has(shapeType);
-}
-
 function concentricInset(index: number, total: number): number {
   const step = Math.min(CONCENTRIC_INSET_STEP, 48 / Math.max(1, total + 1));
   return step * (index + 1);
-}
-
-function normalizePetalCount(value: unknown): number {
-  return Math.max(4, Math.min(16, Math.round(typeof value === "number" ? value : 8)));
 }
 
 function layerFillColor(layer: ConcentricShapeLayer): string | undefined {
@@ -881,8 +862,8 @@ function SvgShapeSurface({
     strokeLinecap: "round" as const,
   };
 
-  if (SHAPE_POLYGON_POINTS[shapeType]) {
-    const points = SHAPE_POLYGON_POINTS[shapeType];
+  if (SHAPE_POLYGON_POINTS[shapeType as ShapeType]) {
+    const points = SHAPE_POLYGON_POINTS[shapeType as ShapeType];
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
         <polygon points={points} fill={fillColor ?? "transparent"} {...commonStroke} />
@@ -891,34 +872,28 @@ function SvgShapeSurface({
     );
   }
 
-  const path =
-    shapeType === "document" ? "M6 5 H94 V76 C76 66 66 94 46 83 C28 72 18 92 6 80 Z"
-    : shapeType === "database" ? "M10 22 C10 8 90 8 90 22 V78 C90 92 10 92 10 78 Z"
-    : shapeType === "delay" ? "M8 5 H55 C80 5 96 25 96 50 C96 75 80 95 55 95 H8 Z"
-    : shapeType === "cloud" ? "M30 80 H78 C91 80 98 70 94 58 C99 47 91 35 78 36 C73 21 55 15 43 25 C33 18 18 24 17 39 C7 43 2 52 5 64 C8 75 17 80 30 80 Z"
-    : shapeType === "leaf" ? "M50 3 C87 18 98 51 50 97 C2 51 13 18 50 3 Z"
-    : undefined;
+  const path = SHAPE_SVG_PATHS[shapeType as ShapeType];
 
   if (shapeType === "flower") {
-    const petals = Array.from({ length: normalizePetalCount(petalCount) }, (_, i) => i);
+    const petals = Array.from({ length: normalizeShapePetalCount(petalCount) }, (_, i) => i);
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
         {petals.map((petal) => (
           <ellipse
             key={petal}
-            cx="50"
-            cy="29"
-            rx="15"
-            ry="28"
-            transform={`rotate(${(360 / petals.length) * petal} 50 50)`}
+            cx={FLOWER_SHAPE.centerX}
+            cy={FLOWER_SHAPE.petalCenterY}
+            rx={FLOWER_SHAPE.petalRadiusX}
+            ry={FLOWER_SHAPE.petalRadiusY}
+            transform={`rotate(${(360 / petals.length) * petal} ${FLOWER_SHAPE.centerX} ${FLOWER_SHAPE.centerY})`}
             fill={fillColor ?? "transparent"}
             {...commonStroke}
           />
         ))}
         <circle
-          cx="50"
-          cy="50"
-          r="15"
+          cx={FLOWER_SHAPE.centerX}
+          cy={FLOWER_SHAPE.centerY}
+          r={FLOWER_SHAPE.centerRadius}
           fill={fillColor ?? "transparent"}
           {...commonStroke}
         />
@@ -930,10 +905,39 @@ function SvgShapeSurface({
   if (shapeType === "predefinedProcess") {
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-        <rect x="4" y="4" width="92" height="92" rx="6" fill={fillColor ?? "transparent"} {...commonStroke} />
-        <line x1="20" y1="4" x2="20" y2="96" {...commonStroke} />
-        <line x1="80" y1="4" x2="80" y2="96" {...commonStroke} />
-        {selected && <rect x="4" y="4" width="92" height="92" rx="6" {...selectedStroke} />}
+        <rect
+          x={PREDEFINED_PROCESS_SHAPE.x}
+          y={PREDEFINED_PROCESS_SHAPE.y}
+          width={PREDEFINED_PROCESS_SHAPE.width}
+          height={PREDEFINED_PROCESS_SHAPE.height}
+          rx={PREDEFINED_PROCESS_SHAPE.radius}
+          fill={fillColor ?? "transparent"}
+          {...commonStroke}
+        />
+        <line
+          x1="20"
+          y1={PREDEFINED_PROCESS_SHAPE.y}
+          x2="20"
+          y2={PREDEFINED_PROCESS_SHAPE.y + PREDEFINED_PROCESS_SHAPE.height}
+          {...commonStroke}
+        />
+        <line
+          x1="80"
+          y1={PREDEFINED_PROCESS_SHAPE.y}
+          x2="80"
+          y2={PREDEFINED_PROCESS_SHAPE.y + PREDEFINED_PROCESS_SHAPE.height}
+          {...commonStroke}
+        />
+        {selected && (
+          <rect
+            x={PREDEFINED_PROCESS_SHAPE.x}
+            y={PREDEFINED_PROCESS_SHAPE.y}
+            width={PREDEFINED_PROCESS_SHAPE.width}
+            height={PREDEFINED_PROCESS_SHAPE.height}
+            rx={PREDEFINED_PROCESS_SHAPE.radius}
+            {...selectedStroke}
+          />
+        )}
       </svg>
     );
   }
@@ -987,7 +991,7 @@ function ShapeSurface({
   const effectStyle = effectData ? surfaceEffectStyle(effectData, borderColor) : {};
   const exportEffectStyle = surfaceEffectExportStyle(effectData ?? {}, borderColor);
   const exportShadowLayers = surfaceEffectExportShadowLayers(effectData ?? {}, borderColor);
-  if (isSvgShape(shapeType)) {
+  if (isSvgShapeType(shapeType)) {
     return (
       <div
         className="pointer-events-none absolute inset-0"
@@ -1052,7 +1056,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   // Layouts own placement and generated size, while the authored shape remains
   // directly editable in every chart form.
   const renderedShapeType = layoutPresentationShapeType(presentationMode, shapeType);
-  const svgShape = isSvgShape(renderedShapeType);
+  const svgShape = isSvgShapeType(renderedShapeType);
 
   const fillColor    = resolveFillColor(dd);
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
@@ -1076,7 +1080,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
-  const petalCount   = normalizePetalCount(d.petalCount);
+  const petalCount   = normalizeShapePetalCount(d.petalCount);
   const radialChart  = matrixCell ? undefined : d.radialChart;
   const concentricLayers = useMemo(
     () => (d.concentricLayers ?? []) as ConcentricShapeLayer[],
@@ -1217,14 +1221,15 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     }
   }, [selected, editing, finishEditing]);
 
-  const shapeStyle: CSSProperties = CLIP_PATHS[renderedShapeType]
-    ? { clipPath: CLIP_PATHS[renderedShapeType] }
+  const shapeStyle: CSSProperties = SHAPE_POLYGON_CLIP_PATHS[renderedShapeType as ShapeType]
+    ? { clipPath: SHAPE_POLYGON_CLIP_PATHS[renderedShapeType as ShapeType] }
     : { borderRadius: bRadius };
   const activeChartTextEdit = selected && radialChart?.enabled ? chartTextEdit : null;
   const chartEditorScale = activeChartTextEdit
     ? Math.min(5, Math.max(1, 1 / Math.max(0.2, viewport.zoom)))
     : 1;
   const visualRotationStyle: CSSProperties = objectRotationStyle("shape", dd);
+  const objectRotation = resolveObjectRotation("shape", dd);
   const textRotation = normalizeTextRotation(dd.textRotation);
   const textRotationTargetRef = useRef<HTMLDivElement>(null);
 
@@ -1279,7 +1284,16 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           setEditing(true);
         }}
       >
-        <NodeHandles color={borderColor} selected={selected} shapeType={renderedShapeType} />
+        <NodeHandles
+          color={borderColor}
+          selected={selected}
+          shapeType={renderedShapeType}
+          width={nodeSize.width}
+          height={nodeSize.height}
+          borderRadius={bRadius}
+          petalCount={petalCount}
+          rotation={objectRotation}
+        />
         <NodeQuickActions nodeId={id} color={borderColor} selected={selected} />
 
         {/* Add connected child */}

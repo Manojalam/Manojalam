@@ -332,7 +332,7 @@ test("Matrix-root siblings share one List trunk despite different left edges and
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
-test("List buses start and end on polygon silhouettes instead of node rectangles", () => {
+test("List buses start and end on irregular shape silhouettes", () => {
   const tree = buildTree([
     { id: "root", parentId: null, width: 500, height: 500 },
     { id: "child", parentId: "root", width: 200, height: 200 },
@@ -357,6 +357,38 @@ test("List buses start and end on polygon silhouettes instead of node rectangles
   );
   assert.ok(Math.abs(group.branches[0].segments[0].x2 - 404.909091) < 0.001);
   assert.equal(group.branches[0].segments[0].y2, 860);
+});
+
+test("List buses use the same side-center contract for rounded shapes", () => {
+  const tree = buildTree([
+    { id: "root", parentId: null, width: 500, height: 200 },
+    { id: "child", parentId: "root", width: 200, height: 100 },
+  ]);
+  const nodes = tree.nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        position: { x: 100, y: 100 },
+        data: { ...node.data, shapeType: "rounded" },
+      }
+    : {
+        ...node,
+        position: { x: 360, y: 460 },
+        data: { ...node.data, shapeType: "rounded" },
+      });
+  const group = buildListConnectorModel(nodes, tree.edges).groups[0];
+
+  assert.ok(group);
+  assert.deepEqual(
+    { x: group.sharedSegments[0].x1, y: group.sharedSegments[0].y1 },
+    { x: 350, y: 300 }
+  );
+  assert.deepEqual(
+    {
+      x: group.branches[0].segments[0].x2,
+      y: group.branches[0].segments[0].y2,
+    },
+    { x: 360, y: 510 }
+  );
 });
 
 test("manually moved List endpoints remain on shared hierarchy trunks", () => {

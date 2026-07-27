@@ -43,11 +43,21 @@ export function NodeHandles({
   selected = false,
   compact = false,
   shapeType,
+  width,
+  height,
+  borderRadius,
+  petalCount,
+  rotation,
 }: {
   color?: string;
   selected?: boolean;
   compact?: boolean;
   shapeType?: string;
+  width?: number;
+  height?: number;
+  borderRadius?: number;
+  petalCount?: number;
+  rotation?: number;
 }) {
   const activeTool = useUIStore((s) => s.activeTool);
   const connectorActive = activeTool === "connector";
@@ -79,7 +89,13 @@ export function NodeHandles({
           style={{
             background: color,
             pointerEvents: "all",
-            ...connectionPointStyle(id, shapeConnectionPoint(shapeType, id)),
+            ...connectionPointStyle(id, shapeConnectionPoint(shapeType, id, {
+              width,
+              height,
+              borderRadius,
+              petalCount,
+              rotation,
+            })),
           }}
         />
       ))}
