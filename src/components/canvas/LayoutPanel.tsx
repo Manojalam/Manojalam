@@ -1,15 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDown, ArrowRight, Maximize2, Palette, RefreshCw, RotateCcw, Sparkles, Ungroup, X } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  ArrowDown,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  Lock,
+  Maximize2,
+  Palette,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+  Ungroup,
+  Unlock,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { LAYOUT_OPTIONS, type LayoutMode } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { getNodeRect } from "@/lib/layout/geometry";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   routeTidiedFlowchartEdges,
@@ -18,6 +35,170 @@ import {
 } from "@/lib/canvas/flowchart-tidy";
 import { smartRerouteBoardEdges } from "@/lib/canvas/smart-reroute";
 import { FoldBranchControls } from "./FoldBranchControls";
+
+const RADIAL_CHART_MIN_SIZE = 420;
+
+function SettingsSection({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-muted/25">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-muted/60"
+      >
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-foreground">{label}</span>
+          {description && (
+            <span className="mt-0.5 block truncate text-[9px] text-muted-foreground">{description}</span>
+          )}
+        </span>
+        {open
+          ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+      </button>
+      {open && <div className="space-y-2 border-t border-border p-2">{children}</div>}
+    </section>
+  );
+}
+
+function clampControlValue(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function ExactNumberField({
+  value,
+  min,
+  max,
+  label,
+  onCommit,
+}: {
+  value?: number;
+  min: number;
+  max: number;
+  label: string;
+  onCommit: (value: number | undefined) => void;
+}) {
+  const displayedValue = typeof value === "number"
+    ? String(Math.round(value * 10) / 10)
+    : "";
+  const [draftValue, setDraftValue] = useState(displayedValue);
+  const [editing, setEditing] = useState(false);
+  const changedWhileEditingRef = useRef(false);
+  const cancelNextBlurRef = useRef(false);
+
+  return (
+    <Input
+      type="number"
+      inputMode="decimal"
+      aria-label={label}
+      min={min}
+      max={max}
+      step={1}
+      value={editing ? draftValue : displayedValue}
+      placeholder="Auto"
+      className="h-7 px-2 text-[10px]"
+      onFocus={() => {
+        changedWhileEditingRef.current = false;
+        cancelNextBlurRef.current = false;
+        setDraftValue(displayedValue);
+        setEditing(true);
+      }}
+      onChange={(event) => {
+        changedWhileEditingRef.current = true;
+        setDraftValue(event.currentTarget.value);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          changedWhileEditingRef.current = false;
+          cancelNextBlurRef.current = true;
+          setDraftValue(displayedValue);
+          event.currentTarget.blur();
+        }
+      }}
+      onBlur={(event) => {
+        if (cancelNextBlurRef.current) {
+          cancelNextBlurRef.current = false;
+          setEditing(false);
+          return;
+        }
+        if (!changedWhileEditingRef.current) {
+          setEditing(false);
+          return;
+        }
+        const raw = event.currentTarget.value.trim();
+        if (!raw) {
+          if (value !== undefined) onCommit(undefined);
+          setEditing(false);
+          return;
+        }
+        const parsed = Number.parseFloat(raw);
+        if (!Number.isFinite(parsed)) {
+          setDraftValue(displayedValue);
+          setEditing(false);
+          return;
+        }
+        const next = clampControlValue(parsed, min, max);
+        setDraftValue(String(next));
+        setEditing(false);
+        if (value === undefined || Math.abs(next - value) > 0.05) onCommit(next);
+      }}
+    />
+  );
+}
+
+function SliderControl({
+  value,
+  min,
+  max,
+  step = 1,
+  suffix = "",
+  label,
+  onChange,
+  onChangeStart,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  label: string;
+  onChange: (value: number) => void;
+  onChangeStart?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        aria-label={label}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onPointerDown={onChangeStart}
+        onKeyDown={(event) => {
+          if (!event.repeat) onChangeStart?.();
+        }}
+        onChange={(event) => onChange(clampControlValue(Number(event.currentTarget.value), min, max))}
+        className="h-1.5 flex-1 accent-primary"
+      />
+      <span className="w-10 text-right text-[10px] tabular-nums text-muted-foreground">
+        {value}{suffix}
+      </span>
+    </div>
+  );
+}
 
 // ── Schematic SVG previews (56×40) ────────────────────────────────────────────
 const dot = (x: number, y: number, r = 3.2, fill = "#4262ff") => (
@@ -95,6 +276,7 @@ export function LayoutPanel() {
   const applyLayout = useCanvasStore((s) => s.applyLayout);
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
+  const setNodeSize = useCanvasStore((s) => s.setNodeSize);
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
   const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
@@ -174,11 +356,56 @@ export function LayoutPanel() {
   const activeColorScheme = radialColorScheme(
     paletteRootData.layoutColorScheme ?? paletteRootData.radialColorScheme
   ).id;
+  const matrixRects = matrixBranchIds
+    .map((nodeId) => nodes.find((node) => node.id === nodeId))
+    .filter((node) => !!node && !node.hidden)
+    .map((node) => getNodeRect(node!));
+  const matrixRenderedWidth = matrixRects.length
+    ? Math.max(...matrixRects.map((rect) => rect.right)) - Math.min(...matrixRects.map((rect) => rect.left))
+    : undefined;
+  const matrixRenderedHeight = matrixRects.length
+    ? Math.max(...matrixRects.map((rect) => rect.bottom)) - Math.min(...matrixRects.map((rect) => rect.top))
+    : undefined;
+  const matrixTableWidth = typeof matrixRootData.matrixTableWidthOverride === "number"
+    ? matrixRootData.matrixTableWidthOverride
+    : matrixRenderedWidth;
+  const matrixTableHeight = typeof matrixRootData.matrixTableHeightOverride === "number"
+    ? matrixRootData.matrixTableHeightOverride
+    : matrixRenderedHeight;
+  const matrixTableSizeLocked = matrixRootData.matrixTableSizeLocked === true;
+  const radialKey = typeof selectedData.sunburstHiddenFor === "string"
+    ? selectedData.sunburstHiddenFor
+    : paletteMode === "radial" ? paletteRoot?.id ?? null : null;
+  const radialChartNode = radialKey
+    ? nodes.find((node) => node.type === "sunburst"
+      && (node.data as Record<string, unknown> | undefined)?.sunburstFor === radialKey) ?? null
+    : null;
+  const radialChartData = (radialChartNode?.data ?? {}) as Record<string, unknown>;
+  const radialRootId = typeof radialChartData.rootId === "string"
+    ? radialChartData.rootId
+    : paletteMode === "radial" ? paletteRoot?.id ?? null : null;
+  const radialRoot = radialRootId
+    ? nodes.find((node) => node.id === radialRootId) ?? null
+    : null;
+  const radialRootData = (radialRoot?.data ?? {}) as Record<string, unknown>;
+  const radialChartSize = typeof radialChartData.chartSize === "number"
+    ? radialChartData.chartSize
+    : 1000;
 
   const requestMeasuredLayout = (mode: "list" | "matrix", rootId: string, nodeIds: string[]) => {
     window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
       detail: { mode, rootId, nodeIds },
     }));
+  };
+  const requestMatrixReflow = () => {
+    if (!matrixRoot) return;
+    requestAnimationFrame(() => requestMeasuredLayout("matrix", matrixRoot.id, matrixBranchIds));
+  };
+  const resizeRadialChart = (diameter: number) => {
+    if (!radialChartNode || !Number.isFinite(diameter)) return;
+    const nextDiameter = clampControlValue(Math.round(diameter), RADIAL_CHART_MIN_SIZE, 4096);
+    if (Math.abs(nextDiameter - radialChartSize) < 1) return;
+    setNodeSize(radialChartNode.id, { width: nextDiameter, height: nextDiameter });
   };
 
   const handleApply = (mode: LayoutMode) => {
@@ -283,8 +510,11 @@ export function LayoutPanel() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        <div className="mb-2 rounded-lg border border-primary/30 bg-primary/5 p-2">
+      <div className="flex-1 space-y-2 overflow-y-auto p-2">
+        <SettingsSection
+          label="Tidy flowchart"
+          description="Arrange the whole connected board"
+        >
           <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" /> Tidy up flowchart
           </div>
@@ -323,10 +553,10 @@ export function LayoutPanel() {
           <p className="mt-1.5 text-[9px] leading-snug text-muted-foreground">
             Locked objects stay fixed. Attached notes keep their relative position. Undo restores node placement and connector bends.
           </p>
-        </div>
+        </SettingsSection>
 
         {selectedNode ? (
-          <div className="mb-2 rounded-lg border border-border bg-muted/35 p-2">
+          <div className="rounded-lg border border-border bg-muted/35 p-2">
             <div className="truncate text-xs font-medium text-foreground">{nodeTitle(selectedNode)}</div>
             <div className="mt-1 grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
               <span>Descendants</span>
@@ -336,42 +566,51 @@ export function LayoutPanel() {
             </div>
           </div>
         ) : (
-          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-900">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-900">
             Branch layouts require one selected parent. Tidy up above works on the whole connected flowchart.
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
-          {LAYOUT_OPTIONS.map((opt) => (
-            <button
-              key={opt.mode}
-              onClick={() => handleApply(opt.mode)}
-              className={cn(
-                "flex items-center gap-3 rounded-lg border border-transparent p-2 text-left transition-colors",
-                currentMode === opt.mode ? "border-primary/40 bg-primary/5" : "hover:border-border hover:bg-accent"
-              )}
-            >
-              <Preview mode={opt.mode} />
-              <div className="min-w-0">
-                <div className="text-xs font-medium text-foreground">{opt.label}</div>
-                <div className="truncate text-[10px] text-muted-foreground">{opt.description}</div>
-              </div>
-            </button>
-          ))}
-        </div>
+        <SettingsSection
+          label="Choose layout"
+          description={selectedNode ? `Current: ${layoutLabel(currentMode)}` : "Select one parent node first"}
+        >
+          <div className="flex flex-col gap-1">
+            {LAYOUT_OPTIONS.map((opt) => (
+              <button
+                key={opt.mode}
+                onClick={() => handleApply(opt.mode)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border border-transparent p-2 text-left transition-colors",
+                  currentMode === opt.mode ? "border-primary/40 bg-primary/5" : "hover:border-border hover:bg-accent"
+                )}
+              >
+                <Preview mode={opt.mode} />
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-foreground">{opt.label}</div>
+                  <div className="truncate text-[10px] text-muted-foreground">{opt.description}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </SettingsSection>
 
         {selectedNode && canFoldSelectedBranch && (
-          <FoldBranchControls
-            parentId={selectedNode.id}
-            parentData={selectedData}
-            childIds={selectedChildIds}
-            nodes={nodes}
-            className="mt-2"
-          />
+          <SettingsSection
+            label="Fold branch"
+            description={`${selectedChildCount} direct children`}
+          >
+            <FoldBranchControls
+              parentId={selectedNode.id}
+              parentData={selectedData}
+              childIds={selectedChildIds}
+              nodes={nodes}
+            />
+          </SettingsSection>
         )}
 
         {selectedNode && currentMode === "radial" && (
-          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+          <SettingsSection label="Radial help" description="Dense-label guidance and shortcuts">
             <div className="text-xs font-medium text-foreground">Radial help</div>
             <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
               Sunburst labels shrink or hide when sectors get small. Zoom in, or convert the branch to Matrix/List for dense text.
@@ -397,11 +636,126 @@ export function LayoutPanel() {
                 Fit radial
               </button>
             </div>
-          </div>
+          </SettingsSection>
+        )}
+
+        {radialChartNode && radialRoot && (
+          <SettingsSection
+            label="Radial settings"
+            description="Whole-chart size and sector distribution"
+          >
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Chart diameter
+                </p>
+                <span className="text-[9px] text-muted-foreground">Whole chart</span>
+              </div>
+              <ExactNumberField
+                value={radialChartSize}
+                min={RADIAL_CHART_MIN_SIZE}
+                max={4096}
+                label="Radial chart diameter"
+                onCommit={(value) => {
+                  if (value !== undefined) resizeRadialChart(value);
+                }}
+              />
+              <div className="mt-1.5 grid grid-cols-3 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-1 text-[9px]"
+                  onClick={() => resizeRadialChart(radialChartSize * 0.9)}
+                >
+                  Smaller
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-1 text-[9px]"
+                  onClick={() => resizeRadialChart(radialChartSize * 1.1)}
+                >
+                  Larger
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-1 text-[9px]"
+                  onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                    detail: {
+                      nodeIds: [radialChartNode.id],
+                      mode: "radial",
+                      rootId: radialRoot.id,
+                      forceFit: true,
+                    },
+                  }))}
+                >
+                  Fit
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Center size
+              </p>
+              <SliderControl
+                value={typeof radialRootData.radialCenterRatio === "number"
+                  ? radialRootData.radialCenterRatio
+                  : 28}
+                min={14}
+                max={58}
+                suffix="%"
+                label="Radial chart center size"
+                onChangeStart={() => useCanvasStore.getState().pushHistory()}
+                onChange={(value) => updateNodeData(radialRoot.id, { radialCenterRatio: value })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 p-2">
+              <div>
+                <p className="text-[10px] font-medium text-foreground">Equal outermost segments</p>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Give every terminal segment the same angle at any depth.
+                </p>
+              </div>
+              <Switch
+                checked={radialChartData.radialEqualOutermostSegments === true}
+                onCheckedChange={(checked) => {
+                  useCanvasStore.getState().pushHistory();
+                  updateNodeData(radialChartNode.id, { radialEqualOutermostSegments: checked });
+                }}
+                aria-label="Equal outermost radial segments"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 p-2">
+              <div>
+                <p className="text-[10px] font-medium text-foreground">Smart equal label sizes</p>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Use one readable size for all terminal labels.
+                </p>
+              </div>
+              <Switch
+                checked={radialChartData.radialEqualOutermostLabelSizes === true}
+                onCheckedChange={(checked) => {
+                  useCanvasStore.getState().pushHistory();
+                  updateNodeData(radialChartNode.id, { radialEqualOutermostLabelSizes: checked });
+                }}
+                aria-label="Smart equal outermost radial label sizes"
+              />
+            </div>
+          </SettingsSection>
         )}
 
         {paletteRoot && supportsAutomaticLayoutColors(paletteMode) && (
-          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+          <SettingsSection
+            label="Layout colors"
+            description={`Whole ${layoutLabel(paletteMode)} hierarchy`}
+          >
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                 <Palette className="h-3.5 w-3.5" /> Layout colors
@@ -449,11 +803,11 @@ export function LayoutPanel() {
                 </button>
               ))}
             </div>
-          </div>
+          </SettingsSection>
         )}
 
         {listRoot && (
-          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+          <SettingsSection label="List settings" description="Density, reflow, and fit">
             <div className="mb-2 text-xs font-medium text-foreground">List density</div>
             <div className="grid grid-cols-2 gap-1">
               {(["compact", "comfortable"] as const).map((density) => (
@@ -493,11 +847,14 @@ export function LayoutPanel() {
                 <Maximize2 className="h-3 w-3" /> Fit
               </button>
             </div>
-          </div>
+          </SettingsSection>
         )}
 
         {matrixRoot && (
-          <div className="mt-2 rounded-lg border border-border bg-muted/35 p-2">
+          <SettingsSection
+            label="Matrix settings"
+            description="Table-wide layout, density, and sizing"
+          >
             <div className="mb-2 text-xs font-medium text-foreground">Matrix table</div>
 
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/60 p-1.5">
@@ -724,9 +1081,126 @@ export function LayoutPanel() {
                     Auto
                   </button>
                 </div>
+                <label className="mt-1.5 block space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Sibling gap (px)</span>
+                  <div className="grid grid-cols-[1fr_auto] gap-1">
+                    <ExactNumberField
+                      value={typeof selectedData.matrixSiblingGap === "number"
+                        ? selectedData.matrixSiblingGap
+                        : undefined}
+                      min={0}
+                      max={240}
+                      label="Gap between direct Matrix children"
+                      onCommit={(value) => {
+                        useCanvasStore.getState().pushHistory();
+                        updateNodeData(selectedNode.id, { matrixSiblingGap: value });
+                        requestMatrixReflow();
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[9px]"
+                      onClick={() => {
+                        useCanvasStore.getState().pushHistory();
+                        updateNodeData(selectedNode.id, { matrixSiblingGap: undefined });
+                        requestMatrixReflow();
+                      }}
+                    >
+                      Auto
+                    </Button>
+                  </div>
+                </label>
               </div>
             )}
 
+            {selectedNode?.id === matrixRoot.id && (
+              <div className="rounded-md border border-border/70 bg-background/60 p-1.5">
+                <div className="mb-1">
+                  <div className="text-[10px] font-medium text-foreground">Overall Matrix size</div>
+                  <div className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                    {matrixTableSizeLocked
+                      ? "Locked at this outer size while cells redistribute inside it."
+                      : "Set an exact boundary or lock the current rendered size."}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                    <span>Width (px)</span>
+                    <ExactNumberField
+                      value={matrixTableWidth}
+                      min={160}
+                      max={6000}
+                      label="Overall Matrix width"
+                      onCommit={(value) => {
+                        useCanvasStore.getState().pushHistory();
+                        updateNodeData(matrixRoot.id, { matrixTableWidthOverride: value });
+                        requestMatrixReflow();
+                      }}
+                    />
+                  </label>
+                  <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                    <span>Height (px)</span>
+                    <ExactNumberField
+                      value={matrixTableHeight}
+                      min={100}
+                      max={6000}
+                      label="Overall Matrix height"
+                      onCommit={(value) => {
+                        useCanvasStore.getState().pushHistory();
+                        updateNodeData(matrixRoot.id, { matrixTableHeightOverride: value });
+                        requestMatrixReflow();
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="mt-1.5 grid grid-cols-2 gap-1">
+                  <Button
+                    type="button"
+                    variant={matrixTableSizeLocked ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-7 gap-1 px-1 text-[9px]"
+                    aria-pressed={matrixTableSizeLocked}
+                    onClick={() => {
+                      useCanvasStore.getState().pushHistory();
+                      updateNodeData(matrixRoot.id, matrixTableSizeLocked
+                        ? { matrixTableSizeLocked: undefined }
+                        : {
+                            matrixTableSizeLocked: true,
+                            matrixTableWidthOverride: matrixTableWidth,
+                            matrixTableHeightOverride: matrixTableHeight,
+                          });
+                      requestMatrixReflow();
+                    }}
+                  >
+                    {matrixTableSizeLocked
+                      ? <Unlock className="h-3 w-3" />
+                      : <Lock className="h-3 w-3" />}
+                    {matrixTableSizeLocked ? "Unlock" : "Lock size"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-1 text-[9px]"
+                    onClick={() => {
+                      useCanvasStore.getState().pushHistory();
+                      updateNodeData(matrixRoot.id, {
+                        matrixTableSizeLocked: undefined,
+                        matrixTableWidthOverride: undefined,
+                        matrixTableHeightOverride: undefined,
+                      });
+                      requestMatrixReflow();
+                    }}
+                  >
+                    Auto size
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="text-[10px] font-medium text-foreground">Density</div>
             <div className="grid grid-cols-3 gap-1">
               {(["compact", "comfortable", "presentation"] as const).map((density) => (
                 <button
@@ -778,7 +1252,7 @@ export function LayoutPanel() {
                 <Ungroup className="h-3 w-3" /> Free
               </button>
             </div>
-          </div>
+          </SettingsSection>
         )}
       </div>
 
