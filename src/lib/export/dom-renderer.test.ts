@@ -5,6 +5,7 @@ import {
   compositeExportColor,
   configureStandaloneSvgViewport,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
+  filterIdentifiedExportEdges,
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
   parseExportCssColor,
@@ -48,6 +49,29 @@ function fakeSvgNode(tagName: string): FakeSvgNode {
     setAttribute: (name, value) => attributes.set(name, value),
     append: (...appended) => children.push(...appended),
   };
+}
+
+interface FakeExportEdgeElement {
+  attributes: Map<string, string>;
+  removed: boolean;
+  getAttribute: (name: string) => string | null;
+  remove: () => void;
+}
+
+function fakeExportEdgeElement(
+  attributes: Record<string, string>
+): FakeExportEdgeElement {
+  const stored = new Map(Object.entries(attributes));
+  const element: FakeExportEdgeElement = {
+    attributes: stored,
+    removed: false,
+    getAttribute: (name) => stored.get(name) ?? null,
+    remove: () => {
+      element.removed = true;
+    },
+  };
+
+  return element;
 }
 
 test("continues a non-strict export after the font readiness wait times out", async () => {
@@ -151,6 +175,34 @@ test("recognizes explicit transparent export backgrounds", () => {
   assert.equal(isTransparentExportBackground("transparent"), true);
   assert.equal(isTransparentExportBackground("rgba(0, 0, 0, 0)"), true);
   assert.equal(isTransparentExportBackground("rgb(255, 255, 255)"), false);
+});
+
+test("removes grouped connector fragments that do not belong to the export", () => {
+  const externalGroup = fakeExportEdgeElement({
+    "data-export-edge-ids": "incoming-edge sibling-edge",
+  });
+  const internalGroup = fakeExportEdgeElement({
+    "data-export-edge-ids": "child-a child-b",
+  });
+  const externalBranch = fakeExportEdgeElement({
+    "data-export-edge-id": "incoming-edge",
+  });
+  const internalBranch = fakeExportEdgeElement({
+    "data-export-edge-id": "child-a",
+  });
+  const clone = {
+    querySelectorAll: (selector: string) =>
+      selector === "[data-export-edge-ids]"
+        ? [externalGroup, internalGroup]
+        : [externalBranch, internalBranch],
+  } as unknown as HTMLElement;
+
+  filterIdentifiedExportEdges(clone, ["child-a", "child-b"]);
+
+  assert.equal(externalGroup.removed, true);
+  assert.equal(internalGroup.removed, false);
+  assert.equal(externalBranch.removed, true);
+  assert.equal(internalBranch.removed, false);
 });
 
 test("retains intrinsic SVG dimensions when downloaded or rasterized", () => {

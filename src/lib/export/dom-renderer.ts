@@ -537,11 +537,24 @@ function filterByIds(
     .filter((id): id is string => Boolean(id));
 }
 
-function filterIdentifiedEdgeLabels(clone: HTMLElement, edgeIds: Iterable<string> | undefined): void {
+function listedExportEdgeIds(value: string | null): string[] {
+  return value?.split(/\s+/).filter(Boolean) ?? [];
+}
+
+export function filterIdentifiedExportEdges(
+  clone: HTMLElement,
+  edgeIds: Iterable<string> | undefined
+): void {
   if (edgeIds === undefined) return;
   const requested = new Set(edgeIds);
+
+  for (const element of Array.from(clone.querySelectorAll<HTMLElement>("[data-export-edge-ids]"))) {
+    const ids = listedExportEdgeIds(element.getAttribute("data-export-edge-ids"));
+    if (!ids.some((id) => requested.has(id))) element.remove();
+  }
+
   for (const element of Array.from(clone.querySelectorAll<HTMLElement>(
-    ".react-flow__edgelabel-renderer [data-export-edge-id], .react-flow__edgelabel-renderer [data-edge-id], .react-flow__edgelabel-renderer [data-id]"
+    "[data-export-edge-id], .react-flow__edgelabel-renderer [data-edge-id], .react-flow__edgelabel-renderer [data-id]"
   ))) {
     const id = element.getAttribute("data-export-edge-id")
       ?? element.getAttribute("data-edge-id")
@@ -922,7 +935,7 @@ export function cloneReactFlowViewport(
       ".react-flow__edge[data-id]",
       options.edgeIds
     );
-    filterIdentifiedEdgeLabels(clone, options.edgeIds);
+    filterIdentifiedExportEdges(clone, options.edgeIds);
 
     const editorElements = Array.from(clone.querySelectorAll(EDITOR_UI_SELECTORS));
     for (const element of editorElements) element.remove();

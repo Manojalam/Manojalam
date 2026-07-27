@@ -440,6 +440,16 @@ function dataIdMatches(element: Element, attribute: string, ids: ReadonlySet<str
   return id !== null && ids.has(id);
 }
 
+function listedDataIdsMatch(
+  element: Element,
+  attribute: string,
+  ids: ReadonlySet<string>
+): boolean {
+  return element.getAttribute(attribute)
+    ?.split(/\s+/)
+    .some((id) => id.length > 0 && ids.has(id)) === true;
+}
+
 function includeNodeDomBounds(
   extent: Extent,
   context: ExportDomBoundsContext,
@@ -501,11 +511,18 @@ function includeEdgeDomBounds(
     includeClientRect(extent, edgeElement, containerRect, viewport);
   }
 
-  const labelElements = elementsMatching(context.root, "[data-export-edge-id]")
+  const identifiedEdgeElements = elementsMatching(context.root, "[data-export-edge-id]")
     .filter((element) => dataIdMatches(element, "data-export-edge-id", edgeIds));
-  for (const labelElement of labelElements) {
-    if (labelElement.closest("[data-export-ignore]")) continue;
-    includeClientRect(extent, labelElement, containerRect, viewport);
+  for (const edgeElement of identifiedEdgeElements) {
+    if (edgeElement.closest("[data-export-ignore]")) continue;
+    includeClientRect(extent, edgeElement, containerRect, viewport);
+  }
+
+  const groupedEdgeElements = elementsMatching(context.root, "[data-export-edge-ids]")
+    .filter((element) => listedDataIdsMatch(element, "data-export-edge-ids", edgeIds));
+  for (const edgeElement of groupedEdgeElements) {
+    if (edgeElement.closest("[data-export-ignore]")) continue;
+    includeClientRect(extent, edgeElement, containerRect, viewport);
   }
 }
 

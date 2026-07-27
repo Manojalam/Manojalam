@@ -35,7 +35,7 @@ type DialogScope = "board" | "selection" | "subtree" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 type OpaqueFallback = "black" | "white";
 
-const DEFAULT_PADDING = 0;
+const DEFAULT_PADDING = 24;
 const EMPTY_IDS: string[] = [];
 
 function formatDimension(value: number): string {

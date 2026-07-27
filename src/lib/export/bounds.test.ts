@@ -151,6 +151,78 @@ test("live chart DOM bounds replace stale React Flow measurements", () => {
   assert.deepEqual(bounds, { x: 100, y: 200, width: 600, height: 600 });
 });
 
+test("custom tree connector groups extend bounds only for requested edges", () => {
+  const nodes: Node[] = [
+    {
+      id: "parent",
+      position: { x: 100, y: 100 },
+      data: {},
+      measured: { width: 100, height: 50 },
+    },
+    {
+      id: "child",
+      position: { x: 300, y: 100 },
+      data: {},
+      measured: { width: 100, height: 50 },
+    },
+  ];
+  const edge: Edge = {
+    id: "parent-child",
+    source: "parent",
+    target: "child",
+  };
+  const target = resolveExportTarget(
+    {
+      kind: "selection",
+      nodeIds: [],
+      edgeIds: [edge.id],
+    },
+    nodes,
+    [edge]
+  );
+  const renderedNodes = [
+    mockElement({
+      attributes: { "data-id": "parent" },
+      rect: { left: 100, top: 100, width: 100, height: 50 },
+    }),
+    mockElement({
+      attributes: { "data-id": "child" },
+      rect: { left: 300, top: 100, width: 100, height: 50 },
+    }),
+  ];
+  const requestedConnector = mockElement({
+    attributes: { "data-export-edge-ids": "parent-child sibling-edge" },
+    rect: { left: 80, top: 85, width: 340, height: 80 },
+  });
+  const unrelatedConnector = mockElement({
+    attributes: { "data-export-edge-ids": "outside-edge" },
+    rect: { left: 0, top: 0, width: 1_000, height: 1_000 },
+  });
+  const root = {
+    querySelectorAll: (selector: string) => {
+      if (selector === ".react-flow__node[data-id]") return renderedNodes;
+      if (selector === "[data-export-edge-ids]") {
+        return [requestedConnector, unrelatedConnector];
+      }
+      return [];
+    },
+  };
+  const flowContainer = mockElement({
+    rect: { left: 0, top: 0, width: 1_920, height: 1_080 },
+  });
+
+  const bounds = computeTightExportBounds(target, {
+    padding: 0,
+    dom: {
+      root: root as unknown as ParentNode,
+      flowContainer: flowContainer as unknown as Element,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  });
+
+  assert.deepEqual(bounds, { x: 80, y: 85, width: 340, height: 80 });
+});
+
 test("whole-board bounds tightly union rendered objects instead of stale model space", () => {
   const nodes: Node[] = [
     {

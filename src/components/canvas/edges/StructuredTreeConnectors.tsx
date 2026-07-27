@@ -154,7 +154,10 @@ export function StructuredTreeConnectors() {
             const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
             const sharedPath = branchPath(group.sharedSegments);
             return (
-              <g key={group.parentId}>
+              <g
+                key={group.parentId}
+                data-export-edge-ids={groupEdgeIds.join(" ")}
+              >
                 {group.sharedSegments.map((segment, index) => (
                   <ConnectorSvgPath
                     key={`shared-${index}`}
@@ -186,7 +189,7 @@ export function StructuredTreeConnectors() {
                   const path = branchPath(segments);
                   const normalColor = normalEdgeColor(edge);
                   return (
-                    <g key={edge.id}>
+                    <g key={edge.id} data-export-edge-id={edge.id}>
                       <ConnectorSvgPath
                         d={path}
                         edgeData={data}
