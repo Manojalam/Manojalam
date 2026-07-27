@@ -1,6 +1,10 @@
 import type { Node } from "@xyflow/react";
 import type { ScriptMode } from "../types";
 import { getNodeRect, rectsOverlap } from "../layout";
+import {
+  normalizeTextCalloutAnchor,
+  translateTextCalloutAnchor,
+} from "./text-callout";
 
 export const EXTERNAL_NOTE_SIZE = { width: 220, height: 72 };
 const NOTE_GAP = 32;
@@ -21,6 +25,75 @@ export function includeAttachedExternalNoteIds(nodes: Node[], movingIds: string[
     if (included.has(data.noteForNodeId)) included.add(node.id);
   }
   return Array.from(included);
+}
+
+/**
+ * Keep attached notes and their speech tips at the same visual offset when an
+ * owning shape moves through dragging, keyboard movement, resizing, or layout.
+ * A note that was explicitly moved in the same update retains that position.
+ */
+export function preserveAttachedExternalNoteOffsets(
+  previousNodes: Node[],
+  nextNodes: Node[]
+): Node[] {
+  const previousById = new Map(previousNodes.map((node) => [node.id, node]));
+  const nextById = new Map(nextNodes.map((node) => [node.id, node]));
+  let changed = false;
+
+  const result = nextNodes.map((note) => {
+    if (!isExternalNoteNode(note)) return note;
+    const noteData = (note.data ?? {}) as Record<string, unknown>;
+    const sourceId = typeof noteData.noteForNodeId === "string" ? noteData.noteForNodeId : null;
+    if (!sourceId) return note;
+
+    const previousNote = previousById.get(note.id);
+    const previousSource = previousById.get(sourceId);
+    const nextSource = nextById.get(sourceId);
+    if (!previousNote || !previousSource || !nextSource) return note;
+
+    const previousSourceRect = getNodeRect(previousSource);
+    const nextSourceRect = getNodeRect(nextSource);
+    const sourceDelta = {
+      x: nextSourceRect.centerX - previousSourceRect.centerX,
+      y: nextSourceRect.centerY - previousSourceRect.centerY,
+    };
+    if (Math.abs(sourceDelta.x) < 0.01 && Math.abs(sourceDelta.y) < 0.01) return note;
+
+    const noteDelta = {
+      x: note.position.x - previousNote.position.x,
+      y: note.position.y - previousNote.position.y,
+    };
+    const noteWasExplicitlyMoved = Math.abs(noteDelta.x) > 0.5 || Math.abs(noteDelta.y) > 0.5;
+    const position = noteWasExplicitlyMoved
+      ? note.position
+      : {
+          x: note.position.x + sourceDelta.x,
+          y: note.position.y + sourceDelta.y,
+        };
+
+    const previousData = (previousNote.data ?? {}) as Record<string, unknown>;
+    const previousAnchor = normalizeTextCalloutAnchor(previousData.textCalloutAnchor);
+    const nextAnchor = normalizeTextCalloutAnchor(noteData.textCalloutAnchor);
+    const anchorWasUnchanged = !!previousAnchor
+      && !!nextAnchor
+      && Math.abs(previousAnchor.x - nextAnchor.x) < 0.01
+      && Math.abs(previousAnchor.y - nextAnchor.y) < 0.01;
+    const translatedAnchor = anchorWasUnchanged
+      ? translateTextCalloutAnchor(nextAnchor, sourceDelta)
+      : undefined;
+
+    if (!translatedAnchor && position === note.position) return note;
+    changed = true;
+    return {
+      ...note,
+      position,
+      ...(translatedAnchor
+        ? { data: { ...noteData, textCalloutAnchor: translatedAnchor } }
+        : {}),
+    };
+  });
+
+  return changed ? result : nextNodes;
 }
 
 function candidateIsFree(

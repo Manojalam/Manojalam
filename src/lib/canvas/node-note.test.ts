@@ -6,6 +6,7 @@ import {
   EXTERNAL_NOTE_SIZE,
   includeAttachedExternalNoteIds,
   isExternalNoteNode,
+  preserveAttachedExternalNoteOffsets,
 } from "./node-note";
 
 const source: Node = {
@@ -89,5 +90,95 @@ test("moving a source includes every attached note without moving the source whe
   assert.deepEqual(
     includeAttachedExternalNoteIds([source, note, secondNote, lockedNote], [note.id]),
     [note.id]
+  );
+});
+
+function attachmentSource(position = { x: 100, y: 200 }, width = 200): Node {
+  return {
+    id: "source",
+    type: "shape",
+    position,
+    style: { width, height: 80 },
+    data: { shapeType: "rounded" },
+  };
+}
+
+function speechNote(
+  position = { x: 340, y: 180 },
+  anchor = { x: 200, y: 190 }
+): Node {
+  return {
+    id: "note",
+    type: "text",
+    position,
+    style: { width: 220, height: 72 },
+    data: {
+      externalNote: true,
+      noteForNodeId: "source",
+      textFrameStyle: "speech",
+      textCalloutAnchor: anchor,
+    },
+  };
+}
+
+test("an attached speech note and its tip follow the owning shape", () => {
+  const previous = [attachmentSource(), speechNote()];
+  const next = [
+    attachmentSource({ x: 250, y: 320 }),
+    speechNote(),
+  ];
+
+  const result = preserveAttachedExternalNoteOffsets(previous, next);
+  const movedNote = result.find((node) => node.id === "note");
+
+  assert.deepEqual(movedNote?.position, { x: 490, y: 300 });
+  assert.deepEqual(
+    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    { x: 350, y: 310 }
+  );
+});
+
+test("an attached speech tip follows a resized owner's visual center", () => {
+  const previous = [attachmentSource(), speechNote()];
+  const next = [attachmentSource({ x: 100, y: 200 }, 300), speechNote()];
+
+  const result = preserveAttachedExternalNoteOffsets(previous, next);
+  const movedNote = result.find((node) => node.id === "note");
+
+  assert.deepEqual(movedNote?.position, { x: 390, y: 180 });
+  assert.deepEqual(
+    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    { x: 250, y: 190 }
+  );
+});
+
+test("moving an attached bubble alone leaves its tip attached to the owner", () => {
+  const previous = [attachmentSource(), speechNote()];
+  const next = [attachmentSource(), speechNote({ x: 440, y: 260 })];
+
+  const result = preserveAttachedExternalNoteOffsets(previous, next);
+  const movedNote = result.find((node) => node.id === "note");
+
+  assert.deepEqual(movedNote?.position, { x: 440, y: 260 });
+  assert.deepEqual(
+    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    { x: 200, y: 190 }
+  );
+});
+
+test("group movement does not translate an attached note twice", () => {
+  const previous = [attachmentSource(), speechNote()];
+  const next = [
+    attachmentSource({ x: 250, y: 320 }),
+    speechNote({ x: 490, y: 300 }),
+  ];
+
+  const result = preserveAttachedExternalNoteOffsets(previous, next);
+  const movedNote = result.find((node) => node.id === "note");
+
+  assert.deepEqual(movedNote?.position, { x: 490, y: 300 });
+  assert.deepEqual(
+    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    { x: 350, y: 310 }
   );
 });

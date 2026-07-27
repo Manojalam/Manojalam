@@ -5301,7 +5301,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </div>
                 <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
                   {textFrameStyle === "speech"
-                    ? "Drag the blue tip to related content. Moving the bubble stretches only its tail."
+                    ? "The tip follows its attached shape. Move the bubble alone to stretch only its tail."
                     : "Point the thought dots toward the related content."}
                 </p>
                 {textFrameStyle === "speech" && textCalloutAnchor && (
