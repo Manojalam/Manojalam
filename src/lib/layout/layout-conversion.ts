@@ -83,6 +83,7 @@ const ROUNDED_SHAPE_DEFAULT_LAYOUTS = new Set<LayoutMode>([
   "list",
   "topDown",
   "linear",
+  "matrix",
 ]);
 
 /**

@@ -145,10 +145,51 @@ test("an attached speech tip follows a resized owner's visual center", () => {
   const result = preserveAttachedExternalNoteOffsets(previous, next);
   const movedNote = result.find((node) => node.id === "note");
 
-  assert.deepEqual(movedNote?.position, { x: 390, y: 180 });
+  assert.deepEqual(movedNote?.position, { x: 440, y: 180 });
   assert.deepEqual(
     (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
     { x: 250, y: 190 }
+  );
+});
+
+test("a layout resize preserves the bubble gap and pointer boundary position", () => {
+  const previous = [
+    attachmentSource(),
+    speechNote({ x: 340, y: 180 }, { x: 300, y: 240 }),
+  ];
+  const nextSource: Node = {
+    ...attachmentSource({ x: 40, y: 80 }, 140),
+    style: { width: 140, height: 800 },
+  };
+  const next = [
+    nextSource,
+    speechNote({ x: 340, y: 180 }, { x: 300, y: 240 }),
+  ];
+
+  const result = preserveAttachedExternalNoteOffsets(previous, next);
+  const movedNote = result.find((node) => node.id === "note");
+
+  assert.deepEqual(movedNote?.position, { x: 220, y: 204 });
+  assert.deepEqual(
+    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    { x: 180, y: 480 }
+  );
+});
+
+test("a center-anchored resize still realigns an attached bubble and pointer", () => {
+  const previous = [attachmentSource(), speechNote()];
+  const next = [
+    attachmentSource({ x: 50, y: 200 }, 300),
+    speechNote(),
+  ];
+
+  const result = preserveAttachedExternalNoteOffsets(previous, next);
+  const movedNote = result.find((node) => node.id === "note");
+
+  assert.deepEqual(movedNote?.position, { x: 390, y: 180 });
+  assert.deepEqual(
+    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    { x: 200, y: 190 }
   );
 });
 
