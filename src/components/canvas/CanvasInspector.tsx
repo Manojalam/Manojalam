@@ -5137,11 +5137,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   size="sm"
                   className="h-7 gap-1.5 text-[10px]"
                   disabled={d.layoutAutoFill !== false}
-                  title="Remove this fill override and derive its color from the parent"
+                  title="Remove this override and restore progressively lighter Matrix shades from the parent"
                   onClick={() => setField("layoutAutoFill", undefined)}
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Use parent color
+                  Use matrix shades
                 </Button>
               )}
             </div>
