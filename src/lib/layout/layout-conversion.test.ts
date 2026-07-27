@@ -55,6 +55,8 @@ test("chart conversion keeps hierarchy and authored content but drops source geo
     matrixOrientation: "vertical",
     matrixChildFlow: "row",
     matrixPackCompactGroups: true,
+    matrixIncompleteRowMode: "empty",
+    matrixEmptySlots: [{ x: 10, y: 20, width: 30, height: 40 }],
     matrixFillCellLabels: true,
     matrixSiblingGap: 24,
     matrixWidthOverride: 500,

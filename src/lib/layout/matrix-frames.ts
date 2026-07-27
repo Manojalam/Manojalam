@@ -4,7 +4,7 @@ import {
   MATRIX_GRID_STROKE_WIDTH,
   matrixCellDivisionPadding,
 } from "./matrix-presentation";
-import type { FrameNodeData } from "../types";
+import type { FrameNodeData, MatrixGeneratedEmptySlot } from "../types";
 
 type MatrixGridLine = NonNullable<FrameNodeData["matrixGridLines"]>[number];
 type AxisSegment = { position: number; start: number; end: number };
@@ -53,6 +53,33 @@ function enclosingRect(nodes: readonly Node[], padding: number): NodeRect | null
 function visualColors(node: Node | undefined): { fillColor?: string; borderColor?: string } {
   const data = (node?.data ?? {}) as Record<string, unknown>;
   return (data.layoutVisualStyle ?? {}) as { fillColor?: string; borderColor?: string };
+}
+
+function generatedEmptySlotNodes(
+  root: Node | undefined,
+  slots: readonly MatrixGeneratedEmptySlot[]
+): Node[] {
+  if (!root || !slots.length) return [];
+  const rootRect = matrixPresentationRect(root);
+  return slots.flatMap((slot, index) => {
+    if (
+      ![slot.x, slot.y, slot.width, slot.height].every(Number.isFinite)
+      || slot.width <= 0
+      || slot.height <= 0
+    ) return [];
+    return [{
+      id: `matrix-empty-slot-${root.id}-${index}`,
+      type: "frame",
+      position: {
+        x: rootRect.left + slot.x,
+        y: rootRect.top + slot.y,
+      },
+      data: { matrixEmptySlotStyleSource: slot.styleSourceNodeId },
+      style: { width: slot.width, height: slot.height },
+      selectable: false,
+      draggable: false,
+    } satisfies Node];
+  });
 }
 
 function mergeAxisSegments(segments: readonly AxisSegment[]): AxisSegment[] {
@@ -199,13 +226,32 @@ export function buildMatrixFrameNodes(
   const byId = new Map(scopedNodes.map((node) => [node.id, node]));
   const root = byId.get(rootId);
   const rootData = (root?.data ?? {}) as Record<string, unknown>;
+  const storedEmptySlots = Array.isArray(rootData.matrixEmptySlots)
+    ? rootData.matrixEmptySlots as MatrixGeneratedEmptySlot[]
+    : [];
+  const emptySlotNodes = generatedEmptySlotNodes(root, storedEmptySlots);
+  const presentationNodes = [...scopedNodes, ...emptySlotNodes];
   const rootColors = visualColors(root);
   const gridPadding = matrixCellDivisionPadding(rootData.matrixDensity);
-  const outerBounds = enclosingRect(scopedNodes, gridPadding);
+  const outerBounds = enclosingRect(presentationNodes, gridPadding);
   if (!outerBounds) return [];
   const lines = root && rootData.matrixGridVisible !== false
-    ? matrixGridLines(scopedNodes, outerBounds, gridPadding)
+    ? matrixGridLines(presentationNodes, outerBounds, gridPadding)
     : [];
+  const emptyCells = emptySlotNodes.map((node) => {
+    const rect = matrixPresentationRect(node);
+    const sourceId = (node.data as Record<string, unknown>).matrixEmptySlotStyleSource;
+    const source = byId.get(typeof sourceId === "string" ? sourceId : "");
+    const colors = visualColors(source);
+    return {
+      x: rect.left - outerBounds.left,
+      y: rect.top - outerBounds.top,
+      width: rect.width,
+      height: rect.height,
+      fillColor: colors.fillColor ?? rootColors.fillColor,
+      borderColor: colors.borderColor ?? rootColors.borderColor,
+    };
+  });
 
   return [{
     id: `matrix-frame-${rootId}`,
@@ -222,6 +268,7 @@ export function buildMatrixFrameNodes(
       locked: true,
       matrixFrameFor: rootId,
       matrixGridLines: lines,
+      matrixEmptyCells: emptyCells,
       tags: [],
     },
     style: { width: outerBounds.width, height: outerBounds.height },
