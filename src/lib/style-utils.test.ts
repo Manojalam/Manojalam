@@ -139,7 +139,7 @@ test("derives a valid lighter fill from a border color", () => {
 test("only the first border color initializes an untouched fill", () => {
   assert.deepEqual(
     borderMatchedFillPatch({ color: "#4262ff" }, "#22c55e"),
-    { fillColor: "#cef2dc" }
+    { fillColor: "#cef2dc", fillOpacity: 1 }
   );
   assert.deepEqual(
     borderMatchedFillPatch({ fillColor: "#fef3c7" }, "#22c55e"),
@@ -154,7 +154,7 @@ test("only the first border color initializes an untouched fill", () => {
 test("manual border sync replaces an existing or automatic layout fill", () => {
   assert.deepEqual(
     borderMatchedFillPatch({ fillColor: "#fef3c7" }, "#4262ff", true),
-    { fillColor: "#d5dcff" }
+    { fillColor: "#d5dcff", fillOpacity: 1 }
   );
   assert.deepEqual(
     borderMatchedFillPatch({
@@ -165,6 +165,12 @@ test("manual border sync replaces an existing or automatic layout fill", () => {
         textColor: "#111827",
       },
     }, "#4262ff", true),
-    { fillColor: "#d5dcff", layoutAutoFill: false }
+    { fillColor: "#d5dcff", fillOpacity: 1, layoutAutoFill: false }
   );
+});
+
+test("a border-matched fill renders as the intended pastel instead of being washed out", () => {
+  const patch = borderMatchedFillPatch({}, "#4262ff", true);
+  assert.equal(resolveFillColor(patch), "rgba(213, 220, 255, 1)");
+  assert.equal(resolveEffectiveFillOpacity(patch), 1);
 });
