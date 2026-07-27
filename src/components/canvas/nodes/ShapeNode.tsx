@@ -37,7 +37,6 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import {
@@ -1231,7 +1230,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const visualRotationStyle: CSSProperties = objectRotationStyle("shape", dd);
   const objectRotation = resolveObjectRotation("shape", dd);
   const textRotation = normalizeTextRotation(dd.textRotation);
-  const textRotationTargetRef = useRef<HTMLDivElement>(null);
 
   const addConcentricLayer = useCallback(() => {
     pushHistory();
@@ -1477,7 +1475,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                 }}
               >
                 <div
-                  ref={textRotationTargetRef}
                   className={cn(
                     "h-full w-full",
                     renderContourTextFlow ? "block overflow-hidden" : "flex items-center justify-center"
@@ -1529,14 +1526,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     />
                   </div>
                 </div>
-                {selected && !editing && !isDrawing && !matrixCell && dd.locked !== true && (
-                  <TextRotationHandle
-                    nodeId={id}
-                    targetRef={textRotationTargetRef}
-                    rotation={textRotation}
-                    color={borderColor}
-                  />
-                )}
               </div>
             </div>
           )}

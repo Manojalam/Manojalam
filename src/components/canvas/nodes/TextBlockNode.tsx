@@ -30,7 +30,6 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
-import { TextRotationHandle } from "./TextRotationHandle";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -107,7 +106,6 @@ function TextBlockNodeComponent({
     backgroundColor: fillColor,
   });
   const textRotation = normalizeTextRotation(dd.textRotation);
-  const textRotationTargetRef = useRef<HTMLDivElement>(null);
   const resizeControls = useNodeManualResize(id);
   const textFrameBody = textFrameBodyBox(textFrameStyle, renderedTextCalloutDirection);
   const hasTextFrame = textFrameStyle !== "plain";
@@ -273,7 +271,7 @@ function TextBlockNodeComponent({
             height: `${textFrameBody.height}%`,
           } : undefined}
         >
-          <div ref={textRotationTargetRef} className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
+          <div className="w-full" style={{ ...textPresentation.style, ...textRotationStyle(textRotation) }}>
             <RichTextEditor
             nodeId={id}
             initialContent={initialContent}
@@ -298,14 +296,6 @@ function TextBlockNodeComponent({
             onBlur={finishEditing}
             />
           </div>
-          {selected && !editing && !isDrawing && !matrixCell && d.locked !== true && (
-            <TextRotationHandle
-              nodeId={id}
-              targetRef={textRotationTargetRef}
-              rotation={textRotation}
-              color={borderColor ?? "#6366f1"}
-            />
-          )}
         </div>
         </div>
       </div>
