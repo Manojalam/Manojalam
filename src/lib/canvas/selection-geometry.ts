@@ -209,10 +209,135 @@ export function compactEqualSpacing(
 }
 
 /**
+ * Preserve vertical gaps when selected cards grow. Every later card whose
+ * rendered bounds substantially overlap a growing card on the x-axis is moved
+ * by that card's added height. Growth from multiple selected cards accumulates.
+ */
+export function pushNodesBelowSelectionGrowth(
+  nodes: Node[],
+  nextHeights: ReadonlyMap<string, number>,
+  minimumHorizontalOverlapRatio = 0.5
+): Map<string, Point> {
+  const positions = new Map<string, Point>();
+  if (!nodes.length || !nextHeights.size) return positions;
+  const safeOverlapRatio = Math.max(0, Math.min(1, minimumHorizontalOverlapRatio));
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
+  const growing = entries.flatMap(({ node, rect }) => {
+    const nextHeight = nextHeights.get(node.id);
+    const growth = typeof nextHeight === "number" && Number.isFinite(nextHeight)
+      ? nextHeight - rect.height
+      : 0;
+    return growth > 0.5 ? [{ node, rect, growth }] : [];
+  });
+  if (!growing.length) return positions;
+
+  for (const { node, rect } of entries) {
+    let shiftY = 0;
+    for (const source of growing) {
+      if (source.node.id === node.id || rect.centerY <= source.rect.centerY) continue;
+      const overlap = Math.min(rect.right, source.rect.right)
+        - Math.max(rect.left, source.rect.left);
+      const requiredOverlap = Math.min(rect.width, source.rect.width) * safeOverlapRatio;
+      if (overlap + 0.5 < requiredOverlap) continue;
+      shiftY += source.growth;
+    }
+    if (shiftY > 0.5) {
+      positions.set(node.id, {
+        x: node.position.x,
+        y: node.position.y + shiftY,
+      });
+    }
+  }
+
+  return positions;
+}
+
+/**
+ * Preserve column gaps when selected cards grow wider. Selected cards that
+ * substantially overlap on the x-axis are treated as one column, so their
+ * growth moves later columns once by only the added column width.
+ */
+export function pushNodesRightOfSelectionGrowth(
+  nodes: Node[],
+  nextWidths: ReadonlyMap<string, number>,
+  minimumHorizontalOverlapRatio = 0.5
+): Map<string, Point> {
+  const positions = new Map<string, Point>();
+  if (!nodes.length || !nextWidths.size) return positions;
+  const safeOverlapRatio = Math.max(0, Math.min(1, minimumHorizontalOverlapRatio));
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
+  const substantiallyOverlaps = (first: NodeRect, second: NodeRect) => {
+    const overlap = Math.min(first.right, second.right) - Math.max(first.left, second.left);
+    return overlap + 0.5 >= Math.min(first.width, second.width) * safeOverlapRatio;
+  };
+  const growing = entries.flatMap(({ node, rect }) => {
+    const nextWidth = nextWidths.get(node.id);
+    if (typeof nextWidth !== "number" || !Number.isFinite(nextWidth) || nextWidth <= rect.width + 0.5) {
+      return [];
+    }
+    const nextRect = getNodeRect({
+      ...node,
+      width: undefined,
+      measured: undefined,
+      style: { ...(node.style ?? {}), width: nextWidth, height: rect.height },
+    });
+    return [{ node, rect, nextRect }];
+  });
+  if (!growing.length) return positions;
+
+  const sourceColumns: typeof growing[] = [];
+  for (const source of growing) {
+    const column = sourceColumns.find((candidate) => (
+      candidate.some((member) => substantiallyOverlaps(member.rect, source.rect))
+    ));
+    if (column) column.push(source);
+    else sourceColumns.push([source]);
+  }
+
+  const expansions = sourceColumns.flatMap((sources) => {
+    const columnEntries = entries.filter(({ rect }) => (
+      sources.some((source) => substantiallyOverlaps(source.rect, rect))
+    ));
+    const originalRight = Math.max(...columnEntries.map(({ rect }) => rect.right));
+    const expandedRight = Math.max(
+      originalRight,
+      ...sources.map(({ nextRect }) => nextRect.right)
+    );
+    const growth = expandedRight - originalRight;
+    if (growth <= 0.5) return [];
+    return [{
+      sources,
+      growth,
+      centerX: sources.reduce((sum, { rect }) => sum + rect.centerX, 0) / sources.length,
+    }];
+  });
+
+  for (const { node, rect } of entries) {
+    let shiftX = 0;
+    for (const column of expansions) {
+      if (
+        column.sources.some((source) => source.node.id === node.id)
+        || column.sources.some((source) => substantiallyOverlaps(source.rect, rect))
+        || rect.centerX <= column.centerX
+      ) continue;
+      shiftX += column.growth;
+    }
+    if (shiftX > 0.5) {
+      positions.set(node.id, {
+        x: node.position.x + shiftX,
+        y: node.position.y,
+      });
+    }
+  }
+
+  return positions;
+}
+
+/**
  * Pack an arbitrary selection into columns without changing the sequence
- * supplied by the board. The first and last cards define shared outer anchors;
- * cards inside every multi-item column are then vertically distributed between
- * those anchors with equal edge-to-edge gaps.
+ * supplied by the board. The tallest compact column defines the shared outer
+ * span; shorter multi-item columns are vertically distributed inside that span
+ * with equal edge-to-edge gaps.
  */
 export function arrangeSelectionInColumns(
   nodes: Node[],
@@ -233,14 +358,12 @@ export function arrangeSelectionInColumns(
   )).filter((column) => column.length > 0);
   const left = Math.min(...entries.map(({ rect }) => rect.left));
   const top = Math.min(...columns.map((column) => column[0].rect.top));
-  const bottom = Math.max(...columns.map((column) => column[column.length - 1].rect.bottom));
   const columnGap = Math.max(0, options.columnGap ?? COMPACT_COLUMN_GAP);
   const rowGap = Math.max(0, options.rowGap ?? COMPACT_SELECTION_GAP);
-  const minimumColumnHeight = Math.max(...columns.map((column) => (
+  const sharedColumnHeight = Math.max(...columns.map((column) => (
     column.reduce((sum, { rect }) => sum + rect.height, 0)
       + rowGap * Math.max(0, column.length - 1)
   )));
-  const sharedColumnHeight = Math.max(minimumColumnHeight, bottom - top);
   let cursorX = left;
 
   for (const column of columns) {

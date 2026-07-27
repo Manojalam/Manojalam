@@ -91,6 +91,8 @@ import {
   alignSelection,
   arrangeSelectionInColumns,
   compactEqualSpacing,
+  pushNodesBelowSelectionGrowth,
+  pushNodesRightOfSelectionGrowth,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
@@ -1954,55 +1956,112 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const canMatchSelectionSize = selectedNodes.every(supportsMatchedSelectionSize);
     const matchSelectedSize = (mode: "width" | "height" | "both") => {
       if (!canMatchSelectionSize) return;
-      const dimensions = selectedNodes.map((node) => ({
-        node,
-        size: getNodeDimensions(node),
-      }));
+      const baselineNodes = useCanvasStore.getState().nodes;
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const flowNodes = baselineNodes.filter(supportsMatchedSelectionSize);
+      const dimensions = flowNodes
+        .filter((node) => selectedIds.has(node.id))
+        .map((node) => ({
+          node,
+          size: getNodeDimensions(node),
+        }));
+      if (!dimensions.length) return;
       const widest = Math.max(...dimensions.map(({ size }) => size.width));
       const tallest = Math.max(...dimensions.map(({ size }) => size.height));
       const fixedAspectSelection = dimensions.some(({ node }) => hasFixedAspectRatio(node));
       const commonSide = Math.max(widest, tallest);
-      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const targetSizes = new Map(dimensions.map(({ node, size }) => {
+        const fixedAspect = hasFixedAspectRatio(node);
+        const width = mode === "both"
+          ? (fixedAspectSelection ? commonSide : widest)
+          : mode === "width"
+            ? widest
+            : fixedAspect
+              ? tallest
+              : size.width;
+        const height = mode === "both"
+          ? (fixedAspectSelection ? commonSide : tallest)
+          : mode === "height"
+            ? tallest
+            : fixedAspect
+              ? widest
+              : size.height;
+        const autoSizeMode: AutoSizeMode = mode === "width" && !fixedAspect
+          ? "height-only"
+          : "fixed";
+        return [node.id, { width, height, autoSizeMode }] as const;
+      }));
+      const growthAdjustedPositions = (
+        sizes: ReadonlyMap<string, { width: number; height: number }>
+      ) => {
+        const vertical = pushNodesBelowSelectionGrowth(
+          flowNodes,
+          new Map([...sizes].map(([id, size]) => [id, size.height]))
+        );
+        const horizontal = pushNodesRightOfSelectionGrowth(
+          flowNodes,
+          new Map([...sizes].map(([id, size]) => [id, size.width]))
+        );
+        const positions = new Map<string, { x: number; y: number }>();
+        for (const node of flowNodes) {
+          const verticalPosition = vertical.get(node.id);
+          const horizontalPosition = horizontal.get(node.id);
+          if (!verticalPosition && !horizontalPosition) continue;
+          positions.set(node.id, {
+            x: horizontalPosition?.x ?? node.position.x,
+            y: verticalPosition?.y ?? node.position.y,
+          });
+        }
+        return positions;
+      };
+      const immediatePositions = growthAdjustedPositions(targetSizes);
 
       pushHistory();
       useCanvasStore.setState((state) => ({
         nodes: state.nodes.map((node) => {
-          if (!selectedIds.has(node.id)) return node;
-          const current = getNodeDimensions(node);
-          const fixedAspect = hasFixedAspectRatio(node);
-          const width = mode === "both"
-            ? (fixedAspectSelection ? commonSide : widest)
-            : mode === "width"
-              ? widest
-              : fixedAspect
-                ? tallest
-                : current.width;
-          const height = mode === "both"
-            ? (fixedAspectSelection ? commonSide : tallest)
-            : mode === "height"
-              ? tallest
-              : fixedAspect
-                ? widest
-                : current.height;
-          const autoSizeMode: AutoSizeMode = mode === "width" && !fixedAspect
-            ? "height-only"
-            : "fixed";
+          const position = immediatePositions.get(node.id);
+          const target = targetSizes.get(node.id);
+          if (!target) return position ? { ...node, position } : node;
           return resetNodeDimensions({
             ...node,
+            ...(position ? { position } : {}),
             data: {
               ...(node.data ?? {}),
-              autoSizeMode,
-              userSize: { width, height },
+              autoSizeMode: target.autoSizeMode,
+              userSize: { width: target.width, height: target.height },
             },
-          }, width, height);
+          }, target.width, target.height);
         }),
         saveStatus: "unsaved",
       }));
 
+      let remainingFrames = 3;
+      const settleFlowAfterTextReflow = () => {
+        remainingFrames -= 1;
+        if (remainingFrames > 0) {
+          requestAnimationFrame(settleFlowAfterTextReflow);
+          return;
+        }
+        const latest = useCanvasStore.getState();
+        const settledSizes = new Map(
+          latest.nodes
+            .filter((node) => selectedIds.has(node.id))
+            .map((node) => [node.id, getNodeDimensions(node)])
+        );
+        const settledPositions = growthAdjustedPositions(settledSizes);
+        useCanvasStore.setState((state) => ({
+          nodes: state.nodes.map((node) => {
+            const position = settledPositions.get(node.id);
+            return position ? { ...node, position } : node;
+          }),
+          saveStatus: "unsaved",
+        }));
+      };
       requestAnimationFrame(() => {
         window.dispatchEvent(new CustomEvent("vidya:update-node-internals", {
           detail: { nodeIds: [...selectedIds] },
         }));
+        requestAnimationFrame(settleFlowAfterTextReflow);
       });
       const label = mode === "width"
         ? "width"
@@ -2204,7 +2263,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Tidy into columns</p>
                   <p className="text-[9px] leading-snug text-muted-foreground">
-                    Aligns the first and last cards to shared outer lines, then distributes each column vertically.
+                    Keeps normal gaps in the tallest column, aligns the outer cards, and distributes shorter columns evenly.
                   </p>
                 </div>
                 <div>
