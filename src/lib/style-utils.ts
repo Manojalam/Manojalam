@@ -384,6 +384,44 @@ export function lightenColor(color: string, amount = 0.78): string {
     .join("")}`;
 }
 
+/** Return the pale fill color used when matching a fill to its border. */
+export function borderMatchedFillColor(borderColor: unknown): string | undefined {
+  if (typeof borderColor !== "string") return undefined;
+  const normalized = borderColor.trim();
+  const parsed = parseCssColor(normalized);
+  if (!normalized || !parsed || parsed.a <= 0) return undefined;
+  return lightenColor(normalized);
+}
+
+/**
+ * Build the fill update for a border color.
+ *
+ * An untouched shape may initialize its fill from its first border choice.
+ * After a fill color or opacity has been applied, only an explicit sync should
+ * replace it. Automatic layout fills also count as an existing fill.
+ */
+export function borderMatchedFillPatch(
+  data: Record<string, unknown>,
+  borderColor: unknown,
+  force = false
+): Record<string, unknown> {
+  const fillColor = borderMatchedFillColor(borderColor);
+  if (!fillColor) return {};
+
+  const layoutFillIsActive = Boolean(
+    resolveLayoutVisualStyle(data) && data.layoutAutoFill !== false
+  );
+  const fillHasBeenApplied = data.fillColor !== undefined
+    || data.fillOpacity !== undefined
+    || layoutFillIsActive;
+  if (!force && fillHasBeenApplied) return {};
+
+  return {
+    fillColor,
+    ...(data.layoutVisualStyle ? { layoutAutoFill: false } : {}),
+  };
+}
+
 /** Effective fill opacity for a node (defaults to soft) */
 export function resolveFillOpacity(d: Record<string, unknown>): number {
   return typeof d.fillOpacity === "number" ? d.fillOpacity : DEFAULT_FILL_OPACITY;
