@@ -6,6 +6,7 @@ import {
   alignmentSnapThreshold,
   alignSelection,
   arrangeSelectionInColumns,
+  arrangeSelectionInRows,
   compactEqualSpacing,
   distributeSelection,
   preserveSnappedDragEndPositions,
@@ -99,7 +100,7 @@ test("fifteen ordered cards split into three consecutive columns", () => {
   ]);
 });
 
-test("matched column widths use each column's widest card and support centered origins", () => {
+test("column arrangement preserves card sizes and supports centered origins", () => {
   const nodes = [
     node("a", 100, 80, 120, 50, [0.5, 0.5]),
     node("b", 100, 240, 200, 80, [0.5, 0.5]),
@@ -108,30 +109,68 @@ test("matched column widths use each column's widest card and support centered o
   ];
   const result = arrangeSelectionInColumns(nodes, {
     columnCount: 2,
-    matchColumnWidths: true,
     columnGap: 72,
     rowGap: 28,
   });
 
-  assert.deepEqual(
-    [...result.widths.entries()],
-    [["a", 200], ["b", 200], ["c", 160], ["d", 160]]
-  );
   const after = nodes.map((item) => getNodeRect({
     ...item,
     position: result.positions.get(item.id)!,
-    style: { ...item.style, width: result.widths.get(item.id) },
-    measured: undefined,
-    width: undefined,
   }));
-  assert.equal(after[0].left, after[1].left);
-  assert.equal(after[2].left, after[3].left);
-  assert.equal(after[2].left - after[0].right, 72);
+  assert.deepEqual(
+    after.map(({ width, height }) => ({ width, height })),
+    nodes.map((item) => {
+      const { width, height } = getNodeRect(item);
+      return { width, height };
+    })
+  );
+  assert.equal(after[0].centerX, after[1].centerX);
+  assert.equal(after[2].centerX, after[3].centerX);
+  assert.equal(Math.min(after[2].left, after[3].left) - Math.max(after[0].right, after[1].right), 72);
   assert.equal(after[1].top - after[0].bottom, 48);
   assert.equal(after[3].top - after[2].bottom, 28);
   assert.equal(after[0].top, after[2].top);
   assert.equal(after[1].bottom, after[3].bottom);
   assert.equal(after[1].bottom, 233);
+});
+
+test("row arrangement preserves order and sizes while aligning outer row bounds", () => {
+  const nodes = [
+    node("1", 500, 40, 100, 60),
+    node("2", 80, 220, 140, 90),
+    node("3", 520, 360, 120, 70),
+    node("4", 40, 20, 80, 110),
+    node("5", 90, 520, 160, 50),
+  ];
+  const result = arrangeSelectionInRows(nodes, {
+    rowCount: 2,
+    columnGap: 40,
+    rowGap: 24,
+  });
+  const after = new Map(nodes.map((item) => [
+    item.id,
+    getNodeRect({ ...item, position: result.positions.get(item.id)! }),
+  ]));
+
+  assert.deepEqual(result.rows, [["1", "2", "3"], ["4", "5"]]);
+  assert.equal(after.get("1")!.left, 40);
+  assert.equal(after.get("4")!.left, 40);
+  assert.equal(after.get("2")!.left - after.get("1")!.right, 40);
+  assert.equal(after.get("3")!.left - after.get("2")!.right, 40);
+  assert.equal(after.get("5")!.left - after.get("4")!.right, 200);
+  assert.equal(after.get("3")!.right, after.get("5")!.right);
+  assert.equal(after.get("4")!.top - Math.max(
+    after.get("1")!.bottom,
+    after.get("2")!.bottom,
+    after.get("3")!.bottom
+  ), 24);
+  assert.deepEqual(
+    nodes.map((item) => ({ width: after.get(item.id)!.width, height: after.get(item.id)!.height })),
+    nodes.map((item) => {
+      const { width, height } = getNodeRect(item);
+      return { width, height };
+    })
+  );
 });
 
 test("selection growth pushes every later card in the same column", () => {
