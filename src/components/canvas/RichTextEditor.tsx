@@ -55,6 +55,7 @@ import {
 } from "@/lib/canvas/symbol-style";
 import {
   normalizeSymbolAppearance,
+  OPEN_TEXT_TOOL_EVENT,
   TEXT_TOOL_EVENT,
   UPADHMANIYA_CHARACTER,
   type TextToolAction,
@@ -487,15 +488,22 @@ function FormatButton({
   onAction,
   children,
   title,
+  textToolTrigger,
 }: {
   active?: boolean;
   mixed?: boolean;
   onAction: () => void;
   children: React.ReactNode;
   title: string;
+  textToolTrigger?: boolean;
 }) {
   return (
-    <button title={title} onMouseDown={(event) => { event.preventDefault(); onAction(); }}
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      data-universal-text-tools={textToolTrigger ? "integrated-trigger" : undefined}
+      onMouseDown={(event) => { event.preventDefault(); onAction(); }}
       className={cn(
         "flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-xs font-medium transition-colors",
         active ? "bg-primary text-primary-foreground" : "hover:bg-muted text-foreground",
@@ -1699,6 +1707,14 @@ export function RichTextEditor({
     setInlineFormatPainter,
   ]);
 
+  const openSymbolTools = useCallback(() => {
+    const target = editor?.view.dom as HTMLElement | undefined;
+    if (!target) return;
+    target.dispatchEvent(new CustomEvent(OPEN_TEXT_TOOL_EVENT, {
+      bubbles: true,
+    }));
+  }, [editor]);
+
   const chooseCustomTextColor = useCallback((color: string) => {
     setSettings({
       customColors: rememberCustomColor(customColors, color),
@@ -2132,6 +2148,13 @@ export function RichTextEditor({
           <FormatButton active={!!inlineFormatPainter} onAction={useFormatPainter}
             title={inlineFormatPainter ? "Apply copied formatting" : "Copy formatting"}>
             <Paintbrush className="h-4 w-4" />
+          </FormatButton>
+          <FormatButton
+            onAction={openSymbolTools}
+            title="Insert symbols and scripts"
+            textToolTrigger
+          >
+            <span className="text-sm font-semibold leading-none" aria-hidden="true">Ω</span>
           </FormatButton>
           <FormatButton onAction={clearFormatting} title="Clear formatting"><Eraser className="h-4 w-4" /></FormatButton>
         </div>,
