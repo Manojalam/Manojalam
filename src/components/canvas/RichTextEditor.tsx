@@ -508,6 +508,7 @@ export function RichTextEditor({
   const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const previousEditableRef = useRef(editable);
   const previousMeasurementKeyRef = useRef(measurementKey);
+  const previousMeasurementWidthRef = useRef(measurementWidth);
   const hasMeasuredPresentationRef = useRef(false);
   const guidePresentationRef = useRef(`${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`);
   const flowPresentationRef = useRef("");
@@ -1063,9 +1064,21 @@ export function RichTextEditor({
     if (!editor) return;
     const measurementKeyChanged = hasMeasuredPresentationRef.current
       && previousMeasurementKeyRef.current !== measurementKey;
+    const previousMeasurementWidth = previousMeasurementWidthRef.current;
+    const measurementWidthChanged = hasMeasuredPresentationRef.current
+      && typeof measurementWidth === "number"
+      && (
+        typeof previousMeasurementWidth !== "number"
+        || Math.abs(previousMeasurementWidth - measurementWidth) > 1
+      );
     previousMeasurementKeyRef.current = measurementKey;
+    previousMeasurementWidthRef.current = measurementWidth;
     hasMeasuredPresentationRef.current = true;
-    const reason: ContentResizeReason = measurementKeyChanged ? "format" : "layout";
+    const reason: ContentResizeReason = measurementKeyChanged
+      ? "format"
+      : measurementWidthChanged
+        ? "fit"
+        : "layout";
     const frame = requestAnimationFrame(() => reportContentSize(editor, reason));
     return () => cancelAnimationFrame(frame);
   }, [editor, editable, measurementKey, measurementWidth, reportContentSize]);

@@ -27,7 +27,13 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { DEFAULT_BOARD_SETTINGS, SANSKRIT_TAG_SUGGESTIONS } from "@/lib/types";
-import { LAYOUT_OPTIONS, getNodeDimensions, getNodeRect, type LayoutMode } from "@/lib/layout";
+import {
+  LAYOUT_OPTIONS,
+  getNodeDimensions,
+  getNodeRect,
+  resetNodeDimensions,
+  type LayoutMode,
+} from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import type {
@@ -83,6 +89,7 @@ import {
 } from "@/lib/relationship-diagram-colors";
 import {
   alignSelection,
+  arrangeSelectionInColumns,
   compactEqualSpacing,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
@@ -600,6 +607,16 @@ function supportsCornerRadius(node: Node): boolean {
 
 function supportsSurfaceEffects(node: Node): boolean {
   return ["mindmap", "shape", "sticky", "text"].includes(node.type ?? "");
+}
+
+const CONTENT_SIZED_COLUMN_NODE_TYPES = new Set(["mindmap", "shape", "sticky", "text"]);
+const FIXED_ASPECT_COLUMN_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
+
+function supportsMatchedColumnWidth(node: Node): boolean {
+  if (!CONTENT_SIZED_COLUMN_NODE_TYPES.has(node.type ?? "")) return false;
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  if (data.matrixCell === true || data.layoutSizeOverride || data.radialChart) return false;
+  return node.type !== "shape" || !FIXED_ASPECT_COLUMN_SHAPES.has(String(data.shapeType ?? ""));
 }
 
 function cornerRadiusPercentForNode(node: Node, fallback?: number): number {
@@ -1182,6 +1199,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
   const [bulkChildCount, setBulkChildCount] = useState(3);
   const [resetManualRoutes, setResetManualRoutes] = useState(false);
+  const [tidyColumnCount, setTidyColumnCount] = useState(2);
+  const [matchColumnWidths, setMatchColumnWidths] = useState(true);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const relationships   = useCanvasStore((s) => s.relationships);
@@ -1919,6 +1938,87 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const spaceSelectedNodes = (axis: "x" | "y") => {
       updateSelectedGeometry(compactEqualSpacing(selectedNodes, axis));
     };
+    const canMatchColumnWidths = selectedNodes.every(supportsMatchedColumnWidth);
+    const effectiveTidyColumnCount = Math.max(
+      1,
+      Math.min(selectedNodes.length, tidyColumnCount)
+    );
+    const tidySelectedColumns = () => {
+      const matchWidths = matchColumnWidths && canMatchColumnWidths;
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const plan = arrangeSelectionInColumns(selectedNodes, {
+        columnCount: effectiveTidyColumnCount,
+        matchColumnWidths: matchWidths,
+      });
+      if (!plan.positions.size) return;
+
+      pushHistory();
+      useCanvasStore.setState((state) => ({
+        nodes: state.nodes.map((node) => {
+          const position = plan.positions.get(node.id);
+          if (!position) return node;
+          const matchedWidth = plan.widths.get(node.id);
+          if (!matchWidths || matchedWidth === undefined) {
+            return { ...node, position };
+          }
+          const height = getNodeDimensions(node).height;
+          return resetNodeDimensions({
+            ...node,
+            position,
+            data: {
+              ...(node.data ?? {}),
+              autoSizeMode: "height-only" as AutoSizeMode,
+              userSize: { width: matchedWidth, height },
+            },
+          }, matchedWidth, height);
+        }),
+        saveStatus: "unsaved",
+      }));
+
+      if (matchWidths) {
+        const targetWidths = plan.widths;
+        let remainingFrames = 3;
+        const refineAfterTextReflow = () => {
+          remainingFrames -= 1;
+          if (remainingFrames > 0) {
+            requestAnimationFrame(refineAfterTextReflow);
+            return;
+          }
+          const latest = useCanvasStore.getState();
+          const latestSelection = latest.nodes.filter((node) => selectedIds.has(node.id));
+          if (
+            latestSelection.length !== selectedIds.size
+            || latestSelection.some((node) => (
+              Math.abs(getNodeDimensions(node).width - (targetWidths.get(node.id) ?? 0)) > 2
+            ))
+          ) return;
+          const refined = arrangeSelectionInColumns(latestSelection, {
+            columnCount: effectiveTidyColumnCount,
+            matchColumnWidths: true,
+          });
+          useCanvasStore.setState((state) => ({
+            nodes: state.nodes.map((node) => {
+              const position = refined.positions.get(node.id);
+              return position ? { ...node, position } : node;
+            }),
+            saveStatus: "unsaved",
+          }));
+        };
+        requestAnimationFrame(() => {
+          window.dispatchEvent(new CustomEvent("vidya:update-node-internals", {
+            detail: { nodeIds: [...selectedIds] },
+          }));
+          requestAnimationFrame(refineAfterTextReflow);
+        });
+      }
+
+      toast.success(
+        `Tidied ${selectedNodes.length} cards into ${effectiveTidyColumnCount} column${
+          effectiveTidyColumnCount === 1 ? "" : "s"
+        }.`,
+        { action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() } }
+      );
+    };
     const selectedMatrixWidthValues = selectedMatrixCells.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       return hasPositiveDimensionOverride(data.matrixWidthOverride)
@@ -2026,6 +2126,69 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </div>}
           {!isRadialMultiSelection && selectedNodes.length > 1 && (
             <Section label="Arrange" defaultOpen>
+              <div className="space-y-2 rounded-lg border border-border bg-muted/25 p-2">
+                <div>
+                  <p className="text-[10px] font-medium text-foreground">Tidy into columns</p>
+                  <p className="text-[9px] leading-snug text-muted-foreground">
+                    Packs the selection top-to-bottom while keeping its current left-to-right order.
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Columns
+                  </p>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[1, 2, 3, 4].map((count) => (
+                      <button
+                        key={count}
+                        type="button"
+                        disabled={count > selectedNodes.length}
+                        aria-pressed={effectiveTidyColumnCount === count}
+                        onClick={() => setTidyColumnCount(count)}
+                        className={cn(
+                          "h-7 rounded-md border text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35",
+                          effectiveTidyColumnCount === count
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:bg-muted"
+                        )}
+                      >
+                        {count}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background p-2">
+                  <div>
+                    <p className="text-[10px] font-medium text-foreground">
+                      Match widths in each column
+                    </p>
+                    <p className="text-[9px] leading-snug text-muted-foreground">
+                      Width stays consistent; height follows the content.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={matchColumnWidths && canMatchColumnWidths}
+                    disabled={!canMatchColumnWidths}
+                    onCheckedChange={setMatchColumnWidths}
+                    aria-label="Match card widths within each column"
+                  />
+                </div>
+                {!canMatchColumnWidths && (
+                  <p className="text-[9px] leading-snug text-muted-foreground">
+                    Width matching is available when the selection contains only free-form cards.
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 w-full text-[10px]"
+                  onClick={tidySelectedColumns}
+                >
+                  Tidy into {effectiveTidyColumnCount} column{
+                    effectiveTidyColumnCount === 1 ? "" : "s"
+                  }
+                </Button>
+              </div>
               <div>
                 <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Align bounds</p>
                 <div className="grid grid-cols-6 gap-1">
