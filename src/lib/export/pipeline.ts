@@ -438,7 +438,6 @@ export async function exportBoardVisual(
       nodeIds: options.nodeIds,
       edgeIds: options.edgeIds,
       padding: 0,
-      responsiveViewport: options.format === "svg",
       background: options.background,
       backgroundTexture: options.backgroundTexture,
       appearanceBackground: options.appearanceBackground,

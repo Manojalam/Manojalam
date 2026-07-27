@@ -154,35 +154,13 @@ test("recognizes explicit transparent export backgrounds", () => {
   assert.equal(isTransparentExportBackground("rgb(255, 255, 255)"), false);
 });
 
-test("fills and centers a downloaded SVG in a standalone browser viewport", () => {
+test("retains intrinsic SVG dimensions when downloaded or rasterized", () => {
   const svg = fakeSvgNode("svg");
 
   configureStandaloneSvgViewport(
-    svg as unknown as Pick<SVGSVGElement, "setAttribute" | "style">,
+    svg as unknown as Pick<SVGSVGElement, "setAttribute">,
     697,
-    450,
-    true,
-    "rgb(59, 60, 64)"
-  );
-
-  assert.equal(svg.attributes.get("width"), "100%");
-  assert.equal(svg.attributes.get("height"), "100%");
-  assert.equal(svg.attributes.get("preserveAspectRatio"), "xMidYMid meet");
-  assert.equal(svg.attributes.get("style:display"), "block");
-  assert.equal(svg.attributes.get("style:width"), "100vw");
-  assert.equal(svg.attributes.get("style:height"), "100vh");
-  assert.equal(svg.attributes.get("style:background-color"), "rgb(59, 60, 64)");
-});
-
-test("retains intrinsic SVG dimensions for PNG and PDF rasterization", () => {
-  const svg = fakeSvgNode("svg");
-
-  configureStandaloneSvgViewport(
-    svg as unknown as Pick<SVGSVGElement, "setAttribute" | "style">,
-    697,
-    450,
-    false,
-    "rgb(59, 60, 64)"
+    450
   );
 
   assert.equal(svg.attributes.get("width"), "697");
