@@ -68,7 +68,6 @@ export interface MatrixGeneratedEmptySlot {
   y: number;
   width: number;
   height: number;
-  styleSourceNodeId?: string;
 }
 export type AutoSizeMode = "smart" | "height-only" | "fixed";
 export type BoardColorMode = "auto" | "custom" | "transparent";
@@ -636,15 +635,6 @@ export interface FrameNodeData extends BaseNodeData {
     y1: number;
     x2: number;
     y2: number;
-  }>;
-  /** Empty Matrix cells rendered by the generated frame without hierarchy nodes. */
-  matrixEmptyCells?: Array<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    fillColor?: string;
-    borderColor?: string;
   }>;
 }
 

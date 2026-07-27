@@ -605,7 +605,6 @@ function applyMatrixResultToNodes(
           y: cell.y - result.bounds.top,
           width: cell.width,
           height: cell.height,
-          styleSourceNodeId: cell.styleSourceNodeId,
         }))
         : undefined;
     } else if (data.layoutMode !== undefined) {

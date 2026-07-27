@@ -74,7 +74,7 @@ function generatedEmptySlotNodes(
         x: rootRect.left + slot.x,
         y: rootRect.top + slot.y,
       },
-      data: { matrixEmptySlotStyleSource: slot.styleSourceNodeId },
+      data: {},
       style: { width: slot.width, height: slot.height },
       selectable: false,
       draggable: false,
@@ -238,21 +238,6 @@ export function buildMatrixFrameNodes(
   const lines = root && rootData.matrixGridVisible !== false
     ? matrixGridLines(presentationNodes, outerBounds, gridPadding)
     : [];
-  const emptyCells = emptySlotNodes.map((node) => {
-    const rect = matrixPresentationRect(node);
-    const sourceId = (node.data as Record<string, unknown>).matrixEmptySlotStyleSource;
-    const source = byId.get(typeof sourceId === "string" ? sourceId : "");
-    const colors = visualColors(source);
-    return {
-      x: rect.left - outerBounds.left,
-      y: rect.top - outerBounds.top,
-      width: rect.width,
-      height: rect.height,
-      fillColor: colors.fillColor ?? rootColors.fillColor,
-      borderColor: colors.borderColor ?? rootColors.borderColor,
-    };
-  });
-
   return [{
     id: `matrix-frame-${rootId}`,
     type: "frame",
@@ -268,7 +253,6 @@ export function buildMatrixFrameNodes(
       locked: true,
       matrixFrameFor: rootId,
       matrixGridLines: lines,
-      matrixEmptyCells: emptyCells,
       tags: [],
     },
     style: { width: outerBounds.width, height: outerBounds.height },

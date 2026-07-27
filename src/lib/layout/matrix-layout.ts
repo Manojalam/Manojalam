@@ -42,7 +42,6 @@ export interface MatrixEmptyCellGeometry {
   y: number;
   width: number;
   height: number;
-  styleSourceNodeId?: string;
 }
 
 export interface MatrixPlacement {
@@ -595,7 +594,6 @@ type OrientedBranchCell = {
   widthLocked?: boolean;
   heightLocked?: boolean;
   placeholder?: boolean;
-  styleSourceNodeId?: string;
 };
 
 type OrientedBranchLayout = {
@@ -995,9 +993,6 @@ function alignSingleBandSiblingRows(
       cell.nodeId,
       { ...cell, x: trackX[trackIndex], width: widths[trackIndex] },
     ]));
-    const styleSourceNodeId = [...row]
-      .reverse()
-      .find((cell) => !cell.placeholder)?.nodeId;
     const placeholders = preserveEmptySlots
       ? Array.from({ length: trackCount - row.length }, (_, index): OrientedBranchCell => {
         const trackIndex = row.length + index;
@@ -1012,7 +1007,6 @@ function alignSingleBandSiblingRows(
           horizontalTerminal: true,
           verticalTerminal: true,
           placeholder: true,
-          styleSourceNodeId,
         };
       })
       : [];
@@ -1111,6 +1105,85 @@ function orientedChildSections(
   return idSections.map((section) => section.flatMap((childId) => byChildId.get(childId) ?? []));
 }
 
+/**
+ * A Fold turns one terminal sibling group into multiple Matrix rows. In
+ * empty-slot mode those rows keep a shared column template, and shorter final
+ * rows receive geometry-only placeholders instead of stretching their cells.
+ */
+function alignFoldedTerminalRows(
+  sections: OrientedChildEntry[][],
+  preserveEmptySlots: boolean
+): OrientedChildEntry[][] {
+  if (
+    !preserveEmptySlots
+    || sections.length < 2
+    || sections.some((section) => !section.length)
+    || sections.some((section) => !section.every(isTerminalSibling))
+  ) return sections;
+
+  const trackCount = Math.max(...sections.map((section) => section.length));
+  if (sections.every((section) => section.length === trackCount)) return sections;
+
+  const widths: number[] = [];
+  for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+    const trackEntries = sections.flatMap((section) => section[trackIndex] ?? []);
+    const lockedWidths = trackEntries
+      .filter((entry) => entry.layout.cells[0].widthLocked)
+      .map((entry) => entry.layout.width);
+    if (
+      lockedWidths.length > 1
+      && Math.max(...lockedWidths) - Math.min(...lockedWidths) > 0.5
+    ) return sections;
+    widths.push(lockedWidths[0] ?? Math.max(...trackEntries.map((entry) => entry.layout.width)));
+  }
+
+  const sharedHeight = Math.max(
+    ...sections.flatMap((section) => section.map((entry) => entry.layout.height))
+  );
+  return sections.map((section, sectionIndex) => {
+    const resized = section.map((entry, trackIndex): OrientedChildEntry => ({
+      ...entry,
+      layout: {
+        width: widths[trackIndex],
+        height: sharedHeight,
+        cells: entry.layout.cells.map((cell) => ({
+          ...cell,
+          width: widths[trackIndex],
+          height: sharedHeight,
+        })),
+      },
+    }));
+    const sourceId = section[section.length - 1].nodeId;
+    const placeholders = Array.from(
+      { length: trackCount - section.length },
+      (_, index): OrientedChildEntry => {
+        const trackIndex = section.length + index;
+        const nodeId = `__matrix-empty-fold-${sourceId}-${sectionIndex}-${trackIndex}`;
+        return {
+          nodeId,
+          layout: {
+            width: widths[trackIndex],
+            height: sharedHeight,
+            cells: [{
+              nodeId,
+              x: 0,
+              y: 0,
+              width: widths[trackIndex],
+              height: sharedHeight,
+              requiredHeight: sharedHeight,
+              terminal: true,
+              horizontalTerminal: true,
+              verticalTerminal: true,
+              placeholder: true,
+            }],
+          },
+        };
+      }
+    );
+    return [...resized, ...placeholders];
+  });
+}
+
 function proportionalShare(total: number, index: number, count: number): number {
   return total * (index + 1) / count - total * index / count;
 }
@@ -1135,7 +1208,7 @@ function layoutOrientedChildSections(
   );
   const sections = childFlow === "column"
     ? rawSections.map((section) => alignSingleBandSiblingRows(section, preserveEmptySlots))
-    : rawSections;
+    : alignFoldedTerminalRows(rawSections, preserveEmptySlots);
   // Fold is a continuation of the same Matrix, so it uses the same thin gap as
   // every other cell boundary. A larger separator exposes the canvas between
   // cells and makes the continuation look like a broken table.
@@ -1382,7 +1455,6 @@ function computeOrientedMatrixLayout(
       y: cell.y,
       width: cell.width,
       height: cell.height,
-      styleSourceNodeId: cell.styleSourceNodeId,
     }));
   const cells = orientedCells
     .filter((cell) => !cell.placeholder)
@@ -1606,7 +1678,6 @@ export function computeMatrixLayout(
 
   const hasFoldedBranch = hasFoldedMatrixBranch(rootId, hierarchy, byId);
   const packCompactGroups = rootData.matrixPackCompactGroups === true
-    && !hasFoldedBranch
     && hasCompactLeafSiblingGroups(rootId, hierarchy, byId);
   if (
     hasVerticalMatrixBranch(rootId, hierarchy, byId)
