@@ -625,6 +625,8 @@ export function RichTextEditor({
     startY: number;
   } | null>(null);
   const clearAdditiveOnPointerUpRef = useRef(false);
+  const suppressAdditiveClickRef = useRef(false);
+  const suppressAdditiveClickFrameRef = useRef(0);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
   const measurementWidthRef = useRef(measurementWidth);
   const measurementFontSizeRef = useRef(measurementFontSize);
@@ -1129,9 +1131,12 @@ export function RichTextEditor({
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       if (event.ctrlKey || event.metaKey) {
+        cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+        suppressAdditiveClickFrameRef.current = 0;
+        suppressAdditiveClickRef.current = true;
         // Own the complete additive-selection gesture. Letting this pointer
-        // continue into the card/canvas can end text editing on pointerup,
-        // which immediately clears every retained range.
+        // continue into the card/canvas can end text editing and immediately
+        // clear every retained range.
         event.preventDefault();
         event.stopPropagation();
         clearAdditiveOnPointerUpRef.current = false;
@@ -1160,6 +1165,9 @@ export function RichTextEditor({
         if (baseRanges.length) commitAdditiveSelectionRanges(baseRanges);
         return;
       }
+      cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+      suppressAdditiveClickFrameRef.current = 0;
+      suppressAdditiveClickRef.current = false;
       additivePointerRef.current = null;
       // Removing decorations synchronously can replace the pointer's text-node
       // target before the browser finishes its native click/drag selection.
@@ -1228,6 +1236,14 @@ export function RichTextEditor({
       if (element.hasPointerCapture?.(event.pointerId)) {
         element.releasePointerCapture(event.pointerId);
       }
+      // Pointer events and click are separate event streams. React Flow uses
+      // the click that follows pointerup to toggle a Ctrl/Cmd-clicked node out
+      // of the selection. Keep the guard alive through that synthesized click.
+      cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+      suppressAdditiveClickFrameRef.current = requestAnimationFrame(() => {
+        suppressAdditiveClickFrameRef.current = 0;
+        suppressAdditiveClickRef.current = false;
+      });
     };
 
     const onPointerCancel = (event: PointerEvent) => {
@@ -1236,6 +1252,9 @@ export function RichTextEditor({
       event.stopPropagation();
       additivePointerRef.current = null;
       clearAdditiveOnPointerUpRef.current = false;
+      suppressAdditiveClickRef.current = false;
+      cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+      suppressAdditiveClickFrameRef.current = 0;
       if (pending.baseRanges.length) {
         commitAdditiveSelectionRanges(pending.baseRanges);
       }
@@ -1244,11 +1263,27 @@ export function RichTextEditor({
       }
     };
 
+    const onClick = (event: MouseEvent) => {
+      if (!suppressAdditiveClickRef.current) return;
+      suppressAdditiveClickRef.current = false;
+      cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+      suppressAdditiveClickFrameRef.current = 0;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
     const onDocumentPointerUp = () => {
-      if (
-        additivePointerRef.current
-        || !clearAdditiveOnPointerUpRef.current
-      ) return;
+      if (additivePointerRef.current) {
+        // This capture listener runs before the editor's pointerup listener.
+        // Clear the click guard on the next frame only if no click consumes it.
+        cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+        suppressAdditiveClickFrameRef.current = requestAnimationFrame(() => {
+          suppressAdditiveClickFrameRef.current = 0;
+          suppressAdditiveClickRef.current = false;
+        });
+        return;
+      }
+      if (!clearAdditiveOnPointerUpRef.current) return;
       clearAdditiveOnPointerUpRef.current = false;
       // Wait until the browser has completed a normal (non-additive)
       // selection before removing the old retained decorations.
@@ -1273,6 +1308,7 @@ export function RichTextEditor({
     element.addEventListener("pointerup", onPointerUp, true);
     element.addEventListener("pointercancel", onPointerCancel, true);
     document.addEventListener("pointerup", onDocumentPointerUp, true);
+    window.addEventListener("click", onClick, true);
     element.addEventListener("beforeinput", onBeforeInput, true);
     element.addEventListener("keydown", onKeyDown, true);
     return () => {
@@ -1288,8 +1324,12 @@ export function RichTextEditor({
       element.removeEventListener("pointerup", onPointerUp, true);
       element.removeEventListener("pointercancel", onPointerCancel, true);
       document.removeEventListener("pointerup", onDocumentPointerUp, true);
+      window.removeEventListener("click", onClick, true);
       element.removeEventListener("beforeinput", onBeforeInput, true);
       element.removeEventListener("keydown", onKeyDown, true);
+      cancelAnimationFrame(suppressAdditiveClickFrameRef.current);
+      suppressAdditiveClickFrameRef.current = 0;
+      suppressAdditiveClickRef.current = false;
     };
   }, [
     clearAdditiveSelectionRanges,
