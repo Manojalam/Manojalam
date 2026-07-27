@@ -7,6 +7,7 @@ import {
   comparableRichTextColor,
   isTextToolFocusTarget,
   normalizeRichTextSelectionRanges,
+  resolveRichTextAdditiveSelectionRanges,
   resolveCapturedTextAlign,
   TEXT_TOOL_FOCUS_SELECTOR,
 } from "./rich-text-toolbar";
@@ -87,6 +88,31 @@ test("an additive text range remains separate when it is disjoint", () => {
     { from: 2, to: 5 },
     { from: 7, to: 9 },
     { from: 12, to: 18 },
+  ]);
+});
+
+test("additive selection combines the retained and browser-native ranges", () => {
+  assert.deepEqual(resolveRichTextAdditiveSelectionRanges({
+    baseRanges: [{ from: 2, to: 6 }],
+    browserRanges: [{ from: 12, to: 17 }],
+    editorRange: { from: 12, to: 17 },
+    maximumPosition: 30,
+  }), [
+    { from: 2, to: 6 },
+    { from: 12, to: 17 },
+  ]);
+});
+
+test("drag coordinates recover a range when browser and editor selections collapse", () => {
+  assert.deepEqual(resolveRichTextAdditiveSelectionRanges({
+    baseRanges: [{ from: 2, to: 6 }],
+    browserRanges: [],
+    editorRange: null,
+    dragRange: { from: 20, to: 12 },
+    maximumPosition: 30,
+  }), [
+    { from: 2, to: 6 },
+    { from: 12, to: 20 },
   ]);
 });
 

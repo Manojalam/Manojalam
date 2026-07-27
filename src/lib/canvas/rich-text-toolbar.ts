@@ -65,6 +65,27 @@ export function appendRichTextSelectionRange(
   );
 }
 
+export function resolveRichTextAdditiveSelectionRanges({
+  baseRanges,
+  browserRanges = [],
+  editorRange,
+  dragRange,
+  maximumPosition = Number.MAX_SAFE_INTEGER,
+}: {
+  baseRanges: readonly RichTextSelectionRange[];
+  browserRanges?: readonly RichTextSelectionRange[];
+  editorRange?: RichTextSelectionRange | null;
+  dragRange?: RichTextSelectionRange | null;
+  maximumPosition?: number;
+}): RichTextSelectionRange[] {
+  return normalizeRichTextSelectionRanges([
+    ...baseRanges,
+    ...browserRanges,
+    ...(editorRange ? [editorRange] : []),
+    ...(dragRange ? [dragRange] : []),
+  ], maximumPosition);
+}
+
 /** Compare CSS colors persisted by TipTap without changing their authored form. */
 export function comparableRichTextColor(value: unknown): string | null {
   if (typeof value !== "string") return null;

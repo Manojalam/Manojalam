@@ -37,11 +37,11 @@ import {
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import {
-  appendRichTextSelectionRange,
   canShowInlineTextToolbar,
   comparableRichTextColor,
   isTextToolFocusTarget,
   normalizeRichTextSelectionRanges,
+  resolveRichTextAdditiveSelectionRanges,
   resolveCapturedTextAlign,
   type RichTextSelectionRange,
   type RichTextAlignment,
@@ -399,6 +399,38 @@ function explicitTextColors(editor: Editor): string[] {
   return [...colors.values()];
 }
 
+function browserTextSelectionRanges(editor: Editor): RichTextSelectionRange[] {
+  const selection = window.getSelection();
+  const root = editor.view.dom;
+  if (!selection?.rangeCount) return [];
+
+  const ranges: RichTextSelectionRange[] = [];
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    const range = selection.getRangeAt(index);
+    const startParent = range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentNode;
+    const endParent = range.endContainer.nodeType === Node.ELEMENT_NODE
+      ? range.endContainer
+      : range.endContainer.parentNode;
+    if (
+      !startParent
+      || !endParent
+      || !root.contains(startParent)
+      || !root.contains(endParent)
+    ) continue;
+    try {
+      ranges.push({
+        from: editor.view.posAtDOM(range.startContainer, range.startOffset),
+        to: editor.view.posAtDOM(range.endContainer, range.endOffset),
+      });
+    } catch {
+      // The selection can briefly reference a decoration node being redrawn.
+    }
+  }
+  return normalizeRichTextSelectionRanges(ranges, editor.state.doc.content.size);
+}
+
 type RichTextCommandChain = ReturnType<Editor["chain"]>;
 
 function selectedBlockTextAlign(editor: Editor): string | undefined {
@@ -578,6 +610,10 @@ export function RichTextEditor({
   const additiveSelectionRangesRef = useRef<RichTextSelectionRange[]>([]);
   const additivePointerRef = useRef<{
     baseRanges: RichTextSelectionRange[];
+    anchorPosition: number | null;
+    pointerId: number;
+    startX: number;
+    startY: number;
   } | null>(null);
   const clearAdditiveOnPointerUpRef = useRef(false);
   const onContentSizeChangeRef = useRef(onContentSizeChange);
@@ -1086,11 +1122,25 @@ export function RichTextEditor({
       if (event.ctrlKey || event.metaKey) {
         clearAdditiveOnPointerUpRef.current = false;
         const { from, to, empty } = editor.state.selection;
+        const browserRanges = browserTextSelectionRanges(editor);
+        const baseRanges = additiveSelectionRangesRef.current.length
+          ? additiveSelectionRangesRef.current
+          : browserRanges.length
+            ? browserRanges
+            : empty ? [] : [{ from, to }];
         additivePointerRef.current = {
-          baseRanges: additiveSelectionRangesRef.current.length
-            ? additiveSelectionRangesRef.current
-            : empty ? [] : [{ from, to }],
+          baseRanges,
+          anchorPosition: editor.view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          })?.pos ?? null,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
         };
+        // Paint the retained range before the browser moves its one native
+        // selection to the new drag target.
+        if (baseRanges.length) commitAdditiveSelectionRanges(baseRanges);
         return;
       }
       additivePointerRef.current = null;
@@ -1100,12 +1150,22 @@ export function RichTextEditor({
         additiveSelectionRangesRef.current.length > 0;
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (event: PointerEvent) => {
       const pending = additivePointerRef.current;
+      if (pending && pending.pointerId !== event.pointerId) return;
       additivePointerRef.current = null;
       const shouldClear = clearAdditiveOnPointerUpRef.current;
       clearAdditiveOnPointerUpRef.current = false;
       if (!pending && !shouldClear) return;
+      const endPosition = editor.view.posAtCoords({
+        left: event.clientX,
+        top: event.clientY,
+      })?.pos ?? null;
+      const dragged = !!pending
+        && Math.hypot(
+          event.clientX - pending.startX,
+          event.clientY - pending.startY
+        ) >= 3;
       requestAnimationFrame(() => {
         if (editor.isDestroyed) return;
         if (!pending) {
@@ -1113,15 +1173,28 @@ export function RichTextEditor({
           return;
         }
         const { from, to, empty } = editor.state.selection;
-        const ranges = empty
-          ? pending.baseRanges
-          : appendRichTextSelectionRange(
-              pending.baseRanges,
-              { from, to },
-              editor.state.doc.content.size
-            );
+        const dragRange =
+          dragged
+          && pending.anchorPosition != null
+          && endPosition != null
+          && pending.anchorPosition !== endPosition
+            ? { from: pending.anchorPosition, to: endPosition }
+            : null;
+        const ranges = resolveRichTextAdditiveSelectionRanges({
+          baseRanges: pending.baseRanges,
+          browserRanges: browserTextSelectionRanges(editor),
+          editorRange: empty ? null : { from, to },
+          dragRange,
+          maximumPosition: editor.state.doc.content.size,
+        });
         if (ranges.length) commitAdditiveSelectionRanges(ranges);
       });
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (additivePointerRef.current?.pointerId !== event.pointerId) return;
+      additivePointerRef.current = null;
+      clearAdditiveOnPointerUpRef.current = false;
     };
 
     const onBeforeInput = () => clearAdditiveSelectionRanges();
@@ -1137,11 +1210,13 @@ export function RichTextEditor({
 
     element.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("pointercancel", onPointerCancel, true);
     element.addEventListener("beforeinput", onBeforeInput, true);
     element.addEventListener("keydown", onKeyDown, true);
     return () => {
       element.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("pointerup", onPointerUp, true);
+      document.removeEventListener("pointercancel", onPointerCancel, true);
       element.removeEventListener("beforeinput", onBeforeInput, true);
       element.removeEventListener("keydown", onKeyDown, true);
     };
