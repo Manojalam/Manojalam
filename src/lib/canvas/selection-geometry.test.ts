@@ -9,6 +9,7 @@ import {
   compactEqualSpacing,
   distributeSelection,
   preserveSnappedDragEndPositions,
+  pushNodesBelowSelectionGrowth,
   snapPointToGrid,
   snapRectToAlignment,
 } from "./selection-geometry";
@@ -130,6 +131,53 @@ test("matched column widths use each column's widest card and support centered o
   assert.equal(after[0].top, after[2].top);
   assert.equal(after[1].bottom, after[3].bottom);
   assert.equal(after[1].bottom, 310);
+});
+
+test("selection growth pushes every later card in the same column", () => {
+  const nodes = [
+    node("first", 40, 20, 180, 100),
+    node("second", 40, 150, 180, 60),
+    node("third", 40, 240, 180, 80),
+    node("fourth", 40, 350, 180, 70),
+    node("other-column", 320, 160, 180, 80),
+  ];
+  const positions = pushNodesBelowSelectionGrowth(
+    nodes,
+    new Map([["first", 100], ["second", 110]])
+  );
+
+  assert.equal(positions.has("first"), false);
+  assert.equal(positions.has("second"), false);
+  assert.deepEqual(positions.get("third"), { x: 40, y: 290 });
+  assert.deepEqual(positions.get("fourth"), { x: 40, y: 400 });
+  assert.equal(positions.has("other-column"), false);
+});
+
+test("growth shifts accumulate while preserving the gaps below each resized card", () => {
+  const nodes = [
+    node("first", 60, 20, 200, 50),
+    node("second", 60, 100, 200, 40),
+    node("third", 60, 180, 200, 60),
+  ];
+  const positions = pushNodesBelowSelectionGrowth(
+    nodes,
+    new Map([["first", 80], ["second", 90]])
+  );
+  const resized = nodes.map((item) => getNodeRect({
+    ...item,
+    position: positions.get(item.id) ?? item.position,
+    style: {
+      ...item.style,
+      height: item.id === "first" ? 80 : item.id === "second" ? 90 : 60,
+    },
+    measured: undefined,
+    height: undefined,
+  }));
+
+  assert.deepEqual(positions.get("second"), { x: 60, y: 130 });
+  assert.deepEqual(positions.get("third"), { x: 60, y: 260 });
+  assert.equal(resized[1].top - resized[0].bottom, 30);
+  assert.equal(resized[2].top - resized[1].bottom, 40);
 });
 
 test("left alignment uses rendered bounds for mixed node origins", () => {

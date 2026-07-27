@@ -91,6 +91,7 @@ import {
   alignSelection,
   arrangeSelectionInColumns,
   compactEqualSpacing,
+  pushNodesBelowSelectionGrowth,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
@@ -1954,55 +1955,92 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const canMatchSelectionSize = selectedNodes.every(supportsMatchedSelectionSize);
     const matchSelectedSize = (mode: "width" | "height" | "both") => {
       if (!canMatchSelectionSize) return;
-      const dimensions = selectedNodes.map((node) => ({
-        node,
-        size: getNodeDimensions(node),
-      }));
+      const baselineNodes = useCanvasStore.getState().nodes;
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const flowNodes = baselineNodes.filter(supportsMatchedSelectionSize);
+      const dimensions = flowNodes
+        .filter((node) => selectedIds.has(node.id))
+        .map((node) => ({
+          node,
+          size: getNodeDimensions(node),
+        }));
+      if (!dimensions.length) return;
       const widest = Math.max(...dimensions.map(({ size }) => size.width));
       const tallest = Math.max(...dimensions.map(({ size }) => size.height));
       const fixedAspectSelection = dimensions.some(({ node }) => hasFixedAspectRatio(node));
       const commonSide = Math.max(widest, tallest);
-      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const targetSizes = new Map(dimensions.map(({ node, size }) => {
+        const fixedAspect = hasFixedAspectRatio(node);
+        const width = mode === "both"
+          ? (fixedAspectSelection ? commonSide : widest)
+          : mode === "width"
+            ? widest
+            : fixedAspect
+              ? tallest
+              : size.width;
+        const height = mode === "both"
+          ? (fixedAspectSelection ? commonSide : tallest)
+          : mode === "height"
+            ? tallest
+            : fixedAspect
+              ? widest
+              : size.height;
+        const autoSizeMode: AutoSizeMode = mode === "width" && !fixedAspect
+          ? "height-only"
+          : "fixed";
+        return [node.id, { width, height, autoSizeMode }] as const;
+      }));
+      const immediatePositions = pushNodesBelowSelectionGrowth(
+        flowNodes,
+        new Map([...targetSizes].map(([id, size]) => [id, size.height]))
+      );
 
       pushHistory();
       useCanvasStore.setState((state) => ({
         nodes: state.nodes.map((node) => {
-          if (!selectedIds.has(node.id)) return node;
-          const current = getNodeDimensions(node);
-          const fixedAspect = hasFixedAspectRatio(node);
-          const width = mode === "both"
-            ? (fixedAspectSelection ? commonSide : widest)
-            : mode === "width"
-              ? widest
-              : fixedAspect
-                ? tallest
-                : current.width;
-          const height = mode === "both"
-            ? (fixedAspectSelection ? commonSide : tallest)
-            : mode === "height"
-              ? tallest
-              : fixedAspect
-                ? widest
-                : current.height;
-          const autoSizeMode: AutoSizeMode = mode === "width" && !fixedAspect
-            ? "height-only"
-            : "fixed";
+          const position = immediatePositions.get(node.id);
+          const target = targetSizes.get(node.id);
+          if (!target) return position ? { ...node, position } : node;
           return resetNodeDimensions({
             ...node,
+            ...(position ? { position } : {}),
             data: {
               ...(node.data ?? {}),
-              autoSizeMode,
-              userSize: { width, height },
+              autoSizeMode: target.autoSizeMode,
+              userSize: { width: target.width, height: target.height },
             },
-          }, width, height);
+          }, target.width, target.height);
         }),
         saveStatus: "unsaved",
       }));
 
+      let remainingFrames = 3;
+      const settleFlowAfterTextReflow = () => {
+        remainingFrames -= 1;
+        if (remainingFrames > 0) {
+          requestAnimationFrame(settleFlowAfterTextReflow);
+          return;
+        }
+        const latest = useCanvasStore.getState();
+        const settledHeights = new Map(
+          latest.nodes
+            .filter((node) => selectedIds.has(node.id))
+            .map((node) => [node.id, getNodeDimensions(node).height])
+        );
+        const settledPositions = pushNodesBelowSelectionGrowth(flowNodes, settledHeights);
+        useCanvasStore.setState((state) => ({
+          nodes: state.nodes.map((node) => {
+            const position = settledPositions.get(node.id);
+            return position ? { ...node, position } : node;
+          }),
+          saveStatus: "unsaved",
+        }));
+      };
       requestAnimationFrame(() => {
         window.dispatchEvent(new CustomEvent("vidya:update-node-internals", {
           detail: { nodeIds: [...selectedIds] },
         }));
+        requestAnimationFrame(settleFlowAfterTextReflow);
       });
       const label = mode === "width"
         ? "width"

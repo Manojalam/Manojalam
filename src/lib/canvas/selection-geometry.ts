@@ -209,6 +209,50 @@ export function compactEqualSpacing(
 }
 
 /**
+ * Preserve vertical gaps when selected cards grow. Every later card whose
+ * rendered bounds substantially overlap a growing card on the x-axis is moved
+ * by that card's added height. Growth from multiple selected cards accumulates.
+ */
+export function pushNodesBelowSelectionGrowth(
+  nodes: Node[],
+  nextHeights: ReadonlyMap<string, number>,
+  minimumHorizontalOverlapRatio = 0.5
+): Map<string, Point> {
+  const positions = new Map<string, Point>();
+  if (!nodes.length || !nextHeights.size) return positions;
+  const safeOverlapRatio = Math.max(0, Math.min(1, minimumHorizontalOverlapRatio));
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
+  const growing = entries.flatMap(({ node, rect }) => {
+    const nextHeight = nextHeights.get(node.id);
+    const growth = typeof nextHeight === "number" && Number.isFinite(nextHeight)
+      ? nextHeight - rect.height
+      : 0;
+    return growth > 0.5 ? [{ node, rect, growth }] : [];
+  });
+  if (!growing.length) return positions;
+
+  for (const { node, rect } of entries) {
+    let shiftY = 0;
+    for (const source of growing) {
+      if (source.node.id === node.id || rect.centerY <= source.rect.centerY) continue;
+      const overlap = Math.min(rect.right, source.rect.right)
+        - Math.max(rect.left, source.rect.left);
+      const requiredOverlap = Math.min(rect.width, source.rect.width) * safeOverlapRatio;
+      if (overlap + 0.5 < requiredOverlap) continue;
+      shiftY += source.growth;
+    }
+    if (shiftY > 0.5) {
+      positions.set(node.id, {
+        x: node.position.x,
+        y: node.position.y + shiftY,
+      });
+    }
+  }
+
+  return positions;
+}
+
+/**
  * Pack an arbitrary selection into columns without changing the sequence
  * supplied by the board. The first and last cards define shared outer anchors;
  * cards inside every multi-item column are then vertically distributed between
