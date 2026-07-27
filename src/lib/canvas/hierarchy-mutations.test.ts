@@ -9,9 +9,9 @@ import {
   unselectedHierarchyDescendants,
 } from "./hierarchy-mutations";
 import {
-  inheritChildNodeStyle,
-  inheritSiblingNodeStyle,
-} from "./node-style-inheritance";
+  patchNeedsListReflow,
+  patchNeedsMatrixReflow,
+} from "./layout-reflow";
 
 function node(id: string, parentId: string | null, childOrder: string[] = []): Node {
   return { id, type: "shape", position: { x: 0, y: 0 }, data: { parentId, childOrder } };
@@ -23,38 +23,14 @@ function edge(source: string, target: string): Edge {
 
 const createEdge = (source: string, target: string): Edge => edge(source, target);
 
-test("a new sibling preserves manual colors without copying generated palette ownership", () => {
-  const source = {
-    text: "अ",
-    fillColor: "#d9468d",
-    borderColor: "#f8fafc",
-    textColor: "#1d4ed8",
-    fontSize: 22,
+test("Matrix fill-anchor edits refresh automatic descendants immediately", () => {
+  assert.equal(patchNeedsMatrixReflow({
+    fillColor: "#8b5cf6",
     layoutAutoFill: false,
-    layoutAutoBorder: false,
-    layoutAutoText: false,
-    layoutAutoTypography: false,
-    layoutVisualStyle: {
-      rootId: "matrix-root",
-      mode: "matrix",
-      fillColor: "#ffffff",
-    },
-    matrixRootId: "matrix-root",
-  };
-
-  const childStyle = inheritChildNodeStyle(source);
-  const siblingStyle = inheritSiblingNodeStyle(source);
-
-  assert.equal(childStyle.fillColor, "#d9468d");
-  assert.equal(childStyle.layoutAutoFill, undefined);
-  assert.equal(siblingStyle.fillColor, "#d9468d");
-  assert.equal(siblingStyle.layoutAutoFill, false);
-  assert.equal(siblingStyle.layoutAutoBorder, false);
-  assert.equal(siblingStyle.layoutAutoText, false);
-  assert.equal(siblingStyle.layoutAutoTypography, false);
-  assert.equal(siblingStyle.layoutVisualStyle, undefined);
-  assert.equal(siblingStyle.matrixRootId, undefined);
-  assert.equal(siblingStyle.text, undefined);
+  }), true);
+  assert.equal(patchNeedsMatrixReflow({ fillOpacity: 0.7 }), true);
+  assert.equal(patchNeedsMatrixReflow({ textColor: "#1d4ed8" }), false);
+  assert.equal(patchNeedsListReflow({ fillColor: "#8b5cf6" }), false);
 });
 
 test("deleting a parent promotes its children to the grandparent in sibling order", () => {
@@ -105,6 +81,24 @@ test("hierarchy deletion choices identify surviving descendants or expand the wh
     node("grandchild", "child-a"),
     node("child-b", "parent"),
     node("sibling", "root"),
+    {
+      id: "parent-note",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: { externalNote: true, noteForNodeId: "parent" },
+    },
+    {
+      id: "grandchild-note",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: { externalNote: true, noteForNodeId: "grandchild" },
+    },
+    {
+      id: "sibling-note",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: { externalNote: true, noteForNodeId: "sibling" },
+    },
   ];
   const edges = [
     edge("root", "parent"),
@@ -120,12 +114,12 @@ test("hierarchy deletion choices identify surviving descendants or expand the wh
     ["grandchild", "child-b"]
   );
   assert.deepEqual(
-    [...hierarchyDeletionNodeIds(nodes, edges, selected, false)],
-    ["parent", "child-a"]
+    [...hierarchyDeletionNodeIds(nodes, edges, selected, false)].sort(),
+    ["parent", "child-a", "parent-note"].sort()
   );
   assert.deepEqual(
-    [...hierarchyDeletionNodeIds(nodes, edges, selected, true)],
-    ["parent", "child-a", "grandchild", "child-b"]
+    [...hierarchyDeletionNodeIds(nodes, edges, selected, true)].sort(),
+    ["parent", "child-a", "grandchild", "child-b", "parent-note", "grandchild-note"].sort()
   );
 });
 
