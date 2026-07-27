@@ -75,7 +75,7 @@ test("a source can have multiple independently positioned notes", () => {
   assert.notDeepEqual(second.position, first.position);
 });
 
-test("moving a source includes every attached note without moving the source when a note moves", () => {
+test("moving or copying an owner includes every attached note while a note selection stays local", () => {
   const note = createExternalNoteNode(source, [source], "note", "plain");
   const secondNote = createExternalNoteNode(source, [source, note], "second-note", "plain");
   const lockedNote: Node = {

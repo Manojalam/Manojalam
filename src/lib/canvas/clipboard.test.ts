@@ -40,7 +40,7 @@ test("board select-all includes visible nodes and connectors only", () => {
   });
 });
 
-test("copying a parent includes every descendant and internal connection", () => {
+test("copying a parent includes every descendant, owned text box, and internal connection", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -56,6 +56,16 @@ test("copying a parent includes every descendant and internal connection", () =>
       id: "grandchild",
       position: { x: 200, y: 0 },
       data: { parentId: "child" },
+    },
+    {
+      id: "child-note",
+      type: "text",
+      position: { x: 100, y: 100 },
+      data: {
+        externalNote: true,
+        noteForNodeId: "child",
+        text: "Owned explanation",
+      },
     },
     {
       id: "other-root",
@@ -82,6 +92,7 @@ test("copying a parent includes every descendant and internal connection", () =>
     "root",
     "child",
     "grandchild",
+    "child-note",
   ]);
   assert.deepEqual(selection.edges.map((edge) => edge.id), [
     "root-child",
@@ -154,6 +165,36 @@ test("shape duplication preserves style and content by default", () => {
   assert.deepEqual(duplicated.childOrder, ["child-copy"]);
   assert.equal(duplicated.matrixRootId, "parent-copy");
   assert.notEqual(duplicated.examples, data.examples);
+});
+
+test("duplicating an owned text box remaps it to the duplicated shape", () => {
+  const duplicated = prepareDuplicatedNodeData(
+    {
+      text: "Attached explanation",
+      externalNote: true,
+      noteForNodeId: "shape",
+    },
+    "note",
+    new Map([["shape", "shape-copy"], ["note", "note-copy"]])
+  );
+
+  assert.equal(duplicated.externalNote, true);
+  assert.equal(duplicated.noteForNodeId, "shape-copy");
+  assert.equal(duplicated.text, "Attached explanation");
+});
+
+test("duplicating an owned text box alone keeps its existing owner", () => {
+  const duplicated = prepareDuplicatedNodeData(
+    {
+      text: "Second explanation",
+      externalNote: true,
+      noteForNodeId: "shape",
+    },
+    "note",
+    new Map([["note", "note-copy"]])
+  );
+
+  assert.equal(duplicated.noteForNodeId, "shape");
 });
 
 test("standalone clear content handles multiple shapes and text boxes without changing style", () => {
