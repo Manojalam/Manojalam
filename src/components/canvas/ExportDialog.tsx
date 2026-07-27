@@ -20,7 +20,11 @@ import { resolveExportTargetWithBounds } from "@/lib/export/bounds";
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
-import { resolveElementExportBackground } from "@/lib/export/background";
+import {
+  exportFormatSupportsTransparency,
+  OPAQUE_EXPORT_FALLBACK_BACKGROUND,
+  resolveElementExportBackground,
+} from "@/lib/export/background";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
 import type { ExportFormat, ExportScope } from "@/lib/export/types";
 import { cn } from "@/lib/utils";
@@ -29,6 +33,7 @@ import { useUIStore, type BoardExportRequest } from "@/store/ui-store";
 
 type DialogScope = "board" | "selection" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
+type OpaqueFallback = "black" | "white";
 
 const DEFAULT_PADDING = 0;
 const EMPTY_IDS: string[] = [];
@@ -85,11 +90,15 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const [scopeKind, setScopeKind] = useState<DialogScope>(() =>
     requestInitialScope(request, hasSelection)
   );
-  const [format, setFormat] = useState<ExportFormat>(request.format ?? "png");
+  const requestedFormat = request.format ?? "png";
+  const [format, setFormat] = useState<ExportFormat>(requestedFormat);
   const [scaleChoice, setScaleChoice] = useState<ScaleChoice>("2");
   const [customScale, setCustomScale] = useState(2);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
-  const [includeBackground, setIncludeBackground] = useState(false);
+  const [includeBackground, setIncludeBackground] = useState(
+    () => !exportFormatSupportsTransparency(requestedFormat)
+  );
+  const [opaqueFallback, setOpaqueFallback] = useState<OpaqueFallback>("black");
   const [exporting, setExporting] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -157,6 +166,20 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   }, [root]);
   const boardIsTransparent = boardBackground.background === null;
   const includedBoardBackground = boardBackground.background ?? boardBackground.appearanceBackground;
+  const formatSupportsTransparency = exportFormatSupportsTransparency(format);
+  const opaqueFallbackBackground = opaqueFallback === "black"
+    ? OPAQUE_EXPORT_FALLBACK_BACKGROUND
+    : "#ffffff";
+  const exportBackground = includeBackground
+    ? includedBoardBackground
+    : formatSupportsTransparency
+      ? null
+      : opaqueFallbackBackground;
+
+  const selectFormat = (nextFormat: ExportFormat) => {
+    setFormat(nextFormat);
+    if (!exportFormatSupportsTransparency(nextFormat)) setIncludeBackground(true);
+  };
 
   const fitToSafeSize = () => {
     if (!rasterPlan) return;
@@ -189,7 +212,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         requestedScale,
         filename: request.title || boardTitle,
         title: request.title || boardTitle,
-        background: includeBackground ? includedBoardBackground : null,
+        background: exportBackground,
         backgroundTexture: includeBackground ? boardTextureStyle(canvasTexture) : null,
         appearanceBackground: boardBackground.appearanceBackground,
         viewportTransform,
@@ -241,7 +264,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             Export board
           </DialogTitle>
           <DialogDescription>
-            Export any visible board content with tight bounds as PNG, SVG, or a clickable PDF.
+            Export any visible board content with tight bounds as PNG, JPG, SVG, or a clickable PDF.
           </DialogDescription>
         </DialogHeader>
 
@@ -283,19 +306,27 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
           <section className="space-y-2.5">
             <Label className="text-xs">Format</Label>
-            <div className="grid grid-cols-3 gap-2" role="group" aria-label="Export file format">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Export file format">
               <button
                 type="button"
                 aria-pressed={format === "png"}
-                onClick={() => setFormat("png")}
+                onClick={() => selectFormat("png")}
                 className={cn("flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs", format === "png" ? "border-primary bg-primary/10 text-primary" : "border-border")}
               >
                 <FileImage className="h-4 w-4" /> PNG
               </button>
               <button
                 type="button"
+                aria-pressed={format === "jpg"}
+                onClick={() => selectFormat("jpg")}
+                className={cn("flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs", format === "jpg" ? "border-primary bg-primary/10 text-primary" : "border-border")}
+              >
+                <FileImage className="h-4 w-4" /> JPG
+              </button>
+              <button
+                type="button"
                 aria-pressed={format === "svg"}
-                onClick={() => setFormat("svg")}
+                onClick={() => selectFormat("svg")}
                 className={cn("flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs", format === "svg" ? "border-primary bg-primary/10 text-primary" : "border-border")}
               >
                 <FileType2 className="h-4 w-4" /> SVG
@@ -303,7 +334,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <button
                 type="button"
                 aria-pressed={format === "pdf"}
-                onClick={() => setFormat("pdf")}
+                onClick={() => selectFormat("pdf")}
                 className={cn("flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs", format === "pdf" ? "border-primary bg-primary/10 text-primary" : "border-border")}
               >
                 <FileText className="h-4 w-4" /> PDF
@@ -373,9 +404,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                     ? boardIsTransparent
                       ? "Using the current theme backdrop."
                     : "Included in the exported file."
-                    : format === "pdf"
-                      ? "White page; chart appearance is preserved."
-                      : "Transparent outer pixels; text contrast is preserved."}
+                    : formatSupportsTransparency
+                      ? "Transparent outer pixels and authored transparent text boxes."
+                      : `${opaqueFallback === "black" ? "Black" : "White"} fallback matte; ${format.toUpperCase()} cannot be transparent.`}
                 </p>
               </div>
               <Switch
@@ -384,6 +415,29 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                 aria-label="Include board background"
               />
             </div>
+            {!formatSupportsTransparency && !includeBackground && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label className="text-xs">Fallback matte</Label>
+                <div className="grid grid-cols-2 gap-2" role="group" aria-label="Opaque export fallback matte">
+                  {(["black", "white"] as OpaqueFallback[]).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={opaqueFallback === value}
+                      onClick={() => setOpaqueFallback(value)}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-[11px] font-medium",
+                        opaqueFallback === value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border"
+                      )}
+                    >
+                      {value === "black" ? "Black" : "White"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border bg-muted/30 p-4" aria-live="polite">
@@ -426,7 +480,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                   <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={fitToSafeSize}>
                     Fit to safe {format.toUpperCase()} size
                   </Button>
-                  <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => setFormat("svg")}>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => selectFormat("svg")}>
                     Export as SVG instead
                   </Button>
                 </div>

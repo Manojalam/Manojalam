@@ -1,8 +1,8 @@
 import { classifyExportError, ExportError, toExportError } from "./errors";
+import { resolveFormatExportBackground } from "./background";
 import { createPngExportPlan } from "./limits";
 import { collectPdfLinkAnnotations, createBoardPdf } from "./pdf";
 import {
-  isTransparentExportBackground,
   prepareReactFlowDomSvg,
   type ExportBackgroundTexture,
 } from "./dom-renderer";
@@ -19,6 +19,8 @@ import type {
 
 const SVG_MIME = "image/svg+xml;charset=utf-8";
 const PNG_MIME = "image/png";
+const JPEG_MIME = "image/jpeg";
+const JPEG_QUALITY = 0.92;
 const DOWNLOAD_URL_LIFETIME_MS = 1_000;
 
 export interface ExportBoardVisualOptions {
@@ -181,7 +183,7 @@ async function runStage<T>(
 }
 
 function sanitizedFilename(value: string, format: ExportFormat): string {
-  const withoutExtension = value.trim().replace(/\.(?:png|svg|pdf)$/i, "");
+  const withoutExtension = value.trim().replace(/\.(?:png|jpe?g|svg|pdf)$/i, "");
   const base = withoutExtension
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/\s+/g, "-")
@@ -255,8 +257,17 @@ function loadSvgImage(
   });
 }
 
-function encodeCanvasPng(canvas: HTMLCanvasElement, signal?: AbortSignal): Promise<Blob> {
-  abortIfRequested(signal, "encode-png", { renderer: "canvas-2d" });
+export function encodeCanvasRaster(
+  canvas: HTMLCanvasElement,
+  format: "png" | "jpg",
+  signal?: AbortSignal
+): Promise<Blob> {
+  const stage = format === "jpg" ? "encode-jpg" : "encode-png";
+  const mime = format === "jpg" ? JPEG_MIME : PNG_MIME;
+  const code = format === "jpg"
+    ? "JPEG_BLOB_CREATION_FAILED"
+    : "PNG_BLOB_CREATION_FAILED";
+  abortIfRequested(signal, stage, { renderer: "canvas-2d" });
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => signal?.removeEventListener("abort", onAbort);
@@ -272,7 +283,7 @@ function encodeCanvasPng(canvas: HTMLCanvasElement, signal?: AbortSignal): Promi
       cleanup();
       reject(error);
     };
-    const onAbort = () => rejectOnce(abortError(signal!, "encode-png", {
+    const onAbort = () => rejectOnce(abortError(signal!, stage, {
       blobCreated: false,
       renderer: "canvas-2d",
     }));
@@ -293,15 +304,15 @@ function encodeCanvasPng(canvas: HTMLCanvasElement, signal?: AbortSignal): Promi
           return;
         }
         rejectOnce(new ExportError({
-          stage: "encode-png",
-          code: "PNG_BLOB_CREATION_FAILED",
-          message: "Canvas encoding returned an empty PNG Blob.",
+          stage,
+          code,
+          message: `Canvas encoding returned an empty ${format.toUpperCase()} Blob.`,
           diagnostics: { blobCreated: false, renderer: "canvas-2d" },
         }));
-      }, PNG_MIME);
+      }, mime, format === "jpg" ? JPEG_QUALITY : undefined);
     } catch (cause) {
       rejectOnce(new ExportError({
-        stage: "encode-png",
+        stage,
         cause,
         diagnostics: { blobCreated: false, renderer: "canvas-2d" },
       }));
@@ -431,6 +442,7 @@ export async function exportBoardVisual(
     });
   }
 
+  const outputBackground = resolveFormatExportBackground(options.format, options.background);
   const prepared = await runStage("serialize-content", baseDiagnostics, () =>
     prepareReactFlowDomSvg({
       viewport: options.viewport,
@@ -438,17 +450,9 @@ export async function exportBoardVisual(
       nodeIds: options.nodeIds,
       edgeIds: options.edgeIds,
       padding: 0,
-      background: options.background,
+      background: outputBackground,
       backgroundTexture: options.backgroundTexture,
       appearanceBackground: options.appearanceBackground,
-      transparentContentBackground:
-        isTransparentExportBackground(options.background)
-          ? "#ffffff"
-          : null,
-      transparentContentMatte:
-        isTransparentExportBackground(options.background)
-          ? options.appearanceBackground
-          : null,
       title: options.title,
       signal: options.signal,
       // A cross-origin font must never make an otherwise self-contained chart
@@ -562,14 +566,20 @@ export async function exportBoardVisual(
         canvasCreated: true,
         canvasContextCreated: true,
       }, () => {
+        if (outputBackground) {
+          surface.context.fillStyle = outputBackground;
+          surface.context.fillRect(0, 0, plan.outputWidth, plan.outputHeight);
+        }
         surface.context.drawImage(decodedImage, 0, 0, plan.outputWidth, plan.outputHeight);
       }, { signal: options.signal });
-      const pngBlob = await runStage("encode-png", {
+      const rasterFormat = options.format === "jpg" ? "jpg" : "png";
+      const encodeStage = rasterFormat === "jpg" ? "encode-jpg" : "encode-png";
+      const rasterBlob = await runStage(encodeStage, {
         ...baseDiagnostics,
         renderer: "canvas-2d",
         canvasCreated: true,
         canvasContextCreated: true,
-      }, () => encodeCanvasPng(surface.canvas, options.signal), {
+      }, () => encodeCanvasRaster(surface.canvas, rasterFormat, options.signal), {
         signal: options.signal,
         completedDiagnostics: { blobCreated: true },
       });
@@ -587,7 +597,7 @@ export async function exportBoardVisual(
           ...baseDiagnostics,
           renderer: "pdf-raster",
         }, () => createBoardPdf({
-          png: pngBlob,
+          png: rasterBlob,
           sourceWidth: prepared.width,
           sourceHeight: prepared.height,
           exportBounds: options.bounds,
@@ -607,7 +617,7 @@ export async function exportBoardVisual(
         width = Math.round(pdf.pageWidth);
         height = Math.round(pdf.pageHeight);
       } else {
-        blob = pngBlob;
+        blob = rasterBlob;
       }
     } finally {
       decodedImage.onload = null;

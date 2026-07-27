@@ -1,4 +1,4 @@
-export type ExportFormat = "png" | "svg" | "pdf";
+export type ExportFormat = "png" | "jpg" | "svg" | "pdf";
 
 export type ExportScopeKind = "selection" | "frame" | "board";
 
@@ -77,6 +77,7 @@ export type ExportStage =
   | "create-canvas"
   | "draw-canvas"
   | "encode-png"
+  | "encode-jpg"
   | "create-svg-blob"
   | "create-pdf-blob"
   | "initiate-download"
@@ -102,6 +103,7 @@ export type ExportErrorCode =
   | "CANVAS_DRAW_FAILED"
   | "CANVAS_TAINTED"
   | "PNG_BLOB_CREATION_FAILED"
+  | "JPEG_BLOB_CREATION_FAILED"
   | "SVG_BLOB_CREATION_FAILED"
   | "PDF_BLOB_CREATION_FAILED"
   | "DOWNLOAD_FAILED"
