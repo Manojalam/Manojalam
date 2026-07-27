@@ -5,12 +5,10 @@ import { buildHierarchy } from "./hierarchy";
 import { getNodeRect } from "./geometry";
 import { packSiblingsAfterNestedMatrix } from "./nested-matrix-spacing";
 import {
-  MATRIX_DIVISION_FRAME_BORDER_WIDTH,
-  MATRIX_DIVISION_FRAME_RADIUS,
-  MATRIX_FRAME_RADIUS,
+  MATRIX_GRID_RADIUS,
+  MATRIX_GRID_STROKE_WIDTH,
   matrixCellDivisionPadding,
   matrixCellBorderRadius,
-  matrixFramePadding,
 } from "./matrix-presentation";
 import { buildMatrixFrameNodes } from "./matrix-frames";
 import {
@@ -345,27 +343,24 @@ test("a large Sanskrit Matrix does not change layout algorithms without opt-in",
   assertClean(result);
 });
 
-test("Matrix presentation uses rounded cells and a density-aware group frame", () => {
+test("Matrix presentation keeps rounded shapes inside a flat table grid", () => {
   assert.equal(matrixCellBorderRadius("header"), 24);
   assert.equal(matrixCellBorderRadius("category"), 20);
   assert.equal(matrixCellBorderRadius("cell"), 18);
-  assert.equal(MATRIX_DIVISION_FRAME_BORDER_WIDTH, 1.5);
-  assert.equal(MATRIX_DIVISION_FRAME_RADIUS, 8);
-  assert.equal(MATRIX_FRAME_RADIUS, 22);
-  assert.ok(matrixFramePadding("presentation") > matrixFramePadding("comfortable"));
-  assert.ok(matrixFramePadding("comfortable") > matrixFramePadding("compact"));
+  assert.equal(MATRIX_GRID_STROKE_WIDTH, 1);
+  assert.equal(MATRIX_GRID_RADIUS, 4);
   assert.equal(matrixCellDivisionPadding("compact"), 3);
   assert.equal(matrixCellDivisionPadding("comfortable"), 4);
   assert.equal(matrixCellDivisionPadding("presentation"), 6);
 });
 
-test("Matrix frames create a separate division around every visible cell", () => {
+test("Matrix creates one continuous grid with merged-cell-aware separators", () => {
   const nodes: Node[] = [
     {
       id: "root",
       type: "shape",
       position: { x: 20, y: 10 },
-      style: { width: 500, height: 60 },
+      style: { width: 336, height: 60 },
       data: {
         parentId: null,
         matrixCell: true,
@@ -376,7 +371,7 @@ test("Matrix frames create a separate division around every visible cell", () =>
     {
       id: "short",
       type: "shape",
-      position: { x: 20, y: 80 },
+      position: { x: 20, y: 78 },
       style: { width: 120, height: 50 },
       data: {
         parentId: "root",
@@ -387,15 +382,15 @@ test("Matrix frames create a separate division around every visible cell", () =>
     {
       id: "a",
       type: "shape",
-      position: { x: 150, y: 80 },
+      position: { x: 148, y: 78 },
       style: { width: 100, height: 50 },
       data: { parentId: "short", matrixCell: true },
     },
     {
       id: "long",
       type: "shape",
-      position: { x: 20, y: 140 },
-      style: { width: 120, height: 110 },
+      position: { x: 20, y: 136 },
+      style: { width: 120, height: 108 },
       data: {
         parentId: "root",
         matrixCell: true,
@@ -405,52 +400,43 @@ test("Matrix frames create a separate division around every visible cell", () =>
     {
       id: "aa",
       type: "shape",
-      position: { x: 150, y: 140 },
+      position: { x: 148, y: 136 },
       style: { width: 100, height: 50 },
       data: { parentId: "long", matrixCell: true },
     },
     {
       id: "ii",
       type: "shape",
-      position: { x: 150, y: 200 },
+      position: { x: 148, y: 194 },
       style: { width: 100, height: 50 },
       data: { parentId: "long", matrixCell: true },
     },
     {
       id: "standalone",
       type: "shape",
-      position: { x: 260, y: 80 },
+      position: { x: 256, y: 78 },
       style: { width: 100, height: 50 },
       data: { parentId: "root", matrixCell: true },
     },
   ];
 
   const frames = buildMatrixFrameNodes(nodes, "root");
-  assert.deepEqual(
-    frames.map((frame) => (frame.data as Record<string, unknown>).matrixDivisionFor ?? "outer"),
-    ["outer", "root", "short", "a", "long", "aa", "ii", "standalone"]
-  );
-  const shortFrame = frames.find((frame) =>
-    (frame.data as Record<string, unknown>).matrixDivisionFor === "short"
-  )!;
-  const longFrame = frames.find((frame) =>
-    (frame.data as Record<string, unknown>).matrixDivisionFor === "long"
-  )!;
-  const leafFrame = frames.find((frame) =>
-    (frame.data as Record<string, unknown>).matrixDivisionFor === "standalone"
-  )!;
-  assert.deepEqual(shortFrame.position, { x: 16, y: 76 });
-  assert.equal(shortFrame.style?.width, 128);
-  assert.equal(shortFrame.style?.height, 58);
-  assert.deepEqual(longFrame.position, { x: 16, y: 136 });
-  assert.equal(longFrame.style?.width, 128);
-  assert.equal(longFrame.style?.height, 118);
-  assert.deepEqual(leafFrame.position, { x: 256, y: 76 });
-  assert.equal(leafFrame.style?.width, 108);
-  assert.equal((leafFrame.data as Record<string, unknown>).borderWidth, 1.5);
+  assert.equal(frames.length, 1);
+  assert.deepEqual(frames[0].position, { x: 16, y: 6 });
+  assert.equal(frames[0].style?.width, 344);
+  assert.equal(frames[0].style?.height, 242);
+  const frameData = frames[0].data as Record<string, unknown>;
+  assert.equal(frameData.borderWidth, 1);
+  assert.deepEqual(frameData.matrixGridLines, [
+    { x1: 0, y1: 68, x2: 344, y2: 68 },
+    { x1: 0, y1: 126, x2: 344, y2: 126 },
+    { x1: 128, y1: 184, x2: 236, y2: 184 },
+    { x1: 128, y1: 68, x2: 128, y2: 242 },
+    { x1: 236, y1: 68, x2: 236, y2: 242 },
+  ]);
 });
 
-test("hiding Matrix divisions leaves shape styling untouched and keeps only the enclosure", () => {
+test("hiding Matrix divisions keeps the single outer grid rectangle", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -474,7 +460,7 @@ test("hiding Matrix divisions leaves shape styling untouched and keeps only the 
 
   const frames = buildMatrixFrameNodes(nodes, "root");
   assert.equal(frames.length, 1);
-  assert.equal((frames[0].data as Record<string, unknown>).matrixDivisionFor, undefined);
+  assert.deepEqual((frames[0].data as Record<string, unknown>).matrixGridLines, []);
 });
 
 test("long Sanskrit content reaches the width cap and increases row height", () => {
