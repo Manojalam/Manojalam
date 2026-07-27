@@ -69,11 +69,10 @@ function TextBlockNodeComponent({
   const borderColor  = resolveBorderColor(dd);
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
-  const matrixGridVisible = dd.matrixGridVisible !== false;
   const textFrameStyle = matrixCell ? "plain" : normalizeTextFrameStyle(dd.textFrameStyle);
   const textCalloutDirection = normalizeTextCalloutDirection(dd.textCalloutDirection);
   const resolvedBorderWidth = resolveBorderWidth(dd);
-  const bWidth       = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
+  const bWidth       = resolvedBorderWidth;
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 240,
     height: typeof height === "number" && height > 0 ? height : 56,

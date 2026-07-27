@@ -39,7 +39,6 @@ const STATUS_COLORS = {
 function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as ShlokaCardNodeData;
   const matrixCell = d.matrixCell === true;
-  const matrixGridVisible = d.matrixGridVisible !== false;
   const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
   const layoutStyle = resolveLayoutVisualStyle(dd);
@@ -48,7 +47,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
     background: themeAwareNodeFillColor(resolveFillColor(dd)),
     borderColor: resolveBorderColor(dd),
     borderStyle: resolveBorderStyle(dd),
-    borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
+    borderWidth: resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
   const [collapsed, setCollapsed] = useState<Set<string>>(

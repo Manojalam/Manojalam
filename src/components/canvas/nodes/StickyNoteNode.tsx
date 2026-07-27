@@ -69,9 +69,8 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const border   = resolveBorderColor(dd) ?? palette.border;
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
-  const matrixGridVisible = dd.matrixGridVisible !== false;
   const resolvedBorderWidth = resolveBorderWidth(dd);
-  const bWidth   = matrixCell ? (matrixGridVisible ? resolvedBorderWidth : 0) : resolvedBorderWidth;
+  const bWidth   = resolvedBorderWidth;
   const bStyle   = resolveBorderStyle(dd);
   const nodeSize = {
     width: typeof width === "number" && width > 0 ? width : 180,

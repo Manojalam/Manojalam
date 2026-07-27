@@ -28,7 +28,6 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const mode = d.displayMode ?? "both-stacked";
   const matrixCell = d.matrixCell === true;
-  const matrixGridVisible = d.matrixGridVisible !== false;
   const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
   const layoutStyle = resolveLayoutVisualStyle(dd);
@@ -37,7 +36,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
     background: themeAwareNodeFillColor(resolveFillColor(dd)),
     borderColor: resolveBorderColor(dd),
     borderStyle: resolveBorderStyle(dd),
-    borderWidth: matrixCell && !matrixGridVisible ? 0 : resolveBorderWidth(dd),
+    borderWidth: resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
   const resizeControls = useNodeManualResize(id);
