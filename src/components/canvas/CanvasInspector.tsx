@@ -3875,46 +3875,49 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         ))}
       </div>
 
-      <div className={cn("grid gap-1 border-b bg-muted/25 p-2", isRadialLayoutSector ? "grid-cols-6" : "grid-cols-5")}>
+      <div className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-1 text-[10px]"
+          className="h-7 min-w-0 gap-1 px-1 text-[10px]"
           onClick={() => createChildNode(selectedNode.id)}
         >
-          <Plus className="mr-1 h-3 w-3" /> Child
+          <Plus className="h-3 w-3" /> Child
         </Button>
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-1 text-[10px]"
+          className="h-7 min-w-0 gap-1 px-1 text-[10px]"
           disabled={!parentNode}
           onClick={() => createSiblingNode(selectedNode.id)}
         >
-          <Rows3 className="mr-1 h-3 w-3" /> Sibling
+          <Rows3 className="h-3 w-3" /> Sibling
         </Button>
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-1 text-[10px]"
+          className="h-7 min-w-0 gap-1 px-1 text-[10px]"
           title="Copy with style and content"
           onClick={() => duplicateSelected()}
         >
-          <Copy className="mr-1 h-3 w-3" /> Copy
+          <Copy className="h-3 w-3" /> Copy
         </Button>
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-1 text-[10px] text-destructive hover:text-destructive"
+          className="h-7 min-w-0 gap-1 px-1 text-[10px] text-destructive hover:text-destructive"
           title="Clear content"
           onClick={clearSelectedContent}
         >
-          <Eraser className="mr-1 h-3 w-3" /> Clear
+          <Eraser className="h-3 w-3" /> Clear
         </Button>
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-1 text-[10px]"
+          className={cn(
+            "h-7 min-w-0 gap-1 px-1 text-[10px]",
+            !isRadialLayoutSector && "col-span-2",
+          )}
           onClick={() => {
             selectNodesById([selectedNode.id]);
             setSingleNodeTab("layout");
@@ -3927,11 +3930,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Button
             variant="default"
             size="sm"
-            className="h-7 px-1 text-[10px]"
+            className="h-7 min-w-0 gap-1 px-1 text-[10px]"
             title="Select and resize the whole radial chart"
             onClick={() => selectNodesById([radialChartNode.id])}
           >
-            <Maximize2 className="mr-1 h-3 w-3" /> Chart
+            <Maximize2 className="h-3 w-3" /> Chart
           </Button>
         )}
       </div>
