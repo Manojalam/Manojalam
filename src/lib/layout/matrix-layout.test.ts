@@ -8,8 +8,8 @@ import {
   MATRIX_DIVISION_FRAME_BORDER_WIDTH,
   MATRIX_DIVISION_FRAME_RADIUS,
   MATRIX_FRAME_RADIUS,
+  matrixCellDivisionPadding,
   matrixCellBorderRadius,
-  matrixDivisionFramePadding,
   matrixFramePadding,
 } from "./matrix-presentation";
 import { buildMatrixFrameNodes } from "./matrix-frames";
@@ -349,15 +349,17 @@ test("Matrix presentation uses rounded cells and a density-aware group frame", (
   assert.equal(matrixCellBorderRadius("header"), 24);
   assert.equal(matrixCellBorderRadius("category"), 20);
   assert.equal(matrixCellBorderRadius("cell"), 18);
-  assert.equal(MATRIX_DIVISION_FRAME_BORDER_WIDTH, 2);
-  assert.equal(MATRIX_DIVISION_FRAME_RADIUS, 16);
+  assert.equal(MATRIX_DIVISION_FRAME_BORDER_WIDTH, 1.5);
+  assert.equal(MATRIX_DIVISION_FRAME_RADIUS, 8);
   assert.equal(MATRIX_FRAME_RADIUS, 22);
   assert.ok(matrixFramePadding("presentation") > matrixFramePadding("comfortable"));
   assert.ok(matrixFramePadding("comfortable") > matrixFramePadding("compact"));
-  assert.ok(matrixDivisionFramePadding("comfortable", 1) > matrixDivisionFramePadding("comfortable", 3));
+  assert.equal(matrixCellDivisionPadding("compact"), 3);
+  assert.equal(matrixCellDivisionPadding("comfortable"), 4);
+  assert.equal(matrixCellDivisionPadding("presentation"), 6);
 });
 
-test("Matrix frames enclose every visible non-leaf hierarchy division", () => {
+test("Matrix frames create a separate division around every visible cell", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -425,8 +427,8 @@ test("Matrix frames enclose every visible non-leaf hierarchy division", () => {
 
   const frames = buildMatrixFrameNodes(nodes, "root");
   assert.deepEqual(
-    frames.map((frame) => (frame.data as Record<string, unknown>).matrixDivisionFor ?? "root"),
-    ["root", "short", "long"]
+    frames.map((frame) => (frame.data as Record<string, unknown>).matrixDivisionFor ?? "outer"),
+    ["outer", "root", "short", "a", "long", "aa", "ii", "standalone"]
   );
   const shortFrame = frames.find((frame) =>
     (frame.data as Record<string, unknown>).matrixDivisionFor === "short"
@@ -434,11 +436,45 @@ test("Matrix frames enclose every visible non-leaf hierarchy division", () => {
   const longFrame = frames.find((frame) =>
     (frame.data as Record<string, unknown>).matrixDivisionFor === "long"
   )!;
-  assert.ok(shortFrame.position.x < 20);
-  assert.ok(Number(shortFrame.style?.width) > 230);
-  assert.ok(longFrame.position.y < 140);
-  assert.ok(Number(longFrame.style?.height) > 110);
-  assert.equal((shortFrame.data as Record<string, unknown>).borderWidth, 2);
+  const leafFrame = frames.find((frame) =>
+    (frame.data as Record<string, unknown>).matrixDivisionFor === "standalone"
+  )!;
+  assert.deepEqual(shortFrame.position, { x: 16, y: 76 });
+  assert.equal(shortFrame.style?.width, 128);
+  assert.equal(shortFrame.style?.height, 58);
+  assert.deepEqual(longFrame.position, { x: 16, y: 136 });
+  assert.equal(longFrame.style?.width, 128);
+  assert.equal(longFrame.style?.height, 118);
+  assert.deepEqual(leafFrame.position, { x: 256, y: 76 });
+  assert.equal(leafFrame.style?.width, 108);
+  assert.equal((leafFrame.data as Record<string, unknown>).borderWidth, 1.5);
+});
+
+test("hiding Matrix divisions leaves shape styling untouched and keeps only the enclosure", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 20, y: 10 },
+      style: { width: 300, height: 60 },
+      data: {
+        matrixCell: true,
+        matrixGridVisible: false,
+        layoutVisualStyle: { fillColor: "#047857", borderColor: "#064e3b" },
+      },
+    },
+    {
+      id: "leaf",
+      type: "shape",
+      position: { x: 20, y: 80 },
+      style: { width: 100, height: 50 },
+      data: { parentId: "root", matrixCell: true },
+    },
+  ];
+
+  const frames = buildMatrixFrameNodes(nodes, "root");
+  assert.equal(frames.length, 1);
+  assert.equal((frames[0].data as Record<string, unknown>).matrixDivisionFor, undefined);
 });
 
 test("long Sanskrit content reaches the width cap and increases row height", () => {

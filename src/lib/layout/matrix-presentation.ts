@@ -1,9 +1,7 @@
 export type MatrixCellRole = "header" | "category" | "cell";
 
-/** Keep every Matrix cell outline legible at normal canvas and export scales. */
-export const MATRIX_DIVISION_BORDER_MIN_WIDTH = 2.5;
-export const MATRIX_DIVISION_FRAME_BORDER_WIDTH = 2;
-export const MATRIX_DIVISION_FRAME_RADIUS = 16;
+export const MATRIX_DIVISION_FRAME_BORDER_WIDTH = 1.5;
+export const MATRIX_DIVISION_FRAME_RADIUS = 8;
 
 /**
  * Matrix is presented as a grouped card system rather than a spreadsheet.
@@ -22,9 +20,11 @@ export function matrixFramePadding(density: unknown): number {
   return 10;
 }
 
-export function matrixDivisionFramePadding(density: unknown, depth: number): number {
-  const maximum = density === "presentation" ? 5 : density === "compact" ? 3 : 4;
-  return Math.max(2, maximum - Math.max(0, depth - 1));
+/** Expand a division to the midpoint of the standard gap between Matrix cells. */
+export function matrixCellDivisionPadding(density: unknown): number {
+  if (density === "presentation") return 6;
+  if (density === "compact") return 3;
+  return 4;
 }
 
 export const MATRIX_FRAME_RADIUS = 22;

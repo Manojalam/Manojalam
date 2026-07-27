@@ -2,7 +2,7 @@ import type { Node } from "@xyflow/react";
 import { createNodeRect, getNodeRect, type NodeRect } from "./geometry";
 import {
   MATRIX_DIVISION_FRAME_BORDER_WIDTH,
-  matrixDivisionFramePadding,
+  matrixCellDivisionPadding,
   matrixFramePadding,
 } from "./matrix-presentation";
 
@@ -81,10 +81,7 @@ function matrixFrameNode(
   };
 }
 
-/**
- * Builds the Matrix enclosure plus nested outlines for every non-leaf branch.
- * A division frame owns the branch label and all of its visible descendants.
- */
+/** Builds the Matrix enclosure plus a separate division around every allocated cell. */
 export function buildMatrixFrameNodes(
   scopedNodes: readonly Node[],
   rootId: string
@@ -110,57 +107,21 @@ export function buildMatrixFrameNodes(
     ),
   ];
   if (!root) return frames;
+  if (rootData.matrixGridVisible === false) return frames;
 
-  const childrenByParent = new Map<string, string[]>();
-  for (const node of scopedNodes) {
-    const parentId = (node.data as { parentId?: unknown } | undefined)?.parentId;
-    if (typeof parentId !== "string" || !byId.has(parentId)) continue;
-    childrenByParent.set(parentId, [...(childrenByParent.get(parentId) ?? []), node.id]);
-  }
-
-  const depthById = new Map<string, number>([[rootId, 0]]);
-  const descendantsFor = (ownerId: string): string[] => {
-    const descendants: string[] = [];
-    const pending = [ownerId];
-    const visited = new Set<string>();
-    while (pending.length) {
-      const nodeId = pending.shift()!;
-      if (visited.has(nodeId)) continue;
-      visited.add(nodeId);
-      descendants.push(nodeId);
-      for (const childId of childrenByParent.get(nodeId) ?? []) {
-        depthById.set(childId, (depthById.get(nodeId) ?? 0) + 1);
-        pending.push(childId);
-      }
-    }
-    return descendants;
-  };
-
-  descendantsFor(rootId);
-  const divisionOwners = scopedNodes
-    .filter((node) => node.id !== rootId && (childrenByParent.get(node.id)?.length ?? 0) > 0)
-    .sort((a, b) => (depthById.get(a.id) ?? 0) - (depthById.get(b.id) ?? 0));
-
-  for (const owner of divisionOwners) {
-    const depth = depthById.get(owner.id) ?? 1;
-    const branchNodes = descendantsFor(owner.id).flatMap((nodeId) => {
-      const node = byId.get(nodeId);
-      return node ? [node] : [];
-    });
-    const bounds = enclosingRect(
-      branchNodes,
-      matrixDivisionFramePadding(rootData.matrixDensity, depth)
-    );
+  const divisionPadding = matrixCellDivisionPadding(rootData.matrixDensity);
+  for (const cell of scopedNodes) {
+    const bounds = enclosingRect([cell], divisionPadding);
     if (!bounds) continue;
-    const colors = visualColors(owner);
+    const colors = visualColors(cell);
     frames.push(matrixFrameNode(
-      `matrix-division-frame-${rootId}-${owner.id}`,
+      `matrix-cell-division-${rootId}-${cell.id}`,
       rootId,
       bounds,
       colors.borderColor ?? rootColors.borderColor ?? "#334155",
       "transparent",
-      Math.min(-2, -10 + depth),
-      owner.id
+      -2,
+      cell.id
     ));
   }
 

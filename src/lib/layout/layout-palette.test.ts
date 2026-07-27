@@ -82,6 +82,14 @@ test("applying a palette preserves original style fields and colors hierarchy ed
   assert.notEqual((result.edges[0].markerEnd as { color?: string }).color, "#123456");
 });
 
+test("Matrix palette leaves shape borders to the user-controlled node style", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "forest");
+
+  assert.ok([...styles.values()].every((style) => style.borderWidth === 0));
+});
+
 test("manual surface overrides survive palette changes and can be reset", () => {
   const { nodes, edges } = hierarchyFixture();
   nodes[2] = {

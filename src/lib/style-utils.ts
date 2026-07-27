@@ -11,7 +11,6 @@ import type { Size } from "./canvas/node-geometry";
 import { BOARD_THEME_COLORS } from "./canvas/board-colors";
 import { colorSwatchHex } from "./canvas/custom-colors";
 import { resolveLayoutFontSize } from "./layout/layout-presentation";
-import { MATRIX_DIVISION_BORDER_MIN_WIDTH } from "./layout/matrix-presentation";
 
 /** CSS applied to the text-content container of a node.
  *  Always emits explicit values for inheritable properties so CSS
@@ -291,17 +290,6 @@ function parseCssColor(color: string): { r: number; g: number; b: number; a: num
     return { r: channels[0], g: channels[1], b: channels[2], a: alpha };
   }
 
-  const hsl = normalized.match(
-    /^hsla?\(\s*-?[\d.]+(?:deg)?\s*,\s*[\d.]+%\s*,\s*[\d.]+%(?:\s*,\s*(\d*\.?\d+))?\s*\)$/
-  );
-  if (hsl) {
-    const converted = colorSwatchHex(normalized);
-    const parsed = converted ? parseColor(converted) : null;
-    const alpha = hsl[1] === undefined ? 1 : Number(hsl[1]);
-    if (!parsed || !Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
-    return { ...parsed, a: alpha };
-  }
-
   const converted = colorSwatchHex(normalized);
   return converted ? parseColor(converted) : null;
 }
@@ -428,46 +416,19 @@ export function resolveFillColor(d: Record<string, unknown>): string | undefined
   return colorWithOpacity(color, resolveFillOpacity(d));
 }
 
-const MATRIX_BORDER_MIN_CONTRAST = 3;
-
-function visibleMatrixBorderColor(
-  fillColor: string | undefined,
-  borderColor: string | undefined
-): string {
-  const fill = typeof fillColor === "string" ? parseCssColor(fillColor) : null;
-  if (!fill || fill.a < 0.999) return "var(--foreground)";
-
-  const border = typeof borderColor === "string" ? parseCssColor(borderColor) : null;
-  if (border && border.a > 0) {
-    const renderedBorder = border.a < 0.999 ? compositeColor(border, fill) : border;
-    const contrast = contrastRatio(relativeLuminance(fill), relativeLuminance(renderedBorder));
-    if (contrast >= MATRIX_BORDER_MIN_CONTRAST) return borderColor!;
-  }
-
-  return readableTextColor(fill);
-}
-
 /** Resolve a node's border color: uses explicit borderColor or accent color. */
 export function resolveBorderColor(d: Record<string, unknown>): string | undefined {
   const layoutStyle = resolveLayoutVisualStyle(d);
-  const color = layoutStyle && d.layoutAutoBorder !== false
-    ? layoutStyle.borderColor
-    : (d.borderColor as string) ?? (d.color as string) ?? undefined;
-  if (d.matrixCell !== true) return color;
-  return visibleMatrixBorderColor(
-    resolveFillColor(d),
-    color ?? layoutStyle?.borderColor ?? "#64748b"
-  );
+  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderColor;
+  return (d.borderColor as string) ?? (d.color as string) ?? undefined;
 }
 
 /** Resolve effective border width (default 2) */
 export function resolveBorderWidth(d: Record<string, unknown>): number {
   const layoutStyle = resolveLayoutVisualStyle(d);
-  const authoredWidth = layoutStyle && d.layoutAutoBorder !== false
-    ? layoutStyle.borderWidth
-    : typeof d.borderWidth === "number" ? d.borderWidth : 2;
-  if (d.matrixCell !== true) return authoredWidth;
-  return Math.max(MATRIX_DIVISION_BORDER_MIN_WIDTH, authoredWidth);
+  if (d.matrixCell === true && layoutStyle && d.layoutAutoBorder !== false) return 0;
+  if (layoutStyle && d.layoutAutoBorder !== false) return layoutStyle.borderWidth;
+  return typeof d.borderWidth === "number" ? d.borderWidth : 2;
 }
 
 export function resolveBorderStyle(d: Record<string, unknown>): "solid" | "dashed" | "dotted" {
