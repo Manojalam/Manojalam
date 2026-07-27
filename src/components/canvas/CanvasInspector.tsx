@@ -92,6 +92,7 @@ import {
   arrangeSelectionInColumns,
   compactEqualSpacing,
   pushNodesBelowSelectionGrowth,
+  pushNodesRightOfSelectionGrowth,
   type SelectionAlignment,
 } from "@/lib/canvas/selection-geometry";
 import { ConnectorLabelPresets } from "./edges/ConnectorLabelPresets";
@@ -1990,10 +1991,30 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           : "fixed";
         return [node.id, { width, height, autoSizeMode }] as const;
       }));
-      const immediatePositions = pushNodesBelowSelectionGrowth(
-        flowNodes,
-        new Map([...targetSizes].map(([id, size]) => [id, size.height]))
-      );
+      const growthAdjustedPositions = (
+        sizes: ReadonlyMap<string, { width: number; height: number }>
+      ) => {
+        const vertical = pushNodesBelowSelectionGrowth(
+          flowNodes,
+          new Map([...sizes].map(([id, size]) => [id, size.height]))
+        );
+        const horizontal = pushNodesRightOfSelectionGrowth(
+          flowNodes,
+          new Map([...sizes].map(([id, size]) => [id, size.width]))
+        );
+        const positions = new Map<string, { x: number; y: number }>();
+        for (const node of flowNodes) {
+          const verticalPosition = vertical.get(node.id);
+          const horizontalPosition = horizontal.get(node.id);
+          if (!verticalPosition && !horizontalPosition) continue;
+          positions.set(node.id, {
+            x: horizontalPosition?.x ?? node.position.x,
+            y: verticalPosition?.y ?? node.position.y,
+          });
+        }
+        return positions;
+      };
+      const immediatePositions = growthAdjustedPositions(targetSizes);
 
       pushHistory();
       useCanvasStore.setState((state) => ({
@@ -2022,12 +2043,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           return;
         }
         const latest = useCanvasStore.getState();
-        const settledHeights = new Map(
+        const settledSizes = new Map(
           latest.nodes
             .filter((node) => selectedIds.has(node.id))
-            .map((node) => [node.id, getNodeDimensions(node).height])
+            .map((node) => [node.id, getNodeDimensions(node)])
         );
-        const settledPositions = pushNodesBelowSelectionGrowth(flowNodes, settledHeights);
+        const settledPositions = growthAdjustedPositions(settledSizes);
         useCanvasStore.setState((state) => ({
           nodes: state.nodes.map((node) => {
             const position = settledPositions.get(node.id);

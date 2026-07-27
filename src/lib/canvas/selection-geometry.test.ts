@@ -10,6 +10,7 @@ import {
   distributeSelection,
   preserveSnappedDragEndPositions,
   pushNodesBelowSelectionGrowth,
+  pushNodesRightOfSelectionGrowth,
   snapPointToGrid,
   snapRectToAlignment,
 } from "./selection-geometry";
@@ -178,6 +179,26 @@ test("growth shifts accumulate while preserving the gaps below each resized card
   assert.deepEqual(positions.get("third"), { x: 60, y: 260 });
   assert.equal(resized[1].top - resized[0].bottom, 30);
   assert.equal(resized[2].top - resized[1].bottom, 40);
+});
+
+test("width growth moves later columns once by the added column boundary", () => {
+  const nodes = [
+    node("first-a", 40, 20, 100, 60),
+    node("first-b", 40, 120, 120, 60),
+    node("second-a", 240, 20, 140, 60),
+    node("second-b", 240, 120, 140, 60),
+    node("third", 460, 20, 160, 60),
+  ];
+  const positions = pushNodesRightOfSelectionGrowth(
+    nodes,
+    new Map([["first-a", 200], ["first-b", 200]])
+  );
+
+  assert.equal(positions.has("first-a"), false);
+  assert.equal(positions.has("first-b"), false);
+  assert.deepEqual(positions.get("second-a"), { x: 320, y: 20 });
+  assert.deepEqual(positions.get("second-b"), { x: 320, y: 120 });
+  assert.deepEqual(positions.get("third"), { x: 540, y: 20 });
 });
 
 test("left alignment uses rendered bounds for mixed node origins", () => {

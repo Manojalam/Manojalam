@@ -253,6 +253,87 @@ export function pushNodesBelowSelectionGrowth(
 }
 
 /**
+ * Preserve column gaps when selected cards grow wider. Selected cards that
+ * substantially overlap on the x-axis are treated as one column, so their
+ * growth moves later columns once by only the added column width.
+ */
+export function pushNodesRightOfSelectionGrowth(
+  nodes: Node[],
+  nextWidths: ReadonlyMap<string, number>,
+  minimumHorizontalOverlapRatio = 0.5
+): Map<string, Point> {
+  const positions = new Map<string, Point>();
+  if (!nodes.length || !nextWidths.size) return positions;
+  const safeOverlapRatio = Math.max(0, Math.min(1, minimumHorizontalOverlapRatio));
+  const entries = nodes.map((node) => ({ node, rect: getNodeRect(node) }));
+  const substantiallyOverlaps = (first: NodeRect, second: NodeRect) => {
+    const overlap = Math.min(first.right, second.right) - Math.max(first.left, second.left);
+    return overlap + 0.5 >= Math.min(first.width, second.width) * safeOverlapRatio;
+  };
+  const growing = entries.flatMap(({ node, rect }) => {
+    const nextWidth = nextWidths.get(node.id);
+    if (typeof nextWidth !== "number" || !Number.isFinite(nextWidth) || nextWidth <= rect.width + 0.5) {
+      return [];
+    }
+    const nextRect = getNodeRect({
+      ...node,
+      width: undefined,
+      measured: undefined,
+      style: { ...(node.style ?? {}), width: nextWidth, height: rect.height },
+    });
+    return [{ node, rect, nextRect }];
+  });
+  if (!growing.length) return positions;
+
+  const sourceColumns: typeof growing[] = [];
+  for (const source of growing) {
+    const column = sourceColumns.find((candidate) => (
+      candidate.some((member) => substantiallyOverlaps(member.rect, source.rect))
+    ));
+    if (column) column.push(source);
+    else sourceColumns.push([source]);
+  }
+
+  const expansions = sourceColumns.flatMap((sources) => {
+    const columnEntries = entries.filter(({ rect }) => (
+      sources.some((source) => substantiallyOverlaps(source.rect, rect))
+    ));
+    const originalRight = Math.max(...columnEntries.map(({ rect }) => rect.right));
+    const expandedRight = Math.max(
+      originalRight,
+      ...sources.map(({ nextRect }) => nextRect.right)
+    );
+    const growth = expandedRight - originalRight;
+    if (growth <= 0.5) return [];
+    return [{
+      sources,
+      growth,
+      centerX: sources.reduce((sum, { rect }) => sum + rect.centerX, 0) / sources.length,
+    }];
+  });
+
+  for (const { node, rect } of entries) {
+    let shiftX = 0;
+    for (const column of expansions) {
+      if (
+        column.sources.some((source) => source.node.id === node.id)
+        || column.sources.some((source) => substantiallyOverlaps(source.rect, rect))
+        || rect.centerX <= column.centerX
+      ) continue;
+      shiftX += column.growth;
+    }
+    if (shiftX > 0.5) {
+      positions.set(node.id, {
+        x: node.position.x + shiftX,
+        y: node.position.y,
+      });
+    }
+  }
+
+  return positions;
+}
+
+/**
  * Pack an arbitrary selection into columns without changing the sequence
  * supplied by the board. The first and last cards define shared outer anchors;
  * cards inside every multi-item column are then vertically distributed between
