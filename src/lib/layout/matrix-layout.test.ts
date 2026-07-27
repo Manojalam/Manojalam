@@ -326,11 +326,53 @@ test("incomplete compact rows can preserve a generated empty trailing cell", () 
 
   assert.equal(result.emptyCells.length, 1);
   const empty = result.emptyCells[0];
-  assert.equal(empty.styleSourceNodeId, "four-3");
   assert.ok(Math.abs(empty.x - cells.get("five-4")!.x) < 0.5);
   assert.ok(Math.abs(empty.y - cells.get("four-3")!.y) < 0.5);
   assert.ok(Math.abs(empty.width - cells.get("five-4")!.width) < 0.5);
   assert.ok(cells.get("four-3")!.x + cells.get("four-3")!.width < empty.x);
+  assertClean(result);
+});
+
+test("incomplete folded child rows preserve an empty trailing grid slot", () => {
+  const fixture = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      packCompactGroups: true,
+      incompleteRowMode: "empty",
+    },
+    { id: "group", parentId: "root" },
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `child-${index}`,
+      parentId: "group",
+      text: "क",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "group"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const childCells = Array.from(
+    { length: 5 },
+    (_, index) => result.cells.find((cell) => cell.nodeId === `child-${index}`)!
+  );
+  const groupedRows = new Map<number, typeof childCells>();
+  for (const cell of childCells) {
+    const rowY = Math.round(cell.y * 2) / 2;
+    groupedRows.set(rowY, [...(groupedRows.get(rowY) ?? []), cell]);
+  }
+  const rows = [...groupedRows.values()]
+    .sort((first, second) => second.length - first.length);
+
+  assert.deepEqual(rows.map((row) => row.length), [3, 2]);
+  assert.equal(result.emptyCells.length, 1);
+  const longerRow = [...rows[0]].sort((first, second) => first.x - second.x);
+  const shorterRow = [...rows[1]].sort((first, second) => first.x - second.x);
+  const empty = result.emptyCells[0];
+  assert.ok(Math.abs(empty.y - shorterRow[0].y) < 0.5);
+  assert.ok(Math.abs(empty.x - longerRow[2].x) < 0.5);
+  assert.ok(Math.abs(empty.width - longerRow[2].width) < 0.5);
   assertClean(result);
 });
 
@@ -530,7 +572,7 @@ test("hiding Matrix divisions keeps the single outer grid rectangle", () => {
   assert.deepEqual((frames[0].data as Record<string, unknown>).matrixGridLines, []);
 });
 
-test("generated Matrix empty slots inherit the neighboring cell appearance", () => {
+test("generated Matrix empty slots extend the flat grid without a filled placeholder shape", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -541,11 +583,10 @@ test("generated Matrix empty slots inherit the neighboring cell appearance", () 
         matrixCell: true,
         matrixDensity: "comfortable",
         matrixEmptySlots: [{
-          x: 220,
+          x: 100,
           y: 70,
           width: 100,
           height: 50,
-          styleSourceNodeId: "leaf",
         }],
         layoutVisualStyle: { fillColor: "#2563eb", borderColor: "#1e40af" },
       },
@@ -565,14 +606,18 @@ test("generated Matrix empty slots inherit the neighboring cell appearance", () 
 
   const frames = buildMatrixFrameNodes(nodes, "root");
   const frameData = frames[0].data as Record<string, unknown>;
-  assert.deepEqual(frameData.matrixEmptyCells, [{
-    x: 224,
-    y: 74,
-    width: 100,
-    height: 50,
-    fillColor: "#bfdbfe",
-    borderColor: "#3b82f6",
-  }]);
+  const lines = frameData.matrixGridLines as Array<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }>;
+
+  assert.equal(frameData.matrixEmptyCells, undefined);
+  assert.ok(lines.some((line) => (
+    Math.abs(line.x1 - line.x2) < 0.5
+    && Math.abs(frames[0].position.x + line.x1 - 120) < 0.5
+  )));
 });
 
 test("long Sanskrit content reaches the width cap and increases row height", () => {
