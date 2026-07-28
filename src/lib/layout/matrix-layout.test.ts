@@ -3,7 +3,11 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "./hierarchy";
 import { getNodeRect } from "./geometry";
-import { packSiblingsAfterNestedMatrix } from "./nested-matrix-spacing";
+import { routeOrthogonalEdge } from "./edge-routing";
+import {
+  NESTED_MATRIX_PARENT_GAP,
+  packSiblingsAfterNestedMatrix,
+} from "./nested-matrix-spacing";
 import {
   MATRIX_GRID_RADIUS,
   MATRIX_GRID_STROKE_WIDTH,
@@ -2234,6 +2238,64 @@ test("a locked overall Matrix keeps its bounds while a child receives more width
   assert.ok(cells.get("a-1")!.width > cells.get("a-2")!.width);
   assert.ok(cells.get("a-1")!.width > cells.get("a-3")!.width);
   assertClean(result);
+});
+
+test("a nested Matrix pulls its outer parent close above the finished table", () => {
+  const nodes: Node[] = [
+    {
+      id: "outer",
+      type: "shape",
+      position: { x: 80, y: 40 },
+      measured: { width: 240, height: 72 },
+      data: { layoutMode: "vertical", childOrder: ["matrix"] },
+    },
+    {
+      id: "matrix",
+      type: "shape",
+      position: { x: 140, y: 340 },
+      measured: { width: 1200, height: 96 },
+      data: { parentId: "outer", childOrder: ["matrix-child"], layoutMode: "matrix" },
+    },
+    {
+      id: "matrix-child",
+      type: "shape",
+      position: { x: 140, y: 444 },
+      measured: { width: 1200, height: 80 },
+      data: { parentId: "matrix", childOrder: [] },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "outer-matrix", source: "outer", target: "matrix" },
+    { id: "matrix-child", source: "matrix", target: "matrix-child" },
+  ];
+  const hierarchy = buildHierarchy(nodes, edges);
+  const packed = packSiblingsAfterNestedMatrix(nodes, hierarchy, "matrix");
+  const outer = getNodeRect(packed.find((node) => node.id === "outer")!);
+  const matrix = getNodeRect(packed.find((node) => node.id === "matrix")!);
+
+  assert.equal(outer.centerX, matrix.centerX);
+  assert.equal(matrix.top - outer.bottom, NESTED_MATRIX_PARENT_GAP);
+  assert.deepEqual(
+    packed.find((node) => node.id === "matrix")!.position,
+    nodes.find((node) => node.id === "matrix")!.position
+  );
+  assert.deepEqual(
+    packed.find((node) => node.id === "matrix-child")!.position,
+    nodes.find((node) => node.id === "matrix-child")!.position
+  );
+
+  const route = routeOrthogonalEdge(
+    { x: outer.centerX, y: outer.bottom },
+    { x: matrix.centerX, y: matrix.top },
+    "bottom",
+    "top",
+    []
+  );
+  assert.deepEqual(route.points, [
+    { x: outer.centerX, y: outer.bottom },
+    { x: matrix.centerX, y: matrix.top },
+  ]);
+  assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
 });
 
 test("a widened nested Matrix moves following outer branches without breaking their subtrees", () => {

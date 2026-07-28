@@ -11,6 +11,9 @@ interface OuterPacking {
   gap: number;
 }
 
+/** Short breathing room between an outer parent and its finished Matrix branch. */
+export const NESTED_MATRIX_PARENT_GAP = 24;
+
 function outerPackingFor(
   matrixRootId: string,
   hierarchy: Hierarchy,
@@ -76,11 +79,74 @@ function subtreeBounds(
   };
 }
 
+function combinedSubtreeBounds(
+  rootIds: string[],
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): NodeRect | null {
+  const bounds = rootIds.flatMap((rootId) => subtreeBounds(rootId, hierarchy, byId) ?? []);
+  if (!bounds.length) return null;
+  const left = Math.min(...bounds.map((rect) => rect.left));
+  const top = Math.min(...bounds.map((rect) => rect.top));
+  const right = Math.max(...bounds.map((rect) => rect.right));
+  const bottom = Math.max(...bounds.map((rect) => rect.bottom));
+  return {
+    id: "nested-matrix-child-band",
+    x: left,
+    y: top,
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+  };
+}
+
+function alignOuterParentToChildBand(
+  nodes: Node[],
+  hierarchy: Hierarchy,
+  parentId: string,
+  childIds: string[],
+  packing: OuterPacking
+): Node[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const parent = byId.get(parentId);
+  const childBand = combinedSubtreeBounds(childIds, hierarchy, byId);
+  if (!parent || !childBand) return nodes;
+
+  const parentRect = getNodeRect(parent);
+  const targetLeft = packing.axis === "x"
+    ? childBand.centerX - parentRect.width / 2
+    : childBand.left - NESTED_MATRIX_PARENT_GAP - parentRect.width;
+  const targetTop = packing.axis === "x"
+    ? childBand.top - NESTED_MATRIX_PARENT_GAP - parentRect.height
+    : childBand.centerY - parentRect.height / 2;
+  const delta = {
+    x: targetLeft - parentRect.left,
+    y: targetTop - parentRect.top,
+  };
+  if (Math.abs(delta.x) <= 0.5 && Math.abs(delta.y) <= 0.5) return nodes;
+
+  return nodes.map((node) => node.id === parentId
+    ? {
+        ...node,
+        position: {
+          x: node.position.x + delta.x,
+          y: node.position.y + delta.y,
+        },
+      }
+    : node);
+}
+
 /**
  * A nested Matrix can become wider or taller without changing its outer
- * hierarchy. Repack following sibling subtrees to the exact generated gap so
- * stale positions from an older or larger source layout cannot survive a
- * conversion or refresh.
+ * hierarchy. Repack following sibling subtrees to the exact generated gap,
+ * then align the outer parent with the finished child band. This keeps the
+ * parent close enough for the hierarchy connector to use only a short,
+ * straight segment.
  */
 export function packSiblingsAfterNestedMatrix(
   nodes: Node[],
@@ -93,7 +159,7 @@ export function packSiblingsAfterNestedMatrix(
   const siblingIds = parentId ? hierarchy.get(parentId)?.childIds ?? [] : [];
   const matrixIndex = siblingIds.indexOf(matrixRootId);
   const matrixBounds = matrixIndex >= 0 ? subtreeBounds(matrixRootId, hierarchy, byId) : null;
-  if (!packing || !matrixBounds || matrixIndex >= siblingIds.length - 1) return nodes;
+  if (!parentId || !packing || !matrixBounds || matrixIndex < 0) return nodes;
 
   const deltas = new Map<string, { x: number; y: number }>();
   let cursor = packing.axis === "x" ? matrixBounds.right : matrixBounds.bottom;
@@ -116,12 +182,17 @@ export function packSiblingsAfterNestedMatrix(
     }
     cursor = (packing.axis === "x" ? bounds.right : bounds.bottom) + delta;
   }
-  if (!deltas.size) return nodes;
-
-  return nodes.map((node) => {
+  const packedNodes = !deltas.size ? nodes : nodes.map((node) => {
     const delta = deltas.get(node.id);
     return delta
       ? { ...node, position: { x: node.position.x + delta.x, y: node.position.y + delta.y } }
       : node;
   });
+  return alignOuterParentToChildBand(
+    packedNodes,
+    hierarchy,
+    parentId,
+    siblingIds,
+    packing
+  );
 }
