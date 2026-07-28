@@ -3,6 +3,7 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "./hierarchy";
 import { getNodeRect } from "./geometry";
+import { LIST_DENSITIES } from "./list-layout";
 import { routeOrthogonalEdge } from "./edge-routing";
 import {
   NESTED_MATRIX_PARENT_GAP,
@@ -2295,6 +2296,52 @@ test("a nested Matrix pulls its outer parent close above the finished table", ()
     { x: outer.centerX, y: outer.bottom },
     { x: matrix.centerX, y: matrix.top },
   ]);
+  assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
+});
+
+test("a Matrix directly under a List root keeps the List root centered above it", () => {
+  const nodes: Node[] = [
+    {
+      id: "outer",
+      type: "shape",
+      position: { x: 53, y: 191 },
+      measured: { width: 203, height: 54 },
+      data: { layoutMode: "list", listDensity: "compact", childOrder: ["matrix"] },
+    },
+    {
+      id: "matrix",
+      type: "shape",
+      position: { x: 265, y: 160 },
+      measured: { width: 377, height: 30 },
+      data: { parentId: "outer", childOrder: ["matrix-child"], layoutMode: "matrix" },
+    },
+    {
+      id: "matrix-child",
+      type: "shape",
+      position: { x: 265, y: 193 },
+      measured: { width: 377, height: 83 },
+      data: { parentId: "matrix", childOrder: [] },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "outer-matrix", source: "outer", target: "matrix" },
+    { id: "matrix-child", source: "matrix", target: "matrix-child" },
+  ];
+  const hierarchy = buildHierarchy(nodes, edges);
+  const packed = packSiblingsAfterNestedMatrix(nodes, hierarchy, "matrix");
+  const outer = getNodeRect(packed.find((node) => node.id === "outer")!);
+  const matrix = getNodeRect(packed.find((node) => node.id === "matrix")!);
+
+  assert.equal(outer.centerX, matrix.centerX);
+  assert.equal(matrix.top - outer.bottom, LIST_DENSITIES.compact.rootToFirstRowGapY);
+  assert.deepEqual(
+    packed.find((node) => node.id === "matrix")!.position,
+    nodes.find((node) => node.id === "matrix")!.position
+  );
+  assert.deepEqual(
+    packed.find((node) => node.id === "matrix-child")!.position,
+    nodes.find((node) => node.id === "matrix-child")!.position
+  );
   assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
 });
 
