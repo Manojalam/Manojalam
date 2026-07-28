@@ -27,6 +27,7 @@ interface TextCalloutSurfaceProps {
   filter?: string;
   size: Size;
   tailTip: Point;
+  tailDragTitle?: string;
   onTailDragStart?: () => void;
   onTailTipChange?: (anchor: Point) => void;
 }
@@ -42,6 +43,7 @@ export function TextCalloutSurface({
   filter,
   size,
   tailTip,
+  tailDragTitle,
   onTailDragStart,
   onTailTipChange,
 }: TextCalloutSurfaceProps) {
@@ -132,7 +134,7 @@ export function TextCalloutSurface({
           data-export-ignore
           type="button"
           aria-label="Move speech pointer tip"
-          title="Drag to point this callout at related content"
+          title={tailDragTitle ?? "Drag to point this callout at related content"}
           className="nodrag nopan pointer-events-auto absolute z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-white bg-primary shadow-md ring-1 ring-primary/40"
           style={{ left: tailTip.x, top: tailTip.y }}
           onPointerDown={(event) => {

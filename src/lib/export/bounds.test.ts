@@ -358,6 +358,7 @@ test("a note-only export still derives its tail from the parent shape", () => {
       noteForNodeId: owner.id,
       textFrameStyle: "speech",
       textCalloutAnchor: { x: -900, y: 1_400 },
+      textCalloutOwnerAnchor: { x: 0.5, y: 0.5 },
     },
     measured: { width: 220, height: 72 },
   };
@@ -369,7 +370,7 @@ test("a note-only export still derives its tail from the parent shape", () => {
 
   assert.deepEqual(
     computeTightExportBounds(target, { padding: 0 }),
-    { x: 300, y: 180, width: 260, height: 72 }
+    { x: 200, y: 180, width: 360, height: 72 }
   );
 });
 

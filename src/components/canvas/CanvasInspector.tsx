@@ -159,6 +159,7 @@ import {
   normalizeTextCalloutDirection,
   normalizeTextFrameStyle,
 } from "@/lib/canvas/text-callout";
+import { normalizeTextCalloutOwnerAnchor } from "@/lib/canvas/node-note";
 import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -4179,6 +4180,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const textFrameStyle = normalizeTextFrameStyle(d.textFrameStyle);
   const textCalloutDirection = normalizeTextCalloutDirection(d.textCalloutDirection);
   const textCalloutAnchor = normalizeTextCalloutAnchor(d.textCalloutAnchor);
+  const textCalloutOwnerAnchor = normalizeTextCalloutOwnerAnchor(d.textCalloutOwnerAnchor);
   const supportsTextFrame = nodeType === "text" && d.matrixCell !== true;
   const hasFramedTextObject = supportsTextFrame && textFrameStyle !== "plain";
   const supportsRadius = (isTextNode && !hasFramedTextObject)
@@ -6005,7 +6007,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       if (!selectedNode) return;
                       pushHistory();
                       const rect = getNodeRect(selectedNode);
-                      const anchor = option.id === "speech"
+                      const anchor = option.id === "speech" && !isAttachedExternalNote
                         ? textCalloutAnchor ?? defaultTextCalloutAnchor(
                             { x: rect.x, y: rect.y },
                             getNodeDimensions(selectedNode),
@@ -6068,20 +6070,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 )}
                 <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
                   {isAttachedExternalNote
-                    ? "This text box stays with its parent shape. Drag the box to reposition it; the pointer remains on the parent outline."
+                    ? "Drag the pointer handle anywhere within the parent shape. It keeps that relative position when the parent moves or resizes."
                     : textFrameStyle === "speech"
                     ? "The tip follows its attached shape. Move the bubble alone to stretch only its tail."
                     : "Point the thought dots toward the related content."}
                 </p>
-                {!isAttachedExternalNote && textFrameStyle === "speech" && textCalloutAnchor && (
+                {textFrameStyle === "speech"
+                  && (isAttachedExternalNote
+                    ? !!textCalloutOwnerAnchor || !!textCalloutAnchor
+                    : !!textCalloutAnchor)
+                  && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="mt-2 h-7 w-full gap-1.5 text-[10px]"
-                    onClick={() => setField("textCalloutAnchor", undefined)}
+                    onClick={() => {
+                      if (!isAttachedExternalNote) {
+                        setField("textCalloutAnchor", undefined);
+                        return;
+                      }
+                      pushHistory();
+                      updateNodeData(selectedNode.id, {
+                        textCalloutOwnerAnchor: undefined,
+                        textCalloutAnchor: undefined,
+                      });
+                    }}
                   >
-                    <RotateCcw className="h-3 w-3" /> Reset pointer tip
+                    <RotateCcw className="h-3 w-3" /> Reset {
+                      isAttachedExternalNote ? "parent anchor" : "pointer tip"
+                    }
                   </Button>
                 )}
               </div>

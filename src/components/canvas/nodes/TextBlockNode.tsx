@@ -34,7 +34,10 @@ import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
-import { attachedExternalNoteCalloutAnchor } from "@/lib/canvas/node-note";
+import {
+  attachedExternalNoteCalloutAnchor,
+  constrainTextCalloutAnchorToOwner,
+} from "@/lib/canvas/node-note";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import {
   surfaceEffectExportShadowLayers,
@@ -234,14 +237,22 @@ function TextBlockNodeComponent({
             filter={surfaceEffectFilter(dd, borderColor)}
             size={nodeSize}
             tailTip={textCalloutTailTip}
-            onTailDragStart={attachedCalloutAnchor ? undefined : pushHistory}
-            onTailTipChange={attachedCalloutAnchor ? undefined : (anchor) => {
+            tailDragTitle={noteOwner ? "Drag within the parent shape" : undefined}
+            onTailDragStart={pushHistory}
+            onTailTipChange={(anchor) => {
+              const constrainedAnchor = noteOwner
+                ? constrainTextCalloutAnchorToOwner(noteOwner, anchor)
+                : null;
+              const canvasAnchor = constrainedAnchor?.canvasAnchor ?? anchor;
               const nextTip = {
-                x: anchor.x - positionAbsoluteX,
-                y: anchor.y - positionAbsoluteY,
+                x: canvasAnchor.x - positionAbsoluteX,
+                y: canvasAnchor.y - positionAbsoluteY,
               };
               updateNodeData(id, {
-                textCalloutAnchor: anchor,
+                textCalloutAnchor: constrainedAnchor ? undefined : canvasAnchor,
+                ...(constrainedAnchor
+                  ? { textCalloutOwnerAnchor: constrainedAnchor.ownerAnchor }
+                  : {}),
                 textCalloutDirection: textCalloutDirectionForTip(
                   nodeSize,
                   nextTip,
