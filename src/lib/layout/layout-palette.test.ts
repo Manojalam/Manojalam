@@ -94,6 +94,21 @@ test("Matrix palette leaves shape borders to the user-controlled node style", ()
   assert.ok([...styles.values()].every((style) => style.borderWidth === 0));
 });
 
+test("Matrix automatic colors use one consistent shade per hierarchy depth", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "ocean");
+
+  const childColors = ["branch-a", "branch-b"].map((nodeId) => styles.get(nodeId)?.fillColor);
+  const grandchildColors = ["a-1", "a-2", "b-1"].map((nodeId) => styles.get(nodeId)?.fillColor);
+  const greatGrandchildColor = styles.get("a-1-child")?.fillColor;
+
+  assert.equal(new Set(childColors).size, 1);
+  assert.equal(new Set(grandchildColors).size, 1);
+  assert.notEqual(childColors[0], grandchildColors[0]);
+  assert.notEqual(grandchildColors[0], greatGrandchildColor);
+});
+
 test("manual surface overrides survive palette changes and can be reset", () => {
   const { nodes, edges } = hierarchyFixture();
   nodes[2] = {
@@ -127,7 +142,7 @@ test("manual surface overrides survive palette changes and can be reset", () => 
   assert.equal(resetData.layoutAutoTypography, false);
 });
 
-test("a manual parent fill anchors progressively lighter automatic descendant shades", () => {
+test("a manual parent fill anchors one automatic shade per descendant depth", () => {
   const { nodes, edges } = hierarchyFixture();
   const branchIndex = nodes.findIndex((node) => node.id === "branch-a");
   nodes[branchIndex] = {
