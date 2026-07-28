@@ -49,6 +49,8 @@ function findLayoutOwner(
 
 function hasManualAdjustment(data: Record<string, unknown>): boolean {
   return data.preserveHandles === true
+    || data.sourceAnchor !== undefined
+    || data.targetAnchor !== undefined
     || (Array.isArray(data.waypoints) && data.waypoints.length > 0);
 }
 
@@ -147,8 +149,13 @@ export function smartRerouteBoardEdges(
     if (resetManual) {
       delete nextData.waypoints;
       delete nextData.waypointOrigin;
+      delete nextData.sourceAnchor;
+      delete nextData.targetAnchor;
       if (junctionEndpoint) nextData.preserveHandles = true;
-      else delete nextData.preserveHandles;
+      else {
+        delete nextData.preserveHandles;
+        if (STEP_LAYOUT_MODES.has(mode)) nextData.manualRoute = false;
+      }
     }
 
     const nextEdge: Edge = {

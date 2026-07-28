@@ -62,6 +62,39 @@ test("reset reroute clears bends and selects nearest ports", () => {
   assert.equal(result.edges[0].data?.preserveHandles, undefined);
 });
 
+test("structured reroute preserves pinned endpoints by default and resets them on request", () => {
+  const nodes = [
+    shape("source", 0, 0, { layoutMode: "list", childOrder: ["target"] }),
+    shape("target", 180, 120, { parentId: "source" }),
+  ];
+  const edge: Edge = {
+    id: "edge",
+    source: "source",
+    target: "target",
+    sourceHandle: "bottom",
+    targetHandle: "left",
+    data: {
+      layoutMode: "list",
+      curveStyle: "step",
+      manualRoute: true,
+      preserveHandles: true,
+      sourceAnchor: { x: 0.15, y: 0.9, side: "bottom" },
+      targetAnchor: { x: 0, y: 0.25, side: "left" },
+    },
+  };
+
+  const preserved = smartRerouteBoardEdges(nodes, [edge]);
+  assert.equal(preserved.preservedManualCount, 1);
+  assert.deepEqual(preserved.edges[0].data?.sourceAnchor, edge.data?.sourceAnchor);
+  assert.deepEqual(preserved.edges[0].data?.targetAnchor, edge.data?.targetAnchor);
+
+  const reset = smartRerouteBoardEdges(nodes, [edge], { resetManualAdjustments: true });
+  assert.equal(reset.edges[0].data?.sourceAnchor, undefined);
+  assert.equal(reset.edges[0].data?.targetAnchor, undefined);
+  assert.equal(reset.edges[0].data?.preserveHandles, undefined);
+  assert.equal(reset.edges[0].data?.manualRoute, false);
+});
+
 test("automatic flowchart routes become obstacle-aware step connectors", () => {
   const nodes = [shape("source", 0, 0), shape("target", 400, 20)];
   const edge: Edge = {

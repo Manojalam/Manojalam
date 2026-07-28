@@ -996,6 +996,8 @@ export function routeTidiedFlowchartEdges(
     }
     delete data.waypoints;
     delete data.waypointOrigin;
+    delete data.sourceAnchor;
+    delete data.targetAnchor;
     delete data.preserveHandles;
     data.curveStyle = "step";
 

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SHAPE_TYPES } from "../types";
 import {
+  closestNodeShapeConnectionAnchor,
   nodeShapeConnectionPoint,
+  resolveNodeShapeConnectionAnchor,
   shapeConnectionPoint,
   type ConnectionSide,
   type ShapeConnectionPoint,
@@ -114,4 +116,44 @@ test("node outline points include persisted object rotation", () => {
 
   assert.ok(Math.abs(bottom.x - 250) < 0.001);
   assert.ok(bottom.y > rect.y + rect.height);
+});
+
+test("free connector pins project onto any point of a rounded object outline", () => {
+  const node = {
+    type: "shape",
+    data: {
+      shapeType: "rounded",
+      cornerRadiusPercent: 50,
+    },
+  };
+  const rect = { x: 100, y: 200, width: 360, height: 80 };
+  const lowerLeft = closestNodeShapeConnectionAnchor(node, rect, {
+    x: rect.x,
+    y: rect.y + rect.height,
+  });
+
+  assert.ok(lowerLeft.point.x > rect.x);
+  assert.ok(lowerLeft.point.x < rect.x + rect.width / 4);
+  assert.ok(lowerLeft.point.y > rect.y + rect.height / 2);
+  assert.ok(
+    lowerLeft.anchor.side === "left" || lowerLeft.anchor.side === "bottom",
+    "the lower-left curve should route outward through one of its adjacent sides"
+  );
+  assert.ok(lowerLeft.anchor.x > 0 && lowerLeft.anchor.x < 0.25);
+  assert.ok(lowerLeft.anchor.y > 0.5 && lowerLeft.anchor.y < 1);
+});
+
+test("persisted free pins remain attached after an object moves and resizes", () => {
+  const node = { type: "shape", data: { shapeType: "ellipse" } };
+  const initial = closestNodeShapeConnectionAnchor(
+    node,
+    { x: 20, y: 40, width: 200, height: 100 },
+    { x: 60, y: 130 }
+  );
+  const movedRect = { x: 500, y: 300, width: 400, height: 160 };
+  const moved = resolveNodeShapeConnectionAnchor(node, movedRect, initial.anchor);
+
+  assert.ok(moved.point.x >= movedRect.x && moved.point.x <= movedRect.x + movedRect.width);
+  assert.ok(moved.point.y >= movedRect.y && moved.point.y <= movedRect.y + movedRect.height);
+  assert.equal(moved.anchor.side, initial.anchor.side);
 });
