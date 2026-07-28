@@ -8,6 +8,7 @@ import {
   richTextToPlainText,
   sanitizePastedHtml,
   trimPastedHtmlBoundaries,
+  trimRichTextContent,
 } from "./rich-text-paste";
 
 test("escapes clipboard text while retaining its paragraph structure", () => {
@@ -75,6 +76,17 @@ test("internal TipTap paste removes ProseMirror boundary padding without flatten
       + '<p><em>Nested text</em></p><p><br></p></div>'
     ),
     '<div data-pm-slice="1 1 []"><p><em>Nested text</em></p></div>'
+  );
+});
+
+test("object text trim preserves marks and interior sentence spacing", () => {
+  assert.equal(
+    trimRichTextContent(
+      '<p><strong> \u00a0 First sentence.</strong>  Middle sentence. '
+      + '<em>Last sentence.&nbsp; </em></p>'
+    ),
+    '<p><strong>First sentence.</strong>  Middle sentence. '
+      + '<em>Last sentence.</em></p>'
   );
 });
 

@@ -31,6 +31,7 @@ import {
   Rows3,
   RotateCcw,
   RotateCw,
+  Scissors,
   Settings2,
   Share2,
   Trash2,
@@ -502,6 +503,7 @@ export function SelectionToolbar() {
   const createNodeNote = useCanvasStore((state) => state.createNodeNote);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const clearSelectedContent = useCanvasStore((state) => state.clearSelectedContent);
+  const trimSelectedContent = useCanvasStore((state) => state.trimSelectedContent);
   const deleteSelected = useCanvasStore((state) => state.deleteSelected);
   const setNodeLocked = useCanvasStore((state) => state.setNodeLocked);
   const setLayoutPanelOpen = useUIStore((state) => state.setLayoutPanelOpen);
@@ -926,6 +928,24 @@ export function SelectionToolbar() {
         onClick={duplicateSelected}
       >
         <Copy className="h-4 w-4" />
+      </ActionButton>
+      <ActionButton
+        label="Trim leading and trailing spaces inside selected objects"
+        onClick={() => {
+          const count = trimSelectedContent();
+          if (!count) {
+            toast.info("The selected text is already trimmed.");
+            return;
+          }
+          toast.success(
+            count === 1
+              ? "Trimmed spaces inside the selected object."
+              : `Trimmed spaces inside ${count} selected objects.`,
+            { action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() } }
+          );
+        }}
+      >
+        <Scissors className="h-4 w-4" />
       </ActionButton>
       <ActionButton label="Clear content" onClick={clearSelectedContent}>
         <Eraser className="h-4 w-4 text-destructive" />

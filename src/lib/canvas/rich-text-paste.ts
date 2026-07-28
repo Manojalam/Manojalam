@@ -85,6 +85,26 @@ export function trimPastedHtmlBoundaries(html: string): string {
     : normalized;
 }
 
+const LEADING_RICH_TEXT_SPACE =
+  /^(?:(?:[\s\u00a0])|&nbsp;|&#160;|&#x0*a0;)+/i;
+const TRAILING_RICH_TEXT_SPACE =
+  /(?:(?:[\s\u00a0])|&nbsp;|&#160;|&#x0*a0;)+$/i;
+
+function trimRichTextTokens(html: string): string {
+  const tokens = html.match(/<[^>]*>|[^<]+/g) ?? [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].startsWith("<")) continue;
+    tokens[index] = tokens[index].replace(LEADING_RICH_TEXT_SPACE, "");
+    if (tokens[index]) break;
+  }
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    if (tokens[index].startsWith("<")) continue;
+    tokens[index] = tokens[index].replace(TRAILING_RICH_TEXT_SPACE, "");
+    if (tokens[index]) break;
+  }
+  return tokens.join("");
+}
+
 function firstTextNode(root: globalThis.Node): Text | null {
   if (root.nodeType === globalThis.Node.TEXT_NODE) return root as Text;
   for (const child of Array.from(root.childNodes)) {
@@ -131,6 +151,21 @@ function trimPastedDomBoundaries(body: HTMLElement): void {
   const last = lastTextNode(body);
   if (first) first.data = first.data.replace(/^[\s\u00a0]+/, "");
   if (last) last.data = last.data.replace(/[\s\u00a0]+$/, "");
+}
+
+/**
+ * Remove visible whitespace only from the outside of authored rich text.
+ * Inline marks and all interior spacing remain untouched.
+ */
+export function trimRichTextContent(html: string): string {
+  const bounded = trimPastedHtmlBoundaries(html);
+  const tokenTrimmed = trimRichTextTokens(bounded);
+  if (tokenTrimmed === html) return html;
+  if (typeof DOMParser === "undefined") return tokenTrimmed;
+
+  const parsed = new DOMParser().parseFromString(tokenTrimmed, "text/html");
+  trimPastedDomBoundaries(parsed.body);
+  return parsed.body.innerHTML;
 }
 
 function unwrapElement(element: Element): void {
