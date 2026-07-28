@@ -1031,9 +1031,9 @@ function rebuildPersistedMatrixLayouts(
 }
 
 /**
- * Older boards can persist a List root beside the outline. Correct that derived
- * header position during hydration while leaving every descendant exactly where
- * the user saved it.
+ * Older boards can persist an automatically positioned List root beside the
+ * outline. Correct only that derived header position during hydration; manually
+ * moved roots and all descendants stay exactly where the user saved them.
  */
 function rebuildPersistedListRootPositions(nodes: Node[], edges: Edge[]): Node[] {
   const layoutNodes = nodes.filter((node) =>
@@ -1047,7 +1047,10 @@ function rebuildPersistedListRootPositions(nodes: Node[], edges: Edge[]): Node[]
     layoutNodes.map((node) => [node.id, { ...node.position }])
   );
   const rootIds = layoutNodes
-    .filter((node) => ((node.data ?? {}) as Record<string, unknown>).layoutMode === "list")
+    .filter((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return data.layoutMode === "list" && data.listManualOverride !== true;
+    })
     .sort((a, b) => (hierarchy.get(b.id)?.depth ?? 0) - (hierarchy.get(a.id)?.depth ?? 0))
     .map((node) => node.id);
 

@@ -51,6 +51,8 @@ export function planNodeDragMovement(
     movingIds = [draggedNode.id];
   } else if (selectedGroup) {
     movingIds = selectedNodeIds.filter((nodeId) => !isLocked(byId.get(nodeId)));
+  } else if (draggedData.layoutMode === "list") {
+    movingIds = [draggedNode.id];
   } else {
     const hierarchy = buildHierarchy(nodes, edges);
     movingIds = [];

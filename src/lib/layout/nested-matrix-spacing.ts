@@ -120,6 +120,8 @@ function alignOuterParentToChildBand(
 
   const parentMode = ((parent.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
   if (parentMode === "list") {
+    const parentData = (parent.data ?? {}) as Record<string, unknown>;
+    if (parentData.listManualOverride === true) return nodes;
     const placements: ListPlacements = Object.fromEntries(
       nodes.map((node) => [node.id, { ...node.position }])
     );
