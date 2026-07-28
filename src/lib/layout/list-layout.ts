@@ -248,6 +248,8 @@ export function computeListLayout(
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
   const density = LIST_DENSITIES[options.density ?? storedDensity];
+  const rootChildren = (hierarchy.get(rootId)?.childIds ?? []).filter((childId) => byId.has(childId));
+  const rootFolded = resolvedFoldSections(rootData, rootChildren).length > 1;
   const generated: ListPlacements = Object.fromEntries(
     traversal.map((entry) => [entry.nodeId, { ...byId.get(entry.nodeId)!.position }])
   );
@@ -284,10 +286,6 @@ export function computeListLayout(
       const siblingGap = parentId === rootId
         ? density.rowGapY + density.majorBranchGapY
         : density.siblingSubtreeGapY;
-      const childBounds = new Map(children.flatMap((childId) => {
-        const bounds = subtreeBounds(childId);
-        return bounds ? [[childId, bounds] as const] : [];
-      }));
       const sections = resolvedFoldSections(
         (parent.data ?? {}) as Record<string, unknown>,
         children
@@ -328,6 +326,27 @@ export function computeListLayout(
       && (node.data as Record<string, unknown>).listManualOverride === true
       ? { ...node.position }
       : generated[entry.nodeId];
+  }
+  const rootPlacement = placements[rootId];
+  const contentBounds = boundsForNodeIds(
+    traversal.slice(1).map((entry) => entry.nodeId),
+    placements,
+    byId
+  );
+  if (rootPlacement && contentBounds) {
+    const rootRect = rectAt(root, rootPlacement);
+    const nextRootPlacement = {
+      x: rootPlacement.x,
+      y: rootPlacement.y + contentBounds.top - density.rootToFirstRowGapY
+        - rootRect.height - rootRect.top,
+    };
+    if (rootFolded) {
+      const headerBounds = boundsForNodeIds(rootChildren, placements, byId);
+      if (headerBounds) {
+        nextRootPlacement.x = rootPlacement.x + headerBounds.centerX - rootRect.centerX;
+      }
+    }
+    placements[rootId] = nextRootPlacement;
   }
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
