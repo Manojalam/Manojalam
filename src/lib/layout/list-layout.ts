@@ -289,8 +289,12 @@ export function computeListLayout(
         children
       );
       const parentRect = rectAt(parent, parentPlacement);
+      const foldedRootClearance = parentId === rootId && sections.length > 1
+        ? density.rootToFirstRowGapY + Math.min(24, (sections.length - 1) * 6)
+        : null;
       const firstChildTop = parentRect.bottom + (
-        parentId === rootId ? density.rootToFirstRowGapY : density.parentChildGapY
+        foldedRootClearance
+          ?? (parentId === rootId ? density.rootToFirstRowGapY : density.parentChildGapY)
       );
       let columnLeft = parentRect.left + density.childIndentX;
 
@@ -310,11 +314,8 @@ export function computeListLayout(
         columnLeft = sectionRight + DEFAULT_CHILD_GROUP_GAP;
       }
 
-      if (sections.length > 1) {
-        const foldedNodeIds = [
-          ...new Set(children.flatMap((childId) => getSubtree(childId, hierarchy))),
-        ];
-        const foldedBounds = boundsForNodeIds(foldedNodeIds, generated, byId);
+      if (parentId === rootId && sections.length > 1) {
+        const foldedBounds = boundsForNodeIds(children, generated, byId);
         const currentParentRect = rectAt(parent, generated[parentId]);
         if (foldedBounds) {
           generated[parentId] = {
@@ -342,7 +343,7 @@ export function computeListLayout(
     ) > 1;
     placements[entry.nodeId] = preserveManualOverrides
       && (node.data as Record<string, unknown>).listManualOverride === true
-      && !folded
+      && !(node.id === rootId && folded)
       ? { ...node.position }
       : generated[entry.nodeId];
   }
@@ -457,32 +458,56 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
 
     let group: ListConnectorGroup;
     if (sections.length > 1) {
-      const parentAnchor = nodeShapeConnectionPoint(parent, parentRect, "bottom");
       const nearestChildTop = Math.min(...childRects.map((item) => item.rect.top));
-      const clearance = Math.max(0, nearestChildTop - parentRect.bottom);
-      const hubY = parentRect.bottom + Math.min(18, Math.max(8, clearance / 2));
       const trunkByChild = new Map<string, number>();
-      const sectionTrunks = sections.map((section) => {
+      const sectionRoutes = sections.map((section, sectionIndex) => {
         const trunkX = Math.min(
           ...section.map((item) => childAnchors.get(item.edge.target)!.x)
         ) - LIST_FOLDED_CONNECTOR_GUTTER;
         section.forEach((item) => trunkByChild.set(item.edge.target, trunkX));
-        return {
+        const anchorFraction = sections.length <= 1
+          ? 0.5
+          : 0.18 + sectionIndex / (sections.length - 1) * 0.64;
+        const parentAnchor = closestNodeShapeConnectionAnchor(parent, parentRect, {
+          x: parentRect.left + parentRect.width * anchorFraction,
+          y: parentRect.bottom,
+        }).point;
+        const laneTop = parentRect.bottom + 8;
+        const laneBottom = Math.max(laneTop, nearestChildTop - 8);
+        const laneY = sections.length <= 1
+          ? (laneTop + laneBottom) / 2
+          : laneTop + sectionIndex / (sections.length - 1) * (laneBottom - laneTop);
+        const trunk = {
           x1: trunkX,
-          y1: hubY,
+          y1: laneY,
           x2: trunkX,
           y2: Math.max(...section.map((item) => childAnchors.get(item.edge.target)!.y)),
         };
+        return {
+          parentAnchor,
+          laneY,
+          trunk,
+          segments: [
+            {
+              x1: parentAnchor.x,
+              y1: parentAnchor.y,
+              x2: parentAnchor.x,
+              y2: laneY,
+            },
+            {
+              x1: parentAnchor.x,
+              y1: laneY,
+              x2: trunkX,
+              y2: laneY,
+            },
+            trunk,
+          ],
+        };
       });
-      const hubXs = [parentAnchor.x, ...sectionTrunks.map((trunk) => trunk.x1)];
       group = {
         parentId,
         orientation: "vertical",
-        sharedSegments: [
-          { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: hubY },
-          { x1: Math.min(...hubXs), y1: hubY, x2: Math.max(...hubXs), y2: hubY },
-          ...sectionTrunks,
-        ],
+        sharedSegments: sectionRoutes.flatMap((route) => route.segments),
         branches: childRects.map(({ edge }) => {
           const childAnchor = childAnchors.get(edge.target)!;
           return {

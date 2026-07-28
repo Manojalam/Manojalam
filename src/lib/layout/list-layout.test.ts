@@ -155,9 +155,12 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   assert.ok(sixth.left > first.right);
   assert.ok(Math.abs(root.centerX - (foldedLeft + foldedRight) / 2) < 0.001);
   assert.equal(group?.branches.length, 10);
-  assert.equal(group?.sharedSegments.length, 4);
+  assert.equal(group?.sharedSegments.length, 6);
   const verticalTrunks = group!.sharedSegments.filter((segment) => segment.x1 === segment.x2);
-  assert.equal(verticalTrunks.length, 3, "one root drop plus one trunk per folded section");
+  const horizontalLanes = group!.sharedSegments.filter((segment) => segment.y1 === segment.y2);
+  assert.equal(verticalTrunks.length, 4, "one root drop and one trunk per folded section");
+  assert.equal(horizontalLanes.length, 2, "each folded section owns one short route lane");
+  assert.equal(new Set(horizontalLanes.map((segment) => segment.y1)).size, 2);
   assert.equal(new Set(group!.branches.map((branch) => branch.segments[0].x1)).size, 2);
   assert.ok(group!.branches.every((branch) => (
     Math.abs(branch.segments[0].x2 - branch.segments[0].x1)
@@ -165,6 +168,36 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   )));
   assert.deepEqual(model.obstacleIntersections, []);
   assertNoOverlap(placed);
+});
+
+test("Fold centers the List root over section headers instead of oversized descendants", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "first", parentId: "root", width: 180, height: 58 },
+    { id: "first-wide-child", parentId: "first", width: 720, height: 80 },
+    { id: "second", parentId: "root", width: 180, height: 58 },
+    { id: "third", parentId: "root", width: 180, height: 58 },
+    { id: "fourth", parentId: "root", width: 180, height: 58 },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const rects = positionedRects(nodes, placements);
+  const headers = ["first", "second", "third", "fourth"].map((id) => rects.get(id)!);
+  const headerCenter = (
+    Math.min(...headers.map((rect) => rect.left))
+    + Math.max(...headers.map((rect) => rect.right))
+  ) / 2;
+
+  assert.ok(Math.abs(rects.get("root")!.centerX - headerCenter) < 0.001);
+  assert.notEqual(rects.get("root")!.centerX, rects.get("first-wide-child")!.centerX);
+  assertNoOverlap(positionedNodes(nodes, placements));
 });
 
 test("Fold recenters a manually moved List root during automatic reflow", () => {
