@@ -11,6 +11,7 @@ import {
   selectionWithHierarchyDescendants,
   serializeManojalamClipboard,
   shouldHandleCanvasClipboard,
+  trimSelectedNodeContents,
   visibleBoardSelection,
 } from "./clipboard";
 
@@ -256,6 +257,65 @@ test("standalone clear content handles multiple shapes and text boxes without ch
   assert.equal(textData.fontSize, 24);
   assert.equal(textData.textColor, "#dc2626");
   assert.equal(cleared.nodes[2], nodes[2]);
+});
+
+test("selection trim cleans every selected object without flattening formatting", () => {
+  const nodes: Node[] = [
+    {
+      id: "shape",
+      type: "shape",
+      position: { x: 0, y: 0 },
+      data: {
+        text: "  First sentence.  ",
+        richText: "<p><strong>  First sentence.</strong>  Second sentence.  </p>",
+        fillColor: "#fef3c7",
+      },
+    },
+    {
+      id: "grammar",
+      type: "grammar",
+      position: { x: 100, y: 0 },
+      data: {
+        topic: "  Sandhi ",
+        rule: "  vowels combine  ",
+        examples: ["  deva + indra  ", "already clean"],
+        tags: ["  grammar  "],
+      },
+    },
+    {
+      id: "already-clean",
+      type: "text",
+      position: { x: 200, y: 0 },
+      data: { text: "Keep spacing inside", richText: "<p>Keep spacing inside</p>" },
+    },
+    {
+      id: "unselected",
+      type: "shape",
+      position: { x: 300, y: 0 },
+      data: { text: "  leave alone  " },
+    },
+  ];
+
+  const trimmed = trimSelectedNodeContents(
+    nodes,
+    new Set(["shape", "grammar", "already-clean"])
+  );
+  const shapeData = trimmed.nodes[0].data as Record<string, unknown>;
+  const grammarData = trimmed.nodes[1].data as Record<string, unknown>;
+
+  assert.deepEqual(trimmed.trimmedNodeIds, ["shape", "grammar"]);
+  assert.equal(shapeData.text, "First sentence.");
+  assert.equal(
+    shapeData.richText,
+    "<p><strong>First sentence.</strong>  Second sentence.</p>"
+  );
+  assert.equal(shapeData.fillColor, "#fef3c7");
+  assert.equal(grammarData.topic, "Sandhi");
+  assert.equal(grammarData.rule, "vowels combine");
+  assert.deepEqual(grammarData.examples, ["deva + indra", "already clean"]);
+  assert.deepEqual(grammarData.tags, ["grammar"]);
+  assert.equal(trimmed.nodes[2], nodes[2]);
+  assert.equal(trimmed.nodes[3], nodes[3]);
 });
 
 test("malformed or unsupported clipboard payloads are rejected", () => {

@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 import { includeAttachedExternalNoteIds } from "./node-note";
+import { trimRichTextContent } from "./rich-text-paste";
 
 export const MANOJALAM_NODES_MIME = "application/x-manojalam-nodes";
 export const MANOJALAM_CLIPBOARD_VERSION = 1;
@@ -50,6 +51,11 @@ const NODE_CONTENT_COLLECTIONS = [
 export interface ClearNodeContentsResult {
   nodes: Node[];
   clearedNodeIds: string[];
+}
+
+export interface TrimNodeContentsResult {
+  nodes: Node[];
+  trimmedNodeIds: string[];
 }
 
 const TEXT_EDITING_SELECTOR = [
@@ -225,6 +231,54 @@ export function clearSelectedNodeContents(
     return { ...node, data: clearNodeContent(data) };
   });
   return { nodes: nextNodes, clearedNodeIds };
+}
+
+/** Trim authored text boundaries while preserving inline rich-text formatting. */
+export function trimNodeContent(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  let next = data;
+  const setField = (field: string, value: unknown) => {
+    if (next === data) next = structuredClone(data);
+    next[field] = value;
+  };
+
+  for (const field of NODE_CONTENT_FIELDS) {
+    const value = data[field];
+    if (typeof value !== "string") continue;
+    const trimmed = field === "richText"
+      ? trimRichTextContent(value)
+      : value.trim();
+    if (trimmed !== value) setField(field, trimmed);
+  }
+  for (const field of NODE_CONTENT_COLLECTIONS) {
+    const value = data[field];
+    if (!Array.isArray(value)) continue;
+    const trimmed = value.map((item) =>
+      typeof item === "string" ? item.trim() : item
+    );
+    if (trimmed.some((item, index) => item !== value[index])) {
+      setField(field, trimmed);
+    }
+  }
+  return next;
+}
+
+/** Trim text inside every selected object in one immutable update. */
+export function trimSelectedNodeContents(
+  nodes: readonly Node[],
+  selectedNodeIds: ReadonlySet<string>
+): TrimNodeContentsResult {
+  const trimmedNodeIds: string[] = [];
+  const nextNodes = nodes.map((node) => {
+    if (!selectedNodeIds.has(node.id)) return node;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const trimmedData = trimNodeContent(data);
+    if (trimmedData === data) return node;
+    trimmedNodeIds.push(node.id);
+    return { ...node, data: trimmedData };
+  });
+  return { nodes: nextNodes, trimmedNodeIds };
 }
 
 export function serializeManojalamClipboard(payload: ManojalamClipboardPayload): string {

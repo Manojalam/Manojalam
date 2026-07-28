@@ -85,6 +85,7 @@ import {
   clearSelectedNodeContents,
   prepareDuplicatedNodeData,
   selectionWithHierarchyDescendants,
+  trimSelectedNodeContents,
   type ManojalamClipboardPayload,
 } from "@/lib/canvas/clipboard";
 import { mergeCustomColors, normalizeCustomColors } from "@/lib/canvas/custom-colors";
@@ -204,6 +205,7 @@ interface CanvasState {
   duplicateNode: (nodeId: string) => void;
   duplicateSelected: () => void;
   clearSelectedContent: () => void;
+  trimSelectedContent: () => number;
   createRelationshipDiagram: (
     spec: RelationshipDiagramSpec,
     anchorSunburstId?: string,
@@ -2318,6 +2320,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       nodes: cleared.nodes,
       saveStatus: "unsaved",
     });
+  },
+
+  trimSelectedContent: () => {
+    const { nodes, selectedNodeIds } = get();
+    if (!selectedNodeIds.length) return 0;
+    const trimmed = trimSelectedNodeContents(nodes, new Set(selectedNodeIds));
+    if (!trimmed.trimmedNodeIds.length) return 0;
+    get().pushHistory();
+    set({
+      nodes: trimmed.nodes,
+      saveStatus: "unsaved",
+    });
+    requestNodeInternalsRefresh(trimmed.trimmedNodeIds);
+    for (const nodeId of trimmed.trimmedNodeIds) {
+      get().scheduleListReflow(nodeId);
+      get().scheduleMatrixReflow(nodeId);
+      get().scheduleStructuredReflow(nodeId);
+    }
+    return trimmed.trimmedNodeIds.length;
   },
 
   createRelationshipDiagram: (spec, anchorSunburstId, frameSize) => {
