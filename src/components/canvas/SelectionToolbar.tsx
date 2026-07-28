@@ -930,7 +930,7 @@ export function SelectionToolbar() {
         <Copy className="h-4 w-4" />
       </ActionButton>
       <ActionButton
-        label="Trim leading and trailing spaces inside selected objects"
+        label="Trim leading and trailing spaces from every line inside selected objects"
         onClick={() => {
           const count = trimSelectedContent();
           if (!count) {
