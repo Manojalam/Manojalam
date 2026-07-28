@@ -9,6 +9,7 @@ import {
   sanitizePastedHtml,
   trimPastedHtmlBoundaries,
   trimRichTextContent,
+  trimTextContentLines,
 } from "./rich-text-paste";
 
 test("escapes clipboard text while retaining its paragraph structure", () => {
@@ -79,14 +80,20 @@ test("internal TipTap paste removes ProseMirror boundary padding without flatten
   );
 });
 
-test("object text trim preserves marks and interior sentence spacing", () => {
+test("object text trim cleans every authored line while preserving marks and interior spacing", () => {
+  assert.equal(
+    trimTextContentLines("  First sentence.  \n\tSecond sentence.\t\n\n  Third sentence.  "),
+    "First sentence.\nSecond sentence.\n\nThird sentence."
+  );
   assert.equal(
     trimRichTextContent(
-      '<p><strong> \u00a0 First sentence.</strong>  Middle sentence. '
-      + '<em>Last sentence.&nbsp; </em></p>'
+      '<p><strong> \u00a0 First sentence.  Middle sentence. </strong><br>'
+      + '<em> &nbsp; Second sentence.&nbsp; </em></p>'
+      + '<p><span style="color:#ef4444">  Third sentence.  </span></p>'
     ),
-    '<p><strong>First sentence.</strong>  Middle sentence. '
-      + '<em>Last sentence.</em></p>'
+    '<p><strong>First sentence.  Middle sentence.</strong><br>'
+      + '<em>Second sentence.</em></p>'
+      + '<p><span style="color:#ef4444">Third sentence.</span></p>'
   );
 });
 

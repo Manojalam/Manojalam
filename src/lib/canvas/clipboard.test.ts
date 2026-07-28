@@ -266,8 +266,8 @@ test("selection trim cleans every selected object without flattening formatting"
       type: "shape",
       position: { x: 0, y: 0 },
       data: {
-        text: "  First sentence.  ",
-        richText: "<p><strong>  First sentence.</strong>  Second sentence.  </p>",
+        text: "  First sentence.  \n  Second sentence.  ",
+        richText: "<p><strong>  First sentence.  </strong><br>  Second sentence.  </p>",
         fillColor: "#fef3c7",
       },
     },
@@ -277,8 +277,8 @@ test("selection trim cleans every selected object without flattening formatting"
       position: { x: 100, y: 0 },
       data: {
         topic: "  Sandhi ",
-        rule: "  vowels combine  ",
-        examples: ["  deva + indra  ", "already clean"],
+        rule: "  vowels combine  \n  without outer spaces  ",
+        examples: ["  deva + indra  \n  devendra  ", "already clean"],
         tags: ["  grammar  "],
       },
     },
@@ -304,15 +304,15 @@ test("selection trim cleans every selected object without flattening formatting"
   const grammarData = trimmed.nodes[1].data as Record<string, unknown>;
 
   assert.deepEqual(trimmed.trimmedNodeIds, ["shape", "grammar"]);
-  assert.equal(shapeData.text, "First sentence.");
+  assert.equal(shapeData.text, "First sentence.\nSecond sentence.");
   assert.equal(
     shapeData.richText,
-    "<p><strong>First sentence.</strong>  Second sentence.</p>"
+    "<p><strong>First sentence.</strong><br>Second sentence.</p>"
   );
   assert.equal(shapeData.fillColor, "#fef3c7");
   assert.equal(grammarData.topic, "Sandhi");
-  assert.equal(grammarData.rule, "vowels combine");
-  assert.deepEqual(grammarData.examples, ["deva + indra", "already clean"]);
+  assert.equal(grammarData.rule, "vowels combine\nwithout outer spaces");
+  assert.deepEqual(grammarData.examples, ["deva + indra\ndevendra", "already clean"]);
   assert.deepEqual(grammarData.tags, ["grammar"]);
   assert.equal(trimmed.nodes[2], nodes[2]);
   assert.equal(trimmed.nodes[3], nodes[3]);

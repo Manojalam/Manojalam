@@ -89,20 +89,52 @@ const LEADING_RICH_TEXT_SPACE =
   /^(?:(?:[\s\u00a0])|&nbsp;|&#160;|&#x0*a0;)+/i;
 const TRAILING_RICH_TEXT_SPACE =
   /(?:(?:[\s\u00a0])|&nbsp;|&#160;|&#x0*a0;)+$/i;
+const RICH_TEXT_LINE_BOUNDARY_ELEMENTS = new Set([
+  "address", "article", "aside", "blockquote", "div", "footer", "header",
+  "h1", "h2", "h3", "h4", "h5", "h6", "li", "main", "nav", "ol", "p",
+  "pre", "section", "ul",
+]);
 
-function trimRichTextTokens(html: string): string {
+function isRichTextLineBoundary(token: string): boolean {
+  const match = token.match(/^<\s*\/?\s*([a-z][\w:-]*)\b/i);
+  if (!match) return false;
+  const tagName = match[1].toLowerCase();
+  return tagName === "br" || RICH_TEXT_LINE_BOUNDARY_ELEMENTS.has(tagName);
+}
+
+function trimRichTextLines(html: string): string {
   const tokens = html.match(/<[^>]*>|[^<]+/g) ?? [];
+  let lineTextTokenIndexes: number[] = [];
+  let atLineStart = true;
+
+  const finishLine = () => {
+    for (let index = lineTextTokenIndexes.length - 1; index >= 0; index -= 1) {
+      const tokenIndex = lineTextTokenIndexes[index];
+      tokens[tokenIndex] = tokens[tokenIndex].replace(TRAILING_RICH_TEXT_SPACE, "");
+      if (tokens[tokenIndex]) break;
+    }
+    lineTextTokenIndexes = [];
+    atLineStart = true;
+  };
+
   for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index].startsWith("<")) continue;
-    tokens[index] = tokens[index].replace(LEADING_RICH_TEXT_SPACE, "");
-    if (tokens[index]) break;
+    if (tokens[index].startsWith("<")) {
+      if (isRichTextLineBoundary(tokens[index])) finishLine();
+      continue;
+    }
+    lineTextTokenIndexes.push(index);
+    if (atLineStart) {
+      tokens[index] = tokens[index].replace(LEADING_RICH_TEXT_SPACE, "");
+      if (tokens[index]) atLineStart = false;
+    }
   }
-  for (let index = tokens.length - 1; index >= 0; index -= 1) {
-    if (tokens[index].startsWith("<")) continue;
-    tokens[index] = tokens[index].replace(TRAILING_RICH_TEXT_SPACE, "");
-    if (tokens[index]) break;
-  }
+  finishLine();
   return tokens.join("");
+}
+
+/** Trim horizontal whitespace from every authored plain-text line. */
+export function trimTextContentLines(value: string): string {
+  return value.replace(/^[^\S\r\n]+|[^\S\r\n]+$/gm, "");
 }
 
 function firstTextNode(root: globalThis.Node): Text | null {
@@ -154,18 +186,11 @@ function trimPastedDomBoundaries(body: HTMLElement): void {
 }
 
 /**
- * Remove visible whitespace only from the outside of authored rich text.
- * Inline marks and all interior spacing remain untouched.
+ * Remove visible boundary whitespace from every authored rich-text line.
+ * Inline marks, blank lines, and all interior spacing remain untouched.
  */
 export function trimRichTextContent(html: string): string {
-  const bounded = trimPastedHtmlBoundaries(html);
-  const tokenTrimmed = trimRichTextTokens(bounded);
-  if (tokenTrimmed === html) return html;
-  if (typeof DOMParser === "undefined") return tokenTrimmed;
-
-  const parsed = new DOMParser().parseFromString(tokenTrimmed, "text/html");
-  trimPastedDomBoundaries(parsed.body);
-  return parsed.body.innerHTML;
+  return trimRichTextLines(html);
 }
 
 function unwrapElement(element: Element): void {

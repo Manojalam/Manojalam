@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 import { includeAttachedExternalNoteIds } from "./node-note";
-import { trimRichTextContent } from "./rich-text-paste";
+import { trimRichTextContent, trimTextContentLines } from "./rich-text-paste";
 
 export const MANOJALAM_NODES_MIME = "application/x-manojalam-nodes";
 export const MANOJALAM_CLIPBOARD_VERSION = 1;
@@ -248,14 +248,14 @@ export function trimNodeContent(
     if (typeof value !== "string") continue;
     const trimmed = field === "richText"
       ? trimRichTextContent(value)
-      : value.trim();
+      : trimTextContentLines(value);
     if (trimmed !== value) setField(field, trimmed);
   }
   for (const field of NODE_CONTENT_COLLECTIONS) {
     const value = data[field];
     if (!Array.isArray(value)) continue;
     const trimmed = value.map((item) =>
-      typeof item === "string" ? item.trim() : item
+      typeof item === "string" ? trimTextContentLines(item) : item
     );
     if (trimmed.some((item, index) => item !== value[index])) {
       setField(field, trimmed);
