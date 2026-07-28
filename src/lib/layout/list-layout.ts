@@ -248,6 +248,12 @@ export function computeListLayout(
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
   const density = LIST_DENSITIES[options.density ?? storedDensity];
+  const rootChildren = (hierarchy.get(rootId)?.childIds ?? []).filter((childId) => byId.has(childId));
+  const rootSections = resolvedFoldSections(rootData, rootChildren);
+  const rootFolded = rootSections.length > 1;
+  const rootContentGap = density.rootToFirstRowGapY + (
+    rootFolded ? Math.min(24, (rootSections.length - 1) * 6) : 0
+  );
   const generated: ListPlacements = Object.fromEntries(
     traversal.map((entry) => [entry.nodeId, { ...byId.get(entry.nodeId)!.position }])
   );
@@ -289,8 +295,8 @@ export function computeListLayout(
         children
       );
       const parentRect = rectAt(parent, parentPlacement);
-      const foldedRootClearance = parentId === rootId && sections.length > 1
-        ? density.rootToFirstRowGapY + Math.min(24, (sections.length - 1) * 6)
+      const foldedRootClearance = parentId === rootId && rootFolded
+        ? rootContentGap
         : null;
       const firstChildTop = parentRect.bottom + (
         foldedRootClearance
@@ -314,16 +320,6 @@ export function computeListLayout(
         columnLeft = sectionRight + DEFAULT_CHILD_GROUP_GAP;
       }
 
-      if (parentId === rootId && sections.length > 1) {
-        const foldedBounds = boundsForNodeIds(children, generated, byId);
-        const currentParentRect = rectAt(parent, generated[parentId]);
-        if (foldedBounds) {
-          generated[parentId] = {
-            x: generated[parentId].x + foldedBounds.centerX - currentParentRect.centerX,
-            y: generated[parentId].y,
-          };
-        }
-      }
     }
 
     arranging.delete(parentId);
@@ -347,6 +343,31 @@ export function computeListLayout(
       ? { ...node.position }
       : generated[entry.nodeId];
   }
+
+  const rootPlacement = placements[rootId];
+  const contentBounds = boundsForNodeIds(
+    traversal.slice(1).map((entry) => entry.nodeId),
+    placements,
+    byId
+  );
+  if (rootPlacement && contentBounds) {
+    const rootRect = rectAt(root, rootPlacement);
+    let nextRootPlacement = {
+      x: rootPlacement.x,
+      y: rootPlacement.y + contentBounds.top - rootContentGap - rootRect.height - rootRect.top,
+    };
+    if (rootFolded) {
+      const headerBounds = boundsForNodeIds(rootChildren, placements, byId);
+      if (headerBounds) {
+        nextRootPlacement = {
+          ...nextRootPlacement,
+          x: rootPlacement.x + headerBounds.centerX - rootRect.centerX,
+        };
+      }
+    }
+    placements[rootId] = nextRootPlacement;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
     if (
