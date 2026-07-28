@@ -6,6 +6,7 @@ import {
   configureStandaloneSvgViewport,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
   exportEdgeReferenceMatches,
+  foregroundExportTextCalloutZIndex,
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
   normalizedSelectedExportNodeZIndex,
@@ -85,6 +86,13 @@ test("removes React Flow's temporary selected-node elevation from exports", () =
   assert.equal(normalizedSelectedExportNodeZIndex("1020"), "20");
   assert.equal(normalizedSelectedExportNodeZIndex("999"), null);
   assert.equal(normalizedSelectedExportNodeZIndex("auto"), null);
+});
+
+test("keeps speech and thought callouts above ordinary exported nodes", () => {
+  assert.equal(foregroundExportTextCalloutZIndex("0"), "30");
+  assert.equal(foregroundExportTextCalloutZIndex("20"), "30");
+  assert.equal(foregroundExportTextCalloutZIndex("50"), "50");
+  assert.equal(foregroundExportTextCalloutZIndex("auto"), "30");
 });
 
 test("continues a non-strict export after the document font set rejects", async () => {

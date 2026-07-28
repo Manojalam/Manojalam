@@ -11,6 +11,7 @@ import { REACT_FLOW_SELECTED_NODE_Z_INDEX } from "../canvas/connector-control-la
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+const EXPORT_TEXT_CALLOUT_Z_INDEX = 30;
 
 const EDITOR_UI_SELECTORS = [
   "[data-export-ignore]",
@@ -571,6 +572,30 @@ export function normalizedSelectedExportNodeZIndex(value: string): string | null
   return String(elevated - REACT_FLOW_SELECTED_NODE_Z_INDEX);
 }
 
+export function foregroundExportTextCalloutZIndex(value: string): string {
+  const current = Number(value);
+  return String(Number.isFinite(current)
+    ? Math.max(current, EXPORT_TEXT_CALLOUT_Z_INDEX)
+    : EXPORT_TEXT_CALLOUT_Z_INDEX);
+}
+
+function moveExportTextCalloutsToForeground(clone: HTMLElement): number {
+  const calloutNodes = new Set<HTMLElement>();
+  for (const surface of Array.from(clone.querySelectorAll<HTMLElement>(
+    '[data-text-frame-style="speech"], [data-text-frame-style="thought"]'
+  ))) {
+    const node = surface.closest<HTMLElement>(".react-flow__node");
+    if (node) calloutNodes.add(node);
+  }
+  for (const node of calloutNodes) {
+    node.style.setProperty(
+      "z-index",
+      foregroundExportTextCalloutZIndex(node.style.zIndex)
+    );
+  }
+  return calloutNodes.size;
+}
+
 function restoreExportElements(clone: HTMLElement): void {
   const elements = Array.from(clone.querySelectorAll<HTMLElement | SVGElement>("[data-export-restore]"));
   for (const element of elements) {
@@ -992,6 +1017,7 @@ export function cloneReactFlowViewport(
       fill.removeAttribute("data-export-fill-node");
     }
     const removedSelectionElementCount = removeEditorSelectionChrome(clone);
+    moveExportTextCalloutsToForeground(clone);
     if (isTransparentExportBackground(options.background) && options.appearanceBackground) {
       // A transparent PNG may be viewed on black or another arbitrary color.
       // Preserve how translucent cards looked on the board without filling the
