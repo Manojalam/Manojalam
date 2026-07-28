@@ -942,6 +942,8 @@ type OrientedChildEntry = {
 type HorizontalBand = {
   y: number;
   height: number;
+  /** Ancestor cells before this row's terminal sibling group. */
+  prefixCount: number;
   cells: OrientedBranchCell[];
 };
 
@@ -983,6 +985,7 @@ function horizontalBands(child: OrientedChildEntry): HorizontalBand[] | null {
       return {
         y: band.y,
         height: band.bottom - band.y,
+        prefixCount: spanningPrefix.length,
         cells: [...spanningPrefix, ...band.cells]
           .sort((first, second) => first.x - second.x),
       };
@@ -1015,8 +1018,10 @@ function alignSiblingRowBands(
     const bands = horizontalBands(child);
     return bands ? [{ childIndex, bands }] : [];
   });
-  const rows = rowChildren.flatMap(({ bands }) => bands.map((band) => band.cells));
+  const allBands = rowChildren.flatMap(({ bands }) => bands);
+  const rows = allBands.map((band) => band.cells);
   if (rows.length < 2) return children;
+  const maximumPrefixCount = Math.max(...allBands.map((band) => band.prefixCount));
   const trackCount = preserveEmptySlots
     ? Math.max(...rows.map((row) => row.length))
     : rows[0].length;
@@ -1102,34 +1107,55 @@ function alignSiblingRowBands(
     if (!bands) return child;
     const replacements = new Map<string, OrientedBranchCell>();
     for (const band of bands) {
-      band.cells.forEach((cell, trackIndex) => {
+      const alignedCells = band.cells.map((cell, trackIndex) => ({
+        ...cell,
+        x: trackX[trackIndex],
+        width: widths[trackIndex],
+      }));
+      if (preserveEmptySlots && band.prefixCount < maximumPrefixCount) {
+        const terminals = alignedCells.filter((cell) => cell.horizontalTerminal);
+        const rowRight = Math.max(...alignedCells.map((cell) => cell.x + cell.width));
+        const extraWidth = Math.max(0, alignedWidth - rowRight);
+        let terminalShift = 0;
+        terminals.forEach((cell, terminalIndex) => {
+          const growth = proportionalShare(extraWidth, terminalIndex, terminals.length);
+          replacements.set(cell.nodeId, {
+            ...cell,
+            x: cell.x + terminalShift,
+            width: cell.width + growth,
+          });
+          terminalShift += growth;
+        });
+      }
+      alignedCells.forEach((cell) => {
+        if (replacements.has(cell.nodeId)) return;
         replacements.set(cell.nodeId, {
           ...cell,
-          x: trackX[trackIndex],
-          width: widths[trackIndex],
         });
       });
     }
     const placeholders = preserveEmptySlots
       ? bands.flatMap((band, bandIndex) =>
-        Array.from(
-          { length: trackCount - band.cells.length },
-          (_, index): OrientedBranchCell => {
-            const trackIndex = band.cells.length + index;
-            return {
-              nodeId: `__matrix-empty-${child.nodeId}-${bandIndex}-${trackIndex}`,
-              x: trackX[trackIndex],
-              y: band.y,
-              width: widths[trackIndex],
-              height: band.height,
-              requiredHeight: band.height,
-              terminal: true,
-              horizontalTerminal: true,
-              verticalTerminal: true,
-              placeholder: true,
-            };
-          }
-        )
+        band.prefixCount < maximumPrefixCount
+          ? []
+          : Array.from(
+            { length: trackCount - band.cells.length },
+            (_, index): OrientedBranchCell => {
+              const trackIndex = band.cells.length + index;
+              return {
+                nodeId: `__matrix-empty-${child.nodeId}-${bandIndex}-${trackIndex}`,
+                x: trackX[trackIndex],
+                y: band.y,
+                width: widths[trackIndex],
+                height: band.height,
+                requiredHeight: band.height,
+                terminal: true,
+                horizontalTerminal: true,
+                verticalTerminal: true,
+                placeholder: true,
+              };
+            }
+          )
       )
       : [];
     return {

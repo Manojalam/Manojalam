@@ -596,6 +596,82 @@ test("empty-slot mode derives tracks from the longest logical sibling row", () =
   assertClean(result);
 });
 
+test("a terminal grandchild merges across deeper sibling tracks in empty-slot mode", () => {
+  const { nodes, edges } = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      incompleteRowMode: "empty",
+    },
+    { id: "shallow-category", parentId: "root" },
+    { id: "terminal-grandchild", parentId: "shallow-category" },
+    { id: "single-parent", parentId: "shallow-category" },
+    { id: "single-great-grandchild", parentId: "single-parent" },
+    { id: "deep-category", parentId: "root" },
+    { id: "three-parent", parentId: "deep-category", childFlow: "row" },
+    { id: "great-grandchild-0", parentId: "three-parent" },
+    { id: "great-grandchild-1", parentId: "three-parent" },
+    { id: "great-grandchild-2", parentId: "three-parent" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const terminal = cells.get("terminal-grandchild")!;
+  const lastGreatGrandchild = cells.get("great-grandchild-2")!;
+  const singleGreatGrandchild = cells.get("single-great-grandchild")!;
+  const singleRowEmptyCells = result.emptyCells
+    .filter((cell) => Math.abs(cell.y - singleGreatGrandchild.y) < 0.5)
+    .sort((first, second) => first.x - second.x);
+  const renderedNodes = [result.header, ...result.cells].map<Node>((cell) => ({
+    id: cell.nodeId,
+    type: "shape",
+    position: { x: cell.x, y: cell.y },
+    style: { width: cell.width, height: cell.height },
+    data: {
+      matrixCell: true,
+      ...(cell.nodeId === "root"
+        ? {
+          matrixEmptySlots: result.emptyCells.map((empty) => ({
+            x: empty.x - result.bounds.left,
+            y: empty.y - result.bounds.top,
+            width: empty.width,
+            height: empty.height,
+          })),
+        }
+        : { parentId: hierarchy.get(cell.nodeId)?.parentId }),
+    },
+  }));
+  const frame = buildMatrixFrameNodes(renderedNodes, "root")[0];
+  const gridLines = (frame.data as Record<string, unknown>).matrixGridLines as Array<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }>;
+  const terminalCenterY = terminal.y + terminal.height / 2 - frame.position.y;
+  const divisionsThroughTerminal = gridLines.filter((line) => (
+    Math.abs(line.x1 - line.x2) < 0.5
+    && line.x1 > terminal.x - frame.position.x + 0.5
+    && line.x1 < terminal.x + terminal.width - frame.position.x - 0.5
+    && line.y1 <= terminalCenterY
+    && line.y2 >= terminalCenterY
+  ));
+
+  assert.ok(Math.abs(
+    terminal.x + terminal.width
+    - (lastGreatGrandchild.x + lastGreatGrandchild.width)
+  ) < 0.5);
+  assert.equal(
+    result.emptyCells.filter((cell) => Math.abs(cell.y - terminal.y) < 0.5).length,
+    0
+  );
+  assert.equal(singleRowEmptyCells.length, 2);
+  assert.ok(Math.abs(singleRowEmptyCells[0].x - cells.get("great-grandchild-1")!.x) < 0.5);
+  assert.ok(Math.abs(singleRowEmptyCells[1].x - lastGreatGrandchild.x) < 0.5);
+  assert.deepEqual(divisionsThroughTerminal, []);
+  assertClean(result);
+});
+
 test("incomplete compact rows stretch existing children by default", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, packCompactGroups: true },
