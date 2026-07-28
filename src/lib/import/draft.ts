@@ -172,6 +172,26 @@ export function compactRawHierarchy(rawRoots: RawHierarchyNode[]): HierarchyDraf
   return mergeRepeatedRoots(roots);
 }
 
+function preserveRawNode(raw: RawHierarchyNode): HierarchyDraftNode {
+  return createDraftNode(raw.text, {
+    children: raw.children.map(preserveRawNode),
+    confidence: raw.confidence,
+    source: raw.source,
+    warnings: raw.confidence < 0.75 ? ["Low-confidence text; please review."] : undefined,
+  });
+}
+
+/**
+ * Semantic sources such as nested HTML lists already state which elements are
+ * nodes. Preserve every source node instead of reclassifying punctuated or
+ * sentence-length labels as notes.
+ */
+export function preserveRawHierarchy(
+  rawRoots: RawHierarchyNode[]
+): HierarchyDraftNode[] {
+  return mergeRepeatedRoots(rawRoots.map(preserveRawNode));
+}
+
 function clusterIndentLevels(values: number[], tolerance: number): number[] {
   const sorted = [...values].sort((a, b) => a - b);
   const levels: number[] = [];
