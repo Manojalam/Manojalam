@@ -245,7 +245,9 @@ export function buildMatrixFrameNodes(
   const gridPadding = matrixCellDivisionPadding(rootData.matrixDensity);
   const outerBounds = enclosingRect(presentationNodes, gridPadding);
   if (!outerBounds) return [];
-  const lines = root && rootData.matrixGridVisible !== false
+  const gridVisible = rootData.matrixGridVisible !== false;
+  const outerBorderVisible = rootData.matrixOuterBorderVisible !== false;
+  const lines = root && gridVisible
     ? matrixGridLines(presentationNodes, outerBounds, gridPadding)
     : [];
   return [{
@@ -262,6 +264,8 @@ export function buildMatrixFrameNodes(
       borderWidth: MATRIX_GRID_STROKE_WIDTH,
       locked: true,
       matrixFrameFor: rootId,
+      matrixOuterBorderVisible: outerBorderVisible,
+      matrixGridVisible: gridVisible,
       matrixGridLines: lines,
       tags: [],
     },

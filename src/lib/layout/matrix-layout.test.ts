@@ -905,6 +905,8 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
   assert.equal(frames[0].style?.height, 250);
   const frameData = frames[0].data as Record<string, unknown>;
   assert.equal(frameData.borderWidth, 1);
+  assert.equal(frameData.matrixOuterBorderVisible, true);
+  assert.equal(frameData.matrixGridVisible, true);
   assert.deepEqual(frameData.matrixGridLines, [
     { x1: 0, y1: 72, x2: 344, y2: 72 },
     { x1: 0, y1: 134, x2: 344, y2: 134 },
@@ -938,7 +940,40 @@ test("hiding Matrix divisions keeps the single outer grid rectangle", () => {
 
   const frames = buildMatrixFrameNodes(nodes, "root");
   assert.equal(frames.length, 1);
-  assert.deepEqual((frames[0].data as Record<string, unknown>).matrixGridLines, []);
+  const frameData = frames[0].data as Record<string, unknown>;
+  assert.equal(frameData.matrixOuterBorderVisible, true);
+  assert.equal(frameData.matrixGridVisible, false);
+  assert.deepEqual(frameData.matrixGridLines, []);
+});
+
+test("hiding the overall Matrix border keeps internal cell divisions", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 20, y: 10 },
+      style: { width: 300, height: 60 },
+      data: {
+        matrixCell: true,
+        matrixOuterBorderVisible: false,
+        layoutVisualStyle: { fillColor: "#047857", borderColor: "#064e3b" },
+      },
+    },
+    {
+      id: "leaf",
+      type: "shape",
+      position: { x: 20, y: 80 },
+      style: { width: 100, height: 50 },
+      data: { parentId: "root", matrixCell: true },
+    },
+  ];
+
+  const frames = buildMatrixFrameNodes(nodes, "root");
+  assert.equal(frames.length, 1);
+  const frameData = frames[0].data as Record<string, unknown>;
+  assert.equal(frameData.matrixOuterBorderVisible, false);
+  assert.equal(frameData.matrixGridVisible, true);
+  assert.notDeepEqual(frameData.matrixGridLines, []);
 });
 
 test("generated Matrix empty slots extend the flat grid without a filled placeholder shape", () => {

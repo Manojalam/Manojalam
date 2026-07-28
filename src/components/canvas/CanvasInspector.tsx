@@ -4850,6 +4850,25 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Matrix table" visible={singleNodeTab === "layout"}>
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
+                <p className="text-[10px] font-medium text-foreground">Overall border</p>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Draw one border around the outside of the entire Matrix.
+                </p>
+              </div>
+              <Switch
+                checked={matrixRootData.matrixOuterBorderVisible !== false}
+                onCheckedChange={(checked) => {
+                  pushHistory();
+                  updateNodeData(matrixRootNode.id, {
+                    matrixOuterBorderVisible: checked ? undefined : false,
+                  });
+                  requestMatrixReflow(matrixRootNode.id);
+                }}
+                aria-label="Show overall Matrix border"
+              />
+            </div>
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
+              <div>
                 <p className="text-[10px] font-medium text-foreground">Cell divisions</p>
                 <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
                   Draw Matrix-owned boundaries around every cell without changing shape borders.
