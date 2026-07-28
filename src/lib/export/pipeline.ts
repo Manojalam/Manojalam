@@ -5,6 +5,7 @@ import { collectPdfLinkAnnotations, createBoardPdf } from "./pdf";
 import {
   prepareReactFlowDomSvg,
   type ExportBackgroundTexture,
+  type ExportHeaderOverlay,
 } from "./dom-renderer";
 import { createSvgRasterDataUrl } from "./svg-raster-source";
 import type { ExportAssetWarning } from "./resources";
@@ -36,9 +37,13 @@ export interface ExportBoardVisualOptions {
   background?: string | null;
   /** CSS texture layered over the exported background. */
   backgroundTexture?: ExportBackgroundTexture | null;
+  /** Optional export-only header rendered above the selected content. */
+  headerOverlay?: ExportHeaderOverlay | null;
   /** Preserve translucent object colors against this matte even when the outer export is transparent. */
   appearanceBackground?: string | null;
   viewportTransform?: { x: number; y: number; zoom: number };
+  /** Defaults to true. Set false when composing several renders into one download. */
+  download?: boolean;
   signal?: AbortSignal;
 }
 
@@ -49,8 +54,9 @@ export interface ExportBoardVisualResult {
   height: number;
   effectiveScale: number;
   plan?: ExportPlan;
+  blob: Blob;
   assetWarnings: ExportAssetWarning[];
-  downloadInitiated: true;
+  downloadInitiated: boolean;
 }
 
 type StageStatus = "completed" | "failed";
@@ -452,6 +458,7 @@ export async function exportBoardVisual(
       padding: 0,
       background: outputBackground,
       backgroundTexture: options.backgroundTexture,
+      headerOverlay: options.headerOverlay,
       appearanceBackground: options.appearanceBackground,
       title: options.title,
       signal: options.signal,
@@ -628,16 +635,19 @@ export async function exportBoardVisual(
     }
   }
 
-  const filename = sanitizedFilename(options.filename, options.format);
-  await runStage("initiate-download", {
-    ...baseDiagnostics,
-    blobCreated: true,
-  }, () => initiateBlobDownload(blob, filename, options.signal), {
-    signal: options.signal,
-    // Once anchor.click() returns, aborting cannot retract the initiated file.
-    checkAbortAfter: false,
-    completedDiagnostics: { downloadInitiated: true },
-  });
+  const downloadInitiated = options.download !== false;
+  if (downloadInitiated) {
+    const filename = sanitizedFilename(options.filename, options.format);
+    await runStage("initiate-download", {
+      ...baseDiagnostics,
+      blobCreated: true,
+    }, () => initiateBlobDownload(blob, filename, options.signal), {
+      signal: options.signal,
+      // Once anchor.click() returns, aborting cannot retract the initiated file.
+      checkAbortAfter: false,
+      completedDiagnostics: { downloadInitiated: true },
+    });
+  }
 
   return {
     exportId,
@@ -646,7 +656,8 @@ export async function exportBoardVisual(
     height,
     effectiveScale,
     ...(plan ? { plan } : {}),
+    blob,
     assetWarnings: prepared.assets.warnings,
-    downloadInitiated: true,
+    downloadInitiated,
   };
 }

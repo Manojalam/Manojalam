@@ -20,13 +20,19 @@ import { resolveExportTarget, resolveExportTargetWithBounds } from "@/lib/export
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
+import { exportMatrixSections } from "@/lib/export/matrix-section-export";
+import {
+  resolveMatrixSectionExportPlan,
+  type MatrixSectionExportPlan,
+} from "@/lib/export/matrix-sections";
 import {
   exportFormatSupportsTransparency,
   OPAQUE_EXPORT_FALLBACK_BACKGROUND,
   resolveElementExportBackground,
 } from "@/lib/export/background";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
-import type { ExportFormat, ExportScope } from "@/lib/export/types";
+import type { PdfPaperSize } from "@/lib/export/pdf";
+import type { ExportFormat, ExportPlan, ExportScope } from "@/lib/export/types";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore, type BoardExportRequest } from "@/store/ui-store";
@@ -34,6 +40,7 @@ import { useUIStore, type BoardExportRequest } from "@/store/ui-store";
 type DialogScope = "board" | "selection" | "subtree" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 type OpaqueFallback = "black" | "white";
+type MatrixOutputMode = "whole" | "sections";
 
 const DEFAULT_PADDING = 0;
 const EMPTY_IDS: string[] = [];
@@ -105,6 +112,12 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const hasSubtree = !!subtreeTarget?.nodeIds.some((nodeId) => nodeId !== subtreeRootId);
   const selectedFrameId = request.frameId
     ?? nodes.find((node) => requestedNodeIds.includes(node.id) && node.type === "frame")?.id;
+  const matrixRootNode = subtreeRootId
+    ? nodes.find((node) => (
+        node.id === subtreeRootId
+        && ((node.data ?? {}) as Record<string, unknown>).layoutMode === "matrix"
+      ))
+    : undefined;
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [scopeKind, setScopeKind] = useState<DialogScope>(() =>
     requestInitialScope(request, hasSelection, hasSubtree)
@@ -118,6 +131,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     () => !exportFormatSupportsTransparency(requestedFormat)
   );
   const [opaqueFallback, setOpaqueFallback] = useState<OpaqueFallback>("black");
+  const [matrixOutputMode, setMatrixOutputMode] = useState<MatrixOutputMode>("whole");
+  const [selectedMatrixSectionIds, setSelectedMatrixSectionIds] = useState<string[] | null>(null);
+  const [pdfPaperSize, setPdfPaperSize] = useState<PdfPaperSize>("letter");
   const [exporting, setExporting] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -166,6 +182,53 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     }
   }, [edges, exportScope, nodes, padding, root, viewportTransform]);
 
+  const matrixSectionPlanning = useMemo<{
+    value: MatrixSectionExportPlan | null;
+    error: ExportError | null;
+  }>(() => {
+    if (!root || !matrixRootNode || scopeKind !== "subtree") {
+      return { value: null, error: null };
+    }
+    try {
+      return {
+        value: resolveMatrixSectionExportPlan(matrixRootNode.id, nodes, edges, {
+          padding,
+          dom: {
+            root,
+            flowContainer: root,
+            viewport: viewportTransform,
+          },
+        }),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        value: null,
+        error: reportPreparationFailure(error),
+      };
+    }
+  }, [edges, matrixRootNode, nodes, padding, root, scopeKind, viewportTransform]);
+  const matrixSectionPlan = matrixSectionPlanning.value;
+  const allMatrixSectionIds = useMemo(
+    () => matrixSectionPlan?.sections.map((section) => section.id) ?? [],
+    [matrixSectionPlan]
+  );
+  const effectiveSelectedMatrixSectionIds = selectedMatrixSectionIds ?? allMatrixSectionIds;
+  const selectedMatrixSectionIdSet = useMemo(
+    () => new Set(effectiveSelectedMatrixSectionIds),
+    [effectiveSelectedMatrixSectionIds]
+  );
+  const selectedMatrixSections = useMemo(
+    () => matrixSectionPlan?.sections.filter((section) =>
+      selectedMatrixSectionIdSet.has(section.id)) ?? [],
+    [matrixSectionPlan, selectedMatrixSectionIdSet]
+  );
+  const sectionMode = (
+    matrixOutputMode === "sections"
+    && scopeKind === "subtree"
+    && !!matrixSectionPlan
+  );
+
   const rasterPlanning = useMemo(() => {
     if (!resolved.value || format === "svg") return { plan: null, error: null };
     try {
@@ -181,6 +244,23 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     }
   }, [format, requestedScale, resolved.value]);
   const rasterPlan = rasterPlanning.plan;
+  const matrixRasterPlanning = useMemo(() => {
+    if (!sectionMode || format === "svg") return { plans: [], error: null };
+    try {
+      return {
+        plans: selectedMatrixSections.map((section) =>
+          createPngExportPlan(section.bounds, requestedScale)),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        plans: [],
+        error: error instanceof Error
+          ? error.message
+          : "Choose a valid export scale greater than zero.",
+      };
+    }
+  }, [format, requestedScale, sectionMode, selectedMatrixSections]);
 
   const boardBackground = useMemo(() => {
     if (!root) return { background: "#ffffff", appearanceBackground: "#ffffff" };
@@ -204,18 +284,36 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   };
 
   const fitToSafeSize = () => {
-    if (!rasterPlan) return;
+    const safeScale = sectionMode
+      ? Math.min(...matrixRasterPlanning.plans.map((plan) => plan.effectiveScale))
+      : rasterPlan?.effectiveScale;
+    if (!safeScale || !Number.isFinite(safeScale)) return;
     setScaleChoice("custom");
-    setCustomScale(rasterPlan.effectiveScale);
+    setCustomScale(safeScale);
   };
 
   const submit = async () => {
-    if (!root || !resolved.value) {
-      toast.error(resolved.error?.userMessage ?? "The board export area is not ready.");
+    if (!root || (!sectionMode && !resolved.value)) {
+      toast.error(
+        matrixSectionPlanning.error?.userMessage
+        ?? resolved.error?.userMessage
+        ?? "The board export area is not ready."
+      );
       return;
     }
-    if (format !== "svg" && !rasterPlan) {
-      toast.error(rasterPlanning.error ?? "Choose a valid export scale greater than zero.");
+    if (sectionMode && selectedMatrixSections.length === 0) {
+      toast.error("Select at least one Matrix section to export.");
+      return;
+    }
+    if (
+      format !== "svg"
+      && (sectionMode ? matrixRasterPlanning.plans.length === 0 : !rasterPlan)
+    ) {
+      toast.error(
+        sectionMode
+          ? matrixRasterPlanning.error ?? "Choose a valid export scale greater than zero."
+          : rasterPlanning.error ?? "Choose a valid export scale greater than zero."
+      );
       return;
     }
 
@@ -224,6 +322,41 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     abortControllerRef.current = abortController;
     const toastId = toast.loading(`Preparing ${format.toUpperCase()} export…`);
     try {
+      if (sectionMode) {
+        const result = await exportMatrixSections({
+          viewport: root,
+          sections: selectedMatrixSections,
+          format,
+          requestedScale,
+          filename: request.title || boardTitle,
+          title: request.title || boardTitle,
+          background: exportBackground,
+          backgroundTexture: includeBackground ? boardTextureStyle(canvasTexture) : null,
+          appearanceBackground: boardBackground.appearanceBackground,
+          viewportTransform,
+          pdfPaperSize,
+          signal: abortController.signal,
+          onProgress: (completed, total) => {
+            toast.loading(
+              `Preparing ${format.toUpperCase()} section ${completed} of ${total}…`,
+              { id: toastId }
+            );
+          },
+        });
+        const adjusted = result.adjusted
+          ? ` at the safe ${formatScale(result.effectiveScale)} scale`
+          : "";
+        const outputDescription = format === "pdf"
+          ? `${result.pageCount} printable page${result.pageCount === 1 ? "" : "s"}`
+          : `${result.outputCount} separate ${format.toUpperCase()} file${result.outputCount === 1 ? "" : "s"}`;
+        toast.success(
+          `${outputDescription} download initiated${adjusted}.`,
+          { id: toastId }
+        );
+        close();
+        return;
+      }
+      if (!resolved.value) return;
       const result = await exportBoardVisual({
         viewport: root,
         bounds: resolved.value.bounds,
@@ -269,10 +402,47 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     close();
   };
 
-  const bounds = resolved.value?.bounds;
-  const outputWidth = format !== "svg" ? rasterPlan?.outputWidth : bounds ? Math.ceil(bounds.width) : null;
-  const outputHeight = format !== "svg" ? rasterPlan?.outputHeight : bounds ? Math.ceil(bounds.height) : null;
-  const megapixels = format !== "svg" ? rasterPlan?.megapixels : null;
+  const sectionBounds = sectionMode && selectedMatrixSections.length > 0
+    ? {
+        width: Math.max(...selectedMatrixSections.map((section) => section.bounds.width)),
+        height: Math.max(...selectedMatrixSections.map((section) => section.bounds.height)),
+      }
+    : null;
+  const bounds = sectionBounds ?? resolved.value?.bounds;
+  const outputWidth = sectionMode
+    ? format !== "svg"
+      ? Math.max(0, ...matrixRasterPlanning.plans.map((plan) => plan.outputWidth))
+      : sectionBounds ? Math.ceil(sectionBounds.width) : null
+    : format !== "svg"
+      ? rasterPlan?.outputWidth
+      : bounds ? Math.ceil(bounds.width) : null;
+  const outputHeight = sectionMode
+    ? format !== "svg"
+      ? Math.max(0, ...matrixRasterPlanning.plans.map((plan) => plan.outputHeight))
+      : sectionBounds ? Math.ceil(sectionBounds.height) : null
+    : format !== "svg"
+      ? rasterPlan?.outputHeight
+      : bounds ? Math.ceil(bounds.height) : null;
+  const megapixels = format !== "svg"
+    ? sectionMode
+      ? matrixRasterPlanning.plans.reduce((total, plan) => total + plan.megapixels, 0)
+      : rasterPlan?.megapixels
+    : null;
+  const activeRasterPlans = sectionMode ? matrixRasterPlanning.plans : rasterPlan ? [rasterPlan] : [];
+  const activeAdjusted = activeRasterPlans.some((plan) => plan.adjusted);
+  const activeEffectiveScale = activeRasterPlans.length > 0
+    ? Math.min(...activeRasterPlans.map((plan) => plan.effectiveScale))
+    : null;
+  const limitingRasterPlan = activeRasterPlans.reduce(
+    (limiting, plan) => !limiting || plan.effectiveScale < limiting.effectiveScale ? plan : limiting,
+    null as ExportPlan | null
+  );
+  const preparationError = sectionMode
+    ? matrixSectionPlanning.error?.userMessage ?? matrixRasterPlanning.error
+    : resolved.error?.userMessage ?? rasterPlanning.error;
+  const canExport = !!root
+    && (sectionMode ? selectedMatrixSections.length > 0 : !!resolved.value)
+    && (format === "svg" || activeRasterPlans.length > 0);
 
   return (
     <Dialog open onOpenChange={(open) => !open && closeDialog()}>
@@ -326,7 +496,12 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                 );
               })}
             </div>
-            {resolved.value && (
+            {sectionMode ? (
+              <p className="text-[10px] text-muted-foreground">
+                {selectedMatrixSections.length} of {matrixSectionPlan.sections.length} Matrix section
+                {matrixSectionPlan.sections.length === 1 ? "" : "s"} selected
+              </p>
+            ) : resolved.value && (
               <p className="text-[10px] text-muted-foreground">
                 {resolved.value.target.nodeIds.length} visible node{resolved.value.target.nodeIds.length === 1 ? "" : "s"}
                 {" · "}{resolved.value.target.edgeIds.length} connection{resolved.value.target.edgeIds.length === 1 ? "" : "s"}
@@ -338,6 +513,105 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               </p>
             )}
           </section>
+
+          {matrixSectionPlan && scopeKind === "subtree" && (
+            <section className="space-y-2.5">
+              <Label className="text-xs">Matrix output</Label>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Matrix export arrangement">
+                <button
+                  type="button"
+                  aria-pressed={matrixOutputMode === "whole"}
+                  onClick={() => setMatrixOutputMode("whole")}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-left",
+                    matrixOutputMode === "whole"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  <span className="block text-[11px] font-medium">Whole Matrix</span>
+                  <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                    One complete file
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={matrixOutputMode === "sections"}
+                  onClick={() => setMatrixOutputMode("sections")}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-left",
+                    matrixOutputMode === "sections"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  <span className="block text-[11px] font-medium">Selected sections</span>
+                  <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                    One page or file each
+                  </span>
+                </button>
+              </div>
+              {matrixOutputMode === "sections" && (
+                <div className="rounded-lg border p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-medium">
+                      Choose one, several, or all sections
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-[9px] font-medium text-primary hover:underline"
+                        onClick={() => setSelectedMatrixSectionIds(allMatrixSectionIds)}
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[9px] font-medium text-muted-foreground hover:text-foreground"
+                        onClick={() => setSelectedMatrixSectionIds([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-36 space-y-1.5 overflow-y-auto pr-1">
+                    {matrixSectionPlan.sections.map((section) => {
+                      const checked = selectedMatrixSectionIdSet.has(section.id);
+                      return (
+                        <label
+                          key={section.id}
+                          className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const next = new Set(effectiveSelectedMatrixSectionIds);
+                              if (checked) next.delete(section.id);
+                              else next.add(section.id);
+                              setSelectedMatrixSectionIds(
+                                matrixSectionPlan.sections
+                                  .map((candidate) => candidate.id)
+                                  .filter((id) => next.has(id))
+                              );
+                            }}
+                            className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                          />
+                          <span className="min-w-0 text-[10px] leading-snug">
+                            <span className="mr-1 text-muted-foreground">{section.index + 1}.</span>
+                            {section.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
+                    The Matrix root is repeated as a full-width header and resized for every selected section.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="space-y-2.5">
             <Label className="text-xs">Format</Label>
@@ -376,6 +650,37 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               </button>
             </div>
           </section>
+
+          {sectionMode && format === "pdf" && (
+            <section className="space-y-2.5">
+              <Label className="text-xs">Print paper</Label>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="PDF paper size">
+                {([
+                  ["letter", "Letter", "8.5 × 11 in"],
+                  ["a4", "A4", "210 × 297 mm"],
+                ] as Array<[PdfPaperSize, string, string]>).map(([value, label, detail]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={pdfPaperSize === value}
+                    onClick={() => setPdfPaperSize(value)}
+                    className={cn(
+                      "rounded-lg border px-3 py-2 text-left",
+                      pdfPaperSize === value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    <span className="block text-[11px] font-medium">{label}</span>
+                    <span className="mt-0.5 block text-[9px] text-muted-foreground">{detail}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted-foreground">
+                Each section is fitted to its own page; portrait or landscape is chosen automatically.
+              </p>
+            </section>
+          )}
 
           {format !== "svg" && (
             <section className="space-y-3">
@@ -480,37 +785,55 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <Gauge className="h-4 w-4 text-primary" />
               <p className="text-xs font-semibold">Export calculation</p>
             </div>
-            {resolved.error ? (
-              <p className="text-xs text-destructive" role="alert">{resolved.error.userMessage}</p>
-            ) : rasterPlanning.error ? (
-              <p className="text-xs text-destructive" role="alert">{rasterPlanning.error}</p>
+            {preparationError ? (
+              <p className="text-xs text-destructive" role="alert">{preparationError}</p>
+            ) : sectionMode && selectedMatrixSections.length === 0 ? (
+              <p className="text-xs text-destructive" role="alert">
+                Select at least one Matrix section.
+              </p>
             ) : bounds && outputWidth && outputHeight ? (
               <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
-                <span className="text-muted-foreground">Content</span>
+                <span className="text-muted-foreground">
+                  {sectionMode ? "Largest section" : "Content"}
+                </span>
                 <span className="text-right font-medium">{formatDimension(bounds.width)} × {formatDimension(bounds.height)}</span>
                 <span className="text-muted-foreground">Scale</span>
-                <span className="text-right font-medium">{format !== "svg" && rasterPlan ? formatScale(rasterPlan.effectiveScale) : "Vector"}</span>
-                <span className="text-muted-foreground">{format === "pdf" ? "Embedded image" : "Output"}</span>
+                <span className="text-right font-medium">
+                  {format !== "svg" && activeEffectiveScale ? formatScale(activeEffectiveScale) : "Vector"}
+                </span>
+                <span className="text-muted-foreground">
+                  {sectionMode ? "Largest image" : format === "pdf" ? "Embedded image" : "Output"}
+                </span>
                 <span className="text-right font-medium">
                   {outputWidth.toLocaleString()} × {outputHeight.toLocaleString()}{format === "pdf" ? " px" : ""}
                 </span>
                 {megapixels !== null && megapixels !== undefined && (
                   <>
-                    <span className="text-muted-foreground">Pixels</span>
+                    <span className="text-muted-foreground">
+                      {sectionMode ? "Combined pixels" : "Pixels"}
+                    </span>
                     <span className="text-right font-medium">{megapixels.toFixed(1)} MP</span>
                   </>
                 )}
                 <span className="text-muted-foreground">Status</span>
-                <span className={cn("text-right font-semibold", rasterPlan?.adjusted ? "text-amber-600" : "text-emerald-600")}>
-                  {format === "svg" ? "Vector · no canvas limit" : format === "pdf" ? "Single page · clickable links" : rasterPlan?.adjusted ? "Adjusted to safe size" : "Safe"}
+                <span className={cn("text-right font-semibold", activeAdjusted ? "text-amber-600" : "text-emerald-600")}>
+                  {sectionMode
+                    ? format === "pdf"
+                      ? `${selectedMatrixSections.length} page${selectedMatrixSections.length === 1 ? "" : "s"} · ${pdfPaperSize === "letter" ? "Letter" : "A4"}`
+                      : `${selectedMatrixSections.length} separate ${format.toUpperCase()} file${selectedMatrixSections.length === 1 ? "" : "s"}`
+                    : format === "svg"
+                      ? "Vector · no canvas limit"
+                      : format === "pdf"
+                        ? "Single page · clickable links"
+                        : activeAdjusted ? "Adjusted to safe size" : "Safe"}
                 </span>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">Measuring the visible board content…</p>
             )}
-            {rasterPlan?.adjusted && (
+            {activeAdjusted && limitingRasterPlan && (
               <div className="mt-3 rounded-lg bg-amber-500/10 p-3 text-[10px] leading-relaxed text-amber-800 dark:text-amber-200">
-                This content is too large for {formatScale(rasterPlan.requestedScale)} {format.toUpperCase()} export. It will export at the safe {formatScale(rasterPlan.effectiveScale)} scale, producing {rasterPlan.outputWidth.toLocaleString()} × {rasterPlan.outputHeight.toLocaleString()} pixels.
+                {sectionMode ? "At least one selected section is" : "This content is"} too large for {formatScale(limitingRasterPlan.requestedScale)} {format.toUpperCase()} export. It will export at the safe {formatScale(limitingRasterPlan.effectiveScale)} scale, with the largest constrained image producing {limitingRasterPlan.outputWidth.toLocaleString()} × {limitingRasterPlan.outputHeight.toLocaleString()} pixels.
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={fitToSafeSize}>
                     Fit to safe {format.toUpperCase()} size
@@ -528,7 +851,16 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             )}
             {format === "pdf" && (
               <p className="mt-3 flex items-center gap-2 rounded-lg bg-blue-500/10 p-2 text-[10px] text-blue-700 dark:text-blue-200">
-                <Link2 className="h-3.5 w-3.5" /> Links in chart text remain clickable in the PDF.
+                <Link2 className="h-3.5 w-3.5" />
+                {sectionMode
+                  ? "Each selected section is fitted to its own printable page; chart links remain clickable."
+                  : "Links in chart text remain clickable in the PDF."}
+              </p>
+            )}
+            {sectionMode && format !== "pdf" && selectedMatrixSections.length > 1 && (
+              <p className="mt-3 flex items-center gap-2 rounded-lg bg-blue-500/10 p-2 text-[10px] text-blue-700 dark:text-blue-200">
+                <Layers3 className="h-3.5 w-3.5" />
+                Your browser may ask permission to allow the {selectedMatrixSections.length} separate downloads.
               </p>
             )}
           </section>
@@ -542,8 +874,12 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             <Button className="max-sm:flex-1" variant="outline" onClick={closeDialog}>
               {exporting ? "Cancel export" : "Cancel"}
             </Button>
-            <Button className="max-sm:flex-1" onClick={() => void submit()} disabled={exporting || !resolved.value || (format !== "svg" && !rasterPlan)}>
-              {exporting ? "Exporting…" : `Export ${format.toUpperCase()}`}
+            <Button className="max-sm:flex-1" onClick={() => void submit()} disabled={exporting || !canExport}>
+              {exporting
+                ? "Exporting…"
+                : sectionMode
+                  ? `Export ${selectedMatrixSections.length} section${selectedMatrixSections.length === 1 ? "" : "s"}`
+                  : `Export ${format.toUpperCase()}`}
             </Button>
           </div>
         </div>
