@@ -148,12 +148,18 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   const root = getNodeRect(placed.find((node) => node.id === "root")!);
   const foldedLeft = Math.min(...placed.filter((node) => node.id !== "root").map((node) => getNodeRect(node).left));
   const foldedRight = Math.max(...placed.filter((node) => node.id !== "root").map((node) => getNodeRect(node).right));
+  const foldedTop = Math.min(...placed.filter((node) => node.id !== "root").map((node) => getNodeRect(node).top));
   const model = buildListConnectorModel(placed, fixture.edges);
   const group = model.groups.find((candidate) => candidate.parentId === "root");
 
   assert.equal(first.top, sixth.top);
   assert.ok(sixth.left > first.right);
   assert.ok(Math.abs(root.centerX - (foldedLeft + foldedRight) / 2) < 0.001);
+  assert.equal(
+    foldedTop - root.bottom,
+    LIST_DENSITIES.compact.rootToFirstRowGapY + 6,
+    "the folded List root stays above its sections"
+  );
   assert.equal(group?.branches.length, 10);
   assert.equal(group?.sharedSegments.length, 6);
   const verticalTrunks = group!.sharedSegments.filter((segment) => segment.x1 === segment.x2);
@@ -210,13 +216,23 @@ test("Fold recenters a manually moved List root during automatic reflow", () => 
       height: 58,
     })),
   ]);
-  const nodes = fixture.nodes.map((node) => node.id === "root"
-    ? {
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "root") {
+      return {
         ...node,
-        position: { x: 40, y: node.position.y },
+        position: { x: 40, y: 420 },
         data: { ...node.data, layoutFoldCount: 3, listManualOverride: true },
-      }
-    : node);
+      };
+    }
+    if (node.id === "child-0") {
+      return {
+        ...node,
+        position: { x: node.position.x, y: 40 },
+        data: { ...node.data, listManualOverride: true },
+      };
+    }
+    return node;
+  });
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const placements = computeListLayout(
     "root",
@@ -225,6 +241,7 @@ test("Fold recenters a manually moved List root during automatic reflow", () => 
     { preserveManualOverrides: true }
   );
   const rects = positionedRects(nodes, placements);
+  const root = rects.get("root")!;
   const children = Array.from({ length: 6 }, (_, index) => rects.get(`child-${index}`)!);
   const childCenter = (
     Math.min(...children.map((rect) => rect.left))
@@ -232,7 +249,54 @@ test("Fold recenters a manually moved List root during automatic reflow", () => 
   ) / 2;
 
   assert.notEqual(placements.root.x, 40);
-  assert.ok(Math.abs(rects.get("root")!.centerX - childCenter) < 0.001);
+  assert.ok(Math.abs(root.centerX - childCenter) < 0.001);
+  assert.equal(
+    Math.min(...children.map((rect) => rect.top)) - root.bottom,
+    LIST_DENSITIES.compact.rootToFirstRowGapY + 12,
+    "a folded List root is top-center even after manual positions are restored"
+  );
+});
+
+test("an unfolded List keeps its root above the content without centering it", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "first", parentId: "root", width: 180, height: 58 },
+    { id: "second", parentId: "root", width: 180, height: 58 },
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "root") {
+      return {
+        ...node,
+        position: { x: 40, y: 420 },
+        data: { ...node.data, listManualOverride: true },
+      };
+    }
+    if (node.id === "first") {
+      return {
+        ...node,
+        position: { x: node.position.x, y: 40 },
+        data: { ...node.data, listManualOverride: true },
+      };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    { preserveManualOverrides: true }
+  );
+  const rects = positionedRects(nodes, placements);
+  const root = rects.get("root")!;
+  const contentTop = Math.min(rects.get("first")!.top, rects.get("second")!.top);
+
+  assert.equal(placements.root.x, 40, "only folded Lists center the root horizontally");
+  assert.equal(
+    contentTop - root.bottom,
+    LIST_DENSITIES.compact.rootToFirstRowGapY,
+    "every List root stays above its content"
+  );
 });
 
 test("Fold compacts the next List branch after child sections move sideways", () => {
