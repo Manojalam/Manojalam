@@ -6,6 +6,7 @@ import {
   prepareReactFlowDomSvg,
   type ExportBackgroundTexture,
   type ExportHeaderOverlay,
+  type ExportLayoutAdjustment,
 } from "./dom-renderer";
 import { createSvgRasterDataUrl } from "./svg-raster-source";
 import type { ExportAssetWarning } from "./resources";
@@ -39,6 +40,8 @@ export interface ExportBoardVisualOptions {
   backgroundTexture?: ExportBackgroundTexture | null;
   /** Optional export-only header rendered above the selected content. */
   headerOverlay?: ExportHeaderOverlay | null;
+  /** Optional export-only hierarchy compaction. */
+  layoutAdjustment?: ExportLayoutAdjustment | null;
   /** Preserve translucent object colors against this matte even when the outer export is transparent. */
   appearanceBackground?: string | null;
   viewportTransform?: { x: number; y: number; zoom: number };
@@ -459,6 +462,7 @@ export async function exportBoardVisual(
       background: outputBackground,
       backgroundTexture: options.backgroundTexture,
       headerOverlay: options.headerOverlay,
+      layoutAdjustment: options.layoutAdjustment,
       appearanceBackground: options.appearanceBackground,
       title: options.title,
       signal: options.signal,

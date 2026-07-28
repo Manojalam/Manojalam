@@ -3,12 +3,17 @@ import type { Edge, Node } from "@xyflow/react";
 import { resolvedFoldSections } from "../layout/child-group-wrap";
 import { buildHierarchy } from "../layout/hierarchy";
 import { matrixCellBorderRadius } from "../layout/matrix-presentation";
+import { resolveConnectorPathStyle } from "../canvas/connector-path-style";
+import type { VidyaEdgeData } from "../types";
 import {
   computeTightExportBounds,
   resolveExportTarget,
   type ExportDomBoundsContext,
 } from "./bounds";
-import type { ExportHeaderOverlay } from "./dom-renderer";
+import type {
+  ExportHeaderOverlay,
+  ExportLayoutAdjustment,
+} from "./dom-renderer";
 import type { ExportBounds } from "./types";
 
 export interface HierarchySectionExport {
@@ -21,6 +26,7 @@ export interface HierarchySectionExport {
   edgeIds: string[];
   bounds: ExportBounds;
   headerOverlay?: ExportHeaderOverlay;
+  layoutAdjustment?: ExportLayoutAdjustment;
 }
 
 export interface HierarchySectionExportPlan {
@@ -36,6 +42,111 @@ export interface HierarchySectionExportPlan {
 export interface HierarchySectionExportPlanOptions {
   padding?: number;
   dom?: ExportDomBoundsContext | null;
+}
+
+export type CompactHierarchyDirection = "right" | "left" | "below" | "above";
+
+export interface CompactHierarchyPlacement {
+  direction: CompactHierarchyDirection;
+  dx: number;
+  dy: number;
+  bounds: ExportBounds;
+}
+
+const COMPACT_PARENT_CHILD_GAP = 48;
+
+export function compactHierarchyPlacement(
+  parentBounds: ExportBounds,
+  groupBounds: ExportBounds,
+  gap = COMPACT_PARENT_CHILD_GAP
+): CompactHierarchyPlacement {
+  const parentRight = parentBounds.x + parentBounds.width;
+  const parentBottom = parentBounds.y + parentBounds.height;
+  const groupRight = groupBounds.x + groupBounds.width;
+  const groupBottom = groupBounds.y + groupBounds.height;
+  const candidates: Array<{ direction: CompactHierarchyDirection; distance: number }> = [
+    { direction: "right", distance: groupBounds.x - parentRight },
+    { direction: "left", distance: parentBounds.x - groupRight },
+    { direction: "below", distance: groupBounds.y - parentBottom },
+    { direction: "above", distance: parentBounds.y - groupBottom },
+  ];
+  let direction = candidates.sort((first, second) => second.distance - first.distance)[0].direction;
+  if (candidates[0].distance < 0) {
+    const horizontalDelta = (
+      groupBounds.x + groupBounds.width / 2
+    ) - (
+      parentBounds.x + parentBounds.width / 2
+    );
+    const verticalDelta = (
+      groupBounds.y + groupBounds.height / 2
+    ) - (
+      parentBounds.y + parentBounds.height / 2
+    );
+    direction = Math.abs(horizontalDelta) >= Math.abs(verticalDelta)
+      ? horizontalDelta >= 0 ? "right" : "left"
+      : verticalDelta >= 0 ? "below" : "above";
+  }
+
+  const dx = direction === "right"
+    ? parentRight + gap - groupBounds.x
+    : direction === "left"
+      ? parentBounds.x - gap - groupRight
+      : 0;
+  const dy = direction === "below"
+    ? parentBottom + gap - groupBounds.y
+    : direction === "above"
+      ? parentBounds.y - gap - groupBottom
+      : 0;
+  const movedGroup = {
+    x: groupBounds.x + dx,
+    y: groupBounds.y + dy,
+    width: groupBounds.width,
+    height: groupBounds.height,
+  };
+  const left = Math.min(parentBounds.x, movedGroup.x);
+  const top = Math.min(parentBounds.y, movedGroup.y);
+  const right = Math.max(parentRight, movedGroup.x + movedGroup.width);
+  const bottom = Math.max(parentBottom, movedGroup.y + movedGroup.height);
+  return {
+    direction,
+    dx,
+    dy,
+    bounds: {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    },
+  };
+}
+
+function compactConnectorPath(
+  parentBounds: ExportBounds,
+  targetBounds: ExportBounds,
+  direction: CompactHierarchyDirection
+): string {
+  const parentCenterX = parentBounds.x + parentBounds.width / 2;
+  const parentCenterY = parentBounds.y + parentBounds.height / 2;
+  const targetCenterX = targetBounds.x + targetBounds.width / 2;
+  const targetCenterY = targetBounds.y + targetBounds.height / 2;
+  if (direction === "right" || direction === "left") {
+    const sourceX = direction === "right"
+      ? parentBounds.x + parentBounds.width
+      : parentBounds.x;
+    const targetX = direction === "right"
+      ? targetBounds.x
+      : targetBounds.x + targetBounds.width;
+    const middleX = (sourceX + targetX) / 2;
+    return `M ${sourceX} ${parentCenterY} H ${middleX} V ${targetCenterY} H ${targetX}`;
+  }
+  const sourceY = direction === "below"
+    ? parentBounds.y + parentBounds.height
+    : parentBounds.y;
+  const targetY = direction === "below"
+    ? targetBounds.y
+    : targetBounds.y + targetBounds.height;
+  const middleY = (sourceY + targetY) / 2;
+  return `M ${parentCenterX} ${sourceY} V ${middleY} H ${targetCenterX} V ${targetY}`;
 }
 
 function finiteDimension(value: unknown): number | null {
@@ -159,12 +270,21 @@ export function resolveHierarchySectionExportPlan(
       );
       for (const nodeId of subtree.nodeIds) includedNodeIds.add(nodeId);
     }
-    if (!parentIsMatrix) includedNodeIds.add(parentId);
-    return resolveExportTarget(
+    const childTarget = resolveExportTarget(
       { kind: "selection", nodeIds: [...includedNodeIds], edgeIds: [] },
       nodes,
       edges
     );
+    if (parentIsMatrix) return { target: childTarget, childTarget };
+    includedNodeIds.add(parentId);
+    return {
+      childTarget,
+      target: resolveExportTarget(
+        { kind: "selection", nodeIds: [...includedNodeIds], edgeIds: [] },
+        nodes,
+        edges
+      ),
+    };
   };
 
   const createGroup = (
@@ -174,11 +294,20 @@ export function resolveHierarchySectionExportPlan(
     childIds: string[],
     headerBoundsForContent?: (contentBounds: ExportBounds) => ExportBounds
   ): HierarchySectionExport => {
-    const target = targetForChildren(childIds);
+    const { target, childTarget } = targetForChildren(childIds);
     const contentBounds = computeTightExportBounds(target, {
       padding: 0,
       dom: options.dom,
     });
+    const childBounds = parentIsMatrix
+      ? contentBounds
+      : computeTightExportBounds(childTarget, {
+          padding: 0,
+          dom: options.dom,
+        });
+    const compactPlacement = parentIsMatrix
+      ? null
+      : compactHierarchyPlacement(parentBounds, childBounds);
     const headerBounds = parentIsMatrix
       ? headerBoundsForContent?.(contentBounds) ?? {
           x: contentBounds.x,
@@ -187,15 +316,20 @@ export function resolveHierarchySectionExportPlan(
           height: headerHeight,
         }
       : null;
-    const left = Math.min(contentBounds.x, headerBounds?.x ?? contentBounds.x);
-    const top = Math.min(contentBounds.y, headerBounds?.y ?? contentBounds.y);
+    const adjustedContentBounds = compactPlacement?.bounds ?? contentBounds;
+    const left = Math.min(adjustedContentBounds.x, headerBounds?.x ?? adjustedContentBounds.x);
+    const top = Math.min(adjustedContentBounds.y, headerBounds?.y ?? adjustedContentBounds.y);
     const right = Math.max(
-      contentBounds.x + contentBounds.width,
-      headerBounds ? headerBounds.x + headerBounds.width : contentBounds.x + contentBounds.width
+      adjustedContentBounds.x + adjustedContentBounds.width,
+      headerBounds
+        ? headerBounds.x + headerBounds.width
+        : adjustedContentBounds.x + adjustedContentBounds.width
     );
     const bottom = Math.max(
-      contentBounds.y + contentBounds.height,
-      headerBounds ? headerBounds.y + headerBounds.height : contentBounds.y + contentBounds.height
+      adjustedContentBounds.y + adjustedContentBounds.height,
+      headerBounds
+        ? headerBounds.y + headerBounds.height
+        : adjustedContentBounds.y + adjustedContentBounds.height
     );
     const sectionNodes = childIds.map((childId) =>
       nodes.find((node) => node.id === childId)!).filter(Boolean);
@@ -204,6 +338,58 @@ export function resolveHierarchySectionExportPlan(
     const label = kind === "fold"
       ? `Fold ${index + 1} · ${sectionNodes.length > 1 ? `${firstLabel} – ${lastLabel}` : firstLabel}`
       : firstLabel;
+    const movedNodeIds = new Set(childTarget.nodeIds);
+    const replacedEdges = compactPlacement
+      ? target.edges.filter((edge) => (
+          (edge.source === parentId && movedNodeIds.has(edge.target))
+          || (edge.target === parentId && movedNodeIds.has(edge.source))
+        ))
+      : [];
+    const replacedEdgeIds = new Set(replacedEdges.map((edge) => edge.id));
+    const layoutAdjustment = compactPlacement
+      ? {
+          translations: [{
+            nodeIds: childTarget.nodeIds,
+            edgeIds: childTarget.edgeIds.filter((edgeId) => !replacedEdgeIds.has(edgeId)),
+            dx: compactPlacement.dx,
+            dy: compactPlacement.dy,
+          }],
+          replacedEdgeIds: [...replacedEdgeIds],
+          connectors: replacedEdges.flatMap((edge) => {
+            const targetId = edge.source === parentId ? edge.target : edge.source;
+            const targetNode = nodes.find((node) => node.id === targetId);
+            if (!targetNode) return [];
+            const targetNodeTarget = resolveExportTarget(
+              { kind: "selection", nodeIds: [targetId], edgeIds: [] },
+              nodes,
+              edges
+            );
+            const originalTargetBounds = computeTightExportBounds(targetNodeTarget, {
+              padding: 0,
+              dom: options.dom,
+            });
+            const movedTargetBounds = {
+              ...originalTargetBounds,
+              x: originalTargetBounds.x + compactPlacement.dx,
+              y: originalTargetBounds.y + compactPlacement.dy,
+            };
+            const data = (edge.data ?? {}) as VidyaEdgeData;
+            return [{
+              id: edge.id,
+              path: compactConnectorPath(
+                parentBounds,
+                movedTargetBounds,
+                compactPlacement.direction
+              ),
+              color: data.color ?? data.layoutColor ?? "#94a3b8",
+              width: typeof data.width === "number" && Number.isFinite(data.width)
+                ? Math.max(1, data.width)
+                : 2,
+              pathStyle: resolveConnectorPathStyle(data),
+            }];
+          }),
+        } satisfies ExportLayoutAdjustment
+      : undefined;
     return {
       id,
       index,
@@ -219,6 +405,7 @@ export function resolveHierarchySectionExportPlan(
         height: bottom - top + padding * 2,
       },
       headerOverlay: headerBounds ? rootHeaderStyle(parent, headerBounds) : undefined,
+      layoutAdjustment,
     };
   };
 

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 
-import { resolveHierarchySectionExportPlan } from "./hierarchy-sections";
+import {
+  compactHierarchyPlacement,
+  resolveHierarchySectionExportPlan,
+} from "./hierarchy-sections";
 
 function fixture(): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [
@@ -61,6 +64,33 @@ function fixture(): { nodes: Node[]; edges: Edge[] } {
   ];
   return { nodes, edges };
 }
+
+test("compacts distant folded groups toward the parent on the separated axis", () => {
+  assert.deepEqual(
+    compactHierarchyPlacement(
+      { x: 0, y: 0, width: 500, height: 120 },
+      { x: 130, y: 800, width: 1_200, height: 700 }
+    ),
+    {
+      direction: "below",
+      dx: 0,
+      dy: -632,
+      bounds: { x: 0, y: 0, width: 1_330, height: 868 },
+    }
+  );
+  assert.deepEqual(
+    compactHierarchyPlacement(
+      { x: 0, y: 100, width: 100, height: 40 },
+      { x: 400, y: 0, width: 200, height: 300 }
+    ),
+    {
+      direction: "right",
+      dx: -252,
+      dy: 0,
+      bounds: { x: 0, y: 0, width: 348, height: 300 },
+    }
+  );
+});
 
 test("plans one export per top-level Matrix branch with a resized root header", () => {
   const { nodes, edges } = fixture();

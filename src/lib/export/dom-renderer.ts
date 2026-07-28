@@ -1,5 +1,10 @@
 import { ExportError } from "./errors";
-import type { ExportBounds, ExportDiagnostics, ExportRenderer } from "./types";
+import type {
+  ExportBounds,
+  ExportDiagnostics,
+  ExportRenderer,
+} from "./types";
+import type { ConnectorPathStyle } from "../types";
 import {
   embedDomExportAssets,
   waitForExportFonts,
@@ -8,6 +13,10 @@ import {
   type ExportAssetWarning,
 } from "./resources";
 import { REACT_FLOW_SELECTED_NODE_Z_INDEX } from "../canvas/connector-control-layer";
+import {
+  connectorStrokeDasharray,
+  doubleConnectorStrokeWidths,
+} from "../canvas/connector-path-style";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -110,6 +119,27 @@ export interface ExportHeaderOverlay {
   fontWeight?: string | number;
 }
 
+export interface ExportElementTranslation {
+  nodeIds: string[];
+  edgeIds: string[];
+  dx: number;
+  dy: number;
+}
+
+export interface ExportConnectorOverlay {
+  id: string;
+  path: string;
+  color: string;
+  width: number;
+  pathStyle?: ConnectorPathStyle;
+}
+
+export interface ExportLayoutAdjustment {
+  translations: ExportElementTranslation[];
+  replacedEdgeIds: string[];
+  connectors: ExportConnectorOverlay[];
+}
+
 export interface CloneReactFlowViewportOptions extends DomCloneSelection {
   signal?: AbortSignal;
   /** The visible board color used to preserve translucent node paint when the output itself is transparent. */
@@ -118,6 +148,8 @@ export interface CloneReactFlowViewportOptions extends DomCloneSelection {
   background?: string | null;
   /** Optional export-only header rendered in React Flow coordinates. */
   headerOverlay?: ExportHeaderOverlay | null;
+  /** Optional export-only compaction of hierarchy nodes and connectors. */
+  layoutAdjustment?: ExportLayoutAdjustment | null;
 }
 
 export interface ExportBackgroundTexture {
@@ -578,6 +610,132 @@ function filterIdentifiedEdgeElements(clone: HTMLElement, edgeIds: Iterable<stri
       requested
     )) element.remove();
   }
+}
+
+function exportEdgeElements(
+  clone: HTMLElement,
+  edgeIds: ReadonlySet<string>
+): Array<HTMLElement | SVGElement> {
+  return Array.from(clone.querySelectorAll<HTMLElement | SVGElement>(
+    ".react-flow__edge[data-id], [data-export-edge-id], [data-export-edge-ids]"
+  )).filter((element) => exportEdgeReferenceMatches(
+    element.getAttribute("data-export-edge-id")
+      ?? (element.classList.contains("react-flow__edge") ? element.getAttribute("data-id") : null),
+    element.getAttribute("data-export-edge-ids"),
+    edgeIds
+  ));
+}
+
+export function translatedExportTransform(
+  current: string,
+  dx: number,
+  dy: number
+): string {
+  const translation = `translate(${dx}px, ${dy}px)`;
+  return current.trim() && current.trim() !== "none"
+    ? `${current.trim()} ${translation}`
+    : translation;
+}
+
+function applyExportLayoutAdjustment(
+  clone: HTMLElement,
+  adjustment: ExportLayoutAdjustment
+): void {
+  const replacedEdgeIds = new Set(adjustment.replacedEdgeIds);
+  for (const element of exportEdgeElements(clone, replacedEdgeIds)) element.remove();
+
+  for (const translation of adjustment.translations) {
+    if (
+      !Number.isFinite(translation.dx)
+      || !Number.isFinite(translation.dy)
+      || (translation.dx === 0 && translation.dy === 0)
+    ) continue;
+
+    const nodeIds = new Set(translation.nodeIds);
+    for (const element of Array.from(clone.querySelectorAll<HTMLElement>(
+      ".react-flow__node[data-id]"
+    ))) {
+      if (!nodeIds.has(element.getAttribute("data-id") ?? "")) continue;
+      element.style.setProperty(
+        "transform",
+        translatedExportTransform(
+          element.style.getPropertyValue("transform"),
+          translation.dx,
+          translation.dy
+        )
+      );
+    }
+
+    const translatedEdgeIds = new Set(translation.edgeIds);
+    const edgeElements = exportEdgeElements(clone, translatedEdgeIds);
+    const topLevelEdgeElements = edgeElements.filter((element) =>
+      !edgeElements.some((candidate) => candidate !== element && candidate.contains(element)));
+    for (const element of topLevelEdgeElements) {
+      element.style.setProperty(
+        "transform",
+        translatedExportTransform(
+          element.style.getPropertyValue("transform"),
+          translation.dx,
+          translation.dy
+        )
+      );
+    }
+  }
+
+  if (adjustment.connectors.length === 0) return;
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("data-export-generated-connectors", "true");
+  svg.style.setProperty("position", "absolute");
+  svg.style.setProperty("left", "0");
+  svg.style.setProperty("top", "0");
+  svg.style.setProperty("width", "1px");
+  svg.style.setProperty("height", "1px");
+  svg.style.setProperty("overflow", "visible");
+  svg.style.setProperty("pointer-events", "none");
+  svg.style.setProperty("z-index", "0");
+
+  const appendPath = (
+    connector: ExportConnectorOverlay,
+    stroke: string,
+    strokeWidth: number,
+    strokeDasharray?: string
+  ) => {
+    const path = document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("data-export-edge-id", connector.id);
+    path.setAttribute("d", connector.path);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", stroke);
+    path.setAttribute("stroke-width", String(strokeWidth));
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("vector-effect", "non-scaling-stroke");
+    if (strokeDasharray) path.setAttribute("stroke-dasharray", strokeDasharray);
+    svg.appendChild(path);
+  };
+
+  for (const connector of adjustment.connectors) {
+    if (
+      !connector.path
+      || !Number.isFinite(connector.width)
+      || connector.width <= 0
+    ) continue;
+    const pathStyle = connector.pathStyle ?? "solid";
+    if (pathStyle === "double") {
+      const strokes = doubleConnectorStrokeWidths(connector.width);
+      appendPath(connector, connector.color, strokes.outer);
+      appendPath(connector, "var(--background)", strokes.separator);
+    } else {
+      appendPath(
+        connector,
+        connector.color,
+        connector.width,
+        connectorStrokeDasharray(pathStyle)
+      );
+    }
+  }
+  const nodeLayer = clone.querySelector(".react-flow__nodes");
+  clone.insertBefore(svg, nodeLayer);
 }
 
 function appendExportHeaderOverlay(
@@ -1043,6 +1201,9 @@ export function cloneReactFlowViewport(
       }
     }
 
+    if (options.layoutAdjustment) {
+      applyExportLayoutAdjustment(clone, options.layoutAdjustment);
+    }
     if (options.headerOverlay) appendExportHeaderOverlay(clone, options.headerOverlay);
     restoreExportElements(clone);
     normalizeExportSurfaceEffects(clone);
