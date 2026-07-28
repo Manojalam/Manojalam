@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   applyLayoutConversionShapeDefault,
   clearLayoutEdgeRouting,
+  clearMatrixLayoutOverrides,
   clearLayoutNodeGeometry,
   matrixFrameBelongsToLayoutScope,
   removeStaleGeneratedMatrixFrames,
@@ -63,6 +64,7 @@ test("chart conversion keeps hierarchy and authored content but drops source geo
     matrixHeightOverride: 90,
     matrixTableWidthOverride: 900,
     matrixTableHeightOverride: 700,
+    matrixTableSizeLocked: true,
     matrixIntrinsicSize: { width: 480, height: 72 },
     matrixCell: true,
     matrixCellRole: "cell",
@@ -88,6 +90,75 @@ test("chart conversion keeps hierarchy and authored content but drops source geo
     layoutColorScheme: "serene",
   });
   assert.equal(source.layoutFoldCount, 4);
+});
+
+test("Matrix reset clears branch and root layout overrides but keeps authored presentation", () => {
+  const source = {
+    text: "Root",
+    fillColor: "#123456",
+    layoutColorScheme: "serene",
+    layoutMode: "matrix",
+    layoutFoldCount: 4,
+    layoutFoldBreakAfter: ["leaf"],
+    layoutWrapAfter: 3,
+    matrixDensity: "presentation",
+    matrixDensityUserSet: true,
+    matrixGridVisible: false,
+    matrixOrientation: "vertical",
+    matrixChildFlow: "row",
+    matrixPackCompactGroups: true,
+    matrixIncompleteRowMode: "empty",
+    matrixFillCellLabels: true,
+    matrixSiblingGap: 24,
+    matrixWidthOverride: 500,
+    matrixHeightOverride: 90,
+    matrixTableWidthOverride: 900,
+    matrixTableHeightOverride: 700,
+    matrixTableSizeLocked: true,
+    matrixIntrinsicSize: { width: 480, height: 72 },
+    matrixCell: true,
+    matrixRootId: "root",
+  };
+
+  assert.deepEqual(clearMatrixLayoutOverrides(source, true), {
+    text: "Root",
+    fillColor: "#123456",
+    layoutColorScheme: "serene",
+    layoutMode: "matrix",
+    matrixIntrinsicSize: { width: 480, height: 72 },
+    matrixCell: true,
+    matrixRootId: "root",
+  });
+  assert.equal(source.matrixTableSizeLocked, true);
+});
+
+test("Matrix reset only removes root settings from the root and preserves automatic density", () => {
+  const automaticRoot = {
+    matrixDensity: "comfortable",
+    matrixGridVisible: false,
+    matrixPackCompactGroups: true,
+  };
+  const branch = {
+    matrixDensity: "comfortable",
+    matrixGridVisible: false,
+    matrixPackCompactGroups: true,
+    matrixOrientation: "vertical",
+    matrixWidthOverride: 420,
+  };
+
+  assert.deepEqual(clearMatrixLayoutOverrides(automaticRoot, true), {
+    matrixDensity: "comfortable",
+  });
+  assert.deepEqual(clearMatrixLayoutOverrides(branch), {
+    matrixDensity: "comfortable",
+    matrixGridVisible: false,
+    matrixPackCompactGroups: true,
+  });
+  const automaticPresentation = {
+    matrixDensity: "comfortable",
+    matrixGridVisible: true,
+  };
+  assert.equal(clearMatrixLayoutOverrides(automaticPresentation, true), automaticPresentation);
 });
 
 test("chart conversion keeps edge labels and style but drops source routing", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -71,6 +71,7 @@ export function LayoutPanel() {
   const open = useUIStore((state) => state.layoutPanelOpen);
   const setOpen = useUIStore((state) => state.setLayoutPanelOpen);
   const applyLayout = useCanvasStore((state) => state.applyLayout);
+  const resetMatrixLayout = useCanvasStore((state) => state.resetMatrixLayout);
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
@@ -82,9 +83,18 @@ export function LayoutPanel() {
     : null;
   const hierarchy = buildHierarchy(nodes, edges);
   const branchIds = selectedNode ? getSubtree(selectedNode.id, hierarchy) : [];
-  const currentMode = selectedNode
-    ? ((selectedNode.data as Record<string, unknown> | undefined)?.layoutMode as string | undefined) ?? "freeForm"
-    : undefined;
+  const selectedData = (selectedNode?.data ?? {}) as Record<string, unknown>;
+  const matrixRootId = selectedData.layoutMode === "matrix"
+    ? selectedNode?.id
+    : typeof selectedData.matrixRootId === "string" ? selectedData.matrixRootId : undefined;
+  const matrixRootNode = matrixRootId
+    ? nodes.find((node) => node.id === matrixRootId) ?? null
+    : null;
+  const currentMode = matrixRootNode
+    ? "matrix"
+    : selectedNode
+      ? (selectedData.layoutMode as string | undefined) ?? "freeForm"
+      : undefined;
 
   const handleApply = (mode: LayoutMode) => {
     if (!selectedNode) {
@@ -109,6 +119,25 @@ export function LayoutPanel() {
         onClick: () => useCanvasStore.getState().undo(),
       },
     });
+  };
+
+  const handleMatrixReset = () => {
+    if (!matrixRootNode) return;
+    const changed = resetMatrixLayout(matrixRootNode.id);
+    toast.success(
+      changed
+        ? "Reset Matrix layout to automatic defaults."
+        : "Matrix layout is already using automatic defaults.",
+      changed
+        ? {
+            description: "Content, colors, and styling were preserved.",
+            action: {
+              label: "Undo",
+              onClick: () => useCanvasStore.getState().undo(),
+            },
+          }
+        : undefined
+    );
   };
 
   return (
@@ -148,6 +177,22 @@ export function LayoutPanel() {
             </button>
           ))}
         </div>
+        {matrixRootNode && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2">
+            <div className="text-xs font-medium text-foreground">Matrix controls</div>
+            <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+              Restore automatic sizing, spacing, direction, and table settings for the whole Matrix.
+            </p>
+            <button
+              type="button"
+              onClick={handleMatrixReset}
+              className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset Matrix layout
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );
