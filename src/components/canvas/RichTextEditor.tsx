@@ -76,7 +76,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppColorPicker, ColorPickerPanel } from "@/components/canvas/AppColorPicker";
+import { ColorPickerPanel } from "@/components/canvas/AppColorPicker";
 
 // ── FontSize attribute (added via TextStyle global attributes, no custom commands) ──
 const FontSize = Extension.create({
@@ -2218,121 +2218,141 @@ export function RichTextEditor({
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
           {/* Text color */}
-          <AppColorPicker
-            open={showColors}
-            value={currentColor ?? "#111827"}
-            extraColors={textColorSwatches}
-            align="end"
-            side={openPopoversBelow ? "bottom" : "top"}
-            sideOffset={8}
-            showHeading={false}
-            preserveCurrentFocus
-            contentClassName="w-[min(20rem,calc(100vw-1rem))]"
-            panelHeader={(
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Text color
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      openColorReplace();
-                    }}
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Replace in shape
-                  </button>
-                  <button
-                    type="button"
-                    className="text-[10px] text-muted-foreground hover:text-foreground"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      applyPickerSelectionCommand((chain) => chain.unsetColor());
-                      setTextColorPickerOpen(false);
-                    }}
-                  >
-                    Clear color
-                  </button>
-                </div>
-              </div>
-            )}
-            onOpenChange={(open) => {
-              if (open) capturePickerSelectionRanges();
-              setTextColorPickerOpen(open);
-              if (!open) return;
-              setHighlightPickerOpen(false);
-              setShowFonts(false);
-              setShowSizes(false);
-              setShowLink(false);
-            }}
-            onChange={chooseCustomTextColor}
-          >
+          <div className="relative">
             <button
               type="button"
               title={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"}
               aria-label={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"}
               onPointerDown={capturePickerSelectionRanges}
-              onMouseDown={(event) => event.preventDefault()}
-              className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedColor === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
+              onMouseDown={(event) => {
+                event.preventDefault();
+                const nextOpen = !showColors;
+                setTextColorPickerOpen(nextOpen);
+                if (!nextOpen) return;
+                setHighlightPickerOpen(false);
+                setShowFonts(false);
+                setShowSizes(false);
+                setShowLink(false);
+              }}
+              className={cn(
+                "relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted",
+                selectedColor === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10"
+              )}
+            >
               <Palette className="h-4 w-4" />
-              <span className="absolute bottom-1 left-1 right-1 h-[2px] rounded-full" style={{ backgroundColor: currentColor ?? "#111827" }} />
+              <span
+                className="absolute bottom-1 left-1 right-1 h-[2px] rounded-full"
+                style={{ backgroundColor: currentColor ?? "#111827" }}
+              />
             </button>
-          </AppColorPicker>
-
-          {/* Highlight color */}
-          <AppColorPicker
-            open={showHighlights}
-            value={currentHighlight ?? "#fde68a"}
-            extraColors={highlightColorSwatches}
-            align="end"
-            side={openPopoversBelow ? "bottom" : "top"}
-            sideOffset={8}
-            showHeading={false}
-            preserveCurrentFocus
-            contentClassName="w-[min(20rem,calc(100vw-1rem))]"
-            panelHeader={(
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Highlight
-                </span>
-                <button
-                  type="button"
-                  className="text-[10px] text-muted-foreground hover:text-foreground"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    applyPickerSelectionCommand((chain) => chain.unsetHighlight());
-                    setHighlightPickerOpen(false);
-                  }}
-                >
-                  Clear highlight
-                </button>
+            {showColors && (
+              <div
+                data-app-color-picker="true"
+                className={cn(
+                  "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                  openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+                )}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Text color
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        openColorReplace();
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Replace in shape
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[10px] text-muted-foreground hover:text-foreground"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        applyPickerSelectionCommand((chain) => chain.unsetColor());
+                        setTextColorPickerOpen(false);
+                      }}
+                    >
+                      Clear color
+                    </button>
+                  </div>
+                </div>
+                <ColorPickerPanel
+                  value={currentColor ?? "#111827"}
+                  extraColors={textColorSwatches}
+                  showHeading={false}
+                  onChange={chooseCustomTextColor}
+                />
               </div>
             )}
-            onOpenChange={(open) => {
-              if (open) capturePickerSelectionRanges();
-              setHighlightPickerOpen(open);
-              if (!open) return;
-              setTextColorPickerOpen(false);
-              setShowFonts(false);
-              setShowSizes(false);
-              setShowLink(false);
-            }}
-            onChange={chooseCustomHighlightColor}
-          >
+          </div>
+
+          {/* Highlight color */}
+          <div className="relative">
             <button
               type="button"
               title={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"}
               aria-label={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"}
               onPointerDown={capturePickerSelectionRanges}
-              onMouseDown={(event) => event.preventDefault()}
-              className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedHighlight === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
+              onMouseDown={(event) => {
+                event.preventDefault();
+                const nextOpen = !showHighlights;
+                setHighlightPickerOpen(nextOpen);
+                if (!nextOpen) return;
+                setTextColorPickerOpen(false);
+                setShowFonts(false);
+                setShowSizes(false);
+                setShowLink(false);
+              }}
+              className={cn(
+                "relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted",
+                selectedHighlight === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10"
+              )}
+            >
               <Highlighter className="h-4 w-4" />
-              <span className="absolute bottom-1 left-1 right-1 h-[3px] rounded-full" style={{ backgroundColor: currentHighlight ?? "#fde68a" }} />
+              <span
+                className="absolute bottom-1 left-1 right-1 h-[3px] rounded-full"
+                style={{ backgroundColor: currentHighlight ?? "#fde68a" }}
+              />
             </button>
-          </AppColorPicker>
+            {showHighlights && (
+              <div
+                data-app-color-picker="true"
+                className={cn(
+                  "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                  openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+                )}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Highlight
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applyPickerSelectionCommand((chain) => chain.unsetHighlight());
+                      setHighlightPickerOpen(false);
+                    }}
+                  >
+                    Clear highlight
+                  </button>
+                </div>
+                <ColorPickerPanel
+                  value={currentHighlight ?? "#fde68a"}
+                  extraColors={highlightColorSwatches}
+                  showHeading={false}
+                  onChange={chooseCustomHighlightColor}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Clear formatting */}
           <FormatButton active={!!inlineFormatPainter} onAction={useFormatPainter}
