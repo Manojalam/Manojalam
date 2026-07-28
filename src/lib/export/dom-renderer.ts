@@ -95,12 +95,29 @@ export interface DomCloneSelection {
   edgeIds?: Iterable<string>;
 }
 
+export interface ExportHeaderOverlay {
+  bounds: ExportBounds;
+  text: string;
+  backgroundColor: string;
+  color: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: "solid" | "dashed" | "dotted";
+  borderRadius?: number;
+  fontSize?: number;
+  fontFamily?: string;
+  fontStyle?: string;
+  fontWeight?: string | number;
+}
+
 export interface CloneReactFlowViewportOptions extends DomCloneSelection {
   signal?: AbortSignal;
   /** The visible board color used to preserve translucent node paint when the output itself is transparent. */
   appearanceBackground?: string | null;
   /** The actual exported background. Null means the area outside objects remains transparent. */
   background?: string | null;
+  /** Optional export-only header rendered in React Flow coordinates. */
+  headerOverlay?: ExportHeaderOverlay | null;
 }
 
 export interface ExportBackgroundTexture {
@@ -563,6 +580,59 @@ function filterIdentifiedEdgeElements(clone: HTMLElement, edgeIds: Iterable<stri
   }
 }
 
+function appendExportHeaderOverlay(
+  clone: HTMLElement,
+  overlay: ExportHeaderOverlay
+): void {
+  const { bounds } = overlay;
+  if (
+    !Number.isFinite(bounds.x)
+    || !Number.isFinite(bounds.y)
+    || !finiteDimension(bounds.width)
+    || !finiteDimension(bounds.height)
+  ) {
+    throw new ExportError({
+      stage: "clone-content",
+      code: "INVALID_BOUNDS",
+      message: "The repeated export header has invalid bounds.",
+      diagnostics: { bounds, renderer: "dom-foreign-object" },
+    });
+  }
+
+  const header = document.createElement("div");
+  header.setAttribute("data-export-generated-header", "true");
+  header.textContent = overlay.text;
+  header.style.setProperty("position", "absolute");
+  header.style.setProperty("left", `${bounds.x}px`);
+  header.style.setProperty("top", `${bounds.y}px`);
+  header.style.setProperty("width", `${bounds.width}px`);
+  header.style.setProperty("height", `${bounds.height}px`);
+  header.style.setProperty("box-sizing", "border-box");
+  header.style.setProperty("display", "flex");
+  header.style.setProperty("align-items", "center");
+  header.style.setProperty("justify-content", "center");
+  header.style.setProperty("overflow", "hidden");
+  header.style.setProperty("padding", "8px 16px");
+  header.style.setProperty("white-space", "pre-wrap");
+  header.style.setProperty("overflow-wrap", "anywhere");
+  header.style.setProperty("text-align", "center");
+  header.style.setProperty("line-height", "1.25");
+  header.style.setProperty("z-index", "10000");
+  header.style.setProperty("background-color", overlay.backgroundColor);
+  header.style.setProperty("color", overlay.color);
+  header.style.setProperty("border-color", overlay.borderColor ?? "transparent");
+  header.style.setProperty("border-width", `${Math.max(0, overlay.borderWidth ?? 0)}px`);
+  header.style.setProperty("border-style", overlay.borderStyle ?? "solid");
+  header.style.setProperty("border-radius", `${Math.max(0, overlay.borderRadius ?? 0)}px`);
+  if (overlay.fontSize && Number.isFinite(overlay.fontSize)) {
+    header.style.setProperty("font-size", `${overlay.fontSize}px`);
+  }
+  if (overlay.fontFamily) header.style.setProperty("font-family", overlay.fontFamily);
+  if (overlay.fontStyle) header.style.setProperty("font-style", overlay.fontStyle);
+  if (overlay.fontWeight) header.style.setProperty("font-weight", String(overlay.fontWeight));
+  clone.appendChild(header);
+}
+
 export function normalizedSelectedExportNodeZIndex(value: string): string | null {
   const elevated = Number(value);
   if (!Number.isFinite(elevated) || elevated < REACT_FLOW_SELECTED_NODE_Z_INDEX) {
@@ -973,6 +1043,7 @@ export function cloneReactFlowViewport(
       }
     }
 
+    if (options.headerOverlay) appendExportHeaderOverlay(clone, options.headerOverlay);
     restoreExportElements(clone);
     normalizeExportSurfaceEffects(clone);
     clearBoardDependentExportBackgrounds(
