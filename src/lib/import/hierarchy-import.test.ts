@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseHTML } from "linkedom";
-import { hierarchyDraftToBoardContent } from "./board";
+import {
+  hierarchyDraftToBoardContent,
+  remapHierarchyForBoardInsertion,
+} from "./board";
 import {
   compactRawHierarchy,
   ensureSingleDraftRoot,
@@ -189,4 +192,41 @@ test("converts a reviewed draft to stable board hierarchy data", () => {
   assert.match(String(shloka?.data.notes), /पञ्चमं लघु/u);
   assert.equal(shloka?.data.fontFamily, DEVANAGARI_FONT);
   assert.ok(locateDraftNode(draft.roots, shloka!.id));
+});
+
+test("remaps a reviewed hierarchy for collision-free current-board insertion", () => {
+  const draft = parseTextHierarchy(SAMPLE, "छन्दः - समवृत्तानि.txt");
+  const { content, rootId } = hierarchyDraftToBoardContent(draft);
+  const originalNodeIds = new Set(content.nodes.map((node) => node.id));
+  const reservedIds = new Set(["existing-node", "existing-edge"]);
+  let generatedId = 0;
+  const insertion = remapHierarchyForBoardInsertion(
+    content,
+    rootId,
+    reservedIds,
+    () => generatedId++ === 0 ? "existing-node" : `imported-${generatedId}`
+  );
+
+  assert.equal(insertion.nodes.length, content.nodes.length);
+  assert.equal(insertion.edges.length, content.edges.length);
+  assert.equal(insertion.nodeIds.length, content.nodes.length);
+  assert.ok(insertion.nodes.some((node) => node.id === insertion.rootId));
+  assert.ok(insertion.nodes.every((node) => !originalNodeIds.has(node.id)));
+  assert.ok(insertion.nodes.every((node) => !reservedIds.has(node.id)));
+  assert.equal(new Set([
+    ...insertion.nodes.map((node) => node.id),
+    ...insertion.edges.map((edge) => edge.id),
+  ]).size, insertion.nodes.length + insertion.edges.length);
+
+  const insertedById = new Map(insertion.nodes.map((node) => [node.id, node]));
+  const insertedRoot = insertedById.get(insertion.rootId)!;
+  assert.equal(insertedRoot.data.parentId, null);
+  for (const edge of insertion.edges) {
+    assert.ok(insertedById.has(edge.source));
+    assert.ok(insertedById.has(edge.target));
+    assert.equal(insertedById.get(edge.target)?.data.parentId, edge.source);
+    assert.ok(
+      (insertedById.get(edge.source)?.data.childOrder as string[]).includes(edge.target)
+    );
+  }
 });

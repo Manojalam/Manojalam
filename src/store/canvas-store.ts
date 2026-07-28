@@ -9,6 +9,7 @@ import type {
   RelationshipDiagramSpec,
   RelationshipFanState,
   SaveStatus,
+  BoardContent,
   VidyaBoard,
   AutoSizeMode,
 } from "@/lib/types";
@@ -104,6 +105,10 @@ import {
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
+import {
+  remapHierarchyForBoardInsertion,
+  type ImportedHierarchyInsertion,
+} from "@/lib/import/board";
 import {
   normalizeBoardColorOverride,
   resolveBoardColorMode,
@@ -202,6 +207,11 @@ interface CanvasState {
   redo: () => void;
   copySelected: () => void;
   paste: (payload?: Pick<ManojalamClipboardPayload, "nodes" | "edges">) => void;
+  insertImportedHierarchy: (
+    nodes: BoardContent["nodes"],
+    edges: BoardContent["edges"],
+    rootId: string
+  ) => ImportedHierarchyInsertion | null;
   duplicateNode: (nodeId: string) => void;
   duplicateSelected: () => void;
   clearSelectedContent: () => void;
@@ -246,7 +256,11 @@ interface CanvasState {
   markTreeManualOverride: (nodeIds: string[], value: boolean) => void;
   updateBoardTitle: (title: string) => void;
   performSearch: (query: string) => void;
-  applyLayout: (mode: LayoutMode, rootIdOverride?: string) => void;
+  applyLayout: (
+    mode: LayoutMode,
+    rootIdOverride?: string,
+    options?: { recordHistory?: boolean }
+  ) => void;
   applyLayoutColorScheme: (rootId: string, scheme: RadialColorScheme, resetOverrides?: boolean) => void;
 }
 
@@ -2268,6 +2282,48 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
+  insertImportedHierarchy: (sourceNodes, sourceEdges, sourceRootId) => {
+    if (!sourceNodes.length) return null;
+    const state = get();
+    const insertion = remapHierarchyForBoardInsertion(
+      { nodes: sourceNodes, edges: sourceEdges },
+      sourceRootId,
+      [
+        ...state.nodes.map((node) => node.id),
+        ...state.edges.map((edge) => edge.id),
+      ]
+    );
+    const offset = findFreeDuplicateOffset(insertion.nodes, state.nodes);
+    const insertedNodes = insertion.nodes.map((node) => ({
+      ...node,
+      position: {
+        x: node.position.x + offset.x,
+        y: node.position.y + offset.y,
+      },
+      selected: node.id === insertion.rootId,
+    }));
+
+    state.pushHistory();
+    set({
+      nodes: [
+        ...state.nodes.map((node) =>
+          node.selected ? { ...node, selected: false } : node
+        ),
+        ...insertedNodes,
+      ],
+      edges: [
+        ...state.edges.map((edge) =>
+          edge.selected ? { ...edge, selected: false } : edge
+        ),
+        ...insertion.edges,
+      ],
+      selectedNodeIds: [insertion.rootId],
+      selectedEdgeIds: [],
+      saveStatus: "unsaved",
+    });
+    return { ...insertion, nodes: insertedNodes };
+  },
+
   duplicateNode: (nodeId) => {
     const { nodes, edges } = get();
     const selection = selectionWithHierarchyDescendants(nodes, edges, [nodeId]);
@@ -3952,7 +4008,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
-  applyLayout: (mode, rootIdOverride) => {
+  applyLayout: (mode, rootIdOverride, options) => {
     const { nodes, edges, selectedNodeIds } = get();
     if (!nodes.length) return;
     cancelPendingLayoutReflows();
@@ -4021,7 +4077,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const positions = matrixResult?.placements
       ?? (sunburstEnabled ? {} : computeLayout(preparedLayoutNodes, layoutEdges, mode, { rootId }));
 
-    get().pushHistory();
+    if (options?.recordHistory !== false) get().pushHistory();
 
     // Reroute parent→child edges within scope, using post-layout geometry.
     const newEdges = layoutEdges.map((e) => {
