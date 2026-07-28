@@ -96,6 +96,25 @@ export function applyRichTextCommandAcrossRanges(
   return chain.run();
 }
 
+/**
+ * A portaled formatting control may replace the browser-native selection.
+ * Prefer the immutable ranges captured when that control opened.
+ */
+export function resolveRichTextFormattingRanges({
+  currentRanges,
+  preservedRanges,
+  maximumPosition = Number.MAX_SAFE_INTEGER,
+}: {
+  currentRanges: readonly RichTextSelectionRange[];
+  preservedRanges?: readonly RichTextSelectionRange[];
+  maximumPosition?: number;
+}): RichTextSelectionRange[] {
+  return normalizeRichTextSelectionRanges(
+    preservedRanges?.length ? preservedRanges : currentRanges,
+    maximumPosition
+  );
+}
+
 export function resolveRichTextAdditiveSelectionRanges({
   baseRanges,
   browserRanges = [],

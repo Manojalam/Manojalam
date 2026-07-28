@@ -397,8 +397,8 @@ export function AppColorPicker({
   };
 
   const chooseColor = (color: string) => {
-    setSettings({ customColors: rememberCustomColor(customColors, color) });
     onChange(color);
+    setSettings({ customColors: rememberCustomColor(customColors, color) });
     setOpenState(false);
   };
 
