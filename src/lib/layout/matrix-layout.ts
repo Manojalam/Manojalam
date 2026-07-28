@@ -594,6 +594,14 @@ type OrientedBranchCell = {
   widthLocked?: boolean;
   heightLocked?: boolean;
   placeholder?: boolean;
+  /** Direct sibling flow for a real terminal cell. */
+  terminalPeerFlow?: MatrixChildFlow;
+  /** A generated slot for a missing same-level row peer, not Fold allocation. */
+  missingPeerSlot?: boolean;
+  /** A hierarchy leaf in a vertical sibling list may absorb unused deeper columns. */
+  mergeTrailingHorizontal?: boolean;
+  /** A hierarchy leaf in a horizontal sibling list may absorb unused deeper rows. */
+  mergeTrailingVertical?: boolean;
 };
 
 type OrientedBranchLayout = {
@@ -725,6 +733,60 @@ function translateOrientedCells(
   dy: number
 ): OrientedBranchCell[] {
   return cells.map((cell) => ({ ...cell, x: cell.x + dx, y: cell.y + dy }));
+}
+
+/**
+ * Fold and mixed child-flow branches can establish a wider/taller outer Matrix
+ * allocation after their peer branches have already been composed. A terminal
+ * hierarchy cell must absorb that trailing allocation; generated peer slots
+ * remain only for genuinely incomplete same-level rows.
+ */
+function mergeOrientedTerminalCellsToOuterEdge(
+  cells: OrientedBranchCell[]
+): OrientedBranchCell[] {
+  if (!cells.length) return cells;
+  const right = Math.max(...cells.map((cell) => cell.x + cell.width));
+  const bottom = Math.max(...cells.map((cell) => cell.y + cell.height));
+  const merged = cells.map((cell) => {
+    if (cell.placeholder) return cell;
+    let width = cell.width;
+    let height = cell.height;
+    if (cell.mergeTrailingHorizontal && cell.x + cell.width < right - 0.5) {
+      const blockedToRight = cells.some((other) => (
+        other.nodeId !== cell.nodeId
+        && (!other.placeholder || other.missingPeerSlot === true)
+        && other.x >= cell.x + cell.width - 0.5
+        && other.y < cell.y + cell.height - 0.5
+        && other.y + other.height > cell.y + 0.5
+      ));
+      if (!blockedToRight) width = right - cell.x;
+    }
+    if (cell.mergeTrailingVertical && cell.y + cell.height < bottom - 0.5) {
+      const blockedBelow = cells.some((other) => (
+        other.nodeId !== cell.nodeId
+        && (!other.placeholder || other.missingPeerSlot === true)
+        && other.y >= cell.y + cell.height - 0.5
+        && other.x < cell.x + cell.width - 0.5
+        && other.x + other.width > cell.x + 0.5
+      ));
+      if (!blockedBelow) height = bottom - cell.y;
+    }
+    return width === cell.width && height === cell.height
+      ? cell
+      : { ...cell, width, height };
+  });
+  const expanded = merged.filter((cell) => !cell.placeholder);
+  return merged.filter((cell) => {
+    if (!cell.placeholder) return true;
+    const centerX = cell.x + cell.width / 2;
+    const centerY = cell.y + cell.height / 2;
+    return !expanded.some((actual) => (
+      actual.x <= centerX + 0.5
+      && actual.x + actual.width >= centerX - 0.5
+      && actual.y <= centerY + 0.5
+      && actual.y + actual.height >= centerY - 0.5
+    ));
+  });
 }
 
 function hasExplicitMatrixGeometry(
@@ -1025,6 +1087,12 @@ function alignSiblingRowBands(
   const trackCount = preserveEmptySlots
     ? Math.max(...rows.map((row) => row.length))
     : rows[0].length;
+  const missingPeerTracks = Array.from({ length: trackCount }, (_, trackIndex) =>
+    rows.some((row) => (
+      row[trackIndex]?.horizontalTerminal === true
+      && row[trackIndex].terminalPeerFlow === "row"
+    ))
+  );
   if (!preserveEmptySlots && rows.some((row) => row.length !== trackCount)) return children;
 
   let widths: number[];
@@ -1153,6 +1221,7 @@ function alignSiblingRowBands(
                 horizontalTerminal: true,
                 verticalTerminal: true,
                 placeholder: true,
+                missingPeerSlot: missingPeerTracks[trackIndex],
               };
             }
           )
@@ -1323,6 +1392,7 @@ function alignFoldedTerminalRows(
               horizontalTerminal: true,
               verticalTerminal: true,
               placeholder: true,
+              missingPeerSlot: true,
             }],
           },
         };
@@ -1473,6 +1543,7 @@ function computeOrientedMatrixLayout(
     nodeId: string,
     column: number,
     inherited: MatrixOrientation,
+    parentChildFlow: MatrixChildFlow,
     ancestors: Set<string>
   ): OrientedBranchLayout => {
     const node = byId.get(nodeId);
@@ -1497,7 +1568,7 @@ function computeOrientedMatrixLayout(
       .filter((childId) => !nextAncestors.has(childId))
       .map((childId) => ({
         nodeId: childId,
-        layout: buildBranch(childId, column + 1, orientation, nextAncestors),
+        layout: buildBranch(childId, column + 1, orientation, childFlow, nextAncestors),
       }))
       .filter((child) => child.layout.cells.length > 0);
 
@@ -1517,6 +1588,9 @@ function computeOrientedMatrixLayout(
           verticalTerminal: true,
           widthLocked: exactWidth !== null,
           heightLocked: exactHeight !== null,
+          terminalPeerFlow: parentChildFlow,
+          mergeTrailingHorizontal: orientation === "horizontal" && parentChildFlow === "column",
+          mergeTrailingVertical: orientation === "vertical" && parentChildFlow === "row",
         }],
       };
     }
@@ -1581,7 +1655,7 @@ function computeOrientedMatrixLayout(
   const builtRootChildren = visibleChildren(rootId, hierarchy, byId)
     .map((childId) => ({
       nodeId: childId,
-      layout: buildBranch(childId, 0, rootOrientation, new Set([rootId])),
+      layout: buildBranch(childId, 0, rootOrientation, rootChildFlow, new Set([rootId])),
     }))
     .filter((child) => child.layout.cells.length > 0);
   const preferredHeaderWidth = Math.ceil(clamp(
@@ -1604,7 +1678,9 @@ function computeOrientedMatrixLayout(
   const headerHeight = requiredCellHeight(root, tableWidth, settings, settings.minHeaderHeight);
   const bodyY = tableY + headerHeight + (builtRootChildren.length ? settings.cellGap : 0);
   const bodyX = tableX;
-  const orientedCells = translateOrientedCells(body.cells, bodyX, bodyY);
+  const orientedCells = mergeOrientedTerminalCellsToOuterEdge(
+    translateOrientedCells(body.cells, bodyX, bodyY)
+  );
 
   const emptyCells = orientedCells
     .filter((cell) => cell.placeholder)
