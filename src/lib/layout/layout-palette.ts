@@ -182,7 +182,7 @@ export function buildLayoutVisualStyles(
     const matrixDepthBand = mode === "matrix";
     const colors = radialSectorColors(
       scheme,
-      matrixDepthBand ? 0 : branchIndex,
+      branchIndex,
       fillAnchor ? depth - fillAnchor.depth + 1 : depth,
       fillAnchor || matrixDepthBand ? 0 : Math.max(0, info?.siblingIndex ?? 0),
       fillAnchor || matrixDepthBand ? 1 : Math.max(1, parentChildren.length),
