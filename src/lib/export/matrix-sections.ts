@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 
+import { resolvedFoldSections } from "../layout/child-group-wrap";
 import { buildHierarchy } from "../layout/hierarchy";
 import { matrixCellBorderRadius } from "../layout/matrix-presentation";
 import {
@@ -13,7 +14,9 @@ import type { ExportBounds } from "./types";
 export interface MatrixSectionExport {
   id: string;
   index: number;
+  kind: "child" | "fold";
   label: string;
+  childIds: string[];
   nodeIds: string[];
   edgeIds: string[];
   bounds: ExportBounds;
@@ -23,7 +26,10 @@ export interface MatrixSectionExport {
 export interface MatrixSectionExportPlan {
   rootId: string;
   rootLabel: string;
+  /** One independently selectable export per direct root child. */
   sections: MatrixSectionExport[];
+  /** The root's authored Fold groups; one entry means the root is not folded. */
+  folds: MatrixSectionExport[];
 }
 
 export interface MatrixSectionExportPlanOptions {
@@ -58,8 +64,8 @@ function plainText(value: unknown): string {
     .trim();
 }
 
-function nodeLabel(node: Node, fallback: string): string {
-  const data = (node.data ?? {}) as Record<string, unknown>;
+function nodeLabel(node: Node | undefined, fallback: string): string {
+  const data = (node?.data ?? {}) as Record<string, unknown>;
   return plainText(data.text) || plainText(data.richText) || fallback;
 }
 
@@ -141,42 +147,124 @@ export function resolveMatrixSectionExportPlan(
   });
   const headerHeight = Math.max(1, rootBounds.height);
 
-  const sections = sectionIds.map((sectionId, index): MatrixSectionExport => {
-    const target = resolveExportTarget(
-      { kind: "subtree", rootId: sectionId },
+  const targetForChildren = (childIds: string[]) => {
+    const includedNodeIds = new Set<string>();
+    for (const childId of childIds) {
+      const subtree = resolveExportTarget(
+        { kind: "subtree", rootId: childId },
+        nodes,
+        edges
+      );
+      for (const nodeId of subtree.nodeIds) includedNodeIds.add(nodeId);
+    }
+    return resolveExportTarget(
+      { kind: "selection", nodeIds: [...includedNodeIds], edgeIds: [] },
       nodes,
       edges
     );
+  };
+
+  const createGroup = (
+    id: string,
+    index: number,
+    kind: MatrixSectionExport["kind"],
+    childIds: string[],
+    headerBoundsForContent?: (contentBounds: ExportBounds) => ExportBounds
+  ): MatrixSectionExport => {
+    const target = targetForChildren(childIds);
     const contentBounds = computeTightExportBounds(target, {
       padding: 0,
       dom: options.dom,
     });
-    const headerBounds = {
+    const headerBounds = headerBoundsForContent?.(contentBounds) ?? {
       x: contentBounds.x,
       y: contentBounds.y - headerHeight,
       width: contentBounds.width,
       height: headerHeight,
     };
-    const sectionNode = nodes.find((node) => node.id === sectionId)!;
+    const left = Math.min(contentBounds.x, headerBounds.x);
+    const top = Math.min(contentBounds.y, headerBounds.y);
+    const right = Math.max(
+      contentBounds.x + contentBounds.width,
+      headerBounds.x + headerBounds.width
+    );
+    const bottom = Math.max(
+      contentBounds.y + contentBounds.height,
+      headerBounds.y + headerBounds.height
+    );
+    const sectionNodes = childIds.map((childId) =>
+      nodes.find((node) => node.id === childId)!).filter(Boolean);
+    const firstLabel = nodeLabel(sectionNodes[0], `Section ${index + 1}`);
+    const lastLabel = nodeLabel(sectionNodes[sectionNodes.length - 1], firstLabel);
+    const label = kind === "fold"
+      ? `Fold ${index + 1} · ${sectionNodes.length > 1 ? `${firstLabel} – ${lastLabel}` : firstLabel}`
+      : firstLabel;
     return {
-      id: sectionId,
+      id,
       index,
-      label: nodeLabel(sectionNode, `Section ${index + 1}`),
+      kind,
+      label,
+      childIds,
       nodeIds: target.nodeIds,
       edgeIds: target.edgeIds,
       bounds: {
-        x: contentBounds.x - padding,
-        y: headerBounds.y - padding,
-        width: contentBounds.width + padding * 2,
-        height: headerHeight + contentBounds.height + padding * 2,
+        x: left - padding,
+        y: top - padding,
+        width: right - left + padding * 2,
+        height: bottom - top + padding * 2,
       },
       headerOverlay: rootHeaderStyle(root, headerBounds),
     };
+  };
+
+  const sections = sectionIds.map((sectionId, index) =>
+    createGroup(sectionId, index, "child", [sectionId]));
+
+  const foldChildGroups = resolvedFoldSections(rootData, sectionIds);
+  const foldAnchorX = foldChildGroups.map((childIds) => {
+    const anchorTarget = resolveExportTarget(
+      { kind: "selection", nodeIds: [childIds[0]], edgeIds: [] },
+      nodes,
+      edges
+    );
+    return computeTightExportBounds(anchorTarget, {
+      padding: 0,
+      dom: options.dom,
+    }).x;
   });
+  const foldStride = foldAnchorX.length > 1
+    ? foldAnchorX[1] - foldAnchorX[0]
+    : rootBounds.width;
+  const foldedHeaderWidth = foldAnchorX.length > 1
+    ? rootBounds.width - foldStride * (foldAnchorX.length - 1)
+    : rootBounds.width;
+  const useMeasuredFoldGeometry = (
+    foldAnchorX.length > 1
+    && Number.isFinite(foldStride)
+    && foldStride > 0
+    && Number.isFinite(foldedHeaderWidth)
+    && foldedHeaderWidth > 0
+  );
+  const folds = foldChildGroups.map((childIds, index) =>
+    createGroup(
+      `matrix-fold:${rootId}:${index}`,
+      index,
+      "fold",
+      childIds,
+      useMeasuredFoldGeometry
+        ? (contentBounds) => ({
+            x: rootBounds.x + foldStride * index,
+            y: contentBounds.y - headerHeight,
+            width: foldedHeaderWidth,
+            height: headerHeight,
+          })
+        : undefined
+    ));
 
   return {
     rootId,
     rootLabel: nodeLabel(root, "Matrix"),
     sections,
+    folds,
   };
 }

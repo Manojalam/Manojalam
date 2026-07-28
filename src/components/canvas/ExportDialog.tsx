@@ -40,7 +40,7 @@ import { useUIStore, type BoardExportRequest } from "@/store/ui-store";
 type DialogScope = "board" | "selection" | "subtree" | "frame";
 type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 type OpaqueFallback = "black" | "white";
-type MatrixOutputMode = "whole" | "sections";
+type MatrixOutputMode = "whole" | "folds" | "children";
 
 const DEFAULT_PADDING = 0;
 const EMPTY_IDS: string[] = [];
@@ -56,6 +56,20 @@ function formatScale(value: number): string {
   return `${formatted}×`;
 }
 
+function readableExportLabel(data: Record<string, unknown>, fallback: string): string {
+  const value = [data.text, data.title, data.richText]
+    .find((candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim().length > 0);
+  return value
+    ?.replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72) || fallback;
+}
+
 function requestInitialScope(
   request: BoardExportRequest,
   hasSelection: boolean,
@@ -64,7 +78,11 @@ function requestInitialScope(
   if (request.scope === "frame") return "frame";
   if (request.scope === "subtree") return hasSubtree ? "subtree" : "selection";
   if (request.scope === "node" || request.scope === "selection") return "selection";
-  return request.scope === "board" ? "board" : hasSelection ? "selection" : "board";
+  return request.scope === "board"
+    ? "board"
+    : hasSubtree
+      ? "subtree"
+      : hasSelection ? "selection" : "board";
 }
 
 function reportPreparationFailure(error: unknown): ExportError {
@@ -112,16 +130,19 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const hasSubtree = !!subtreeTarget?.nodeIds.some((nodeId) => nodeId !== subtreeRootId);
   const selectedFrameId = request.frameId
     ?? nodes.find((node) => requestedNodeIds.includes(node.id) && node.type === "frame")?.id;
-  const matrixRootNode = subtreeRootId
+  const selectedMatrixRootNode = subtreeRootId
     ? nodes.find((node) => (
         node.id === subtreeRootId
         && ((node.data ?? {}) as Record<string, unknown>).layoutMode === "matrix"
       ))
     : undefined;
+  const matrixRootNodes = nodes.filter((node) => (
+    node.hidden !== true
+    && ((node.data ?? {}) as Record<string, unknown>).layoutMode === "matrix"
+  ));
+  const initialScopeKind = requestInitialScope(request, hasSelection, hasSubtree);
   const [root, setRoot] = useState<HTMLElement | null>(null);
-  const [scopeKind, setScopeKind] = useState<DialogScope>(() =>
-    requestInitialScope(request, hasSelection, hasSubtree)
-  );
+  const [scopeKind, setScopeKind] = useState<DialogScope>(initialScopeKind);
   const requestedFormat = request.format ?? "png";
   const [format, setFormat] = useState<ExportFormat>(requestedFormat);
   const [scaleChoice, setScaleChoice] = useState<ScaleChoice>("2");
@@ -131,11 +152,22 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     () => !exportFormatSupportsTransparency(requestedFormat)
   );
   const [opaqueFallback, setOpaqueFallback] = useState<OpaqueFallback>("black");
-  const [matrixOutputMode, setMatrixOutputMode] = useState<MatrixOutputMode>("sections");
+  const [matrixOutputMode, setMatrixOutputMode] = useState<MatrixOutputMode>(
+    initialScopeKind === "board" ? "whole" : "folds"
+  );
   const [selectedMatrixSectionIds, setSelectedMatrixSectionIds] = useState<string[] | null>(null);
+  const [selectedMatrixFoldIds, setSelectedMatrixFoldIds] = useState<string[] | null>(null);
+  const [boardMatrixRootId, setBoardMatrixRootId] = useState<string | null>(
+    selectedMatrixRootNode?.id ?? matrixRootNodes[0]?.id ?? null
+  );
   const [pdfPaperSize, setPdfPaperSize] = useState<PdfPaperSize>("letter");
   const [exporting, setExporting] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const matrixRootNodeId = scopeKind === "subtree"
+    ? selectedMatrixRootNode?.id
+    : scopeKind === "board"
+      ? matrixRootNodes.find((node) => node.id === boardMatrixRootId)?.id ?? matrixRootNodes[0]?.id
+      : undefined;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -186,12 +218,25 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     value: MatrixSectionExportPlan | null;
     error: ExportError | null;
   }>(() => {
-    if (!root || !matrixRootNode || scopeKind !== "subtree") {
+    const requestedMatrixRootId = scopeKind === "subtree"
+      ? subtreeRootId
+      : scopeKind === "board" ? boardMatrixRootId : null;
+    const visibleMatrixRoots = nodes.filter((node) => (
+      node.hidden !== true
+      && ((node.data ?? {}) as Record<string, unknown>).layoutMode === "matrix"
+    ));
+    const requestedMatrixRoot = visibleMatrixRoots.find(
+      (node) => node.id === requestedMatrixRootId
+    );
+    const plannedMatrixRoot = scopeKind === "board"
+      ? requestedMatrixRoot ?? visibleMatrixRoots[0]
+      : requestedMatrixRoot;
+    if (!root || !plannedMatrixRoot || (scopeKind !== "subtree" && scopeKind !== "board")) {
       return { value: null, error: null };
     }
     try {
       return {
-        value: resolveMatrixSectionExportPlan(matrixRootNode.id, nodes, edges, {
+        value: resolveMatrixSectionExportPlan(plannedMatrixRoot.id, nodes, edges, {
           padding,
           dom: {
             root,
@@ -207,25 +252,61 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         error: reportPreparationFailure(error),
       };
     }
-  }, [edges, matrixRootNode, nodes, padding, root, scopeKind, viewportTransform]);
+  }, [
+    boardMatrixRootId,
+    edges,
+    nodes,
+    padding,
+    root,
+    scopeKind,
+    subtreeRootId,
+    viewportTransform,
+  ]);
   const matrixSectionPlan = matrixSectionPlanning.value;
   const allMatrixSectionIds = useMemo(
     () => matrixSectionPlan?.sections.map((section) => section.id) ?? [],
     [matrixSectionPlan]
   );
+  const allMatrixFoldIds = useMemo(
+    () => matrixSectionPlan?.folds.map((fold) => fold.id) ?? [],
+    [matrixSectionPlan]
+  );
   const effectiveSelectedMatrixSectionIds = selectedMatrixSectionIds ?? allMatrixSectionIds;
+  const effectiveSelectedMatrixFoldIds = selectedMatrixFoldIds ?? allMatrixFoldIds;
   const selectedMatrixSectionIdSet = useMemo(
     () => new Set(effectiveSelectedMatrixSectionIds),
     [effectiveSelectedMatrixSectionIds]
   );
-  const selectedMatrixSections = useMemo(
+  const selectedMatrixFoldIdSet = useMemo(
+    () => new Set(effectiveSelectedMatrixFoldIds),
+    [effectiveSelectedMatrixFoldIds]
+  );
+  const selectedMatrixChildSections = useMemo(
     () => matrixSectionPlan?.sections.filter((section) =>
       selectedMatrixSectionIdSet.has(section.id)) ?? [],
     [matrixSectionPlan, selectedMatrixSectionIdSet]
   );
+  const selectedMatrixFolds = useMemo(
+    () => matrixSectionPlan?.folds.filter((fold) =>
+      selectedMatrixFoldIdSet.has(fold.id)) ?? [],
+    [matrixSectionPlan, selectedMatrixFoldIdSet]
+  );
+  const effectiveMatrixOutputMode = (
+    matrixOutputMode === "folds"
+    && (matrixSectionPlan?.folds.length ?? 0) < 2
+  ) ? "children" : matrixOutputMode;
+  const selectedMatrixSections = effectiveMatrixOutputMode === "folds"
+    ? selectedMatrixFolds
+    : selectedMatrixChildSections;
+  const availableMatrixSections = effectiveMatrixOutputMode === "folds"
+    ? matrixSectionPlan?.folds ?? []
+    : matrixSectionPlan?.sections ?? [];
+  const matrixOutputItemLabel = effectiveMatrixOutputMode === "folds"
+    ? "fold"
+    : "child section";
   const sectionMode = (
-    matrixOutputMode === "sections"
-    && scopeKind === "subtree"
+    effectiveMatrixOutputMode !== "whole"
+    && (scopeKind === "subtree" || scopeKind === "board")
     && !!matrixSectionPlan
   );
 
@@ -302,7 +383,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
       return;
     }
     if (sectionMode && selectedMatrixSections.length === 0) {
-      toast.error("Select at least one Matrix section to export.");
+      toast.error(`Select at least one Matrix ${matrixOutputItemLabel} to export.`);
       return;
     }
     if (
@@ -338,7 +419,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
           signal: abortController.signal,
           onProgress: (completed, total) => {
             toast.loading(
-              `Preparing ${format.toUpperCase()} section ${completed} of ${total}…`,
+              `Preparing ${format.toUpperCase()} ${matrixOutputItemLabel} ${completed} of ${total}…`,
               { id: toastId }
             );
           },
@@ -484,7 +565,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                     disabled={disabled}
                     title={title}
                     aria-pressed={scopeKind === value}
-                    onClick={() => setScopeKind(value)}
+                    onClick={() => {
+                      setScopeKind(value);
+                      if (value === "subtree") setMatrixOutputMode("folds");
+                      if (value === "board") setMatrixOutputMode("whole");
+                    }}
                     className={cn(
                       "rounded-lg border px-3 py-2 text-[11px] font-medium transition-colors",
                       scopeKind === value ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted",
@@ -498,8 +583,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             </div>
             {sectionMode ? (
               <p className="text-[10px] text-muted-foreground">
-                {selectedMatrixSections.length} of {matrixSectionPlan.sections.length} Matrix section
-                {matrixSectionPlan.sections.length === 1 ? "" : "s"} selected
+                {selectedMatrixSections.length} of {availableMatrixSections.length} Matrix {
+                  matrixOutputItemLabel
+                }{availableMatrixSections.length === 1 ? "" : "s"} selected
               </p>
             ) : resolved.value && (
               <p className="text-[10px] text-muted-foreground">
@@ -514,69 +600,133 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             )}
           </section>
 
-          {matrixSectionPlan && scopeKind === "subtree" && (
+          {matrixSectionPlan && (scopeKind === "subtree" || scopeKind === "board") && (
             <section className="space-y-2.5">
               <Label className="text-xs">Matrix output</Label>
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Matrix export arrangement">
+              {scopeKind === "board" && matrixRootNodes.length > 1 && (
+                <label className="block rounded-lg border bg-muted/20 p-2">
+                  <span className="block text-[9px] font-medium text-muted-foreground">
+                    Matrix to split
+                  </span>
+                  <select
+                    value={matrixRootNodeId ?? ""}
+                    onChange={(event) => setBoardMatrixRootId(event.target.value)}
+                    className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                  >
+                    {matrixRootNodes.map((node, index) => (
+                      <option key={node.id} value={node.id}>
+                        {readableExportLabel(
+                          (node.data ?? {}) as Record<string, unknown>,
+                          `Matrix ${index + 1}`
+                        )}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <div
+                className={cn(
+                  "grid gap-2",
+                  matrixSectionPlan.folds.length > 1 ? "sm:grid-cols-3" : "grid-cols-2"
+                )}
+                role="group"
+                aria-label="Matrix export arrangement"
+              >
                 <button
                   type="button"
-                  aria-pressed={matrixOutputMode === "whole"}
+                  aria-pressed={effectiveMatrixOutputMode === "whole"}
                   onClick={() => setMatrixOutputMode("whole")}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-left",
-                    matrixOutputMode === "whole"
+                    effectiveMatrixOutputMode === "whole"
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
                 >
-                  <span className="block text-[11px] font-medium">Whole Matrix</span>
+                  <span className="block text-[11px] font-medium">
+                    {scopeKind === "board" ? "Whole board" : "Whole Matrix"}
+                  </span>
                   <span className="mt-0.5 block text-[9px] text-muted-foreground">
                     One complete file
                   </span>
                 </button>
+                {matrixSectionPlan.folds.length > 1 && (
+                  <button
+                    type="button"
+                    aria-pressed={effectiveMatrixOutputMode === "folds"}
+                    onClick={() => setMatrixOutputMode("folds")}
+                    className={cn(
+                      "rounded-lg border px-3 py-2 text-left",
+                      effectiveMatrixOutputMode === "folds"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    <span className="block text-[11px] font-medium">Root folds</span>
+                    <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                      {matrixSectionPlan.folds.length} authored fold pages
+                    </span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  aria-pressed={matrixOutputMode === "sections"}
-                  onClick={() => setMatrixOutputMode("sections")}
+                  aria-pressed={effectiveMatrixOutputMode === "children"}
+                  onClick={() => setMatrixOutputMode("children")}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-left",
-                    matrixOutputMode === "sections"
+                    effectiveMatrixOutputMode === "children"
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
                 >
-                  <span className="block text-[11px] font-medium">Choose sections</span>
+                  <span className="block text-[11px] font-medium">Individual children</span>
                   <span className="mt-0.5 block text-[9px] text-muted-foreground">
-                    Select one, several, or all
+                    {matrixSectionPlan.sections.length} direct child pages
                   </span>
                 </button>
               </div>
-              {matrixOutputMode === "sections" && (
+              {sectionMode && (
                 <div className="rounded-lg border p-3">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <p className="text-[10px] font-medium">
-                      Choose one, several, or all sections
+                      Choose one, several, or all {
+                        effectiveMatrixOutputMode === "folds" ? "root folds" : "children"
+                      }
                     </p>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         className="text-[9px] font-medium text-primary hover:underline"
-                        onClick={() => setSelectedMatrixSectionIds(allMatrixSectionIds)}
+                        onClick={() => {
+                          if (effectiveMatrixOutputMode === "folds") {
+                            setSelectedMatrixFoldIds(allMatrixFoldIds);
+                          } else {
+                            setSelectedMatrixSectionIds(allMatrixSectionIds);
+                          }
+                        }}
                       >
                         Select all
                       </button>
                       <button
                         type="button"
                         className="text-[9px] font-medium text-muted-foreground hover:text-foreground"
-                        onClick={() => setSelectedMatrixSectionIds([])}
+                        onClick={() => {
+                          if (effectiveMatrixOutputMode === "folds") {
+                            setSelectedMatrixFoldIds([]);
+                          } else {
+                            setSelectedMatrixSectionIds([]);
+                          }
+                        }}
                       >
                         Clear
                       </button>
                     </div>
                   </div>
                   <div className="max-h-36 space-y-1.5 overflow-y-auto pr-1">
-                    {matrixSectionPlan.sections.map((section) => {
-                      const checked = selectedMatrixSectionIdSet.has(section.id);
+                    {availableMatrixSections.map((section) => {
+                      const checked = effectiveMatrixOutputMode === "folds"
+                        ? selectedMatrixFoldIdSet.has(section.id)
+                        : selectedMatrixSectionIdSet.has(section.id);
                       return (
                         <label
                           key={section.id}
@@ -586,19 +736,32 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                             type="checkbox"
                             checked={checked}
                             onChange={() => {
-                              const next = new Set(effectiveSelectedMatrixSectionIds);
-                              if (checked) next.delete(section.id);
-                              else next.add(section.id);
-                              setSelectedMatrixSectionIds(
-                                matrixSectionPlan.sections
-                                  .map((candidate) => candidate.id)
-                                  .filter((id) => next.has(id))
-                              );
+                              if (effectiveMatrixOutputMode === "folds") {
+                                const next = new Set(effectiveSelectedMatrixFoldIds);
+                                if (checked) next.delete(section.id);
+                                else next.add(section.id);
+                                setSelectedMatrixFoldIds(
+                                  matrixSectionPlan.folds
+                                    .map((candidate) => candidate.id)
+                                    .filter((id) => next.has(id))
+                                );
+                              } else {
+                                const next = new Set(effectiveSelectedMatrixSectionIds);
+                                if (checked) next.delete(section.id);
+                                else next.add(section.id);
+                                setSelectedMatrixSectionIds(
+                                  matrixSectionPlan.sections
+                                    .map((candidate) => candidate.id)
+                                    .filter((id) => next.has(id))
+                                );
+                              }
                             }}
                             className="mt-0.5 h-3.5 w-3.5 accent-primary"
                           />
                           <span className="min-w-0 text-[10px] leading-snug">
-                            <span className="mr-1 text-muted-foreground">{section.index + 1}.</span>
+                            {effectiveMatrixOutputMode === "children" && (
+                              <span className="mr-1 text-muted-foreground">{section.index + 1}.</span>
+                            )}
                             {section.label}
                           </span>
                         </label>
@@ -606,7 +769,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                     })}
                   </div>
                   <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
-                    The Matrix root is repeated as a full-width header and resized for every selected section.
+                    The Matrix root is repeated as a full-width header and resized for every selected {
+                      effectiveMatrixOutputMode === "folds" ? "fold" : "child section"
+                    }.
                   </p>
                 </div>
               )}
@@ -677,7 +842,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                 ))}
               </div>
               <p className="text-[9px] text-muted-foreground">
-                Each section is fitted to its own page; portrait or landscape is chosen automatically.
+                Each {matrixOutputItemLabel} is fitted to its own page; portrait or landscape is chosen automatically.
               </p>
             </section>
           )}
@@ -789,12 +954,12 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <p className="text-xs text-destructive" role="alert">{preparationError}</p>
             ) : sectionMode && selectedMatrixSections.length === 0 ? (
               <p className="text-xs text-destructive" role="alert">
-                Select at least one Matrix section.
+                Select at least one Matrix {matrixOutputItemLabel}.
               </p>
             ) : bounds && outputWidth && outputHeight ? (
               <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
                 <span className="text-muted-foreground">
-                  {sectionMode ? "Largest section" : "Content"}
+                  {sectionMode ? `Largest ${matrixOutputItemLabel}` : "Content"}
                 </span>
                 <span className="text-right font-medium">{formatDimension(bounds.width)} × {formatDimension(bounds.height)}</span>
                 <span className="text-muted-foreground">Scale</span>
@@ -833,7 +998,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             )}
             {activeAdjusted && limitingRasterPlan && (
               <div className="mt-3 rounded-lg bg-amber-500/10 p-3 text-[10px] leading-relaxed text-amber-800 dark:text-amber-200">
-                {sectionMode ? "At least one selected section is" : "This content is"} too large for {formatScale(limitingRasterPlan.requestedScale)} {format.toUpperCase()} export. It will export at the safe {formatScale(limitingRasterPlan.effectiveScale)} scale, with the largest constrained image producing {limitingRasterPlan.outputWidth.toLocaleString()} × {limitingRasterPlan.outputHeight.toLocaleString()} pixels.
+                {sectionMode ? `At least one selected ${matrixOutputItemLabel} is` : "This content is"} too large for {formatScale(limitingRasterPlan.requestedScale)} {format.toUpperCase()} export. It will export at the safe {formatScale(limitingRasterPlan.effectiveScale)} scale, with the largest constrained image producing {limitingRasterPlan.outputWidth.toLocaleString()} × {limitingRasterPlan.outputHeight.toLocaleString()} pixels.
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={fitToSafeSize}>
                     Fit to safe {format.toUpperCase()} size
@@ -853,7 +1018,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <p className="mt-3 flex items-center gap-2 rounded-lg bg-blue-500/10 p-2 text-[10px] text-blue-700 dark:text-blue-200">
                 <Link2 className="h-3.5 w-3.5" />
                 {sectionMode
-                  ? "Each selected section is fitted to its own printable page; chart links remain clickable."
+                  ? `Each selected ${matrixOutputItemLabel} is fitted to its own printable page; chart links remain clickable.`
                   : "Links in chart text remain clickable in the PDF."}
               </p>
             )}
@@ -878,7 +1043,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               {exporting
                 ? "Exporting…"
                 : sectionMode
-                  ? `Export ${selectedMatrixSections.length} section${selectedMatrixSections.length === 1 ? "" : "s"}`
+                  ? `Export ${selectedMatrixSections.length} ${matrixOutputItemLabel}${selectedMatrixSections.length === 1 ? "" : "s"}`
                   : `Export ${format.toUpperCase()}`}
             </Button>
           </div>
