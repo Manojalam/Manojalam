@@ -44,6 +44,39 @@ test("move-only keeps descendants and attached notes in place", () => {
   assert.equal(plan.moveAsGroup, false);
 });
 
+test("a normal List root drag moves only the root", () => {
+  const nodes = [
+    node("root", { layoutMode: "list" }),
+    node("child", { parentId: "root" }),
+    node("grandchild", { parentId: "child" }),
+  ];
+  const edges = [
+    edge("root-child", "root", "child"),
+    edge("child-grandchild", "child", "grandchild"),
+  ];
+
+  const plan = planNodeDragMovement(nodes, edges, "root", ["root"]);
+
+  assert.deepEqual(plan.movingIds, ["root"]);
+  assert.equal(plan.moveAsGroup, false);
+});
+
+test("multi-selection still moves selected List nodes together", () => {
+  const nodes = [
+    node("root", { layoutMode: "list" }),
+    node("child", { parentId: "root" }),
+    node("grandchild", { parentId: "child" }),
+  ];
+  const edges = [
+    edge("root-child", "root", "child"),
+    edge("child-grandchild", "child", "grandchild"),
+  ];
+
+  const plan = planNodeDragMovement(nodes, edges, "root", ["root", "child"]);
+
+  assert.deepEqual(plan.movingIds, ["root", "child"]);
+});
+
 test("matrix frames stay together even when move-only is requested", () => {
   const nodes = [
     node("matrix", { matrixCellRole: "header", matrixRootId: "matrix" }),

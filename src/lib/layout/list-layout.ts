@@ -232,8 +232,9 @@ export function diagnoseListLayout(
 
 /**
  * List descendants may keep their authored or previously generated positions,
- * but the root is always a header for the complete outline. Keep it centered
- * over the first-level rows and above every visible descendant.
+ * but the root remains a header above the complete outline. Preserve its authored
+ * horizontal anchor for a normal single-column outline; only Fold-created
+ * multi-column groups center the root across their first-level headers.
  */
 export function computeListRootTopPlacement(
   rootId: string,
@@ -255,9 +256,12 @@ export function computeListRootTopPlacement(
 
   const rootChildren = (hierarchy.get(rootId)?.childIds ?? []).filter((childId) => byId.has(childId));
   const headerBounds = boundsForNodeIds(rootChildren, placements, byId) ?? contentBounds;
+  const rootFolded = resolvedFoldSections(rootData, rootChildren).length > 1;
   const rootRect = rectAt(root, rootPlacement);
   return {
-    x: rootPlacement.x + headerBounds.centerX - rootRect.centerX,
+    x: rootFolded
+      ? rootPlacement.x + headerBounds.centerX - rootRect.centerX
+      : rootPlacement.x,
     y: rootPlacement.y + contentBounds.top - density.rootToFirstRowGapY
       - rootRect.height - rootRect.top,
   };
@@ -358,14 +362,18 @@ export function computeListLayout(
       ? { ...node.position }
       : generated[entry.nodeId];
   }
-  const rootTopPlacement = computeListRootTopPlacement(
-    rootId,
-    hierarchy,
-    byId,
-    placements,
-    options.density
-  );
-  if (rootTopPlacement) placements[rootId] = rootTopPlacement;
+  const rootIsManuallyPositioned = preserveManualOverrides
+    && (root.data as Record<string, unknown>).listManualOverride === true;
+  if (!rootIsManuallyPositioned) {
+    const rootTopPlacement = computeListRootTopPlacement(
+      rootId,
+      hierarchy,
+      byId,
+      placements,
+      options.density
+    );
+    if (rootTopPlacement) placements[rootId] = rootTopPlacement;
+  }
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
     if (

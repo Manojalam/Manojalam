@@ -2299,7 +2299,7 @@ test("a nested Matrix pulls its outer parent close above the finished table", ()
   assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
 });
 
-test("a Matrix directly under a List root keeps the List root centered above it", () => {
+test("a Matrix directly under a List root keeps the List root left-aligned above it", () => {
   const nodes: Node[] = [
     {
       id: "outer",
@@ -2332,7 +2332,10 @@ test("a Matrix directly under a List root keeps the List root centered above it"
   const outer = getNodeRect(packed.find((node) => node.id === "outer")!);
   const matrix = getNodeRect(packed.find((node) => node.id === "matrix")!);
 
-  assert.equal(outer.centerX, matrix.centerX);
+  assert.equal(
+    packed.find((node) => node.id === "outer")!.position.x,
+    nodes.find((node) => node.id === "outer")!.position.x
+  );
   assert.equal(matrix.top - outer.bottom, LIST_DENSITIES.compact.rootToFirstRowGapY);
   assert.deepEqual(
     packed.find((node) => node.id === "matrix")!.position,
@@ -2343,6 +2346,44 @@ test("a Matrix directly under a List root keeps the List root centered above it"
     nodes.find((node) => node.id === "matrix-child")!.position
   );
   assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
+});
+
+test("nested Matrix packing preserves a manually moved List root", () => {
+  const nodes: Node[] = [
+    {
+      id: "outer",
+      type: "shape",
+      position: { x: 420, y: 72 },
+      measured: { width: 203, height: 54 },
+      data: {
+        layoutMode: "list",
+        listDensity: "compact",
+        listManualOverride: true,
+        childOrder: ["matrix"],
+      },
+    },
+    {
+      id: "matrix",
+      type: "shape",
+      position: { x: 265, y: 160 },
+      measured: { width: 377, height: 30 },
+      data: { parentId: "outer", childOrder: ["matrix-child"], layoutMode: "matrix" },
+    },
+    {
+      id: "matrix-child",
+      type: "shape",
+      position: { x: 265, y: 193 },
+      measured: { width: 377, height: 83 },
+      data: { parentId: "matrix", childOrder: [] },
+    },
+  ];
+  const edges: Edge[] = [
+    { id: "outer-matrix", source: "outer", target: "matrix" },
+    { id: "matrix-child", source: "matrix", target: "matrix-child" },
+  ];
+  const hierarchy = buildHierarchy(nodes, edges);
+
+  assert.strictEqual(packSiblingsAfterNestedMatrix(nodes, hierarchy, "matrix"), nodes);
 });
 
 test("a widened nested Matrix moves following outer branches without breaking their subtrees", () => {

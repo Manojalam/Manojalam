@@ -651,7 +651,8 @@ export function SelectionToolbar() {
     : false;
   const singleCanMoveOnly = singleHasChildren
     && !singleLocked
-    && ((selected[0]?.data ?? {}) as Record<string, unknown>).matrixCell !== true;
+    && ((selected[0]?.data ?? {}) as Record<string, unknown>).matrixCell !== true
+    && ((selected[0]?.data ?? {}) as Record<string, unknown>).layoutMode !== "list";
   const exportTitle = selected.length === 1
     ? String(
         ((selected[0].data ?? {}) as Record<string, unknown>).title

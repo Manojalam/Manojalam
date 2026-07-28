@@ -108,24 +108,17 @@ test("List creates one strongly indented depth-first outline", () => {
   assert.deepEqual(traversal.map((entry) => entry.nodeId), [
     "root", "a", "a1", "a2", "a2a", "a2b", "a3", "b", "b1", "b2", "c", "c1",
   ]);
-  const rootChildren = ["a", "b", "c"].map((nodeId) => rects.get(nodeId)!);
-  assert.equal(
-    rects.get("root")!.centerX,
-    (Math.min(...rootChildren.map((rect) => rect.left))
-      + Math.max(...rootChildren.map((rect) => rect.right))) / 2,
-    "the selected root is centered over its first-level list rows"
-  );
+  assert.deepEqual(placements.root, nodes[0].position, "the selected root keeps its authored anchor");
 
   for (let index = 1; index < traversal.length; index++) {
     const previous = rects.get(traversal[index - 1].nodeId)!;
     const current = rects.get(traversal[index].nodeId)!;
     assert.ok(current.top > previous.bottom, `${traversal[index].nodeId} must occupy its own later row`);
   }
-  const firstLevelLeft = rects.get("a")!.left;
-  for (const entry of traversal.slice(1)) {
+  for (const entry of traversal) {
     assert.equal(
       rects.get(entry.nodeId)!.left,
-      firstLevelLeft + (entry.depth - 1) * density.childIndentX,
+      rects.get("root")!.left + entry.depth * density.childIndentX,
       `${entry.nodeId} should visibly reflect hierarchy depth`
     );
   }
@@ -173,7 +166,7 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   assertNoOverlap(placed);
 });
 
-test("Fold horizontally centers a manually positioned List root", () => {
+test("Fold preserves a manually positioned List root", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, width: 220, height: 72 },
     ...Array.from({ length: 6 }, (_, index) => ({
@@ -197,22 +190,10 @@ test("Fold horizontally centers a manually positioned List root", () => {
     new Map(nodes.map((node) => [node.id, node])),
     { preserveManualOverrides: true }
   );
-  const rects = positionedRects(nodes, placements);
-  const root = rects.get("root")!;
-  const headers = Array.from({ length: 6 }, (_, index) => rects.get(`child-${index}`)!);
-
-  assert.notEqual(placements.root.x, 40);
-  assert.equal(
-    root.centerX,
-    (Math.min(...headers.map((rect) => rect.left)) + Math.max(...headers.map((rect) => rect.right))) / 2
-  );
-  assert.equal(
-    Math.min(...headers.map((rect) => rect.top)) - root.bottom,
-    LIST_DENSITIES.compact.rootToFirstRowGapY
-  );
+  assert.deepEqual(placements.root, { x: 40, y: 520 });
 });
 
-test("an unfolded List centers its root above saved content", () => {
+test("an unfolded List preserves a manually moved root during content reflow", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, width: 220, height: 72 },
     { id: "first", parentId: "root", width: 180, height: 58 },
@@ -242,18 +223,7 @@ test("an unfolded List centers its root above saved content", () => {
     new Map(nodes.map((node) => [node.id, node])),
     { preserveManualOverrides: true }
   );
-  const rects = positionedRects(nodes, placements);
-  const root = rects.get("root")!;
-  const contentTop = Math.min(rects.get("first")!.top, rects.get("second")!.top);
-
-  const headers = [rects.get("first")!, rects.get("second")!];
-  assert.equal(
-    root.centerX,
-    (Math.min(...headers.map((rect) => rect.left)) + Math.max(...headers.map((rect) => rect.right))) / 2
-  );
-  assert.notEqual(placements.root.x, 40);
-  assert.notEqual(placements.root.y, 520);
-  assert.equal(contentTop - root.bottom, LIST_DENSITIES.compact.rootToFirstRowGapY);
+  assert.deepEqual(placements.root, { x: 40, y: 520 });
 });
 
 test("saved List geometry receives a root header without rearranging descendants", () => {
@@ -280,10 +250,7 @@ test("saved List geometry receives a root header without rearranging descendants
   assert.ok(rootPlacement);
   const rects = positionedRects(nodes, { ...savedPlacements, root: rootPlacement! });
   const headers = ["first", "second", "third"].map((nodeId) => rects.get(nodeId)!);
-  assert.equal(
-    rects.get("root")!.centerX,
-    (Math.min(...headers.map((rect) => rect.left)) + Math.max(...headers.map((rect) => rect.right))) / 2
-  );
+  assert.equal(rootPlacement!.x, savedPlacements.root.x);
   assert.equal(
     Math.min(...headers.map((rect) => rect.top)) - rects.get("root")!.bottom,
     LIST_DENSITIES.compact.rootToFirstRowGapY
@@ -336,14 +303,14 @@ test("comfortable density increases indentation and row clearance", () => {
   const comfortablePlacements = computeListLayout("root", hierarchy, byId, { density: "comfortable" });
   const comfortable = positionedRects(nodes, comfortablePlacements);
 
-  assert.ok(comfortable.get("a1")!.left - comfortable.get("a")!.left
-    > compact.get("a1")!.left - compact.get("a")!.left);
+  assert.ok(comfortable.get("a")!.left - comfortable.get("root")!.left
+    > compact.get("a")!.left - compact.get("root")!.left);
   assert.ok(comfortable.get("a1")!.top - comfortable.get("a")!.bottom
     > compact.get("a1")!.top - compact.get("a")!.bottom);
   assertNoOverlap(positionedNodes(nodes, comfortablePlacements));
 });
 
-test("wide roots center over their headers without altering descendant indentation", () => {
+test("wide parents do not alter the fixed depth indentation", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, width: 620, height: 80 },
     { id: "child", parentId: "root", width: 510, height: 80 },
@@ -352,7 +319,7 @@ test("wide roots center over their headers without altering descendant indentati
   const hierarchy = buildHierarchy(nodes, edges);
   const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const rects = positionedRects(nodes, placements);
-  assert.equal(rects.get("child")!.centerX, rects.get("root")!.centerX);
+  assert.equal(rects.get("child")!.left - rects.get("root")!.left, LIST_COLUMN_GUTTER);
   assert.equal(rects.get("leaf")!.left - rects.get("child")!.left, LIST_COLUMN_GUTTER);
   assertNoOverlap(positionedNodes(nodes, placements));
 });
