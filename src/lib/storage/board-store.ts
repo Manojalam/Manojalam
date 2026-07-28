@@ -177,6 +177,28 @@ export async function createBoard(
   return rowToBoard(data as BoardRow, "owner");
 }
 
+/** Create a board with complete content in one insert (used by reviewed imports). */
+export async function createBoardFromContent(
+  title: string,
+  content: BoardContent
+): Promise<VidyaBoard> {
+  const supabase = requireSupabaseClient();
+  const userId = await getCurrentUserId();
+  const boardTitle = title.trim() || "Imported Board";
+  const { data, error } = await supabase
+    .from("boards")
+    .insert({
+      user_id: userId,
+      title: boardTitle,
+      content: normalizeBoardContent(content),
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return rowToBoard(data as BoardRow, "owner");
+}
+
 export async function updateBoard(
   id: string,
   partial: Partial<Pick<VidyaBoard, "title" | "description" | "content">>
@@ -246,8 +268,7 @@ export async function importBoard(json: string): Promise<VidyaBoard> {
 
   const content = normalizeBoardContent(rawContent);
 
-  const board = await createBoard(undefined, title);
-  return (await updateBoard(board.id, { content, title }))!;
+  return createBoardFromContent(title, content);
 }
 
 export async function saveSnapshot(boardId: string, name?: string): Promise<void> {

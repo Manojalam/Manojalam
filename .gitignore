@@ -20,6 +20,10 @@
 # production
 /build
 
+# generated local OCR/PDF runtime assets (see scripts/prepare-ocr-assets.mjs)
+/public/ocr/
+/public/pdf.worker.min.mjs
+
 # misc
 .DS_Store
 *.pem

@@ -9,8 +9,13 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".codex-worktrees/**",
+    ".tmp/**",
+    "tmp/**",
     "out/**",
     "build/**",
+    "public/ocr/**",
+    "public/pdf.worker.min.mjs",
     "next-env.d.ts",
   ]),
 ]);
