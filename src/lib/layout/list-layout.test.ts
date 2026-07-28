@@ -6,6 +6,7 @@ import { buildHierarchy } from "./hierarchy";
 import {
   LIST_COLUMN_GUTTER,
   LIST_DENSITIES,
+  LIST_FOLDED_CONNECTOR_GUTTER,
   buildListConnectorModel,
   computeListLayout,
   diagnoseListLayout,
@@ -144,13 +145,61 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   const placed = positionedNodes(nodes, placements);
   const first = getNodeRect(placed.find((node) => node.id === "child-0")!);
   const sixth = getNodeRect(placed.find((node) => node.id === "child-5")!);
+  const root = getNodeRect(placed.find((node) => node.id === "root")!);
+  const foldedLeft = Math.min(...placed.filter((node) => node.id !== "root").map((node) => getNodeRect(node).left));
+  const foldedRight = Math.max(...placed.filter((node) => node.id !== "root").map((node) => getNodeRect(node).right));
   const model = buildListConnectorModel(placed, fixture.edges);
+  const group = model.groups.find((candidate) => candidate.parentId === "root");
 
   assert.equal(first.top, sixth.top);
   assert.ok(sixth.left > first.right);
-  assert.equal(model.groups.find((group) => group.parentId === "root")?.branches.length, 10);
+  assert.ok(Math.abs(root.centerX - (foldedLeft + foldedRight) / 2) < 0.001);
+  assert.equal(group?.branches.length, 10);
+  assert.equal(group?.sharedSegments.length, 4);
+  const verticalTrunks = group!.sharedSegments.filter((segment) => segment.x1 === segment.x2);
+  assert.equal(verticalTrunks.length, 3, "one root drop plus one trunk per folded section");
+  assert.equal(new Set(group!.branches.map((branch) => branch.segments[0].x1)).size, 2);
+  assert.ok(group!.branches.every((branch) => (
+    Math.abs(branch.segments[0].x2 - branch.segments[0].x1)
+      === LIST_FOLDED_CONNECTOR_GUTTER
+  )));
   assert.deepEqual(model.obstacleIntersections, []);
   assertNoOverlap(placed);
+});
+
+test("Fold recenters a manually moved List root during automatic reflow", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    ...Array.from({ length: 6 }, (_, index) => ({
+      id: `child-${index}`,
+      parentId: "root",
+      width: 180,
+      height: 58,
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        position: { x: 40, y: node.position.y },
+        data: { ...node.data, layoutFoldCount: 3, listManualOverride: true },
+      }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    { preserveManualOverrides: true }
+  );
+  const rects = positionedRects(nodes, placements);
+  const children = Array.from({ length: 6 }, (_, index) => rects.get(`child-${index}`)!);
+  const childCenter = (
+    Math.min(...children.map((rect) => rect.left))
+    + Math.max(...children.map((rect) => rect.right))
+  ) / 2;
+
+  assert.notEqual(placements.root.x, 40);
+  assert.ok(Math.abs(rects.get("root")!.centerX - childCenter) < 0.001);
 });
 
 test("Fold compacts the next List branch after child sections move sideways", () => {
