@@ -95,6 +95,7 @@ export async function exportHierarchySections(
       background: options.background,
       backgroundTexture: options.backgroundTexture,
       headerOverlay: section.headerOverlay,
+      layoutAdjustment: section.layoutAdjustment,
       appearanceBackground: options.appearanceBackground,
       viewportTransform: options.viewportTransform,
       download: false,

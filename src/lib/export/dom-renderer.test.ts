@@ -10,6 +10,7 @@ import {
   normalizeExportSurfaceEffects,
   normalizedSelectedExportNodeZIndex,
   parseExportCssColor,
+  translatedExportTransform,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
 import { ExportError } from "./errors";
@@ -85,6 +86,17 @@ test("removes React Flow's temporary selected-node elevation from exports", () =
   assert.equal(normalizedSelectedExportNodeZIndex("1020"), "20");
   assert.equal(normalizedSelectedExportNodeZIndex("999"), null);
   assert.equal(normalizedSelectedExportNodeZIndex("auto"), null);
+});
+
+test("adds export-only translation without discarding React Flow positioning", () => {
+  assert.equal(
+    translatedExportTransform("translate(130px, 800px)", 0, -632),
+    "translate(130px, 800px) translate(0px, -632px)"
+  );
+  assert.equal(
+    translatedExportTransform("none", -252, 0),
+    "translate(-252px, 0px)"
+  );
 });
 
 test("continues a non-strict export after the document font set rejects", async () => {
