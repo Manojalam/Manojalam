@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { matrixSectionDownloadFilename } from "./matrix-section-export";
+import { hierarchySectionDownloadFilename } from "./hierarchy-section-export";
 
-test("creates ordered and filesystem-safe Matrix section filenames", () => {
+test("creates ordered and filesystem-safe hierarchy section filenames", () => {
   assert.equal(
-    matrixSectionDownloadFilename(
+    hierarchySectionDownloadFilename(
       "Sandhi chart.png",
       { index: 1, label: "Second / branch: vowels?" },
       3,
