@@ -30,6 +30,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const matrixCell = d.matrixCell === true;
   const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
+  const hierarchyNumber = typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined;
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#d97706";
   const generatedStyle = layoutStyle ? {
@@ -81,7 +82,10 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
       >
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-foreground">{d.title || "Sanskrit Card"}</h3>
+            <h3 className="font-semibold text-foreground">
+              {hierarchyNumber && `${hierarchyNumber} `}
+              {d.title || "Sanskrit Card"}
+            </h3>
             {d.source && <p className="text-xs text-muted-foreground">{d.source}</p>}
           </div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={cycleMode}>

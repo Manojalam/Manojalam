@@ -41,6 +41,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const matrixCell = d.matrixCell === true;
   const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
+  const hierarchyNumber = typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined;
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#d97706";
   const generatedStyle = layoutStyle ? {
@@ -90,7 +91,10 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">{d.title || "Śloka"}</h3>
+          <h3 className="font-semibold">
+            {hierarchyNumber && `${hierarchyNumber} `}
+            {d.title || "Śloka"}
+          </h3>
           <Badge className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}>
             {d.memorizationStatus ?? "new"}
           </Badge>

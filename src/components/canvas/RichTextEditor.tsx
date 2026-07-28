@@ -253,6 +253,48 @@ const UpadhmaniyaPresentation = Extension.create({
 });
 
 const additiveTextSelectionKey = new PluginKey<DecorationSet>("additiveTextSelection");
+const hierarchyNumberPresentationKey = new PluginKey<string>("hierarchyNumberPresentation");
+
+/**
+ * Render the board-derived outline number at the start of the first text block.
+ * A widget decoration is visible and measurable but never enters the ProseMirror
+ * document, so getHTML(), formatting, copy, undo, and persistence remain clean.
+ */
+const HierarchyNumberPresentation = Extension.create({
+  name: "hierarchyNumberPresentation",
+  addProseMirrorPlugins() {
+    return [new Plugin<string>({
+      key: hierarchyNumberPresentationKey,
+      state: {
+        init: () => "",
+        apply(transaction, current) {
+          const next = transaction.getMeta(hierarchyNumberPresentationKey);
+          return typeof next === "string" ? next : current;
+        },
+      },
+      props: {
+        decorations(state) {
+          const hierarchyNumber = hierarchyNumberPresentationKey.getState(state);
+          if (!hierarchyNumber) return null;
+          return DecorationSet.create(state.doc, [
+            Decoration.widget(Math.min(1, state.doc.content.size), () => {
+              const element = document.createElement("span");
+              element.dataset.hierarchyNumber = "true";
+              element.setAttribute("aria-hidden", "true");
+              element.contentEditable = "false";
+              element.textContent = `${hierarchyNumber}\u00a0`;
+              return element;
+            }, {
+              key: `hierarchy-number-${hierarchyNumber}`,
+              side: -10,
+              ignoreSelection: true,
+            }),
+          ]);
+        },
+      },
+    })];
+  },
+});
 
 /**
  * ProseMirror intentionally models one native selection. These decorations
@@ -317,6 +359,7 @@ const EXTENSIONS = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   ShapeTextFlowGuides,
   AdditiveTextSelection,
+  HierarchyNumberPresentation,
 ];
 
 /** Measure only rendered glyphs; editor decorations must never change text fit. */
@@ -521,6 +564,8 @@ interface RichTextEditorProps {
   nodeId?: string;
   initialContent: string;
   editable: boolean;
+  /** Derived board hierarchy number shown without becoming authored content. */
+  hierarchyNumber?: string;
   placeholder?: string;
   className?: string;
   /** Identifies the current text and authored typography presentation. */
@@ -557,6 +602,7 @@ export function RichTextEditor({
   nodeId,
   initialContent,
   editable,
+  hierarchyNumber,
   placeholder,
   className,
   measurementKey,
@@ -1134,6 +1180,16 @@ export function RichTextEditor({
     }
     scheduleContentReport(editor, "layout");
   }, [editor, editable, initialContent, scheduleContentReport]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const nextNumber = hierarchyNumber ?? "";
+    if (hierarchyNumberPresentationKey.getState(editor.state) === nextNumber) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(hierarchyNumberPresentationKey, nextNumber)
+    );
+    scheduleContentReport(editor, "layout");
+  }, [editor, hierarchyNumber, scheduleContentReport]);
 
   useEffect(() => {
     const element = editor?.view.dom as HTMLElement | undefined;

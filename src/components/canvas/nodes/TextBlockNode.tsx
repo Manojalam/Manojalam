@@ -304,6 +304,7 @@ function TextBlockNodeComponent({
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
+            hierarchyNumber={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
             initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",

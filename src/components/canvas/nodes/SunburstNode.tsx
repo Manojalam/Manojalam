@@ -51,6 +51,11 @@ import {
   chartHierarchyEdgeToken,
   chartNodeContentToken,
 } from "@/lib/canvas/chart-render-data";
+import {
+  hierarchyNumberMap,
+  prependHierarchyNumber,
+  prependHierarchyNumberToRichText,
+} from "@/lib/canvas/hierarchy-numbering";
 import { RichTextEditor } from "../RichTextEditor";
 
 type PolarPoint = { x: number; y: number };
@@ -74,6 +79,7 @@ type SunburstTreeNode = {
 type SunburstSegment = SunburstTreeNode & {
   label: string;
   richText: string;
+  authoredRichText: string;
   fill: string;
   fillEnd: string;
   textColor: string;
@@ -759,6 +765,7 @@ function collectSegments(
   node: SunburstTreeNode,
   byId: Map<string, Node>,
   scheme: RadialColorSchemeDefinition,
+  hierarchyNumbers: ReadonlyMap<string, string>,
   chartStyle: Record<string, unknown> = {}
 ): SunburstSegment[] {
   const segments: SunburstSegment[] = [];
@@ -767,7 +774,10 @@ function collectSegments(
       const source = byId.get(candidate.id);
       const data = (source?.data ?? {}) as Record<string, unknown>;
       const branchData = (byId.get(candidate.branchId)?.data ?? {}) as Record<string, unknown>;
-      const label = nodeLabel(source);
+      const authoredLabel = nodeLabel(source);
+      const hierarchyNumber = hierarchyNumbers.get(candidate.id);
+      const label = prependHierarchyNumber(authoredLabel, hierarchyNumber);
+      const authoredRichText = nodeRichText(source, authoredLabel);
       const paletteColors = radialSectorColors(
         scheme,
         candidate.branchIndex,
@@ -780,7 +790,8 @@ function collectSegments(
       segments.push({
         ...candidate,
         label,
-        richText: nodeRichText(source, label),
+        richText: prependHierarchyNumberToRichText(authoredRichText, hierarchyNumber),
+        authoredRichText,
         fill: (chartStyle.fillColor as string | undefined) ?? paletteColors.fill,
         fillEnd: (chartStyle.fillColor as string | undefined) ?? paletteColors.fillEnd,
         textColor: (chartStyle.textColor as string | undefined) ?? (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
@@ -875,6 +886,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const showCanvasLabelBoxGuides = useCanvasStore(
     (state) => state.settings.showLabelBoxGuides === true
   );
+  const hierarchicalNumbering = useCanvasStore(
+    (state) => state.settings.hierarchicalNumbering === true
+  );
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
@@ -964,6 +978,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   }, []);
 
   const fontMetricsReady = fontMetricsRevision > 0;
+  const hierarchyNumbers = useMemo(
+    () => hierarchicalNumbering ? hierarchyNumberMap(nodes, edges) : new Map<string, string>(),
+    [edges, hierarchicalNumbering, nodes]
+  );
 
   const model = useMemo(() => {
     const chartNodes = nodes.filter((node) =>
@@ -1002,7 +1020,13 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     assignGeometry(tree, centerRadius, bands);
     extendTerminalSectors(tree, outerRadius);
 
-    const segments = collectSegments(tree, byId, scheme, d as unknown as Record<string, unknown>);
+    const segments = collectSegments(
+      tree,
+      byId,
+      scheme,
+      hierarchyNumbers,
+      d as unknown as Record<string, unknown>
+    );
     return {
       root,
       byId,
@@ -1017,14 +1041,20 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       scheme,
       segments,
     };
-  }, [d, edges, nodes]);
+  }, [d, edges, hierarchyNumbers, nodes]);
 
   const fittedGeometry = useMemo(() => {
     if (!model) return null;
     const rootData = (model.root.data ?? {}) as Record<string, unknown>;
     const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(showCanvasLabelBoxGuides);
-    const rootLabel = nodeLabel(model.root);
-    const rootRichText = nodeRichText(model.root, rootLabel);
+    const authoredRootLabel = nodeLabel(model.root);
+    const rootHierarchyNumber = hierarchyNumbers.get(d.rootId);
+    const rootLabel = prependHierarchyNumber(authoredRootLabel, rootHierarchyNumber);
+    const authoredRootRichText = nodeRichText(model.root, authoredRootLabel);
+    const rootRichText = prependHierarchyNumberToRichText(
+      authoredRootRichText,
+      rootHierarchyNumber
+    );
     const rootFit = circleLabelGeometry(
       rootLabel,
       model.centerRadius,
@@ -1193,11 +1223,20 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       rootData,
       rootLabel,
       rootRichText,
+      authoredRootRichText,
       rootFit,
       drawLabelBoxGuides,
       segmentGeometryById,
     };
-  }, [d, fontMetricsReady, fontMetricsRevision, model, objectRotation, showCanvasLabelBoxGuides]);
+  }, [
+    d,
+    fontMetricsReady,
+    fontMetricsRevision,
+    hierarchyNumbers,
+    model,
+    objectRotation,
+    showCanvasLabelBoxGuides,
+  ]);
 
   const flushPendingTextEdit = useCallback(() => {
     if (textEditCommitTimerRef.current !== null) {
@@ -1264,6 +1303,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     rootData,
     rootLabel,
     rootRichText,
+    authoredRootRichText,
     rootFit,
     drawLabelBoxGuides,
     segmentGeometryById,
@@ -1274,7 +1314,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     : selectedSegment
       ? segmentGeometryById.get(selectedSegment.id)?.labelGeometry ?? null
       : null;
-  const selectedRichText = selectedId === d.rootId ? rootRichText : selectedSegment?.richText ?? "";
+  const selectedRichText = selectedId === d.rootId
+    ? authoredRootRichText
+    : selectedSegment?.authoredRichText ?? "";
   const selectedLabel = selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "";
   const selectedClipId = selectedId === d.rootId
     ? rootClipId
@@ -2154,6 +2196,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                 nodeId={selectedId}
                 initialContent={selectedRichText}
                 editable
+                hierarchyNumber={hierarchyNumbers.get(selectedId)}
                 initialFocusPoint={editFocusPoint}
                 placeholder="Type here"
                 className="h-full w-full [&_.ProseMirror]:flex [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:flex-col [&_.ProseMirror]:items-center [&_.ProseMirror]:justify-center [&_.ProseMirror]:overflow-visible"

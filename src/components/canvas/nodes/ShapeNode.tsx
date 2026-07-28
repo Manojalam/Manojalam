@@ -1492,6 +1492,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       nodeId={id}
                       initialContent={initialContent}
                       editable={editing}
+                      hierarchyNumber={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
                       initialFocusPoint={editFocusPoint}
                       measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}

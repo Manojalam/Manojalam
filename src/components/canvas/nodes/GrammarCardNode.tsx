@@ -25,6 +25,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const matrixCell = d.matrixCell === true;
   const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
+  const hierarchyNumber = typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined;
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#4f46e5";
   const generatedStyle = layoutStyle ? {
@@ -64,7 +65,10 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="font-semibold">{d.topic || "Grammar Rule"}</h3>
+          <h3 className="font-semibold">
+            {hierarchyNumber && `${hierarchyNumber} `}
+            {d.topic || "Grammar Rule"}
+          </h3>
           <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 text-[10px]">
             {GRAMMAR_CATEGORY_LABELS[d.category] ?? d.category}
           </Badge>

@@ -3080,6 +3080,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border p-2">
                 <div>
+                  <Label className="text-xs">Auto-number hierarchy</Label>
+                  <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                    Prefix labels across the board with outline numbers such as 1, 1.1, and 1.1.1.
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.hierarchicalNumbering === true}
+                  onCheckedChange={(v) => setBoardSettings({ hierarchicalNumbering: v })}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-md border p-2">
+                <div>
                   <Label className="text-xs">Label box guides</Label>
                   <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
                     Show label areas for every canvas object and connector.
