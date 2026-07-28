@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Editor } from "@tiptap/core";
+import { Color } from "@tiptap/extension-color";
+import { TextStyle } from "@tiptap/extension-text-style";
+import StarterKit from "@tiptap/starter-kit";
 
 import {
+  applyRichTextCommandAcrossRanges,
   appendRichTextSelectionRange,
   canShowInlineTextToolbar,
   comparableRichTextColor,
@@ -114,6 +119,44 @@ test("drag coordinates recover a range when browser and editor selections collap
     { from: 2, to: 6 },
     { from: 12, to: 20 },
   ]);
+});
+
+test("formatting is applied to every retained text range", () => {
+  const editor = new Editor({
+    extensions: [StarterKit, TextStyle, Color],
+    content: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "alpha" }] },
+        { type: "paragraph", content: [{ type: "text", text: "bravo" }] },
+        { type: "paragraph", content: [{ type: "text", text: "charlie" }] },
+      ],
+    },
+  });
+
+  try {
+    assert.equal(applyRichTextCommandAcrossRanges(
+      editor,
+      [{ from: 1, to: 6 }, { from: 8, to: 13 }],
+      (chain) => chain.setColor("#ef4444"),
+      { focus: false }
+    ), true);
+
+    const coloredWords: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (
+        node.isText
+        && node.marks.some((mark) =>
+          mark.type.name === "textStyle" && mark.attrs.color === "#ef4444")
+      ) {
+        coloredWords.push(node.text ?? "");
+      }
+    });
+    assert.deepEqual(coloredWords, ["alpha", "bravo"]);
+    assert.equal(editor.state.doc.textContent, "alphabravocharlie");
+  } finally {
+    editor.destroy();
+  }
 });
 
 test("persisted rich-text colors compare case and whitespace insensitively", () => {

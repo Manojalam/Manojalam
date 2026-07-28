@@ -6,6 +6,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
+  type ReactNode,
 } from "react";
 import { Check, X } from "lucide-react";
 
@@ -355,11 +356,14 @@ interface AppColorPickerProps {
   onChange: (color: string) => void;
   children: ReactElement;
   extraColors?: string[];
+  open?: boolean;
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
   onOpenChange?: (open: boolean) => void;
   contentClassName?: string;
+  showHeading?: boolean;
+  panelHeader?: ReactNode;
 }
 
 /** App-wide color chooser. Every general fill, border, text, and symbol control should use this. */
@@ -368,13 +372,17 @@ export function AppColorPicker({
   onChange,
   children,
   extraColors,
+  open: controlledOpen,
   align = "start",
   side = "bottom",
   sideOffset = 6,
   onOpenChange,
   contentClassName,
+  showHeading = true,
+  panelHeader,
 }: AppColorPickerProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const customColors = useCanvasStore((state) => state.settings.customColors ?? []);
   const setSettings = useCanvasStore((state) => state.setSettings);
   const allRecentColors = useMemo(
@@ -382,7 +390,7 @@ export function AppColorPicker({
     [customColors, extraColors]
   );
   const setOpenState = (nextOpen: boolean) => {
-    setOpen(nextOpen);
+    if (controlledOpen === undefined) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
   };
 
@@ -401,12 +409,20 @@ export function AppColorPicker({
         side={side}
         sideOffset={sideOffset}
         collisionPadding={8}
-        className={cn("w-[19rem] overflow-y-auto overscroll-contain p-3", contentClassName)}
+        className={cn(
+          "nodrag nopan nowheel z-[10000] w-[19rem] overflow-y-auto overscroll-contain p-3",
+          contentClassName
+        )}
         style={{ maxHeight: "min(36rem, var(--radix-popover-content-available-height))" }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
       >
+        {panelHeader}
         <ColorPickerPanel
           value={value}
           extraColors={allRecentColors}
+          showHeading={showHeading}
           onChange={chooseColor}
           onCancel={() => setOpenState(false)}
           stickyActions
