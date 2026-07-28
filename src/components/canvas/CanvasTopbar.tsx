@@ -229,7 +229,7 @@ export function CanvasTopbar() {
               onClick={() => openBoardExport({
                 scope: useCanvasStore.getState().selectedNodeIds.length
                   || useCanvasStore.getState().selectedEdgeIds.length
-                  ? "selection"
+                  ? undefined
                   : "board",
                 title: board?.title,
               })}
