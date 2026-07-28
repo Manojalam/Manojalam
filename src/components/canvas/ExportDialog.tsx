@@ -131,7 +131,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     () => !exportFormatSupportsTransparency(requestedFormat)
   );
   const [opaqueFallback, setOpaqueFallback] = useState<OpaqueFallback>("black");
-  const [matrixOutputMode, setMatrixOutputMode] = useState<MatrixOutputMode>("whole");
+  const [matrixOutputMode, setMatrixOutputMode] = useState<MatrixOutputMode>("sections");
   const [selectedMatrixSectionIds, setSelectedMatrixSectionIds] = useState<string[] | null>(null);
   const [pdfPaperSize, setPdfPaperSize] = useState<PdfPaperSize>("letter");
   const [exporting, setExporting] = useState(false);
@@ -545,9 +545,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                       : "border-border hover:bg-muted"
                   )}
                 >
-                  <span className="block text-[11px] font-medium">Selected sections</span>
+                  <span className="block text-[11px] font-medium">Choose sections</span>
                   <span className="mt-0.5 block text-[9px] text-muted-foreground">
-                    One page or file each
+                    Select one, several, or all
                   </span>
                 </button>
               </div>
