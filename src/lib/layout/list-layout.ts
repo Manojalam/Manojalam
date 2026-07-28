@@ -149,27 +149,6 @@ function boundsForNodeIds(
   };
 }
 
-function verticalFoldExtents(
-  children: string[],
-  childBounds: Map<string, NodeRect>,
-  gap: number
-): number[][] | null {
-  if (children.some((childId) => !childBounds.has(childId))) return null;
-  const extents = Array.from(
-    { length: children.length },
-    () => Array.from({ length: children.length + 1 }, () => 0)
-  );
-  for (let start = 0; start < children.length; start += 1) {
-    let extent = 0;
-    for (let end = start; end < children.length; end += 1) {
-      if (end > start) extent += gap;
-      extent += childBounds.get(children[end])!.height;
-      extents[start][end + 1] = extent;
-    }
-  }
-  return extents;
-}
-
 export function getPreorderTraversal(rootId: string, hierarchy: Hierarchy): ListTraversalEntry[] {
   const traversal: ListTraversalEntry[] = [];
   const seen = new Set<string>();
@@ -311,8 +290,7 @@ export function computeListLayout(
       }));
       const sections = resolvedFoldSections(
         (parent.data ?? {}) as Record<string, unknown>,
-        children,
-        verticalFoldExtents(children, childBounds, siblingGap)
+        children
       );
       const parentRect = rectAt(parent, parentPlacement);
       const firstChildTop = parentRect.bottom + (

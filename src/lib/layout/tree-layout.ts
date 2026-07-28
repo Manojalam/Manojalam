@@ -102,28 +102,6 @@ function moveTreePlacements(
   }
 }
 
-function treeFoldSegmentExtents(
-  children: string[],
-  subtreeBounds: Map<string, NodeRect>,
-  horizontal: boolean,
-  gap: number
-): number[][] {
-  const extents = Array.from(
-    { length: children.length },
-    () => Array.from({ length: children.length + 1 }, () => 0)
-  );
-  for (let start = 0; start < children.length; start += 1) {
-    let extent = 0;
-    for (let end = start; end < children.length; end += 1) {
-      if (end > start) extent += gap;
-      const bounds = subtreeBounds.get(children[end]);
-      extent += bounds ? (horizontal ? bounds.height : bounds.width) : 0;
-      extents[start][end + 1] = extent;
-    }
-  }
-  return extents;
-}
-
 /**
  * Repack child subtrees after nested Fold sections have reached their final
  * visual size. This prevents ancestors from retaining the space that the
@@ -161,11 +139,7 @@ function compactFoldedTreePlacements(
 
     const childGap = parentEntry.depth === 0 ? spacing.rootBranchGap : spacing.siblingGap;
     const data = (parent.data ?? {}) as Record<string, unknown>;
-    const sections = resolvedFoldSections(
-      data,
-      children,
-      treeFoldSegmentExtents(children, subtreeBounds, horizontal, childGap)
-    );
+    const sections = resolvedFoldSections(data, children);
     const sectionSpans = sections.map((section) => section.reduce((sum, childId, index) => {
       const bounds = subtreeBounds.get(childId)!;
       return sum + (horizontal ? bounds.height : bounds.width) + (index > 0 ? childGap : 0);

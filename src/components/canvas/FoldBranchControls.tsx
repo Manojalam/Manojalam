@@ -72,7 +72,7 @@ export function FoldBranchControls({
         Fold into sections
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-        Automatic balances rendered height—or width when sections stack vertically. Custom lets you place every break.
+        Automatic divides children evenly in their existing order. Custom lets you place every break.
       </p>
 
       <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
@@ -115,7 +115,7 @@ export function FoldBranchControls({
             }}
             className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
           >
-            <option value="automatic">Automatic · balance visual size</option>
+            <option value="automatic">Automatic · balance child count</option>
             <option value="custom">Custom · choose each break</option>
           </select>
 

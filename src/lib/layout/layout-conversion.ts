@@ -23,6 +23,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "matrixHeightOverride",
   "matrixTableWidthOverride",
   "matrixTableHeightOverride",
+  "matrixTableSizeLocked",
   "matrixIntrinsicSize",
   "matrixCell",
   "matrixCellRole",
@@ -38,6 +39,26 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "radialTextRotation",
   "radialChartDiameter",
   "radialRingWidth",
+] as const;
+
+const MATRIX_BRANCH_LAYOUT_OVERRIDE_FIELDS = [
+  "layoutFoldCount",
+  "layoutFoldBreakAfter",
+  "layoutWrapAfter",
+  "matrixOrientation",
+  "matrixChildFlow",
+  "matrixSiblingGap",
+  "matrixWidthOverride",
+  "matrixHeightOverride",
+] as const;
+
+const MATRIX_ROOT_LAYOUT_OVERRIDE_FIELDS = [
+  "matrixPackCompactGroups",
+  "matrixIncompleteRowMode",
+  "matrixFillCellLabels",
+  "matrixTableWidthOverride",
+  "matrixTableHeightOverride",
+  "matrixTableSizeLocked",
 ] as const;
 
 const EDGE_LAYOUT_ROUTING_FIELDS = [
@@ -77,6 +98,27 @@ export function clearLayoutNodeGeometry(
   data: Record<string, unknown>
 ): Record<string, unknown> {
   return omitFields(data, NODE_LAYOUT_GEOMETRY_FIELDS);
+}
+
+/**
+ * Restore automatic Matrix arrangement without touching authored content,
+ * hierarchy, colors, or generated presentation fields needed until reflow.
+ */
+export function clearMatrixLayoutOverrides(
+  data: Record<string, unknown>,
+  isRoot = false
+): Record<string, unknown> {
+  let next = omitFields(data, MATRIX_BRANCH_LAYOUT_OVERRIDE_FIELDS);
+  if (!isRoot) return next;
+
+  next = omitFields(next, MATRIX_ROOT_LAYOUT_OVERRIDE_FIELDS);
+  if (data.matrixGridVisible === false) {
+    next = omitFields(next, ["matrixGridVisible"]);
+  }
+  if (data.matrixDensityUserSet === true) {
+    next = omitFields(next, ["matrixDensity", "matrixDensityUserSet"]);
+  }
+  return next;
 }
 
 const ROUNDED_SHAPE_DEFAULT_LAYOUTS = new Set<LayoutMode>([

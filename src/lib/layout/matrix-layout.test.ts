@@ -1347,7 +1347,7 @@ test("a stretched nested vertical Fold keeps its section rows equally tall", () 
   assertClean(result);
 });
 
-test("a top-level Fold stretches a shorter section to keep the Matrix tiled", () => {
+test("a top-level branch Fold preserves the shorter section's natural height", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
     { id: "tall", parentId: "root" },
@@ -1370,15 +1370,14 @@ test("a top-level Fold stretches a shorter section to keep the Matrix tiled", ()
 
   assert.equal(tall.y, short.y);
   assert.ok(tall.height > short.requiredHeight);
-  assert.equal(short.height, tall.height);
-  assert.ok(short.height > short.requiredHeight);
+  assert.equal(short.height, short.requiredHeight);
+  assert.ok(short.height < tall.height);
   assert.equal(result.header.x, unfolded.header.x);
   assert.equal(result.header.y, unfolded.header.y);
-  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 
-test("a top-level vertical Fold stretches a shorter section to keep the Matrix tiled", () => {
+test("a top-level vertical branch Fold preserves the shorter section's natural width", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, orientation: "vertical" },
     { id: "wide", parentId: "root" },
@@ -1395,8 +1394,39 @@ test("a top-level vertical Fold stretches a shorter section to keep the Matrix t
   const short = cells.get("short")!;
 
   assert.equal(wide.x, short.x);
-  assert.equal(short.width, wide.width);
-  assert.ok(short.width > result.columnWidths[0]);
+  assert.ok(short.width < wide.width);
+  assertClean(result);
+});
+
+test("a complex branch Fold preserves descendant row alignment without overlaps", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "deep", parentId: "root" },
+    { id: "deep-rule-1", parentId: "deep", childFlow: "row" },
+    { id: "deep-1-a", parentId: "deep-rule-1", matrixHeight: 112 },
+    { id: "deep-1-b", parentId: "deep-rule-1" },
+    { id: "deep-1-c", parentId: "deep-rule-1" },
+    { id: "deep-rule-2", parentId: "deep", childFlow: "row" },
+    { id: "deep-2-a", parentId: "deep-rule-2" },
+    { id: "deep-2-b", parentId: "deep-rule-2" },
+    { id: "short", parentId: "root" },
+    { id: "short-rule", parentId: "short", childFlow: "row" },
+    { id: "short-a", parentId: "short-rule" },
+    { id: "short-b", parentId: "short-rule" },
+    { id: "short-c", parentId: "short-rule" },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const shortRow = ["short-a", "short-b", "short-c"].map((nodeId) => cells.get(nodeId)!);
+
+  assert.equal(new Set(shortRow.map((cell) => cell.y)).size, 1);
+  assert.equal(new Set(shortRow.map((cell) => cell.height)).size, 1);
+  assert.equal(cells.get("short")!.height, cells.get("short-rule")!.height);
+  assert.ok(cells.get("short")!.height < cells.get("deep")!.height);
   assertClean(result);
 });
 
@@ -1517,7 +1547,7 @@ test("a nested vertical Fold uses the normal Matrix cell gap", () => {
   assertClean(result);
 });
 
-test("a compact nested Fold keeps the next large branch in the outer right section", () => {
+test("a compact nested Fold divides outer branches evenly by count", () => {
   const groups = [
     ["varna", 4],
     ["yant", 4],
@@ -1547,14 +1577,14 @@ test("a compact nested Fold keeps the next large branch in the outer right secti
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
 
-  assert.equal(cells.get("varna")!.x, cells.get("savarna")!.x);
-  assert.ok(cells.get("guna")!.x > cells.get("savarna")!.x);
-  assert.equal(cells.get("guna")!.x, cells.get("para")!.x);
-  assert.equal(cells.get("varna")!.y, cells.get("guna")!.y);
+  assert.equal(cells.get("varna")!.x, cells.get("guna")!.x);
+  assert.ok(cells.get("vrddhi")!.x > cells.get("guna")!.x);
+  assert.equal(cells.get("vrddhi")!.x, cells.get("para")!.x);
+  assert.equal(cells.get("varna")!.y, cells.get("vrddhi")!.y);
   assertClean(result);
 });
 
-test("balanced top-level Fold sections tile nested Matrix branches without background holes", () => {
+test("count-balanced top-level Fold sections preserve natural nested branch geometry", () => {
   const groups = [
     ["varna", 4],
     ["yant", 4],
@@ -1585,12 +1615,13 @@ test("balanced top-level Fold sections tile nested Matrix branches without backg
   const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
   const savarna = cells.get("savarna")!;
   const guna = cells.get("guna")!;
+  const vrddhi = cells.get("vrddhi")!;
   const savarnaExample = cells.get("savarna-example-0")!;
 
   assert.equal(savarna.height, guna.height);
   assert.equal(savarnaExample.height, savarnaExample.requiredHeight);
-  assert.ok(cells.get("guna")!.x > savarna.x);
-  assertMatrixBodyTiled(result);
+  assert.equal(guna.x, savarna.x);
+  assert.ok(vrddhi.x > guna.x);
   assertClean(result);
 });
 

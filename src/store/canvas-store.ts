@@ -46,6 +46,7 @@ import { buildMatrixFrameNodes } from "@/lib/layout/matrix-frames";
 import {
   applyLayoutConversionShapeDefault,
   clearLayoutEdgeRouting,
+  clearMatrixLayoutOverrides,
   clearLayoutNodeGeometry,
   matrixFrameBelongsToLayoutScope,
   removeStaleGeneratedMatrixFrames,
@@ -223,6 +224,7 @@ interface CanvasState {
   createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+  resetMatrixLayout: (rootId: string) => boolean;
   resetMatrixDescendantFillOverrides: (nodeId: string) => number;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
   fitNodeToContent: (nodeId: string, contentSize: ContentSize, reason?: ContentResizeReason) => void;
@@ -3096,6 +3098,37 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "unsaved",
     });
     return reset.resetNodeIds.length;
+  },
+
+  resetMatrixLayout: (rootId) => {
+    const { nodes, edges } = get();
+    const layoutNodes = nodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    const root = layoutNodes.find((node) => node.id === rootId);
+    const rootData = (root?.data ?? {}) as Record<string, unknown>;
+    if (!root || rootData.layoutMode !== "matrix") return false;
+
+    const hierarchy = buildHierarchy(layoutNodes, edges);
+    const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    let changed = false;
+    const nextNodes = nodes.map((node) => {
+      if (!scopeIds.has(node.id)) return node;
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const nextData = clearMatrixLayoutOverrides(data, node.id === rootId);
+      if (nextData === data) return node;
+      changed = true;
+      return { ...node, data: nextData };
+    });
+
+    if (changed) {
+      get().pushHistory();
+      set({ nodes: nextNodes, saveStatus: "unsaved" });
+    }
+    get().scheduleMatrixReflow(rootId);
+    return changed;
   },
 
   setNodeLocked: (nodeId, locked) => {
