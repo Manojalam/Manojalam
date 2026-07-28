@@ -2176,6 +2176,7 @@ export function RichTextEditor({
             side={openPopoversBelow ? "bottom" : "top"}
             sideOffset={8}
             showHeading={false}
+            preserveCurrentFocus
             contentClassName="w-[min(20rem,calc(100vw-1rem))]"
             panelHeader={(
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -2238,6 +2239,7 @@ export function RichTextEditor({
             side={openPopoversBelow ? "bottom" : "top"}
             sideOffset={8}
             showHeading={false}
+            preserveCurrentFocus
             contentClassName="w-[min(20rem,calc(100vw-1rem))]"
             panelHeader={(
               <div className="mb-2 flex items-center justify-between">

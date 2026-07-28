@@ -364,6 +364,7 @@ interface AppColorPickerProps {
   contentClassName?: string;
   showHeading?: boolean;
   panelHeader?: ReactNode;
+  preserveCurrentFocus?: boolean;
 }
 
 /** App-wide color chooser. Every general fill, border, text, and symbol control should use this. */
@@ -380,6 +381,7 @@ export function AppColorPicker({
   contentClassName,
   showHeading = true,
   panelHeader,
+  preserveCurrentFocus = false,
 }: AppColorPickerProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
@@ -417,6 +419,12 @@ export function AppColorPicker({
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
         onWheel={(event) => event.stopPropagation()}
+        onOpenAutoFocus={preserveCurrentFocus
+          ? (event) => event.preventDefault()
+          : undefined}
+        onCloseAutoFocus={preserveCurrentFocus
+          ? (event) => event.preventDefault()
+          : undefined}
       >
         {panelHeader}
         <ColorPickerPanel
