@@ -582,7 +582,7 @@ export interface TextBlockNodeData extends BaseNodeData {
   textFrameStyle?: TextFrameStyle;
   /** Side toward which a speech tail or thought dots point. */
   textCalloutDirection?: TextCalloutDirection;
-  /** Fixed canvas point reached by an independently movable speech tail. */
+  /** Fixed canvas point for standalone speech tails; attached notes derive it from their owner. */
   textCalloutAnchor?: TextCalloutAnchor;
 }
 

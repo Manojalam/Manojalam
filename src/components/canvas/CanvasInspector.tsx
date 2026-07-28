@@ -4161,6 +4161,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const nodeType      = selectedNode.type ?? "";
   const isTextNode    = ["mindmap", "sticky", "text"].includes(nodeType);
   const isShapeNode   = nodeType === "shape";
+  const isAttachedExternalNote = nodeType === "text"
+    && d.externalNote === true
+    && typeof d.noteForNodeId === "string";
   const canChooseShapeType = isShapeNode || matrixRootNode !== null;
   const isContentNode = isTextNode || isShapeNode;
   const isSanskrit    = ["sanskrit", "shloka", "grammar"].includes(nodeType);
@@ -6031,42 +6034,46 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             {textFrameStyle !== "plain" && (
               <div>
                 <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Pointer direction
+                  {isAttachedExternalNote ? "Parent anchor" : "Pointer direction"}
                 </p>
-                <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Callout pointer direction">
-                  {TEXT_CALLOUT_DIRECTIONS.map((option) => {
-                    const DirectionIcon = option.id === "top"
-                      ? ArrowUp
-                      : option.id === "right"
-                        ? ArrowRight
-                        : option.id === "left" ? ArrowLeft : ArrowDown;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        role="radio"
-                        aria-label={`${option.label} pointer`}
-                        aria-checked={textCalloutDirection === option.id}
-                        title={`${option.label} pointer`}
-                        onClick={() => setField("textCalloutDirection", option.id)}
-                        className={cn(
-                          "flex h-9 items-center justify-center rounded-md border transition-colors",
-                          textCalloutDirection === option.id
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
-                      >
-                        <DirectionIcon className="h-4 w-4" />
-                      </button>
-                    );
-                  })}
-                </div>
+                {!isAttachedExternalNote && (
+                  <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Callout pointer direction">
+                    {TEXT_CALLOUT_DIRECTIONS.map((option) => {
+                      const DirectionIcon = option.id === "top"
+                        ? ArrowUp
+                        : option.id === "right"
+                          ? ArrowRight
+                          : option.id === "left" ? ArrowLeft : ArrowDown;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          role="radio"
+                          aria-label={`${option.label} pointer`}
+                          aria-checked={textCalloutDirection === option.id}
+                          title={`${option.label} pointer`}
+                          onClick={() => setField("textCalloutDirection", option.id)}
+                          className={cn(
+                            "flex h-9 items-center justify-center rounded-md border transition-colors",
+                            textCalloutDirection === option.id
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                          )}
+                        >
+                          <DirectionIcon className="h-4 w-4" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
-                  {textFrameStyle === "speech"
+                  {isAttachedExternalNote
+                    ? "This text box stays with its parent shape. Drag the box to reposition it; the pointer remains on the parent outline."
+                    : textFrameStyle === "speech"
                     ? "The tip follows its attached shape. Move the bubble alone to stretch only its tail."
                     : "Point the thought dots toward the related content."}
                 </p>
-                {textFrameStyle === "speech" && textCalloutAnchor && (
+                {!isAttachedExternalNote && textFrameStyle === "speech" && textCalloutAnchor && (
                   <Button
                     type="button"
                     variant="outline"

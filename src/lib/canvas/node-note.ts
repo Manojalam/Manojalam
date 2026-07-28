@@ -6,7 +6,7 @@ import {
   rectsOverlap,
   type NodeRect,
 } from "../layout";
-import { normalizeTextCalloutAnchor } from "./text-callout";
+import { nodeShapeConnectionPoint } from "./shape-connection-geometry";
 
 export const EXTERNAL_NOTE_SIZE = { width: 220, height: 72 };
 const NOTE_GAP = 32;
@@ -41,69 +41,33 @@ function attachmentSide(source: NodeRect, note: NodeRect): AttachmentSide {
 }
 
 /**
- * Preserve the note's gap from the nearest owner side and its proportional
- * position along that side. Center-only translation can place a note inside an
- * owner whose Matrix cell becomes much wider or taller during conversion.
+ * Resolve an attached callout tip from its owner every time it is rendered.
+ * The tip is never an independent canvas anchor: moving the note chooses the
+ * nearest owner side, while moving or resizing the owner updates the outline
+ * point automatically.
  */
-function attachedNotePosition(
+export function attachedExternalNoteCalloutAnchor(
   note: Node,
-  previousSource: NodeRect,
-  nextSource: NodeRect,
-  previousNote: NodeRect
-): { x: number; y: number } {
-  const side = attachmentSide(previousSource, previousNote);
-  let left: number;
-  let top: number;
+  source: Node | undefined
+): { x: number; y: number } | null {
+  if (!isExternalNoteNode(note) || !source) return null;
+  const sourceId = ((note.data ?? {}) as Record<string, unknown>).noteForNodeId;
+  if (sourceId !== source.id) return null;
 
-  if (side === "left" || side === "right") {
-    const crossFraction = (previousNote.centerY - previousSource.top)
-      / Math.max(1, previousSource.height);
-    top = nextSource.top + crossFraction * nextSource.height - previousNote.height / 2;
-    if (side === "left") {
-      const gap = previousSource.left - previousNote.right;
-      left = nextSource.left - gap - previousNote.width;
-    } else {
-      const gap = previousNote.left - previousSource.right;
-      left = nextSource.right + gap;
-    }
-  } else {
-    const crossFraction = (previousNote.centerX - previousSource.left)
-      / Math.max(1, previousSource.width);
-    left = nextSource.left + crossFraction * nextSource.width - previousNote.width / 2;
-    if (side === "top") {
-      const gap = previousSource.top - previousNote.bottom;
-      top = nextSource.top - gap - previousNote.height;
-    } else {
-      const gap = previousNote.top - previousSource.bottom;
-      top = nextSource.bottom + gap;
-    }
-  }
-
-  return nodePositionFromTopLeft(note, { x: left, y: top }, {
-    width: previousNote.width,
-    height: previousNote.height,
-  });
-}
-
-/** Map a manually positioned pointer to the same relative point after resize. */
-function attachedCalloutAnchor(
-  anchor: { x: number; y: number },
-  previousSource: NodeRect,
-  nextSource: NodeRect
-): { x: number; y: number } {
-  return {
-    x: nextSource.left
-      + (anchor.x - previousSource.left) / Math.max(1, previousSource.width) * nextSource.width,
-    y: nextSource.top
-      + (anchor.y - previousSource.top) / Math.max(1, previousSource.height) * nextSource.height,
-  };
+  const sourceRect = getNodeRect(source);
+  const noteRect = getNodeRect(note);
+  return nodeShapeConnectionPoint(
+    source,
+    sourceRect,
+    attachmentSide(sourceRect, noteRect)
+  );
 }
 
 /**
- * Keep attached notes and their speech tips aligned to the same owner boundary
- * when an owning shape moves through dragging, keyboard movement, resizing, or
- * layout.
- * A note that was explicitly moved in the same update retains that position.
+ * Keep attached notes at the same parent-relative offset when their owner
+ * moves. Owner size changes never reposition the note body, avoiding the
+ * repeated jumps caused by layout measurement and Matrix/List reflow.
+ * A note explicitly moved in the same update retains that authored position.
  */
 export function preserveAttachedExternalNoteOffsets(
   previousNodes: Node[],
@@ -126,47 +90,37 @@ export function preserveAttachedExternalNoteOffsets(
 
     const previousSourceRect = getNodeRect(previousSource);
     const nextSourceRect = getNodeRect(nextSource);
-    const sourceGeometryChanged = (
-      Math.abs(nextSourceRect.left - previousSourceRect.left) >= 0.01
-      || Math.abs(nextSourceRect.top - previousSourceRect.top) >= 0.01
-      || Math.abs(nextSourceRect.width - previousSourceRect.width) >= 0.01
-      || Math.abs(nextSourceRect.height - previousSourceRect.height) >= 0.01
-    );
-    if (!sourceGeometryChanged) return note;
+    const sourceDelta = {
+      x: nextSourceRect.left - previousSourceRect.left,
+      y: nextSourceRect.top - previousSourceRect.top,
+    };
+    const sourceMoved = Math.abs(sourceDelta.x) >= 0.01 || Math.abs(sourceDelta.y) >= 0.01;
+    if (!sourceMoved) return note;
 
+    const previousNoteRect = getNodeRect(previousNote);
+    const nextNoteRect = getNodeRect(note);
     const noteDelta = {
-      x: note.position.x - previousNote.position.x,
-      y: note.position.y - previousNote.position.y,
+      x: nextNoteRect.left - previousNoteRect.left,
+      y: nextNoteRect.top - previousNoteRect.top,
     };
     const noteWasExplicitlyMoved = Math.abs(noteDelta.x) > 0.5 || Math.abs(noteDelta.y) > 0.5;
-    const position = noteWasExplicitlyMoved
-      ? note.position
-      : attachedNotePosition(
-          note,
-          previousSourceRect,
-          nextSourceRect,
-          getNodeRect(previousNote)
-        );
+    if (noteWasExplicitlyMoved) return note;
 
-    const previousData = (previousNote.data ?? {}) as Record<string, unknown>;
-    const previousAnchor = normalizeTextCalloutAnchor(previousData.textCalloutAnchor);
-    const nextAnchor = normalizeTextCalloutAnchor(noteData.textCalloutAnchor);
-    const anchorWasUnchanged = !!previousAnchor
-      && !!nextAnchor
-      && Math.abs(previousAnchor.x - nextAnchor.x) < 0.01
-      && Math.abs(previousAnchor.y - nextAnchor.y) < 0.01;
-    const translatedAnchor = anchorWasUnchanged
-      ? attachedCalloutAnchor(nextAnchor, previousSourceRect, nextSourceRect)
-      : undefined;
-
-    if (!translatedAnchor && position === note.position) return note;
+    const position = nodePositionFromTopLeft(note, {
+      x: previousNoteRect.left + sourceDelta.x,
+      y: previousNoteRect.top + sourceDelta.y,
+    }, {
+      width: nextNoteRect.width,
+      height: nextNoteRect.height,
+    });
+    if (
+      Math.abs(position.x - note.position.x) < 0.01
+      && Math.abs(position.y - note.position.y) < 0.01
+    ) return note;
     changed = true;
     return {
       ...note,
       position,
-      ...(translatedAnchor
-        ? { data: { ...noteData, textCalloutAnchor: translatedAnchor } }
-        : {}),
     };
   });
 

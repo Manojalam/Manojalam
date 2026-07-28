@@ -313,6 +313,66 @@ test("model fallback bounds include an anchored speech tail", () => {
   );
 });
 
+test("attached callout export bounds ignore stale canvas anchors", () => {
+  const owner: Node = {
+    id: "owner",
+    type: "shape",
+    position: { x: 100, y: 200 },
+    data: { shapeType: "rounded" },
+    measured: { width: 200, height: 80 },
+  };
+  const note: Node = {
+    id: "attached-callout",
+    type: "text",
+    position: { x: 340, y: 180 },
+    data: {
+      externalNote: true,
+      noteForNodeId: owner.id,
+      textFrameStyle: "speech",
+      textCalloutAnchor: { x: -900, y: 1_400 },
+    },
+    measured: { width: 220, height: 72 },
+  };
+  const target = resolveExportTarget({ kind: "board" }, [owner, note], []);
+
+  assert.deepEqual(
+    computeTightExportBounds(target, { padding: 0 }),
+    { x: 100, y: 180, width: 460, height: 100 }
+  );
+});
+
+test("a note-only export still derives its tail from the parent shape", () => {
+  const owner: Node = {
+    id: "owner",
+    type: "shape",
+    position: { x: 100, y: 200 },
+    data: { shapeType: "rounded" },
+    measured: { width: 200, height: 80 },
+  };
+  const note: Node = {
+    id: "attached-callout",
+    type: "text",
+    position: { x: 340, y: 180 },
+    data: {
+      externalNote: true,
+      noteForNodeId: owner.id,
+      textFrameStyle: "speech",
+      textCalloutAnchor: { x: -900, y: 1_400 },
+    },
+    measured: { width: 220, height: 72 },
+  };
+  const target = resolveExportTarget(
+    { kind: "selection", nodeIds: [note.id], edgeIds: [] },
+    [owner, note],
+    []
+  );
+
+  assert.deepEqual(
+    computeTightExportBounds(target, { padding: 0 }),
+    { x: 300, y: 180, width: 260, height: 72 }
+  );
+});
+
 test("explicit chart ink bounds still extend the authoritative node DOM rectangle", () => {
   const node: Node = {
     id: "chart-with-overflow",

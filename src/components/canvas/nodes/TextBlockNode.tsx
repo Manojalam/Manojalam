@@ -34,6 +34,7 @@ import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
+import { attachedExternalNoteCalloutAnchor } from "@/lib/canvas/node-note";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import {
   surfaceEffectExportShadowLayers,
@@ -58,6 +59,12 @@ function TextBlockNodeComponent({
   const fitNodeToContent = useCanvasStore((s) => s.fitNodeToContent);
   const pushHistory    = useCanvasStore((s) => s.pushHistory);
   const createChildNode = useCanvasStore((s) => s.createChildNode);
+  const noteOwnerId = dd.externalNote === true && typeof dd.noteForNodeId === "string"
+    ? dd.noteForNodeId
+    : null;
+  const noteOwner = useCanvasStore((s) =>
+    noteOwnerId ? s.nodes.find((node) => node.id === noteOwnerId) : undefined
+  );
 
   const drawingModeNodeId   = useUIStore((s) => s.drawingModeNodeId);
   const drawingRegionColor  = useUIStore((s) => s.drawingRegionColor);
@@ -84,14 +91,24 @@ function TextBlockNodeComponent({
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
 
-  const textCalloutAnchor = normalizeTextCalloutAnchor(dd.textCalloutAnchor);
+  const attachedCalloutAnchor = noteOwner
+    ? attachedExternalNoteCalloutAnchor({
+        id,
+        type: "text",
+        position: { x: positionAbsoluteX, y: positionAbsoluteY },
+        style: nodeSize,
+        data: d,
+      }, noteOwner)
+    : null;
+  const textCalloutAnchor = attachedCalloutAnchor
+    ?? normalizeTextCalloutAnchor(dd.textCalloutAnchor);
   const textCalloutTailTip = relativeTextCalloutTip(
     { x: positionAbsoluteX, y: positionAbsoluteY },
     nodeSize,
     textCalloutDirection,
     textCalloutAnchor
   );
-  const renderedTextCalloutDirection = textFrameStyle === "speech"
+  const renderedTextCalloutDirection = attachedCalloutAnchor || textFrameStyle === "speech"
     ? textCalloutDirectionForTip(nodeSize, textCalloutTailTip, textCalloutDirection)
     : textCalloutDirection;
   const [editing, setEditing] = useState(false);
@@ -217,8 +234,8 @@ function TextBlockNodeComponent({
             filter={surfaceEffectFilter(dd, borderColor)}
             size={nodeSize}
             tailTip={textCalloutTailTip}
-            onTailDragStart={pushHistory}
-            onTailTipChange={(anchor) => {
+            onTailDragStart={attachedCalloutAnchor ? undefined : pushHistory}
+            onTailTipChange={attachedCalloutAnchor ? undefined : (anchor) => {
               const nextTip = {
                 x: anchor.x - positionAbsoluteX,
                 y: anchor.y - positionAbsoluteY,

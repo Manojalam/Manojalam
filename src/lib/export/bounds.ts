@@ -1,6 +1,9 @@
 import { getNodesBounds, type Edge, type Node } from "@xyflow/react";
 
-import { includeAttachedExternalNoteIds } from "../canvas/node-note";
+import {
+  attachedExternalNoteCalloutAnchor,
+  includeAttachedExternalNoteIds,
+} from "../canvas/node-note";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 import { normalizeTextCalloutAnchor } from "../canvas/text-callout";
 import { ExportError } from "./errors";
@@ -26,6 +29,8 @@ export interface ResolvedExportTarget<
   edgeIds: string[];
   /** Absolute model rectangles captured before the scope is narrowed. */
   modelNodeRects: ReadonlyMap<string, ExportBounds>;
+  /** Visible board nodes retained for parent-derived geometry such as attached callout tips. */
+  sourceNodesById: ReadonlyMap<string, NodeType>;
 }
 
 export interface ExportDomBoundsContext {
@@ -305,6 +310,7 @@ export function resolveExportTarget<
     nodeIds: resolvedNodes.map((node) => node.id),
     edgeIds: resolvedEdges.map((edge) => edge.id),
     modelNodeRects,
+    sourceNodesById: new Map(visibleNodes.map((node) => [node.id, node])),
   };
 }
 
@@ -348,8 +354,12 @@ function modelBounds(
       if (!bodyRect) return null;
       if (!isFiniteRect(bodyRect)) return null;
       const data = (node.data ?? {}) as Record<string, unknown>;
+      const source = typeof data.noteForNodeId === "string"
+        ? target.sourceNodesById.get(data.noteForNodeId)
+        : undefined;
       const anchor = data.textFrameStyle === "speech"
-        ? normalizeTextCalloutAnchor(data.textCalloutAnchor)
+        ? attachedExternalNoteCalloutAnchor(node, source)
+          ?? normalizeTextCalloutAnchor(data.textCalloutAnchor)
         : null;
       const rect = anchor
         ? {

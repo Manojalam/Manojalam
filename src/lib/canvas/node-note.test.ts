@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
 import {
+  attachedExternalNoteCalloutAnchor,
   createExternalNoteNode,
   EXTERNAL_NOTE_SIZE,
   includeAttachedExternalNoteIds,
@@ -130,29 +131,31 @@ test("an attached speech note and its tip follow the owning shape", () => {
 
   const result = preserveAttachedExternalNoteOffsets(previous, next);
   const movedNote = result.find((node) => node.id === "note");
+  const movedSource = result.find((node) => node.id === "source");
 
   assert.deepEqual(movedNote?.position, { x: 490, y: 300 });
   assert.deepEqual(
-    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
-    { x: 350, y: 310 }
+    attachedExternalNoteCalloutAnchor(movedNote!, movedSource),
+    { x: 450, y: 360 }
   );
 });
 
-test("an attached speech tip follows a resized owner's visual center", () => {
+test("resizing an owner does not make its attached text box jump", () => {
   const previous = [attachmentSource(), speechNote()];
   const next = [attachmentSource({ x: 100, y: 200 }, 300), speechNote()];
 
   const result = preserveAttachedExternalNoteOffsets(previous, next);
   const movedNote = result.find((node) => node.id === "note");
+  const resizedSource = result.find((node) => node.id === "source");
 
-  assert.deepEqual(movedNote?.position, { x: 440, y: 180 });
+  assert.deepEqual(movedNote?.position, { x: 340, y: 180 });
   assert.deepEqual(
-    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
-    { x: 250, y: 190 }
+    attachedExternalNoteCalloutAnchor(movedNote!, resizedSource),
+    { x: 400, y: 240 }
   );
 });
 
-test("a layout resize preserves the bubble gap and pointer boundary position", () => {
+test("a layout move translates the text box without scaling its parent offset", () => {
   const previous = [
     attachmentSource(),
     speechNote({ x: 340, y: 180 }, { x: 300, y: 240 }),
@@ -168,15 +171,16 @@ test("a layout resize preserves the bubble gap and pointer boundary position", (
 
   const result = preserveAttachedExternalNoteOffsets(previous, next);
   const movedNote = result.find((node) => node.id === "note");
+  const movedSource = result.find((node) => node.id === "source");
 
-  assert.deepEqual(movedNote?.position, { x: 220, y: 204 });
+  assert.deepEqual(movedNote?.position, { x: 280, y: 60 });
   assert.deepEqual(
-    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
+    attachedExternalNoteCalloutAnchor(movedNote!, movedSource),
     { x: 180, y: 480 }
   );
 });
 
-test("a center-anchored resize still realigns an attached bubble and pointer", () => {
+test("a center-anchored resize applies only the owner's translation to its note", () => {
   const previous = [attachmentSource(), speechNote()];
   const next = [
     attachmentSource({ x: 50, y: 200 }, 300),
@@ -185,15 +189,16 @@ test("a center-anchored resize still realigns an attached bubble and pointer", (
 
   const result = preserveAttachedExternalNoteOffsets(previous, next);
   const movedNote = result.find((node) => node.id === "note");
+  const resizedSource = result.find((node) => node.id === "source");
 
-  assert.deepEqual(movedNote?.position, { x: 390, y: 180 });
+  assert.deepEqual(movedNote?.position, { x: 290, y: 180 });
   assert.deepEqual(
-    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
-    { x: 200, y: 190 }
+    attachedExternalNoteCalloutAnchor(movedNote!, resizedSource),
+    { x: 350, y: 240 }
   );
 });
 
-test("moving an attached bubble alone leaves its tip attached to the owner", () => {
+test("moving an attached text box alone keeps its tip on the owner outline", () => {
   const previous = [attachmentSource(), speechNote()];
   const next = [attachmentSource(), speechNote({ x: 440, y: 260 })];
 
@@ -202,8 +207,8 @@ test("moving an attached bubble alone leaves its tip attached to the owner", () 
 
   assert.deepEqual(movedNote?.position, { x: 440, y: 260 });
   assert.deepEqual(
-    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
-    { x: 200, y: 190 }
+    attachedExternalNoteCalloutAnchor(movedNote!, result[0]),
+    { x: 300, y: 240 }
   );
 });
 
@@ -216,10 +221,21 @@ test("group movement does not translate an attached note twice", () => {
 
   const result = preserveAttachedExternalNoteOffsets(previous, next);
   const movedNote = result.find((node) => node.id === "note");
+  const movedSource = result.find((node) => node.id === "source");
 
   assert.deepEqual(movedNote?.position, { x: 490, y: 300 });
   assert.deepEqual(
-    (movedNote?.data as Record<string, unknown>)?.textCalloutAnchor,
-    { x: 350, y: 310 }
+    attachedExternalNoteCalloutAnchor(movedNote!, movedSource),
+    { x: 450, y: 360 }
+  );
+});
+
+test("the parent outline is the only anchor for an attached callout", () => {
+  const owner = attachmentSource();
+  const noteAbove = speechNote({ x: 90, y: 80 }, { x: -900, y: 1400 });
+
+  assert.deepEqual(
+    attachedExternalNoteCalloutAnchor(noteAbove, owner),
+    { x: 200, y: 200 }
   );
 });

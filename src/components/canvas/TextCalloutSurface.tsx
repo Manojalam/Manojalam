@@ -127,7 +127,7 @@ export function TextCalloutSurface({
           </>
         )}
       </svg>
-      {style === "speech" && selected && (
+      {style === "speech" && selected && onTailTipChange && (
         <button
           data-export-ignore
           type="button"
