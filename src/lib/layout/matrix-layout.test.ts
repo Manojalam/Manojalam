@@ -381,7 +381,7 @@ test("incomplete compact rows can preserve a generated empty trailing cell", () 
   assertClean(result);
 });
 
-test("Fold repositions incomplete child rows without resizing their cells", () => {
+test("incomplete folded child rows preserve an empty trailing grid slot", () => {
   const fixture = buildTree([
     {
       id: "root",
@@ -399,11 +399,6 @@ test("Fold repositions incomplete child rows without resizing their cells", () =
   const nodes = fixture.nodes.map((node) => node.id === "group"
     ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
     : node);
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(fixture.nodes, fixture.edges),
-    new Map(fixture.nodes.map((node) => [node.id, node]))
-  );
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const childCells = Array.from(
@@ -417,18 +412,19 @@ test("Fold repositions incomplete child rows without resizing their cells", () =
   }
   const rows = [...groupedRows.values()]
     .sort((first, second) => second.length - first.length);
-  const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
 
   assert.deepEqual(rows.map((row) => row.length), [3, 2]);
-  assert.equal(result.emptyCells.length, 0);
-  for (const cell of childCells) {
-    assert.equal(cell.width, unfoldedCells.get(cell.nodeId)!.width);
-    assert.equal(cell.height, unfoldedCells.get(cell.nodeId)!.height);
-  }
+  assert.equal(result.emptyCells.length, 1);
+  const longerRow = [...rows[0]].sort((first, second) => first.x - second.x);
+  const shorterRow = [...rows[1]].sort((first, second) => first.x - second.x);
+  const empty = result.emptyCells[0];
+  assert.ok(Math.abs(empty.y - shorterRow[0].y) < 0.5);
+  assert.ok(Math.abs(empty.x - longerRow[2].x) < 0.5);
+  assert.ok(Math.abs(empty.width - longerRow[2].width) < 0.5);
   assertClean(result);
 });
 
-test("folded sibling groups keep their unfolded cell dimensions", () => {
+test("folded sibling groups share the Matrix-wide five-column template", () => {
   const fixture = buildTree([
     {
       id: "root",
@@ -461,36 +457,43 @@ test("folded sibling groups keep their unfolded cell dimensions", () => {
       ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
       : node
   );
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(fixture.nodes, fixture.edges),
-    new Map(fixture.nodes.map((node) => [node.id, node]))
-  );
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const leafCells = result.cells.filter((cell) =>
     /^(short|long|pluta)-\d+$/.test(cell.nodeId)
   );
-  const rows = new Map<number, Array<{ x: number }>>();
+  const rows = new Map<number, Array<{ x: number; placeholder: boolean }>>();
   for (const cell of leafCells) {
     const rowY = Math.round(cell.y * 2) / 2;
     rows.set(rowY, [
       ...(rows.get(rowY) ?? []),
-      { x: cell.x },
+      { x: cell.x, placeholder: false },
     ]);
   }
-  const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
+  for (const cell of result.emptyCells) {
+    const rowY = Math.round(cell.y * 2) / 2;
+    rows.set(rowY, [
+      ...(rows.get(rowY) ?? []),
+      { x: cell.x, placeholder: true },
+    ]);
+  }
 
   assert.equal(rows.size, 5);
-  assert.equal(result.emptyCells.length, 0);
-  for (const cell of leafCells) {
-    assert.equal(cell.width, unfoldedCells.get(cell.nodeId)!.width);
-    assert.equal(cell.height, unfoldedCells.get(cell.nodeId)!.height);
-  }
+  assert.deepEqual(
+    [...rows.values()].map((row) => row.length),
+    [5, 5, 5, 5, 5]
+  );
+  assert.equal(result.emptyCells.length, 3);
+  const fifthColumnX = Math.max(
+    ...leafCells
+      .filter((cell) => cell.nodeId.startsWith("short-"))
+      .map((cell) => cell.x)
+  );
+  assert.ok(result.emptyCells.every((cell) => Math.abs(cell.x - fifthColumnX) < 0.5));
   assertClean(result);
 });
 
-test("mixed-width folded groups preserve their exact authored widths", () => {
+test("mixed-width folded groups do not combine unrelated column maxima", () => {
   const fixture = buildTree([
     {
       id: "root",
@@ -548,6 +551,10 @@ test("mixed-width folded groups preserve their exact authored widths", () => {
 
   assert.equal(cells.get("a-0")?.width, 520);
   assert.equal(cells.get("b-1")?.width, 520);
+  assert.ok(
+    result.bounds.width < 900,
+    `mixed Fold tracks inflated the Matrix to ${result.bounds.width}px`
+  );
   assertClean(result);
 });
 
@@ -704,7 +711,7 @@ test("terminal cells fill every unused deeper level in a four-level Matrix", () 
   assertClean(result);
 });
 
-test("a terminal in a peer branch does not absorb Fold-only allocation", () => {
+test("a terminal in a peer branch absorbs Fold-only trailing allocation", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, incompleteRowMode: "empty", childFlow: "column" },
     { id: "shallow-category", parentId: "root", childFlow: "column" },
@@ -726,20 +733,15 @@ test("a terminal in a peer branch does not absorb Fold-only allocation", () => {
     ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
     : node);
   const edges = fixture.edges;
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(fixture.nodes, edges),
-    new Map(fixture.nodes.map((node) => [node.id, node]))
-  );
   const hierarchy = buildHierarchy(nodes, edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const terminal = result.cells.find((cell) => cell.nodeId === "terminal")!;
-  const unfoldedTerminal = unfolded.cells.find((cell) => cell.nodeId === "terminal")!;
 
-  assert.equal(terminal.width, unfoldedTerminal.width);
-  assert.equal(terminal.height, unfoldedTerminal.height);
-  assert.ok(terminal.x + terminal.width < result.bounds.right);
-  assert.equal(result.emptyCells.length, 0);
+  assert.ok(Math.abs(terminal.x + terminal.width - result.bounds.right) < 0.5);
+  assert.equal(
+    result.emptyCells.filter((cell) => Math.abs(cell.y - terminal.y) < 0.5).length,
+    0
+  );
   assertClean(result);
 });
 
@@ -1347,63 +1349,8 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
 
   assert.equal(first.y, sixth.y);
   assert.equal(sixth.x - (first.x + first.width), cellGap);
-  assert.ok(result.header.width < result.bounds.width);
-  assertClean(result);
-});
-
-test("Fold repositions locked Matrix cells without changing any node dimensions", () => {
-  const fixture = buildTree([
-    {
-      id: "root",
-      parentId: null,
-      matrixTableWidth: 760,
-      matrixTableHeight: 840,
-    },
-    ...Array.from({ length: 7 }, (_, index) => ({
-      id: `child-${index}`,
-      parentId: "root",
-      text: index === 2 ? "A deliberately taller content row" : `Child ${index}`,
-      ...(index === 2 ? { matrixHeight: 112 } : {}),
-    })),
-  ]);
-  const lockedNodes = fixture.nodes.map((node) => node.id === "root"
-    ? { ...node, data: { ...node.data, matrixTableSizeLocked: true } }
-    : node);
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(lockedNodes, fixture.edges),
-    new Map(lockedNodes.map((node) => [node.id, node]))
-  );
-  const foldedNodes = lockedNodes.map((node) => node.id === "root"
-    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
-    : node);
-  const result = computeMatrixLayout(
-    "root",
-    buildHierarchy(foldedNodes, fixture.edges),
-    new Map(foldedNodes.map((node) => [node.id, node]))
-  );
-  const unfoldedCells = new Map(
-    [unfolded.header, ...unfolded.cells].map((cell) => [cell.nodeId, cell])
-  );
-  const foldedCells = new Map(
-    [result.header, ...result.cells].map((cell) => [cell.nodeId, cell])
-  );
-
-  for (const [nodeId, before] of unfoldedCells) {
-    const after = foldedCells.get(nodeId)!;
-    assert.ok(
-      Math.abs(after.width - before.width) < 0.001,
-      `${nodeId} width changed during Fold`
-    );
-    assert.ok(
-      Math.abs(after.height - before.height) < 0.001,
-      `${nodeId} height changed during Fold`
-    );
-  }
-  assert.ok(
-    Math.abs(foldedCells.get("child-0")!.y - foldedCells.get("child-4")!.y) < 0.001
-  );
-  assert.ok(foldedCells.get("child-4")!.x > foldedCells.get("child-0")!.x);
+  assert.equal(result.header.width, result.bounds.width);
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 
@@ -1542,7 +1489,7 @@ test("a complex branch Fold preserves descendant row alignment without overlaps"
   assertClean(result);
 });
 
-test("a nested Fold preserves its parent and child dimensions", () => {
+test("a nested Fold shrinks its parent to the folded child rows", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
     { id: "rule", parentId: "root" },
@@ -1553,12 +1500,6 @@ test("a nested Fold preserves its parent and child dimensions", () => {
   const nodes = fixture.nodes.map((node) => node.id === "rule"
     ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
     : node);
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(fixture.nodes, fixture.edges),
-    new Map(fixture.nodes.map((node) => [node.id, node]))
-  );
-  const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
@@ -1571,32 +1512,22 @@ test("a nested Fold preserves its parent and child dimensions", () => {
 
   assert.equal(examples[0].y, examples[2].y);
   assert.equal(examples[2].x - (examples[0].x + examples[0].width), cellGap);
-  assert.ok(rule.height > foldedExamplesHeight);
-  assert.equal(rule.height, unfoldedCells.get("rule")!.height);
-  assert.equal(nextRule.y, unfoldedCells.get("next-rule")!.y);
+  assert.equal(rule.height, foldedExamplesHeight);
+  assert.equal(nextRule.y, rule.y + rule.height + cellGap);
   assertClean(result);
 
   const resizedNodes = nodes.map((node) => node.id === "rule"
     ? { ...node, data: { ...node.data, matrixHeightOverride: 220 } }
     : node);
-  const resizedUnfoldedNodes = fixture.nodes.map((node) => node.id === "rule"
-    ? { ...node, data: { ...node.data, matrixHeightOverride: 220 } }
-    : node);
-  const resizedUnfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(resizedUnfoldedNodes, fixture.edges),
-    new Map(resizedUnfoldedNodes.map((node) => [node.id, node]))
-  );
   const resized = computeMatrixLayout(
     "root",
     buildHierarchy(resizedNodes, fixture.edges),
     new Map(resizedNodes.map((node) => [node.id, node]))
   );
+  assert.equal(resized.cells.find((cell) => cell.nodeId === "rule")!.height, 220);
   assert.ok(
-    Math.abs(
-      resized.cells.find((cell) => cell.nodeId === "rule")!.height
-      - resizedUnfolded.cells.find((cell) => cell.nodeId === "rule")!.height
-    ) < 0.001
+    resized.cells.find((cell) => cell.nodeId === "next-rule")!.y > nextRule.y,
+    "growing a Matrix cell should move the following branch"
   );
   assertClean(resized);
 
@@ -1613,7 +1544,7 @@ test("a nested Fold preserves its parent and child dimensions", () => {
   assertClean(reset);
 });
 
-test("uneven Fold sections keep their original row heights", () => {
+test("uneven Fold sections stretch through the same Matrix body edge", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
     { id: "rule", parentId: "root" },
@@ -1631,15 +1562,6 @@ test("uneven Fold sections keep their original row heights", () => {
     }
     return node;
   });
-  const unfoldedNodes = fixture.nodes.map((node) => node.id === "example-2"
-    ? { ...node, data: { ...node.data, matrixHeightOverride: 104 } }
-    : node);
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(unfoldedNodes, fixture.edges),
-    new Map(unfoldedNodes.map((node) => [node.id, node]))
-  );
-  const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const examples = Array.from(
@@ -1656,11 +1578,10 @@ test("uneven Fold sections keep their original row heights", () => {
   }
 
   assert.equal(sectionBottoms.size, 2);
-  assert.equal(new Set(sectionBottoms.values()).size, 2);
-  for (const example of examples) {
-    assert.equal(example.width, unfoldedCells.get(example.nodeId)!.width);
-    assert.equal(example.height, unfoldedCells.get(example.nodeId)!.height);
-  }
+  assert.equal(new Set(sectionBottoms.values()).size, 1);
+  assert.equal(examples[0].height, 104);
+  assert.ok(examples[8].height > 104);
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 
@@ -1763,7 +1684,7 @@ test("count-balanced top-level Fold sections preserve natural nested branch geom
   assertClean(result);
 });
 
-test("mixed nested Fold row counts preserve every unfolded cell size", () => {
+test("mixed nested Fold row counts tile when a wider sibling stretches the branch", () => {
   const mixedRuleCounts = [4, 2, 1, 2, 5, 6, 1] as const;
   const fixture = buildTree([
     { id: "root", parentId: null },
@@ -1797,19 +1718,8 @@ test("mixed nested Fold row counts preserve every unfolded cell size", () => {
   });
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
-  const unfolded = computeMatrixLayout(
-    "root",
-    buildHierarchy(fixture.nodes, fixture.edges),
-    new Map(fixture.nodes.map((node) => [node.id, node]))
-  );
-  const unfoldedCells = new Map(
-    [unfolded.header, ...unfolded.cells].map((cell) => [cell.nodeId, cell])
-  );
 
-  for (const cell of [result.header, ...result.cells]) {
-    assert.equal(cell.width, unfoldedCells.get(cell.nodeId)!.width);
-    assert.equal(cell.height, unfoldedCells.get(cell.nodeId)!.height);
-  }
+  assertMatrixBodyTiled(result);
   assertClean(result);
 });
 

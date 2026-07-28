@@ -4,7 +4,6 @@ import { getSubtree } from "./hierarchy";
 import { createNodeRect, getNodeDimensions, type NodeRect } from "./geometry";
 
 export type ChildGroupFlow = "horizontal" | "vertical";
-export type ChildGroupGap = number | ((parentId: string) => number);
 
 export const DEFAULT_CHILD_GROUP_GAP = 72;
 
@@ -153,7 +152,7 @@ export function wrapChildGroups<T extends WrappablePlacement>(
   hierarchy: Hierarchy,
   byId: Map<string, Node>,
   flowForParent: (parentId: string) => ChildGroupFlow,
-  groupGap: ChildGroupGap = DEFAULT_CHILD_GROUP_GAP
+  groupGap = DEFAULT_CHILD_GROUP_GAP
 ): WrappablePlacements<T> {
   const next = Object.fromEntries(
     Object.entries(placements).map(([nodeId, placement]) => [nodeId, { ...placement }])
@@ -173,9 +172,6 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     const data = (parent.data ?? {}) as Record<string, unknown>;
     const children = parentEntry.childIds.filter((childId) => !!next[childId]);
     const flow = flowForParent(parentEntry.id);
-    const resolvedGroupGap = typeof groupGap === "function"
-      ? groupGap(parentEntry.id)
-      : groupGap;
     const chunks = resolvedFoldSections(data, children);
     if (chunks.length < 2) continue;
 
@@ -208,8 +204,7 @@ export function wrapChildGroups<T extends WrappablePlacement>(
         };
       }
       const movedBounds = combinedBounds(nodeIds, next, byId)!;
-      nextMainStart = (flow === "horizontal" ? movedBounds.right : movedBounds.bottom)
-        + resolvedGroupGap;
+      nextMainStart = (flow === "horizontal" ? movedBounds.right : movedBounds.bottom) + groupGap;
       void index;
     });
   }
