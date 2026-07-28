@@ -424,6 +424,13 @@ export interface TextCalloutAnchor {
   y: number;
 }
 
+export interface TextCalloutOwnerAnchor {
+  /** Horizontal position within the owning shape, normalized from 0 to 1. */
+  x: number;
+  /** Vertical position within the owning shape, normalized from 0 to 1. */
+  y: number;
+}
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   color?: string;
@@ -584,6 +591,8 @@ export interface TextBlockNodeData extends BaseNodeData {
   textCalloutDirection?: TextCalloutDirection;
   /** Fixed canvas point for standalone speech tails; attached notes derive it from their owner. */
   textCalloutAnchor?: TextCalloutAnchor;
+  /** Movable parent-relative point for an attached speech tail. */
+  textCalloutOwnerAnchor?: TextCalloutOwnerAnchor;
 }
 
 export interface ShapeNodeData extends BaseNodeData {

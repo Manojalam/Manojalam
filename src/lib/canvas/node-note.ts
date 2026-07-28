@@ -1,5 +1,5 @@
 import type { Node } from "@xyflow/react";
-import type { ScriptMode } from "../types";
+import type { ScriptMode, TextCalloutOwnerAnchor } from "../types";
 import {
   getNodeRect,
   nodePositionFromTopLeft,
@@ -7,6 +7,7 @@ import {
   type NodeRect,
 } from "../layout";
 import { nodeShapeConnectionPoint } from "./shape-connection-geometry";
+import { normalizeTextCalloutAnchor } from "./text-callout";
 
 export const EXTERNAL_NOTE_SIZE = { width: 220, height: 72 };
 const NOTE_GAP = 32;
@@ -40,21 +41,83 @@ function attachmentSide(source: NodeRect, note: NodeRect): AttachmentSide {
   return note.centerY < source.centerY ? "top" : "bottom";
 }
 
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function roundAnchorCoordinate(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+export function normalizeTextCalloutOwnerAnchor(
+  value: unknown
+): TextCalloutOwnerAnchor | null {
+  if (!value || typeof value !== "object") return null;
+  const anchor = value as Partial<TextCalloutOwnerAnchor>;
+  if (!Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) return null;
+  return {
+    x: clampUnit(anchor.x as number),
+    y: clampUnit(anchor.y as number),
+  };
+}
+
+export interface ConstrainedTextCalloutAnchor {
+  canvasAnchor: { x: number; y: number };
+  ownerAnchor: TextCalloutOwnerAnchor;
+}
+
+/** Clamp a dragged callout tip to its owner and persist it parent-relatively. */
+export function constrainTextCalloutAnchorToOwner(
+  source: Node | undefined,
+  requestedAnchor: { x: number; y: number }
+): ConstrainedTextCalloutAnchor | null {
+  if (!source) return null;
+  const sourceRect = getNodeRect(source);
+  const x = Math.max(sourceRect.left, Math.min(sourceRect.right, requestedAnchor.x));
+  const y = Math.max(sourceRect.top, Math.min(sourceRect.bottom, requestedAnchor.y));
+  return {
+    canvasAnchor: { x, y },
+    ownerAnchor: {
+      x: roundAnchorCoordinate((x - sourceRect.left) / Math.max(1, sourceRect.width)),
+      y: roundAnchorCoordinate((y - sourceRect.top) / Math.max(1, sourceRect.height)),
+    },
+  };
+}
+
 /**
  * Resolve an attached callout tip from its owner every time it is rendered.
- * The tip is never an independent canvas anchor: moving the note chooses the
- * nearest owner side, while moving or resizing the owner updates the outline
- * point automatically.
+ * A custom tip is stored within the owner instead of in canvas coordinates.
+ * Older in-owner canvas anchors remain usable; out-of-owner anchors are ignored.
  */
 export function attachedExternalNoteCalloutAnchor(
   note: Node,
   source: Node | undefined
 ): { x: number; y: number } | null {
   if (!isExternalNoteNode(note) || !source) return null;
-  const sourceId = ((note.data ?? {}) as Record<string, unknown>).noteForNodeId;
+  const noteData = (note.data ?? {}) as Record<string, unknown>;
+  const sourceId = noteData.noteForNodeId;
   if (sourceId !== source.id) return null;
 
   const sourceRect = getNodeRect(source);
+  const ownerAnchor = normalizeTextCalloutOwnerAnchor(noteData.textCalloutOwnerAnchor);
+  if (ownerAnchor) {
+    return {
+      x: sourceRect.left + ownerAnchor.x * sourceRect.width,
+      y: sourceRect.top + ownerAnchor.y * sourceRect.height,
+    };
+  }
+
+  const legacyAnchor = normalizeTextCalloutAnchor(noteData.textCalloutAnchor);
+  if (
+    legacyAnchor
+    && legacyAnchor.x >= sourceRect.left
+    && legacyAnchor.x <= sourceRect.right
+    && legacyAnchor.y >= sourceRect.top
+    && legacyAnchor.y <= sourceRect.bottom
+  ) {
+    return legacyAnchor;
+  }
+
   const noteRect = getNodeRect(note);
   return nodeShapeConnectionPoint(
     source,

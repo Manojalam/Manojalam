@@ -3,10 +3,12 @@ import test from "node:test";
 import type { Node } from "@xyflow/react";
 import {
   attachedExternalNoteCalloutAnchor,
+  constrainTextCalloutAnchorToOwner,
   createExternalNoteNode,
   EXTERNAL_NOTE_SIZE,
   includeAttachedExternalNoteIds,
   isExternalNoteNode,
+  normalizeTextCalloutOwnerAnchor,
   preserveAttachedExternalNoteOffsets,
 } from "./node-note";
 
@@ -230,12 +232,67 @@ test("group movement does not translate an attached note twice", () => {
   );
 });
 
-test("the parent outline is the only anchor for an attached callout", () => {
+test("an out-of-parent legacy anchor falls back to the parent outline", () => {
   const owner = attachmentSource();
   const noteAbove = speechNote({ x: 90, y: 80 }, { x: -900, y: 1400 });
 
   assert.deepEqual(
     attachedExternalNoteCalloutAnchor(noteAbove, owner),
     { x: 200, y: 200 }
+  );
+});
+
+test("an attached callout anchor can move within its parent", () => {
+  const owner = attachmentSource();
+  const note = {
+    ...speechNote(),
+    data: {
+      ...speechNote().data,
+      textCalloutOwnerAnchor: { x: 0.25, y: 0.75 },
+    },
+  };
+
+  assert.deepEqual(
+    attachedExternalNoteCalloutAnchor(note, owner),
+    { x: 150, y: 260 }
+  );
+});
+
+test("a dragged anchor is clamped to the parent and stored relatively", () => {
+  const owner = attachmentSource();
+
+  assert.deepEqual(
+    constrainTextCalloutAnchorToOwner(owner, { x: 250, y: 250 }),
+    {
+      canvasAnchor: { x: 250, y: 250 },
+      ownerAnchor: { x: 0.75, y: 0.625 },
+    }
+  );
+  assert.deepEqual(
+    constrainTextCalloutAnchorToOwner(owner, { x: -500, y: 900 }),
+    {
+      canvasAnchor: { x: 100, y: 280 },
+      ownerAnchor: { x: 0, y: 1 },
+    }
+  );
+  assert.deepEqual(
+    normalizeTextCalloutOwnerAnchor({ x: -2, y: 4 }),
+    { x: 0, y: 1 }
+  );
+});
+
+test("a custom parent anchor follows owner movement and resizing", () => {
+  const note = {
+    ...speechNote(),
+    data: {
+      ...speechNote().data,
+      textCalloutOwnerAnchor: { x: 0.25, y: 0.75 },
+    },
+  };
+  const movedOwner = attachmentSource({ x: 250, y: 320 }, 300);
+
+  assert.deepEqual(
+    attachedExternalNoteCalloutAnchor(note, movedOwner),
+    { x: 325, y: 380 }
   );
 });
