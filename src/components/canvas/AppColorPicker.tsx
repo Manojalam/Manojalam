@@ -33,6 +33,11 @@ interface ColorPickerPanelProps {
   showHeading?: boolean;
   onCancel?: () => void;
   stickyActions?: boolean;
+  /**
+   * Apply pointer choices before focus can leave a rich-text editor.
+   * Keyboard activation continues through the normal click event.
+   */
+  selectionSafe?: boolean;
 }
 
 function ColorSwatch({
@@ -40,11 +45,13 @@ function ColorSwatch({
   selected,
   title,
   onSelect,
+  selectionSafe,
 }: {
   color: string;
   selected: boolean;
   title: string;
   onSelect: () => void;
+  selectionSafe: boolean;
 }) {
   const rgb = hexToRgb(color);
   const useDarkCheck = !!rgb && (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 175;
@@ -53,7 +60,14 @@ function ColorSwatch({
       type="button"
       title={title}
       aria-label={title}
-      onClick={onSelect}
+      onPointerDown={(event) => {
+        if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+        event.preventDefault();
+        onSelect();
+      }}
+      onClick={(event) => {
+        if (!selectionSafe || event.detail === 0) onSelect();
+      }}
       className={cn(
         "relative h-5 w-5 rounded-md border border-black/15 shadow-sm transition-transform hover:z-10 hover:scale-110",
         selected && "ring-2 ring-primary ring-offset-1 ring-offset-background"
@@ -81,6 +95,7 @@ export function ColorPickerPanel({
   showHeading = true,
   onCancel,
   stickyActions = false,
+  selectionSafe = false,
 }: ColorPickerPanelProps) {
   const exactColorInputId = useId();
   const normalizedValue = normalizeHexColor(value);
@@ -164,6 +179,7 @@ export function ColorPickerPanel({
                   selected={draftColor === color}
                   title={`${group.name} · ${color}`}
                   onSelect={() => selectSwatch(color)}
+                  selectionSafe={selectionSafe}
                 />
               ))}
             </div>
@@ -251,6 +267,7 @@ export function ColorPickerPanel({
                 selected={draftColor === color}
                 title={`Recent · ${color}`}
                 onSelect={() => selectSwatch(color)}
+                selectionSafe={selectionSafe}
               />
             ))}
           </div>
@@ -329,7 +346,14 @@ export function ColorPickerPanel({
             <button
               type="button"
               title="Cancel color selection"
-              onClick={onCancel}
+              onPointerDown={(event) => {
+                if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+                event.preventDefault();
+                onCancel();
+              }}
+              onClick={(event) => {
+                if (!selectionSafe || event.detail === 0) onCancel();
+              }}
               className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" />
@@ -339,7 +363,14 @@ export function ColorPickerPanel({
           <button
             type="button"
             title="Apply color"
-            onClick={() => onChange(draftColor)}
+            onPointerDown={(event) => {
+              if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+              event.preventDefault();
+              onChange(draftColor);
+            }}
+            onClick={(event) => {
+              if (!selectionSafe || event.detail === 0) onChange(draftColor);
+            }}
             className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
           >
             <Check className="h-3.5 w-3.5" />
@@ -434,6 +465,7 @@ export function AppColorPicker({
           onChange={chooseColor}
           onCancel={() => setOpenState(false)}
           stickyActions
+          selectionSafe={preserveCurrentFocus}
         />
       </PopoverContent>
     </Popover>

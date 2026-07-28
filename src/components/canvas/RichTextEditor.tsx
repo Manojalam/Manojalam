@@ -598,6 +598,8 @@ export function RichTextEditor({
   const [replaceFromColor, setReplaceFromColor] = useState("");
   const [replaceToColor, setReplaceToColor] = useState("#ef4444");
   const [additiveSelectionRanges, setAdditiveSelectionRanges] = useState<RichTextSelectionRange[]>([]);
+  const [pickerTextColorSnapshot, setPickerTextColorSnapshot] = useState<string | null | "mixed">(null);
+  const [pickerHighlightSnapshot, setPickerHighlightSnapshot] = useState<string | null | "mixed">(null);
   const [linkText, setLinkText] = useState("");
   const [linkHref, setLinkHref] = useState("");
   const [linkEditing, setLinkEditing] = useState(false);
@@ -809,7 +811,10 @@ export function RichTextEditor({
       currentTextSelectionRanges(),
       editor.state.doc.content.size
     );
-    if (ranges.length) pickerSelectionRangesRef.current = ranges;
+    if (!ranges.length) return;
+    pickerSelectionRangesRef.current = ranges;
+    setPickerTextColorSnapshot(selectedMarkValue(editor, "textStyle", "color", ranges));
+    setPickerHighlightSnapshot(selectedMarkValue(editor, "highlight", "color", ranges));
   }, [currentTextSelectionRanges, editor]);
 
   const commitAdditiveSelectionRanges = useCallback((
@@ -2026,6 +2031,18 @@ export function RichTextEditor({
   const currentHighlight = selectedHighlight === "mixed"
     ? null
     : selectedHighlight ?? editor?.getAttributes("highlight").color ?? null;
+  const capturedPickerTextColor = showColors
+    ? pickerTextColorSnapshot
+    : selectedColor;
+  const capturedPickerHighlightColor = showHighlights
+    ? pickerHighlightSnapshot
+    : selectedHighlight;
+  const textColorPickerValue = capturedPickerTextColor === "mixed"
+    ? null
+    : capturedPickerTextColor ?? currentColor;
+  const highlightPickerValue = capturedPickerHighlightColor === "mixed"
+    ? null
+    : capturedPickerHighlightColor ?? currentHighlight;
   const boldState = editor
     ? selectedMarkValue(editor, "bold", undefined, effectiveSelectionRanges)
     : null;
@@ -2283,9 +2300,10 @@ export function RichTextEditor({
                   </div>
                 </div>
                 <ColorPickerPanel
-                  value={currentColor ?? "#111827"}
+                  value={textColorPickerValue ?? "#111827"}
                   extraColors={textColorSwatches}
                   showHeading={false}
+                  selectionSafe
                   onChange={chooseCustomTextColor}
                 />
               </div>
@@ -2345,9 +2363,10 @@ export function RichTextEditor({
                   </button>
                 </div>
                 <ColorPickerPanel
-                  value={currentHighlight ?? "#fde68a"}
+                  value={highlightPickerValue ?? "#fde68a"}
                   extraColors={highlightColorSwatches}
                   showHeading={false}
+                  selectionSafe
                   onChange={chooseCustomHighlightColor}
                 />
               </div>

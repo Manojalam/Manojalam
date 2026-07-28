@@ -4826,6 +4826,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ColorSwatchPicker
                 value={activeTextColor}
                 extra={settings.customTextColors}
+                selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
                   customTextColors: rememberCustomColor(settings.customTextColors, color),
                 })}
@@ -4839,6 +4840,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <ColorSwatchPicker
                 value={activeHighlightColor}
                 extra={settings.customHighlightColors}
+                selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
                   customHighlightColors: rememberCustomColor(settings.customHighlightColors, color),
                 })}
