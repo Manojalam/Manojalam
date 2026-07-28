@@ -5827,11 +5827,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   size="sm"
                   className="h-7 gap-1.5 text-[10px]"
                   disabled={d.layoutAutoFill !== false}
-                  title="Remove this override and restore progressively lighter Matrix shades from the parent"
+                  title="Remove this override and restore one Matrix shade per hierarchy level from the parent"
                   onClick={() => setField("layoutAutoFill", undefined)}
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Use matrix shades
+                  Use depth shades
                 </Button>
               )}
             </div>
@@ -5842,16 +5842,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 size="sm"
                 className="h-7 w-full gap-1.5 text-[10px]"
                 disabled={matrixDescendantFillOverrideCount === 0}
-                title="Clear manual fill overrides below this parent and restore progressively lighter Matrix shades"
+                title="Clear manual fill overrides below this parent and restore one Matrix shade per descendant level"
                 onClick={() => {
                   const resetCount = resetMatrixDescendantFillOverrides(selectedNode.id);
                   if (resetCount > 0) {
-                    toast.success(`Restored automatic Matrix shades for ${resetCount} descendant${resetCount === 1 ? "" : "s"}.`);
+                    toast.success(`Restored automatic Matrix depth shades for ${resetCount} descendant${resetCount === 1 ? "" : "s"}.`);
                   }
                 }}
               >
                 <RotateCcw className="h-3 w-3" />
-                Reset descendant shades
+                Reset depth shades
                 {matrixDescendantFillOverrideCount > 0 ? ` (${matrixDescendantFillOverrideCount})` : ""}
               </Button>
             )}

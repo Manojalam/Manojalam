@@ -179,12 +179,13 @@ export function buildLayoutVisualStyles(
     const parentChildren = info?.parentId
       ? hierarchy.get(info.parentId)?.childIds ?? []
       : [];
+    const matrixDepthBand = mode === "matrix";
     const colors = radialSectorColors(
       scheme,
-      branchIndex,
+      matrixDepthBand ? 0 : branchIndex,
       fillAnchor ? depth - fillAnchor.depth + 1 : depth,
-      fillAnchor ? 0 : Math.max(0, info?.siblingIndex ?? 0),
-      fillAnchor ? 1 : Math.max(1, parentChildren.length),
+      fillAnchor || matrixDepthBand ? 0 : Math.max(0, info?.siblingIndex ?? 0),
+      fillAnchor || matrixDepthBand ? 1 : Math.max(1, parentChildren.length),
       fillAnchor?.color,
       manualColor,
       !!fillAnchor
