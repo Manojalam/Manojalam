@@ -1045,6 +1045,30 @@ test("long Sanskrit content reaches the width cap and increases row height", () 
   assertClean(result);
 });
 
+test("standard Matrix leaf siblings share one content-safe height within their parent", () => {
+  const paragraph = "अथातो धर्मजिज्ञासा संस्कृतव्याकरणस्य विस्तीर्णविवरणम् ".repeat(12).trim();
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, text: "व्याकरणम्" },
+    { id: "category", parentId: "root", text: "सन्धिः" },
+    { id: "short-a", parentId: "category", text: "हरे + ए = हरये।" },
+    { id: "short-b", parentId: "category", text: "नै + अकः = नायकः।" },
+    { id: "long", parentId: "category", text: paragraph },
+    { id: "short-c", parentId: "category", text: "गो + अकः = गावकः।" },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const siblings = ["short-a", "short-b", "long", "short-c"].map((id) => cells.get(id)!);
+  const siblingHeight = siblings[0].height;
+  const category = cells.get("category")!;
+  const gap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
+
+  assert.ok(siblingHeight > MATRIX_DENSITY_SETTINGS.comfortable.minRowHeight * 2);
+  siblings.forEach((cell) => assert.equal(cell.height, siblingHeight));
+  assert.equal(category.height, siblingHeight * siblings.length + gap * (siblings.length - 1));
+  assertClean(result);
+});
+
 test("collapsed and hidden descendants do not create table rows", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },
