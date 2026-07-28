@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 
-import { computeTightExportBounds, resolveExportTarget } from "./bounds";
+import {
+  computeTightExportBounds,
+  resolveExportTarget,
+  resolveSelectedSubtreeRoots,
+} from "./bounds";
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -107,6 +111,67 @@ test("selected subtree includes descendants, attached text, and internal connect
     "child-grandchild",
     "internal-cross-link",
   ]);
+});
+
+test("selected parent branches export together with their complete hierarchies", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 0, y: 0 }, data: { childOrder: ["left", "right"] } },
+    { id: "left", position: { x: 100, y: 0 }, data: { parentId: "root" } },
+    { id: "left-child", position: { x: 200, y: 0 }, data: { parentId: "left" } },
+    { id: "right", position: { x: 100, y: 100 }, data: { parentId: "root" } },
+    { id: "right-child", position: { x: 200, y: 100 }, data: { parentId: "right" } },
+    { id: "outside", position: { x: 0, y: 200 }, data: {} },
+  ];
+  const edges: Edge[] = [
+    { id: "root-left", source: "root", target: "left" },
+    { id: "left-child", source: "left", target: "left-child" },
+    { id: "root-right", source: "root", target: "right" },
+    { id: "right-child", source: "right", target: "right-child" },
+  ];
+
+  const target = resolveExportTarget(
+    {
+      kind: "subtree",
+      rootId: "left",
+      rootIds: ["left", "right"],
+    },
+    nodes,
+    edges
+  );
+
+  assert.deepEqual(target.nodeIds, [
+    "left",
+    "left-child",
+    "right",
+    "right-child",
+  ]);
+  assert.deepEqual(target.edgeIds, [
+    "left-child",
+    "right-child",
+  ]);
+});
+
+test("branch selections collapse nested nodes but retain independent selected parents", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 0, y: 0 }, data: {} },
+    { id: "left", position: { x: 100, y: 0 }, data: { parentId: "root" } },
+    { id: "left-child", position: { x: 200, y: 0 }, data: { parentId: "left" } },
+    { id: "right", position: { x: 100, y: 100 }, data: { parentId: "root" } },
+    { id: "right-child", position: { x: 200, y: 100 }, data: { parentId: "right" } },
+  ];
+
+  const selection = resolveSelectedSubtreeRoots(
+    ["left", "left-child", "right"],
+    nodes,
+    []
+  );
+
+  assert.deepEqual(selection.rootIds, ["left", "right"]);
+  assert.equal(selection.hasVisibleDescendants, true);
+  assert.deepEqual(
+    resolveSelectedSubtreeRoots(["left-child"], nodes, []),
+    { rootIds: ["left-child"], hasVisibleDescendants: false }
+  );
 });
 
 test("live chart DOM bounds replace stale React Flow measurements", () => {

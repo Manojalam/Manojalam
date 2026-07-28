@@ -50,6 +50,11 @@ export interface ResolvedExportTargetWithBounds<
   bounds: ExportBounds;
 }
 
+export interface SelectedSubtreeRoots {
+  rootIds: string[];
+  hasVisibleDescendants: boolean;
+}
+
 type ModelNodeRect = ExportBounds;
 
 type Extent = {
@@ -148,6 +153,38 @@ function isVisibleEdge(edge: Edge): boolean {
   return edge.hidden !== true;
 }
 
+/**
+ * Reduces a selection to its highest selected hierarchy nodes. This lets a
+ * branch selection containing a parent and some descendants export once,
+ * while unrelated selected parents remain independent subtree roots.
+ */
+export function resolveSelectedSubtreeRoots(
+  nodeIds: readonly string[],
+  nodes: readonly Node[],
+  edges: readonly Edge[]
+): SelectedSubtreeRoots {
+  const visibleNodeIds = new Set(
+    nodes.filter(isVisibleNode).map((node) => node.id)
+  );
+  const selectedIds = new Set(nodeIds.filter((nodeId) => visibleNodeIds.has(nodeId)));
+  const hierarchy = buildHierarchy([...nodes], [...edges]);
+  const rootIds = [...selectedIds].filter((nodeId) => {
+    let parentId = hierarchy.get(nodeId)?.parentId ?? null;
+    const visited = new Set<string>();
+    while (parentId && !visited.has(parentId)) {
+      if (selectedIds.has(parentId)) return false;
+      visited.add(parentId);
+      parentId = hierarchy.get(parentId)?.parentId ?? null;
+    }
+    return true;
+  });
+  const hasVisibleDescendants = rootIds.some((rootId) =>
+    getSubtree(rootId, hierarchy).some(
+      (nodeId) => nodeId !== rootId && visibleNodeIds.has(nodeId)
+    ));
+  return { rootIds, hasVisibleDescendants };
+}
+
 function throwEmptyScope(scope: ExportScope, message: string): never {
   throw new ExportError({
     stage: "resolve-scope",
@@ -192,15 +229,15 @@ export function resolveExportTarget<
       if (visibleNodeById.has(edge.target)) includedNodeIds.add(edge.target);
     }
   } else if (scope.kind === "subtree") {
-    const root = visibleNodeById.get(scope.rootId);
-    if (!root) {
-      throwEmptyScope(scope, "The selected parent is not visible or no longer exists.");
-    }
-
     const hierarchy = buildHierarchy([...nodes], [...edges]);
-    const visibleSubtreeNodeIds = getSubtree(root.id, hierarchy).filter(
-      (nodeId) => visibleNodeById.has(nodeId)
-    );
+    const requestedRootIds = [...new Set([scope.rootId, ...(scope.rootIds ?? [])])];
+    const visibleRootIds = requestedRootIds.filter((rootId) => visibleNodeById.has(rootId));
+    if (visibleRootIds.length === 0) {
+      throwEmptyScope(scope, "The selected parents are not visible or no longer exist.");
+    }
+    const visibleSubtreeNodeIds = [...new Set(
+      visibleRootIds.flatMap((rootId) => getSubtree(rootId, hierarchy))
+    )].filter((nodeId) => visibleNodeById.has(nodeId));
     const subtreeWithNotes = includeAttachedExternalNoteIds(
       [...nodes],
       visibleSubtreeNodeIds

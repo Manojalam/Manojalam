@@ -16,7 +16,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { resolveExportTarget, resolveExportTargetWithBounds } from "@/lib/export/bounds";
+import {
+  resolveExportTargetWithBounds,
+  resolveSelectedSubtreeRoots,
+} from "@/lib/export/bounds";
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
@@ -42,7 +45,7 @@ type ScaleChoice = "1" | "2" | "3" | "4" | "custom";
 type OpaqueFallback = "black" | "white";
 type MatrixOutputMode = "whole" | "folds" | "children";
 
-const DEFAULT_PADDING = 0;
+const DEFAULT_PADDING = 12;
 const EMPTY_IDS: string[] = [];
 
 function formatDimension(value: number): string {
@@ -77,7 +80,8 @@ function requestInitialScope(
 ): DialogScope {
   if (request.scope === "frame") return "frame";
   if (request.scope === "subtree") return hasSubtree ? "subtree" : "selection";
-  if (request.scope === "node" || request.scope === "selection") return "selection";
+  if (request.scope === "node") return "selection";
+  if (request.scope === "selection") return hasSubtree ? "subtree" : "selection";
   return request.scope === "board"
     ? "board"
     : hasSubtree
@@ -114,20 +118,13 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const requestedNodeIds = request.nodeIds?.length ? request.nodeIds : selectedNodeIds;
   const requestedEdgeIds = request.scope === "node" ? EMPTY_IDS : selectedEdgeIds;
   const hasSelection = requestedNodeIds.length > 0 || requestedEdgeIds.length > 0;
-  const subtreeRootId = requestedNodeIds.length === 1 ? requestedNodeIds[0] : null;
-  const subtreeTarget = useMemo(() => {
-    if (!subtreeRootId) return null;
-    try {
-      return resolveExportTarget(
-        { kind: "subtree", rootId: subtreeRootId },
-        nodes,
-        edges
-      );
-    } catch {
-      return null;
-    }
-  }, [edges, nodes, subtreeRootId]);
-  const hasSubtree = !!subtreeTarget?.nodeIds.some((nodeId) => nodeId !== subtreeRootId);
+  const selectedSubtreeRoots = useMemo(
+    () => resolveSelectedSubtreeRoots(requestedNodeIds, nodes, edges),
+    [edges, nodes, requestedNodeIds]
+  );
+  const subtreeRootIds = selectedSubtreeRoots.rootIds;
+  const hasSubtree = selectedSubtreeRoots.hasVisibleDescendants;
+  const subtreeRootId = subtreeRootIds.length === 1 ? subtreeRootIds[0] : null;
   const selectedFrameId = request.frameId
     ?? nodes.find((node) => requestedNodeIds.includes(node.id) && node.type === "frame")?.id;
   const selectedMatrixRootNode = subtreeRootId
@@ -183,14 +180,20 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
       return selectedFrameId ? { kind: "frame", frameId: selectedFrameId } : null;
     }
     if (scopeKind === "subtree") {
-      return subtreeRootId ? { kind: "subtree", rootId: subtreeRootId } : null;
+      return subtreeRootIds.length > 0
+        ? {
+            kind: "subtree",
+            rootId: subtreeRootIds[0],
+            rootIds: subtreeRootIds,
+          }
+        : null;
     }
     return {
       kind: "selection",
       nodeIds: requestedNodeIds,
       edgeIds: requestedEdgeIds,
     };
-  }, [requestedEdgeIds, requestedNodeIds, scopeKind, selectedFrameId, subtreeRootId]);
+  }, [requestedEdgeIds, requestedNodeIds, scopeKind, selectedFrameId, subtreeRootIds]);
 
   const resolved = useMemo(() => {
     if (!root || !exportScope) return { value: null, error: null };
@@ -361,7 +364,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
   const selectFormat = (nextFormat: ExportFormat) => {
     setFormat(nextFormat);
-    if (!exportFormatSupportsTransparency(nextFormat)) setIncludeBackground(true);
+    setIncludeBackground(!exportFormatSupportsTransparency(nextFormat));
   };
 
   const fitToSafeSize = () => {
@@ -548,7 +551,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               {([
                 ["board", "Whole board", "Export every visible board object"],
                 ["selection", "Selection", "Export only the selected objects"],
-                ["subtree", "Parent + children", "Include visible descendants, attached text notes, and internal connections"],
+                ["subtree", "Parent + children", "Include each selected parent, its visible descendants, attached text notes, and internal connections"],
                 ["frame", "Selected frame", "Export the selected frame and its visible contents"],
               ] as Array<[DialogScope, string, string]>).map(([value, label, title]) => {
                 const disabled = value === "selection"
@@ -595,7 +598,13 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             )}
             {scopeKind === "subtree" && hasSubtree && (
               <p className="text-[10px] text-muted-foreground">
-                Includes the parent, all visible descendants, attached text notes, and connections within the branch.
+                Includes {
+                  subtreeRootIds.length === 1
+                    ? "the selected parent and all of its"
+                    : "each selected parent and all of their"
+                } visible descendants, attached text notes, and connections within {
+                  subtreeRootIds.length === 1 ? "the branch" : "those branches"
+                }.
               </p>
             )}
           </section>
