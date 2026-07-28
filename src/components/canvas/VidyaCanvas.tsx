@@ -467,6 +467,7 @@ function VidyaCanvasInner({
         rootId?: string;
         nodeIds?: string[];
         fitAfter?: boolean;
+        recordHistory?: boolean;
       }>).detail;
       if ((detail?.mode !== "list" && detail?.mode !== "matrix") || !detail.rootId || !detail.nodeIds?.length) return;
 
@@ -475,7 +476,11 @@ function VidyaCanvasInner({
       updateNodeInternals(detail.nodeIds);
       const first = requestAnimationFrame(() => {
         const second = requestAnimationFrame(() => {
-          useCanvasStore.getState().applyLayout(detail.mode!, detail.rootId);
+          useCanvasStore.getState().applyLayout(
+            detail.mode!,
+            detail.rootId,
+            { recordHistory: detail.recordHistory }
+          );
           if (detail.fitAfter) {
             const third = requestAnimationFrame(() => {
               window.dispatchEvent(new CustomEvent("vidya:fitview", {
