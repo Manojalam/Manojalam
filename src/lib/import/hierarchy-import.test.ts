@@ -140,11 +140,107 @@ test("parses nested HTML lists without executing or importing unsafe elements", 
     assert.equal(parsed.roots[0].label, "छन्दः - समवृत्तानि");
     assert.equal(parsed.roots[0].children.length, 2);
     assert.equal(parsed.roots[0].children[0].children[0].label, "प्रमाणिका");
-    assert.match(parsed.roots[0].children[0].children[0].notes, /जरौ लगौ/u);
+    assert.match(
+      parsed.roots[0].children[0].children[0].children[0].label,
+      /जरौ लगौ/u
+    );
+    assert.equal(parsed.roots[0].children[0].children[0].notes, "");
     assert.equal(
       (globalThis as typeof globalThis & { __unsafeImportExecuted?: boolean }).__unsafeImportExecuted,
       undefined
     );
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
+test("keeps every explicit nested HTML list item as a hierarchy node", () => {
+  const { window } = parseHTML(`<html><head><title>छन्दः - समवृत्तानि</title></head><body>
+    <ol>
+      <li>छन्दः - समवृत्तानि
+        <ol>
+          <li>८ अक्षराणि<br>अनुष्टुप्
+            <ol>
+              <li>श्लोकः ...
+                <ol>
+                  <li>पञ्चमं लघु सर्वत्र सप्तमं द्विचतुर्थयोः ।<br>
+                    गुरु षष्ठञ्च पादानां चतुर्णां स्यादनुष्टुभि ॥
+                    <ol>
+                      <li>सोऽहमाजन्मशुद्धानामाफलोदयकर्मणाम् ।<br>
+                        आसमुद्रक्षितीशानामानाकरथवर्त्मनाम् ॥</li>
+                    </ol>
+                  </li>
+                </ol>
+              </li>
+              <li>प्रमाणिका
+                <ol>
+                  <li>प्रमाणिका जरौ लगौ ।<br>जगणः - रगणः - लगौ
+                    <ol>
+                      <li>प्रवाति दक्षिणानिलः<br>सुपुष्पिताम्रकिंशुकः ।</li>
+                      <li>इनोदयद्धयान्तरं<br>तदर्कसावनं दिनम् ।</li>
+                    </ol>
+                  </li>
+                </ol>
+              </li>
+            </ol>
+          </li>
+        </ol>
+      </li>
+    </ol>
+  </body></html>`);
+  const previous = {
+    DOMParser: globalThis.DOMParser,
+    Node: globalThis.Node,
+    Element: globalThis.Element,
+  };
+  Object.assign(globalThis, {
+    DOMParser: window.DOMParser,
+    Node: window.Node,
+    Element: window.Element,
+  });
+  try {
+    const parsed = parseHtmlHierarchy(window.document.toString(), "छन्दः - समवृत्तानि.html");
+    const metre = parsed.roots[0].children[0];
+    const shloka = metre.children[0];
+    const rule = shloka.children[0];
+    const pramanika = metre.children[1];
+    const formula = pramanika.children[0];
+
+    assert.equal(shloka.label, "श्लोकः ...");
+    assert.match(rule.label, /पञ्चमं लघु/u);
+    assert.match(rule.children[0].label, /सोऽहमाजन्म/u);
+    assert.equal(shloka.notes, "");
+    assert.match(formula.label, /प्रमाणिका जरौ लगौ/u);
+    assert.deepEqual(
+      formula.children.map((node) => node.label.split("\n")[0]),
+      ["प्रवाति दक्षिणानिलः", "इनोदयद्धयान्तरं"]
+    );
+    assert.equal(formula.notes, "");
+  } finally {
+    Object.assign(globalThis, previous);
+  }
+});
+
+test("heading-based HTML still stores descriptive paragraphs as notes", () => {
+  const { window } = parseHTML(`<html><body>
+    <h1>छन्दः</h1>
+    <h2>प्रमाणिका</h2>
+    <p>प्रमाणिका जरौ लगौ । जगणः - रगणः - लगौ ।</p>
+  </body></html>`);
+  const previous = {
+    DOMParser: globalThis.DOMParser,
+    Node: globalThis.Node,
+    Element: globalThis.Element,
+  };
+  Object.assign(globalThis, {
+    DOMParser: window.DOMParser,
+    Node: window.Node,
+    Element: window.Element,
+  });
+  try {
+    const parsed = parseHtmlHierarchy(window.document.toString(), "headings.html");
+    assert.equal(parsed.roots[0].children[0].label, "प्रमाणिका");
+    assert.match(parsed.roots[0].children[0].notes, /जरौ लगौ/u);
   } finally {
     Object.assign(globalThis, previous);
   }

@@ -1,4 +1,8 @@
-import { compactRawHierarchy, type RawHierarchyNode } from "./draft";
+import {
+  compactRawHierarchy,
+  preserveRawHierarchy,
+  type RawHierarchyNode,
+} from "./draft";
 import { normalizeImportedText } from "./script";
 import type {
   HierarchyDraft,
@@ -262,10 +266,13 @@ export function parseHtmlHierarchy(
     }
   }
 
+  const hasSemanticListHierarchy = rawRoots.length > 0;
   if (!rawRoots.length) {
     rawRoots.push(...parseHeadingDocument(body, sourceLines));
   }
-  const roots = compactRawHierarchy(rawRoots);
+  const roots = hasSemanticListHierarchy
+    ? preserveRawHierarchy(rawRoots)
+    : compactRawHierarchy(rawRoots);
   const title = normalizeImportedText(document.title) ||
     roots[0]?.label ||
     filenameWithoutExtension(sourceName);
