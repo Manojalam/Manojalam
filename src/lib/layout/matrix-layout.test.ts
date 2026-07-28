@@ -672,6 +672,79 @@ test("a terminal grandchild merges across deeper sibling tracks in empty-slot mo
   assertClean(result);
 });
 
+test("terminal cells fill every unused deeper level in a four-level Matrix", () => {
+  const sharedWidth = 194;
+  const { nodes, edges } = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      text: "स्वरसन्धयः",
+      incompleteRowMode: "empty",
+      childFlow: "column",
+      matrixWidth: 782,
+    },
+    { id: "shallow-category", parentId: "root", text: "यण्", matrixWidth: sharedWidth },
+    { id: "shallow-terminal", parentId: "shallow-category", text: "इको यणचि", matrixWidth: sharedWidth },
+    { id: "mid-parent", parentId: "shallow-category", text: "सुधी + उपास्यः", matrixWidth: 218 },
+    { id: "mid-terminal", parentId: "mid-parent", text: "मधु + अरिः", matrixWidth: sharedWidth },
+    { id: "deep-category", parentId: "root", text: "दीर्घः", matrixWidth: sharedWidth },
+    { id: "deep-parent", parentId: "deep-category", text: "प्रथम स्तरः", matrixWidth: sharedWidth },
+    { id: "deeper-parent", parentId: "deep-parent", text: "द्वितीय स्तरः", matrixWidth: 228 },
+    { id: "deepest-terminal", parentId: "deeper-parent", text: "तृतीय स्तरः", matrixWidth: sharedWidth },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const bodyRight = result.bounds.right;
+
+  assert.ok(Math.abs(cells.get("shallow-terminal")!.x + cells.get("shallow-terminal")!.width - bodyRight) < 0.5);
+  assert.ok(Math.abs(cells.get("mid-terminal")!.x + cells.get("mid-terminal")!.width - bodyRight) < 0.5);
+  assert.equal(
+    result.emptyCells.filter((cell) => Math.abs(cell.y - cells.get("shallow-terminal")!.y) < 0.5).length,
+    0
+  );
+  assert.equal(
+    result.emptyCells.filter((cell) => Math.abs(cell.y - cells.get("mid-terminal")!.y) < 0.5).length,
+    0
+  );
+  assertMatrixBodyTiled(result);
+  assertClean(result);
+});
+
+test("a terminal in a peer branch absorbs Fold-only trailing allocation", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, incompleteRowMode: "empty", childFlow: "column" },
+    { id: "shallow-category", parentId: "root", childFlow: "column" },
+    { id: "single-row-parent", parentId: "shallow-category", childFlow: "row", matrixWidth: 220, siblingGap: 3 },
+    { id: "single-row-child", parentId: "single-row-parent", childFlow: "column", siblingGap: 15 },
+    { id: "single-row-deeper", parentId: "single-row-child", childFlow: "column", matrixWidth: 250 },
+    { id: "terminal", parentId: "single-row-deeper", childFlow: "column", matrixWidth: 277 },
+    { id: "folded-category", parentId: "root", childFlow: "column", matrixWidth: 185 },
+    { id: "deep-1", parentId: "folded-category", childFlow: "column", matrixWidth: 314 },
+    { id: "deep-2", parentId: "deep-1", childFlow: "row" },
+    { id: "deep-3", parentId: "deep-2", childFlow: "column", matrixWidth: 202 },
+    { id: "deep-terminal", parentId: "deep-3", childFlow: "row", matrixWidth: 288 },
+    { id: "medium-1", parentId: "folded-category", childFlow: "column", matrixWidth: 242 },
+    { id: "medium-terminal", parentId: "medium-1", childFlow: "column", matrixWidth: 133 },
+    { id: "short-terminal", parentId: "folded-category", childFlow: "column", matrixWidth: 284 },
+    { id: "last-terminal", parentId: "folded-category", childFlow: "column" },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "folded-category"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const edges = fixture.edges;
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const terminal = result.cells.find((cell) => cell.nodeId === "terminal")!;
+
+  assert.ok(Math.abs(terminal.x + terminal.width - result.bounds.right) < 0.5);
+  assert.equal(
+    result.emptyCells.filter((cell) => Math.abs(cell.y - terminal.y) < 0.5).length,
+    0
+  );
+  assertClean(result);
+});
+
 test("incomplete compact rows stretch existing children by default", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, packCompactGroups: true },
