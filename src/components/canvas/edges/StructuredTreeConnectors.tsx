@@ -158,6 +158,7 @@ export function StructuredTreeConnectors() {
                 {group.sharedSegments.map((segment, index) => (
                   <ConnectorSvgPath
                     key={`shared-${index}`}
+                    data-export-edge-ids={groupEdgeIds.join(" ")}
                     d={segmentPath(segment)}
                     edgeData={data}
                     color={trunkColor}
@@ -169,6 +170,7 @@ export function StructuredTreeConnectors() {
                   />
                 ))}
                 <path
+                  data-export-ignore
                   d={sharedPath}
                   fill="none"
                   stroke="transparent"
@@ -186,7 +188,7 @@ export function StructuredTreeConnectors() {
                   const path = branchPath(segments);
                   const normalColor = normalEdgeColor(edge);
                   return (
-                    <g key={edge.id}>
+                    <g key={edge.id} data-export-edge-id={edge.id}>
                       <ConnectorSvgPath
                         d={path}
                         edgeData={data}
@@ -196,6 +198,7 @@ export function StructuredTreeConnectors() {
                         markerEnd={hasArrowEnd(edge) ? `url(#${markerId(edge.id)})` : undefined}
                       />
                       <path
+                        data-export-ignore
                         d={path}
                         fill="none"
                         stroke="transparent"
