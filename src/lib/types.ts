@@ -660,16 +660,6 @@ export interface ConnectorJunctionNodeData extends BaseNodeData {
   color?: string;
 }
 
-export type ConnectorAnchorSide = "top" | "right" | "bottom" | "left";
-
-export interface ConnectorEndpointAnchor {
-  /** Normalized position within the node's measured bounds. */
-  x: number;
-  y: number;
-  /** Outward routing direction at this point on the authored shape outline. */
-  side: ConnectorAnchorSide;
-}
-
 export interface VidyaEdgeData extends Record<string, unknown> {
   label?: string;
   color?: string;
@@ -694,10 +684,6 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   manualRoute?: boolean;
   /** Keep the exact user-selected source and target handles when nodes move. */
   preserveHandles?: boolean;
-  /** User-pinned source point on the source object's outline. */
-  sourceAnchor?: ConnectorEndpointAnchor;
-  /** User-pinned target point on the target object's outline. */
-  targetAnchor?: ConnectorEndpointAnchor;
   /** User-positioned anchors that turn the automatic route into an editable path. */
   waypoints?: Array<{ x: number; y: number }>;
   /** Distinguishes explicit bend controls from internal anchors created by segment dragging. */
