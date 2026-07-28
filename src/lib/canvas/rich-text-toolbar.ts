@@ -1,3 +1,5 @@
+import type { Editor } from "@tiptap/core";
+
 export interface InlineTextToolbarContext {
   nodeId?: string;
   selectedNodeIds: string[];
@@ -12,6 +14,8 @@ export interface RichTextSelectionRange {
   from: number;
   to: number;
 }
+
+export type RichTextCommandChain = ReturnType<Editor["chain"]>;
 
 export const TEXT_TOOL_FOCUS_SELECTOR =
   "[data-universal-text-tools], [data-app-color-picker]";
@@ -63,6 +67,33 @@ export function appendRichTextSelectionRange(
     [...ranges, nextRange],
     maximumPosition
   );
+}
+
+/**
+ * Replay one TipTap formatting command against every retained range in a
+ * single transaction, then restore the most recently selected range.
+ */
+export function applyRichTextCommandAcrossRanges(
+  editor: Editor,
+  selectedRanges: readonly RichTextSelectionRange[],
+  command: (chain: RichTextCommandChain) => RichTextCommandChain,
+  options: { focus?: boolean } = {}
+): boolean {
+  const ranges = normalizeRichTextSelectionRanges(
+    selectedRanges,
+    editor.state.doc.content.size
+  );
+  if (!ranges.length) return false;
+
+  let chain = editor.chain();
+  for (const range of ranges) {
+    chain = command(chain.setTextSelection(range));
+  }
+  chain = chain.setTextSelection(ranges[ranges.length - 1]);
+  if (options.focus !== false) {
+    chain = chain.focus(undefined, { scrollIntoView: false });
+  }
+  return chain.run();
 }
 
 export function resolveRichTextAdditiveSelectionRanges({
