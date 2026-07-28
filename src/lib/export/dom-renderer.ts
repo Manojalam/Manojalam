@@ -7,6 +7,7 @@ import {
   type ExportAssetReport,
   type ExportAssetWarning,
 } from "./resources";
+import { REACT_FLOW_SELECTED_NODE_Z_INDEX } from "../canvas/connector-control-layer";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -537,17 +538,37 @@ function filterByIds(
     .filter((id): id is string => Boolean(id));
 }
 
-function filterIdentifiedEdgeLabels(clone: HTMLElement, edgeIds: Iterable<string> | undefined): void {
+export function exportEdgeReferenceMatches(
+  edgeId: string | null,
+  edgeIds: string | null,
+  requested: ReadonlySet<string>
+): boolean {
+  if (edgeId && requested.has(edgeId)) return true;
+  return (edgeIds ?? "")
+    .split(/[\s,]+/)
+    .some((candidate) => candidate.length > 0 && requested.has(candidate));
+}
+
+function filterIdentifiedEdgeElements(clone: HTMLElement, edgeIds: Iterable<string> | undefined): void {
   if (edgeIds === undefined) return;
   const requested = new Set(edgeIds);
   for (const element of Array.from(clone.querySelectorAll<HTMLElement>(
-    ".react-flow__edgelabel-renderer [data-export-edge-id], .react-flow__edgelabel-renderer [data-edge-id], .react-flow__edgelabel-renderer [data-id]"
+    "[data-export-edge-id], [data-export-edge-ids]"
   ))) {
-    const id = element.getAttribute("data-export-edge-id")
-      ?? element.getAttribute("data-edge-id")
-      ?? element.getAttribute("data-id");
-    if (id && !requested.has(id)) element.remove();
+    if (!exportEdgeReferenceMatches(
+      element.getAttribute("data-export-edge-id"),
+      element.getAttribute("data-export-edge-ids"),
+      requested
+    )) element.remove();
   }
+}
+
+export function normalizedSelectedExportNodeZIndex(value: string): string | null {
+  const elevated = Number(value);
+  if (!Number.isFinite(elevated) || elevated < REACT_FLOW_SELECTED_NODE_Z_INDEX) {
+    return null;
+  }
+  return String(elevated - REACT_FLOW_SELECTED_NODE_Z_INDEX);
 }
 
 function restoreExportElements(clone: HTMLElement): void {
@@ -818,6 +839,8 @@ function removeEditorSelectionChrome(clone: HTMLElement): number {
     root.style.removeProperty("outline");
     root.style.removeProperty("outline-offset");
     root.style.removeProperty("box-shadow");
+    const normalZIndex = normalizedSelectedExportNodeZIndex(root.style.zIndex);
+    if (normalZIndex !== null) root.style.setProperty("z-index", normalZIndex);
 
     const elements = [root, ...Array.from(root.querySelectorAll<HTMLElement | SVGElement>("*"))];
     for (const element of elements) {
@@ -922,7 +945,7 @@ export function cloneReactFlowViewport(
       ".react-flow__edge[data-id]",
       options.edgeIds
     );
-    filterIdentifiedEdgeLabels(clone, options.edgeIds);
+    filterIdentifiedEdgeElements(clone, options.edgeIds);
 
     const editorElements = Array.from(clone.querySelectorAll(EDITOR_UI_SELECTORS));
     for (const element of editorElements) element.remove();

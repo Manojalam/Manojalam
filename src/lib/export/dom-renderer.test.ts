@@ -5,8 +5,10 @@ import {
   compositeExportColor,
   configureStandaloneSvgViewport,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
+  exportEdgeReferenceMatches,
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
+  normalizedSelectedExportNodeZIndex,
   parseExportCssColor,
   waitForDomExportFontReadiness,
 } from "./dom-renderer";
@@ -67,6 +69,22 @@ test("preserves the CSS exclusion geometry used by dense diamond labels", () => 
   assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("float"));
   assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("shape-outside"));
   assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("shape-margin"));
+});
+
+test("scoped exports retain only connector artwork belonging to requested edges", () => {
+  const requested = new Set(["branch-b"]);
+
+  assert.equal(exportEdgeReferenceMatches("branch-b", null, requested), true);
+  assert.equal(exportEdgeReferenceMatches("branch-a", null, requested), false);
+  assert.equal(exportEdgeReferenceMatches(null, "branch-a branch-b branch-c", requested), true);
+  assert.equal(exportEdgeReferenceMatches(null, "branch-a,branch-c", requested), false);
+});
+
+test("removes React Flow's temporary selected-node elevation from exports", () => {
+  assert.equal(normalizedSelectedExportNodeZIndex("1000"), "0");
+  assert.equal(normalizedSelectedExportNodeZIndex("1020"), "20");
+  assert.equal(normalizedSelectedExportNodeZIndex("999"), null);
+  assert.equal(normalizedSelectedExportNodeZIndex("auto"), null);
 });
 
 test("continues a non-strict export after the document font set rejects", async () => {
