@@ -14,6 +14,7 @@ import {
   normalizeRichTextSelectionRanges,
   resolveRichTextAdditiveSelectionRanges,
   resolveCapturedTextAlign,
+  resolveRichTextFormattingRanges,
   TEXT_TOOL_FOCUS_SELECTOR,
 } from "./rich-text-toolbar";
 
@@ -118,6 +119,17 @@ test("drag coordinates recover a range when browser and editor selections collap
   }), [
     { from: 2, to: 6 },
     { from: 12, to: 20 },
+  ]);
+});
+
+test("picker formatting keeps the ranges captured before native selection changes", () => {
+  assert.deepEqual(resolveRichTextFormattingRanges({
+    currentRanges: [{ from: 18, to: 22 }],
+    preservedRanges: [{ from: 2, to: 6 }, { from: 10, to: 14 }],
+    maximumPosition: 30,
+  }), [
+    { from: 2, to: 6 },
+    { from: 10, to: 14 },
   ]);
 });
 

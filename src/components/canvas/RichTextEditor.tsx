@@ -44,6 +44,7 @@ import {
   normalizeRichTextSelectionRanges,
   resolveRichTextAdditiveSelectionRanges,
   resolveCapturedTextAlign,
+  resolveRichTextFormattingRanges,
   type RichTextCommandChain,
   type RichTextSelectionRange,
   type RichTextAlignment,
@@ -615,6 +616,7 @@ export function RichTextEditor({
   const linkDialogOpenRef = useRef(false);
   const colorReplaceDialogOpenRef = useRef(false);
   const linkTargetSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const pickerSelectionRangesRef = useRef<RichTextSelectionRange[]>([]);
   const additiveSelectionRangesRef = useRef<RichTextSelectionRange[]>([]);
   const additivePointerRef = useRef<{
     baseRanges: RichTextSelectionRange[];
@@ -785,6 +787,15 @@ export function RichTextEditor({
     const saved = savedSelectionRef.current;
     return saved && saved.from < saved.to ? [saved] : [];
   }, [editor]);
+
+  const capturePickerSelectionRanges = useCallback(() => {
+    if (!editor) return;
+    const ranges = normalizeRichTextSelectionRanges(
+      currentTextSelectionRanges(),
+      editor.state.doc.content.size
+    );
+    if (ranges.length) pickerSelectionRangesRef.current = ranges;
+  }, [currentTextSelectionRanges, editor]);
 
   const commitAdditiveSelectionRanges = useCallback((
     ranges: readonly RichTextSelectionRange[]
@@ -1585,11 +1596,24 @@ export function RichTextEditor({
   }, []);
 
   const applySelectionCommand = useCallback((
-    command: (chain: RichTextCommandChain) => RichTextCommandChain
+    command: (chain: RichTextCommandChain) => RichTextCommandChain,
+    preservedRanges: readonly RichTextSelectionRange[] = []
   ) => {
+    if (!editor) return false;
     pendingReportReasonRef.current = "format";
-    return runAcrossTextSelectionRanges(command);
-  }, [runAcrossTextSelectionRanges]);
+    const ranges = resolveRichTextFormattingRanges({
+      currentRanges: currentTextSelectionRanges(),
+      preservedRanges,
+      maximumPosition: editor.state.doc.content.size,
+    });
+    return applyRichTextCommandAcrossRanges(editor, ranges, command);
+  }, [currentTextSelectionRanges, editor]);
+
+  const applyPickerSelectionCommand = useCallback((
+    command: (chain: RichTextCommandChain) => RichTextCommandChain
+  ) => applySelectionCommand(command, pickerSelectionRangesRef.current), [
+    applySelectionCommand,
+  ]);
 
   const toggleInlineMark = useCallback((markName: string) => {
     if (!editor) return;
@@ -1809,31 +1833,31 @@ export function RichTextEditor({
   }, [editor]);
 
   const chooseCustomTextColor = useCallback((color: string) => {
+    applyPickerSelectionCommand((chain) => chain.setColor(color));
     setSettings({
       customColors: rememberCustomColor(customColors, color),
       customTextColors: rememberCustomColor(customTextColors, color),
     });
-    applySelectionCommand((chain) => chain.setColor(color));
     setShowColors(false);
   }, [
-    applySelectionCommand,
+    applyPickerSelectionCommand,
     customColors,
     customTextColors,
     setSettings,
   ]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
+    applyPickerSelectionCommand((chain) => chain.setMark("highlight", {
+      color,
+      vidyaScope: "explicit",
+    }));
     setSettings({
       customColors: rememberCustomColor(customColors, color),
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
     });
-    applySelectionCommand((chain) => chain.setMark("highlight", {
-      color,
-      vidyaScope: "explicit",
-    }));
     setShowHighlights(false);
   }, [
-    applySelectionCommand,
+    applyPickerSelectionCommand,
     customColors,
     customHighlightColors,
     setSettings,
@@ -1862,7 +1886,11 @@ export function RichTextEditor({
       editor,
       "textStyle",
       "color",
-      currentTextSelectionRanges()
+      resolveRichTextFormattingRanges({
+        currentRanges: currentTextSelectionRanges(),
+        preservedRanges: pickerSelectionRangesRef.current,
+        maximumPosition: editor.state.doc.content.size,
+      })
     );
     const source = selected && selected !== "mixed"
       ? colors.find((color) =>
@@ -2200,7 +2228,7 @@ export function RichTextEditor({
                     className="text-[10px] text-muted-foreground hover:text-foreground"
                     onMouseDown={(event) => {
                       event.preventDefault();
-                      applySelectionCommand((chain) => chain.unsetColor());
+                      applyPickerSelectionCommand((chain) => chain.unsetColor());
                       setShowColors(false);
                     }}
                   >
@@ -2210,6 +2238,7 @@ export function RichTextEditor({
               </div>
             )}
             onOpenChange={(open) => {
+              if (open) capturePickerSelectionRanges();
               setShowColors(open);
               if (!open) return;
               setShowHighlights(false);
@@ -2223,6 +2252,7 @@ export function RichTextEditor({
               type="button"
               title={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"}
               aria-label={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"}
+              onPointerDown={capturePickerSelectionRanges}
               onMouseDown={(event) => event.preventDefault()}
               className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedColor === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
               <Palette className="h-4 w-4" />
@@ -2251,7 +2281,7 @@ export function RichTextEditor({
                   className="text-[10px] text-muted-foreground hover:text-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    applySelectionCommand((chain) => chain.unsetHighlight());
+                    applyPickerSelectionCommand((chain) => chain.unsetHighlight());
                     setShowHighlights(false);
                   }}
                 >
@@ -2260,6 +2290,7 @@ export function RichTextEditor({
               </div>
             )}
             onOpenChange={(open) => {
+              if (open) capturePickerSelectionRanges();
               setShowHighlights(open);
               if (!open) return;
               setShowColors(false);
@@ -2273,6 +2304,7 @@ export function RichTextEditor({
               type="button"
               title={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"}
               aria-label={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"}
+              onPointerDown={capturePickerSelectionRanges}
               onMouseDown={(event) => event.preventDefault()}
               className={cn("relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted", selectedHighlight === "mixed" && "ring-1 ring-inset ring-primary/60 bg-primary/10")}>
               <Highlighter className="h-4 w-4" />
