@@ -157,6 +157,7 @@ export function splitConnectorAtJunction(
     data: {
       ...commonData,
       label: undefined,
+      targetAnchor: undefined,
       arrowEnd: false,
       waypoints: firstWaypoints.length ? firstWaypoints : undefined,
       waypointOrigin: firstWaypoints.length ? data.waypointOrigin : undefined,
@@ -174,6 +175,7 @@ export function splitConnectorAtJunction(
     selected: false,
     data: {
       ...commonData,
+      sourceAnchor: undefined,
       arrowStart: false,
       waypoints: secondWaypoints.length ? secondWaypoints : undefined,
       waypointOrigin: secondWaypoints.length ? data.waypointOrigin : undefined,
@@ -348,6 +350,9 @@ function reverseLogicalConnector(edges: Edge[], logicalEdgeIds: readonly string[
     const data = { ...(edge.data ?? {}) } as Record<string, unknown>;
     reverseStoredPoints(data, "waypoints");
     reverseStoredPoints(data, "junctionUserWaypoints");
+    const sourceAnchor = data.sourceAnchor;
+    data.sourceAnchor = data.targetAnchor;
+    data.targetAnchor = sourceAnchor;
     if (typeof data.labelPosition === "number" && Number.isFinite(data.labelPosition)) {
       data.labelPosition = 1 - Math.max(0, Math.min(1, data.labelPosition));
     }
@@ -466,6 +471,10 @@ export function clearConnectorJunctionGraph(
     arrowStart: incomingData.arrowStart,
     arrowEnd: outgoingData.arrowEnd,
   };
+  if (incomingData.sourceAnchor !== undefined) data.sourceAnchor = incomingData.sourceAnchor;
+  else delete data.sourceAnchor;
+  if (outgoingData.targetAnchor !== undefined) data.targetAnchor = outgoingData.targetAnchor;
+  else delete data.targetAnchor;
   delete data.connectorJunctionId;
   delete data.connectorJunctionSegment;
   delete data.junctionPreservedWaypoints;

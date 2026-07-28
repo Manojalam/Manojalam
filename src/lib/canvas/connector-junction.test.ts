@@ -24,6 +24,8 @@ test("reversing a connection swaps endpoints, handles, and stored bend order", (
       label: "Approved",
       labelPosition: 0.2,
       arrowEnd: true,
+      sourceAnchor: { x: 0.9, y: 0.35, side: "right" },
+      targetAnchor: { x: 0.1, y: 0.65, side: "left" },
       waypoints: [{ x: 100, y: 20 }, { x: 400, y: 20 }],
     },
   };
@@ -38,6 +40,8 @@ test("reversing a connection swaps endpoints, handles, and stored bend order", (
   assert.equal(reversed.markerStart, undefined);
   assert.equal(reversed.data?.label, "Approved");
   assert.equal(reversed.data?.labelPosition, 0.8);
+  assert.deepEqual(reversed.data?.sourceAnchor, { x: 0.1, y: 0.65, side: "left" });
+  assert.deepEqual(reversed.data?.targetAnchor, { x: 0.9, y: 0.35, side: "right" });
   assert.deepEqual(reversed.data?.waypoints, [{ x: 400, y: 20 }, { x: 100, y: 20 }]);
 });
 
@@ -105,7 +109,13 @@ test("a connector junction preserves the line endpoints and terminal arrow", () 
     sourceHandle: "right",
     targetHandle: "left",
     markerEnd: { type: MarkerType.ArrowClosed },
-    data: { label: "Approved", color: "#123456", waypoints: [{ x: 50, y: 50 }] },
+    data: {
+      label: "Approved",
+      color: "#123456",
+      sourceAnchor: { x: 0.8, y: 0.25, side: "right" },
+      targetAnchor: { x: 0.2, y: 0.75, side: "left" },
+      waypoints: [{ x: 50, y: 50 }],
+    },
   };
   const result = splitConnectorAtJunction(
     edge,
@@ -119,8 +129,12 @@ test("a connector junction preserves the line endpoints and terminal arrow", () 
   assert.equal(result.edges[0].target, "junction");
   assert.equal(result.edges[0].markerEnd, undefined);
   assert.equal(result.edges[0].data?.label, undefined);
+  assert.deepEqual(result.edges[0].data?.sourceAnchor, edge.data?.sourceAnchor);
+  assert.equal(result.edges[0].data?.targetAnchor, undefined);
   assert.equal(result.edges[1].source, "junction");
   assert.equal(result.edges[1].target, "target");
+  assert.equal(result.edges[1].data?.sourceAnchor, undefined);
+  assert.deepEqual(result.edges[1].data?.targetAnchor, edge.data?.targetAnchor);
   assert.deepEqual(result.edges[1].markerEnd, edge.markerEnd);
   assert.equal(result.edges[1].data?.label, "Approved");
   assert.equal(result.edges[1].data?.waypoints, undefined);
@@ -136,7 +150,13 @@ test("clearing a junction restores the original through-connection", () => {
     sourceHandle: "right",
     targetHandle: "left",
     markerEnd: { type: MarkerType.ArrowClosed },
-    data: { label: "Approved", arrowEnd: true, color: "#123456" },
+    data: {
+      label: "Approved",
+      arrowEnd: true,
+      color: "#123456",
+      sourceAnchor: { x: 0.8, y: 0.25, side: "right" },
+      targetAnchor: { x: 0.2, y: 0.75, side: "left" },
+    },
   };
   const split = splitConnectorAtJunction(
     original,
@@ -160,6 +180,8 @@ test("clearing a junction restores the original through-connection", () => {
   assert.equal(result.edges[0].targetHandle, "left");
   assert.deepEqual(result.edges[0].markerEnd, original.markerEnd);
   assert.equal(result.edges[0].data?.label, "Approved");
+  assert.deepEqual(result.edges[0].data?.sourceAnchor, original.data?.sourceAnchor);
+  assert.deepEqual(result.edges[0].data?.targetAnchor, original.data?.targetAnchor);
   assert.equal(result.edges[0].data?.connectorJunctionId, undefined);
 });
 

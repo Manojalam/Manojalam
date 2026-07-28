@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import {
+  closestNodeShapeConnectionAnchor,
   nodeShapeConnectionPoint,
 } from "../canvas/shape-connection-geometry";
 import type { Hierarchy } from "./hierarchy";
@@ -25,27 +26,24 @@ export interface ListDensitySettings {
   rowGapY: number;
   parentChildGapY: number;
   siblingSubtreeGapY: number;
-  connectorGutterX: number;
 }
 
 export const LIST_DENSITIES: Record<ListDensity, ListDensitySettings> = {
   compact: {
-    rootToFirstRowGapY: 34,
-    majorBranchGapY: 34,
-    childIndentX: 160,
-    rowGapY: 18,
-    parentChildGapY: 24,
-    siblingSubtreeGapY: 26,
-    connectorGutterX: 48,
+    rootToFirstRowGapY: 20,
+    majorBranchGapY: 24,
+    childIndentX: 104,
+    rowGapY: 12,
+    parentChildGapY: 16,
+    siblingSubtreeGapY: 18,
   },
   comfortable: {
-    rootToFirstRowGapY: 46,
-    majorBranchGapY: 46,
-    childIndentX: 184,
-    rowGapY: 26,
-    parentChildGapY: 34,
-    siblingSubtreeGapY: 38,
-    connectorGutterX: 56,
+    rootToFirstRowGapY: 32,
+    majorBranchGapY: 34,
+    childIndentX: 132,
+    rowGapY: 20,
+    parentChildGapY: 26,
+    siblingSubtreeGapY: 30,
   },
 };
 
@@ -284,10 +282,6 @@ export function computeListLayout(
       const siblingGap = parentId === rootId
         ? density.rowGapY + density.majorBranchGapY
         : density.siblingSubtreeGapY;
-      const childBounds = new Map(children.flatMap((childId) => {
-        const bounds = subtreeBounds(childId);
-        return bounds ? [[childId, bounds] as const] : [];
-      }));
       const sections = resolvedFoldSections(
         (parent.data ?? {}) as Record<string, unknown>,
         children
@@ -428,42 +422,24 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     if (!childRects.length) continue;
 
     const parentRect = getNodeRect(parent);
-    let root: Node = parent;
-    const ancestorIds = new Set<string>();
-    while (!ancestorIds.has(root.id)) {
-      ancestorIds.add(root.id);
-      const data = (root.data ?? {}) as Record<string, unknown>;
-      if (data.layoutMode === "list") break;
-      const parentNodeId = hierarchy.get(root.id)?.parentId;
-      const ancestor = parentNodeId ? byId.get(parentNodeId) : null;
-      if (!ancestor) break;
-      root = ancestor;
-    }
-    const rootData = (root.data ?? {}) as Record<string, unknown>;
-    const density = LIST_DENSITIES[rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY];
-    const junctionY = Math.min(
-      Math.min(...childRects.map((item) => item.rect.centerY)),
-      parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
-    );
-    const parentAnchor = nodeShapeConnectionPoint(parent, parentRect, "bottom");
-    // A List parent owns one outline bus. Slightly different child X positions
-    // (especially Matrix roots with different widths) must not create parallel
-    // trunks that appear as duplicate connectors.
-    const trunkX = Math.min(...childRects.map((item) => item.rect.left)) - density.connectorGutterX;
+    const parentAnchor = closestNodeShapeConnectionAnchor(parent, parentRect, {
+      x: parentRect.left,
+      y: parentRect.bottom,
+    }).point;
+    // Start the shared outline bus directly from the parent's lower-left
+    // perimeter. This removes the short vertical-and-left dogleg that made
+    // automatic List connectors look unnecessarily bent.
+    const trunkX = parentAnchor.x;
     const trunk = {
       x1: trunkX,
-      y1: junctionY,
+      y1: parentAnchor.y,
       x2: trunkX,
-      y2: Math.max(junctionY, ...childRects.map((item) => item.rect.centerY)),
+      y2: Math.max(parentAnchor.y, ...childRects.map((item) => item.rect.centerY)),
     };
     const group: ListConnectorGroup = {
       parentId,
       orientation: "vertical",
-      sharedSegments: [
-        { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: junctionY },
-        { x1: parentAnchor.x, y1: junctionY, x2: trunkX, y2: junctionY },
-        trunk,
-      ],
+      sharedSegments: [trunk],
       branches: childRects.map(({ edge, node, rect }) => {
         const childAnchor = nodeShapeConnectionPoint(node, rect, "left");
         return {
@@ -485,11 +461,6 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     hits.forEach((obstacleId) => obstacleIntersections.push({ parentId, obstacleId }));
     groups.push(group);
 
-    if (process.env.NODE_ENV !== "production") {
-      const longStubs = group.branches.flatMap((branch) => branch.segments)
-        .filter((segment) => Math.abs(segment.x2 - segment.x1) + Math.abs(segment.y2 - segment.y1) > density.childIndentX);
-      if (longStubs.length) console.warn("[list-connectors] child stub exceeds one indentation step", { parentId, longStubs });
-    }
   }
 
   const segmentCounts = new Map<string, number>();

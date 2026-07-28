@@ -1,9 +1,13 @@
 import { matrixCellBorderRadius } from "../layout/matrix-presentation";
-import type { ShapeType } from "../types";
+import type {
+  ConnectorAnchorSide,
+  ConnectorEndpointAnchor,
+  ShapeType,
+} from "../types";
 import { resolveNodeBorderRadius } from "../style-utils";
 import { resolveObjectRotation } from "./object-rotation";
 
-export type ConnectionSide = "top" | "right" | "bottom" | "left";
+export type ConnectionSide = ConnectorAnchorSide;
 
 export type ShapeConnectionPoint = {
   x: number;
@@ -212,6 +216,36 @@ function cross(first: ShapeConnectionPoint, second: ShapeConnectionPoint): numbe
 function pointsEqual(first: ShapeConnectionPoint, second: ShapeConnectionPoint): boolean {
   return Math.abs(first.x - second.x) <= INTERSECTION_EPSILON
     && Math.abs(first.y - second.y) <= INTERSECTION_EPSILON;
+}
+
+function closestPointOnSegment(
+  point: ShapeConnectionPoint,
+  start: ShapeConnectionPoint,
+  end: ShapeConnectionPoint
+): ShapeConnectionPoint {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= INTERSECTION_EPSILON) return start;
+  const progress = Math.max(0, Math.min(
+    1,
+    ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared
+  ));
+  return {
+    x: start.x + dx * progress,
+    y: start.y + dy * progress,
+  };
+}
+
+function connectionSideAtPoint(
+  point: ShapeConnectionPoint,
+  width: number,
+  height: number
+): ConnectionSide {
+  const horizontal = (point.x - width / 2) / Math.max(width / 2, INTERSECTION_EPSILON);
+  const vertical = (point.y - height / 2) / Math.max(height / 2, INTERSECTION_EPSILON);
+  if (Math.abs(horizontal) > Math.abs(vertical)) return horizontal < 0 ? "left" : "right";
+  return vertical < 0 ? "top" : "bottom";
 }
 
 function cubicPoint(
@@ -526,6 +560,69 @@ function contourConnectionPoint(
   return selected?.point ?? null;
 }
 
+function renderedShapeContours(
+  shapeType: string | undefined,
+  width: number,
+  height: number,
+  options: ShapeConnectionOptions
+): ShapeContour[] {
+  const outline = shapeContours(shapeType, width, height, options);
+  const center = { x: width / 2, y: height / 2 };
+  const rotation = typeof options.rotation === "number" && Number.isFinite(options.rotation)
+    ? options.rotation
+    : 0;
+  return rotation
+    ? outline.contours.map((contour) =>
+        contour.map((point) => rotatePoint(point, center, rotation))
+      )
+    : outline.contours;
+}
+
+/**
+ * Project an arbitrary local point onto the nearest point of the rendered
+ * outline. This supports continuously movable connector pins instead of
+ * limiting an object to four side-center handles.
+ */
+export function closestShapeConnectionAnchor(
+  shapeType: string | undefined,
+  point: ShapeConnectionPoint,
+  options: ShapeConnectionOptions = {}
+): { point: ShapeConnectionPoint; anchor: ConnectorEndpointAnchor } {
+  const width = finitePositive(options.width, 100);
+  const height = finitePositive(options.height, 100);
+  const contours = renderedShapeContours(shapeType, width, height, options);
+  let closest: { point: ShapeConnectionPoint; distanceSquared: number } | null = null;
+
+  for (const contour of contours) {
+    for (let index = 0; index < contour.length; index += 1) {
+      const candidate = closestPointOnSegment(
+        point,
+        contour[index],
+        contour[(index + 1) % contour.length]
+      );
+      const dx = candidate.x - point.x;
+      const dy = candidate.y - point.y;
+      const distanceSquared = dx * dx + dy * dy;
+      if (!closest || distanceSquared < closest.distanceSquared) {
+        closest = { point: candidate, distanceSquared };
+      }
+    }
+  }
+
+  const resolved = closest?.point ?? {
+    x: Math.max(0, Math.min(width, point.x)),
+    y: Math.max(0, Math.min(height, point.y)),
+  };
+  return {
+    point: resolved,
+    anchor: {
+      x: resolved.x / width,
+      y: resolved.y / height,
+      side: connectionSideAtPoint(resolved, width, height),
+    },
+  };
+}
+
 export function isSvgShapeType(shapeType: string): boolean {
   const kind = SHAPE_OUTLINE_KINDS[shapeType as ShapeType];
   return kind === "polygon"
@@ -547,14 +644,7 @@ export function shapeConnectionPoint(
   const height = finitePositive(options.height, 100);
   const center = { x: width / 2, y: height / 2 };
   const outline = shapeContours(shapeType, width, height, options);
-  const rotation = typeof options.rotation === "number" && Number.isFinite(options.rotation)
-    ? options.rotation
-    : 0;
-  const rotatedContours = rotation
-    ? outline.contours.map((contour) =>
-        contour.map((point) => rotatePoint(point, center, rotation))
-      )
-    : outline.contours;
+  const rotatedContours = renderedShapeContours(shapeType, width, height, options);
   const point = contourConnectionPoint(
     rotatedContours,
     center,
@@ -617,4 +707,42 @@ export function nodeShapeConnectionPoint(
     x: rect.x + rect.width * normalized.x / 100,
     y: rect.y + rect.height * normalized.y / 100,
   };
+}
+
+/** Snap a canvas-space pointer to the nearest point on a node's visible outline. */
+export function closestNodeShapeConnectionAnchor(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  point: ShapeConnectionPoint
+): { point: ShapeConnectionPoint; anchor: ConnectorEndpointAnchor } {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const shapeType = node.type === "shape"
+    ? typeof data.shapeType === "string" ? data.shapeType : "rounded"
+    : "rectangle";
+  const resolved = closestShapeConnectionAnchor(
+    shapeType,
+    { x: point.x - rect.x, y: point.y - rect.y },
+    nodeShapeConnectionOptions(node, rect, shapeType)
+  );
+  return {
+    point: {
+      x: rect.x + resolved.point.x,
+      y: rect.y + resolved.point.y,
+    },
+    anchor: resolved.anchor,
+  };
+}
+
+/** Resolve a persisted normalized pin after the object has moved or resized. */
+export function resolveNodeShapeConnectionAnchor(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  anchor: ConnectorEndpointAnchor
+): { point: ShapeConnectionPoint; anchor: ConnectorEndpointAnchor } {
+  const x = typeof anchor.x === "number" && Number.isFinite(anchor.x) ? anchor.x : 0.5;
+  const y = typeof anchor.y === "number" && Number.isFinite(anchor.y) ? anchor.y : 0.5;
+  return closestNodeShapeConnectionAnchor(node, rect, {
+    x: rect.x + rect.width * x,
+    y: rect.y + rect.height * y,
+  });
 }
