@@ -15,6 +15,7 @@ import {
   resolveRichTextAdditiveSelectionRanges,
   resolveCapturedTextAlign,
   resolveRichTextFormattingRanges,
+  shouldKeepRichTextEditingActive,
   TEXT_TOOL_FOCUS_SELECTOR,
 } from "./rich-text-toolbar";
 
@@ -71,6 +72,27 @@ test("portaled symbol and color controls remain part of the text editing session
   }), true);
   assert.equal(isTextToolFocusTarget({ closest: () => null }), false);
   assert.equal(isTextToolFocusTarget(null), false);
+});
+
+test("open color pickers keep the editor active when blur has no related target", () => {
+  const inactiveFormattingSurfaces = {
+    focusMovedToToolbar: false,
+    focusMovedToTextTool: false,
+    textColorPickerOpen: false,
+    highlightPickerOpen: false,
+    linkDialogOpen: false,
+    colorReplaceDialogOpen: false,
+  };
+
+  assert.equal(shouldKeepRichTextEditingActive({
+    ...inactiveFormattingSurfaces,
+    textColorPickerOpen: true,
+  }), true);
+  assert.equal(shouldKeepRichTextEditingActive({
+    ...inactiveFormattingSurfaces,
+    highlightPickerOpen: true,
+  }), true);
+  assert.equal(shouldKeepRichTextEditingActive(inactiveFormattingSurfaces), false);
 });
 
 test("additive text ranges are ordered, clamped, and merged", () => {

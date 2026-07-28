@@ -45,6 +45,7 @@ import {
   resolveRichTextAdditiveSelectionRanges,
   resolveCapturedTextAlign,
   resolveRichTextFormattingRanges,
+  shouldKeepRichTextEditingActive,
   type RichTextCommandChain,
   type RichTextSelectionRange,
   type RichTextAlignment,
@@ -615,6 +616,8 @@ export function RichTextEditor({
   const linkHrefInputRef = useRef<HTMLInputElement>(null);
   const linkDialogOpenRef = useRef(false);
   const colorReplaceDialogOpenRef = useRef(false);
+  const textColorPickerOpenRef = useRef(false);
+  const highlightPickerOpenRef = useRef(false);
   const linkTargetSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const pickerSelectionRangesRef = useRef<RichTextSelectionRange[]>([]);
   const additiveSelectionRangesRef = useRef<RichTextSelectionRange[]>([]);
@@ -656,15 +659,25 @@ export function RichTextEditor({
     measurementKeyRef.current = measurementKey;
   }, [measurementFontSize, measurementKey, measurementWidth]);
 
+  const setTextColorPickerOpen = useCallback((open: boolean) => {
+    textColorPickerOpenRef.current = open;
+    setShowColors(open);
+  }, []);
+
+  const setHighlightPickerOpen = useCallback((open: boolean) => {
+    highlightPickerOpenRef.current = open;
+    setShowHighlights(open);
+  }, []);
+
   const hideToolbar = useCallback(() => {
     setAnchor(null);
     setDrag(null);
-    setShowColors(false);
-    setShowHighlights(false);
+    setTextColorPickerOpen(false);
+    setHighlightPickerOpen(false);
     setShowFonts(false);
     setShowSizes(false);
     if (!linkDialogOpenRef.current) setShowLink(false);
-  }, []);
+  }, [setHighlightPickerOpen, setTextColorPickerOpen]);
 
   useEffect(() => {
     if (!nodeId || (selectedNodeIds.length === 1 && selectedNodeIds[0] === nodeId)) return;
@@ -766,12 +779,14 @@ export function RichTextEditor({
         event.relatedTarget as globalThis.Node | null
       );
       const focusMovedToTextTool = isTextToolFocusTarget(event.relatedTarget);
-      if (
-        focusMovedToToolbar
-        || focusMovedToTextTool
-        || linkDialogOpenRef.current
-        || colorReplaceDialogOpenRef.current
-      ) return;
+      if (shouldKeepRichTextEditingActive({
+        focusMovedToToolbar: !!focusMovedToToolbar,
+        focusMovedToTextTool,
+        textColorPickerOpen: textColorPickerOpenRef.current,
+        highlightPickerOpen: highlightPickerOpenRef.current,
+        linkDialogOpen: linkDialogOpenRef.current,
+        colorReplaceDialogOpen: colorReplaceDialogOpenRef.current,
+      })) return;
       hideToolbar();
       onBlur?.();
     },
@@ -1710,12 +1725,17 @@ export function RichTextEditor({
     setLinkEditing(editing);
     setLinkText(editor.state.doc.textBetween(targetSelection.from, targetSelection.to, " "));
     setLinkHref(editing ? String(editor.getAttributes("link").href ?? "") : "");
-    setShowColors(false);
-    setShowHighlights(false);
+    setTextColorPickerOpen(false);
+    setHighlightPickerOpen(false);
     setShowFonts(false);
     setShowSizes(false);
     setShowLink(true);
-  }, [currentTextSelectionRanges, editor]);
+  }, [
+    currentTextSelectionRanges,
+    editor,
+    setHighlightPickerOpen,
+    setTextColorPickerOpen,
+  ]);
 
   const applyLink = useCallback(() => {
     if (!editor) return;
@@ -1838,12 +1858,13 @@ export function RichTextEditor({
       customColors: rememberCustomColor(customColors, color),
       customTextColors: rememberCustomColor(customTextColors, color),
     });
-    setShowColors(false);
+    setTextColorPickerOpen(false);
   }, [
     applyPickerSelectionCommand,
     customColors,
     customTextColors,
     setSettings,
+    setTextColorPickerOpen,
   ]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
@@ -1855,11 +1876,12 @@ export function RichTextEditor({
       customColors: rememberCustomColor(customColors, color),
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
     });
-    setShowHighlights(false);
+    setHighlightPickerOpen(false);
   }, [
     applyPickerSelectionCommand,
     customColors,
     customHighlightColors,
+    setHighlightPickerOpen,
     setSettings,
   ]);
 
@@ -1902,10 +1924,10 @@ export function RichTextEditor({
       : "#ef4444";
     setReplaceFromColor(source);
     setReplaceToColor(target);
-    setShowColors(false);
+    setTextColorPickerOpen(false);
     colorReplaceDialogOpenRef.current = true;
     setShowColorReplace(true);
-  }, [currentTextSelectionRanges, editor]);
+  }, [currentTextSelectionRanges, editor, setTextColorPickerOpen]);
 
   const replaceTextColorThroughoutShape = useCallback(() => {
     if (!editor) return;
@@ -2116,7 +2138,7 @@ export function RichTextEditor({
 
           {/* Font family */}
           <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setShowColors(false); setShowHighlights(false); setShowSizes(false); setShowLink(false); }}
+            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowSizes(false); setShowLink(false); }}
               className="flex h-8 max-w-[140px] items-center gap-1 rounded-md border border-border px-2.5 text-[11px] hover:bg-muted">
               <span className="truncate" style={{ fontFamily: currentFamily ?? undefined }}>
                 {selectedFamily === "mixed" ? "Mixed" : currentFamily ? FONT_OPTIONS.find((f) => f.value === currentFamily)?.label ?? "Custom" : "Font"}
@@ -2161,7 +2183,7 @@ export function RichTextEditor({
           }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">−</button>
 
           <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setShowColors(false); setShowHighlights(false); setShowLink(false); }}
+            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowLink(false); }}
               className={cn("flex h-8 items-center justify-center rounded-md border border-border px-2 text-xs hover:bg-muted", selectedFontSize === "mixed" ? "w-14" : "w-10")}>
               {selectedFontSize === "mixed" ? "Mixed" : currentFontSize ?? "—"}
             </button>
@@ -2229,7 +2251,7 @@ export function RichTextEditor({
                     onMouseDown={(event) => {
                       event.preventDefault();
                       applyPickerSelectionCommand((chain) => chain.unsetColor());
-                      setShowColors(false);
+                      setTextColorPickerOpen(false);
                     }}
                   >
                     Clear color
@@ -2239,9 +2261,9 @@ export function RichTextEditor({
             )}
             onOpenChange={(open) => {
               if (open) capturePickerSelectionRanges();
-              setShowColors(open);
+              setTextColorPickerOpen(open);
               if (!open) return;
-              setShowHighlights(false);
+              setHighlightPickerOpen(false);
               setShowFonts(false);
               setShowSizes(false);
               setShowLink(false);
@@ -2282,7 +2304,7 @@ export function RichTextEditor({
                   onMouseDown={(event) => {
                     event.preventDefault();
                     applyPickerSelectionCommand((chain) => chain.unsetHighlight());
-                    setShowHighlights(false);
+                    setHighlightPickerOpen(false);
                   }}
                 >
                   Clear highlight
@@ -2291,9 +2313,9 @@ export function RichTextEditor({
             )}
             onOpenChange={(open) => {
               if (open) capturePickerSelectionRanges();
-              setShowHighlights(open);
+              setHighlightPickerOpen(open);
               if (!open) return;
-              setShowColors(false);
+              setTextColorPickerOpen(false);
               setShowFonts(false);
               setShowSizes(false);
               setShowLink(false);

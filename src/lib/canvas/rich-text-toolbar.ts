@@ -173,6 +173,33 @@ export function isTextToolFocusTarget(target: unknown): boolean {
     && !!closest.call(target, TEXT_TOOL_FOCUS_SELECTOR);
 }
 
+/**
+ * Portaled pickers can blur ProseMirror without providing a related target.
+ * Keep the editor mounted while any formatting surface still owns the action.
+ */
+export function shouldKeepRichTextEditingActive({
+  focusMovedToToolbar,
+  focusMovedToTextTool,
+  textColorPickerOpen,
+  highlightPickerOpen,
+  linkDialogOpen,
+  colorReplaceDialogOpen,
+}: {
+  focusMovedToToolbar: boolean;
+  focusMovedToTextTool: boolean;
+  textColorPickerOpen: boolean;
+  highlightPickerOpen: boolean;
+  linkDialogOpen: boolean;
+  colorReplaceDialogOpen: boolean;
+}): boolean {
+  return focusMovedToToolbar
+    || focusMovedToTextTool
+    || textColorPickerOpen
+    || highlightPickerOpen
+    || linkDialogOpen
+    || colorReplaceDialogOpen;
+}
+
 /** Only a deliberate text selection in the single focused node owns an inline toolbar. */
 export function canShowInlineTextToolbar({
   nodeId,
