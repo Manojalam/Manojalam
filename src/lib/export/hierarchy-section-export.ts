@@ -1,6 +1,6 @@
 import type { ExportViewportTransform } from "./bounds";
 import type { ExportBackgroundTexture } from "./dom-renderer";
-import type { MatrixSectionExport } from "./matrix-sections";
+import type { HierarchySectionExport } from "./hierarchy-sections";
 import {
   collectPdfLinkAnnotations,
   createMultiPageBoardPdf,
@@ -13,9 +13,9 @@ import {
 } from "./pipeline";
 import type { ExportAssetWarning, ExportFormat } from "./types";
 
-export interface ExportMatrixSectionsOptions {
+export interface ExportHierarchySectionsOptions {
   viewport: HTMLElement;
-  sections: readonly MatrixSectionExport[];
+  sections: readonly HierarchySectionExport[];
   format: ExportFormat;
   requestedScale: number;
   filename: string;
@@ -29,7 +29,7 @@ export interface ExportMatrixSectionsOptions {
   onProgress?: (completed: number, total: number) => void;
 }
 
-export interface ExportMatrixSectionsResult {
+export interface ExportHierarchySectionsResult {
   format: ExportFormat;
   outputCount: number;
   pageCount: number;
@@ -48,12 +48,12 @@ function safeFilenameStem(value: string): string {
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^[.\s-]+|[.\s-]+$/g, "") || "matrix";
+    .replace(/^[.\s-]+|[.\s-]+$/g, "") || "hierarchy";
 }
 
-export function matrixSectionDownloadFilename(
+export function hierarchySectionDownloadFilename(
   base: string,
-  section: Pick<MatrixSectionExport, "index" | "label">,
+  section: Pick<HierarchySectionExport, "index" | "label">,
   total: number,
   format: ExportFormat
 ): string {
@@ -64,16 +64,16 @@ export function matrixSectionDownloadFilename(
   return `${safeFilenameStem(base)}-${number}-${label}.${extension}`;
 }
 
-export async function exportMatrixSections(
-  options: ExportMatrixSectionsOptions
-): Promise<ExportMatrixSectionsResult> {
+export async function exportHierarchySections(
+  options: ExportHierarchySectionsOptions
+): Promise<ExportHierarchySectionsResult> {
   if (options.sections.length === 0) {
-    throw new RangeError("Select at least one Matrix section to export.");
+    throw new RangeError("Select at least one hierarchy section to export.");
   }
 
   const rasterFormat = options.format === "pdf" ? "png" : options.format;
   const rendered: Array<{
-    section: MatrixSectionExport;
+    section: HierarchySectionExport;
     result: ExportBoardVisualResult;
   }> = [];
   for (const [index, section] of options.sections.entries()) {
@@ -85,7 +85,7 @@ export async function exportMatrixSections(
       scopeKind: "subtree",
       format: rasterFormat,
       requestedScale: options.requestedScale,
-      filename: matrixSectionDownloadFilename(
+      filename: hierarchySectionDownloadFilename(
         options.filename,
         section,
         options.sections.length,
@@ -144,7 +144,7 @@ export async function exportMatrixSections(
     for (const { section, result } of rendered) {
       initiateBlobDownload(
         result.blob,
-        matrixSectionDownloadFilename(
+        hierarchySectionDownloadFilename(
           options.filename,
           section,
           options.sections.length,

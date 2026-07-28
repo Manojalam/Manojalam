@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 
-import { resolveMatrixSectionExportPlan } from "./matrix-sections";
+import { resolveHierarchySectionExportPlan } from "./hierarchy-sections";
 
 function fixture(): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [
@@ -64,10 +64,11 @@ function fixture(): { nodes: Node[]; edges: Edge[] } {
 
 test("plans one export per top-level Matrix branch with a resized root header", () => {
   const { nodes, edges } = fixture();
-  const plan = resolveMatrixSectionExportPlan("root", nodes, edges, { padding: 12 });
+  const plan = resolveHierarchySectionExportPlan("root", nodes, edges, { padding: 12 });
 
   assert.ok(plan);
-  assert.equal(plan.rootLabel, "Matrix title");
+  assert.equal(plan.parentLabel, "Matrix title");
+  assert.equal(plan.parentIsMatrix, true);
   assert.equal(plan.sections.length, 2);
   assert.equal(plan.folds.length, 1);
   assert.deepEqual(plan.sections.map((section) => section.label), [
@@ -77,23 +78,27 @@ test("plans one export per top-level Matrix branch with a resized root header", 
 
   const first = plan.sections[0];
   const second = plan.sections[1];
+  const firstHeader = first.headerOverlay;
+  const secondHeader = second.headerOverlay;
+  assert.ok(firstHeader);
+  assert.ok(secondHeader);
   assert.deepEqual(first.nodeIds, ["branch-a", "a-child"]);
   assert.deepEqual(first.edgeIds, ["a-child"]);
   assert.equal(first.kind, "child");
   assert.deepEqual(first.childIds, ["branch-a"]);
-  assert.equal(first.headerOverlay.bounds.width, 240);
-  assert.equal(second.headerOverlay.bounds.width, 360);
-  assert.equal(first.headerOverlay.bounds.height, 48);
-  assert.equal(first.headerOverlay.bounds.y + first.headerOverlay.bounds.height, 48);
+  assert.equal(firstHeader.bounds.width, 240);
+  assert.equal(secondHeader.bounds.width, 360);
+  assert.equal(firstHeader.bounds.height, 48);
+  assert.equal(firstHeader.bounds.y + firstHeader.bounds.height, 48);
   assert.deepEqual(first.bounds, {
     x: -12,
     y: -12,
     width: 264,
     height: 272,
   });
-  assert.equal(first.headerOverlay.text, "Matrix title");
-  assert.equal(first.headerOverlay.backgroundColor, "#0c4a6e");
-  assert.equal(first.headerOverlay.color, "#ffffff");
+  assert.equal(firstHeader.text, "Matrix title");
+  assert.equal(firstHeader.backgroundColor, "#0c4a6e");
+  assert.equal(firstHeader.color, "#ffffff");
 });
 
 test("plans authored root folds and manual breakpoints as full-width printable groups", () => {
@@ -134,7 +139,7 @@ test("plans authored root folds and manual breakpoints as full-width printable g
     { id: "root-d", source: "root", target: "branch-d" }
   );
 
-  const plan = resolveMatrixSectionExportPlan("root", nodes, edges);
+  const plan = resolveHierarchySectionExportPlan("root", nodes, edges);
 
   assert.ok(plan);
   assert.equal(plan.sections.length, 4);
@@ -150,23 +155,42 @@ test("plans authored root folds and manual breakpoints as full-width printable g
     ["branch-d"],
   ]);
   assert.deepEqual(plan.folds[0].nodeIds, ["branch-a", "a-child"]);
-  assert.equal(plan.folds[0].headerOverlay.bounds.x, 0);
-  assert.equal(plan.folds[1].headerOverlay.bounds.x, 620);
-  assert.equal(plan.folds[2].headerOverlay.bounds.x, 1_240);
-  assert.equal(plan.folds[0].headerOverlay.bounds.width, 600);
-  assert.equal(plan.folds[1].headerOverlay.bounds.width, 600);
-  assert.equal(plan.folds[2].headerOverlay.bounds.width, 600);
+  const foldHeaders = plan.folds.map((fold) => fold.headerOverlay);
+  assert.ok(foldHeaders.every((header) => header !== undefined));
+  assert.equal(foldHeaders[0]!.bounds.x, 0);
+  assert.equal(foldHeaders[1]!.bounds.x, 620);
+  assert.equal(foldHeaders[2]!.bounds.x, 1_240);
+  assert.equal(foldHeaders[0]!.bounds.width, 600);
+  assert.equal(foldHeaders[1]!.bounds.width, 600);
+  assert.equal(foldHeaders[2]!.bounds.width, 600);
   assert.equal(plan.folds[0].bounds.width, 600);
   assert.equal(plan.folds[1].bounds.width, 600);
   assert.equal(plan.folds[2].bounds.width, 600);
 });
 
-test("returns null for a non-Matrix hierarchy", () => {
-  const { nodes, edges } = fixture();
-  nodes[0] = {
-    ...nodes[0],
-    data: { ...nodes[0].data, layoutMode: "list" },
-  };
+test("plans folds for List, horizontal, and other hierarchy layouts", () => {
+  for (const layoutMode of ["list", "horizontal", "vertical", "linear", "topDown"]) {
+    const { nodes, edges } = fixture();
+    nodes[0] = {
+      ...nodes[0],
+      data: {
+        ...nodes[0].data,
+        layoutMode,
+        layoutFoldCount: 2,
+      },
+    };
 
-  assert.equal(resolveMatrixSectionExportPlan("root", nodes, edges), null);
+    const plan = resolveHierarchySectionExportPlan("root", nodes, edges);
+
+    assert.ok(plan);
+    assert.equal(plan.parentIsMatrix, false);
+    assert.equal(plan.sections.length, 2);
+    assert.equal(plan.folds.length, 2);
+    assert.deepEqual(plan.sections[0].nodeIds, ["root", "branch-a", "a-child"]);
+    assert.deepEqual(plan.sections[0].edgeIds, ["root-a", "a-child"]);
+    assert.equal(plan.sections[0].headerOverlay, undefined);
+    assert.deepEqual(plan.folds[0].nodeIds, ["root", "branch-a", "a-child"]);
+    assert.deepEqual(plan.folds[1].nodeIds, ["root", "branch-b"]);
+    assert.deepEqual(plan.folds[1].edgeIds, ["root-b"]);
+  }
 });

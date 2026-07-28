@@ -11,7 +11,7 @@ import {
 import type { ExportHeaderOverlay } from "./dom-renderer";
 import type { ExportBounds } from "./types";
 
-export interface MatrixSectionExport {
+export interface HierarchySectionExport {
   id: string;
   index: number;
   kind: "child" | "fold";
@@ -20,19 +20,20 @@ export interface MatrixSectionExport {
   nodeIds: string[];
   edgeIds: string[];
   bounds: ExportBounds;
-  headerOverlay: ExportHeaderOverlay;
+  headerOverlay?: ExportHeaderOverlay;
 }
 
-export interface MatrixSectionExportPlan {
-  rootId: string;
-  rootLabel: string;
-  /** One independently selectable export per direct root child. */
-  sections: MatrixSectionExport[];
-  /** The root's authored Fold groups; one entry means the root is not folded. */
-  folds: MatrixSectionExport[];
+export interface HierarchySectionExportPlan {
+  parentId: string;
+  parentLabel: string;
+  parentIsMatrix: boolean;
+  /** One independently selectable export per direct child. */
+  sections: HierarchySectionExport[];
+  /** The parent's authored Fold groups; one entry means the parent is not folded. */
+  folds: HierarchySectionExport[];
 }
 
-export interface MatrixSectionExportPlanOptions {
+export interface HierarchySectionExportPlanOptions {
   padding?: number;
   dom?: ExportDomBoundsContext | null;
 }
@@ -116,36 +117,37 @@ function rootHeaderStyle(root: Node, bounds: ExportBounds): ExportHeaderOverlay 
   };
 }
 
-export function resolveMatrixSectionExportPlan(
-  rootId: string,
+export function resolveHierarchySectionExportPlan(
+  parentId: string,
   nodes: readonly Node[],
   edges: readonly Edge[],
-  options: MatrixSectionExportPlanOptions = {}
-): MatrixSectionExportPlan | null {
-  const root = nodes.find((node) => node.id === rootId && node.hidden !== true);
-  const rootData = (root?.data ?? {}) as Record<string, unknown>;
-  if (!root || rootData.layoutMode !== "matrix") return null;
+  options: HierarchySectionExportPlanOptions = {}
+): HierarchySectionExportPlan | null {
+  const parent = nodes.find((node) => node.id === parentId && node.hidden !== true);
+  const parentData = (parent?.data ?? {}) as Record<string, unknown>;
+  if (!parent) return null;
+  const parentIsMatrix = parentData.layoutMode === "matrix";
 
   const padding = options.padding ?? 0;
   if (!Number.isFinite(padding) || padding < 0) {
-    throw new RangeError("Matrix section export padding must be a finite non-negative number.");
+    throw new RangeError("Hierarchy section export padding must be a finite non-negative number.");
   }
 
   const hierarchy = buildHierarchy([...nodes], [...edges]);
-  const sectionIds = (hierarchy.get(rootId)?.childIds ?? []).filter((nodeId) =>
+  const sectionIds = (hierarchy.get(parentId)?.childIds ?? []).filter((nodeId) =>
     nodes.some((node) => node.id === nodeId && node.hidden !== true));
   if (sectionIds.length === 0) return null;
 
-  const rootTarget = resolveExportTarget(
-    { kind: "selection", nodeIds: [rootId], edgeIds: [] },
+  const parentTarget = resolveExportTarget(
+    { kind: "selection", nodeIds: [parentId], edgeIds: [] },
     nodes,
     edges
   );
-  const rootBounds = computeTightExportBounds(rootTarget, {
+  const parentBounds = computeTightExportBounds(parentTarget, {
     padding: 0,
     dom: options.dom,
   });
-  const headerHeight = Math.max(1, rootBounds.height);
+  const headerHeight = Math.max(1, parentBounds.height);
 
   const targetForChildren = (childIds: string[]) => {
     const includedNodeIds = new Set<string>();
@@ -157,6 +159,7 @@ export function resolveMatrixSectionExportPlan(
       );
       for (const nodeId of subtree.nodeIds) includedNodeIds.add(nodeId);
     }
+    if (!parentIsMatrix) includedNodeIds.add(parentId);
     return resolveExportTarget(
       { kind: "selection", nodeIds: [...includedNodeIds], edgeIds: [] },
       nodes,
@@ -167,30 +170,32 @@ export function resolveMatrixSectionExportPlan(
   const createGroup = (
     id: string,
     index: number,
-    kind: MatrixSectionExport["kind"],
+    kind: HierarchySectionExport["kind"],
     childIds: string[],
     headerBoundsForContent?: (contentBounds: ExportBounds) => ExportBounds
-  ): MatrixSectionExport => {
+  ): HierarchySectionExport => {
     const target = targetForChildren(childIds);
     const contentBounds = computeTightExportBounds(target, {
       padding: 0,
       dom: options.dom,
     });
-    const headerBounds = headerBoundsForContent?.(contentBounds) ?? {
-      x: contentBounds.x,
-      y: contentBounds.y - headerHeight,
-      width: contentBounds.width,
-      height: headerHeight,
-    };
-    const left = Math.min(contentBounds.x, headerBounds.x);
-    const top = Math.min(contentBounds.y, headerBounds.y);
+    const headerBounds = parentIsMatrix
+      ? headerBoundsForContent?.(contentBounds) ?? {
+          x: contentBounds.x,
+          y: contentBounds.y - headerHeight,
+          width: contentBounds.width,
+          height: headerHeight,
+        }
+      : null;
+    const left = Math.min(contentBounds.x, headerBounds?.x ?? contentBounds.x);
+    const top = Math.min(contentBounds.y, headerBounds?.y ?? contentBounds.y);
     const right = Math.max(
       contentBounds.x + contentBounds.width,
-      headerBounds.x + headerBounds.width
+      headerBounds ? headerBounds.x + headerBounds.width : contentBounds.x + contentBounds.width
     );
     const bottom = Math.max(
       contentBounds.y + contentBounds.height,
-      headerBounds.y + headerBounds.height
+      headerBounds ? headerBounds.y + headerBounds.height : contentBounds.y + contentBounds.height
     );
     const sectionNodes = childIds.map((childId) =>
       nodes.find((node) => node.id === childId)!).filter(Boolean);
@@ -213,14 +218,14 @@ export function resolveMatrixSectionExportPlan(
         width: right - left + padding * 2,
         height: bottom - top + padding * 2,
       },
-      headerOverlay: rootHeaderStyle(root, headerBounds),
+      headerOverlay: headerBounds ? rootHeaderStyle(parent, headerBounds) : undefined,
     };
   };
 
   const sections = sectionIds.map((sectionId, index) =>
     createGroup(sectionId, index, "child", [sectionId]));
 
-  const foldChildGroups = resolvedFoldSections(rootData, sectionIds);
+  const foldChildGroups = resolvedFoldSections(parentData, sectionIds);
   const foldAnchorX = foldChildGroups.map((childIds) => {
     const anchorTarget = resolveExportTarget(
       { kind: "selection", nodeIds: [childIds[0]], edgeIds: [] },
@@ -234,12 +239,13 @@ export function resolveMatrixSectionExportPlan(
   });
   const foldStride = foldAnchorX.length > 1
     ? foldAnchorX[1] - foldAnchorX[0]
-    : rootBounds.width;
+    : parentBounds.width;
   const foldedHeaderWidth = foldAnchorX.length > 1
-    ? rootBounds.width - foldStride * (foldAnchorX.length - 1)
-    : rootBounds.width;
+    ? parentBounds.width - foldStride * (foldAnchorX.length - 1)
+    : parentBounds.width;
   const useMeasuredFoldGeometry = (
-    foldAnchorX.length > 1
+    parentIsMatrix
+    && foldAnchorX.length > 1
     && Number.isFinite(foldStride)
     && foldStride > 0
     && Number.isFinite(foldedHeaderWidth)
@@ -247,13 +253,13 @@ export function resolveMatrixSectionExportPlan(
   );
   const folds = foldChildGroups.map((childIds, index) =>
     createGroup(
-      `matrix-fold:${rootId}:${index}`,
+      `hierarchy-fold:${parentId}:${index}`,
       index,
       "fold",
       childIds,
       useMeasuredFoldGeometry
         ? (contentBounds) => ({
-            x: rootBounds.x + foldStride * index,
+            x: parentBounds.x + foldStride * index,
             y: contentBounds.y - headerHeight,
             width: foldedHeaderWidth,
             height: headerHeight,
@@ -262,8 +268,9 @@ export function resolveMatrixSectionExportPlan(
     ));
 
   return {
-    rootId,
-    rootLabel: nodeLabel(root, "Matrix"),
+    parentId,
+    parentLabel: nodeLabel(parent, "Parent"),
+    parentIsMatrix,
     sections,
     folds,
   };
