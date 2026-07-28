@@ -57,7 +57,7 @@ test("uneven child counts are balanced while sibling order is preserved", () => 
   assert.equal(hasFoldedChildSections(nodes), true);
 });
 
-test("automatic Fold balances rendered subtree height instead of child count", () => {
+test("automatic Fold balances child count without measuring rendered subtree height", () => {
   const root = node("root", 0, 180, { layoutFoldCount: 2 });
   const heights = [100, 100, 100, 200, 50, 50, 50];
   let top = 0;
@@ -80,13 +80,13 @@ test("automatic Fold balances rendered subtree height instead of child count", (
     () => "horizontal"
   );
 
-  assert.equal(wrapped["child-0"].x, wrapped["child-2"].x);
-  assert.ok(wrapped["child-3"].x > wrapped["child-2"].x);
-  assert.equal(wrapped["child-3"].x, wrapped["child-6"].x);
-  assert.equal(wrapped["child-0"].y, wrapped["child-3"].y);
+  assert.equal(wrapped["child-0"].x, wrapped["child-3"].x);
+  assert.ok(wrapped["child-4"].x > wrapped["child-3"].x);
+  assert.equal(wrapped["child-4"].x, wrapped["child-6"].x);
+  assert.equal(wrapped["child-0"].y, wrapped["child-4"].y);
 });
 
-test("near-equal Fold choices prefer a fuller earlier section", () => {
+test("automatic Fold keeps equal child counts despite unequal rendered heights", () => {
   const root = node("root", 0, 180, { layoutFoldCount: 2 });
   const heights = [140, 140, 255, 140, 140, 70, 70, 35, 35, 35, 35, 35, 35, 35];
   let top = 0;
@@ -109,12 +109,12 @@ test("near-equal Fold choices prefer a fuller earlier section", () => {
     () => "horizontal"
   );
 
-  assert.equal(wrapped["child-0"].x, wrapped["child-3"].x);
-  assert.ok(wrapped["child-4"].x > wrapped["child-3"].x);
-  assert.equal(wrapped["child-4"].x, wrapped["child-13"].x);
+  assert.equal(wrapped["child-0"].x, wrapped["child-6"].x);
+  assert.ok(wrapped["child-7"].x > wrapped["child-6"].x);
+  assert.equal(wrapped["child-7"].x, wrapped["child-13"].x);
 });
 
-test("stacked Fold sections balance rendered width", () => {
+test("stacked Fold sections balance child count without measuring rendered width", () => {
   const root = node("root", 180, 0, { layoutFoldCount: 2 });
   const widths = [100, 100, 100, 200, 50, 50, 50];
   let left = 0;
@@ -137,13 +137,13 @@ test("stacked Fold sections balance rendered width", () => {
     () => "vertical"
   );
 
-  assert.equal(wrapped["child-0"].y, wrapped["child-2"].y);
-  assert.ok(wrapped["child-3"].y > wrapped["child-2"].y);
-  assert.equal(wrapped["child-3"].y, wrapped["child-6"].y);
-  assert.equal(wrapped["child-0"].x, wrapped["child-3"].x);
+  assert.equal(wrapped["child-0"].y, wrapped["child-3"].y);
+  assert.ok(wrapped["child-4"].y > wrapped["child-3"].y);
+  assert.equal(wrapped["child-4"].y, wrapped["child-6"].y);
+  assert.equal(wrapped["child-0"].x, wrapped["child-4"].x);
 });
 
-test("custom Fold breaks override automatic height balancing", () => {
+test("custom Fold breaks override automatic count balancing", () => {
   const root = node("root", 0, 180, {
     layoutFoldCount: 2,
     layoutFoldBreakAfter: ["child-3"],

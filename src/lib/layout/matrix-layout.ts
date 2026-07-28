@@ -2,9 +2,8 @@ import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
 import {
-  balancedFoldSectionsByExtent,
   resolvedFoldSectionCount,
-  resolvedManualFoldBreakAfter,
+  resolvedFoldSections,
 } from "./child-group-wrap";
 import {
   createNodeRect,
@@ -1268,56 +1267,12 @@ function equalizeTerminalSiblingHeights(
   };
 }
 
-function sequentialSegmentExtents(
-  children: OrientedChildEntry[],
-  childFlow: MatrixChildFlow,
-  cellGap: number
-): number[][] {
-  const extents = Array.from(
-    { length: children.length },
-    () => Array.from({ length: children.length + 1 }, () => 0)
-  );
-  for (let start = 0; start < children.length; start += 1) {
-    let extent = 0;
-    for (let end = start; end < children.length; end += 1) {
-      if (end > start) extent += cellGap;
-      extent += childFlow === "column"
-        ? children[end].layout.height
-        : children[end].layout.width;
-      extents[start][end + 1] = extent;
-    }
-  }
-  return extents;
-}
-
 function orientedChildSections(
   parentData: Record<string, unknown>,
-  children: OrientedChildEntry[],
-  childFlow: MatrixChildFlow,
-  cellGap: number
+  children: OrientedChildEntry[]
 ): OrientedChildEntry[][] {
   const childIds = children.map((child) => child.nodeId);
-  const sectionCount = resolvedFoldSectionCount(parentData, children.length);
-  if (sectionCount < 2) return [children];
-  const manualBreakAfter = resolvedManualFoldBreakAfter(parentData, childIds, sectionCount);
-  let idSections: string[][];
-  if (manualBreakAfter) {
-    const breakIndexes = new Set(manualBreakAfter.map((childId) => childIds.indexOf(childId)));
-    idSections = [];
-    let start = 0;
-    childIds.forEach((_, index) => {
-      if (!breakIndexes.has(index)) return;
-      idSections.push(childIds.slice(start, index + 1));
-      start = index + 1;
-    });
-    idSections.push(childIds.slice(start));
-  } else {
-    idSections = balancedFoldSectionsByExtent(
-      childIds,
-      sectionCount,
-      sequentialSegmentExtents(children, childFlow, cellGap)
-    );
-  }
+  const idSections = resolvedFoldSections(parentData, childIds);
   const byChildId = new Map(children.map((child) => [child.nodeId, child]));
   return idSections.map((section) => section.flatMap((childId) => byChildId.get(childId) ?? []));
 }
@@ -1418,12 +1373,9 @@ function layoutOrientedChildSections(
 ): OrientedBranchLayout {
   if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
   const siblingGroup = equalizeTerminalSiblingHeights(children);
-  const rawSections = orientedChildSections(
-    parentData,
-    siblingGroup.children,
-    childFlow,
-    siblingGap
-  );
+  const rawSections = orientedChildSections(parentData, siblingGroup.children);
+  const foldedTerminalGroup = rawSections.length > 1
+    && rawSections.every((section) => section.every(isTerminalSibling));
   const sections = childFlow === "column"
     ? rawSections.map((section) => alignSiblingRowBands(section, preserveEmptySlots))
     : alignFoldedTerminalRows(rawSections, preserveEmptySlots);
@@ -1450,9 +1402,13 @@ function layoutOrientedChildSections(
     naturalSections.forEach((section, sectionIndex) => {
       const sectionWidth = section.width
         + proportionalShare(extraWidth, sectionIndex, naturalSections.length);
-      // Every continuation fills the common cross-axis allocation. Otherwise
-      // a shorter Fold section leaves the canvas visible as black blocks.
-      const extraHeight = height - section.height;
+      // Terminal Fold sections are one logical table track and keep their
+      // shared edge. Complex branches retain their natural subtree height:
+      // filling a shorter branch would recursively inflate and misalign all of
+      // its descendant cells.
+      const extraHeight = sections.length < 2 || foldedTerminalGroup
+        ? height - section.height
+        : 0;
       let childY = 0;
       section.children.forEach((child, childIndex) => {
         const childHeight = child.layout.height
@@ -1488,7 +1444,11 @@ function layoutOrientedChildSections(
   naturalSections.forEach((section, sectionIndex) => {
     const sectionHeight = section.height
       + proportionalShare(extraHeight, sectionIndex, naturalSections.length);
-    const extraWidth = width - section.width;
+    // This is the vertical counterpart of the natural-height rule above.
+    // Only terminal Fold rows share the widest section's outer edge.
+    const extraWidth = sections.length < 2 || foldedTerminalGroup
+      ? width - section.width
+      : 0;
     let childX = 0;
     section.children.forEach((child, childIndex) => {
       const childWidth = child.layout.width
