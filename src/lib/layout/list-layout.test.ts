@@ -144,13 +144,103 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   const placed = positionedNodes(nodes, placements);
   const first = getNodeRect(placed.find((node) => node.id === "child-0")!);
   const sixth = getNodeRect(placed.find((node) => node.id === "child-5")!);
+  const root = getNodeRect(placed.find((node) => node.id === "root")!);
+  const headers = placed
+    .filter((node) => node.id !== "root")
+    .map((node) => getNodeRect(node));
   const model = buildListConnectorModel(placed, fixture.edges);
 
   assert.equal(first.top, sixth.top);
   assert.ok(sixth.left > first.right);
+  assert.equal(
+    root.centerX,
+    (Math.min(...headers.map((rect) => rect.left)) + Math.max(...headers.map((rect) => rect.right))) / 2
+  );
+  assert.equal(
+    Math.min(...headers.map((rect) => rect.top)) - root.bottom,
+    LIST_DENSITIES.compact.rootToFirstRowGapY
+  );
   assert.equal(model.groups.find((group) => group.parentId === "root")?.branches.length, 10);
   assert.deepEqual(model.obstacleIntersections, []);
   assertNoOverlap(placed);
+});
+
+test("Fold horizontally centers a manually positioned List root", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    ...Array.from({ length: 6 }, (_, index) => ({
+      id: `child-${index}`,
+      parentId: "root",
+      width: 180,
+      height: 58,
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        position: { x: 40, y: 520 },
+        data: { ...node.data, layoutFoldCount: 2, listManualOverride: true },
+      }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    { preserveManualOverrides: true }
+  );
+  const rects = positionedRects(nodes, placements);
+  const root = rects.get("root")!;
+  const headers = Array.from({ length: 6 }, (_, index) => rects.get(`child-${index}`)!);
+
+  assert.notEqual(placements.root.x, 40);
+  assert.equal(
+    root.centerX,
+    (Math.min(...headers.map((rect) => rect.left)) + Math.max(...headers.map((rect) => rect.right))) / 2
+  );
+  assert.equal(
+    Math.min(...headers.map((rect) => rect.top)) - root.bottom,
+    LIST_DENSITIES.compact.rootToFirstRowGapY
+  );
+});
+
+test("an unfolded List moves its root above saved content without centering it", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "first", parentId: "root", width: 180, height: 58 },
+    { id: "second", parentId: "root", width: 180, height: 58 },
+  ]);
+  const nodes = fixture.nodes.map((node) => {
+    if (node.id === "root") {
+      return {
+        ...node,
+        position: { x: 40, y: 520 },
+        data: { ...node.data, listManualOverride: true },
+      };
+    }
+    if (node.id === "first") {
+      return {
+        ...node,
+        position: { x: 280, y: 100 },
+        data: { ...node.data, listManualOverride: true },
+      };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const placements = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    { preserveManualOverrides: true }
+  );
+  const rects = positionedRects(nodes, placements);
+  const root = rects.get("root")!;
+  const contentTop = Math.min(rects.get("first")!.top, rects.get("second")!.top);
+
+  assert.equal(placements.root.x, 40, "an unfolded List keeps the root's horizontal position");
+  assert.notEqual(placements.root.y, 520);
+  assert.equal(contentTop - root.bottom, LIST_DENSITIES.compact.rootToFirstRowGapY);
 });
 
 test("Fold compacts the next List branch after child sections move sideways", () => {
