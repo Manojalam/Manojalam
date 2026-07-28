@@ -1,9 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { Hierarchy } from "./hierarchy";
+import { getSubtree, type Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
 import {
   resolvedFoldSectionCount,
   resolvedFoldSections,
+  wrapChildGroups,
 } from "./child-group-wrap";
 import {
   createNodeRect,
@@ -1788,6 +1789,212 @@ function applyMatrixTableSizeOverrides(
   };
 }
 
+function withoutFoldMetadata(byId: Map<string, Node>): Map<string, Node> {
+  return new Map([...byId].map(([nodeId, node]) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (
+      !Object.prototype.hasOwnProperty.call(data, "layoutFoldCount")
+      && !Object.prototype.hasOwnProperty.call(data, "layoutFoldBreakAfter")
+      && !Object.prototype.hasOwnProperty.call(data, "layoutWrapAfter")
+    ) return [nodeId, node];
+    const unfoldedData = { ...data };
+    delete unfoldedData.layoutFoldCount;
+    delete unfoldedData.layoutFoldBreakAfter;
+    delete unfoldedData.layoutWrapAfter;
+    return [nodeId, { ...node, data: unfoldedData }];
+  }));
+}
+
+function effectiveMatrixOrientation(
+  nodeId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  cache: Map<string, MatrixOrientation>,
+  ancestors = new Set<string>()
+): MatrixOrientation {
+  const cached = cache.get(nodeId);
+  if (cached) return cached;
+  if (ancestors.has(nodeId)) return "horizontal";
+  const parentId = hierarchy.get(nodeId)?.parentId;
+  const inherited = parentId
+    ? effectiveMatrixOrientation(
+        parentId,
+        hierarchy,
+        byId,
+        cache,
+        new Set(ancestors).add(nodeId)
+      )
+    : "horizontal";
+  const orientation = matrixOrientationForNode(nodeId, inherited, byId);
+  cache.set(nodeId, orientation);
+  return orientation;
+}
+
+function matrixPlacementBounds(
+  nodeIds: string[],
+  placements: Record<string, MatrixPlacement>,
+  byId: Map<string, Node>
+): NodeRect | null {
+  const rects = nodeIds.flatMap((nodeId) => {
+    const node = byId.get(nodeId);
+    const placement = placements[nodeId];
+    if (!node || !placement) return [];
+    const origin = node.origin ?? [0, 0];
+    return [createNodeRect(
+      nodeId,
+      placement.x - placement.width * origin[0],
+      placement.y - placement.height * origin[1],
+      placement.width,
+      placement.height
+    )];
+  });
+  if (!rects.length) return null;
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return createNodeRect("matrix-fold-subtree", left, top, right - left, bottom - top);
+}
+
+function packMatrixFoldSiblings(
+  placements: Record<string, MatrixPlacement>,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  flowForParent: (parentId: string) => MatrixChildFlow,
+  gapForParent: (parentId: string) => number
+): Record<string, MatrixPlacement> {
+  const next = Object.fromEntries(
+    Object.entries(placements).map(([nodeId, placement]) => [nodeId, { ...placement }])
+  );
+  const parents = [...hierarchy.values()].sort((first, second) => second.depth - first.depth);
+
+  for (const parent of parents) {
+    const children = parent.childIds.filter((childId) => !!next[childId]);
+    const data = (byId.get(parent.id)?.data ?? {}) as Record<string, unknown>;
+    if (children.length < 2 || resolvedFoldSectionCount(data, children.length) > 1) continue;
+    const flow = flowForParent(parent.id);
+    const gap = gapForParent(parent.id);
+    let previousBounds: NodeRect | null = null;
+
+    for (const childId of children) {
+      const subtree = getSubtree(childId, hierarchy).filter((nodeId) => !!next[nodeId]);
+      let bounds = matrixPlacementBounds(subtree, next, byId);
+      if (!bounds) continue;
+      if (previousBounds) {
+        const crossAxisOverlaps = flow === "column"
+          ? bounds.left < previousBounds.right - 0.5
+            && bounds.right > previousBounds.left + 0.5
+          : bounds.top < previousBounds.bottom - 0.5
+            && bounds.bottom > previousBounds.top + 0.5;
+        const delta = flow === "column"
+          ? previousBounds.bottom + gap - bounds.top
+          : previousBounds.right + gap - bounds.left;
+        if (crossAxisOverlaps && delta > 0.5) {
+          for (const nodeId of subtree) {
+            next[nodeId] = {
+              ...next[nodeId],
+              x: next[nodeId].x + (flow === "row" ? delta : 0),
+              y: next[nodeId].y + (flow === "column" ? delta : 0),
+            };
+          }
+          bounds = matrixPlacementBounds(subtree, next, byId)!;
+        }
+      }
+      previousBounds = bounds;
+    }
+  }
+  return next;
+}
+
+/**
+ * Fold is a placement operation. Start with the exact unfolded Matrix geometry
+ * (including user cell sizes and a locked overall size), then move complete
+ * child subtrees into adjacent sections without resizing any rendered node.
+ */
+function applyMatrixFoldPositions(
+  result: MatrixLayoutResult,
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): MatrixLayoutResult {
+  const settings = MATRIX_DENSITY_SETTINGS[result.density];
+  const rootData = (byId.get(rootId)?.data ?? {}) as Record<string, unknown>;
+  const packCompactGroups = rootData.matrixPackCompactGroups === true
+    && hasCompactLeafSiblingGroups(rootId, hierarchy, byId);
+  const orientationCache = new Map<string, MatrixOrientation>();
+  const childFlowForParent = (parentId: string): MatrixChildFlow => {
+    const orientation = effectiveMatrixOrientation(
+      parentId,
+      hierarchy,
+      byId,
+      orientationCache
+    );
+    return matrixChildFlowForNode(
+      parentId,
+      orientation,
+      hierarchy,
+      byId,
+      packCompactGroups
+    );
+  };
+  const gapForParent = (parentId: string) =>
+    matrixSiblingGapForNode(parentId, settings.cellGap, byId);
+  const foldedPlacements = wrapChildGroups(
+    result.placements,
+    hierarchy,
+    byId,
+    (parentId) => {
+      const childFlow = childFlowForParent(parentId);
+      return childFlow === "column" ? "horizontal" : "vertical";
+    },
+    gapForParent
+  );
+  const placements = packMatrixFoldSiblings(
+    foldedPlacements,
+    hierarchy,
+    byId,
+    childFlowForParent,
+    gapForParent
+  );
+  const moveCell = (cell: MatrixCellGeometry): MatrixCellGeometry => {
+    const before = result.placements[cell.nodeId];
+    const after = placements[cell.nodeId];
+    return before && after
+      ? {
+          ...cell,
+          x: cell.x + after.x - before.x,
+          y: cell.y + after.y - before.y,
+        }
+      : cell;
+  };
+  const header = moveCell(result.header);
+  const cells = result.cells.map(moveCell);
+  // Empty slots describe a rectangular track template. Fold deliberately
+  // creates ragged placement groups, so retaining the unfolded placeholders
+  // would draw stale grid cells between the moved sections.
+  const emptyCells: MatrixEmptyCellGeometry[] = [];
+  const rendered = [
+    header,
+    ...cells,
+    ...emptyCells.map((cell) => ({ ...cell, nodeId: "__matrix-empty" })),
+  ];
+  const left = Math.min(...rendered.map((cell) => cell.x));
+  const top = Math.min(...rendered.map((cell) => cell.y));
+  const right = Math.max(...rendered.map((cell) => cell.x + cell.width));
+  const bottom = Math.max(...rendered.map((cell) => cell.y + cell.height));
+  const diagnostics = diagnoseMatrix(rootId, result.rows, cells, header, hierarchy, byId);
+
+  return {
+    ...result,
+    cells,
+    emptyCells,
+    placements,
+    header,
+    bounds: createNodeRect(result.bounds.id, left, top, right - left, bottom - top),
+    diagnostics,
+  };
+}
+
 export function computeMatrixLayout(
   rootId: string,
   hierarchy: Hierarchy,
@@ -1797,6 +2004,11 @@ export function computeMatrixLayout(
   const root = byId.get(rootId);
   if (!root) throw new Error(`Matrix root ${rootId} does not exist.`);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
+  if (hasFoldedMatrixBranch(rootId, hierarchy, byId)) {
+    const unfoldedById = withoutFoldMetadata(byId);
+    const unfolded = computeMatrixLayout(rootId, hierarchy, unfoldedById, options);
+    return applyMatrixFoldPositions(unfolded, rootId, hierarchy, byId);
+  }
   const rows = buildMatrixLeafRows(rootId, hierarchy, byId);
   const savedDensity = storedDensity(rootData.matrixDensity);
   const userSelectedDensity = rootData.matrixDensityUserSet === true
@@ -1870,12 +2082,10 @@ export function computeMatrixLayout(
     }
   }
 
-  const hasFoldedBranch = hasFoldedMatrixBranch(rootId, hierarchy, byId);
   const packCompactGroups = rootData.matrixPackCompactGroups === true
     && hasCompactLeafSiblingGroups(rootId, hierarchy, byId);
   if (
     hasVerticalMatrixBranch(rootId, hierarchy, byId)
-    || hasFoldedBranch
     || hasExplicitMatrixChildFlow(rootId, hierarchy, byId)
     || packCompactGroups
     || hasExplicitMatrixGeometry(rootId, hierarchy, byId)
