@@ -94,19 +94,22 @@ test("Matrix palette leaves shape borders to the user-controlled node style", ()
   assert.ok([...styles.values()].every((style) => style.borderWidth === 0));
 });
 
-test("Matrix automatic colors use one consistent shade per hierarchy depth", () => {
+test("Matrix automatic colors use branch hues with one shade per depth", () => {
   const { nodes, edges } = hierarchyFixture();
   const hierarchy = buildHierarchy(nodes, edges);
   const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "ocean");
 
-  const childColors = ["branch-a", "branch-b"].map((nodeId) => styles.get(nodeId)?.fillColor);
-  const grandchildColors = ["a-1", "a-2", "b-1"].map((nodeId) => styles.get(nodeId)?.fillColor);
-  const greatGrandchildColor = styles.get("a-1-child")?.fillColor;
+  const branchAColor = styles.get("branch-a")?.fillColor;
+  const branchBColor = styles.get("branch-b")?.fillColor;
+  const branchAGrandchildColors = ["a-1", "a-2"].map((nodeId) => styles.get(nodeId)?.fillColor);
+  const branchBGrandchildColor = styles.get("b-1")?.fillColor;
+  const branchAGreatGrandchildColor = styles.get("a-1-child")?.fillColor;
 
-  assert.equal(new Set(childColors).size, 1);
-  assert.equal(new Set(grandchildColors).size, 1);
-  assert.notEqual(childColors[0], grandchildColors[0]);
-  assert.notEqual(grandchildColors[0], greatGrandchildColor);
+  assert.notEqual(branchAColor, branchBColor);
+  assert.equal(new Set(branchAGrandchildColors).size, 1);
+  assert.notEqual(branchAGrandchildColors[0], branchBGrandchildColor);
+  assert.notEqual(branchAColor, branchAGrandchildColors[0]);
+  assert.notEqual(branchAGrandchildColors[0], branchAGreatGrandchildColor);
 });
 
 test("manual surface overrides survive palette changes and can be reset", () => {
