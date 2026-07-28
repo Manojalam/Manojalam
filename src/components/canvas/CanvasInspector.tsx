@@ -366,8 +366,11 @@ const CONVERT_TYPES = [
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
-function Section({ label, children, visible = true }: {
-  label: string; children: React.ReactNode; visible?: boolean;
+function Section({ label, children, visible = true, preserveTextSelection = false }: {
+  label: string;
+  children: React.ReactNode;
+  visible?: boolean;
+  preserveTextSelection?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   if (!visible) return null;
@@ -378,7 +381,14 @@ function Section({ label, children, visible = true }: {
         {label}
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
-      {open && <div className="space-y-2.5 px-3 pb-3">{children}</div>}
+      {open && (
+        <div
+          data-universal-text-tools={preserveTextSelection ? "inspector" : undefined}
+          className="space-y-2.5 px-3 pb-3"
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -4639,7 +4649,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {/* ── Text ── */}
         {(isContentNode || isRadialLayoutSector) && (
-          <Section label="Text" visible={singleNodeTab === "text"}>
+          <Section
+            label="Text"
+            visible={singleNodeTab === "text"}
+            preserveTextSelection
+          >
             <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <span className="text-[10px] font-medium text-foreground">
                 {selectedTextRange ? "Selected text" : isRadialLayoutSector ? "Whole sector" : "Whole object"}

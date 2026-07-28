@@ -75,7 +75,11 @@ export function ColorSwatchPicker({
   };
 
   return (
-    <div className="grid grid-cols-8 gap-2" aria-label="Colors">
+    <div
+      data-app-color-picker="true"
+      className="grid grid-cols-8 gap-2"
+      aria-label="Colors"
+    >
       <button
         type="button"
         title="Clear color"
