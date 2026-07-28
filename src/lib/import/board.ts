@@ -18,6 +18,94 @@ export interface ImportedBoardContent {
   rootId: string;
 }
 
+export interface ImportedHierarchyInsertion {
+  nodes: BoardContent["nodes"];
+  edges: BoardContent["edges"];
+  rootId: string;
+  nodeIds: string[];
+}
+
+function allocateInsertionId(
+  usedIds: Set<string>,
+  createId: () => string
+): string {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = createId();
+    if (!candidate || usedIds.has(candidate)) continue;
+    usedIds.add(candidate);
+    return candidate;
+  }
+  throw new Error("Could not allocate unique IDs for the imported hierarchy.");
+}
+
+/**
+ * Current-board imports are independent hierarchy roots. Always remap their
+ * IDs, even when a collision is unlikely, so repeated imports remain isolated
+ * and cannot overwrite an existing node or connector.
+ */
+export function remapHierarchyForBoardInsertion(
+  content: Pick<BoardContent, "nodes" | "edges">,
+  sourceRootId: string,
+  reservedIds: Iterable<string> = [],
+  createId: () => string = generateId
+): ImportedHierarchyInsertion {
+  if (!content.nodes.some((node) => node.id === sourceRootId)) {
+    throw new Error("The imported hierarchy root is missing.");
+  }
+
+  const usedIds = new Set(reservedIds);
+  const nodeIdMap = new Map(
+    content.nodes.map((node) => [
+      node.id,
+      allocateInsertionId(usedIds, createId),
+    ])
+  );
+  const nodes: BoardContent["nodes"] = content.nodes.map((node) => {
+    const data = structuredClone((node.data ?? {}) as Record<string, unknown>);
+    const parentId = typeof data.parentId === "string"
+      ? nodeIdMap.get(data.parentId) ?? null
+      : null;
+    const childOrder = Array.isArray(data.childOrder)
+      ? data.childOrder.flatMap((childId) =>
+          typeof childId === "string" && nodeIdMap.has(childId)
+            ? [nodeIdMap.get(childId)!]
+            : []
+        )
+      : [];
+    return {
+      ...structuredClone(node),
+      id: nodeIdMap.get(node.id)!,
+      data: {
+        ...data,
+        parentId,
+        childOrder,
+      } as typeof node.data,
+      selected: false,
+    };
+  });
+  const edges: BoardContent["edges"] = content.edges.map((edge) => {
+    const source = nodeIdMap.get(edge.source);
+    const target = nodeIdMap.get(edge.target);
+    if (!source || !target) {
+      throw new Error("The imported hierarchy contains an invalid connector.");
+    }
+    return {
+      ...structuredClone(edge),
+      id: allocateInsertionId(usedIds, createId),
+      source,
+      target,
+      selected: false,
+    };
+  });
+
+  return {
+    nodes,
+    edges,
+    rootId: nodeIdMap.get(sourceRootId)!,
+    nodeIds: nodes.map((node) => node.id),
+  };
+}
+
 export function hierarchyDraftToBoardContent(
   draft: HierarchyDraft
 ): ImportedBoardContent {

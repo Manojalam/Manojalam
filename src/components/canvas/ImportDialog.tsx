@@ -47,9 +47,11 @@ import { hierarchyDraftToBoardContent } from "@/lib/import/board";
 import { createBoardFromContent, importBoard } from "@/lib/storage/board-store";
 import type { LayoutMode } from "@/lib/layout";
 import { cn } from "@/lib/utils";
+import { useCanvasStore } from "@/store/canvas-store";
 
 type ImportStep = "source" | "analyzing" | "review" | "layout" | "creating";
 type SourcePickerKind = "json" | "pdf" | "text" | "html" | "image";
+type ImportDestination = "new" | "current";
 
 const SOURCE_OPTIONS: Array<{
   kind: SourcePickerKind;
@@ -61,7 +63,7 @@ const SOURCE_OPTIONS: Array<{
   {
     kind: "json",
     label: "JSON backup",
-    description: "Restore an existing Manojalam board",
+    description: "Restore a lossless Manojalam backup as a new board",
     accept: ".json,application/json",
     icon: FileJson2,
   },
@@ -148,7 +150,10 @@ export function ImportDialog({
     progress: 0,
   });
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("horizontal");
+  const [destination, setDestination] = useState<ImportDestination>("new");
   const abortRef = useRef<AbortController | null>(null);
+  const currentBoard = useCanvasStore((state) => state.board);
+  const canImportIntoCurrent = currentBoard?.accessRole !== "viewer";
 
   const flattened = useMemo(
     () => flattenDraft(draft?.roots ?? []),
@@ -168,6 +173,7 @@ export function ImportDialog({
     setStep("source");
     setProgress({ stage: "Preparing import", progress: 0 });
     setLayoutMode("horizontal");
+    setDestination("new");
   };
 
   const handleOpenChange = (next: boolean) => {
@@ -184,6 +190,7 @@ export function ImportDialog({
     setStep("source");
     setProgress({ stage: "Preparing import", progress: 0 });
     setLayoutMode("horizontal");
+    setDestination("new");
     onOpenChange(false);
   };
 
@@ -326,13 +333,74 @@ export function ImportDialog({
     });
   };
 
-  const createImportedBoard = async () => {
+  const commitImportedHierarchy = async () => {
     if (!draft) return;
     setStep("creating");
     try {
       const finalized = structuredClone(draft);
       refreshDraftScripts(finalized.roots);
       const { content, rootId } = hierarchyDraftToBoardContent(finalized);
+      if (destination === "current") {
+        const canvas = useCanvasStore.getState();
+        if (!canvas.board || canvas.board.accessRole === "viewer") {
+          throw new Error("This board is read-only. Create a new board instead.");
+        }
+        const insertion = canvas.insertImportedHierarchy(
+          content.nodes,
+          content.edges,
+          rootId
+        );
+        if (!insertion) {
+          throw new Error("The reviewed hierarchy does not contain any nodes.");
+        }
+
+        toast.success("Hierarchy added to this board", {
+          description: `Added ${insertion.nodeIds.length} nodes as a separate ${layoutMode} chart.`,
+        });
+        closeAfterSuccess();
+        requestAnimationFrame(() => {
+          if (layoutMode === "list" || layoutMode === "matrix") {
+            window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+              detail: {
+                mode: layoutMode,
+                rootId: insertion.rootId,
+                nodeIds: insertion.nodeIds,
+                fitAfter: true,
+                recordHistory: false,
+              },
+            }));
+            return;
+          }
+
+          const current = useCanvasStore.getState();
+          current.applyLayout(
+            layoutMode,
+            insertion.rootId,
+            { recordHistory: false }
+          );
+          requestAnimationFrame(() => {
+            const insertedIds = new Set(insertion.nodeIds);
+            const fittedNodeIds = useCanvasStore.getState().nodes
+              .filter((node) => {
+                if (node.hidden) return false;
+                if (insertedIds.has(node.id)) return true;
+                const data = (node.data ?? {}) as Record<string, unknown>;
+                return node.type === "sunburst" && data.rootId === insertion.rootId;
+              })
+              .map((node) => node.id);
+            window.dispatchEvent(new CustomEvent("vidya:fitview", {
+              detail: {
+                mode: layoutMode,
+                rootId: insertion.rootId,
+                nodeIds: fittedNodeIds,
+                forceFit: true,
+              },
+            }));
+          });
+        });
+        return;
+      }
+
       const board = await createBoardFromContent(finalized.title, content);
       const params = new URLSearchParams({
         importLayout: layoutMode,
@@ -345,7 +413,7 @@ export function ImportDialog({
       router.push(`/app/boards/${board.id}?${params.toString()}`);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Could not create the imported board"
+        error instanceof Error ? error.message : "Could not import the reviewed hierarchy"
       );
       setStep("layout");
     }
@@ -388,14 +456,20 @@ export function ImportDialog({
             {step === "analyzing" && "Analyzing document"}
             {step === "review" && "Review hierarchy"}
             {step === "layout" && "Choose initial layout"}
-            {step === "creating" && "Creating board"}
+            {step === "creating" && (
+              destination === "current" ? "Adding to board" : "Creating board"
+            )}
           </DialogTitle>
           <DialogDescription>
             {step === "source" && "Choose a source. Documents and OCR stay in your browser."}
             {step === "analyzing" && "Recovering text, structure, and hierarchy locally."}
             {step === "review" && "Correct labels, notes, and parent-child relationships before creating the board."}
-            {step === "layout" && "The hierarchy remains editable and can be changed to another layout later."}
-            {step === "creating" && "Saving the reviewed hierarchy as a new board."}
+            {step === "layout" && "Choose where to place the reviewed hierarchy and how it should be displayed."}
+            {step === "creating" && (
+              destination === "current"
+                ? "Adding the reviewed hierarchy as a separate chart on this board."
+                : "Saving the reviewed hierarchy as a new board."
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -664,21 +738,65 @@ export function ImportDialog({
 
         {step === "layout" && draft && (
           <>
-            <div>
-              <label htmlFor="import-board-title" className="text-xs font-medium">
-                New board title
-              </label>
-              <Input
-                id="import-board-title"
-                value={draft.title}
-                onChange={(event) =>
-                  mutateDraft((next) => {
-                    next.title = event.target.value;
-                  })
-                }
-                style={{ fontFamily: fontFamilyForScript(scriptModeForText(draft.title)) }}
-              />
+            <div className="space-y-2">
+              <p className="text-xs font-medium">Import destination</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  aria-pressed={destination === "new"}
+                  onClick={() => setDestination("new")}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-colors",
+                    destination === "new"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  <span className="block text-sm font-semibold">Create new board</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Keep the imported hierarchy on its own board.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={destination === "current"}
+                  onClick={() => setDestination("current")}
+                  disabled={!currentBoard || !canImportIntoCurrent}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    destination === "current"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  <span className="block text-sm font-semibold">Add to current board</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {currentBoard?.accessRole === "viewer"
+                      ? "This board is view-only."
+                      : currentBoard
+                        ? `Add a separate chart to “${currentBoard.title}”.`
+                        : "No current board is available."}
+                  </span>
+                </button>
+              </div>
             </div>
+            {destination === "new" && (
+              <div>
+                <label htmlFor="import-board-title" className="text-xs font-medium">
+                  New board title
+                </label>
+                <Input
+                  id="import-board-title"
+                  value={draft.title}
+                  onChange={(event) =>
+                    mutateDraft((next) => {
+                      next.title = event.target.value;
+                    })
+                  }
+                  style={{ fontFamily: fontFamilyForScript(scriptModeForText(draft.title)) }}
+                />
+              </div>
+            )}
             <div className="grid gap-3 overflow-y-auto py-1 sm:grid-cols-2 lg:grid-cols-3">
               {IMPORT_LAYOUTS.map((layout) => (
                 <button
@@ -707,8 +825,13 @@ export function ImportDialog({
               <Button type="button" variant="outline" onClick={() => setStep("review")}>
                 <ArrowLeft className="mr-1 h-4 w-4" /> Review
               </Button>
-              <Button type="button" onClick={() => void createImportedBoard()}>
-                Create new board <ArrowRight className="ml-1 h-4 w-4" />
+              <Button
+                type="button"
+                onClick={() => void commitImportedHierarchy()}
+                disabled={destination === "current" && (!currentBoard || !canImportIntoCurrent)}
+              >
+                {destination === "current" ? "Add to this board" : "Create new board"}
+                <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
             </div>
           </>
@@ -718,7 +841,9 @@ export function ImportDialog({
           <div className="flex items-center justify-center gap-3 py-12">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
             <span className="text-sm text-muted-foreground">
-              Saving hierarchy and preparing layout…
+              {destination === "current"
+                ? "Adding hierarchy and preparing layout…"
+                : "Saving hierarchy and preparing layout…"}
             </span>
           </div>
         )}
