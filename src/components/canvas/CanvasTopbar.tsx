@@ -20,14 +20,12 @@ import {
   downloadJson,
   downloadMarkdown,
 } from "@/lib/export";
-import { importBoard } from "@/lib/storage/board-store";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent, VidyaBoard } from "@/lib/types";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { BoardShareDialog } from "@/components/canvas/BoardShareDialog";
+import { ImportDialog } from "@/components/canvas/ImportDialog";
 
 /* ── Save status dot ── */
 function SaveStatus({ status, readOnly }: { status: string; readOnly: boolean }) {
@@ -102,6 +100,7 @@ function ThemeToggle() {
 
 export function CanvasTopbar() {
   const [shareOpen, setShareOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   // Targeted selectors — each only re-renders when its own slice changes
   const board           = useCanvasStore((s) => s.board);
   const saveStatus      = useCanvasStore((s) => s.saveStatus);
@@ -111,7 +110,6 @@ export function CanvasTopbar() {
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const openBoardExport = useUIStore((s) => s.openBoardExport);
   const { setSanskritPanelOpen, setSearchPanelOpen } = useUIStore();
-  const router = useRouter();
   const canEdit = board?.accessRole !== "viewer";
 
   const currentBoardSnapshot = (): VidyaBoard | null => {
@@ -130,25 +128,6 @@ export function CanvasTopbar() {
         settings: state.settings,
       } as BoardContent,
     };
-  };
-
-  const handleImport = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const imported = await importBoard(text);
-        toast.success("Board imported");
-        router.push(`/app/boards/${imported.id}`);
-      } catch {
-        toast.error("Invalid board file");
-      }
-    };
-    input.click();
   };
 
   return (
@@ -242,7 +221,7 @@ export function CanvasTopbar() {
         <IconBtn
           icon={<Upload className="h-4 w-4" />}
           label="Import"
-          onClick={handleImport}
+          onClick={() => setImportOpen(true)}
           className="max-sm:hidden"
         />
 
@@ -276,6 +255,7 @@ export function CanvasTopbar() {
         onOpenChange={setShareOpen}
       />
     )}
+    <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </>
   );
 }

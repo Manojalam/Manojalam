@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { getBoard } from "@/lib/storage/board-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CanvasTopbar } from "@/components/canvas/CanvasTopbar";
@@ -17,10 +17,23 @@ import { SearchPanel } from "@/components/layout/SearchPanel";
 import { useDeviceProfile } from "@/lib/use-device-profile";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui-store";
+import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import type { LayoutMode } from "@/lib/layout";
+
+const IMPORT_LAYOUTS = new Set<LayoutMode>([
+  "horizontal",
+  "vertical",
+  "list",
+  "radial",
+  "matrix",
+]);
 
 export default function BoardEditorPage() {
   const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const boardId = params.boardId as string;
+  const consumedImportRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const beginBoardHydration = useCanvasStore((s) => s.beginBoardHydration);
@@ -58,6 +71,53 @@ export default function BoardEditorPage() {
       useUIStore.getState().cancelRelationshipSelection();
     };
   }, [beginBoardHydration, boardId, setBoard, pushHistory]);
+
+  useEffect(() => {
+    if (loading || !board || board.id !== boardId) return;
+    const modeValue = searchParams.get("importLayout");
+    const rootId = searchParams.get("importRoot");
+    if (!modeValue && !rootId) return;
+    const importKey = `${boardId}:${modeValue ?? ""}:${rootId ?? ""}`;
+    if (consumedImportRef.current === importKey) return;
+    consumedImportRef.current = importKey;
+
+    const cleanImportParams = () => {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("importLayout");
+      next.delete("importRoot");
+      const query = next.toString();
+      router.replace(`/app/boards/${boardId}${query ? `?${query}` : ""}`, {
+        scroll: false,
+      });
+    };
+
+    const mode = modeValue as LayoutMode | null;
+    const state = useCanvasStore.getState();
+    if (!mode || !IMPORT_LAYOUTS.has(mode) || !rootId || !state.nodes.some((node) => node.id === rootId)) {
+      cleanImportParams();
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const current = useCanvasStore.getState();
+      const hierarchy = buildHierarchy(current.nodes, current.edges);
+      const nodeIds = getSubtree(rootId, hierarchy);
+      if (mode === "list" || mode === "matrix") {
+        window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+          detail: { mode, rootId, nodeIds, fitAfter: true },
+        }));
+      } else {
+        current.applyLayout(mode, rootId);
+        requestAnimationFrame(() => {
+          window.dispatchEvent(new CustomEvent("vidya:fitview", {
+            detail: { mode, rootId, nodeIds, forceFit: true },
+          }));
+        });
+      }
+      cleanImportParams();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [board, boardId, loading, router, searchParams]);
 
   if (loading) {
     return (

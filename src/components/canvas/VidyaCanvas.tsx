@@ -466,6 +466,7 @@ function VidyaCanvasInner({
         mode?: LayoutMode;
         rootId?: string;
         nodeIds?: string[];
+        fitAfter?: boolean;
       }>).detail;
       if ((detail?.mode !== "list" && detail?.mode !== "matrix") || !detail.rootId || !detail.nodeIds?.length) return;
 
@@ -475,6 +476,19 @@ function VidyaCanvasInner({
       const first = requestAnimationFrame(() => {
         const second = requestAnimationFrame(() => {
           useCanvasStore.getState().applyLayout(detail.mode!, detail.rootId);
+          if (detail.fitAfter) {
+            const third = requestAnimationFrame(() => {
+              window.dispatchEvent(new CustomEvent("vidya:fitview", {
+                detail: {
+                  nodeIds: detail.nodeIds,
+                  mode: detail.mode,
+                  rootId: detail.rootId,
+                  forceFit: true,
+                },
+              }));
+            });
+            measuredLayoutFramesRef.current = [third];
+          }
         });
         measuredLayoutFramesRef.current = [second];
       });
