@@ -39,7 +39,11 @@ import {
   computeLayoutNodeSizes,
   supportsGeneratedLayoutSizing,
 } from "@/lib/layout/layout-presentation";
-import { computeListLayout } from "@/lib/layout/list-layout";
+import {
+  computeListLayout,
+  computeListRootTopPlacement,
+  type ListPlacements,
+} from "@/lib/layout/list-layout";
 import { applyStructuredReflowPlacement } from "@/lib/layout/structured-reflow";
 import { packSiblingsAfterNestedMatrix } from "@/lib/layout/nested-matrix-spacing";
 import { buildMatrixFrameNodes } from "@/lib/layout/matrix-frames";
@@ -1013,6 +1017,48 @@ function rebuildPersistedMatrixLayouts(
 }
 
 /**
+ * Older boards can persist a List root beside the outline. Correct that derived
+ * header position during hydration while leaving every descendant exactly where
+ * the user saved it.
+ */
+function rebuildPersistedListRootPositions(nodes: Node[], edges: Edge[]): Node[] {
+  const layoutNodes = nodes.filter((node) =>
+    !isAutoMatrixFrame(node)
+    && !isAutoSunburstNode(node)
+    && node.type !== "relationshipDiagram"
+  );
+  const hierarchy = buildHierarchy(layoutNodes, edges);
+  const byId = new Map(layoutNodes.map((node) => [node.id, node]));
+  const placements: ListPlacements = Object.fromEntries(
+    layoutNodes.map((node) => [node.id, { ...node.position }])
+  );
+  const rootIds = layoutNodes
+    .filter((node) => ((node.data ?? {}) as Record<string, unknown>).layoutMode === "list")
+    .sort((a, b) => (hierarchy.get(b.id)?.depth ?? 0) - (hierarchy.get(a.id)?.depth ?? 0))
+    .map((node) => node.id);
+
+  for (const rootId of rootIds) {
+    const placement = computeListRootTopPlacement(rootId, hierarchy, byId, placements);
+    if (placement) placements[rootId] = placement;
+  }
+  if (!rootIds.length) return nodes;
+
+  const rootIdSet = new Set(rootIds);
+  return nodes.map((node) => {
+    if (!rootIdSet.has(node.id)) return node;
+    const placement = placements[node.id];
+    if (
+      !placement
+      || (
+        Math.abs(node.position.x - placement.x) < 0.75
+        && Math.abs(node.position.y - placement.y) < 0.75
+      )
+    ) return node;
+    return { ...node, position: placement };
+  });
+}
+
+/**
  * Migrate legacy "mindmap" nodes into rounded shapes so every node is a
  * unified, connectable shape. Preserves all data; adds a shapeType default.
  */
@@ -1875,9 +1921,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       rebuiltMatrixBoard.nodes,
       rebuiltMatrixBoard.edges
     );
-    const normalizedNodes = normalizeSunburstChartSizes(
+    const listRootPositionedNodes = rebuildPersistedListRootPositions(
       rebuiltMatrixBoard.nodes,
-      buildHierarchy(rebuiltMatrixBoard.nodes, normalizedHierarchyEdges)
+      normalizedHierarchyEdges
+    );
+    const normalizedNodes = normalizeSunburstChartSizes(
+      listRootPositionedNodes,
+      buildHierarchy(listRootPositionedNodes, normalizedHierarchyEdges)
     );
     const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, normalizedHierarchyEdges);
     const nodes = styledBoard.nodes;

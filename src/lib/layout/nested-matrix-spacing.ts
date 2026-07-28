@@ -2,6 +2,7 @@ import type { Node } from "@xyflow/react";
 import type { LayoutMode } from "../types";
 import { getNodeRect, type NodeRect } from "./geometry";
 import { getSubtree, type Hierarchy } from "./hierarchy";
+import { computeListRootTopPlacement, type ListPlacements } from "./list-layout";
 import { ORTHOGONAL_TREE_SPACING } from "./tree-layout";
 
 type PackingAxis = "x" | "y";
@@ -116,6 +117,24 @@ function alignOuterParentToChildBand(
   const parent = byId.get(parentId);
   const childBand = combinedSubtreeBounds(childIds, hierarchy, byId);
   if (!parent || !childBand) return nodes;
+
+  const parentMode = ((parent.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+  if (parentMode === "list") {
+    const placements: ListPlacements = Object.fromEntries(
+      nodes.map((node) => [node.id, { ...node.position }])
+    );
+    const placement = computeListRootTopPlacement(parentId, hierarchy, byId, placements);
+    if (
+      !placement
+      || (
+        Math.abs(parent.position.x - placement.x) <= 0.5
+        && Math.abs(parent.position.y - placement.y) <= 0.5
+      )
+    ) return nodes;
+    return nodes.map((node) => node.id === parentId
+      ? { ...node, position: placement }
+      : node);
+  }
 
   const parentRect = getNodeRect(parent);
   const targetLeft = packing.axis === "x"
