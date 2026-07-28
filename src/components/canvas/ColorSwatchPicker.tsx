@@ -38,6 +38,8 @@ interface ColorSwatchPickerProps {
   size?: "sm" | "md";
   /** Prevents implying that Clear is selected when a multi-selection has mixed colors. */
   mixed?: boolean;
+  /** Apply before pointer focus can clear an active rich-text selection. */
+  selectionSafe?: boolean;
 }
 
 export function ColorSwatchPicker({
@@ -48,6 +50,7 @@ export function ColorSwatchPicker({
   extra = [],
   size = "md",
   mixed = false,
+  selectionSafe = false,
 }: ColorSwatchPickerProps) {
   const sharedCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
   const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
@@ -85,7 +88,16 @@ export function ColorSwatchPicker({
         title="Clear color"
         aria-label="Clear color"
         aria-pressed={isCleared}
-        onClick={() => (onClear ?? (() => onChange("")))()}
+        onPointerDown={(event) => {
+          if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+          event.preventDefault();
+          (onClear ?? (() => onChange("")))();
+        }}
+        onClick={(event) => {
+          if (!selectionSafe || event.detail === 0) {
+            (onClear ?? (() => onChange("")))();
+          }
+        }}
         className={cn(
           "relative flex items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-transform hover:z-10 hover:scale-110 hover:text-foreground",
           swatchSize,
@@ -113,7 +125,14 @@ export function ColorSwatchPicker({
             title={selected ? `Selected color ${hex}` : hex}
             aria-label={selected ? `Selected color ${hex}` : `Select color ${hex}`}
             aria-pressed={selected}
-            onClick={() => handleSwatch(hex)}
+            onPointerDown={(event) => {
+              if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+              event.preventDefault();
+              handleSwatch(hex);
+            }}
+            onClick={(event) => {
+              if (!selectionSafe || event.detail === 0) handleSwatch(hex);
+            }}
             className={cn(
               "relative rounded-full border transition-transform hover:z-10 hover:scale-110",
               swatchSize,
@@ -144,11 +163,15 @@ export function ColorSwatchPicker({
         value={normalizedValue ?? value}
         extraColors={[...legacyTextColors, ...legacyHighlightColors, ...extra]}
         onChange={applyCustomColor}
+        preserveCurrentFocus={selectionSafe}
       >
         <button
           type="button"
           title="More colors"
           aria-label="More colors"
+          onPointerDown={(event) => {
+            if (selectionSafe) event.preventDefault();
+          }}
           className={cn(
             "flex items-center justify-center rounded-full border border-border/40",
             "bg-gradient-to-br from-red-500 via-green-500 to-blue-600 text-[10px] font-bold text-white",
