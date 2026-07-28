@@ -7,6 +7,7 @@ import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy, getSubtree } from "./hierarchy";
 import {
   DEFAULT_CHILD_GROUP_GAP,
+  resolvedFoldSectionCount,
   resolvedFoldSections,
 } from "./child-group-wrap";
 import {
@@ -56,6 +57,7 @@ export const LIST_OUTER_PADDING = 24;
 export const LIST_COLLISION_PADDING_X = 20;
 export const LIST_COLLISION_PADDING_Y = 14;
 export const LIST_CONNECTOR_OBSTACLE_PADDING = 8;
+export const LIST_FOLDED_CONNECTOR_GUTTER = 28;
 export const DEFAULT_LIST_CONNECTOR_WIDTH = 2.5;
 export const MIN_LIST_CONNECTOR_WIDTH = 0.5;
 export const MAX_LIST_CONNECTOR_WIDTH = 12;
@@ -287,8 +289,12 @@ export function computeListLayout(
         children
       );
       const parentRect = rectAt(parent, parentPlacement);
+      const foldedRootClearance = parentId === rootId && sections.length > 1
+        ? density.rootToFirstRowGapY + Math.min(24, (sections.length - 1) * 6)
+        : null;
       const firstChildTop = parentRect.bottom + (
-        parentId === rootId ? density.rootToFirstRowGapY : density.parentChildGapY
+        foldedRootClearance
+          ?? (parentId === rootId ? density.rootToFirstRowGapY : density.parentChildGapY)
       );
       let columnLeft = parentRect.left + density.childIndentX;
 
@@ -307,6 +313,17 @@ export function computeListLayout(
         }
         columnLeft = sectionRight + DEFAULT_CHILD_GROUP_GAP;
       }
+
+      if (parentId === rootId && sections.length > 1) {
+        const foldedBounds = boundsForNodeIds(children, generated, byId);
+        const currentParentRect = rectAt(parent, generated[parentId]);
+        if (foldedBounds) {
+          generated[parentId] = {
+            x: generated[parentId].x + foldedBounds.centerX - currentParentRect.centerX,
+            y: generated[parentId].y,
+          };
+        }
+      }
     }
 
     arranging.delete(parentId);
@@ -318,8 +335,15 @@ export function computeListLayout(
   const placements: ListPlacements = {};
   for (const entry of traversal) {
     const node = byId.get(entry.nodeId)!;
+    const visibleChildCount = (hierarchy.get(node.id)?.childIds ?? [])
+      .filter((childId) => byId.has(childId)).length;
+    const folded = resolvedFoldSectionCount(
+      (node.data ?? {}) as Record<string, unknown>,
+      visibleChildCount
+    ) > 1;
     placements[entry.nodeId] = preserveManualOverrides
       && (node.data as Record<string, unknown>).listManualOverride === true
+      && !(node.id === rootId && folded)
       ? { ...node.position }
       : generated[entry.nodeId];
   }
@@ -422,38 +446,115 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     if (!childRects.length) continue;
 
     const parentRect = getNodeRect(parent);
-    const parentAnchor = closestNodeShapeConnectionAnchor(parent, parentRect, {
-      x: parentRect.left,
-      y: parentRect.bottom,
-    }).point;
-    // Start the shared outline bus directly from the parent's lower-left
-    // perimeter. This removes the short vertical-and-left dogleg that made
-    // automatic List connectors look unnecessarily bent.
-    const trunkX = parentAnchor.x;
-    const trunk = {
-      x1: trunkX,
-      y1: parentAnchor.y,
-      x2: trunkX,
-      y2: Math.max(parentAnchor.y, ...childRects.map((item) => item.rect.centerY)),
-    };
-    const group: ListConnectorGroup = {
-      parentId,
-      orientation: "vertical",
-      sharedSegments: [trunk],
-      branches: childRects.map(({ edge, node, rect }) => {
-        const childAnchor = nodeShapeConnectionPoint(node, rect, "left");
-        return {
-          edge,
-          childId: edge.target,
-          segments: [{
-            x1: trunkX,
-            y1: childAnchor.y,
-            x2: childAnchor.x,
-            y2: childAnchor.y,
-          }],
+    const childById = new Map(childRects.map((item) => [item.edge.target, item]));
+    const sections = resolvedFoldSections(
+      (parent.data ?? {}) as Record<string, unknown>,
+      childRects.map((item) => item.edge.target)
+    ).map((section) => section.flatMap((childId) => childById.get(childId) ?? []));
+    const childAnchors = new Map(childRects.map(({ edge, node, rect }) => [
+      edge.target,
+      nodeShapeConnectionPoint(node, rect, "left"),
+    ]));
+
+    let group: ListConnectorGroup;
+    if (sections.length > 1) {
+      const nearestChildTop = Math.min(...childRects.map((item) => item.rect.top));
+      const trunkByChild = new Map<string, number>();
+      const sectionRoutes = sections.map((section, sectionIndex) => {
+        const trunkX = Math.min(
+          ...section.map((item) => childAnchors.get(item.edge.target)!.x)
+        ) - LIST_FOLDED_CONNECTOR_GUTTER;
+        section.forEach((item) => trunkByChild.set(item.edge.target, trunkX));
+        const anchorFraction = sections.length <= 1
+          ? 0.5
+          : 0.18 + sectionIndex / (sections.length - 1) * 0.64;
+        const parentAnchor = closestNodeShapeConnectionAnchor(parent, parentRect, {
+          x: parentRect.left + parentRect.width * anchorFraction,
+          y: parentRect.bottom,
+        }).point;
+        const laneTop = parentRect.bottom + 8;
+        const laneBottom = Math.max(laneTop, nearestChildTop - 8);
+        const laneY = sections.length <= 1
+          ? (laneTop + laneBottom) / 2
+          : laneTop + sectionIndex / (sections.length - 1) * (laneBottom - laneTop);
+        const trunk = {
+          x1: trunkX,
+          y1: laneY,
+          x2: trunkX,
+          y2: Math.max(...section.map((item) => childAnchors.get(item.edge.target)!.y)),
         };
-      }),
-    };
+        return {
+          parentAnchor,
+          laneY,
+          trunk,
+          segments: [
+            {
+              x1: parentAnchor.x,
+              y1: parentAnchor.y,
+              x2: parentAnchor.x,
+              y2: laneY,
+            },
+            {
+              x1: parentAnchor.x,
+              y1: laneY,
+              x2: trunkX,
+              y2: laneY,
+            },
+            trunk,
+          ],
+        };
+      });
+      group = {
+        parentId,
+        orientation: "vertical",
+        sharedSegments: sectionRoutes.flatMap((route) => route.segments),
+        branches: childRects.map(({ edge }) => {
+          const childAnchor = childAnchors.get(edge.target)!;
+          return {
+            edge,
+            childId: edge.target,
+            segments: [{
+              x1: trunkByChild.get(edge.target)!,
+              y1: childAnchor.y,
+              x2: childAnchor.x,
+              y2: childAnchor.y,
+            }],
+          };
+        }),
+      };
+    } else {
+      const parentAnchor = closestNodeShapeConnectionAnchor(parent, parentRect, {
+        x: parentRect.left,
+        y: parentRect.bottom,
+      }).point;
+      // Start an unfolded outline directly from the parent's lower-left
+      // perimeter, without an extra center-to-left dogleg.
+      const trunkX = parentAnchor.x;
+      const trunk = {
+        x1: trunkX,
+        y1: parentAnchor.y,
+        x2: trunkX,
+        y2: Math.max(parentAnchor.y, ...childRects.map((item) => item.rect.centerY)),
+      };
+      group = {
+        parentId,
+        orientation: "vertical",
+        sharedSegments: [trunk],
+        branches: childRects.map(({ edge }) => {
+          const childAnchor = childAnchors.get(edge.target)!;
+          return {
+            edge,
+            childId: edge.target,
+            segments: [{
+              x1: trunkX,
+              y1: childAnchor.y,
+              x2: childAnchor.x,
+              y2: childAnchor.y,
+            }],
+          };
+        }),
+      };
+    }
 
     const excluded = new Set([parentId, ...childRects.map((item) => item.edge.target)]);
     const obstacles = visibleRects.filter((rect) => !excluded.has(rect.id));
