@@ -11,6 +11,8 @@ export type ExportScope =
   | {
       kind: "subtree";
       rootId: string;
+      /** Additional selected hierarchy roots included in the same branch export. */
+      rootIds?: string[];
     }
   | {
       kind: "frame";
