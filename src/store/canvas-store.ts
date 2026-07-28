@@ -55,6 +55,7 @@ import {
   computeMatrixLayout,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixAncestorSpanOverrideResets,
   matrixTableOverrideResetAxes,
   matrixNodeSizeDiffersFromPlacement,
   matrixRenderedSizeChanged,
@@ -3028,6 +3029,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const matrixRootData = matrixRootId
         ? (state.nodes.find((node) => node.id === matrixRootId)?.data ?? {}) as Record<string, unknown>
         : {};
+      const resetsAncestorSpan = Object.prototype.hasOwnProperty.call(data, "matrixWidthOverride")
+        || Object.prototype.hasOwnProperty.call(data, "matrixHeightOverride");
+      const ancestorSpanResets = (() => {
+        if (!matrixRootId || !resetsAncestorSpan) return new Map();
+        const layoutNodes = state.nodes.filter((node) =>
+          !isAutoMatrixFrame(node)
+          && !isAutoSunburstNode(node)
+          && node.type !== "relationshipDiagram"
+        );
+        const hierarchy = buildHierarchy(layoutNodes, state.edges);
+        const byId = new Map(layoutNodes.map((node) => [node.id, node]));
+        return matrixAncestorSpanOverrideResets(nodeId, data, hierarchy, byId);
+      })();
       const resetTableAxes = matrixTableOverrideResetAxes(
         data,
         matrixRootData.matrixTableSizeLocked === true
@@ -3048,6 +3062,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             ...nextData,
             ...(resetTableAxes.width ? { matrixTableWidthOverride: undefined } : {}),
             ...(resetTableAxes.height ? { matrixTableHeightOverride: undefined } : {}),
+          };
+          changed = true;
+        }
+        const ancestorReset = ancestorSpanResets.get(node.id);
+        if (ancestorReset) {
+          nextData = {
+            ...nextData,
+            ...(ancestorReset.width ? { matrixWidthOverride: undefined } : {}),
+            ...(ancestorReset.height ? { matrixHeightOverride: undefined } : {}),
           };
           changed = true;
         }
@@ -3212,6 +3235,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         : currentSize.width;
       const resize = resolveMatrixCellResize(currentSize, currentColumnWidth, size);
       if (!resize.resetTableWidth && !resize.resetTableHeight) return;
+      const cellSizePatch = {
+        ...(resize.width !== undefined ? { matrixWidthOverride: resize.width } : {}),
+        ...(resize.height !== undefined ? { matrixHeightOverride: resize.height } : {}),
+      };
       const matrixRootId = nodeData.layoutMode === "matrix"
         ? nodeId
         : typeof nodeData.matrixRootId === "string" ? nodeData.matrixRootId : null;
@@ -3219,15 +3246,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ? (get().nodes.find((item) => item.id === matrixRootId)?.data ?? {}) as Record<string, unknown>
         : {};
       const tableSizeLocked = matrixRootData.matrixTableSizeLocked === true;
-      set((state) => ({
-        nodes: state.nodes.map((candidate) => {
+      set((state) => {
+        const layoutNodes = state.nodes.filter((candidate) =>
+          !isAutoMatrixFrame(candidate)
+          && !isAutoSunburstNode(candidate)
+          && candidate.type !== "relationshipDiagram"
+        );
+        const hierarchy = buildHierarchy(layoutNodes, state.edges);
+        const byId = new Map(layoutNodes.map((candidate) => [candidate.id, candidate]));
+        const ancestorSpanResets = matrixAncestorSpanOverrideResets(
+          nodeId,
+          cellSizePatch,
+          hierarchy,
+          byId
+        );
+        const nodes = state.nodes.map((candidate) => {
           let nextData = candidate.data;
           let changed = false;
           if (candidate.id === nodeId) {
             nextData = {
               ...nextData,
-              ...(resize.width !== undefined ? { matrixWidthOverride: resize.width } : {}),
-              ...(resize.height !== undefined ? { matrixHeightOverride: resize.height } : {}),
+              ...cellSizePatch,
             };
             changed = true;
           }
@@ -3239,10 +3278,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             };
             changed = true;
           }
+          const ancestorReset = ancestorSpanResets.get(candidate.id);
+          if (ancestorReset) {
+            nextData = {
+              ...nextData,
+              ...(ancestorReset.width ? { matrixWidthOverride: undefined } : {}),
+              ...(ancestorReset.height ? { matrixHeightOverride: undefined } : {}),
+            };
+            changed = true;
+          }
           return changed ? { ...candidate, data: nextData } : candidate;
-        }),
-        saveStatus: "unsaved",
-      }));
+        });
+        return { nodes, saveStatus: "unsaved" };
+      });
       requestNodeInternalsRefresh([nodeId]);
       get().scheduleMatrixReflow(nodeId);
       return;

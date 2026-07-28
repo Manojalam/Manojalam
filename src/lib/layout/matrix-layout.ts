@@ -618,6 +618,61 @@ function matrixOrientationForNode(
   return storedOrientation(data.matrixOrientation) ?? inherited;
 }
 
+export type MatrixAncestorSpanOverrideReset = {
+  width: boolean;
+  height: boolean;
+};
+
+/**
+ * A non-root Matrix parent owns only the axis perpendicular to its branch.
+ * Its other axis spans the child area and must return to automatic sizing when
+ * a descendant changes that same dimension.
+ */
+export function matrixAncestorSpanOverrideResets(
+  nodeId: string,
+  patch: Record<string, unknown>,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): Map<string, MatrixAncestorSpanOverrideReset> {
+  const widthChanged = Object.prototype.hasOwnProperty.call(patch, "matrixWidthOverride");
+  const heightChanged = Object.prototype.hasOwnProperty.call(patch, "matrixHeightOverride");
+  if (!widthChanged && !heightChanged) return new Map();
+
+  const nodeData = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+  const storedRootId = typeof nodeData.matrixRootId === "string"
+    ? nodeData.matrixRootId
+    : nodeData.layoutMode === "matrix" ? nodeId : null;
+  if (!storedRootId || storedRootId === nodeId) return new Map();
+
+  const lineage: string[] = [];
+  const seen = new Set<string>([nodeId]);
+  let currentId = hierarchy.get(nodeId)?.parentId ?? null;
+  while (currentId && !seen.has(currentId)) {
+    seen.add(currentId);
+    lineage.push(currentId);
+    if (currentId === storedRootId) break;
+    currentId = hierarchy.get(currentId)?.parentId ?? null;
+  }
+  if (lineage[lineage.length - 1] !== storedRootId) return new Map();
+
+  const resets = new Map<string, MatrixAncestorSpanOverrideReset>();
+  let orientation: MatrixOrientation = "horizontal";
+  for (const ancestorId of lineage.reverse()) {
+    orientation = matrixOrientationForNode(ancestorId, orientation, byId);
+    if (ancestorId === storedRootId) continue;
+
+    const ancestorData = (byId.get(ancestorId)?.data ?? {}) as Record<string, unknown>;
+    const width = widthChanged
+      && orientation === "vertical"
+      && positiveNumber(ancestorData.matrixWidthOverride) !== null;
+    const height = heightChanged
+      && orientation === "horizontal"
+      && positiveNumber(ancestorData.matrixHeightOverride) !== null;
+    if (width || height) resets.set(ancestorId, { width, height });
+  }
+  return resets;
+}
+
 const MATRIX_AUTO_ROW_MIN_SIBLINGS = 4;
 const MATRIX_AUTO_ROW_MAX_SIBLINGS = 8;
 const MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS = 16;

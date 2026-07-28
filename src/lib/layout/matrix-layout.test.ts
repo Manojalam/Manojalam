@@ -20,6 +20,7 @@ import {
   resolveMatrixCellResize,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixAncestorSpanOverrideResets,
   matrixNodeSizeDiffersFromPlacement,
   matrixRenderedSizeChanged,
   matrixTableOverrideResetAxes,
@@ -2038,6 +2039,104 @@ test("changing a sibling gap preserves overall Matrix size overrides", () => {
     ),
     { width: false, height: false }
   );
+});
+
+test("resizing stacked or side-by-side children returns a horizontal parent height to Auto", () => {
+  for (const [childFlow, expectedHeight] of [
+    ["column", 208],
+    ["row", 100],
+  ] as const) {
+    const { nodes, edges } = buildTree([
+      { id: "root", parentId: null },
+      {
+        id: "parent",
+        parentId: "root",
+        childFlow,
+        matrixWidth: 100,
+        matrixHeight: 300,
+      },
+      { id: "a", parentId: "parent", matrixWidth: 100, matrixHeight: 100 },
+      { id: "b", parentId: "parent", matrixWidth: 100, matrixHeight: 100 },
+    ]);
+    const ownedNodes = nodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        matrixRootId: "root",
+        ...(node.id === "root" ? { layoutMode: "matrix" } : {}),
+      },
+    }));
+    const hierarchy = buildHierarchy(ownedNodes, edges);
+    const byId = new Map(ownedNodes.map((node) => [node.id, node]));
+    const patch = { matrixHeightOverride: 100 };
+    const resets = matrixAncestorSpanOverrideResets("a", patch, hierarchy, byId);
+
+    assert.deepEqual(resets.get("parent"), { width: false, height: true });
+    const resizedNodes = ownedNodes.map((node) => {
+      if (node.id === "a") return { ...node, data: { ...node.data, ...patch } };
+      const reset = resets.get(node.id);
+      return reset?.height
+        ? { ...node, data: { ...node.data, matrixHeightOverride: undefined } }
+        : node;
+    });
+    const result = computeMatrixLayout(
+      "root",
+      buildHierarchy(resizedNodes, edges),
+      new Map(resizedNodes.map((node) => [node.id, node]))
+    );
+    const parent = result.cells.find((cell) => cell.nodeId === "parent")!;
+
+    assert.equal(parent.width, 100);
+    assert.equal(parent.height, expectedHeight);
+    assertClean(result);
+  }
+});
+
+test("resizing side-by-side children returns a vertical parent width to Auto", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null },
+    {
+      id: "parent",
+      parentId: "root",
+      orientation: "vertical",
+      childFlow: "row",
+      matrixWidth: 300,
+      matrixHeight: 100,
+    },
+    { id: "a", parentId: "parent", matrixWidth: 100, matrixHeight: 100 },
+    { id: "b", parentId: "parent", matrixWidth: 100, matrixHeight: 100 },
+  ]);
+  const ownedNodes = nodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      matrixRootId: "root",
+      ...(node.id === "root" ? { layoutMode: "matrix" } : {}),
+    },
+  }));
+  const hierarchy = buildHierarchy(ownedNodes, edges);
+  const byId = new Map(ownedNodes.map((node) => [node.id, node]));
+  const patch = { matrixWidthOverride: 100 };
+  const resets = matrixAncestorSpanOverrideResets("a", patch, hierarchy, byId);
+
+  assert.deepEqual(resets.get("parent"), { width: true, height: false });
+  const resizedNodes = ownedNodes.map((node) => {
+    if (node.id === "a") return { ...node, data: { ...node.data, ...patch } };
+    const reset = resets.get(node.id);
+    return reset?.width
+      ? { ...node, data: { ...node.data, matrixWidthOverride: undefined } }
+      : node;
+  });
+  const result = computeMatrixLayout(
+    "root",
+    buildHierarchy(resizedNodes, edges),
+    new Map(resizedNodes.map((node) => [node.id, node]))
+  );
+  const parent = result.cells.find((cell) => cell.nodeId === "parent")!;
+
+  assert.equal(parent.width, MATRIX_HEADER_MIN_WIDTH);
+  assert.equal(parent.height, 100);
+  assertClean(result);
 });
 
 test("width-only Matrix resizing preserves a merged cell's rendered height", () => {
