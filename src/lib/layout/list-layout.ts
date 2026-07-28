@@ -230,6 +230,39 @@ export function diagnoseListLayout(
   return { duplicateNodeIds, nodesWithIdenticalPositions, overlaps };
 }
 
+/**
+ * List descendants may keep their authored or previously generated positions,
+ * but the root is always a header for the complete outline. Keep it centered
+ * over the first-level rows and above every visible descendant.
+ */
+export function computeListRootTopPlacement(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  placements: ListPlacements,
+  densityOverride?: ListDensity
+): ListPlacement | null {
+  const root = byId.get(rootId);
+  const rootPlacement = placements[rootId];
+  if (!root || !rootPlacement) return null;
+
+  const rootData = (root.data ?? {}) as Record<string, unknown>;
+  const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
+  const density = LIST_DENSITIES[densityOverride ?? storedDensity];
+  const descendantIds = getSubtree(rootId, hierarchy).filter((nodeId) => nodeId !== rootId);
+  const contentBounds = boundsForNodeIds(descendantIds, placements, byId);
+  if (!contentBounds) return { ...rootPlacement };
+
+  const rootChildren = (hierarchy.get(rootId)?.childIds ?? []).filter((childId) => byId.has(childId));
+  const headerBounds = boundsForNodeIds(rootChildren, placements, byId) ?? contentBounds;
+  const rootRect = rectAt(root, rootPlacement);
+  return {
+    x: rootPlacement.x + headerBounds.centerX - rootRect.centerX,
+    y: rootPlacement.y + contentBounds.top - density.rootToFirstRowGapY
+      - rootRect.height - rootRect.top,
+  };
+}
+
 export function computeListLayout(
   rootId: string,
   hierarchy: Hierarchy,
@@ -248,8 +281,6 @@ export function computeListLayout(
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const storedDensity = rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY;
   const density = LIST_DENSITIES[options.density ?? storedDensity];
-  const rootChildren = (hierarchy.get(rootId)?.childIds ?? []).filter((childId) => byId.has(childId));
-  const rootFolded = resolvedFoldSections(rootData, rootChildren).length > 1;
   const generated: ListPlacements = Object.fromEntries(
     traversal.map((entry) => [entry.nodeId, { ...byId.get(entry.nodeId)!.position }])
   );
@@ -327,27 +358,14 @@ export function computeListLayout(
       ? { ...node.position }
       : generated[entry.nodeId];
   }
-  const rootPlacement = placements[rootId];
-  const contentBounds = boundsForNodeIds(
-    traversal.slice(1).map((entry) => entry.nodeId),
+  const rootTopPlacement = computeListRootTopPlacement(
+    rootId,
+    hierarchy,
+    byId,
     placements,
-    byId
+    options.density
   );
-  if (rootPlacement && contentBounds) {
-    const rootRect = rectAt(root, rootPlacement);
-    const nextRootPlacement = {
-      x: rootPlacement.x,
-      y: rootPlacement.y + contentBounds.top - density.rootToFirstRowGapY
-        - rootRect.height - rootRect.top,
-    };
-    if (rootFolded) {
-      const headerBounds = boundsForNodeIds(rootChildren, placements, byId);
-      if (headerBounds) {
-        nextRootPlacement.x = rootPlacement.x + headerBounds.centerX - rootRect.centerX;
-      }
-    }
-    placements[rootId] = nextRootPlacement;
-  }
+  if (rootTopPlacement) placements[rootId] = rootTopPlacement;
   if (process.env.NODE_ENV !== "production") {
     const diagnostics = diagnoseListLayout(traversal, placements, byId, preserveManualOverrides);
     if (
