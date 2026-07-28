@@ -1919,6 +1919,29 @@ export function computeMatrixLayout(
     }
   }
 
+  // Direct leaf children under one parent are one visual sibling group. The
+  // oriented/Fold path already normalizes this case before composing sections;
+  // keep the standard hierarchy-table path consistent by giving every sibling
+  // row the largest content-safe height in its group.
+  for (const parentId of [rootId, ...spanMap.keys()]) {
+    const childIds = visibleChildren(parentId, hierarchy, byId);
+    if (
+      childIds.length < 2
+      || childIds.some((childId) => visibleChildren(childId, hierarchy, byId).length > 0)
+    ) continue;
+    const childSpans = childIds.flatMap((childId) => spanMap.get(childId) ?? []);
+    if (
+      childSpans.length !== childIds.length
+      || childSpans.some((span) => span.rowStart !== span.rowEnd)
+    ) continue;
+    const siblingHeight = Math.max(
+      ...childSpans.map((span) => rowHeights[span.rowStart])
+    );
+    childSpans.forEach((span) => {
+      rowHeights[span.rowStart] = siblingHeight;
+    });
+  }
+
   const mergedSpans = [...spanMap.values()]
     .filter((span) => span.rowEnd > span.rowStart)
     .sort((a, b) => (a.rowEnd - a.rowStart) - (b.rowEnd - b.rowStart));
