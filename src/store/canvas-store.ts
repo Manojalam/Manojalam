@@ -648,6 +648,7 @@ function matrixGeometryChanged(before: Node[], after: Node[], rootId: string): b
       || previousData.matrixColumn !== data.matrixColumn
       || previousData.matrixRowStart !== data.matrixRowStart
       || previousData.matrixRowSpan !== data.matrixRowSpan
+      || previousData.matrixOuterBorderVisible !== data.matrixOuterBorderVisible
       || previousData.matrixGridVisible !== data.matrixGridVisible
     ) return true;
   }

@@ -537,6 +537,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixColumn?: number;
   matrixRowStart?: number;
   matrixRowSpan?: number;
+  /** Draws one border around the outside of the generated Matrix table. */
+  matrixOuterBorderVisible?: boolean;
   matrixGridVisible?: boolean;
   groupId?: string;
   /** Radial-layout-only presentation overrides. */

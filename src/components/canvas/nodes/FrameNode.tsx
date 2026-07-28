@@ -14,6 +14,7 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
   const matrixGridLines = Array.isArray(d.matrixGridLines) ? d.matrixGridLines : null;
   const isMatrixGrid = isMatrixFrame && matrixGridLines !== null;
+  const matrixOuterBorderVisible = d.matrixOuterBorderVisible !== false;
   const frameWidth = typeof width === "number" && width > 0 ? width : 1;
   const frameHeight = typeof height === "number" && height > 0 ? height : 1;
   const gridStrokeWidth = typeof d.borderWidth === "number" ? d.borderWidth : 1;
@@ -54,17 +55,19 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
             preserveAspectRatio="none"
             shapeRendering="geometricPrecision"
           >
-            <rect
-              x={gridStrokeWidth / 2}
-              y={gridStrokeWidth / 2}
-              width={Math.max(0, frameWidth - gridStrokeWidth)}
-              height={Math.max(0, frameHeight - gridStrokeWidth)}
-              rx={MATRIX_GRID_RADIUS}
-              fill="none"
-              stroke={d.color ?? "#6366f1"}
-              strokeWidth={gridStrokeWidth}
-              vectorEffect="non-scaling-stroke"
-            />
+            {matrixOuterBorderVisible && (
+              <rect
+                x={gridStrokeWidth / 2}
+                y={gridStrokeWidth / 2}
+                width={Math.max(0, frameWidth - gridStrokeWidth)}
+                height={Math.max(0, frameHeight - gridStrokeWidth)}
+                rx={MATRIX_GRID_RADIUS}
+                fill="none"
+                stroke={d.color ?? "#6366f1"}
+                strokeWidth={gridStrokeWidth}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
             {matrixGridLines?.map((line, index) => (
               <line
                 key={`${line.x1}-${line.y1}-${line.x2}-${line.y2}-${index}`}

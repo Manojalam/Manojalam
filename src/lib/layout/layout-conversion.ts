@@ -11,6 +11,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "treeManualOverride",
   "matrixDensity",
   "matrixDensityUserSet",
+  "matrixOuterBorderVisible",
   "matrixGridVisible",
   "matrixOrientation",
   "matrixChildFlow",
@@ -112,6 +113,9 @@ export function clearMatrixLayoutOverrides(
   if (!isRoot) return next;
 
   next = omitFields(next, MATRIX_ROOT_LAYOUT_OVERRIDE_FIELDS);
+  if (data.matrixOuterBorderVisible === false) {
+    next = omitFields(next, ["matrixOuterBorderVisible"]);
+  }
   if (data.matrixGridVisible === false) {
     next = omitFields(next, ["matrixGridVisible"]);
   }

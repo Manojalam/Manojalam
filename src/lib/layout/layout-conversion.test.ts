@@ -50,6 +50,7 @@ test("chart conversion keeps hierarchy and authored content but drops source geo
     listManualOverride: true,
     listDensity: "compact",
     treeManualOverride: true,
+    matrixOuterBorderVisible: false,
     matrixDensity: "presentation",
     matrixDensityUserSet: true,
     matrixGridVisible: false,
@@ -103,6 +104,7 @@ test("Matrix reset clears branch and root layout overrides but keeps authored pr
     layoutWrapAfter: 3,
     matrixDensity: "presentation",
     matrixDensityUserSet: true,
+    matrixOuterBorderVisible: false,
     matrixGridVisible: false,
     matrixOrientation: "vertical",
     matrixChildFlow: "row",
@@ -135,11 +137,13 @@ test("Matrix reset clears branch and root layout overrides but keeps authored pr
 test("Matrix reset only removes root settings from the root and preserves automatic density", () => {
   const automaticRoot = {
     matrixDensity: "comfortable",
+    matrixOuterBorderVisible: false,
     matrixGridVisible: false,
     matrixPackCompactGroups: true,
   };
   const branch = {
     matrixDensity: "comfortable",
+    matrixOuterBorderVisible: false,
     matrixGridVisible: false,
     matrixPackCompactGroups: true,
     matrixOrientation: "vertical",
@@ -151,11 +155,13 @@ test("Matrix reset only removes root settings from the root and preserves automa
   });
   assert.deepEqual(clearMatrixLayoutOverrides(branch), {
     matrixDensity: "comfortable",
+    matrixOuterBorderVisible: false,
     matrixGridVisible: false,
     matrixPackCompactGroups: true,
   });
   const automaticPresentation = {
     matrixDensity: "comfortable",
+    matrixOuterBorderVisible: true,
     matrixGridVisible: true,
   };
   assert.equal(clearMatrixLayoutOverrides(automaticPresentation, true), automaticPresentation);
