@@ -180,7 +180,7 @@ export function CanvasTopbar() {
           value={board?.title ?? ""}
           onChange={(e) => updateBoardTitle(e.target.value)}
           readOnly={!canEdit}
-          className="h-8 max-w-[220px] min-w-0 border-transparent bg-transparent text-center text-sm font-semibold text-foreground shadow-none focus-visible:border-primary/40 focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-primary/30 max-sm:max-w-[34vw]"
+          className="h-8 max-w-[420px] min-w-0 border-transparent bg-transparent text-center text-sm font-semibold text-foreground shadow-none focus-visible:border-primary/40 focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-primary/30 max-sm:max-w-full"
           aria-label="Board title"
           name="board-title"
         />
