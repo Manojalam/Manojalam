@@ -60,6 +60,7 @@ import {
   computeMatrixLayout,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixDimensionPatchGeometryChange,
   matrixAncestorSpanOverrideResets,
   matrixTableOverrideResetAxes,
   matrixNodeSizeDiffersFromPlacement,
@@ -3173,8 +3174,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         : {};
       const resetsAncestorSpan = Object.prototype.hasOwnProperty.call(data, "matrixWidthOverride")
         || Object.prototype.hasOwnProperty.call(data, "matrixHeightOverride");
-      const ancestorSpanResets = (() => {
-        if (!matrixRootId || !resetsAncestorSpan) return new Map();
+      const matrixDimensionContext = (() => {
+        if (!matrixRootId || !resetsAncestorSpan) return null;
         const layoutNodes = state.nodes.filter((node) =>
           !isAutoMatrixFrame(node)
           && !isAutoSunburstNode(node)
@@ -3182,12 +3183,40 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         );
         const hierarchy = buildHierarchy(layoutNodes, state.edges);
         const byId = new Map(layoutNodes.map((node) => [node.id, node]));
-        return matrixAncestorSpanOverrideResets(nodeId, data, hierarchy, byId);
+        return {
+          hierarchy,
+          byId,
+          geometryChange: matrixDimensionPatchGeometryChange(nodeId, data, hierarchy, byId),
+        };
       })();
-      const resetTableAxes = matrixTableOverrideResetAxes(
+      const dimensionGeometryChange = matrixDimensionContext?.geometryChange
+        ?? { width: false, height: false };
+      const ancestorSpanResets = (() => {
+        if (!matrixDimensionContext) return new Map();
+        const effectivePatch = {
+          ...(dimensionGeometryChange.width
+            ? { matrixWidthOverride: data.matrixWidthOverride }
+            : {}),
+          ...(dimensionGeometryChange.height
+            ? { matrixHeightOverride: data.matrixHeightOverride }
+            : {}),
+        };
+        if (!Object.keys(effectivePatch).length) return new Map();
+        return matrixAncestorSpanOverrideResets(
+          nodeId,
+          effectivePatch,
+          matrixDimensionContext.hierarchy,
+          matrixDimensionContext.byId
+        );
+      })();
+      const requestedTableAxisResets = matrixTableOverrideResetAxes(
         data,
         matrixRootData.matrixTableSizeLocked === true
       );
+      const resetTableAxes = {
+        width: requestedTableAxisResets.width && dimensionGeometryChange.width,
+        height: requestedTableAxisResets.height && dimensionGeometryChange.height,
+      };
       const preserveOrientedMatrixComposition = !!matrixRootId
         && patchUsesOrientedMatrixComposition(data);
       const nodes = state.nodes.map((node) => {
@@ -3405,9 +3434,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         );
         const hierarchy = buildHierarchy(layoutNodes, state.edges);
         const byId = new Map(layoutNodes.map((candidate) => [candidate.id, candidate]));
-        const ancestorSpanResets = matrixAncestorSpanOverrideResets(
+        const dimensionGeometryChange = matrixDimensionPatchGeometryChange(
           nodeId,
           cellSizePatch,
+          hierarchy,
+          byId
+        );
+        const effectiveCellSizePatch = {
+          ...(dimensionGeometryChange.width && resize.width !== undefined
+            ? { matrixWidthOverride: resize.width }
+            : {}),
+          ...(dimensionGeometryChange.height && resize.height !== undefined
+            ? { matrixHeightOverride: resize.height }
+            : {}),
+        };
+        const ancestorSpanResets = matrixAncestorSpanOverrideResets(
+          nodeId,
+          effectiveCellSizePatch,
           hierarchy,
           byId
         );
@@ -3424,8 +3467,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           if (matrixRootId && candidate.id === matrixRootId && !tableSizeLocked) {
             nextData = {
               ...nextData,
-              ...(resize.resetTableWidth ? { matrixTableWidthOverride: undefined } : {}),
-              ...(resize.resetTableHeight ? { matrixTableHeightOverride: undefined } : {}),
+              ...(resize.resetTableWidth && dimensionGeometryChange.width
+                ? { matrixTableWidthOverride: undefined }
+                : {}),
+              ...(resize.resetTableHeight && dimensionGeometryChange.height
+                ? { matrixTableHeightOverride: undefined }
+                : {}),
             };
             changed = true;
           }

@@ -542,9 +542,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixFillCellLabels?: boolean;
   /** Exact gap, in canvas pixels, between this Matrix cell's direct children. */
   matrixSiblingGap?: number;
-  /** Exact rendered width for this Matrix cell while Matrix layout is active. */
+  /** Natural Matrix track width before terminal merging or overall table scaling. */
   matrixWidthOverride?: number;
-  /** Exact rendered height for this Matrix cell while Matrix layout is active. */
+  /** Natural Matrix row height before peer equalization or overall table scaling. */
   matrixHeightOverride?: number;
   /** Exact overall width for the composed Matrix, stored on the Matrix root. */
   matrixTableWidthOverride?: number;
