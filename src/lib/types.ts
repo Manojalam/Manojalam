@@ -766,6 +766,8 @@ export interface AppSettings {
   defaultIastFont: string;
   autosaveEnabled: boolean;
   defaultGrid: boolean;
+  /** Custom colors shared by every board and every general color control. */
+  customColors: string[];
 }
 
 export interface TemplateDefinition {
@@ -815,6 +817,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultIastFont: "Georgia",
   autosaveEnabled: true,
   defaultGrid: true,
+  customColors: [],
 };
 
 export const SANSKRIT_TAG_SUGGESTIONS = [

@@ -11,6 +11,7 @@ import type {
   ShapeType,
 } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS } from "@/lib/types";
+import { normalizeAppSettings } from "@/lib/app-settings";
 import type { ShapeFormatSnapshot } from "@/lib/canvas/shape-format";
 import type { ExportFormat } from "@/lib/export/types";
 
@@ -84,6 +85,7 @@ interface UIState {
   aiPanelOpen: boolean;
   setAiPanelOpen: (open: boolean) => void;
   appSettings: AppSettings;
+  appSettingsLoaded: boolean;
   updateAppSettings: (partial: Partial<AppSettings>) => void;
   loadAppSettings: () => void;
 }
@@ -206,21 +208,24 @@ export const useUIStore = create<UIState>((set, get) => ({
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   aiPanelOpen: false,
   setAiPanelOpen: (open) => set({ aiPanelOpen: open }),
-  appSettings: DEFAULT_APP_SETTINGS,
+  appSettings: { ...DEFAULT_APP_SETTINGS },
+  appSettingsLoaded: false,
   updateAppSettings: (partial) => {
-    const settings = { ...get().appSettings, ...partial };
+    const settings = normalizeAppSettings({ ...get().appSettings, ...partial });
     localStorage.setItem(LOCAL_STORAGE_KEYS.settings, JSON.stringify(settings));
     set({ appSettings: settings });
   },
   loadAppSettings: () => {
     try {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEYS.settings);
-      if (raw) {
-        const settings = JSON.parse(raw) as AppSettings;
-        set({ appSettings: settings, theme: settings.theme });
-      }
+      const settings = normalizeAppSettings(raw ? JSON.parse(raw) : undefined);
+      set({ appSettings: settings, appSettingsLoaded: true, theme: settings.theme });
     } catch {
-      // use defaults
+      set({
+        appSettings: { ...DEFAULT_APP_SETTINGS },
+        appSettingsLoaded: true,
+        theme: DEFAULT_APP_SETTINGS.theme,
+      });
     }
   },
 }));

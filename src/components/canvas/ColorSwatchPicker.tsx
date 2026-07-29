@@ -9,6 +9,7 @@ import {
 } from "@/lib/canvas/custom-colors";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
 
 const PRESET_COLORS = [
   "#ffffff", // White
@@ -52,7 +53,8 @@ export function ColorSwatchPicker({
   mixed = false,
   selectionSafe = false,
 }: ColorSwatchPickerProps) {
-  const sharedCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
+  const sharedCustomColors = useUIStore((state) => state.appSettings.customColors);
+  const legacySharedColors = useCanvasStore((state) => state.settings.customColors ?? []);
   const legacyTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const legacyHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const swatchSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
@@ -60,6 +62,7 @@ export function ColorSwatchPicker({
 
   const colors = arrangeColorPalette([
     ...PRESET_COLORS,
+    ...legacySharedColors,
     ...sharedCustomColors,
     ...legacyTextColors,
     ...legacyHighlightColors,

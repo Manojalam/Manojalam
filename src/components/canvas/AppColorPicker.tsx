@@ -23,7 +23,7 @@ import {
   type RgbColor,
 } from "@/lib/canvas/custom-colors";
 import { cn } from "@/lib/utils";
-import { useCanvasStore } from "@/store/canvas-store";
+import { useUIStore } from "@/store/ui-store";
 
 interface ColorPickerPanelProps {
   value?: string;
@@ -257,15 +257,20 @@ export function ColorPickerPanel({
       </section>
 
       {recentColors.length > 0 && (
-        <section className="space-y-1.5" aria-label="Recent colors">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Recent</p>
+        <section className="space-y-1.5" aria-label="Saved colors">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+              Saved
+            </p>
+            <p className="text-[9px] text-muted-foreground">Available on every board</p>
+          </div>
           <div className="flex flex-wrap gap-1">
             {recentColors.map((color) => (
               <ColorSwatch
                 key={color}
                 color={color}
                 selected={draftColor === color}
-                title={`Recent · ${color}`}
+                title={`Saved · ${color}`}
                 onSelect={() => selectSwatch(color)}
                 selectionSafe={selectionSafe}
               />
@@ -416,8 +421,8 @@ export function AppColorPicker({
 }: AppColorPickerProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
-  const customColors = useCanvasStore((state) => state.settings.customColors ?? []);
-  const setSettings = useCanvasStore((state) => state.setSettings);
+  const customColors = useUIStore((state) => state.appSettings.customColors);
+  const updateAppSettings = useUIStore((state) => state.updateAppSettings);
   const allRecentColors = useMemo(
     () => Array.from(new Set([...(extraColors ?? []), ...customColors])),
     [customColors, extraColors]
@@ -429,7 +434,7 @@ export function AppColorPicker({
 
   const chooseColor = (color: string) => {
     onChange(color);
-    setSettings({ customColors: rememberCustomColor(customColors, color) });
+    updateAppSettings({ customColors: rememberCustomColor(customColors, color) });
     setOpenState(false);
   };
 

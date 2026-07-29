@@ -576,7 +576,9 @@ export function RichTextEditor({
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
-  const customColors = useCanvasStore((state) => state.settings.customColors ?? []);
+  const legacyCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
+  const customColors = useUIStore((state) => state.appSettings.customColors);
+  const updateAppSettings = useUIStore((state) => state.updateAppSettings);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const setSettings = useCanvasStore((state) => state.setSettings);
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
@@ -1859,8 +1861,10 @@ export function RichTextEditor({
 
   const chooseCustomTextColor = useCallback((color: string) => {
     applyPickerSelectionCommand((chain) => chain.setColor(color));
-    setSettings({
+    updateAppSettings({
       customColors: rememberCustomColor(customColors, color),
+    });
+    setSettings({
       customTextColors: rememberCustomColor(customTextColors, color),
     });
     setTextColorPickerOpen(false);
@@ -1870,6 +1874,7 @@ export function RichTextEditor({
     customTextColors,
     setSettings,
     setTextColorPickerOpen,
+    updateAppSettings,
   ]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
@@ -1877,8 +1882,10 @@ export function RichTextEditor({
       color,
       vidyaScope: "explicit",
     }));
-    setSettings({
+    updateAppSettings({
       customColors: rememberCustomColor(customColors, color),
+    });
+    setSettings({
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
     });
     setHighlightPickerOpen(false);
@@ -1888,6 +1895,7 @@ export function RichTextEditor({
     customHighlightColors,
     setHighlightPickerOpen,
     setSettings,
+    updateAppSettings,
   ]);
 
   const availableTextColors = editor ? explicitTextColors(editor) : [];
@@ -1981,8 +1989,10 @@ export function RichTextEditor({
     }
     pendingReportReasonRef.current = "format";
     editor.view.dispatch(transaction);
-    setSettings({
+    updateAppSettings({
       customColors: rememberCustomColor(customColors, replaceToColor),
+    });
+    setSettings({
       customTextColors: rememberCustomColor(customTextColors, replaceToColor),
     });
     closeColorReplace();
@@ -1997,11 +2007,20 @@ export function RichTextEditor({
     replaceFromColor,
     replaceToColor,
     setSettings,
+    updateAppSettings,
   ]);
 
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
-  const textColorSwatches = Array.from(new Set([...customColors, ...customTextColors]));
-  const highlightColorSwatches = Array.from(new Set([...customColors, ...customHighlightColors]));
+  const textColorSwatches = Array.from(new Set([
+    ...legacyCustomColors,
+    ...customColors,
+    ...customTextColors,
+  ]));
+  const highlightColorSwatches = Array.from(new Set([
+    ...legacyCustomColors,
+    ...customColors,
+    ...customHighlightColors,
+  ]));
 
   const effectiveSelectionRanges = additiveSelectionRanges.length
     ? additiveSelectionRanges
