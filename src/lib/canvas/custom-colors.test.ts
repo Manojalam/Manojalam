@@ -10,6 +10,7 @@ import {
   colorsUsedOnBoard,
   extractColorSwatches,
   forgetCustomColor,
+  GENERAL_COLOR_PALETTE,
   hexToHsv,
   hexToRgb,
   hsvToHex,
@@ -94,6 +95,15 @@ test("offers general bright, light, strong, neutral, and metallic swatches", () 
   assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#c0c0c0"));
   assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#2a3439"));
   assert.equal(COLOR_SWATCH_GROUPS[4].colors, METALLIC_COLORS);
+});
+
+test("offers a condensed direct palette with distinct, neutral, and metallic colors", () => {
+  assert.ok(GENERAL_COLOR_PALETTE.includes("#ffffff"));
+  assert.ok(GENERAL_COLOR_PALETTE.includes("#ff3b30"));
+  assert.ok(GENERAL_COLOR_PALETTE.includes("#16b364"));
+  assert.ok(GENERAL_COLOR_PALETTE.includes("#2878ff"));
+  assert.ok(METALLIC_COLORS.every((color) => GENERAL_COLOR_PALETTE.includes(color)));
+  assert.equal(new Set(GENERAL_COLOR_PALETTE).size, GENERAL_COLOR_PALETTE.length);
 });
 
 test("recognizes metallic swatches without treating nearby custom colors as metal", () => {

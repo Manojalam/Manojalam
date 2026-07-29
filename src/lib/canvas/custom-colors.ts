@@ -10,6 +10,14 @@ export const METALLIC_COLORS = [
   "#b76e79", "#e5e4e2", "#c0c0c0", "#71797e", "#2a3439",
 ] as const;
 
+/** Condensed palette shown directly in every color control. */
+export const GENERAL_COLOR_PALETTE = [
+  "#ffffff", "#cbd5e1", "#64748b", "#0f172a",
+  "#ff3b30", "#ff7a00", "#f5c400", "#a3d900", "#16b364",
+  "#00a88f", "#00a8e8", "#2878ff", "#6f5cff", "#e83e8c",
+  ...METALLIC_COLORS,
+] as const;
+
 const METALLIC_COLOR_SET = new Set<string>(METALLIC_COLORS);
 
 /** General-purpose swatches grouped by visual family. */

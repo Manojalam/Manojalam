@@ -9,11 +9,19 @@ import {
   colorSwatchHex,
   colorSwatchMatches,
   colorsUsedOnBoard,
+  GENERAL_COLOR_PALETTE,
   hexToRgb,
+  isMetallicColor,
 } from "@/lib/canvas/custom-colors";
+import {
+  surfaceEffectPresetPatch,
+  surfaceEffectStyle,
+} from "@/lib/canvas/surface-effects";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
+
+const HUE_SORTED_GENERAL_COLORS = arrangeColorPalette(GENERAL_COLOR_PALETTE);
 
 interface ColorSwatchPickerProps {
   value?: string;
@@ -50,10 +58,15 @@ function DirectColorOption({
   const rgb = hexToRgb(color);
   const darkForeground = !!rgb
     && (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 175;
+  const metallicStyle = isMetallicColor(color)
+    ? surfaceEffectStyle({
+        ...surfaceEffectPresetPatch("metallic"),
+        surfaceEffectDepth: 2,
+      })
+    : {};
   return (
     <button
       type="button"
-      title={selected ? `Selected color ${color}` : `Select color ${color}`}
       aria-label={selected ? `Selected color ${color}` : `Select color ${color}`}
       aria-pressed={selected}
       onPointerDown={(event) => {
@@ -65,32 +78,33 @@ function DirectColorOption({
         if (!selectionSafe || event.detail === 0) onSelect();
       }}
       className={cn(
-        "flex min-w-0 items-center gap-1.5 rounded-md border px-1.5 text-left transition-colors",
-        compact ? "h-6" : "h-7",
+        "group relative rounded-md border transition-transform hover:z-20 hover:scale-110",
+        compact ? "h-5 w-5" : "h-6 w-6",
         selected
-          ? "border-primary bg-primary/10 ring-1 ring-primary"
-          : "border-border/60 bg-background hover:border-primary/50 hover:bg-muted"
+          ? "z-10 border-white/90 ring-[3px] ring-primary ring-offset-1 ring-offset-background shadow-lg"
+          : "border-border/50"
       )}
+      style={{ backgroundColor: color, ...metallicStyle }}
     >
+      {selected && (
+        <Check
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-0 m-auto h-3 w-3",
+            darkForeground ? "text-slate-900" : "text-white"
+          )}
+          strokeWidth={3}
+        />
+      )}
       <span
+        aria-hidden="true"
         className={cn(
-          "relative flex-none rounded-sm border border-black/15 shadow-sm",
-          compact ? "h-3.5 w-3.5" : "h-4 w-4"
+          "pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 -translate-x-1/2",
+          "whitespace-nowrap rounded border border-border bg-popover px-1.5 py-0.5",
+          "font-mono text-[9px] uppercase text-popover-foreground shadow-md",
+          "opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
         )}
-        style={{ backgroundColor: color }}
       >
-        {selected && (
-          <Check
-            aria-hidden="true"
-            className={cn(
-              "absolute inset-0 m-auto h-2.5 w-2.5",
-              darkForeground ? "text-slate-900" : "text-white"
-            )}
-            strokeWidth={3}
-          />
-        )}
-      </span>
-      <span className="truncate font-mono text-[9px] uppercase text-foreground">
         {color}
       </span>
     </button>
@@ -125,7 +139,7 @@ function PaletteSection({
         </p>
         <p className="text-[8px] text-muted-foreground">{hint}</p>
       </div>
-      <div className="grid grid-cols-2 gap-1">
+      <div className="grid grid-cols-8 gap-2">
         {colors.map((color) => (
           <DirectColorOption
             key={color}
@@ -181,8 +195,19 @@ export function ColorSwatchPicker({
   return (
     <div data-app-color-picker="true" className="space-y-2" aria-label="Colors">
       <PaletteSection
+        label="General colors"
+        hint="Distinct + metallic"
+        colors={HUE_SORTED_GENERAL_COLORS}
+        value={value}
+        mixed={mixed}
+        compact={compact}
+        selectionSafe={selectionSafe}
+        onChange={onChange}
+      />
+
+      <PaletteSection
         label="Saved palette"
-        hint="Hue order · HEX"
+        hint="Hue order"
         colors={hueSortedSavedColors}
         value={value}
         mixed={mixed}
@@ -193,7 +218,7 @@ export function ColorSwatchPicker({
 
       <PaletteSection
         label="Used colors"
-        hint="This board · HEX"
+        hint="This board"
         colors={hueSortedUsedColors}
         value={value}
         mixed={mixed}
