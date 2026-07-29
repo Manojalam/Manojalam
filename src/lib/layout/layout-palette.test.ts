@@ -218,6 +218,44 @@ test("short Matrix palettes stop before neighboring rows make a large hue jump",
   }
 });
 
+test("a custom Matrix start color rotates the row flow and persists on the root", () => {
+  const { nodes, edges } = hierarchyFixture();
+  nodes[0] = {
+    ...nodes[0],
+    data: {
+      ...nodes[0].data,
+      layoutMode: "matrix",
+      layoutStartColor: "#3b82f6",
+    },
+  };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "matrix", "spectrum");
+  const rootData = styled.nodes.find((node) => node.id === "root")!.data as Record<string, unknown>;
+  const rootStyle = rootData.layoutVisualStyle as { fillGradient?: string; textColor: string };
+  const firstRowStyle = (
+    styled.nodes.find((node) => node.id === "branch-a")!.data as Record<string, unknown>
+  ).layoutVisualStyle as { fillColor: string; textColor: string };
+  const firstHue = hueFromHsl(firstRowStyle.fillColor);
+
+  assert.equal(rootData.layoutStartColor, "#3b82f6");
+  assert.match(rootStyle.fillGradient ?? "", /^linear-gradient\(100deg,/);
+  assert.equal(rootStyle.textColor, "#ffffff");
+  assert.ok(firstHue >= 216 && firstHue <= 218);
+  assert.equal(firstRowStyle.textColor, "#020617");
+});
+
+test("neutral Matrix start colors remain neutral while descendants lighten", () => {
+  const scheme = RADIAL_COLOR_SCHEMES[0];
+  const anchor = matrixRowAnchorColor(scheme, 0, 4, "#808080");
+  const parent = radialSectorColors(scheme, 0, 1, 0, 1, anchor);
+  const child = radialSectorColors(scheme, 0, 2, 0, 1, anchor);
+
+  assert.match(parent.fill, /^hsl\([\d.]+, 0\.0%, 64\.0%\)$/);
+  assert.match(child.fill, /^hsl\([\d.]+, 0\.0%, 68\.0%\)$/);
+  assert.equal(parent.text, "#020617");
+  assert.equal(child.text, "#020617");
+});
+
 function colorChannels(color: string): [number, number, number] {
   const hex = color.match(/^#([0-9a-f]{6})$/i);
   if (hex) {

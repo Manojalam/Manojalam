@@ -61,7 +61,12 @@ import { ColorSwatchPicker } from "./ColorSwatchPicker";
 import { ClearableColorInput } from "./ClearableColorInput";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
-import { RADIAL_COLOR_SCHEMES, radialColorScheme } from "@/lib/radial-layout";
+import {
+  RADIAL_COLOR_SCHEMES,
+  matrixRowAnchorColor,
+  matrixRootPaletteGradient,
+  radialColorScheme,
+} from "@/lib/radial-layout";
 import {
   legacyRadiusToPercent,
   maximumShapeTextPadding,
@@ -1269,6 +1274,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const moveSiblingNode = useCanvasStore((s) => s.moveSiblingNode);
   const applyLayout = useCanvasStore((s) => s.applyLayout);
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
+  const applyLayoutStartColor = useCanvasStore((s) => s.applyLayoutStartColor);
   const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
@@ -1521,6 +1527,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeStructuredColorScheme = radialColorScheme(
     structuredLayoutRootData.layoutColorScheme ?? structuredLayoutRootData.radialColorScheme
   ).id;
+  const activeStructuredScheme = radialColorScheme(activeStructuredColorScheme);
+  const activeLayoutStartColor = typeof structuredLayoutRootData.layoutStartColor === "string"
+    ? structuredLayoutRootData.layoutStartColor
+    : undefined;
   const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
@@ -4994,6 +5004,66 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </button>
               ))}
             </div>
+            {structuredLayoutMode === "matrix" && (
+              <div className="rounded-md border border-border bg-muted/20 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-[10px] font-medium">First child row color</Label>
+                  <span className="text-[9px] text-muted-foreground">
+                    {activeLayoutStartColor ? "Custom" : "Palette default"}
+                  </span>
+                </div>
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  Set this on the whole chart. The root summarizes the full palette; its first child row starts at this hue.
+                </p>
+                <div className="mt-2 overflow-hidden rounded border border-border/70">
+                  <span
+                    className="block h-2 w-full"
+                    aria-label="Root palette summary preview"
+                    style={{
+                      backgroundImage: matrixRootPaletteGradient(
+                        activeStructuredScheme,
+                        8,
+                        activeLayoutStartColor
+                      ),
+                    }}
+                  />
+                  <span className="flex h-4 w-full" aria-label="Automatic row color flow preview">
+                    {Array.from({ length: 8 }, (_, branchIndex) => (
+                      <span
+                        key={branchIndex}
+                        className="h-full flex-1"
+                        style={{
+                          backgroundColor: matrixRowAnchorColor(
+                            activeStructuredScheme,
+                            branchIndex,
+                            8,
+                            activeLayoutStartColor
+                          ),
+                        }}
+                      />
+                    ))}
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <ColorSwatchPicker
+                    value={activeLayoutStartColor}
+                    size="sm"
+                    onChange={(value) => {
+                      applyLayoutStartColor(structuredLayoutRootNode.id, value);
+                      toast.success("Updated the first child row color.", {
+                        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                      });
+                    }}
+                    onClear={() => {
+                      applyLayoutStartColor(structuredLayoutRootNode.id);
+                      toast.success("Restored the palette's default first-row color.", {
+                        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <Button
               type="button"
               variant="outline"

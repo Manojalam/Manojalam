@@ -88,6 +88,8 @@ export interface LayoutVisualStyle {
   depth: number;
   branchIndex: number;
   fillColor: string;
+  /** Optional generated CSS gradient layered over the automatic fill. */
+  fillGradient?: string;
   borderColor: string;
   textColor: string;
   accentColor: string;
@@ -511,6 +513,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutMode?: LayoutMode;
   /** Palette selected for non-radial hierarchy layouts. */
   layoutColorScheme?: RadialColorScheme;
+  /** Optional user-selected hue anchor for the first automatic Matrix row. */
+  layoutStartColor?: string;
   /** Generated presentation layer. Original node styling remains untouched underneath it. */
   layoutVisualStyle?: LayoutVisualStyle;
   /** Per-surface opt-outs set when a user explicitly changes a generated style. */
