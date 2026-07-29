@@ -18,15 +18,7 @@ import { useDeviceProfile } from "@/lib/use-device-profile";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui-store";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
-import type { LayoutMode } from "@/lib/layout";
-
-const IMPORT_LAYOUTS = new Set<LayoutMode>([
-  "horizontal",
-  "vertical",
-  "list",
-  "radial",
-  "matrix",
-]);
+import { isImportLayoutMode } from "@/lib/import/layouts";
 
 export default function BoardEditorPage() {
   const params = useParams();
@@ -91,18 +83,22 @@ export default function BoardEditorPage() {
       });
     };
 
-    const mode = modeValue as LayoutMode | null;
     const state = useCanvasStore.getState();
-    if (!mode || !IMPORT_LAYOUTS.has(mode) || !rootId || !state.nodes.some((node) => node.id === rootId)) {
+    if (!isImportLayoutMode(modeValue) || !rootId || !state.nodes.some((node) => node.id === rootId)) {
       cleanImportParams();
       return;
     }
+    const mode = modeValue;
 
     const frame = requestAnimationFrame(() => {
       const current = useCanvasStore.getState();
       const hierarchy = buildHierarchy(current.nodes, current.edges);
       const nodeIds = getSubtree(rootId, hierarchy);
-      if (mode === "list" || mode === "matrix") {
+      if (mode === "cards") {
+        window.dispatchEvent(new CustomEvent("vidya:fitview", {
+          detail: { mode, rootId, nodeIds, forceFit: true },
+        }));
+      } else if (mode === "list" || mode === "matrix") {
         window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
           detail: { mode, rootId, nodeIds, fitAfter: true },
         }));

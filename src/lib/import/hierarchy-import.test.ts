@@ -4,6 +4,7 @@ import { parseHTML } from "linkedom";
 import {
   hierarchyDraftToBoardContent,
   remapHierarchyForBoardInsertion,
+  restoreImportedCardHierarchyEdges,
 } from "./board";
 import {
   compactRawHierarchy,
@@ -29,6 +30,7 @@ import {
   shouldRetryDevanagariOcrLine,
   shouldUseDevanagariOcrRetry,
 } from "./raster";
+import { IMPORT_LAYOUT_OPTIONS, isImportLayoutMode } from "./layouts";
 
 const SAMPLE = `छन्दः - समवृत्तानि
 \t८ अक्षराणि अनुष्टुप्
@@ -396,6 +398,82 @@ test("converts a reviewed draft to stable board hierarchy data", () => {
   assert.match(String(shloka?.data.notes), /पञ्चमं लघु/u);
   assert.equal(shloka?.data.fontFamily, DEVANAGARI_FONT);
   assert.ok(locateDraftNode(draft.roots, shloka!.id));
+});
+
+test("Cards import creates a title and independent ordinary shapes without connectors", () => {
+  const draft = parseTextHierarchy([
+    "Grammar",
+    "\tOne",
+    "\tTwo",
+    "\tThree",
+    "\tFour",
+    "\tFive",
+    "\tSix",
+    "\tSeven",
+  ].join("\n"), "cards.txt");
+  const { content, rootId } = hierarchyDraftToBoardContent(draft, {
+    presentation: "cards",
+  });
+  const root = content.nodes.find((node) => node.id === rootId)!;
+  const cards = content.nodes.filter((node) => node.id !== rootId);
+
+  assert.equal(content.edges.length, 0);
+  assert.equal(root.type, "text");
+  assert.equal(root.data.importCardHierarchy, true);
+  assert.equal(cards.length, 7);
+  assert.ok(cards.every((node) => node.type === "shape"));
+  assert.ok(cards.every((node) => node.data.shapeType === "rounded"));
+  assert.ok(cards.every((node) => node.data.importCardHierarchy === true));
+  assert.ok(cards.every((node) => node.data.parentId === rootId));
+
+  const rows = cards.reduce<Map<number, typeof cards>>((grouped, node) => {
+    grouped.set(node.position.y, [...(grouped.get(node.position.y) ?? []), node]);
+    return grouped;
+  }, new Map());
+  assert.deepEqual([...rows.values()].map((row) => row.length), [3, 3, 1]);
+  const firstRow = [...rows.values()][0];
+  const finalRow = [...rows.values()][2];
+  assert.ok(finalRow[0].position.x > firstRow[0].position.x);
+  assert.ok(finalRow[0].position.x < firstRow[2].position.x);
+});
+
+test("Cards retain enough hierarchy metadata to restore connectors on conversion", () => {
+  const draft = parseTextHierarchy([
+    "Grammar",
+    "\tOne",
+    "\t\tDetail",
+    "\tTwo",
+  ].join("\n"), "cards.txt");
+  const { content, rootId } = hierarchyDraftToBoardContent(draft, {
+    presentation: "cards",
+  });
+  let edgeNumber = 0;
+  const restored = restoreImportedCardHierarchyEdges(
+    content.nodes,
+    content.edges,
+    new Set(content.nodes.map((node) => node.id)),
+    () => `restored-edge-${++edgeNumber}`
+  );
+  const restoredAgain = restoreImportedCardHierarchyEdges(
+    content.nodes,
+    restored,
+    new Set(content.nodes.map((node) => node.id)),
+    () => `duplicate-edge-${++edgeNumber}`
+  );
+
+  assert.equal(restored.length, content.nodes.length - 1);
+  assert.equal(restoredAgain.length, restored.length);
+  assert.ok(restored.every((edge) => edge.type === "branch"));
+  assert.ok(restored.some((edge) => edge.source === rootId));
+});
+
+test("the Import layout chooser accepts Cards as a presentation", () => {
+  assert.equal(isImportLayoutMode("cards"), true);
+  assert.equal(isImportLayoutMode("card-grid"), false);
+  assert.equal(
+    IMPORT_LAYOUT_OPTIONS.find((option) => option.mode === "cards")?.label,
+    "Cards"
+  );
 });
 
 test("remaps a reviewed hierarchy for collision-free current-board insertion", () => {
