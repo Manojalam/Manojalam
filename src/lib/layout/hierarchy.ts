@@ -147,6 +147,32 @@ export function getSubtree(rootId: string, hierarchy: Hierarchy): string[] {
   return out;
 }
 
+/**
+ * Nodes whose generated arrangement and presentation belong to one explicit
+ * layout root. A descendant with its own layoutMode starts a nested chart, so
+ * the outer layout must leave that root and its descendants to the nested
+ * engine. The outer engine may still translate the finished chart as one block.
+ */
+export function getLayoutOwnedSubtree(
+  rootId: string,
+  hierarchy: Hierarchy,
+  nodes: readonly Node[]
+): string[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const walk = (nodeId: string) => {
+    if (seen.has(nodeId)) return;
+    seen.add(nodeId);
+    const data = (byId.get(nodeId)?.data ?? {}) as Record<string, unknown>;
+    if (nodeId !== rootId && typeof data.layoutMode === "string") return;
+    out.push(nodeId);
+    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) walk(childId);
+  };
+  walk(rootId);
+  return out;
+}
+
 export function getDirectChildren(parentId: string, hierarchy: Hierarchy): string[] {
   return hierarchy.get(parentId)?.childIds ?? [];
 }

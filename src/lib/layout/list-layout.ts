@@ -3,7 +3,7 @@ import {
   nodeShapeConnectionPoint,
 } from "../canvas/shape-connection-geometry";
 import type { Hierarchy } from "./hierarchy";
-import { buildHierarchy, getSubtree } from "./hierarchy";
+import { buildHierarchy, getLayoutOwnedSubtree, getSubtree } from "./hierarchy";
 import {
   DEFAULT_CHILD_GROUP_GAP,
   resolvedFoldSections,
@@ -289,6 +289,7 @@ export function computeListLayout(
     traversal.map((entry) => [entry.nodeId, { ...byId.get(entry.nodeId)!.position }])
   );
   generated[rootId] = { ...root.position };
+  const ownedNodeIds = new Set(getLayoutOwnedSubtree(rootId, hierarchy, [...byId.values()]));
   const arranged = new Set<string>();
   const arranging = new Set<string>();
 
@@ -308,6 +309,10 @@ export function computeListLayout(
 
   const arrangeSubtree = (parentId: string): void => {
     if (arranged.has(parentId) || arranging.has(parentId)) return;
+    if (!ownedNodeIds.has(parentId)) {
+      arranged.add(parentId);
+      return;
+    }
     const parent = byId.get(parentId);
     const parentPlacement = generated[parentId];
     if (!parent || !parentPlacement) return;

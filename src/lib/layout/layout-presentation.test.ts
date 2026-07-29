@@ -91,6 +91,40 @@ test("a wide node in one List branch does not widen another branch", () => {
   assert.ok((sizes.get("long")?.width ?? 0) > (sizes.get("other-child")?.width ?? 0));
 });
 
+test("List presentation sizing stops at a nested Matrix root", () => {
+  const { nodes, edges } = fixture();
+  nodes[1] = {
+    ...nodes[1],
+    data: {
+      ...nodes[1].data,
+      layoutMode: "matrix",
+      childOrder: ["matrix-child"],
+    },
+  };
+  nodes.push({
+    id: "matrix-child",
+    type: "shape",
+    position: { x: 240, y: 180 },
+    data: {
+      text: "Matrix cell",
+      shapeType: "rounded",
+      parentId: "short",
+    },
+  });
+  edges.push({
+    id: "short-matrix-child",
+    source: "short",
+    target: "matrix-child",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const sizes = computeLayoutNodeSizes(nodes, hierarchy, "root", "list");
+
+  assert.ok(sizes.has("root"));
+  assert.ok(sizes.has("long"));
+  assert.equal(sizes.has("short"), false);
+  assert.equal(sizes.has("matrix-child"), false);
+});
+
 test("an explicit typography override wins over generated layout text size", () => {
   const { nodes, edges } = fixture();
   const hierarchy = buildHierarchy(nodes, edges);

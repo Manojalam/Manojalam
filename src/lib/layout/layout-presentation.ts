@@ -8,7 +8,7 @@ import {
   type ContentMeasurement,
 } from "../canvas/shape-fitting";
 import type { Hierarchy } from "./hierarchy";
-import { getSubtree } from "./hierarchy";
+import { getLayoutOwnedSubtree } from "./hierarchy";
 import { resolveAutoSizeMode } from "../canvas/node-sizing";
 
 const SIZED_LAYOUT_MODES = new Set<LayoutMode>([
@@ -268,8 +268,10 @@ export function computeLayoutNodeSizes(
   if (!supportsGeneratedLayoutSizing(mode)) return sizes;
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const rootDepth = hierarchy.get(rootId)?.depth ?? 0;
+  const ownedNodeIds = getLayoutOwnedSubtree(rootId, hierarchy, nodes);
+  const ownedNodeIdSet = new Set(ownedNodeIds);
 
-  for (const nodeId of getSubtree(rootId, hierarchy)) {
+  for (const nodeId of ownedNodeIds) {
     const node = byId.get(nodeId);
     if (!node) continue;
     const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
@@ -282,7 +284,7 @@ export function computeLayoutNodeSizes(
   const directBranchByNode = new Map<string, string>();
   const visited = new Set<string>();
   const assignBranch = (nodeId: string, branchId: string) => {
-    if (visited.has(nodeId)) return;
+    if (visited.has(nodeId) || !ownedNodeIdSet.has(nodeId)) return;
     visited.add(nodeId);
     directBranchByNode.set(nodeId, branchId);
     for (const childId of hierarchy.get(nodeId)?.childIds ?? []) assignBranch(childId, branchId);
