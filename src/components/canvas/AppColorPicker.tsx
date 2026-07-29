@@ -322,31 +322,6 @@ export function ColorPickerPanel({
         </div>
       </section>
 
-      {normalizedSavedColors.length > 0 && (
-        <section className="space-y-1.5" aria-label="Saved palette">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-              Saved palette
-            </p>
-            <p className="text-[8px] text-muted-foreground">Hue order · HEX</p>
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            {normalizedSavedColors.map((color) => (
-              <LabeledPaletteColor
-                key={color}
-                color={color}
-                selected={draftColor === color}
-                onSelect={() => selectSwatch(color)}
-                onRemove={onRemoveSavedColor
-                  ? () => onRemoveSavedColor(color)
-                  : undefined}
-                selectionSafe={selectionSafe}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
       {usedColors.length > 0 && (
         <section className="space-y-1.5" aria-label="Used colors">
           <div className="flex items-center justify-between gap-2">
