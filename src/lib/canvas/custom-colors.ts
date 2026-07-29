@@ -1,5 +1,7 @@
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 const DEFAULT_COLOR_INPUT_VALUE = "#000000";
+const EMBEDDED_COLOR_PATTERN = /#[0-9a-f]{6}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/gi;
+const MAX_COLOR_SOURCE_LENGTH = 50_000;
 
 export const MAX_CUSTOM_COLORS = 18;
 
@@ -241,6 +243,70 @@ export function colorSwatchHex(value: unknown): string | null {
   const lightness = Number(hsl[3]);
   if (![hue, saturation, lightness].every(Number.isFinite)) return null;
   return rgbToHex(hslToRgbColor(hue, saturation, lightness));
+}
+
+/** Find CSS colors embedded in rich text, gradients, and other style strings. */
+export function extractColorSwatches(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  const direct = colorSwatchHex(value);
+  if (direct) return [direct];
+  if (!value || value.length > MAX_COLOR_SOURCE_LENGTH) return [];
+
+  const colors: string[] = [];
+  for (const match of value.matchAll(EMBEDDED_COLOR_PATTERN)) {
+    const color = colorSwatchHex(match[0]);
+    if (color && !colors.includes(color)) colors.push(color);
+  }
+  return colors;
+}
+
+function collectColorValues(
+  value: unknown,
+  colors: string[],
+  visited: WeakSet<object>
+) {
+  if (typeof value === "string") {
+    for (const color of extractColorSwatches(value)) {
+      if (!colors.includes(color)) colors.push(color);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object" || visited.has(value)) return;
+  visited.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectColorValues(entry, colors, visited));
+    return;
+  }
+  Object.values(value).forEach((entry) => collectColorValues(entry, colors, visited));
+}
+
+/**
+ * Return every color actually present in the current board snapshot.
+ * Results are cached by the immutable node/edge array references so every
+ * visible picker can share the same traversal.
+ */
+const boardUsedColorCache = new WeakMap<
+  readonly unknown[],
+  WeakMap<readonly unknown[], string[]>
+>();
+
+export function colorsUsedOnBoard(
+  nodes: readonly unknown[],
+  edges: readonly unknown[]
+): string[] {
+  const cachedByEdges = boardUsedColorCache.get(nodes);
+  const cached = cachedByEdges?.get(edges);
+  if (cached) return cached;
+
+  const colors: string[] = [];
+  const visited = new WeakSet<object>();
+  collectColorValues(nodes, colors, visited);
+  collectColorValues(edges, colors, visited);
+  const arranged = arrangeColorPalette(colors);
+  const edgeCache = cachedByEdges ?? new WeakMap<readonly unknown[], string[]>();
+  edgeCache.set(edges, arranged);
+  if (!cachedByEdges) boardUsedColorCache.set(nodes, edgeCache);
+  return arranged;
 }
 
 /** Compare picker values without letting CSS syntax differences hide the selection marker. */
