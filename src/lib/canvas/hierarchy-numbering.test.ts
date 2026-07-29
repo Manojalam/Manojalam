@@ -4,6 +4,7 @@ import type { Edge, Node } from "@xyflow/react";
 import {
   hierarchyNumberForNode,
   hierarchyNumberMap,
+  migrateLegacyHierarchyNumberingScopes,
 } from "./hierarchy-numbering";
 
 function node(
@@ -22,12 +23,20 @@ function node(
   };
 }
 
-test("numbers roots, siblings, and descendants from persisted hierarchy order", () => {
+test("numbers only the layout diagram whose root enables a scope", () => {
   const nodes = [
-    node("root", 0, 0, { childOrder: ["second", "first"] }),
+    node("root", 0, 0, {
+      hierarchicalNumbering: true,
+      childOrder: ["second", "first"],
+    }),
     node("first", 0, 100, { parentId: "root" }),
-    node("second", 150, 100, { parentId: "root" }),
+    node("second", 150, 100, {
+      parentId: "root",
+      childOrder: ["grandchild"],
+    }),
     node("grandchild", 150, 200, { parentId: "second" }),
+    node("other-root", 400, 0, { childOrder: ["other-child"] }),
+    node("other-child", 400, 100, { parentId: "other-root" }),
   ];
 
   assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), {
@@ -38,47 +47,117 @@ test("numbers roots, siblings, and descendants from persisted hierarchy order", 
   });
 });
 
-test("uses directed edges as hierarchy fallback and orders separate roots by position", () => {
+test("separate numbered layout diagrams each restart at 1", () => {
   const nodes = [
-    node("lower-root", 0, 300),
-    node("upper-root", 0, 0),
-    node("child", 0, 100),
+    node("first-root", 0, 0, {
+      hierarchicalNumbering: true,
+      childOrder: ["first-child"],
+    }),
+    node("first-child", 0, 100, { parentId: "first-root" }),
+    node("second-root", 300, 0, {
+      hierarchicalNumbering: true,
+      childOrder: ["second-child"],
+    }),
+    node("second-child", 300, 100, { parentId: "second-root" }),
   ];
-  const edges: Edge[] = [{ id: "edge", source: "upper-root", target: "child" }];
 
-  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, edges)), {
-    "upper-root": "1",
-    child: "1.1",
-    "lower-root": "2",
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), {
+    "first-root": "1",
+    "first-child": "1.1",
+    "second-root": "1",
+    "second-child": "1.1",
   });
 });
 
-test("simple numbers restart for every sibling group", () => {
+test("an inner branch can be numbered without numbering its outer diagram", () => {
   const nodes = [
-    node("root-a", 0, 0, { childOrder: ["a-1", "a-2"] }),
-    node("a-1", 0, 100, { parentId: "root-a", childOrder: ["a-1-1", "a-1-2"] }),
-    node("a-2", 100, 100, { parentId: "root-a" }),
-    node("a-1-1", 0, 200, { parentId: "a-1" }),
-    node("a-1-2", 100, 200, { parentId: "a-1" }),
-    node("root-b", 0, 300),
+    node("outer-root", 0, 0, { childOrder: ["inner", "outer-sibling"] }),
+    node("inner", 0, 100, {
+      parentId: "outer-root",
+      hierarchicalNumbering: true,
+      childOrder: ["inner-child"],
+    }),
+    node("inner-child", 0, 200, { parentId: "inner" }),
+    node("outer-sibling", 150, 100, { parentId: "outer-root" }),
   ];
 
-  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [], "sibling")), {
-    "root-a": "1",
-    "a-1": "1",
-    "a-1-1": "1",
-    "a-1-2": "2",
-    "a-2": "2",
-    "root-b": "2",
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), {
+    inner: "1",
+    "inner-child": "1.1",
+  });
+});
+
+test("a nested scope restarts and overrides inherited numbers in its subtree", () => {
+  const nodes = [
+    node("root", 0, 0, {
+      hierarchicalNumbering: true,
+      childOrder: ["sibling", "inner"],
+    }),
+    node("sibling", 0, 100, { parentId: "root" }),
+    node("inner", 150, 100, {
+      parentId: "root",
+      hierarchicalNumbering: true,
+      childOrder: ["inner-child"],
+    }),
+    node("inner-child", 150, 200, { parentId: "inner" }),
+  ];
+
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), {
+    root: "1",
+    sibling: "1.1",
+    inner: "1",
+    "inner-child": "1.1",
+  });
+});
+
+test("simple numbers restart for every sibling group inside their scope", () => {
+  const nodes = [
+    node("root", 0, 0, {
+      hierarchicalNumbering: true,
+      hierarchicalNumberingFormat: "sibling",
+      childOrder: ["first", "second"],
+    }),
+    node("first", 0, 100, {
+      parentId: "root",
+      childOrder: ["first-child", "second-child"],
+    }),
+    node("second", 100, 100, { parentId: "root" }),
+    node("first-child", 0, 200, { parentId: "first" }),
+    node("second-child", 100, 200, { parentId: "first" }),
+  ];
+
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), {
+    root: "1",
+    first: "1",
+    "first-child": "1",
+    "second-child": "2",
+    second: "2",
+  });
+});
+
+test("uses directed edges as a hierarchy fallback inside a branch scope", () => {
+  const nodes = [
+    node("root", 0, 0, { hierarchicalNumbering: true }),
+    node("child", 0, 100),
+    node("unrelated", 300, 0),
+  ];
+  const edges: Edge[] = [{ id: "edge", source: "root", target: "child" }];
+
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, edges)), {
+    root: "1",
+    child: "1.1",
   });
 });
 
 test("ignores generated canvas objects and attached notes", () => {
   const nodes = [
-    node("frame", -200, -200, {}, "frame"),
-    node("chart", -100, -100, {}, "sunburst"),
-    node("note", 0, -50, { externalNote: true }, "text"),
-    node("root", 0, 0),
+    node("frame", -200, -200, { hierarchicalNumbering: true }, "frame"),
+    node("chart", -100, -100, { hierarchicalNumbering: true }, "sunburst"),
+    node("note", 0, -50, {
+      externalNote: true,
+      hierarchicalNumbering: true,
+    }, "text"),
+    node("root", 0, 0, { hierarchicalNumbering: true }),
   ];
 
   assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), { root: "1" });
@@ -86,7 +165,10 @@ test("ignores generated canvas objects and attached notes", () => {
 
 test("hidden badges preserve structural ordinals for later siblings and descendants", () => {
   const nodes = [
-    node("root", 0, 0, { childOrder: ["first", "hidden", "third"] }),
+    node("root", 0, 0, {
+      hierarchicalNumbering: true,
+      childOrder: ["first", "hidden", "third"],
+    }),
     node("first", 0, 100, { parentId: "root" }),
     node("hidden", 100, 100, {
       parentId: "root",
@@ -107,6 +189,7 @@ test("hidden badges preserve structural ordinals for later siblings and descenda
 
 test("deriving display numbers never mutates authored text or rich text", () => {
   const authored = node("root", 0, 0, {
+    hierarchicalNumbering: true,
     text: "Topic",
     richText: '<p style="text-align: center">Topic</p>',
   });
@@ -117,4 +200,28 @@ test("deriving display numbers never mutates authored text or rich text", () => 
   assert.deepEqual(authored.data, originalData);
   assert.equal(authored.data.text, "Topic");
   assert.equal(authored.data.richText, '<p style="text-align: center">Topic</p>');
+});
+
+test("migrates a legacy board-wide setting to one scope per layout diagram", () => {
+  const nodes = [
+    node("first-root", 0, 0, { childOrder: ["first-child"] }),
+    node("first-child", 0, 100, { parentId: "first-root" }),
+    node("second-root", 300, 0, { childOrder: ["second-child"] }),
+    node("second-child", 300, 100, { parentId: "second-root" }),
+    node("standalone", 600, 0),
+  ];
+  const migrated = migrateLegacyHierarchyNumberingScopes(nodes, [], true, "sibling");
+  const migratedById = new Map(migrated.map((entry) => [entry.id, entry]));
+
+  assert.equal(migratedById.get("first-root")?.data.hierarchicalNumbering, true);
+  assert.equal(migratedById.get("first-root")?.data.hierarchicalNumberingFormat, "sibling");
+  assert.equal(migratedById.get("second-root")?.data.hierarchicalNumbering, true);
+  assert.equal(migratedById.get("standalone")?.data.hierarchicalNumbering, undefined);
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(migrated, [])), {
+    "first-root": "1",
+    "first-child": "1",
+    "second-root": "1",
+    "second-child": "1",
+  });
+  assert.equal(nodes[0].data.hierarchicalNumbering, undefined);
 });

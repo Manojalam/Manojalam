@@ -324,12 +324,8 @@ function VidyaCanvasInner({
   }, [getViewport, zoomTo]);
 
   const numberedNodes = useMemo(() => {
-    if (settings.hierarchicalNumbering !== true) return nodes;
-    const numbers = hierarchyNumberMap(
-      nodes,
-      edges,
-      settings.hierarchicalNumberingFormat ?? "outline"
-    );
+    const numbers = hierarchyNumberMap(nodes, edges);
+    if (!numbers.size) return nodes;
     return nodes.map((node) => {
       const hierarchyNumber = hierarchyNumberForNode(node, numbers);
       if (!hierarchyNumber) return node;
@@ -341,12 +337,7 @@ function VidyaCanvasInner({
         },
       };
     });
-  }, [
-    edges,
-    nodes,
-    settings.hierarchicalNumbering,
-    settings.hierarchicalNumberingFormat,
-  ]);
+  }, [edges, nodes]);
 
   const displayNodes = useMemo(() => {
     if (!canEdit) {

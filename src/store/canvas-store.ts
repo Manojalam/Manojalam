@@ -94,6 +94,7 @@ import {
   type ManojalamClipboardPayload,
 } from "@/lib/canvas/clipboard";
 import { mergeCustomColors, normalizeCustomColors } from "@/lib/canvas/custom-colors";
+import { migrateLegacyHierarchyNumberingScopes } from "@/lib/canvas/hierarchy-numbering";
 import {
   resolveHydratedSunburstGeometry,
   viewportsEqual,
@@ -1908,6 +1909,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setBoard: (board) => {
     cancelPendingLayoutReflows();
+    const rawSettings = board.content.settings ?? DEFAULT_BOARD_SETTINGS;
     const persistedNodes = normalizePersistedNodes(board.content.nodes);
     const persistedEdges = normalizePersistedEdges(board.content.edges);
     const migrated = migrateNodes(persistedNodes);
@@ -1949,8 +1951,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       buildHierarchy(listRootPositionedNodes, normalizedHierarchyEdges)
     );
     const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, normalizedHierarchyEdges);
-    const nodes = styledBoard.nodes;
     const edges = styledBoard.edges;
+    const nodes = migrateLegacyHierarchyNumberingScopes(
+      styledBoard.nodes,
+      edges,
+      rawSettings.hierarchicalNumbering === true,
+      rawSettings.hierarchicalNumberingFormat === "sibling" ? "sibling" : "outline"
+    );
     const { relationships, relationshipFans } = normalizeRelationshipState(
       nodes,
       board.content.relationships,
@@ -1962,7 +1969,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const structuralMigrationRequired =
       JSON.stringify(board.content.nodes ?? []) !== JSON.stringify(nodes)
       || JSON.stringify(board.content.edges ?? []) !== JSON.stringify(edges);
-    const rawSettings = board.content.settings ?? DEFAULT_BOARD_SETTINGS;
     const canvasBackgroundMode = resolveBoardColorMode(
       rawSettings.canvasBackgroundColor,
       rawSettings.canvasBackgroundMode,
@@ -2003,6 +2009,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       canvasTexture: normalizeBoardTexture(rawSettings.canvasTexture),
       gridColorMode,
       gridColor: normalizeBoardColorOverride(rawSettings.gridColor, "grid", gridColorMode),
+      hierarchicalNumbering: false,
+      hierarchicalNumberingFormat: "outline",
     };
     const settingsMigrationRequired = JSON.stringify(rawSettings) !== JSON.stringify(settings);
     const normalizedBoard: VidyaBoard = {
