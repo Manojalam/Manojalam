@@ -884,7 +884,7 @@ function SurfaceEffectsControl({
               onClick={() => onPreset(preset.id)}
             >
               <span
-                className="block h-4 w-8 rounded-[5px] border border-current bg-muted"
+                className="block h-5 w-10 rounded-[5px] border border-current bg-muted"
                 style={surfaceEffectStyle(surfaceEffectPresetPatch(preset.id), "#6366f1")}
               />
               {preset.label}

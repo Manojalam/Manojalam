@@ -37,8 +37,22 @@ test("raised surfaces combine directional depth and an inner highlight", () => {
   const style = surfaceEffectStyle(surfaceEffectPresetPatch("raised"));
 
   assert.match(style.backgroundImage ?? "", /linear-gradient/);
-  assert.match(style.boxShadow ?? "", /inset 0 1px 0/);
+  assert.equal((style.boxShadow ?? "").split("inset").length - 1, 2);
+  assert.match(style.boxShadow ?? "", /1\.84px 1\.84px 0 rgba\(2,6,23/);
   assert.match(style.boxShadow ?? "", /rgba\(2,6,23/);
+});
+
+test("maximum left projection keeps direction-aware inner edges visible", () => {
+  const style = surfaceEffectStyle({
+    surfaceEffect: "raised",
+    surfaceEffectDepth: 24,
+    surfaceEffectStrength: 100,
+    surfaceEffectAngle: 180,
+  });
+
+  assert.match(style.boxShadow ?? "", /inset -4px 0px 5\.2px rgba\(255,255,255/);
+  assert.match(style.boxShadow ?? "", /inset 4px 0px 5\.72px rgba\(2,6,23/);
+  assert.match(style.boxShadow ?? "", /-6\.25px 0px 0 rgba\(2,6,23/);
 });
 
 test("metallic surfaces use alternating specular bands and sculpted edges", () => {
@@ -77,7 +91,7 @@ test("exported soft effects leave outer depth to the native SVG layer", () => {
 test("exported raised effects preserve inset lighting without the outer shadow layer", () => {
   const style = surfaceEffectExportStyle(surfaceEffectPresetPatch("raised"));
 
-  assert.match(style.boxShadow ?? "", /inset 0 1px 0/);
+  assert.match(style.boxShadow ?? "", /inset 1\.56px 1\.56px/);
   assert.equal((style.boxShadow ?? "").split("inset").length - 1, 2);
 });
 
@@ -91,13 +105,22 @@ test("exported glow effects keep only the inner glow on the HTML surface", () =>
 test("native export shadow layers preserve directional depth without HTML filters", () => {
   assert.deepEqual(
     surfaceEffectExportShadowLayers(surfaceEffectPresetPatch("raised")),
-    [{
-      dx: 4.38,
-      dy: 4.38,
-      blur: 6.51,
-      color: "#020617",
-      opacity: 0.26,
-    }]
+    [
+      {
+        dx: 1.84,
+        dy: 1.84,
+        blur: 0.8,
+        color: "#020617",
+        opacity: 0.32,
+      },
+      {
+        dx: 4.38,
+        dy: 4.38,
+        blur: 6.51,
+        color: "#020617",
+        opacity: 0.26,
+      },
+    ]
   );
 });
 

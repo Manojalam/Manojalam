@@ -32,7 +32,7 @@ export const SURFACE_EFFECT_PRESETS: ReadonlyArray<{
 }> = [
   { id: "flat", label: "Flat", description: "Clean, print-like surface", depth: 0, strength: 0, angle: 45 },
   { id: "soft", label: "Soft", description: "Gentle floating shadow", depth: 7, strength: 34, angle: 45 },
-  { id: "raised", label: "Raised", description: "Layered card with directional depth", depth: 10, strength: 56, angle: 45 },
+  { id: "raised", label: "Raised", description: "Projected card with a contact edge and directional depth", depth: 10, strength: 56, angle: 45 },
   { id: "bevel", label: "Bevel", description: "Sculpted inner highlight and edge", depth: 6, strength: 62, angle: 45 },
   { id: "glass", label: "Glass", description: "Glossy highlight with soft depth", depth: 8, strength: 44, angle: 45 },
   { id: "metallic", label: "Metal", description: "Polished directional bands with a specular edge", depth: 6, strength: 72, angle: 20 },
@@ -125,13 +125,23 @@ export function surfaceEffectStyle(
   }
 
   if (settings.preset === "raised") {
+    const edgeDepth = rounded(clamp(settings.depth * 0.22, 1.5, 4));
+    const distance = Math.max(0.001, Math.hypot(dx, dy));
+    const edgeX = rounded(dx / distance * edgeDepth);
+    const edgeY = rounded(dy / distance * edgeDepth);
+    const edgeBlur = rounded(edgeDepth * 1.3);
+    const contactX = rounded(dx * 0.42);
+    const contactY = rounded(dy * 0.42);
+    const contactShade = rgba(2, 6, 23, 0.14 + strength * 0.32);
+    const raisedShade = rgba(2, 6, 23, 0.1 + strength * 0.32);
     return {
-      backgroundImage: `linear-gradient(${gradientAngle}deg, ${highlight} 0%, transparent 42%, ${shade} 100%)`,
+      backgroundImage: `linear-gradient(${gradientAngle}deg, ${highlight} 0%, ${rgba(255, 255, 255, 0.04 + strength * 0.12)} 18%, transparent 48%, ${raisedShade} 100%)`,
       backgroundBlendMode: "soft-light",
       boxShadow: [
+        `inset ${edgeX}px ${edgeY}px ${edgeBlur}px ${highlight}`,
+        `inset ${-edgeX}px ${-edgeY}px ${rounded(edgeBlur * 1.1)}px ${raisedShade}`,
+        `${contactX}px ${contactY}px 0 ${contactShade}`,
         `${dx}px ${dy}px ${blur}px ${dark}`,
-        `inset 0 1px 0 ${highlight}`,
-        `inset 0 -1px 0 ${shade}`,
       ].join(","),
     };
   }
@@ -236,6 +246,25 @@ export function surfaceEffectExportShadowLayers(
         blur: rounded(blur),
         color: surfaceEffectAccentColor(accentColor),
         opacity: rounded(clamp(0.12 + strength * 0.25, 0, 1)),
+      },
+    ];
+  }
+
+  if (settings.preset === "raised") {
+    return [
+      {
+        dx: rounded(dx * 0.42),
+        dy: rounded(dy * 0.42),
+        blur: rounded(Math.max(0.5, settings.depth * 0.08)),
+        color: "#020617",
+        opacity: rounded(clamp(0.14 + strength * 0.32, 0, 1)),
+      },
+      {
+        dx,
+        dy,
+        blur: rounded(Math.max(1, blur * 0.42)),
+        color: "#020617",
+        opacity: rounded(clamp(0.08 + strength * 0.32, 0, 1)),
       },
     ];
   }
