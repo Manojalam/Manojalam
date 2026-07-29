@@ -384,6 +384,52 @@ test("an opted-in Sanskrit Matrix packs compact sibling sets into rows", () => {
   assertClean(result);
 });
 
+test("an imported-style Matrix balances a large terminal group across readable rows", () => {
+  const { nodes, edges } = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      text: "छन्दः",
+      packCompactGroups: true,
+      incompleteRowMode: "empty",
+      compositionMode: "oriented",
+    },
+    { id: "meters", parentId: "root", text: "समवृत्तानि" },
+    { id: "eleven", parentId: "meters", text: "११ अक्षराणि" },
+    ...Array.from({ length: 18 }, (_, index) => ({
+      id: `metre-${index}`,
+      parentId: "eleven",
+      text: index % 2 === 0 ? `वृत्तम् ${index + 1}` : `Metre ${index + 1}`,
+    })),
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const metreCells = Array.from(
+    { length: 18 },
+    (_, index) => result.cells.find((cell) => cell.nodeId === `metre-${index}`)!
+  );
+  const visualRows = new Map<number, typeof metreCells>();
+  for (const cell of metreCells) {
+    const rowY = Math.round(cell.y * 2) / 2;
+    visualRows.set(rowY, [...(visualRows.get(rowY) ?? []), cell]);
+  }
+  const rowSizes = [...visualRows.values()]
+    .sort((first, second) => first[0].y - second[0].y)
+    .map((row) => row.length);
+
+  assert.deepEqual(rowSizes, [5, 5, 4, 4]);
+  assert.equal(result.emptyCells.length, 2);
+  assert.ok(metreCells.every(
+    (cell) => cell.height >= MATRIX_DENSITY_SETTINGS.comfortable.minRowHeight
+  ));
+  assert.ok(result.bounds.width > result.bounds.height);
+  assertClean(result);
+});
+
 test("incomplete compact rows can preserve a generated empty trailing cell", () => {
   const specs: TreeNode[] = [
     {
@@ -862,9 +908,9 @@ test("a large Sanskrit Matrix does not change layout algorithms without opt-in",
 });
 
 test("Matrix presentation keeps rounded shapes inside a flat table grid", () => {
-  assert.equal(matrixCellBorderRadius("header"), 24);
-  assert.equal(matrixCellBorderRadius("category"), 20);
-  assert.equal(matrixCellBorderRadius("cell"), 18);
+  assert.equal(matrixCellBorderRadius("header"), 8);
+  assert.equal(matrixCellBorderRadius("category"), 6);
+  assert.equal(matrixCellBorderRadius("cell"), 4);
   assert.equal(MATRIX_GRID_STROKE_WIDTH, 1);
   assert.equal(MATRIX_GRID_RADIUS, 4);
   assert.equal(matrixCellDivisionPadding("compact"), 3);

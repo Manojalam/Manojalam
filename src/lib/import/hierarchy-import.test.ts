@@ -400,6 +400,35 @@ test("converts a reviewed draft to stable board hierarchy data", () => {
   assert.ok(locateDraftNode(draft.roots, shloka!.id));
 });
 
+test("a Matrix import starts with balanced, readable table presentation settings", () => {
+  const draft = parseTextHierarchy([
+    "छन्दः",
+    "\tसमवृत्तानि",
+    "\t\t११ अक्षराणि",
+    "\t\t\tइन्द्रवज्रा",
+    "\t\t\tउपेन्द्रवज्रा",
+    "\t\t\tउपजातिः",
+    "\t\t\tरथोद्धता",
+    "\t\t\tस्वागता",
+    "\t\t\tदोधकम्",
+    "\t\t\tशालिनी",
+    "\t\t\tMetre",
+    "\t\t\tExample",
+  ].join("\n"), "छन्दः.txt");
+  const { content, rootId } = hierarchyDraftToBoardContent(draft, {
+    initialLayout: "matrix",
+  });
+  const root = content.nodes.find((node) => node.id === rootId)!;
+  const data = root.data as Record<string, unknown>;
+
+  assert.equal(data.layoutMode, "matrix");
+  assert.equal(data.matrixCompositionMode, "oriented");
+  assert.equal(data.matrixPackCompactGroups, true);
+  assert.equal(data.matrixIncompleteRowMode, "empty");
+  assert.equal(data.matrixDensity, "comfortable");
+  assert.equal(data.matrixDensityUserSet, true);
+});
+
 test("Cards import creates a title and independent ordinary shapes without connectors", () => {
   const draft = parseTextHierarchy([
     "Grammar",

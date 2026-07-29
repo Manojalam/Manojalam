@@ -5263,9 +5263,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
-                <p className="text-[10px] font-medium text-foreground">Pack compact letter groups</p>
+                <p className="text-[10px] font-medium text-foreground">Pack compact terminal groups</p>
                 <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                  Place short Devanagari terminal groups in rows on this Matrix only.
+                  Wrap short terminal siblings into balanced rows on this Matrix only.
                 </p>
               </div>
               <Switch
@@ -5279,7 +5279,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
                   })));
                 }}
-                aria-label="Pack compact letter groups in this Matrix"
+                aria-label="Pack compact terminal groups in this Matrix"
               />
             </div>
             <div className="mb-2 rounded-md border border-border/70 bg-muted/35 p-2">

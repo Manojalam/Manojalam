@@ -3,6 +3,7 @@ import { BOARD_CONTENT_VERSION } from "../config";
 import {
   DEFAULT_BOARD_SETTINGS,
   type BoardContent,
+  type LayoutMode,
   type ShapeType,
 } from "../types";
 import { generateId } from "../utils";
@@ -35,6 +36,7 @@ export type HierarchyBoardPresentation = "hierarchy" | "cards";
 export interface HierarchyBoardContentOptions {
   presentation?: HierarchyBoardPresentation;
   cardShapeType?: ShapeType;
+  initialLayout?: LayoutMode;
 }
 
 export const IMPORT_CARD_COLUMNS = 3;
@@ -300,6 +302,7 @@ export function hierarchyDraftToBoardContent(
   ): void => {
     const scriptMode = scriptModeForText(`${node.label}\n${node.notes}`);
     const childOrder = node.children.map((child) => child.id);
+    const importedMatrixRoot = depth === 0 && options.initialLayout === "matrix";
     nodes.push({
       id: node.id,
       type: "mindmap",
@@ -320,6 +323,16 @@ export function hierarchyDraftToBoardContent(
         parentId,
         childOrder,
         autoSizeMode: "smart",
+        ...(importedMatrixRoot
+          ? {
+              layoutMode: "matrix" as const,
+              matrixCompositionMode: "oriented" as const,
+              matrixPackCompactGroups: true,
+              matrixIncompleteRowMode: "empty" as const,
+              matrixDensity: "comfortable" as const,
+              matrixDensityUserSet: true,
+            }
+          : {}),
       },
       style: {
         width: depth === 0 ? 240 : 210,
