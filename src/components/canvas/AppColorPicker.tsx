@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Check, X } from "lucide-react";
 
+import { CollapsibleColorSection } from "@/components/canvas/CollapsibleColorSection";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   arrangeColorPalette,
@@ -290,46 +291,39 @@ export function ColorPickerPanel({
         </div>
       )}
 
-      <section className="space-y-1.5" aria-label="General colors">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-            General colors
-          </p>
-          <p className="text-[8px] text-muted-foreground">
-            Distinct, neutral + metallic
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          {COLOR_SWATCH_GROUPS.map((group) => (
-            <section key={group.name} className="grid grid-cols-[2.5rem_1fr] items-center gap-1.5">
-              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-                {group.name}
-              </p>
-              <div className="grid grid-cols-10 gap-1">
-                {group.colors.map((color) => (
-                  <ColorSwatch
-                    key={color}
-                    color={color}
-                    selected={draftColor === color}
-                    title={`${group.name} · ${color}`}
-                    onSelect={() => selectSwatch(color)}
-                    selectionSafe={selectionSafe}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      </section>
+      <CollapsibleColorSection
+        label="General colors"
+        hint="Distinct, neutral + metallic"
+        preserveCurrentFocus={selectionSafe}
+        contentClassName="space-y-1.5"
+      >
+        {COLOR_SWATCH_GROUPS.map((group) => (
+          <section key={group.name} className="grid grid-cols-[2.5rem_1fr] items-center gap-1.5">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+              {group.name}
+            </p>
+            <div className="grid grid-cols-10 gap-1">
+              {group.colors.map((color) => (
+                <ColorSwatch
+                  key={color}
+                  color={color}
+                  selected={draftColor === color}
+                  title={`${group.name} · ${color}`}
+                  onSelect={() => selectSwatch(color)}
+                  selectionSafe={selectionSafe}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </CollapsibleColorSection>
 
       {usedColors.length > 0 && (
-        <section className="space-y-1.5" aria-label="Used colors">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-              Used colors
-            </p>
-            <p className="text-[8px] text-muted-foreground">This board · HEX</p>
-          </div>
+        <CollapsibleColorSection
+          label="Used colors"
+          hint="This board · HEX"
+          preserveCurrentFocus={selectionSafe}
+        >
           <div className="grid grid-cols-2 gap-1">
             {usedColors.map((color) => (
               <LabeledPaletteColor
@@ -341,7 +335,7 @@ export function ColorPickerPanel({
               />
             ))}
           </div>
-        </section>
+        </CollapsibleColorSection>
       )}
 
       <section className="space-y-2" aria-label="Custom color">

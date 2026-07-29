@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Check, X } from "lucide-react";
 
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
+import { CollapsibleColorSection } from "@/components/canvas/CollapsibleColorSection";
 import {
   arrangeColorPalette,
   colorSwatchHex,
@@ -167,13 +168,11 @@ function PaletteSection({
 }) {
   if (!colors.length) return null;
   return (
-    <section className="space-y-1.5" aria-label={label}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-        <p className="text-[8px] text-muted-foreground">{hint}</p>
-      </div>
+    <CollapsibleColorSection
+      label={label}
+      hint={hint}
+      preserveCurrentFocus={selectionSafe}
+    >
       <div className="grid grid-cols-8 gap-2">
         {colors.map((color) => (
           <DirectColorOption
@@ -188,7 +187,7 @@ function PaletteSection({
           />
         ))}
       </div>
-    </section>
+    </CollapsibleColorSection>
   );
 }
 
