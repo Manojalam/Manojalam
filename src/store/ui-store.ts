@@ -85,7 +85,6 @@ interface UIState {
   aiPanelOpen: boolean;
   setAiPanelOpen: (open: boolean) => void;
   appSettings: AppSettings;
-  appSettingsLoaded: boolean;
   updateAppSettings: (partial: Partial<AppSettings>) => void;
   loadAppSettings: () => void;
 }
@@ -209,7 +208,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   aiPanelOpen: false,
   setAiPanelOpen: (open) => set({ aiPanelOpen: open }),
   appSettings: { ...DEFAULT_APP_SETTINGS },
-  appSettingsLoaded: false,
   updateAppSettings: (partial) => {
     const settings = normalizeAppSettings({ ...get().appSettings, ...partial });
     localStorage.setItem(LOCAL_STORAGE_KEYS.settings, JSON.stringify(settings));
@@ -219,11 +217,10 @@ export const useUIStore = create<UIState>((set, get) => ({
     try {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEYS.settings);
       const settings = normalizeAppSettings(raw ? JSON.parse(raw) : undefined);
-      set({ appSettings: settings, appSettingsLoaded: true, theme: settings.theme });
+      set({ appSettings: settings, theme: settings.theme });
     } catch {
       set({
         appSettings: { ...DEFAULT_APP_SETTINGS },
-        appSettingsLoaded: true,
         theme: DEFAULT_APP_SETTINGS.theme,
       });
     }

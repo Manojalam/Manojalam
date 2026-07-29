@@ -283,3 +283,9 @@ export function rememberCustomColor(value: unknown, color: string): string[] {
     normalized,
   ].slice(-MAX_CUSTOM_COLORS);
 }
+
+export function forgetCustomColor(value: unknown, color: string): string[] {
+  const normalized = normalizeHexColor(color);
+  if (!normalized) return normalizeCustomColors(value);
+  return normalizeCustomColors(value).filter((candidate) => candidate !== normalized);
+}

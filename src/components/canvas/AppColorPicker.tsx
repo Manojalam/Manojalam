@@ -13,6 +13,7 @@ import { Check, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   COLOR_SWATCH_GROUPS,
+  forgetCustomColor,
   hexToHsv,
   hexToRgb,
   hsvToHex,
@@ -34,6 +35,9 @@ interface ColorPickerPanelProps {
   value?: string;
   onChange: (color: string) => void;
   extraColors?: string[];
+  savedColors?: string[];
+  onSaveColor?: (color: string) => void;
+  onRemoveSavedColor?: (color: string) => void;
   className?: string;
   showHeading?: boolean;
   onCancel?: () => void;
@@ -97,11 +101,65 @@ function ColorSwatch({
   );
 }
 
+function SavedColorSwatch({
+  color,
+  selected,
+  onSelect,
+  onRemove,
+  selectionSafe,
+}: {
+  color: string;
+  selected: boolean;
+  onSelect: () => void;
+  onRemove?: () => void;
+  selectionSafe: boolean;
+}) {
+  return (
+    <span className="group relative h-5 w-5">
+      <ColorSwatch
+        color={color}
+        selected={selected}
+        title={`Site palette · ${color}`}
+        onSelect={onSelect}
+        selectionSafe={selectionSafe}
+      />
+      {onRemove && (
+        <button
+          type="button"
+          title={`Remove ${color} from the site palette`}
+          aria-label={`Remove ${color} from the site palette`}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            if (!event.isPrimary || event.button !== 0) return;
+            event.preventDefault();
+            onRemove();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.detail === 0) onRemove();
+          }}
+          className={cn(
+            "absolute -right-1.5 -top-1.5 z-20 flex h-3.5 w-3.5 items-center justify-center",
+            "rounded-full border border-border bg-background text-muted-foreground shadow-sm",
+            "opacity-75 transition-opacity hover:text-destructive hover:opacity-100",
+            "focus-visible:opacity-100"
+          )}
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** The shared palette body used by popovers and rich-text toolbar color menus. */
 export function ColorPickerPanel({
   value,
   onChange,
   extraColors = [],
+  savedColors = [],
+  onSaveColor,
+  onRemoveSavedColor,
   className,
   showHeading = true,
   onCancel,
@@ -118,10 +176,20 @@ export function ColorPickerPanel({
   const [hexDraft, setHexDraft] = useState(initialColor);
   const draftColor = hsvToHex({ h: hue, s: saturation, v: brightness });
   const draftRgb = hexToRgb(draftColor) ?? { r: 40, g: 120, b: 255 };
-  const recentColors = useMemo(
-    () => Array.from(new Set(extraColors.map(normalizeHexColor).filter((color): color is string => !!color))),
-    [extraColors]
+  const normalizedSavedColors = useMemo(
+    () => Array.from(new Set(savedColors
+      .map(normalizeHexColor)
+      .filter((color): color is string => !!color))),
+    [savedColors]
   );
+  const boardColors = useMemo(
+    () => Array.from(new Set(extraColors
+      .map(normalizeHexColor)
+      .filter((color): color is string => !!color)))
+      .filter((color) => !normalizedSavedColors.includes(color)),
+    [extraColors, normalizedSavedColors]
+  );
+  const draftIsSaved = normalizedSavedColors.includes(draftColor);
 
   const setHsvColor = (nextColor: HsvColor) => {
     setHue(nextColor.h);
@@ -267,21 +335,43 @@ export function ColorPickerPanel({
         </label>
       </section>
 
-      {recentColors.length > 0 && (
-        <section className="space-y-1.5" aria-label="Saved colors">
+      {normalizedSavedColors.length > 0 && (
+        <section className="space-y-1.5" aria-label="Site palette">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-              Saved
+              Site palette
             </p>
             <p className="text-[9px] text-muted-foreground">Available on every board</p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {normalizedSavedColors.map((color) => (
+              <SavedColorSwatch
+                key={color}
+                color={color}
+                selected={draftColor === color}
+                onSelect={() => selectSwatch(color)}
+                onRemove={onRemoveSavedColor
+                  ? () => onRemoveSavedColor(color)
+                  : undefined}
+                selectionSafe={selectionSafe}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {boardColors.length > 0 && (
+        <section className="space-y-1.5" aria-label="Board colors">
+          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+            Board colors
+          </p>
           <div className="flex flex-wrap gap-1">
-            {recentColors.map((color) => (
+            {boardColors.map((color) => (
               <ColorSwatch
                 key={color}
                 color={color}
                 selected={draftColor === color}
-                title={`Saved · ${color}`}
+                title={`Board color · ${color}`}
                 onSelect={() => selectSwatch(color)}
                 selectionSafe={selectionSafe}
               />
@@ -357,7 +447,7 @@ export function ColorPickerPanel({
             </label>
           ))}
         </div>
-        <div className={cn("grid gap-1.5", onCancel ? "grid-cols-[auto_1fr]" : "grid-cols-1")}>
+        <div className="flex gap-1.5">
           {onCancel && (
             <button
               type="button"
@@ -376,6 +466,34 @@ export function ColorPickerPanel({
               Cancel
             </button>
           )}
+          {onSaveColor && onRemoveSavedColor && (
+            <button
+              type="button"
+              title={draftIsSaved
+                ? `Remove ${draftColor} from the site palette`
+                : `Save ${draftColor} to the site palette`}
+              aria-pressed={draftIsSaved}
+              onPointerDown={(event) => {
+                if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+                event.preventDefault();
+                if (draftIsSaved) onRemoveSavedColor(draftColor);
+                else onSaveColor(draftColor);
+              }}
+              onClick={(event) => {
+                if (selectionSafe && event.detail !== 0) return;
+                if (draftIsSaved) onRemoveSavedColor(draftColor);
+                else onSaveColor(draftColor);
+              }}
+              className={cn(
+                "flex h-8 items-center justify-center rounded-md border px-2 text-[11px] font-medium",
+                draftIsSaved
+                  ? "border-destructive/40 text-destructive hover:bg-destructive/10"
+                  : "border-border text-foreground hover:bg-muted"
+              )}
+            >
+              {draftIsSaved ? "Remove saved" : "Save to palette"}
+            </button>
+          )}
           <button
             type="button"
             title="Apply color"
@@ -387,7 +505,7 @@ export function ColorPickerPanel({
             onClick={(event) => {
               if (!selectionSafe || event.detail === 0) onChange(draftColor);
             }}
-            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+            className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
           >
             <Check className="h-3.5 w-3.5" />
             Apply color
@@ -434,10 +552,6 @@ export function AppColorPicker({
   const open = controlledOpen ?? internalOpen;
   const customColors = useUIStore((state) => state.appSettings.customColors);
   const updateAppSettings = useUIStore((state) => state.updateAppSettings);
-  const allRecentColors = useMemo(
-    () => Array.from(new Set([...(extraColors ?? []), ...customColors])),
-    [customColors, extraColors]
-  );
   const setOpenState = (nextOpen: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
@@ -445,8 +559,13 @@ export function AppColorPicker({
 
   const chooseColor = (color: string) => {
     onChange(color);
-    updateAppSettings({ customColors: rememberCustomColor(customColors, color) });
     setOpenState(false);
+  };
+  const saveColor = (color: string) => {
+    updateAppSettings({ customColors: rememberCustomColor(customColors, color) });
+  };
+  const removeSavedColor = (color: string) => {
+    updateAppSettings({ customColors: forgetCustomColor(customColors, color) });
   };
 
   return (
@@ -476,7 +595,10 @@ export function AppColorPicker({
         {panelHeader}
         <ColorPickerPanel
           value={value}
-          extraColors={allRecentColors}
+          extraColors={extraColors}
+          savedColors={customColors}
+          onSaveColor={saveColor}
+          onRemoveSavedColor={removeSavedColor}
           showHeading={showHeading}
           onChange={chooseColor}
           onCancel={() => setOpenState(false)}
