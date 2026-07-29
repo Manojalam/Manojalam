@@ -9,6 +9,7 @@ import {
   unselectedHierarchyDescendants,
 } from "./hierarchy-mutations";
 import {
+  matrixMeasurementNeedsReflow,
   patchNeedsListReflow,
   patchNeedsMatrixReflow,
 } from "./layout-reflow";
@@ -32,6 +33,28 @@ test("Matrix fill-anchor edits refresh automatic descendants immediately", () =>
   assert.equal(patchNeedsMatrixReflow({ matrixOuterBorderVisible: false }), true);
   assert.equal(patchNeedsMatrixReflow({ textColor: "#1d4ed8" }), false);
   assert.equal(patchNeedsListReflow({ fillColor: "#8b5cf6" }), false);
+});
+
+test("Matrix typography changes preserve layout-owned cell geometry", () => {
+  const current = {
+    text: "स्थानेऽन्तरतमः",
+    richText: "<p>स्थानेऽन्तरतमः</p>",
+    fontSize: 17,
+  };
+
+  assert.equal(patchNeedsMatrixReflow({ fontSize: 24 }, current), false);
+  assert.equal(patchNeedsMatrixReflow({
+    fontSize: 24,
+    richText: '<p><span style="font-size: 24px">स्थानेऽन्तरतमः</span></p>',
+    layoutAutoTypography: false,
+  }, current), false);
+  assert.equal(patchNeedsMatrixReflow({
+    text: "स्थानेऽन्तरतमम्",
+    richText: "<p>स्थानेऽन्तरतमम्</p>",
+  }, current), true);
+  assert.equal(matrixMeasurementNeedsReflow("format"), false);
+  assert.equal(matrixMeasurementNeedsReflow("layout"), false);
+  assert.equal(matrixMeasurementNeedsReflow("input"), true);
 });
 
 test("deleting a parent promotes its children to the grandparent in sibling order", () => {
