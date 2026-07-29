@@ -163,9 +163,9 @@ export interface BoardSettings {
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
   snapToGrid: boolean;
-  /** Show board-derived numbers for hierarchy nodes without changing authored labels. */
+  /** @deprecated Legacy board-wide option; migrated to branch-local node scopes on load. */
   hierarchicalNumbering?: boolean;
-  /** Board-wide hierarchy number presentation. Existing boards use outline numbering. */
+  /** @deprecated Legacy board-wide format; migrated to branch-local node scopes on load. */
   hierarchicalNumberingFormat?: "outline" | "sibling";
   /** Show editor-only outlines for label layout areas across the canvas. */
   showLabelBoxGuides?: boolean;
@@ -446,6 +446,10 @@ export interface TextCalloutOwnerAnchor {
 
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
+  /** Start a hierarchy-numbering scope at this node. */
+  hierarchicalNumbering?: boolean;
+  /** Number presentation for the scope rooted at this node. */
+  hierarchicalNumberingFormat?: "outline" | "sibling";
   /** Hide this node's hierarchy badge while preserving its structural ordinal. */
   hideHierarchyNumber?: boolean;
   color?: string;

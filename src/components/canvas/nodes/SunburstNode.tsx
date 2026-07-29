@@ -967,12 +967,6 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const showCanvasLabelBoxGuides = useCanvasStore(
     (state) => state.settings.showLabelBoxGuides === true
   );
-  const hierarchicalNumbering = useCanvasStore(
-    (state) => state.settings.hierarchicalNumbering === true
-  );
-  const hierarchicalNumberingFormat = useCanvasStore(
-    (state) => state.settings.hierarchicalNumberingFormat ?? "outline"
-  );
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
@@ -1063,10 +1057,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
 
   const fontMetricsReady = fontMetricsRevision > 0;
   const hierarchyNumbers = useMemo(
-    () => hierarchicalNumbering
-      ? hierarchyNumberMap(nodes, edges, hierarchicalNumberingFormat)
-      : new Map<string, string>(),
-    [edges, hierarchicalNumbering, hierarchicalNumberingFormat, nodes]
+    () => hierarchyNumberMap(nodes, edges),
+    [edges, nodes]
   );
 
   const model = useMemo(() => {

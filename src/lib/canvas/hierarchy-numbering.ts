@@ -1,6 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy, getRoots } from "../layout/hierarchy";
-import { getNodeRect } from "../layout/geometry";
 
 const NON_CONTENT_NODE_TYPES = new Set([
   "frame",
@@ -17,14 +16,13 @@ export function participatesInHierarchyNumbering(node: Node): boolean {
 }
 
 /**
- * Derive display numbers from the board hierarchy without changing authored
- * labels. Outline mode appends descendant ordinals; sibling mode shows only
- * the local one-based ordinal and restarts under each parent.
+ * Derive display numbers for each branch-local numbering scope without
+ * changing authored labels. Each enabled branch starts at 1. Nested scopes
+ * are applied after their ancestors so they can restart their own subtree.
  */
 export function hierarchyNumberMap(
   nodes: Node[],
-  edges: Edge[],
-  format: HierarchyNumberFormat = "outline"
+  edges: Edge[]
 ): Map<string, string> {
   const contentNodes = nodes.filter(participatesInHierarchyNumbering);
   const contentNodeIds = new Set(contentNodes.map((node) => node.id));
@@ -32,15 +30,30 @@ export function hierarchyNumberMap(
     contentNodes,
     edges.filter((edge) => contentNodeIds.has(edge.source) && contentNodeIds.has(edge.target))
   );
-  const nodeById = new Map(contentNodes.map((node) => [node.id, node]));
-  const roots = getRoots(hierarchy).sort((leftId, rightId) => {
-    const left = getNodeRect(nodeById.get(leftId)!);
-    const right = getNodeRect(nodeById.get(rightId)!);
-    return left.centerY - right.centerY || left.centerX - right.centerX;
-  });
   const numbers = new Map<string, string>();
 
-  const visit = (nodeId: string, outlineNumber: string, siblingNumber: number) => {
+  const depthById = new Map<string, number>();
+  const depthOf = (nodeId: string): number => {
+    const cached = depthById.get(nodeId);
+    if (cached !== undefined) return cached;
+    const parentId = hierarchy.get(nodeId)?.parentId;
+    const depth = parentId ? depthOf(parentId) + 1 : 0;
+    depthById.set(nodeId, depth);
+    return depth;
+  };
+
+  const scopes = contentNodes
+    .filter((node) => (
+      node.data as { hierarchicalNumbering?: unknown } | undefined
+    )?.hierarchicalNumbering === true)
+    .sort((left, right) => depthOf(left.id) - depthOf(right.id));
+
+  const visit = (
+    nodeId: string,
+    outlineNumber: string,
+    siblingNumber: number,
+    format: HierarchyNumberFormat
+  ) => {
     numbers.set(
       nodeId,
       format === "sibling" ? String(siblingNumber) : outlineNumber
@@ -48,15 +61,64 @@ export function hierarchyNumberMap(
     const childIds = hierarchy.get(nodeId)?.childIds ?? [];
     childIds.forEach((childId, index) => {
       const childNumber = index + 1;
-      visit(childId, `${outlineNumber}.${childNumber}`, childNumber);
+      visit(childId, `${outlineNumber}.${childNumber}`, childNumber, format);
     });
   };
 
-  roots.forEach((rootId, index) => {
-    const rootNumber = index + 1;
-    visit(rootId, String(rootNumber), rootNumber);
+  scopes.forEach((scope) => {
+    const format = (
+      scope.data as { hierarchicalNumberingFormat?: unknown } | undefined
+    )?.hierarchicalNumberingFormat === "sibling"
+      ? "sibling"
+      : "outline";
+    visit(scope.id, "1", 1, format);
   });
   return numbers;
+}
+
+/**
+ * Convert the short-lived board-wide setting into one numbering scope per
+ * layout diagram. The legacy setting is cleared separately by board loading.
+ */
+export function migrateLegacyHierarchyNumberingScopes(
+  nodes: Node[],
+  edges: Edge[],
+  enabled: boolean,
+  format: HierarchyNumberFormat = "outline"
+): Node[] {
+  if (!enabled) return nodes;
+
+  const contentNodes = nodes.filter(participatesInHierarchyNumbering);
+  const contentNodeIds = new Set(contentNodes.map((node) => node.id));
+  const hierarchy = buildHierarchy(
+    contentNodes,
+    edges.filter((edge) => contentNodeIds.has(edge.source) && contentNodeIds.has(edge.target))
+  );
+  const scopeIds = new Set(
+    getRoots(hierarchy).filter((rootId) => (hierarchy.get(rootId)?.childIds.length ?? 0) > 0)
+  );
+  if (!scopeIds.size) return nodes;
+
+  return nodes.map((node) => {
+    if (!scopeIds.has(node.id)) return node;
+    const data = node.data as {
+      hierarchicalNumbering?: unknown;
+      hierarchicalNumberingFormat?: unknown;
+    };
+    return {
+      ...node,
+      data: {
+        ...data,
+        hierarchicalNumbering: true,
+        hierarchicalNumberingFormat:
+          data.hierarchicalNumberingFormat === "sibling"
+            ? "sibling"
+            : data.hierarchicalNumberingFormat === "outline"
+              ? "outline"
+              : format,
+      },
+    };
+  });
 }
 
 export function hierarchyNumberForNode(

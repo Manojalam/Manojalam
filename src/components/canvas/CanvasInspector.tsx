@@ -2494,11 +2494,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   Hide numbers
                 </Button>
               </div>
-              {settings.hierarchicalNumbering !== true && (
-                <p className="text-[9px] leading-snug text-muted-foreground">
-                  Badges appear after Auto-number hierarchy is enabled in Canvas settings.
-                </p>
-              )}
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Start numbering from a layout root or inner branch in its Hierarchy settings.
+              </p>
             </Section>
           )}
           {!isRadialMultiSelection && selectedNodes.length > 1 && (
@@ -3355,41 +3353,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Snap to grid</Label>
                 <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setBoardSettings({ snapToGrid: v })} />
-              </div>
-              <div className="space-y-2 rounded-md border p-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <Label className="text-xs">Auto-number hierarchy</Label>
-                    <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                      Show structural badges without changing labels or object sizing.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.hierarchicalNumbering === true}
-                    onCheckedChange={(v) => setBoardSettings({ hierarchicalNumbering: v })}
-                  />
-                </div>
-                {settings.hierarchicalNumbering === true && (
-                  <div className="border-t border-border pt-2">
-                    <Label className="mb-1 block text-[10px] text-muted-foreground">
-                      Number format
-                    </Label>
-                    <Select
-                      value={settings.hierarchicalNumberingFormat ?? "outline"}
-                      onValueChange={(value) => setBoardSettings({
-                        hierarchicalNumberingFormat: value as "outline" | "sibling",
-                      })}
-                    >
-                      <SelectTrigger className="h-8 text-[10px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="outline">Outline · 1, 1.1, 1.1.1</SelectItem>
-                        <SelectItem value="sibling">Simple · 1, 2, 3 per parent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border p-2">
                 <div>
@@ -4753,12 +4716,61 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         <Section label="Hierarchy" visible={singleNodeTab === "layout"}>
+          {participatesInHierarchyNumbering(selectedNode) && childIds.length > 0 && (
+            <div className="space-y-2 rounded-md border border-border p-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label className="text-xs">
+                    {parentNode ? "Auto-number branch" : "Auto-number layout"}
+                  </Label>
+                  <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                    {parentNode
+                      ? "Start a new numbering scope at this inner branch."
+                      : "Number this layout diagram without affecting other diagrams."}
+                  </p>
+                </div>
+                <Switch
+                  checked={d.hierarchicalNumbering === true}
+                  onCheckedChange={(checked) => {
+                    setField("hierarchicalNumbering", checked ? true : undefined);
+                  }}
+                />
+              </div>
+              {d.hierarchicalNumbering === true && (
+                <div className="border-t border-border pt-2">
+                  <Label className="mb-1 block text-[10px] text-muted-foreground">
+                    Number format
+                  </Label>
+                  <Select
+                    value={d.hierarchicalNumberingFormat === "sibling" ? "sibling" : "outline"}
+                    onValueChange={(value) => {
+                      setField(
+                        "hierarchicalNumberingFormat",
+                        value as "outline" | "sibling"
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="outline">Outline · 1, 1.1, 1.1.1</SelectItem>
+                      <SelectItem value="sibling">Simple · 1, 2, 3 per parent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                    This branch starts at 1. A nested branch can start its own scope.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {participatesInHierarchyNumbering(selectedNode) && (
             <div className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
               <div>
                 <Label className="text-xs">Show number</Label>
                 <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                  Hiding this badge does not renumber later objects.
+                  Applies when this object belongs to a numbered branch. Hiding it does not renumber later objects.
                 </p>
               </div>
               <Switch
