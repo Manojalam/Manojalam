@@ -7,6 +7,7 @@ import {
   buildLayoutVisualStyles,
   resetDescendantLayoutFillOverrides,
 } from "./layout-palette";
+import { RADIAL_COLOR_SCHEMES, radialSectorColors } from "../radial-layout";
 
 function hierarchyFixture(): { nodes: Node[]; edges: Edge[] } {
   const specs = [
@@ -55,7 +56,7 @@ test("hierarchy colors keep descendants related while separating root branches",
   const styles = buildLayoutVisualStyles("root", hierarchy, "list", "spectrum");
 
   assert.equal(styles.get("root")?.branchIndex, -1);
-  assert.equal(styles.get("root")?.fillColor, "#563015");
+  assert.equal(styles.get("root")?.fillColor, "#29344f");
   assert.equal(styles.get("branch-a")?.branchIndex, 0);
   assert.equal(styles.get("a-1")?.branchIndex, 0);
   assert.equal(styles.get("branch-b")?.branchIndex, 1);
@@ -78,7 +79,7 @@ test("applying a palette preserves original style fields and colors hierarchy ed
 
   assert.equal(rootData.fillColor, "#ffffff");
   assert.equal(rootData.layoutColorScheme, "ocean");
-  assert.equal((rootData.layoutVisualStyle as { fillColor: string }).fillColor, "#0c4a6e");
+  assert.equal((rootData.layoutVisualStyle as { fillColor: string }).fillColor, "#243f56");
   assert.equal((childData.layoutVisualStyle as { rootId: string }).rootId, "root");
   assert.equal(firstEdgeData.layoutColorRootId, "root");
   assert.equal(typeof firstEdgeData.layoutColor, "string");
@@ -110,6 +111,61 @@ test("Matrix automatic colors use branch hues with one shade per depth", () => {
   assert.notEqual(branchAGrandchildColors[0], branchBGrandchildColor);
   assert.notEqual(branchAColor, branchAGrandchildColors[0]);
   assert.notEqual(branchAGrandchildColors[0], branchAGreatGrandchildColor);
+});
+
+function colorChannels(color: string): [number, number, number] {
+  const hex = color.match(/^#([0-9a-f]{6})$/i);
+  if (hex) {
+    return [0, 2, 4].map((offset) => (
+      Number.parseInt(hex[1].slice(offset, offset + 2), 16) / 255
+    )) as [number, number, number];
+  }
+  const hsl = color.match(/^hsl\(([\d.]+),\s*([\d.]+)%,\s*([\d.]+)%\)$/);
+  assert.ok(hsl, `Expected a hex or HSL color, received ${color}`);
+  const hue = Number(hsl[1]) / 60;
+  const saturation = Number(hsl[2]) / 100;
+  const lightness = Number(hsl[3]) / 100;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const secondary = chroma * (1 - Math.abs((hue % 2) - 1));
+  const [red, green, blue] = hue < 1 ? [chroma, secondary, 0]
+    : hue < 2 ? [secondary, chroma, 0]
+      : hue < 3 ? [0, chroma, secondary]
+        : hue < 4 ? [0, secondary, chroma]
+          : hue < 5 ? [secondary, 0, chroma]
+            : [chroma, 0, secondary];
+  const match = lightness - chroma / 2;
+  return [red + match, green + match, blue + match];
+}
+
+function colorLuminance(color: string): number {
+  const channels = colorChannels(color).map((channel) => (
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  ));
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+
+function colorContrast(first: string, second: string): number {
+  const luminances = [colorLuminance(first), colorLuminance(second)].sort((a, b) => b - a);
+  return (luminances[0] + 0.05) / (luminances[1] + 0.05);
+}
+
+test("automatic palette fills keep readable text through deep hierarchies", () => {
+  for (const scheme of RADIAL_COLOR_SCHEMES) {
+    assert.ok(scheme.saturation <= 50, `${scheme.label} should stay below highlighter saturation`);
+    for (let branchIndex = 0; branchIndex < scheme.hues.length; branchIndex += 1) {
+      for (let depth = 1; depth <= 12; depth += 1) {
+        const colors = radialSectorColors(scheme, branchIndex, depth, 0, 1);
+        assert.ok(
+          colorContrast(colors.fill, colors.text) >= 4.5,
+          `${scheme.label} branch ${branchIndex} depth ${depth} needs readable text`
+        );
+        assert.ok(
+          colorContrast(colors.fillEnd, colors.text) >= 4.5,
+          `${scheme.label} gradient branch ${branchIndex} depth ${depth} needs readable text`
+        );
+      }
+    }
+  }
 });
 
 test("manual surface overrides survive palette changes and can be reset", () => {
