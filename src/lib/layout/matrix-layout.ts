@@ -109,9 +109,7 @@ export const MATRIX_HEADER_MIN_WIDTH = 220;
 export const MATRIX_MIN_SIBLING_GAP = 0;
 export const MATRIX_MAX_SIBLING_GAP = 240;
 export const MATRIX_MIN_TABLE_WIDTH = 160;
-export const MATRIX_MAX_TABLE_WIDTH = 6000;
 export const MATRIX_MIN_TABLE_HEIGHT = 100;
-export const MATRIX_MAX_TABLE_HEIGHT = 10000;
 const MATRIX_MAX_CELL_HEIGHT = 6000;
 
 export const MATRIX_DENSITY_SETTINGS: Record<MatrixTableDensity, DensitySettings> = {
@@ -1796,10 +1794,10 @@ function applyMatrixTableSizeOverrides(
   if (!requestedWidth && !requestedHeight) return result;
 
   const targetWidth = requestedWidth
-    ? clamp(requestedWidth, MATRIX_MIN_TABLE_WIDTH, MATRIX_MAX_TABLE_WIDTH)
+    ? Math.max(requestedWidth, MATRIX_MIN_TABLE_WIDTH)
     : result.bounds.width;
   const targetHeight = requestedHeight
-    ? clamp(requestedHeight, MATRIX_MIN_TABLE_HEIGHT, MATRIX_MAX_TABLE_HEIGHT)
+    ? Math.max(requestedHeight, MATRIX_MIN_TABLE_HEIGHT)
     : result.bounds.height;
   const scaleX = targetWidth / Math.max(1, result.bounds.width);
   const scaleY = targetHeight / Math.max(1, result.bounds.height);
