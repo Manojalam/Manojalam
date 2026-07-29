@@ -22,6 +22,7 @@ import {
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 
 function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as SanskritCardNodeData;
@@ -67,6 +68,12 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
         <div
+          className="pointer-events-none absolute inset-0 z-20"
+          style={objectRotationStyle("sanskrit", dd)}
+        >
+          <HierarchyNumberBadge number={hierarchyNumber} />
+        </div>
+        <div
         data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md dark:border-amber-800/40 dark:from-amber-950/40 dark:to-orange-950/30",
@@ -82,10 +89,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
       >
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-foreground">
-              {hierarchyNumber && `${hierarchyNumber} `}
-              {d.title || "Sanskrit Card"}
-            </h3>
+            <h3 className="font-semibold text-foreground">{d.title || "Sanskrit Card"}</h3>
             {d.source && <p className="text-xs text-muted-foreground">{d.source}</p>}
           </div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={cycleMode}>

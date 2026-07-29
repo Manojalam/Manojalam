@@ -19,6 +19,7 @@ import {
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 
 const SECTIONS = [
   { key: "verse", label: "Verse" },
@@ -77,6 +78,12 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
         <div
+          className="pointer-events-none absolute inset-0 z-20"
+          style={objectRotationStyle("shloka", dd)}
+        >
+          <HierarchyNumberBadge number={hierarchyNumber} />
+        </div>
+        <div
         data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
@@ -91,10 +98,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">
-            {hierarchyNumber && `${hierarchyNumber} `}
-            {d.title || "Śloka"}
-          </h3>
+          <h3 className="font-semibold">{d.title || "Śloka"}</h3>
           <Badge className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}>
             {d.memorizationStatus ?? "new"}
           </Badge>

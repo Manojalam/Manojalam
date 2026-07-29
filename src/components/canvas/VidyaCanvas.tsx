@@ -61,7 +61,10 @@ import { HierarchyDeleteDialog } from "./HierarchyDeleteDialog";
 import { ListTreeConnectors } from "./edges/ListTreeConnectors";
 import { StructuredTreeConnectors } from "./edges/StructuredTreeConnectors";
 import { renderedGridGap } from "@/lib/canvas/grid-density";
-import { hierarchyNumberMap } from "@/lib/canvas/hierarchy-numbering";
+import {
+  hierarchyNumberForNode,
+  hierarchyNumberMap,
+} from "@/lib/canvas/hierarchy-numbering";
 import { boardColorCssValue } from "@/lib/canvas/board-colors";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
@@ -322,9 +325,13 @@ function VidyaCanvasInner({
 
   const numberedNodes = useMemo(() => {
     if (settings.hierarchicalNumbering !== true) return nodes;
-    const numbers = hierarchyNumberMap(nodes, edges);
+    const numbers = hierarchyNumberMap(
+      nodes,
+      edges,
+      settings.hierarchicalNumberingFormat ?? "outline"
+    );
     return nodes.map((node) => {
-      const hierarchyNumber = numbers.get(node.id);
+      const hierarchyNumber = hierarchyNumberForNode(node, numbers);
       if (!hierarchyNumber) return node;
       return {
         ...node,
@@ -334,7 +341,12 @@ function VidyaCanvasInner({
         },
       };
     });
-  }, [edges, nodes, settings.hierarchicalNumbering]);
+  }, [
+    edges,
+    nodes,
+    settings.hierarchicalNumbering,
+    settings.hierarchicalNumberingFormat,
+  ]);
 
   const displayNodes = useMemo(() => {
     if (!canEdit) {

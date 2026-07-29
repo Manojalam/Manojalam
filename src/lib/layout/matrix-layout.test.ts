@@ -198,6 +198,35 @@ test("Month/Year becomes a merged hierarchy table", () => {
   assertClean(result);
 });
 
+test("display-only hierarchy numbers do not change matrix geometry", () => {
+  const { nodes, edges } = referenceTree();
+  const numberedNodes = nodes.map((node, index) => ({
+    ...node,
+    data: {
+      ...(node.data ?? {}),
+      hierarchyNumber: index === 0 ? "1" : `1.${index}`,
+      ...(index === 2 ? { hideHierarchyNumber: true } : {}),
+    },
+  }));
+  const layout = (layoutNodes: Node[]) => {
+    const hierarchy = buildHierarchy(layoutNodes, edges);
+    const result = computeMatrixLayout(
+      "root",
+      hierarchy,
+      new Map(layoutNodes.map((node) => [node.id, node]))
+    );
+    return {
+      bounds: result.bounds,
+      header: result.header,
+      rows: result.rows,
+      columnWidths: result.columnWidths,
+      cells: result.cells,
+    };
+  };
+
+  assert.deepEqual(layout(numberedNodes), layout(nodes));
+});
+
 test("uneven horizontal branches stretch terminal cells through later columns", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null },

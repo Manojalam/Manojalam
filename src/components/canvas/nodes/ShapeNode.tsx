@@ -37,6 +37,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import {
@@ -1325,6 +1326,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
             petalCount={petalCount}
             effectData={dd}
           />
+          <HierarchyNumberBadge
+            number={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
+          />
 
           {showLabelBoxGuides && !radialChart?.enabled && (
             <div
@@ -1492,7 +1496,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       nodeId={id}
                       initialContent={initialContent}
                       editable={editing}
-                      hierarchyNumber={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
                       initialFocusPoint={editFocusPoint}
                       measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}

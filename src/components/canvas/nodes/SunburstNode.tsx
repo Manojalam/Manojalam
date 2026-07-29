@@ -52,9 +52,8 @@ import {
   chartNodeContentToken,
 } from "@/lib/canvas/chart-render-data";
 import {
+  hierarchyNumberForNode,
   hierarchyNumberMap,
-  prependHierarchyNumber,
-  prependHierarchyNumberToRichText,
 } from "@/lib/canvas/hierarchy-numbering";
 import { RichTextEditor } from "../RichTextEditor";
 
@@ -79,7 +78,7 @@ type SunburstTreeNode = {
 type SunburstSegment = SunburstTreeNode & {
   label: string;
   richText: string;
-  authoredRichText: string;
+  hierarchyNumber?: string;
   fill: string;
   fillEnd: string;
   textColor: string;
@@ -321,6 +320,89 @@ function pointOnCircle(cx: number, cy: number, radius: number, angleDeg: number)
     x: cx + radius * Math.cos(angle),
     y: cy + radius * Math.sin(angle),
   };
+}
+
+function readableTangentRotation(angle: number): number {
+  let rotation = ((angle + 90) % 360 + 360) % 360;
+  if (rotation > 90 && rotation < 270) rotation += 180;
+  return rotation % 360;
+}
+
+function sectorHierarchyBadgePlacement(
+  segment: SunburstSegment,
+  center: number
+): PolarPoint & { rotation: number } {
+  const band = Math.max(1, segment.outerRadius - segment.innerRadius);
+  const midAngle = (segment.startAngle + segment.endAngle) / 2;
+  const edgeInset = Math.min(14, Math.max(6, band * 0.18));
+  const badgeRadius = band < 16
+    ? segment.innerRadius + band / 2
+    : segment.outerRadius - edgeInset;
+  return {
+    ...pointOnCircle(
+      center,
+      center,
+      badgeRadius,
+      midAngle
+    ),
+    rotation: readableTangentRotation(midAngle),
+  };
+}
+
+function SunburstHierarchyNumberBadge({
+  number,
+  x,
+  y,
+  textColor,
+  clipPathId,
+  rotation = 0,
+}: {
+  number?: string;
+  x: number;
+  y: number;
+  textColor: string;
+  clipPathId?: string;
+  rotation?: number;
+}) {
+  if (!number) return null;
+  const width = clamp(number.length * 5.2 + 8, 16, 72);
+
+  return (
+    <g
+      data-hierarchy-number-badge="true"
+      role="img"
+      aria-label={`Hierarchy number ${number}`}
+      clipPath={clipPathId ? `url(#${clipPathId})` : undefined}
+      pointerEvents="none"
+    >
+      <g transform={`translate(${x} ${y}) rotate(${rotation})`}>
+        <rect
+          x={-width / 2}
+          y="-6.5"
+          width={width}
+          height="13"
+          rx="4"
+          fill="rgba(255,255,255,0.78)"
+          stroke={textColor}
+          strokeOpacity="0.24"
+          strokeWidth="0.8"
+        />
+        <text
+          x="0"
+          y="0.5"
+          fill={textColor}
+          fontFamily="ui-sans-serif, system-ui, sans-serif"
+          fontSize="8.5"
+          fontWeight="650"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
+          {number}
+        </text>
+      </g>
+    </g>
+  );
 }
 
 function arcSegmentPath(
@@ -774,10 +856,7 @@ function collectSegments(
       const source = byId.get(candidate.id);
       const data = (source?.data ?? {}) as Record<string, unknown>;
       const branchData = (byId.get(candidate.branchId)?.data ?? {}) as Record<string, unknown>;
-      const authoredLabel = nodeLabel(source);
-      const hierarchyNumber = hierarchyNumbers.get(candidate.id);
-      const label = prependHierarchyNumber(authoredLabel, hierarchyNumber);
-      const authoredRichText = nodeRichText(source, authoredLabel);
+      const label = nodeLabel(source);
       const paletteColors = radialSectorColors(
         scheme,
         candidate.branchIndex,
@@ -790,8 +869,10 @@ function collectSegments(
       segments.push({
         ...candidate,
         label,
-        richText: prependHierarchyNumberToRichText(authoredRichText, hierarchyNumber),
-        authoredRichText,
+        richText: nodeRichText(source, label),
+        hierarchyNumber: source
+          ? hierarchyNumberForNode(source, hierarchyNumbers)
+          : undefined,
         fill: (chartStyle.fillColor as string | undefined) ?? paletteColors.fill,
         fillEnd: (chartStyle.fillColor as string | undefined) ?? paletteColors.fillEnd,
         textColor: (chartStyle.textColor as string | undefined) ?? (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
@@ -889,6 +970,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
   const hierarchicalNumbering = useCanvasStore(
     (state) => state.settings.hierarchicalNumbering === true
   );
+  const hierarchicalNumberingFormat = useCanvasStore(
+    (state) => state.settings.hierarchicalNumberingFormat ?? "outline"
+  );
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
@@ -979,8 +1063,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
 
   const fontMetricsReady = fontMetricsRevision > 0;
   const hierarchyNumbers = useMemo(
-    () => hierarchicalNumbering ? hierarchyNumberMap(nodes, edges) : new Map<string, string>(),
-    [edges, hierarchicalNumbering, nodes]
+    () => hierarchicalNumbering
+      ? hierarchyNumberMap(nodes, edges, hierarchicalNumberingFormat)
+      : new Map<string, string>(),
+    [edges, hierarchicalNumbering, hierarchicalNumberingFormat, nodes]
   );
 
   const model = useMemo(() => {
@@ -1047,14 +1133,9 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     if (!model) return null;
     const rootData = (model.root.data ?? {}) as Record<string, unknown>;
     const drawLabelBoxGuides = resolveLabelBoxGuideVisibility(showCanvasLabelBoxGuides);
-    const authoredRootLabel = nodeLabel(model.root);
-    const rootHierarchyNumber = hierarchyNumbers.get(d.rootId);
-    const rootLabel = prependHierarchyNumber(authoredRootLabel, rootHierarchyNumber);
-    const authoredRootRichText = nodeRichText(model.root, authoredRootLabel);
-    const rootRichText = prependHierarchyNumberToRichText(
-      authoredRootRichText,
-      rootHierarchyNumber
-    );
+    const rootLabel = nodeLabel(model.root);
+    const rootRichText = nodeRichText(model.root, rootLabel);
+    const rootHierarchyNumber = hierarchyNumberForNode(model.root, hierarchyNumbers);
     const rootFit = circleLabelGeometry(
       rootLabel,
       model.centerRadius,
@@ -1223,7 +1304,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       rootData,
       rootLabel,
       rootRichText,
-      authoredRootRichText,
+      rootHierarchyNumber,
       rootFit,
       drawLabelBoxGuides,
       segmentGeometryById,
@@ -1303,7 +1384,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     rootData,
     rootLabel,
     rootRichText,
-    authoredRootRichText,
+    rootHierarchyNumber,
     rootFit,
     drawLabelBoxGuides,
     segmentGeometryById,
@@ -1315,8 +1396,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       ? segmentGeometryById.get(selectedSegment.id)?.labelGeometry ?? null
       : null;
   const selectedRichText = selectedId === d.rootId
-    ? authoredRootRichText
-    : selectedSegment?.authoredRichText ?? "";
+    ? rootRichText
+    : selectedSegment?.richText ?? "";
   const selectedLabel = selectedId === d.rootId ? rootLabel : selectedSegment?.label ?? "";
   const selectedClipId = selectedId === d.rootId
     ? rootClipId
@@ -1767,6 +1848,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           } = segmentGeometryById.get(segment.id)!;
           const segmentClipId = `${clipPrefix}-${segment.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
           const segmentGradientId = `${segmentClipId}-gradient`;
+          const hierarchyBadge = sectorHierarchyBadgePlacement(segment, model.center);
           const curvedTextAnchor = segment.textAlign === "left"
             ? { startOffset: "5%", textAnchor: "start" as const }
             : segment.textAlign === "right"
@@ -1929,6 +2011,14 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                   </foreignObject>
                 </g>
               )}
+              <SunburstHierarchyNumberBadge
+                number={segment.hierarchyNumber}
+                x={hierarchyBadge.x}
+                y={hierarchyBadge.y}
+                rotation={hierarchyBadge.rotation}
+                textColor={segment.textColor}
+                clipPathId={segmentClipId}
+              />
               {!activeRelationshipSession && selected && (
                 <path
                   d={segmentPath}
@@ -2089,6 +2179,18 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
             />
           </foreignObject>
         )}
+        <SunburstHierarchyNumberBadge
+          number={rootHierarchyNumber}
+          x={model.center}
+          y={model.center - Math.max(0, model.centerRadius - 10)}
+          textColor={
+            d.textColor
+            ?? (rootData.radialTextColor as string | undefined)
+            ?? (rootData.textColor as string | undefined)
+            ?? model.scheme.rootText
+          }
+          clipPathId={rootClipId}
+        />
         {!activeRelationshipSession && rootRelationshipCount > 0 && (
           <g pointerEvents="none" role="img" aria-label={`${rootRelationshipCount} relationships`}>
             <circle
@@ -2196,7 +2298,6 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
                 nodeId={selectedId}
                 initialContent={selectedRichText}
                 editable
-                hierarchyNumber={hierarchyNumbers.get(selectedId)}
                 initialFocusPoint={editFocusPoint}
                 placeholder="Type here"
                 className="h-full w-full [&_.ProseMirror]:flex [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full [&_.ProseMirror]:flex-col [&_.ProseMirror]:items-center [&_.ProseMirror]:justify-center [&_.ProseMirror]:overflow-visible"

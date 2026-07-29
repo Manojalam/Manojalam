@@ -77,6 +77,7 @@ import {
   BOARD_TEXTURE_PRESETS,
   boardTextureStyle,
 } from "@/lib/canvas/board-textures";
+import { participatesInHierarchyNumbering } from "@/lib/canvas/hierarchy-numbering";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
 import {
   buildRelationshipGroupsForSpec,
@@ -1292,6 +1293,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const isMatrixCellMultiSelection = selectedNodes.length > 1
     && selectedMatrixCells.length === selectedNodes.length;
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  const selectedHierarchyNumberNodes = selectedNodes.filter(participatesInHierarchyNumbering);
   const selectedShapeNodes = selectedNodes.filter((node) => node.type === "shape");
   const selectedShapeTransformNodes = selectedNodes.filter(supportsShapeTransform);
   const allShapeNodes = nodes.filter((node) => node.type === "shape" && !node.hidden);
@@ -1675,6 +1677,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       pushHistory();
       for (const update of autoFillUpdates) updateNodeData(update.nodeId, update.patch);
     }
+  };
+
+  const setSelectedHierarchyNumberVisibility = (visible: boolean) => {
+    if (!selectedHierarchyNumberNodes.length) return;
+    const selectedIds = new Set(selectedHierarchyNumberNodes.map((node) => node.id));
+    pushHistory();
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => {
+        if (!selectedIds.has(node.id)) return node;
+        const data = { ...(node.data ?? {}) } as Record<string, unknown>;
+        if (visible) delete data.hideHierarchyNumber;
+        else data.hideHierarchyNumber = true;
+        return { ...node, data };
+      }),
+      saveStatus: "unsaved",
+    }));
   };
 
   const syncSelectedFillToBorder = (targets: Node[]) => {
@@ -2317,6 +2335,39 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               Generate relationship diagram
             </Button>
           </div>}
+          {selectedHierarchyNumberNodes.length > 0 && (
+            <Section label="Numbering">
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Applies to {selectedHierarchyNumberNodes.length} hierarchy object{selectedHierarchyNumberNodes.length === 1 ? "" : "s"}.
+                Hidden objects keep their structural position.
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => setSelectedHierarchyNumberVisibility(true)}
+                >
+                  Show numbers
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  onClick={() => setSelectedHierarchyNumberVisibility(false)}
+                >
+                  Hide numbers
+                </Button>
+              </div>
+              {settings.hierarchicalNumbering !== true && (
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  Badges appear after Auto-number hierarchy is enabled in Canvas settings.
+                </p>
+              )}
+            </Section>
+          )}
           {!isRadialMultiSelection && selectedNodes.length > 1 && (
             <Section label="Arrange">
               <div className="space-y-2 rounded-lg border border-border bg-muted/25 p-2">
@@ -3078,17 +3129,40 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <Label className="text-xs">Snap to grid</Label>
                 <Switch checked={settings.snapToGrid} onCheckedChange={(v) => setBoardSettings({ snapToGrid: v })} />
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-md border p-2">
-                <div>
-                  <Label className="text-xs">Auto-number hierarchy</Label>
-                  <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                    Prefix labels across the board with outline numbers such as 1, 1.1, and 1.1.1.
-                  </p>
+              <div className="space-y-2 rounded-md border p-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label className="text-xs">Auto-number hierarchy</Label>
+                    <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                      Show structural badges without changing labels or object sizing.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.hierarchicalNumbering === true}
+                    onCheckedChange={(v) => setBoardSettings({ hierarchicalNumbering: v })}
+                  />
                 </div>
-                <Switch
-                  checked={settings.hierarchicalNumbering === true}
-                  onCheckedChange={(v) => setBoardSettings({ hierarchicalNumbering: v })}
-                />
+                {settings.hierarchicalNumbering === true && (
+                  <div className="border-t border-border pt-2">
+                    <Label className="mb-1 block text-[10px] text-muted-foreground">
+                      Number format
+                    </Label>
+                    <Select
+                      value={settings.hierarchicalNumberingFormat ?? "outline"}
+                      onValueChange={(value) => setBoardSettings({
+                        hierarchicalNumberingFormat: value as "outline" | "sibling",
+                      })}
+                    >
+                      <SelectTrigger className="h-8 text-[10px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="outline">Outline · 1, 1.1, 1.1.1</SelectItem>
+                        <SelectItem value="sibling">Simple · 1, 2, 3 per parent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border p-2">
                 <div>
@@ -4452,6 +4526,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         <Section label="Hierarchy" visible={singleNodeTab === "layout"}>
+          {participatesInHierarchyNumbering(selectedNode) && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border p-2">
+              <div>
+                <Label className="text-xs">Show number</Label>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                  Hiding this badge does not renumber later objects.
+                </p>
+              </div>
+              <Switch
+                checked={d.hideHierarchyNumber !== true}
+                onCheckedChange={(checked) => {
+                  setField("hideHierarchyNumber", checked ? undefined : true);
+                }}
+              />
+            </div>
+          )}
           <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-2 text-[10px]">
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground">Parent</span>

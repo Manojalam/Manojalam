@@ -21,6 +21,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { normalizeTextRotation, textRotationStyle } from "@/lib/canvas/text-rotation";
@@ -164,6 +165,9 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
         </div>}
 
         {d.locked && <Lock className="absolute right-2 top-2 h-3 w-3 text-muted-foreground" />}
+        <HierarchyNumberBadge
+          number={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
+        />
 
         <div
           data-node-content-layer="true"
@@ -177,7 +181,6 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            hierarchyNumber={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
             initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",

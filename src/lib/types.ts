@@ -163,8 +163,10 @@ export interface BoardSettings {
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
   snapToGrid: boolean;
-  /** Prefix every hierarchy label with its board-wide outline number. */
+  /** Show board-derived numbers for hierarchy nodes without changing authored labels. */
   hierarchicalNumbering?: boolean;
+  /** Board-wide hierarchy number presentation. Existing boards use outline numbering. */
+  hierarchicalNumberingFormat?: "outline" | "sibling";
   /** Show editor-only outlines for label layout areas across the canvas. */
   showLabelBoxGuides?: boolean;
   defaultScriptMode: ScriptMode;
@@ -435,6 +437,8 @@ export interface TextCalloutOwnerAnchor {
 
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
+  /** Hide this node's hierarchy badge while preserving its structural ordinal. */
+  hideHierarchyNumber?: boolean;
   color?: string;
   fillColor?: string;
   /** 0–1 opacity applied to fillColor (defaults to a soft ~0.18) */
@@ -764,6 +768,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   theme: "system",
   snapToGrid: false,
   hierarchicalNumbering: false,
+  hierarchicalNumberingFormat: "outline",
   showLabelBoxGuides: false,
   defaultScriptMode: "plain",
   defaultNodeColor: "#6366f1",

@@ -28,6 +28,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -181,6 +182,9 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             setEditing(true);
           }}
         >
+        <HierarchyNumberBadge
+          number={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
+        />
         {/* Extra border layers */}
         {!matrixCell && <BorderLayers layers={borderLayers} primaryWidth={bWidth} baseRadius={bRadius} />}
 
@@ -218,7 +222,6 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            hierarchyNumber={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
             initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",
