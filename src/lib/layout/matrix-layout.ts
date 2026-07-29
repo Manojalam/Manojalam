@@ -690,6 +690,80 @@ export type MatrixAncestorSpanOverrideReset = {
   height: boolean;
 };
 
+export type MatrixDimensionGeometryChange = {
+  width: boolean;
+  height: boolean;
+};
+
+/**
+ * Return whether a Matrix dimension patch actually changes composed geometry
+ * while all existing table and ancestor constraints remain in place.
+ *
+ * Exact terminal siblings share one visual row height. A shorter override can
+ * therefore be completely masked by a taller peer. Treating every authored
+ * value change as a geometry change clears ancestor and overall constraints
+ * unnecessarily, then rebuilds unrelated rows from a different layout state.
+ */
+export function matrixDimensionPatchGeometryChange(
+  nodeId: string,
+  patch: Record<string, unknown>,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): MatrixDimensionGeometryChange {
+  const widthPatched = Object.prototype.hasOwnProperty.call(patch, "matrixWidthOverride");
+  const heightPatched = Object.prototype.hasOwnProperty.call(patch, "matrixHeightOverride");
+  if (!widthPatched && !heightPatched) return { width: false, height: false };
+
+  const node = byId.get(nodeId);
+  const data = (node?.data ?? {}) as Record<string, unknown>;
+  const rootId = typeof data.matrixRootId === "string"
+    ? data.matrixRootId
+    : data.layoutMode === "matrix" ? nodeId : null;
+  if (!node || !rootId || !byId.has(rootId)) {
+    return { width: widthPatched, height: heightPatched };
+  }
+
+  const before = computeMatrixLayout(rootId, hierarchy, byId);
+  const patchedById = new Map(byId);
+  patchedById.set(nodeId, {
+    ...node,
+    data: { ...data, ...patch },
+  });
+  const after = computeMatrixLayout(rootId, hierarchy, patchedById);
+  const beforeCells = new Map(
+    [before.header, ...before.cells].map((cell) => [cell.nodeId, cell])
+  );
+  const afterCells = new Map(
+    [after.header, ...after.cells].map((cell) => [cell.nodeId, cell])
+  );
+  if (
+    beforeCells.size !== afterCells.size
+    || [...beforeCells.keys()].some((id) => !afterCells.has(id))
+  ) {
+    return { width: widthPatched, height: heightPatched };
+  }
+
+  let width = Math.abs(before.bounds.width - after.bounds.width) > 0.5;
+  let height = Math.abs(before.bounds.height - after.bounds.height) > 0.5;
+  for (const [id, first] of beforeCells) {
+    const second = afterCells.get(id)!;
+    if (
+      Math.abs(first.x - second.x) > 0.5
+      || Math.abs(first.width - second.width) > 0.5
+    ) width = true;
+    if (
+      Math.abs(first.y - second.y) > 0.5
+      || Math.abs(first.height - second.height) > 0.5
+    ) height = true;
+    if (width && height) break;
+  }
+
+  return {
+    width: widthPatched && width,
+    height: heightPatched && height,
+  };
+}
+
 /**
  * A non-root Matrix parent owns only the axis perpendicular to its branch.
  * Its other axis spans the child area and must return to automatic sizing when
@@ -1384,7 +1458,12 @@ function equalizeTerminalSiblingHeights(
     equalized: true,
     children: children.map((child) => ({
       ...child,
-      layout: stretchOrientedBranch(child.layout, child.layout.width, sharedHeight),
+      layout: stretchOrientedBranch(
+        child.layout,
+        child.layout.width,
+        sharedHeight,
+        { allowLockedVerticalTerminalTracks: true }
+      ),
     })),
   };
 }

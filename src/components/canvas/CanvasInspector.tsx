@@ -2658,7 +2658,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
                   <span>Width (px)</span>
                   <ExactNumberField
-                    label="Selected Matrix cell width"
+                    label="Selected Matrix natural track width"
                     value={commonMatrixWidth}
                     mixed={commonMatrixWidth === undefined}
                     min={80}
@@ -2669,7 +2669,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
                   <span>Height (px)</span>
                   <ExactNumberField
-                    label="Selected Matrix cell height"
+                    label="Selected Matrix natural row height"
                     value={commonMatrixHeight}
                     mixed={commonMatrixHeight === undefined}
                     min={40}
@@ -5511,14 +5511,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell size"}
+                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell constraints"}
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
                 {selectedNode.id === matrixRootNode.id
                   ? "Sets this Matrix header's exact height and preferred width. The header can still stretch across the body; Overall Matrix size below controls the whole table."
                   : matrixTableSizeLocked
-                    ? "The overall Matrix is locked. Increasing this cell gives it more space while the other cells adjust inside the same outer size."
-                    : "Exact box dimensions take priority over overall Matrix scaling. Peer rows with the same structure share aligned column tracks."}
+                    ? "The overall Matrix is locked. These natural track constraints change this cell's share while the outer boundary stays fixed."
+                    : "Sets this cell's natural Matrix track. Row peers share their tallest height, and terminal cells can merge across unused trailing columns."}
               </p>
               <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
@@ -5542,6 +5542,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   />
                 </label>
               </div>
+              {selectedNode.id !== matrixRootNode.id && selectedMatrixDimensions && (
+                <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
+                  Rendered box: {Math.round(selectedMatrixDimensions.width * 10) / 10}
+                  {" × "}
+                  {Math.round(selectedMatrixDimensions.height * 10) / 10}px
+                  {" (after shared rows and merged tracks)"}
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-1">
                 <button
                   type="button"
@@ -5599,7 +5607,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         onCommit={(value) => {
                           pushHistory();
                           updateNodeData(matrixRootNode.id, { matrixTableWidthOverride: value });
-                          requestMatrixReflow(matrixRootNode.id);
                         }}
                       />
                     </label>
@@ -5612,7 +5619,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         onCommit={(value) => {
                           pushHistory();
                           updateNodeData(matrixRootNode.id, { matrixTableHeightOverride: value });
-                          requestMatrixReflow(matrixRootNode.id);
                         }}
                       />
                     </label>
@@ -5636,7 +5642,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                               matrixTableWidthOverride: matrixTableWidth,
                               matrixTableHeightOverride: matrixTableHeight,
                             });
-                        requestMatrixReflow(matrixRootNode.id);
                       }}
                     >
                       {matrixTableSizeLocked
@@ -5656,7 +5661,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                           matrixTableWidthOverride: undefined,
                           matrixTableHeightOverride: undefined,
                         });
-                        requestMatrixReflow(matrixRootNode.id);
                       }}
                     >
                       Auto overall size

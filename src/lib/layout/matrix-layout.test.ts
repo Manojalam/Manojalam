@@ -27,6 +27,7 @@ import {
   resolveMatrixCellResize,
   getMatrixBaseSize,
   isMatrixHierarchyEdge,
+  matrixDimensionPatchGeometryChange,
   matrixAncestorSpanOverrideResets,
   matrixNodeSizeDiffersFromPlacement,
   matrixRenderedSizeChanged,
@@ -2186,6 +2187,348 @@ test("changing a sibling gap preserves overall Matrix size overrides", () => {
     ),
     { width: false, height: false }
   );
+});
+
+test("a shorter exact terminal peer fills its shared row without hidden branch slack", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, childFlow: "column" },
+    { id: "row", parentId: "root", childFlow: "row" },
+    { id: "short", parentId: "row", matrixHeight: 60 },
+    { id: "tall", parentId: "row", matrixHeight: 70 },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  assert.equal(cells.get("short")?.height, 70);
+  assert.equal(cells.get("tall")?.height, 70);
+  assert.equal(cells.get("row")?.height, 70);
+  assertClean(result);
+});
+
+test("dimension impact detection distinguishes a changed shared row from a masked override", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, childFlow: "row" },
+    { id: "a", parentId: "root", matrixHeight: 70 },
+    { id: "b", parentId: "root", matrixHeight: 60 },
+  ]);
+  const ownedNodes = nodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      matrixRootId: "root",
+      ...(node.id === "root" ? { layoutMode: "matrix" } : {}),
+    },
+  }));
+  const hierarchy = buildHierarchy(ownedNodes, edges);
+  const byId = new Map(ownedNodes.map((node) => [node.id, node]));
+
+  assert.deepEqual(
+    matrixDimensionPatchGeometryChange(
+      "a",
+      { matrixHeightOverride: 60 },
+      hierarchy,
+      byId
+    ),
+    { width: false, height: true }
+  );
+  assert.deepEqual(
+    matrixDimensionPatchGeometryChange(
+      "b",
+      { matrixHeightOverride: 50 },
+      hierarchy,
+      byId
+    ),
+    { width: false, height: false }
+  );
+});
+
+test("locking the current overall Matrix bounds is geometry-idempotent", () => {
+  const { nodes, edges } = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      childFlow: "column",
+      incompleteRowMode: "empty",
+      compositionMode: "oriented",
+    },
+    { id: "row-a", parentId: "root", childFlow: "row" },
+    { id: "a-1", parentId: "row-a", matrixWidth: 200, matrixHeight: 60 },
+    { id: "a-2", parentId: "row-a", matrixWidth: 200, matrixHeight: 70 },
+    { id: "row-b", parentId: "root", childFlow: "row" },
+    { id: "b-1", parentId: "row-b", matrixWidth: 200, matrixHeight: 90 },
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const natural = computeMatrixLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const lockedNodes = nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          matrixTableSizeLocked: true,
+          matrixTableWidthOverride: natural.bounds.width,
+          matrixTableHeightOverride: natural.bounds.height,
+        },
+      }
+    : node);
+  const locked = computeMatrixLayout(
+    "root",
+    buildHierarchy(lockedNodes, edges),
+    new Map(lockedNodes.map((node) => [node.id, node]))
+  );
+  const geometry = (result: MatrixLayoutResult) =>
+    [result.header, ...result.cells].map((cell) => ({
+      id: cell.nodeId,
+      x: cell.x,
+      y: cell.y,
+      width: cell.width,
+      height: cell.height,
+    }));
+
+  assert.deepEqual(geometry(locked), geometry(natural));
+  assert.deepEqual(locked.bounds, natural.bounds);
+  assertClean(natural);
+  assertClean(locked);
+});
+
+test("editing one exact great-grandchild preserves unrelated four-level Matrix geometry", () => {
+  const { nodes, edges } = buildTree([
+    {
+      id: "root",
+      parentId: null,
+      text: "छन्दः",
+      childFlow: "column",
+      incompleteRowMode: "empty",
+      compositionMode: "oriented",
+      matrixWidth: 1200,
+    },
+    {
+      id: "body",
+      parentId: "root",
+      text: "वृत्तानि",
+      childFlow: "column",
+      matrixWidth: 200,
+    },
+    {
+      id: "anustubh",
+      parentId: "body",
+      text: "अनुष्टुप् - ८ अक्षराणि",
+      childFlow: "row",
+      matrixWidth: 200,
+      matrixHeight: 70,
+    },
+    {
+      id: "shloka",
+      parentId: "anustubh",
+      text: "श्लोकः",
+      matrixWidth: 200,
+      matrixHeight: 70,
+    },
+    {
+      id: "pramanika",
+      parentId: "anustubh",
+      text: "प्रमाणिका",
+      matrixWidth: 200,
+      matrixHeight: 70,
+    },
+    {
+      id: "trishtubh",
+      parentId: "body",
+      text: "त्रिष्टुप् - ११ अक्षराणि",
+      childFlow: "row",
+      matrixWidth: 200,
+      matrixHeight: 146,
+    },
+    ...Array.from({ length: 7 }, (_, index) => ({
+      id: `trishtubh-${index}`,
+      parentId: "trishtubh",
+      matrixWidth: 200,
+      matrixHeight: 70,
+    })),
+    {
+      id: "jagati",
+      parentId: "body",
+      text: "जगती - १२ अक्षराणि",
+      childFlow: "row",
+      matrixWidth: 200,
+      matrixHeight: 222,
+    },
+    ...Array.from({ length: 10 }, (_, index) => ({
+      id: `jagati-${index}`,
+      parentId: "jagati",
+      matrixWidth: 200,
+      matrixHeight: 70,
+    })),
+    {
+      id: "atijagati",
+      parentId: "body",
+      text: "अतिजगती - १३ अक्षराणि",
+      childFlow: "row",
+      matrixWidth: 200,
+      matrixHeight: 150,
+    },
+    ...Array.from({ length: 3 }, (_, index) => ({
+      id: `atijagati-${index}`,
+      parentId: "atijagati",
+      matrixWidth: 200,
+      matrixHeight: 150,
+    })),
+    {
+      id: "shakvari",
+      parentId: "body",
+      text: "शक्वरी - १४ अक्षराणि",
+      childFlow: "row",
+      matrixWidth: 200,
+      matrixHeight: 150,
+    },
+    {
+      id: "vasantatilaka",
+      parentId: "shakvari",
+      text: "वसन्ततिलका",
+      matrixWidth: 200,
+      matrixHeight: 60,
+    },
+    {
+      id: "atishakvari",
+      parentId: "body",
+      text: "अतिशक्वरी - १५ अक्षराणि",
+      childFlow: "row",
+      matrixWidth: 200,
+      matrixHeight: 150,
+    },
+    {
+      id: "malini",
+      parentId: "atishakvari",
+      text: "मालिनी",
+      matrixWidth: 200,
+      matrixHeight: 60,
+    },
+  ]);
+  const foldCounts = new Map([
+    ["trishtubh", 4],
+    ["jagati", 4],
+  ]);
+  const ownedNodes = nodes.map((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const foldCount = foldCounts.get(node.id);
+    return {
+      ...node,
+      data: {
+        ...data,
+        matrixRootId: "root",
+        fontSize: 30,
+        matrixIntrinsicSize: {
+          width: 160,
+          height: 43,
+          lineCount: 1,
+          lineHeight: 43,
+          cellWidth: 200,
+        },
+        ...(foldCount ? { layoutFoldCount: foldCount } : {}),
+        ...(node.id === "root" ? { layoutMode: "matrix" } : {}),
+      },
+    };
+  });
+  const naturalHierarchy = buildHierarchy(ownedNodes, edges);
+  const natural = computeMatrixLayout(
+    "root",
+    naturalHierarchy,
+    new Map(ownedNodes.map((node) => [node.id, node]))
+  );
+  const displayedNodes = ownedNodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          matrixTableWidthOverride: natural.bounds.width,
+          matrixTableHeightOverride: natural.bounds.height * 1.25,
+        },
+      }
+    : node);
+  const displayedHierarchy = buildHierarchy(displayedNodes, edges);
+  const displayedById = new Map(displayedNodes.map((node) => [node.id, node]));
+  const displayed = computeMatrixLayout(
+    "root",
+    displayedHierarchy,
+    displayedById
+  );
+  const patch = { matrixHeightOverride: 60 };
+  const resets = matrixAncestorSpanOverrideResets(
+    "shloka",
+    patch,
+    displayedHierarchy,
+    displayedById
+  );
+  const geometryChange = matrixDimensionPatchGeometryChange(
+    "shloka",
+    patch,
+    displayedHierarchy,
+    displayedById
+  );
+  const requestedTableAxisResets = matrixTableOverrideResetAxes(patch);
+  const resetTableAxes = {
+    width: requestedTableAxisResets.width && geometryChange.width,
+    height: requestedTableAxisResets.height && geometryChange.height,
+  };
+  const resizedNodes = displayedNodes.map((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    if (node.id === "shloka") return { ...node, data: { ...data, ...patch } };
+    if (node.id === "root") {
+      return {
+        ...node,
+        data: {
+          ...data,
+          ...(resetTableAxes.height ? { matrixTableHeightOverride: undefined } : {}),
+        },
+      };
+    }
+    const reset = geometryChange.height ? resets.get(node.id) : undefined;
+    return reset?.height
+      ? { ...node, data: { ...data, matrixHeightOverride: undefined } }
+      : node;
+  });
+  const resized = computeMatrixLayout(
+    "root",
+    buildHierarchy(resizedNodes, edges),
+    new Map(resizedNodes.map((node) => [node.id, node]))
+  );
+  const displayedCells = new Map(
+    [displayed.header, ...displayed.cells].map((cell) => [cell.nodeId, cell])
+  );
+  const editedLineage = new Set(["root", "body", "anustubh", "shloka"]);
+  const changedUnrelatedCells = (result: MatrixLayoutResult): string[] => {
+    const resizedCells = new Map(
+      [result.header, ...result.cells].map((cell) => [cell.nodeId, cell])
+    );
+    return [...displayedCells]
+      .filter(([nodeId]) => !editedLineage.has(nodeId))
+      .filter(([nodeId, before]) => {
+        const after = resizedCells.get(nodeId);
+        return !after
+          || Math.abs(before.x - after.x) > 0.5
+          || Math.abs(before.y - after.y) > 0.5
+          || Math.abs(before.width - after.width) > 0.5
+          || Math.abs(before.height - after.height) > 0.5;
+      })
+      .map(([nodeId]) => nodeId);
+  };
+
+  assert.deepEqual(geometryChange, { width: false, height: false });
+  assert.deepEqual(changedUnrelatedCells(resized), []);
+  assert.equal(
+    resized.cells.find((cell) => cell.nodeId === "shloka")?.height,
+    resized.cells.find((cell) => cell.nodeId === "pramanika")?.height
+  );
+  assertClean(displayed);
+  assertClean(resized);
 });
 
 test("resizing stacked or side-by-side children returns a horizontal parent height to Auto", () => {
