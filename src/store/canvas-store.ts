@@ -111,6 +111,7 @@ import {
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
 import {
   remapHierarchyForBoardInsertion,
+  restoreImportedCardHierarchyEdges,
   type ImportedHierarchyInsertion,
 } from "@/lib/import/board";
 import {
@@ -4114,11 +4115,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
     const hierarchy = buildHierarchy(layoutNodes, edges);
     const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    const hierarchyEdges = restoreImportedCardHierarchyEdges(
+      layoutNodes,
+      edges,
+      scopeIds
+    );
     const layoutEdges = convertingLayout
-      ? edges.map((edge) => scopeIds.has(edge.source) && scopeIds.has(edge.target)
+      ? hierarchyEdges.map((edge) => scopeIds.has(edge.source) && scopeIds.has(edge.target)
         ? { ...edge, data: clearLayoutEdgeRouting((edge.data ?? {}) as Record<string, unknown>) }
         : edge)
-      : edges;
+      : hierarchyEdges;
     const paletteSeed = applyLayoutPalette(
       layoutNodes,
       layoutEdges,

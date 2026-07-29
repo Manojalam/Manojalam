@@ -15,6 +15,7 @@ import type {
 export * from "./types";
 export * from "./script";
 export * from "./draft";
+export * from "./layouts";
 
 const ACCEPTED_EXTENSIONS: Record<string, HierarchyImportKind> = {
   ".txt": "text",

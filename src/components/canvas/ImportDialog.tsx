@@ -35,17 +35,18 @@ import { LayoutPreview } from "@/components/canvas/LayoutPreview";
 import {
   createDraftNode,
   fontFamilyForScript,
+  IMPORT_LAYOUT_OPTIONS,
   locateDraftNode,
   parseHierarchyFile,
   refreshDraftScripts,
   scriptModeForText,
   type HierarchyDraft,
   type HierarchyDraftNode,
+  type ImportLayoutMode,
   type ImportProgress,
 } from "@/lib/import";
 import { hierarchyDraftToBoardContent } from "@/lib/import/board";
 import { createBoardFromContent, importBoard } from "@/lib/storage/board-store";
-import type { LayoutMode } from "@/lib/layout";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 
@@ -97,18 +98,6 @@ const SOURCE_OPTIONS: Array<{
   },
 ];
 
-const IMPORT_LAYOUTS: Array<{
-  mode: LayoutMode;
-  label: string;
-  description: string;
-}> = [
-  { mode: "horizontal", label: "Horizontal", description: "Tree grows left to right" },
-  { mode: "vertical", label: "Vertical", description: "Balanced tree fanning down" },
-  { mode: "list", label: "List", description: "Indented editable outline" },
-  { mode: "radial", label: "Radial", description: "Hierarchy-aware sunburst" },
-  { mode: "matrix", label: "Matrix", description: "Structured chart or table" },
-];
-
 interface FlatDraftNode {
   node: HierarchyDraftNode;
   depth: number;
@@ -149,7 +138,7 @@ export function ImportDialog({
     stage: "Preparing import",
     progress: 0,
   });
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("horizontal");
+  const [layoutMode, setLayoutMode] = useState<ImportLayoutMode>("horizontal");
   const [destination, setDestination] = useState<ImportDestination>("new");
   const abortRef = useRef<AbortController | null>(null);
   const currentBoard = useCanvasStore((state) => state.board);
@@ -339,7 +328,9 @@ export function ImportDialog({
     try {
       const finalized = structuredClone(draft);
       refreshDraftScripts(finalized.roots);
-      const { content, rootId } = hierarchyDraftToBoardContent(finalized);
+      const { content, rootId } = hierarchyDraftToBoardContent(finalized, {
+        presentation: layoutMode === "cards" ? "cards" : "hierarchy",
+      });
       if (destination === "current") {
         const canvas = useCanvasStore.getState();
         if (!canvas.board || canvas.board.accessRole === "viewer") {
@@ -359,6 +350,17 @@ export function ImportDialog({
         });
         closeAfterSuccess();
         requestAnimationFrame(() => {
+          if (layoutMode === "cards") {
+            window.dispatchEvent(new CustomEvent("vidya:fitview", {
+              detail: {
+                mode: layoutMode,
+                rootId: insertion.rootId,
+                nodeIds: insertion.nodeIds,
+                forceFit: true,
+              },
+            }));
+            return;
+          }
           if (layoutMode === "list" || layoutMode === "matrix") {
             window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
               detail: {
@@ -798,7 +800,7 @@ export function ImportDialog({
               </div>
             )}
             <div className="grid gap-3 overflow-y-auto py-1 sm:grid-cols-2 lg:grid-cols-3">
-              {IMPORT_LAYOUTS.map((layout) => (
+              {IMPORT_LAYOUT_OPTIONS.map((layout) => (
                 <button
                   key={layout.mode}
                   type="button"
@@ -821,6 +823,13 @@ export function ImportDialog({
                 </button>
               ))}
             </div>
+            {layoutMode === "cards" && (
+              <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Cards creates ordinary shape nodes with no connectors. You can
+                select them afterward and change them to rectangles, ellipses,
+                diamonds, or any other shape.
+              </p>
+            )}
             <div className="flex items-center justify-between">
               <Button type="button" variant="outline" onClick={() => setStep("review")}>
                 <ArrowLeft className="mr-1 h-4 w-4" /> Review

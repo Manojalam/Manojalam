@@ -11,7 +11,7 @@ export function LayoutPreview({
   mode,
   className = "h-10 w-14",
 }: {
-  mode: LayoutMode;
+  mode: LayoutMode | "cards";
   className?: string;
 }) {
   let content: React.ReactNode;
@@ -44,6 +44,16 @@ export function LayoutPreview({
         <rect x="36" y="22" width="14" height="5" rx="1" fill="#dbeafe" />
         <rect x="22" y="29" width="12" height="5" rx="1" fill="#c7d2fe" />
         <rect x="36" y="29" width="14" height="5" rx="1" fill="#dbeafe" />
+      </>;
+      break;
+    case "cards":
+      content = <>
+        <rect x="5" y="5" width="13" height="12" rx="2" fill="#a5b4fc" />
+        <rect x="21.5" y="5" width="13" height="12" rx="2" fill="#c7d2fe" />
+        <rect x="38" y="5" width="13" height="12" rx="2" fill="#dbeafe" />
+        <rect x="5" y="22" width="13" height="12" rx="2" fill="#c7d2fe" />
+        <rect x="21.5" y="22" width="13" height="12" rx="2" fill="#dbeafe" />
+        <rect x="38" y="22" width="13" height="12" rx="2" fill="#a5b4fc" />
       </>;
       break;
     case "fromParentFreeForm":

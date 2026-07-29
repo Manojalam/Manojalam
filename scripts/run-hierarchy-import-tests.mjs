@@ -12,6 +12,7 @@ const sources = [
   "src/lib/utils.ts",
   "src/lib/import/types.ts",
   "src/lib/import/script.ts",
+  "src/lib/import/layouts.ts",
   "src/lib/import/text.ts",
   "src/lib/import/draft.ts",
   "src/lib/import/raster.ts",
