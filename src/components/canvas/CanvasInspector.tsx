@@ -78,7 +78,10 @@ import {
   boardTextureStyle,
 } from "@/lib/canvas/board-textures";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
-import { sameLevelMatrixSelection } from "@/lib/canvas/matrix-selection";
+import {
+  descendantSelectionLevels,
+  sameLevelMatrixSelection,
+} from "@/lib/canvas/matrix-selection";
 import {
   buildRelationshipGroupsForSpec,
   MAX_FLOWER_LAYERS,
@@ -1356,7 +1359,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const canMoveSiblingEarlier = selectedSiblingIndex > 0;
   const canMoveSiblingLater = selectedSiblingIndex >= 0 && selectedSiblingIndex < siblingIds.length - 1;
   const childIds = selectedHierarchy?.childIds ?? [];
-  const descendantIds = selectedNode ? getSubtree(selectedNode.id, hierarchy).filter((id) => id !== selectedNode.id) : [];
+  const selectedDescendantLevels = selectedNode
+    ? descendantSelectionLevels(selectedNode.id, hierarchy)
+    : [];
+  const descendantIds = selectedDescendantLevels.flatMap((level) => level.nodeIds);
 
   // ALL hooks before any early return
   const d = (selectedNode?.data ?? {}) as Record<string, unknown>;
@@ -4589,55 +4595,57 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </Button>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-1">
+          <div className="space-y-1">
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px]"
+                disabled={!parentNode}
+                onClick={() => {
+                  if (!parentNode) return;
+                  selectNodesById([parentNode.id]);
+                }}
+              >
+                Select parent
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px]"
+                onClick={() => {
+                  selectNodesById([selectedNode.id, ...descendantIds]);
+                }}
+              >
+                Select branch
+              </Button>
+            </div>
+            {selectedDescendantLevels.length > 0 && (
+              <div className="space-y-1 rounded-md border border-border/70 bg-muted/25 p-1.5">
+                <p className="px-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Select one descendant level
+                </p>
+                <div className="grid grid-cols-2 gap-1">
+                  {selectedDescendantLevels.map(({ level, nodeIds }) => (
+                    <Button
+                      key={level}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-1 text-[9px]"
+                      title={`Select all ${nodeIds.length} cells at descendant level ${level}`}
+                      onClick={() => selectNodesById(nodeIds)}
+                    >
+                      Descendant {level} ({nodeIds.length})
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-[10px]"
-              disabled={!parentNode}
-              onClick={() => {
-                if (!parentNode) return;
-                selectNodesById([parentNode.id]);
-              }}
-            >
-              Select parent
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[10px]"
-              disabled={!childIds.length}
-              onClick={() => {
-                selectNodesById(childIds);
-              }}
-            >
-              Select children
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[10px]"
-              disabled={!descendantIds.length}
-              onClick={() => {
-                selectNodesById(descendantIds);
-              }}
-            >
-              Select descendants
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-[10px]"
-              onClick={() => {
-                selectNodesById([selectedNode.id, ...descendantIds]);
-              }}
-            >
-              Select branch
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="col-span-2 h-7 text-[10px]"
+              className="h-7 w-full text-[10px]"
               onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
                 detail: { nodeIds: [selectedNode.id, ...descendantIds] },
               }))}
@@ -4647,7 +4655,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <Button
               variant="default"
               size="sm"
-              className="col-span-2 h-7 text-[10px]"
+              className="h-7 w-full text-[10px]"
               onClick={() => {
                 selectNodesById([selectedNode.id]);
                 setLayoutPanelOpen(true);

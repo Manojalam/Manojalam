@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
 import { buildHierarchy } from "../layout/hierarchy";
-import { sameLevelMatrixSelection } from "./matrix-selection";
+import {
+  descendantSelectionLevels,
+  sameLevelMatrixSelection,
+} from "./matrix-selection";
 
 function node(
   id: string,
@@ -19,6 +22,44 @@ function node(
     },
   };
 }
+
+test("descendants are grouped into every available level below a parent", () => {
+  const nodes = [
+    node("root"),
+    node("child-a", "root"),
+    node("child-b", "root"),
+    node("grandchild-a1", "child-a"),
+    node("grandchild-a2", "child-a"),
+    node("grandchild-b1", "child-b"),
+    node("great-grandchild", "grandchild-a1"),
+  ];
+  const hierarchy = buildHierarchy(nodes, []);
+
+  assert.deepEqual(descendantSelectionLevels("root", hierarchy), [
+    { level: 1, nodeIds: ["child-a", "child-b"] },
+    {
+      level: 2,
+      nodeIds: ["grandchild-a1", "grandchild-a2", "grandchild-b1"],
+    },
+    { level: 3, nodeIds: ["great-grandchild"] },
+  ]);
+});
+
+test("descendant levels are relative to the currently selected cell", () => {
+  const nodes = [
+    node("root"),
+    node("child", "root"),
+    node("grandchild", "child"),
+    node("great-grandchild", "grandchild"),
+  ];
+  const hierarchy = buildHierarchy(nodes, []);
+
+  assert.deepEqual(descendantSelectionLevels("child", hierarchy), [
+    { level: 1, nodeIds: ["grandchild"] },
+    { level: 2, nodeIds: ["great-grandchild"] },
+  ]);
+  assert.deepEqual(descendantSelectionLevels("great-grandchild", hierarchy), []);
+});
 
 test("same-level Matrix siblings expose their parent's arrangement", () => {
   const nodes = [
