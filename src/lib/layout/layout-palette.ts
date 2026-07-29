@@ -11,7 +11,7 @@ import {
   radialColorScheme,
   radialSectorColors,
 } from "../radial-layout";
-import { getSubtree, type Hierarchy } from "./hierarchy";
+import { getLayoutOwnedSubtree, getSubtree, type Hierarchy } from "./hierarchy";
 import { layoutFontSizeFor } from "./layout-presentation";
 
 const AUTOMATIC_COLOR_MODES = new Set<LayoutMode>([
@@ -150,8 +150,11 @@ export function buildLayoutVisualStyles(
   const branchCount = Math.max(1, hierarchy.get(rootId)?.childIds.length ?? 0);
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
+  const layoutNodeIds = nodes.length
+    ? getLayoutOwnedSubtree(rootId, hierarchy, nodes)
+    : getSubtree(rootId, hierarchy);
 
-  for (const nodeId of getSubtree(rootId, hierarchy)) {
+  for (const nodeId of layoutNodeIds) {
     const info = hierarchy.get(nodeId);
     const depth = Math.max(0, (info?.depth ?? rootDepth) - rootDepth);
     const branchIndex = Math.max(0, branches.get(nodeId) ?? 0);

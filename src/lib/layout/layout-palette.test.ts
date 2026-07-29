@@ -91,6 +91,49 @@ test("applying a palette preserves original style fields and colors hierarchy ed
   assert.notEqual((result.edges[0].markerEnd as { color?: string }).color, "#123456");
 });
 
+test("an outer List palette preserves a nested Matrix presentation", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const matrixIds = new Set(["branch-a", "a-1", "a-1-child", "a-2"]);
+  const matrixNodes = nodes.map((node) => matrixIds.has(node.id)
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          ...(node.id === "branch-a" ? { layoutMode: "matrix" } : {}),
+          layoutVisualStyle: {
+            rootId: "branch-a",
+            mode: "matrix",
+            scheme: "ocean",
+            depth: node.id === "branch-a" ? 0 : 1,
+            branchIndex: 0,
+            fillColor: "#aabbcc",
+            borderColor: "#223344",
+            textColor: "#112233",
+            accentColor: "#223344",
+            borderWidth: 0,
+            borderStyle: "solid",
+            fontSize: 17,
+          },
+        },
+      }
+    : node);
+  const hierarchy = buildHierarchy(matrixNodes, edges);
+  const result = applyLayoutPalette(matrixNodes, edges, hierarchy, "root", "list", "forest");
+
+  for (const nodeId of matrixIds) {
+    const before = matrixNodes.find((node) => node.id === nodeId)!.data as Record<string, unknown>;
+    const after = result.nodes.find((node) => node.id === nodeId)!.data as Record<string, unknown>;
+    assert.deepEqual(after.layoutVisualStyle, before.layoutVisualStyle);
+  }
+  const otherStyle = (
+    result.nodes.find((node) => node.id === "branch-b")!.data as Record<string, unknown>
+  ).layoutVisualStyle as { rootId: string; mode: string };
+  assert.deepEqual(
+    { rootId: otherStyle.rootId, mode: otherStyle.mode },
+    { rootId: "root", mode: "list" }
+  );
+});
+
 test("Matrix palette leaves shape borders to the user-controlled node style", () => {
   const { nodes, edges } = hierarchyFixture();
   const hierarchy = buildHierarchy(nodes, edges);

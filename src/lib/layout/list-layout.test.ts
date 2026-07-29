@@ -439,6 +439,54 @@ test("Matrix-root siblings share one List trunk despite different left edges and
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
+test("List reflow moves a nested Matrix as one block without rearranging its cells", () => {
+  const tree = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "matrix", parentId: "root", width: 520, height: 72 },
+    { id: "matrix-a", parentId: "matrix", width: 240, height: 64 },
+    { id: "matrix-b", parentId: "matrix", width: 240, height: 64 },
+    { id: "other", parentId: "root", width: 200, height: 68 },
+  ]);
+  const authoredPositions = new Map<string, { x: number; y: number }>([
+    ["matrix", { x: 700, y: 300 }],
+    ["matrix-a", { x: 700, y: 400 }],
+    ["matrix-b", { x: 980, y: 400 }],
+    ["other", { x: 120, y: 900 }],
+  ]);
+  const nodes = tree.nodes.map((node) => ({
+    ...node,
+    position: authoredPositions.get(node.id) ?? node.position,
+    data: node.id === "matrix"
+      ? { ...node.data, layoutMode: "matrix" }
+      : node.data,
+  }));
+  const hierarchy = buildHierarchy(nodes, tree.edges);
+  const placements = computeListLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+
+  const deltaFor = (nodeId: string) => {
+    const before = nodes.find((node) => node.id === nodeId)!.position;
+    const after = placements[nodeId];
+    return { x: after.x - before.x, y: after.y - before.y };
+  };
+  assert.deepEqual(deltaFor("matrix-a"), deltaFor("matrix"));
+  assert.deepEqual(deltaFor("matrix-b"), deltaFor("matrix"));
+
+  const positioned = positionedNodes(nodes, placements);
+  const matrixBottom = Math.max(
+    getNodeRect(positioned.find((node) => node.id === "matrix")!).bottom,
+    getNodeRect(positioned.find((node) => node.id === "matrix-a")!).bottom,
+    getNodeRect(positioned.find((node) => node.id === "matrix-b")!).bottom
+  );
+  assert.ok(
+    getNodeRect(positioned.find((node) => node.id === "other")!).top
+      >= matrixBottom + LIST_DENSITIES.compact.rowGapY + LIST_DENSITIES.compact.majorBranchGapY
+  );
+});
+
 test("List buses start and end on irregular shape silhouettes", () => {
   const tree = buildTree([
     { id: "root", parentId: null, width: 500, height: 500 },
