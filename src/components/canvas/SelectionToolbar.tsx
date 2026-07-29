@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Copy,
+  CopyPlus,
   ChevronDown,
   Eraser,
   FileImage,
@@ -68,6 +69,11 @@ import {
   MovableToolbarHandle,
   useMovableToolbar,
 } from "@/components/canvas/MovableToolbar";
+import { CopyToBoardDialog } from "@/components/canvas/CopyToBoardDialog";
+import {
+  createCrossBoardDiagramPayload,
+  type CrossBoardDiagramPayload,
+} from "@/lib/canvas/cross-board-copy";
 
 function ActionButton({
   label,
@@ -493,6 +499,10 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
 }
 
 export function SelectionToolbar() {
+  const [copyToBoardOpen, setCopyToBoardOpen] = useState(false);
+  const [copyPayload, setCopyPayload] =
+    useState<CrossBoardDiagramPayload | null>(null);
+  const board = useCanvasStore((state) => state.board);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
@@ -672,8 +682,25 @@ export function SelectionToolbar() {
       .map((node) => node.id),
     relationships
   );
+  const openCopyToBoard = () => {
+    const state = useCanvasStore.getState();
+    try {
+      setCopyPayload(createCrossBoardDiagramPayload({
+        nodes: state.nodes,
+        edges: state.edges,
+        relationships: state.relationships,
+        relationshipFans: state.relationshipFans,
+      }, selectedNodeIds));
+      setCopyToBoardOpen(true);
+    } catch (error) {
+      toast.error("Could not prepare diagram copy", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  };
 
   return (
+    <>
     <NodeToolbar
       data-export-ignore
       nodeId={selected.map((node) => node.id)}
@@ -931,6 +958,13 @@ export function SelectionToolbar() {
         <Copy className="h-4 w-4" />
       </ActionButton>
       <ActionButton
+        label="Copy diagram to another board"
+        disabled={!board}
+        onClick={openCopyToBoard}
+      >
+        <CopyPlus className="h-4 w-4" />
+      </ActionButton>
+      <ActionButton
         label="Trim leading and trailing spaces from every line inside selected objects"
         onClick={() => {
           const count = trimSelectedContent();
@@ -953,5 +987,14 @@ export function SelectionToolbar() {
       </ActionButton>
       <ActionButton label="Delete" onClick={() => deleteSelected()}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
     </NodeToolbar>
+    {board && (
+      <CopyToBoardDialog
+        open={copyToBoardOpen}
+        onOpenChange={setCopyToBoardOpen}
+        currentBoardId={board.id}
+        payload={copyPayload}
+      />
+    )}
+    </>
   );
 }

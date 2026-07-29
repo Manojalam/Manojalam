@@ -5,6 +5,10 @@ import { getTemplateById } from "@/lib/templates";
 import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
+import {
+  insertCrossBoardDiagram,
+  type CrossBoardDiagramPayload,
+} from "@/lib/canvas/cross-board-copy";
 
 export interface BoardRow {
   id: string;
@@ -230,6 +234,27 @@ export async function saveBoardContent(
   content: BoardContent
 ): Promise<VidyaBoard | null> {
   return updateBoard(id, { content });
+}
+
+/** Insert a portable diagram selection into an editable destination board. */
+export async function copyDiagramToBoard(
+  destinationBoardId: string,
+  payload: CrossBoardDiagramPayload
+): Promise<VidyaBoard> {
+  const destination = await getBoard(destinationBoardId);
+  if (!destination) {
+    throw new Error("The destination board could not be found.");
+  }
+  if (destination.accessRole === "viewer") {
+    throw new Error("You only have view access to the destination board.");
+  }
+  const updated = await updateBoard(destinationBoardId, {
+    content: insertCrossBoardDiagram(destination.content, payload),
+  });
+  if (!updated) {
+    throw new Error("The diagram could not be copied to the destination board.");
+  }
+  return updated;
 }
 
 export async function deleteBoard(id: string): Promise<boolean> {
