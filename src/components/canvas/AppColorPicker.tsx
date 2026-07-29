@@ -12,7 +12,10 @@ import { Check, X } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  arrangeColorPalette,
   COLOR_SWATCH_GROUPS,
+  colorSwatchHex,
+  colorsUsedOnBoard,
   forgetCustomColor,
   hexToHsv,
   hexToRgb,
@@ -29,6 +32,7 @@ import {
   surfaceEffectStyle,
 } from "@/lib/canvas/surface-effects";
 import { cn } from "@/lib/utils";
+import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
 interface ColorPickerPanelProps {
@@ -101,7 +105,7 @@ function ColorSwatch({
   );
 }
 
-function SavedColorSwatch({
+function LabeledPaletteColor({
   color,
   selected,
   onSelect,
@@ -114,15 +118,55 @@ function SavedColorSwatch({
   onRemove?: () => void;
   selectionSafe: boolean;
 }) {
+  const rgb = hexToRgb(color);
+  const useDarkCheck = !!rgb && (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 175;
+  const metallicStyle = isMetallicColor(color)
+    ? surfaceEffectStyle({
+        ...surfaceEffectPresetPatch("metallic"),
+        surfaceEffectDepth: 2,
+      })
+    : {};
   return (
-    <span className="group relative h-5 w-5">
-      <ColorSwatch
-        color={color}
-        selected={selected}
-        title={`Site palette · ${color}`}
-        onSelect={onSelect}
-        selectionSafe={selectionSafe}
-      />
+    <span className="relative min-w-0">
+      <button
+        type="button"
+        title={selected ? `Selected color ${color}` : `Select color ${color}`}
+        aria-label={selected ? `Selected color ${color}` : `Select color ${color}`}
+        aria-pressed={selected}
+        onPointerDown={(event) => {
+          if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+          event.preventDefault();
+          onSelect();
+        }}
+        onClick={(event) => {
+          if (!selectionSafe || event.detail === 0) onSelect();
+        }}
+        className={cn(
+          "flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md border bg-background px-1.5 text-left",
+          "transition-colors hover:border-primary/50 hover:bg-muted",
+          onRemove && "pr-5",
+          selected && "border-primary bg-primary/10 ring-1 ring-primary"
+        )}
+      >
+        <span
+          className="relative h-4 w-4 flex-none rounded-sm border border-black/15 shadow-sm"
+          style={{ backgroundColor: color, ...metallicStyle }}
+        >
+          {selected && (
+            <Check
+              aria-hidden="true"
+              className={cn(
+                "absolute inset-0 m-auto h-2.5 w-2.5",
+                useDarkCheck ? "text-slate-900" : "text-white"
+              )}
+              strokeWidth={3}
+            />
+          )}
+        </span>
+        <span className="truncate font-mono text-[9px] uppercase text-foreground">
+          {color}
+        </span>
+      </button>
       {onRemove && (
         <button
           type="button"
@@ -139,10 +183,8 @@ function SavedColorSwatch({
             if (event.detail === 0) onRemove();
           }}
           className={cn(
-            "absolute -right-1.5 -top-1.5 z-20 flex h-3.5 w-3.5 items-center justify-center",
-            "rounded-full border border-border bg-background text-muted-foreground shadow-sm",
-            "opacity-75 transition-opacity hover:text-destructive hover:opacity-100",
-            "focus-visible:opacity-100"
+            "absolute right-1 top-1/2 z-20 flex h-4 w-4 -translate-y-1/2 items-center justify-center",
+            "rounded-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           )}
         >
           <X className="h-2.5 w-2.5" />
@@ -176,19 +218,23 @@ export function ColorPickerPanel({
   const [hexDraft, setHexDraft] = useState(initialColor);
   const draftColor = hsvToHex({ h: hue, s: saturation, v: brightness });
   const draftRgb = hexToRgb(draftColor) ?? { r: 40, g: 120, b: 255 };
+  const nodes = useCanvasStore((state) => state.nodes);
+  const edges = useCanvasStore((state) => state.edges);
+  const boardUsedColors = colorsUsedOnBoard(nodes, edges);
   const normalizedSavedColors = useMemo(
-    () => Array.from(new Set(savedColors
+    () => arrangeColorPalette(savedColors
       .map(normalizeHexColor)
-      .filter((color): color is string => !!color))),
+      .filter((color): color is string => !!color)),
     [savedColors]
   );
-  const boardColors = useMemo(
-    () => Array.from(new Set(extraColors
-      .map(normalizeHexColor)
-      .filter((color): color is string => !!color)))
-      .filter((color) => !normalizedSavedColors.includes(color)),
-    [extraColors, normalizedSavedColors]
-  );
+  const usedColors = useMemo(() => {
+    const saved = new Set(normalizedSavedColors);
+    const extras = extraColors
+      .map(colorSwatchHex)
+      .filter((color): color is string => !!color);
+    return arrangeColorPalette([...boardUsedColors, ...extras])
+      .filter((color) => !saved.has(color));
+  }, [boardUsedColors, extraColors, normalizedSavedColors]);
   const draftIsSaved = normalizedSavedColors.includes(draftColor);
 
   const setHsvColor = (nextColor: HsvColor) => {
@@ -242,6 +288,53 @@ export function ColorPickerPanel({
             Pick a tint or create an exact color. Metallic swatches preview a polished surface on supported fills.
           </p>
         </div>
+      )}
+
+      {normalizedSavedColors.length > 0 && (
+        <section className="space-y-1.5" aria-label="Saved palette">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+              Saved palette
+            </p>
+            <p className="text-[8px] text-muted-foreground">Hue order · HEX</p>
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            {normalizedSavedColors.map((color) => (
+              <LabeledPaletteColor
+                key={color}
+                color={color}
+                selected={draftColor === color}
+                onSelect={() => selectSwatch(color)}
+                onRemove={onRemoveSavedColor
+                  ? () => onRemoveSavedColor(color)
+                  : undefined}
+                selectionSafe={selectionSafe}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {usedColors.length > 0 && (
+        <section className="space-y-1.5" aria-label="Used colors">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+              Used colors
+            </p>
+            <p className="text-[8px] text-muted-foreground">This board · HEX</p>
+          </div>
+          <div className="grid grid-cols-2 gap-1">
+            {usedColors.map((color) => (
+              <LabeledPaletteColor
+                key={color}
+                color={color}
+                selected={draftColor === color}
+                onSelect={() => selectSwatch(color)}
+                selectionSafe={selectionSafe}
+              />
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="space-y-1.5" aria-label="Color swatches">
@@ -334,51 +427,6 @@ export function ColorPickerPanel({
           <span className="text-right font-mono normal-case tracking-normal">{Math.round(hue)}°</span>
         </label>
       </section>
-
-      {normalizedSavedColors.length > 0 && (
-        <section className="space-y-1.5" aria-label="Site palette">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-              Site palette
-            </p>
-            <p className="text-[9px] text-muted-foreground">Available on every board</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {normalizedSavedColors.map((color) => (
-              <SavedColorSwatch
-                key={color}
-                color={color}
-                selected={draftColor === color}
-                onSelect={() => selectSwatch(color)}
-                onRemove={onRemoveSavedColor
-                  ? () => onRemoveSavedColor(color)
-                  : undefined}
-                selectionSafe={selectionSafe}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {boardColors.length > 0 && (
-        <section className="space-y-1.5" aria-label="Board colors">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-            Board colors
-          </p>
-          <div className="flex flex-wrap gap-1">
-            {boardColors.map((color) => (
-              <ColorSwatch
-                key={color}
-                color={color}
-                selected={draftColor === color}
-                title={`Board color · ${color}`}
-                onSelect={() => selectSwatch(color)}
-                selectionSafe={selectionSafe}
-              />
-            ))}
-          </div>
-        </section>
-      )}
 
       <section
         className={cn(

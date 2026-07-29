@@ -7,6 +7,8 @@ import {
   colorInputValue,
   colorSwatchHex,
   colorSwatchMatches,
+  colorsUsedOnBoard,
+  extractColorSwatches,
   forgetCustomColor,
   hexToHsv,
   hexToRgb,
@@ -48,6 +50,35 @@ test("converts generated HSL and RGB fills into visible hex swatches", () => {
   assert.equal(colorSwatchHex("rgb(40, 120, 255)"), "#2878ff");
   assert.equal(colorSwatchHex("rgba(40, 120, 255, 0.42)"), "#2878ff");
   assert.equal(colorSwatchHex("transparent"), null);
+});
+
+test("extracts colors embedded in rich text and composite styles", () => {
+  assert.deepEqual(
+    extractColorSwatches(
+      "color:#FF0000;background:linear-gradient(rgb(0, 255, 0), hsl(240, 100%, 50%))"
+    ),
+    ["#ff0000", "#00ff00", "#0000ff"]
+  );
+});
+
+test("collects board colors once and returns them in neutral then hue order", () => {
+  const nodes = [{
+    data: {
+      fillColor: "#00ff00",
+      html: "<span style=\"color:#FF0000\">Text</span>",
+      borderColor: "#ffffff",
+    },
+  }];
+  const edges = [{
+    style: { stroke: "rgb(0, 0, 255)" },
+    data: { labelStyle: { textColor: "#ff0000" } },
+  }];
+
+  assert.deepEqual(
+    colorsUsedOnBoard(nodes, edges),
+    ["#ffffff", "#ff0000", "#00ff00", "#0000ff"]
+  );
+  assert.equal(colorsUsedOnBoard(nodes, edges), colorsUsedOnBoard(nodes, edges));
 });
 
 test("offers general bright, light, strong, neutral, and metallic swatches", () => {
