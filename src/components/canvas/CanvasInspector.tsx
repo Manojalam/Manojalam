@@ -137,7 +137,7 @@ import {
   resolveObjectRotation,
   supportsObjectRotation,
 } from "@/lib/canvas/object-rotation";
-import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { isMetallicColor, rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
   isInsideEnclosedSticker,
   normalizeWholeTextHighlight,
@@ -860,7 +860,7 @@ function SurfaceEffectsControl({
   const directional = !["flat", "glow"].includes(settings.preset);
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Surface effect">
+      <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Surface effect">
         {SURFACE_EFFECT_PRESETS.map((preset) => {
           const active = !mixed && settings.preset === preset.id;
           return (
@@ -1623,6 +1623,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       return;
     }
     const patch = fieldPatch(d, key, value);
+    if (key === "fillColor" && isMetallicColor(value)) {
+      Object.assign(patch, surfaceEffectPresetPatch("metallic"));
+    }
     if (selectedNode.type === "shape" && key === "borderColor") {
       const fillPatch = borderMatchedFillPatch(d, value);
       if (fillPatch.fillColor !== undefined) {
@@ -1664,6 +1667,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     for (const node of selectedNodes) {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const patch = fieldPatch(data, key, value);
+      if (!isRadialMultiSelection && key === "fillColor" && isMetallicColor(value)) {
+        Object.assign(patch, surfaceEffectPresetPatch("metallic"));
+      }
       if (!isRadialMultiSelection && node.type === "shape" && key === "borderColor") {
         const fillPatch = borderMatchedFillPatch(data, value);
         if (fillPatch.fillColor !== undefined) {

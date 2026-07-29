@@ -16,12 +16,17 @@ import {
   hexToHsv,
   hexToRgb,
   hsvToHex,
+  isMetallicColor,
   normalizeHexColor,
   rememberCustomColor,
   rgbToHex,
   type HsvColor,
   type RgbColor,
 } from "@/lib/canvas/custom-colors";
+import {
+  surfaceEffectPresetPatch,
+  surfaceEffectStyle,
+} from "@/lib/canvas/surface-effects";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui-store";
 
@@ -55,6 +60,12 @@ function ColorSwatch({
 }) {
   const rgb = hexToRgb(color);
   const useDarkCheck = !!rgb && (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) > 175;
+  const metallicStyle = isMetallicColor(color)
+    ? surfaceEffectStyle({
+        ...surfaceEffectPresetPatch("metallic"),
+        surfaceEffectDepth: 2,
+      })
+    : {};
   return (
     <button
       type="button"
@@ -72,7 +83,7 @@ function ColorSwatch({
         "relative h-5 w-5 rounded-md border border-black/15 shadow-sm transition-transform hover:z-10 hover:scale-110",
         selected && "ring-2 ring-primary ring-offset-1 ring-offset-background"
       )}
-      style={{ backgroundColor: color }}
+      style={{ backgroundColor: color, ...metallicStyle }}
     >
       {selected && (
         <Check
@@ -160,7 +171,7 @@ export function ColorPickerPanel({
         <div>
           <p className="text-[11px] font-semibold text-foreground">Choose color</p>
           <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-            Bright colors are first. Pick a light tint or create any exact color below.
+            Pick a tint or create an exact color. Metallic swatches preview a polished surface on supported fills.
           </p>
         </div>
       )}

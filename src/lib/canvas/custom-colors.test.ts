@@ -10,7 +10,9 @@ import {
   hexToHsv,
   hexToRgb,
   hsvToHex,
+  isMetallicColor,
   MAX_CUSTOM_COLORS,
+  METALLIC_COLORS,
   mergeCustomColors,
   normalizeHexColor,
   normalizeCustomColors,
@@ -59,6 +61,14 @@ test("offers general bright, light, strong, neutral, and metallic swatches", () 
   assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#d4af37"));
   assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#c0c0c0"));
   assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#2a3439"));
+  assert.equal(COLOR_SWATCH_GROUPS[4].colors, METALLIC_COLORS);
+});
+
+test("recognizes metallic swatches without treating nearby custom colors as metal", () => {
+  assert.equal(isMetallicColor("#D4AF37"), true);
+  assert.equal(isMetallicColor("#c0c0c0"), true);
+  assert.equal(isMetallicColor("#c0c0c1"), false);
+  assert.equal(isMetallicColor("not-a-color"), false);
 });
 
 test("converts exact colors between hex, RGB, and HSV", () => {

@@ -41,6 +41,23 @@ test("raised surfaces combine directional depth and an inner highlight", () => {
   assert.match(style.boxShadow ?? "", /rgba\(2,6,23/);
 });
 
+test("metallic surfaces use alternating specular bands and sculpted edges", () => {
+  const patch = surfaceEffectPresetPatch("metallic");
+  const style = surfaceEffectStyle(patch);
+
+  assert.deepEqual(patch, {
+    surfaceEffect: "metallic",
+    surfaceEffectDepth: 6,
+    surfaceEffectStrength: 72,
+    surfaceEffectAngle: 20,
+  });
+  assert.equal((style.backgroundImage ?? "").split("linear-gradient").length - 1, 2);
+  assert.match(style.backgroundImage ?? "", /rgba\(255,255,255/);
+  assert.match(style.backgroundImage ?? "", /rgba\(2,6,23/);
+  assert.match(style.boxShadow ?? "", /inset 0 1px 0/);
+  assert.match(style.boxShadow ?? "", /inset 0 -1px 0/);
+});
+
 test("glow uses the node accent and SVG shapes receive a drop shadow filter", () => {
   const data = surfaceEffectPresetPatch("glow");
   const style = surfaceEffectStyle(data, "#22c55e");

@@ -426,6 +426,7 @@ export type SurfaceEffectPreset =
   | "raised"
   | "bevel"
   | "glass"
+  | "metallic"
   | "glow";
 
 export type TextFrameStyle = "plain" | "speech" | "thought";
