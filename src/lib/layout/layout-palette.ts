@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import {
   DEFAULT_RADIAL_COLOR_SCHEME,
+  matrixRowAnchorColor,
   radialColorScheme,
   radialSectorColors,
 } from "../radial-layout";
@@ -146,6 +147,7 @@ export function buildLayoutVisualStyles(
   const scheme = radialColorScheme(schemeId);
   const rootDepth = hierarchy.get(rootId)?.depth ?? 0;
   const branches = branchIndexes(rootId, hierarchy);
+  const branchCount = Math.max(1, hierarchy.get(rootId)?.childIds.length ?? 0);
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
 
@@ -180,13 +182,15 @@ export function buildLayoutVisualStyles(
       ? hierarchy.get(info.parentId)?.childIds ?? []
       : [];
     const matrixDepthBand = mode === "matrix";
+    const branchBaseColor = fillAnchor?.color
+      ?? (matrixDepthBand ? matrixRowAnchorColor(scheme, branchIndex, branchCount) : undefined);
     const colors = radialSectorColors(
       scheme,
       branchIndex,
       fillAnchor ? depth - fillAnchor.depth + 1 : depth,
       fillAnchor || matrixDepthBand ? 0 : Math.max(0, info?.siblingIndex ?? 0),
       fillAnchor || matrixDepthBand ? 1 : Math.max(1, parentChildren.length),
-      fillAnchor?.color,
+      branchBaseColor,
       manualColor,
       !!fillAnchor
     );
