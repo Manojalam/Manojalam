@@ -79,6 +79,7 @@ import {
 } from "@/lib/canvas/board-textures";
 import { participatesInHierarchyNumbering } from "@/lib/canvas/hierarchy-numbering";
 import { relationshipDiagramSourceIds } from "@/lib/canvas/chart-selection";
+import { sameLevelMatrixSelection } from "@/lib/canvas/matrix-selection";
 import {
   buildRelationshipGroupsForSpec,
   MAX_FLOWER_LAYERS,
@@ -1343,6 +1344,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     : [];
   const editableSelectionEdges = selectedEdges.length ? selectedEdges : enclosedSelectionEdges;
   const hierarchy = buildHierarchy(nodes, edges);
+  const selectedMatrixLevel = isMatrixCellMultiSelection
+    ? sameLevelMatrixSelection(selectedMatrixCells, nodes, hierarchy)
+    : null;
   const selectedHierarchy = selectedNode ? hierarchy.get(selectedNode.id) : null;
   const parentNode = selectedHierarchy?.parentId
     ? nodes.find((node) => node.id === selectedHierarchy.parentId)
@@ -2250,6 +2254,36 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       && selectedMatrixHeightValues.every((value) => Math.abs(value - selectedMatrixHeightValues[0]) < 0.05)
       ? selectedMatrixHeightValues[0]
       : undefined;
+    const matrixLevelParents = selectedMatrixLevel
+      ? selectedMatrixLevel.parentIds
+          .map((parentId) => nodes.find((node) => node.id === parentId))
+          .filter((node): node is Node => !!node)
+      : [];
+    const matrixLevelChildFlows = matrixLevelParents.map((node) => {
+      const value = ((node.data ?? {}) as Record<string, unknown>).matrixChildFlow;
+      return value === "row" || value === "column" ? value : "auto";
+    });
+    const commonMatrixLevelChildFlow = matrixLevelChildFlows.length
+      && matrixLevelChildFlows.every((value) => value === matrixLevelChildFlows[0])
+      ? matrixLevelChildFlows[0]
+      : "mixed";
+    const matrixLevelSiblingGaps = matrixLevelParents.map((node) => {
+      const value = ((node.data ?? {}) as Record<string, unknown>).matrixSiblingGap;
+      return typeof value === "number" ? value : undefined;
+    });
+    const commonMatrixLevelSiblingGap = matrixLevelSiblingGaps.length
+      && matrixLevelSiblingGaps.every((value) => value === matrixLevelSiblingGaps[0])
+      ? matrixLevelSiblingGaps[0]
+      : undefined;
+    const matrixLevelSiblingGapIsMixed = matrixLevelSiblingGaps.some(
+      (value) => value !== matrixLevelSiblingGaps[0]
+    );
+    const updateMatrixLevelParents = (patch: Record<string, unknown>) => {
+      if (!selectedMatrixLevel || !matrixLevelParents.length) return;
+      pushHistory();
+      matrixLevelParents.forEach((parent) => updateNodeData(parent.id, patch));
+      useCanvasStore.getState().scheduleMatrixReflow(selectedMatrixLevel.rootId);
+    };
     const commonSelectedShapeType = selectedShapeTransformNodes.length
       && selectedShapeTransformNodes.every((node) =>
         ((node.data ?? {}) as Record<string, unknown>).shapeType
@@ -2567,6 +2601,65 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   Auto heights
                 </Button>
               </div>
+            </Section>
+          )}
+          {selectedMatrixLevel && matrixLevelParents.length > 0 && (
+            <Section label="Matrix arrangement">
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Arrange the complete sibling {matrixLevelParents.length === 1 ? "group" : "groups"} represented by these same-level cells.
+              </p>
+              <div className="grid grid-cols-3 gap-1">
+                {([
+                  ["row", "Row", ArrowRight],
+                  ["column", "Column", ArrowDown],
+                  ["auto", "Auto", null],
+                ] as const).map(([flow, label, Icon]) => (
+                  <button
+                    key={flow}
+                    type="button"
+                    aria-pressed={commonMatrixLevelChildFlow === flow}
+                    title={flow === "row"
+                      ? "Place each represented sibling group side by side"
+                      : flow === "column"
+                        ? "Stack each represented sibling group vertically"
+                        : "Use the automatic sibling arrangement"}
+                    onClick={() => updateMatrixLevelParents({
+                      matrixChildFlow: flow === "auto" ? undefined : flow,
+                    })}
+                    className={cn(
+                      "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
+                      commonMatrixLevelChildFlow === flow
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-muted"
+                    )}
+                  >
+                    {Icon && <Icon className="h-3 w-3" />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <label className="block space-y-1 text-[9px] font-medium text-muted-foreground">
+                <span>Sibling gap (px)</span>
+                <div className="grid grid-cols-[1fr_auto] gap-1">
+                  <ExactNumberField
+                    label="Gap for selected Matrix sibling groups"
+                    value={commonMatrixLevelSiblingGap}
+                    mixed={matrixLevelSiblingGapIsMixed}
+                    min={0}
+                    max={240}
+                    onCommit={(value) => updateMatrixLevelParents({ matrixSiblingGap: value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[9px]"
+                    onClick={() => updateMatrixLevelParents({ matrixSiblingGap: undefined })}
+                  >
+                    Auto
+                  </Button>
+                </div>
+              </label>
             </Section>
           )}
           {!isRadialMultiSelection && selectedShapeTransformNodes.length > 0 && (
@@ -4614,6 +4707,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               variant="outline"
               size="sm"
               className="h-7 text-[10px]"
+              disabled={!descendantIds.length}
+              onClick={() => {
+                selectNodesById(descendantIds);
+              }}
+            >
+              Select descendants
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[10px]"
               onClick={() => {
                 selectNodesById([selectedNode.id, ...descendantIds]);
               }}
@@ -4623,7 +4727,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-[10px]"
+              className="col-span-2 h-7 text-[10px]"
               onClick={() => window.dispatchEvent(new CustomEvent("vidya:fitview", {
                 detail: { nodeIds: [selectedNode.id, ...descendantIds] },
               }))}
