@@ -415,8 +415,8 @@ function IconBtn({ active, onClick, title, children }: {
   );
 }
 
-function clampControlValue(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
+function clampControlValue(value: number, min: number, max?: number): number {
+  return Math.max(min, max === undefined ? value : Math.min(max, value));
 }
 
 function ExactNumberField({
@@ -430,7 +430,7 @@ function ExactNumberField({
   value?: number;
   mixed?: boolean;
   min: number;
-  max: number;
+  max?: number;
   label: string;
   onCommit: (value: number | undefined) => void;
 }) {
@@ -5254,7 +5254,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         label="Overall Matrix width"
                         value={matrixTableWidth}
                         min={160}
-                        max={6000}
                         onCommit={(value) => {
                           pushHistory();
                           updateNodeData(matrixRootNode.id, { matrixTableWidthOverride: value });
@@ -5268,7 +5267,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         label="Overall Matrix height"
                         value={matrixTableHeight}
                         min={100}
-                        max={6000}
                         onCommit={(value) => {
                           pushHistory();
                           updateNodeData(matrixRootNode.id, { matrixTableHeightOverride: value });
