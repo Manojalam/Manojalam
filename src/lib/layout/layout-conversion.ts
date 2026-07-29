@@ -11,6 +11,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "treeManualOverride",
   "matrixDensity",
   "matrixDensityUserSet",
+  "matrixCompositionMode",
   "matrixOuterBorderVisible",
   "matrixGridVisible",
   "matrixOrientation",
@@ -54,6 +55,7 @@ const MATRIX_BRANCH_LAYOUT_OVERRIDE_FIELDS = [
 ] as const;
 
 const MATRIX_ROOT_LAYOUT_OVERRIDE_FIELDS = [
+  "matrixCompositionMode",
   "matrixPackCompactGroups",
   "matrixIncompleteRowMode",
   "matrixFillCellLabels",

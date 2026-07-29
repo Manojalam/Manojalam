@@ -506,6 +506,11 @@ export interface BaseNodeData extends Record<string, unknown> {
   listDensity?: "compact" | "comfortable";
   matrixDensity?: MatrixDensity;
   matrixDensityUserSet?: boolean;
+  /**
+   * Keeps mixed Matrix composition stable after the Fold, branch-direction,
+   * or sizing edit that first required it is later returned to Auto.
+   */
+  matrixCompositionMode?: "oriented";
   /** Direction in which this Matrix cell's descendants grow. Inherits from its parent. */
   matrixOrientation?: MatrixOrientation;
   /** Arrangement of this Matrix cell's direct children. Defaults perpendicular to branch direction. */

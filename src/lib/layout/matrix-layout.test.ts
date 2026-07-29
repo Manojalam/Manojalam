@@ -5,6 +5,7 @@ import { buildHierarchy } from "./hierarchy";
 import { getNodeRect } from "./geometry";
 import { LIST_DENSITIES } from "./list-layout";
 import { routeOrthogonalEdge } from "./edge-routing";
+import { patchUsesOrientedMatrixComposition } from "../canvas/layout-reflow";
 import {
   NESTED_MATRIX_PARENT_GAP,
   packSiblingsAfterNestedMatrix,
@@ -49,6 +50,7 @@ type TreeNode = {
   matrixHeight?: number;
   matrixTableWidth?: number;
   matrixTableHeight?: number;
+  compositionMode?: "oriented";
 };
 
 function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
@@ -76,6 +78,7 @@ function buildTree(specs: TreeNode[]): { nodes: Node[]; edges: Edge[] } {
       ...(spec.matrixHeight ? { matrixHeightOverride: spec.matrixHeight } : {}),
       ...(spec.matrixTableWidth ? { matrixTableWidthOverride: spec.matrixTableWidth } : {}),
       ...(spec.matrixTableHeight ? { matrixTableHeightOverride: spec.matrixTableHeight } : {}),
+      ...(spec.compositionMode ? { matrixCompositionMode: spec.compositionMode } : {}),
     },
   }));
   const edges = specs
@@ -2002,6 +2005,115 @@ test("a row child flow keeps the parent left while placing direct children sidew
     assert.ok(children[index].x >= children[index - 1].x + children[index - 1].width);
   }
   assertClean(result);
+});
+
+test("automatic root flow preserves the same composition as explicit Column", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "first", parentId: "root" },
+    { id: "first-a", parentId: "first" },
+    { id: "first-a-1", parentId: "first-a" },
+    { id: "first-a-2", parentId: "first-a" },
+    { id: "first-b", parentId: "first" },
+    { id: "second", parentId: "root" },
+    { id: "second-a", parentId: "second" },
+    { id: "second-b", parentId: "second" },
+    { id: "second-c", parentId: "second" },
+  ]);
+  const automaticNodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, matrixCompositionMode: "oriented" } }
+    : node);
+  const explicitNodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, matrixChildFlow: "column" } }
+    : node);
+  const automatic = computeMatrixLayout(
+    "root",
+    buildHierarchy(automaticNodes, fixture.edges),
+    new Map(automaticNodes.map((node) => [node.id, node]))
+  );
+  const explicit = computeMatrixLayout(
+    "root",
+    buildHierarchy(explicitNodes, fixture.edges),
+    new Map(explicitNodes.map((node) => [node.id, node]))
+  );
+  const geometry = (result: MatrixLayoutResult) => [result.header, ...result.cells]
+    .map((cell) => ({
+      id: cell.nodeId,
+      x: cell.x,
+      y: cell.y,
+      width: cell.width,
+      height: cell.height,
+    }))
+    .sort((first, second) => first.id.localeCompare(second.id));
+
+  assert.deepEqual(geometry(automatic), geometry(explicit));
+  assertClean(automatic);
+  assertClean(explicit);
+});
+
+test("returning an oriented Matrix control to Auto keeps its composition mode", () => {
+  assert.equal(patchUsesOrientedMatrixComposition({ matrixChildFlow: undefined }), true);
+  assert.equal(patchUsesOrientedMatrixComposition({ layoutFoldCount: undefined }), true);
+  assert.equal(patchUsesOrientedMatrixComposition({ matrixOrientation: undefined }), true);
+  assert.equal(patchUsesOrientedMatrixComposition({ text: "Unrelated edit" }), false);
+});
+
+test("unfolding the final row-flow branch preserves an earlier branch's row/column topology", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, compositionMode: "oriented" },
+    { id: "first", parentId: "root" },
+    { id: "first-a", parentId: "first" },
+    { id: "first-a-1", parentId: "first-a" },
+    { id: "first-a-2", parentId: "first-a" },
+    { id: "first-b", parentId: "first" },
+    { id: "last", parentId: "root", childFlow: "row" },
+    { id: "last-1", parentId: "last" },
+    { id: "last-2", parentId: "last" },
+    { id: "last-3", parentId: "last" },
+    { id: "last-4", parentId: "last" },
+    { id: "last-5", parentId: "last" },
+  ]);
+  const foldedNodes = fixture.nodes.map((node) => node.id === "last"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const folded = computeMatrixLayout(
+    "root",
+    buildHierarchy(foldedNodes, fixture.edges),
+    new Map(foldedNodes.map((node) => [node.id, node]))
+  );
+  const unfolded = computeMatrixLayout(
+    "root",
+    buildHierarchy(fixture.nodes, fixture.edges),
+    new Map(fixture.nodes.map((node) => [node.id, node]))
+  );
+  const firstBranchTopology = (result: MatrixLayoutResult) => {
+    const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+    const first = cells.get("first")!;
+    const firstA = cells.get("first-a")!;
+    const firstA1 = cells.get("first-a-1")!;
+    const firstA2 = cells.get("first-a-2")!;
+    const firstB = cells.get("first-b")!;
+    return {
+      childrenRemainBelowOneAnother:
+        Math.abs(firstA.x - firstB.x) < 0.5
+        && firstB.y > firstA.y + firstA.height,
+      grandchildrenRemainBelowOneAnother:
+        Math.abs(firstA1.x - firstA2.x) < 0.5
+        && firstA2.y > firstA1.y + firstA1.height,
+      descendantsRemainRightOfParents:
+        firstA.x > first.x + first.width
+        && firstA1.x > firstA.x + firstA.width,
+    };
+  };
+
+  assert.deepEqual(firstBranchTopology(folded), {
+    childrenRemainBelowOneAnother: true,
+    grandchildrenRemainBelowOneAnother: true,
+    descendantsRemainRightOfParents: true,
+  });
+  assert.deepEqual(firstBranchTopology(unfolded), firstBranchTopology(folded));
+  assertClean(folded);
+  assertClean(unfolded);
 });
 
 test("a parent's exact sibling gap is preserved between its direct children", () => {
