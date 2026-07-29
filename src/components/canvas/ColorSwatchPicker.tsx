@@ -4,11 +4,13 @@ import { useMemo } from "react";
 import { Check, X } from "lucide-react";
 
 import { AppColorPicker } from "@/components/canvas/AppColorPicker";
+import { CollapsibleColorSection } from "@/components/canvas/CollapsibleColorSection";
 import {
   arrangeColorPalette,
   colorSwatchHex,
   colorSwatchMatches,
   colorsUsedOnBoard,
+  forgetCustomColor,
   GENERAL_COLOR_PALETTE,
   hexToRgb,
   isMetallicColor,
@@ -46,6 +48,7 @@ function DirectColorOption({
   compact,
   selectionSafe,
   onSelect,
+  onRemove,
 }: {
   color: string;
   value?: string;
@@ -53,6 +56,7 @@ function DirectColorOption({
   compact: boolean;
   selectionSafe: boolean;
   onSelect: () => void;
+  onRemove?: () => void;
 }) {
   const selected = colorSwatchMatches(value, color, mixed);
   const rgb = hexToRgb(color);
@@ -65,49 +69,79 @@ function DirectColorOption({
       })
     : {};
   return (
-    <button
-      type="button"
-      aria-label={selected ? `Selected color ${color}` : `Select color ${color}`}
-      aria-pressed={selected}
-      onPointerDown={(event) => {
-        if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
-        event.preventDefault();
-        onSelect();
-      }}
-      onClick={(event) => {
-        if (!selectionSafe || event.detail === 0) onSelect();
-      }}
+    <span
       className={cn(
-        "group relative rounded-md border transition-transform hover:z-20 hover:scale-110",
+        "group relative inline-flex",
         compact ? "h-5 w-5" : "h-6 w-6",
-        selected
-          ? "z-10 border-white/90 ring-[3px] ring-primary ring-offset-1 ring-offset-background shadow-lg"
-          : "border-border/50"
       )}
-      style={{ backgroundColor: color, ...metallicStyle }}
     >
-      {selected && (
-        <Check
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-0 m-auto h-3 w-3",
-            darkForeground ? "text-slate-900" : "text-white"
-          )}
-          strokeWidth={3}
-        />
-      )}
+      <button
+        type="button"
+        aria-label={selected ? `Selected color ${color}` : `Select color ${color}`}
+        aria-pressed={selected}
+        onPointerDown={(event) => {
+          if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
+          event.preventDefault();
+          onSelect();
+        }}
+        onClick={(event) => {
+          if (!selectionSafe || event.detail === 0) onSelect();
+        }}
+        className={cn(
+          "peer relative h-full w-full rounded-md border transition-transform hover:z-20 hover:scale-110",
+          selected
+            ? "z-10 border-white/90 ring-[3px] ring-primary ring-offset-1 ring-offset-background shadow-lg"
+            : "border-border/50"
+        )}
+        style={{ backgroundColor: color, ...metallicStyle }}
+      >
+        {selected && (
+          <Check
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 m-auto h-3 w-3",
+              darkForeground ? "text-slate-900" : "text-white"
+            )}
+            strokeWidth={3}
+          />
+        )}
+      </button>
       <span
         aria-hidden="true"
         className={cn(
           "pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 -translate-x-1/2",
           "whitespace-nowrap rounded border border-border bg-popover px-1.5 py-0.5",
           "font-mono text-[9px] uppercase text-popover-foreground shadow-md",
-          "opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          "opacity-0 transition-opacity peer-hover:opacity-100 peer-focus-visible:opacity-100"
         )}
       >
         {color}
       </span>
-    </button>
+      {onRemove && (
+        <button
+          type="button"
+          title={`Remove ${color} from the saved palette`}
+          aria-label={`Remove ${color} from the saved palette`}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            if (!event.isPrimary || event.button !== 0) return;
+            event.preventDefault();
+            onRemove();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.detail === 0) onRemove();
+          }}
+          className={cn(
+            "absolute -right-1 -top-1 z-40 flex h-3.5 w-3.5 items-center justify-center rounded-full",
+            "border border-background bg-destructive text-destructive-foreground shadow-sm",
+            "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          )}
+        >
+          <X className="h-2.5 w-2.5" strokeWidth={3} />
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -120,6 +154,7 @@ function PaletteSection({
   compact,
   selectionSafe,
   onChange,
+  onRemove,
 }: {
   label: string;
   hint: string;
@@ -129,16 +164,15 @@ function PaletteSection({
   compact: boolean;
   selectionSafe: boolean;
   onChange: (color: string) => void;
+  onRemove?: (color: string) => void;
 }) {
   if (!colors.length) return null;
   return (
-    <section className="space-y-1.5" aria-label={label}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-        <p className="text-[8px] text-muted-foreground">{hint}</p>
-      </div>
+    <CollapsibleColorSection
+      label={label}
+      hint={hint}
+      preserveCurrentFocus={selectionSafe}
+    >
       <div className="grid grid-cols-8 gap-2">
         {colors.map((color) => (
           <DirectColorOption
@@ -149,10 +183,11 @@ function PaletteSection({
             compact={compact}
             selectionSafe={selectionSafe}
             onSelect={() => onChange(color)}
+            onRemove={onRemove ? () => onRemove(color) : undefined}
           />
         ))}
       </div>
-    </section>
+    </CollapsibleColorSection>
   );
 }
 
@@ -167,6 +202,7 @@ export function ColorSwatchPicker({
   selectionSafe = false,
 }: ColorSwatchPickerProps) {
   const savedColors = useUIStore((state) => state.appSettings.customColors);
+  const updateAppSettings = useUIStore((state) => state.updateAppSettings);
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
   const normalizedValue = colorSwatchHex(value);
@@ -191,6 +227,11 @@ export function ColorSwatchPicker({
     onChange(color);
   };
   const clearColor = () => (onClear ?? (() => onChange("")))();
+  const removeSavedColor = (color: string) => {
+    updateAppSettings({
+      customColors: forgetCustomColor(savedColors, color),
+    });
+  };
 
   return (
     <div data-app-color-picker="true" className="space-y-2" aria-label="Colors">
@@ -203,6 +244,7 @@ export function ColorSwatchPicker({
         compact={compact}
         selectionSafe={selectionSafe}
         onChange={onChange}
+        onRemove={removeSavedColor}
       />
 
       <PaletteSection
