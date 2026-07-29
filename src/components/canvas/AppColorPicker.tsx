@@ -290,6 +290,38 @@ export function ColorPickerPanel({
         </div>
       )}
 
+      <section className="space-y-1.5" aria-label="General colors">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+            General colors
+          </p>
+          <p className="text-[8px] text-muted-foreground">
+            Distinct, neutral + metallic
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          {COLOR_SWATCH_GROUPS.map((group) => (
+            <section key={group.name} className="grid grid-cols-[2.5rem_1fr] items-center gap-1.5">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                {group.name}
+              </p>
+              <div className="grid grid-cols-10 gap-1">
+                {group.colors.map((color) => (
+                  <ColorSwatch
+                    key={color}
+                    color={color}
+                    selected={draftColor === color}
+                    title={`${group.name} · ${color}`}
+                    onSelect={() => selectSwatch(color)}
+                    selectionSafe={selectionSafe}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+
       {normalizedSavedColors.length > 0 && (
         <section className="space-y-1.5" aria-label="Saved palette">
           <div className="flex items-center justify-between gap-2">
@@ -336,28 +368,6 @@ export function ColorPickerPanel({
           </div>
         </section>
       )}
-
-      <div className="space-y-1.5" aria-label="Color swatches">
-        {COLOR_SWATCH_GROUPS.map((group) => (
-          <section key={group.name} className="grid grid-cols-[2.5rem_1fr] items-center gap-1.5">
-            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-              {group.name}
-            </p>
-            <div className="grid grid-cols-10 gap-1">
-              {group.colors.map((color) => (
-                <ColorSwatch
-                  key={color}
-                  color={color}
-                  selected={draftColor === color}
-                  title={`${group.name} · ${color}`}
-                  onSelect={() => selectSwatch(color)}
-                  selectionSafe={selectionSafe}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
 
       <section className="space-y-2" aria-label="Custom color">
         <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
