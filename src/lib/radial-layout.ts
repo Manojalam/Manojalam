@@ -67,74 +67,74 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
   {
     id: "spectrum",
     label: "Spectrum",
-    swatches: ["#e11d48", "#eab308", "#10b981", "#0ea5e9", "#7c3aed"],
+    swatches: ["#bf4059", "#bf9940", "#40bf9d", "#4088bf", "#a140bf"],
     hues: [348, 42, 62, 164, 198, 246, 286, 18, 122, 322, 94, 214],
-    saturation: 72,
-    lightness: 56,
-    rootFill: "#563015",
-    rootText: "#fff7ed",
-    rootBorder: "#a16207",
-    sectorBorder: "rgba(255,255,255,0.92)",
+    saturation: 50,
+    lightness: 50,
+    rootFill: "#29344f",
+    rootText: "#ffffff",
+    rootBorder: "#667085",
+    sectorBorder: "rgba(248,250,252,0.82)",
   },
   {
     id: "sanskrit",
     label: "Sanskrit",
-    swatches: ["#881337", "#c2410c", "#ca8a04", "#0f766e", "#3730a3"],
+    swatches: ["#aa3c59", "#aa5d3c", "#aa893c", "#3caa9f", "#3c43aa"],
     hues: [344, 18, 42, 174, 236, 278, 110],
-    saturation: 66,
-    lightness: 42,
-    rootFill: "#4c1824",
-    rootText: "#fff1f2",
-    rootBorder: "#be7b2d",
-    sectorBorder: "rgba(255,247,237,0.94)",
+    saturation: 48,
+    lightness: 45,
+    rootFill: "#4b2632",
+    rootText: "#fffaf2",
+    rootBorder: "#9a7652",
+    sectorBorder: "rgba(255,250,242,0.84)",
   },
   {
     id: "lotus",
     label: "Lotus",
-    swatches: ["#9d174d", "#db2777", "#f472b6", "#f59e0b", "#7e22ce"],
+    swatches: ["#b83d7a", "#b83d5c", "#b83da3", "#b8773d", "#9a3db8"],
     hues: [330, 345, 4, 28, 48, 286, 310],
-    saturation: 70,
-    lightness: 49,
-    rootFill: "#651b4b",
-    rootText: "#fdf2f8",
-    rootBorder: "#e879b9",
-    sectorBorder: "rgba(255,255,255,0.9)",
+    saturation: 50,
+    lightness: 48,
+    rootFill: "#51243f",
+    rootText: "#fff7fb",
+    rootBorder: "#95647f",
+    sectorBorder: "rgba(255,247,251,0.82)",
   },
   {
     id: "ocean",
     label: "Ocean",
-    swatches: ["#075985", "#0284c7", "#0891b2", "#0d9488", "#2563eb"],
+    swatches: ["#4289a9", "#4279a9", "#429da9", "#42a99e", "#4263a9"],
     hues: [198, 207, 186, 174, 221, 238],
-    saturation: 68,
-    lightness: 43,
-    rootFill: "#0c4a6e",
-    rootText: "#f0f9ff",
-    rootBorder: "#38bdf8",
-    sectorBorder: "rgba(240,249,255,0.92)",
+    saturation: 44,
+    lightness: 46,
+    rootFill: "#243f56",
+    rootText: "#f4faff",
+    rootBorder: "#55758c",
+    sectorBorder: "rgba(244,250,255,0.84)",
   },
   {
     id: "forest",
     label: "Forest",
-    swatches: ["#166534", "#15803d", "#65a30d", "#ca8a04", "#0f766e"],
+    swatches: ["#42944f", "#429467", "#6b9442", "#948242", "#42948b"],
     hues: [132, 151, 88, 47, 26, 174],
-    saturation: 58,
-    lightness: 39,
-    rootFill: "#174b2d",
-    rootText: "#f0fdf4",
-    rootBorder: "#84cc16",
-    sectorBorder: "rgba(247,254,231,0.92)",
+    saturation: 38,
+    lightness: 42,
+    rootFill: "#263f32",
+    rootText: "#f7fbf7",
+    rootBorder: "#617a69",
+    sectorBorder: "rgba(247,251,247,0.84)",
   },
   {
     id: "scholar",
     label: "Scholar",
-    swatches: ["#1e3a8a", "#b45309", "#9f1239", "#0f766e", "#6b21a8"],
+    swatches: ["#415b9f", "#9f7d41", "#9f4154", "#419f96", "#7d419f"],
     hues: [222, 38, 348, 174, 278, 202],
-    saturation: 62,
-    lightness: 39,
-    rootFill: "#172554",
-    rootText: "#eff6ff",
-    rootBorder: "#d6a94b",
-    sectorBorder: "rgba(248,250,252,0.9)",
+    saturation: 42,
+    lightness: 44,
+    rootFill: "#2c334f",
+    rootText: "#f8f7f3",
+    rootBorder: "#80745f",
+    sectorBorder: "rgba(248,247,243,0.82)",
   },
 ];
 
@@ -161,22 +161,23 @@ export function radialSectorColors(
   const anchor = parseColor(branchBaseColor) ?? automaticAnchor;
   const siblingOffset = depth <= 1 || siblingCount <= 1
     ? 0
-    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 12;
+    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 8;
   const siblingLightness = depth <= 1 || siblingCount <= 1
     ? 0
-    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 4;
-  const depthOffset = Math.max(0, depth - 1) * (preferLighterDepth ? 8 : anchor.l >= 72 ? -6 : 8);
+    : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 2;
+  const depthOffset = Math.max(0, depth - 1) * (preferLighterDepth ? 4 : anchor.l >= 72 ? -4 : 4);
   const derived: HslColor = {
     h: normalizeHue(anchor.h + siblingOffset),
-    s: clamp(anchor.s - Math.max(0, depth - 1) * 3, 34, 86),
-    l: clamp(anchor.l + depthOffset + siblingLightness, 24, preferLighterDepth ? 100 : 86),
+    s: clamp(anchor.s - Math.max(0, depth - 1) * 4, 28, 68),
+    l: clamp(anchor.l + depthOffset + siblingLightness, 26, preferLighterDepth ? 100 : 78),
   };
   const override = parseColor(fillOverride);
   const start = override ?? derived;
-  const gradientDirection = start.l >= 76 ? -1 : 1;
+  const text = readableTextColor(start);
+  const gradientDirection = text === "#ffffff" ? -1 : 1;
   const end: HslColor = {
     ...start,
-    l: clamp(start.l + gradientDirection * (depth <= 1 ? 4 : 7), 20, 90),
+    l: clamp(start.l + gradientDirection * (depth <= 1 ? 3 : 4), 20, 90),
   };
   const fill = fillOverride && !override ? fillOverride : hslString(start);
   const fillEnd = fillOverride && !override ? fillOverride : hslString(end);
@@ -184,7 +185,7 @@ export function radialSectorColors(
   return {
     fill,
     fillEnd,
-    text: readableTextColor(start, end),
+    text,
     border: `hsla(${start.h.toFixed(1)}, ${Math.max(30, start.s - 10).toFixed(1)}%, ${borderLightness.toFixed(1)}%, 0.62)`,
   };
 }
@@ -265,9 +266,11 @@ function contrastRatio(first: number, second: number): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-function readableTextColor(start: HslColor, end: HslColor): string {
-  const background = (relativeLuminance(start) + relativeLuminance(end)) / 2;
-  const dark = 0.008;
-  const light = 0.955;
-  return contrastRatio(background, dark) >= contrastRatio(background, light) ? "#0f172a" : "#f8fafc";
+function readableTextColor(background: HslColor): string {
+  const backgroundLuminance = relativeLuminance(background);
+  const dark = relativeLuminance(parseColor("#020617")!);
+  const light = relativeLuminance(parseColor("#ffffff")!);
+  return contrastRatio(backgroundLuminance, dark) >= contrastRatio(backgroundLuminance, light)
+    ? "#020617"
+    : "#ffffff";
 }
