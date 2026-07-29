@@ -53,6 +53,7 @@ test("chart conversion keeps hierarchy and authored content but drops source geo
     matrixOuterBorderVisible: false,
     matrixDensity: "presentation",
     matrixDensityUserSet: true,
+    matrixCompositionMode: "oriented",
     matrixGridVisible: false,
     matrixOrientation: "vertical",
     matrixChildFlow: "row",
@@ -137,6 +138,7 @@ test("Matrix reset clears branch and root layout overrides but keeps authored pr
 test("Matrix reset only removes root settings from the root and preserves automatic density", () => {
   const automaticRoot = {
     matrixDensity: "comfortable",
+    matrixCompositionMode: "oriented",
     matrixOuterBorderVisible: false,
     matrixGridVisible: false,
     matrixPackCompactGroups: true,

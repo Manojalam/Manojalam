@@ -2091,10 +2091,12 @@ export function computeMatrixLayout(
   }
 
   const hasFoldedBranch = hasFoldedMatrixBranch(rootId, hierarchy, byId);
+  const preservesOrientedComposition = rootData.matrixCompositionMode === "oriented";
   const packCompactGroups = rootData.matrixPackCompactGroups === true
     && hasCompactLeafSiblingGroups(rootId, hierarchy, byId);
   if (
-    hasVerticalMatrixBranch(rootId, hierarchy, byId)
+    preservesOrientedComposition
+    || hasVerticalMatrixBranch(rootId, hierarchy, byId)
     || hasFoldedBranch
     || hasExplicitMatrixChildFlow(rootId, hierarchy, byId)
     || packCompactGroups

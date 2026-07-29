@@ -132,6 +132,7 @@ import {
 import {
   patchNeedsListReflow,
   patchNeedsMatrixReflow,
+  patchUsesOrientedMatrixComposition,
 } from "@/lib/canvas/layout-reflow";
 import {
   applyBoardFontSize,
@@ -3176,6 +3177,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         data,
         matrixRootData.matrixTableSizeLocked === true
       );
+      const preserveOrientedMatrixComposition = !!matrixRootId
+        && patchUsesOrientedMatrixComposition(data);
       const nodes = state.nodes.map((node) => {
         let nextData = node.data;
         let changed = false;
@@ -3186,12 +3189,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         if (
           matrixRootId
           && node.id === matrixRootId
-          && (resetTableAxes.width || resetTableAxes.height)
+          && (
+            resetTableAxes.width
+            || resetTableAxes.height
+            || preserveOrientedMatrixComposition
+          )
         ) {
           nextData = {
             ...nextData,
             ...(resetTableAxes.width ? { matrixTableWidthOverride: undefined } : {}),
             ...(resetTableAxes.height ? { matrixTableHeightOverride: undefined } : {}),
+            ...(preserveOrientedMatrixComposition
+              ? { matrixCompositionMode: "oriented" as const }
+              : {}),
           };
           changed = true;
         }
