@@ -201,12 +201,19 @@ export async function parsePdfFile(
             });
             ocrWorker = await createLocalOcrWorker(options);
           }
+          const nativeHints = groupPdfTextItems(
+            textItems,
+            rendered.viewport,
+            pdfjs.Util.transform,
+            pageNumber
+          );
           lines.push(
             ...(await recognizeCanvasLines(
               ocrWorker,
               rendered.canvas,
               pageNumber,
-              options
+              options,
+              nativeHints
             ))
           );
         }

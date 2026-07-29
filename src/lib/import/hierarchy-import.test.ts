@@ -25,6 +25,10 @@ import {
   parseIndentedTextRaw,
   parseTextHierarchy,
 } from "./text";
+import {
+  shouldRetryDevanagariOcrLine,
+  shouldUseDevanagariOcrRetry,
+} from "./raster";
 
 const SAMPLE = `छन्दः - समवृत्तानि
 \t८ अक्षराणि अनुष्टुप्
@@ -57,6 +61,110 @@ test("rejects corrupt PDF text layers and keeps valid Devanagari/English text", 
     false
   );
   assert.equal(hasUsablePdfText(".... ---- ...."), false);
+});
+
+test("retries low-confidence Latin guesses on Devanagari-dominant OCR pages", () => {
+  const pageText = [
+    "छन्दः",
+    "समवृत्तानि",
+    "BEY - ११ अक्षराणि",
+    "इन्द्रवज्रा उपेन्द्रवज्रा",
+  ].join("\n");
+  assert.equal(
+    shouldRetryDevanagariOcrLine({
+      text: "BEY - ११ अक्षराणि",
+      confidence: 0.72,
+      words: [
+        { text: "BEY", confidence: 43 },
+        { text: "११", confidence: 96 },
+        { text: "अक्षराणि", confidence: 91 },
+      ],
+      pageText,
+      nativeHint: "\u0000\u0000\u0000ुप् - ११ अक्षराणि",
+    }),
+    true
+  );
+  assert.equal(
+    shouldRetryDevanagariOcrLine({
+      text: "SIRTF,",
+      confidence: 0.4,
+      words: [{ text: "SIRTF,", confidence: 40 }],
+      pageText: `${pageText}\nSIRTF,\nऔपच्छन्दसिकम्`,
+      nativeHint: "अपरव\u0000\u0000म्",
+    }),
+    true
+  );
+});
+
+test("keeps genuine English during Devanagari OCR refinement", () => {
+  const pageText = "छन्दः समवृत्तानि प्रमाणिका\nAPI reference";
+  assert.equal(
+    shouldRetryDevanagariOcrLine({
+      text: "API reference",
+      confidence: 0.5,
+      words: [
+        { text: "API", confidence: 48 },
+        { text: "reference", confidence: 52 },
+      ],
+      pageText,
+      nativeHint: "API reference",
+    }),
+    false
+  );
+  assert.equal(
+    shouldRetryDevanagariOcrLine({
+      text: "English heading",
+      confidence: 0.95,
+      words: [
+        { text: "English", confidence: 95 },
+        { text: "heading", confidence: 95 },
+      ],
+      pageText,
+    }),
+    false
+  );
+});
+
+test("accepts a stronger Sanskrit retry but rejects ambiguous replacements", () => {
+  assert.equal(
+    shouldUseDevanagariOcrRetry({
+      originalText: "BEY - ११ अक्षराणि",
+      originalConfidence: 0.72,
+      retryText: "त्रिष्टुप् - ११ अक्षराणि",
+      retryConfidence: 0.72,
+      nativeHint: "\u0000\u0000\u0000ुप् - ११ अक्षराणि",
+    }),
+    true
+  );
+  assert.equal(
+    shouldUseDevanagariOcrRetry({
+      originalText: "SIRTF,",
+      originalConfidence: 0.4,
+      retryText: "अपरवक्त्रम्",
+      retryConfidence: 0.45,
+      nativeHint: "अपरव\u0000\u0000म्",
+    }),
+    true
+  );
+  assert.equal(
+    shouldUseDevanagariOcrRetry({
+      originalText: "API",
+      originalConfidence: 0.4,
+      retryText: "एपीआई",
+      retryConfidence: 0.7,
+      nativeHint: "API",
+    }),
+    false
+  );
+  assert.equal(
+    shouldUseDevanagariOcrRetry({
+      originalText: "BEY - ११ अक्षराणि",
+      originalConfidence: 0.72,
+      retryText: "्रिष् - ११ अक्षराणि",
+      retryConfidence: 0.2,
+    }),
+    false
+  );
 });
 
 test("parses indented text and merges repeated continuation roots", () => {
