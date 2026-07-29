@@ -2650,15 +2650,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </Section>
           )}
           {isMatrixCellMultiSelection && (
-            <Section label="Matrix cell size">
+            <Section label="Matrix cell minimum size">
               <p className="text-[9px] leading-snug text-muted-foreground">
-                Enter one exact size for all {selectedMatrixCells.length} selected cells. Merged parent cells can still grow across their child span.
+                Enter one minimum size for all {selectedMatrixCells.length} selected cells. Leaf cells use it exactly; aligned or merged cells can grow beyond it.
               </p>
               <div className="grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
-                  <span>Width (px)</span>
+                  <span>Min width (px)</span>
                   <ExactNumberField
-                    label="Selected Matrix natural track width"
+                    label="Selected Matrix minimum width"
                     value={commonMatrixWidth}
                     mixed={commonMatrixWidth === undefined}
                     min={80}
@@ -2667,9 +2667,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   />
                 </label>
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
-                  <span>Height (px)</span>
+                  <span>Min height (px)</span>
                   <ExactNumberField
-                    label="Selected Matrix natural row height"
+                    label="Selected Matrix minimum height"
                     value={commonMatrixHeight}
                     mixed={commonMatrixHeight === undefined}
                     min={40}
@@ -5511,25 +5511,27 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell size"}
+                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell dimensions"}
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
                 {selectedNode.id === matrixRootNode.id
                   ? "Sets this Matrix header's exact height and preferred width. The header can still stretch across the body; Overall Matrix size below controls the whole table."
                   : matrixTableSizeLocked
-                    ? "Base size is the editable constraint. The current rendered size below is the box you see after the locked Matrix redistributes its space."
-                    : "Base size is the editable constraint. The current rendered size below is the box you see after shared rows and merged tracks."}
+                    ? "Minimum size is the smallest this cell may render. The exact rendered size below includes space redistributed by the locked Matrix."
+                    : "Minimum size is exact for a simple leaf cell. Aligned or merged cells can grow; the exact rendered size below is the box you see."}
               </p>
               {selectedNode.id !== matrixRootNode.id && (
                 <p className="mb-1 text-[9px] font-medium text-muted-foreground">
-                  Base size (editable)
+                  Minimum size (editable)
                 </p>
               )}
               <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
-                  <span>Width (px)</span>
+                  <span>{selectedNode.id === matrixRootNode.id ? "Width (px)" : "Min width (px)"}</span>
                   <ExactNumberField
-                    label="Selected Matrix cell width"
+                    label={selectedNode.id === matrixRootNode.id
+                      ? "Selected Matrix header width"
+                      : "Selected Matrix minimum width"}
                     value={selectedMatrixWidth}
                     min={80}
                     max={1200}
@@ -5537,9 +5539,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   />
                 </label>
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
-                  <span>Height (px)</span>
+                  <span>{selectedNode.id === matrixRootNode.id ? "Height (px)" : "Min height (px)"}</span>
                   <ExactNumberField
-                    label="Selected Matrix cell height"
+                    label={selectedNode.id === matrixRootNode.id
+                      ? "Selected Matrix header height"
+                      : "Selected Matrix minimum height"}
                     value={selectedMatrixHeight}
                     min={40}
                     max={6000}
@@ -5558,7 +5562,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     {Math.round(selectedMatrixDimensions.height * 10) / 10}px
                   </p>
                   <p className="text-[8px] leading-snug text-muted-foreground">
-                    The box size currently visible on the canvas.
+                    Exact box size currently visible on the canvas.
                   </p>
                 </div>
               )}
