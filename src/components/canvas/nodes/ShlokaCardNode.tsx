@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ShlokaCardNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
 import {
+  getAuthoredTextStyle,
   getTextStyle,
   resolveBorderColor,
   resolveBorderStyle,
@@ -52,6 +53,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
     borderWidth: resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
+  const authoredTextStyle = getAuthoredTextStyle(dd);
   const [collapsed, setCollapsed] = useState<Set<string>>(
     new Set(d.collapsedSections ?? [])
   );
@@ -98,21 +100,24 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold">{d.title || "Śloka"}</h3>
-          <Badge className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}>
+          <h3 className="font-semibold" style={authoredTextStyle}>{d.title || "Śloka"}</h3>
+          <Badge
+            className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}
+            style={authoredTextStyle}
+          >
             {d.memorizationStatus ?? "new"}
           </Badge>
         </div>
 
         {d.sourceText && (
-          <p className="mb-2 text-xs text-muted-foreground">{d.sourceText}</p>
+          <p className="mb-2 text-xs text-muted-foreground" style={authoredTextStyle}>{d.sourceText}</p>
         )}
 
         <div className="rounded-lg bg-amber-50/80 p-3 dark:bg-amber-950/30">
           {d.devanagari && (
-            <p className="font-devanagari text-xl leading-relaxed">{d.devanagari}</p>
+            <p className="font-devanagari text-xl leading-relaxed" style={authoredTextStyle}>{d.devanagari}</p>
           )}
-          {d.iast && <p className="font-iast mt-1 text-sm italic text-muted-foreground">{d.iast}</p>}
+          {d.iast && <p className="font-iast mt-1 text-sm italic text-muted-foreground" style={authoredTextStyle}>{d.iast}</p>}
         </div>
 
         {SECTIONS.slice(1).map((section) => {
@@ -125,13 +130,19 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
             <div key={key} className="mt-2 border-t border-border/50 pt-2">
               <button
                 className="flex w-full items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                style={authoredTextStyle}
                 onClick={() => toggle(key)}
               >
                 {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 {label}
               </button>
               {!isCollapsed && value && (
-                <p className={cn("mt-1 text-sm", key === "padartha" && "font-devanagari")}>{value}</p>
+                <p
+                  className={cn("mt-1 text-sm", key === "padartha" && "font-devanagari")}
+                  style={authoredTextStyle}
+                >
+                  {value}
+                </p>
               )}
             </div>
           );
@@ -140,7 +151,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         {d.tags && d.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {d.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
+              <Badge key={tag} variant="outline" className="text-[10px]" style={authoredTextStyle}>{tag}</Badge>
             ))}
           </div>
         )}

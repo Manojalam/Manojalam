@@ -656,8 +656,12 @@ function RadialChartLayer({
                         overflow: "hidden",
                         color: segment.textColor ?? "#111827",
                         fontSize,
+                        fontFamily: segment.fontFamily,
                         lineHeight: fontSize > 0 ? lineAdvance / fontSize : 1.12,
-                        fontWeight: ringIndex === 0 ? 700 : 500,
+                        fontWeight: segment.fontWeight === "bold"
+                          ? 700
+                          : segment.fontWeight === "normal" ? 400 : ringIndex === 0 ? 700 : 500,
+                        fontStyle: segment.fontStyle,
                         textAlign: "center",
                         whiteSpace: "pre-wrap",
                         overflowWrap: "normal",
@@ -739,8 +743,12 @@ function RadialChartLayer({
                     overflow: "hidden",
                     color: segment.textColor ?? "#111827",
                     fontSize,
+                    fontFamily: segment.fontFamily,
                     lineHeight: fontSize > 0 ? lineAdvance / fontSize : 1.12,
-                    fontWeight: ringIndex === 0 ? 700 : 500,
+                    fontWeight: segment.fontWeight === "bold"
+                      ? 700
+                      : segment.fontWeight === "normal" ? 400 : ringIndex === 0 ? 700 : 500,
+                    fontStyle: segment.fontStyle,
                     textAlign: "center",
                     whiteSpace: "pre-wrap",
                     overflowWrap: "normal",
@@ -804,7 +812,11 @@ function RadialChartLayer({
                 dominantBaseline="middle"
                 fill={chart.centerTextColor ?? "#111827"}
                 fontSize={centerTextFit.fontSize}
-                fontWeight="700"
+                fontFamily={chart.centerFontFamily}
+                fontWeight={chart.centerFontWeight === "bold"
+                  ? 700
+                  : chart.centerFontWeight === "normal" ? 400 : 700}
+                fontStyle={chart.centerFontStyle}
               >
                 {centerTextFit.lines.map((line, lineIndex) => (
                   <tspan
@@ -1451,6 +1463,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     style={{
                       color: layer.textColor ?? "#111827",
                       fontSize: layer.fontSize ? `${layer.fontSize}px` : undefined,
+                      fontFamily: layer.fontFamily,
+                      fontWeight: layer.fontWeight,
+                      fontStyle: layer.fontStyle,
                     }}
                   >
                     {layer.text}
