@@ -8,6 +8,7 @@ import type {
 import {
   DEFAULT_RADIAL_COLOR_SCHEME,
   matrixRowAnchorColor,
+  matrixRootPaletteGradient,
   radialColorScheme,
   radialSectorColors,
 } from "../radial-layout";
@@ -148,6 +149,10 @@ export function buildLayoutVisualStyles(
   const rootDepth = hierarchy.get(rootId)?.depth ?? 0;
   const branches = branchIndexes(rootId, hierarchy);
   const branchCount = Math.max(1, hierarchy.get(rootId)?.childIds.length ?? 0);
+  const rootData = (nodes.find((node) => node.id === rootId)?.data ?? {}) as Record<string, unknown>;
+  const layoutStartColor = typeof rootData.layoutStartColor === "string"
+    ? rootData.layoutStartColor
+    : undefined;
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
 
@@ -168,6 +173,9 @@ export function buildLayoutVisualStyles(
         depth,
         branchIndex: -1,
         fillColor: manualColors?.fill ?? scheme.rootFill,
+        ...(!manualColors && mode === "matrix"
+          ? { fillGradient: matrixRootPaletteGradient(scheme, branchCount, layoutStartColor) }
+          : {}),
         borderColor: manualColors?.border ?? scheme.rootBorder,
         textColor: manualColors?.text ?? scheme.rootText,
         accentColor: manualColors?.border ?? scheme.rootBorder,
@@ -183,7 +191,9 @@ export function buildLayoutVisualStyles(
       : [];
     const matrixDepthBand = mode === "matrix";
     const branchBaseColor = fillAnchor?.color
-      ?? (matrixDepthBand ? matrixRowAnchorColor(scheme, branchIndex, branchCount) : undefined);
+      ?? (matrixDepthBand
+        ? matrixRowAnchorColor(scheme, branchIndex, branchCount, layoutStartColor)
+        : undefined);
     const colors = radialSectorColors(
       scheme,
       branchIndex,

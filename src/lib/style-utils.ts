@@ -476,6 +476,17 @@ export function resolveFillColor(d: Record<string, unknown>): string | undefined
   return colorWithOpacity(color, resolveFillOpacity(d));
 }
 
+/** Resolve a generated layout gradient without overriding authored fills. */
+export function resolveLayoutFillGradient(d: Record<string, unknown>): string | undefined {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (
+    !layoutStyle
+    || d.layoutAutoFill === false
+    || typeof layoutStyle.fillGradient !== "string"
+  ) return undefined;
+  return layoutStyle.fillGradient;
+}
+
 /** Resolve a node's border color: uses explicit borderColor or accent color. */
 export function resolveBorderColor(d: Record<string, unknown>): string | undefined {
   const layoutStyle = resolveLayoutVisualStyle(d);

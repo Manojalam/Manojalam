@@ -13,6 +13,7 @@ import {
   resolveEffectiveFillOpacity,
   resolveFillColor,
   resolveFillSourceColor,
+  resolveLayoutFillGradient,
   themeAwareLayoutConnectorColor,
   themeAwareNodeFillColor,
 } from "./style-utils";
@@ -20,12 +21,27 @@ import {
 const automaticLayoutStyle = {
   rootId: "root",
   fillColor: "#4f67f6",
+  fillGradient: "linear-gradient(100deg, #312e81, #701a75)",
   borderColor: "#4262ff",
   textColor: "#111827",
   accentColor: "#4262ff",
   borderWidth: 2,
   borderStyle: "solid" as const,
 };
+
+test("generated root gradients render only while the layout owns the fill", () => {
+  assert.equal(
+    resolveLayoutFillGradient({ layoutVisualStyle: automaticLayoutStyle }),
+    automaticLayoutStyle.fillGradient
+  );
+  assert.equal(
+    resolveLayoutFillGradient({
+      layoutVisualStyle: automaticLayoutStyle,
+      layoutAutoFill: false,
+    }),
+    undefined
+  );
+});
 
 test("a cleared node fill stays transparent instead of falling back to blue", () => {
   assert.equal(resolveFillColor({

@@ -9,7 +9,7 @@ import {
   getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
-  themeAwareNodeFillColor,
+  themeAwareNodeFillColor, resolveLayoutFillGradient,
 } from "@/lib/style-utils";
 import {
   shapeLabelBox,
@@ -981,6 +981,7 @@ function SvgShapeSurface({
 function ShapeSurface({
   shapeType,
   fillColor,
+  fillGradient,
   borderColor,
   borderWidth,
   borderStyle,
@@ -991,6 +992,7 @@ function ShapeSurface({
 }: {
   shapeType: string;
   fillColor?: string;
+  fillGradient?: string;
   borderColor: string;
   borderWidth: number;
   borderStyle: string;
@@ -1036,6 +1038,7 @@ function ShapeSurface({
         style={{
           ...shapeStyle,
           backgroundColor: renderedFillColor,
+          backgroundImage: fillGradient,
           backgroundClip: "padding-box",
           border: `${borderWidth}px ${borderStyle} ${borderColor}`,
           overflow: "hidden",
@@ -1071,6 +1074,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const svgShape = isSvgShapeType(renderedShapeType);
 
   const fillColor    = resolveFillColor(dd);
+  const fillGradient = resolveLayoutFillGradient(dd);
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const resolvedBorderWidth = resolveBorderWidth(dd);
@@ -1330,6 +1334,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           <ShapeSurface
             shapeType={renderedShapeType}
             fillColor={fillColor}
+            fillGradient={fillGradient}
             borderColor={borderColor}
             borderWidth={bWidth}
             borderStyle={bStyle}

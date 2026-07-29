@@ -167,22 +167,47 @@ const MATRIX_ROW_LIGHTNESS = 64;
 export function matrixRowAnchorColor(
   scheme: RadialColorSchemeDefinition,
   branchIndex: number,
-  branchCount: number
+  branchCount: number,
+  startColor?: string
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const index = clamp(Math.floor(branchIndex), 0, count - 1);
-  const [startHue, requestedEndHue] = scheme.matrixHueRange;
-  const requestedSpan = requestedEndHue - startHue;
+  const [defaultStartHue, requestedEndHue] = scheme.matrixHueRange;
+  const customAnchor = parseColor(startColor);
+  const startHue = customAnchor?.h ?? defaultStartHue;
+  const requestedSpan = requestedEndHue - defaultStartHue;
   const maximumSpan = MAX_MATRIX_ROW_HUE_STEP * Math.max(0, count - 1);
   const span = Math.sign(requestedSpan) * Math.min(Math.abs(requestedSpan), maximumSpan);
   const progress = count <= 1 ? 0 : index / (count - 1);
   return hslString({
     h: startHue + span * progress,
-    s: scheme.saturation,
-    // A common lightness floor keeps Matrix body labels consistently dark.
-    // The root remains a deliberately dark, white-text chart header.
-    l: Math.max(scheme.lightness, MATRIX_ROW_LIGHTNESS),
+    s: customAnchor ? Math.min(customAnchor.s, 58) : scheme.saturation,
+    // Matrix flow uses the chosen hue and moderated chroma, but one shared
+    // lightness keeps row progression and dark label contrast predictable.
+    l: MATRIX_ROW_LIGHTNESS,
   });
+}
+
+/** Dark chart-root treatment summarizing the complete automatic row flow. */
+export function matrixRootPaletteGradient(
+  scheme: RadialColorSchemeDefinition,
+  branchCount: number,
+  startColor?: string
+): string {
+  const count = Math.max(1, Math.floor(branchCount));
+  const stopCount = Math.min(7, Math.max(2, count));
+  const stops = Array.from({ length: stopCount }, (_, stopIndex) => {
+    const progress = stopCount <= 1 ? 0 : stopIndex / (stopCount - 1);
+    const branchIndex = count <= 1 ? 0 : Math.round(progress * (count - 1));
+    const anchor = parseColor(matrixRowAnchorColor(scheme, branchIndex, count, startColor))!;
+    const darkAnchor = hslString({
+      h: anchor.h,
+      s: Math.min(anchor.s, 52),
+      l: 30 + (stopIndex % 2 === 0 ? 0 : 2),
+    });
+    return `${darkAnchor} ${(progress * 100).toFixed(1)}%`;
+  });
+  return `linear-gradient(100deg, ${stops.join(", ")})`;
 }
 
 export function radialSectorColors(
@@ -208,9 +233,10 @@ export function radialSectorColors(
     ? 0
     : (siblingIndex / Math.max(1, siblingCount - 1) - 0.5) * 2;
   const depthOffset = Math.max(0, depth - 1) * (preferLighterDepth ? 4 : anchor.l >= 72 ? -4 : 4);
+  const saturationFloor = anchor.s < 12 ? 0 : 28;
   const derived: HslColor = {
     h: normalizeHue(anchor.h + siblingOffset),
-    s: clamp(anchor.s - Math.max(0, depth - 1) * 4, 28, 68),
+    s: clamp(anchor.s - Math.max(0, depth - 1) * 4, saturationFloor, 68),
     l: clamp(anchor.l + depthOffset + siblingLightness, 26, preferLighterDepth ? 100 : 78),
   };
   const override = parseColor(fillOverride);

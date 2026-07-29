@@ -271,6 +271,7 @@ interface CanvasState {
     options?: { recordHistory?: boolean }
   ) => void;
   applyLayoutColorScheme: (rootId: string, scheme: RadialColorScheme, resetOverrides?: boolean) => void;
+  applyLayoutStartColor: (rootId: string, color?: string) => void;
 }
 
 const pendingListReflowNodeIds = new Set<string>();
@@ -4371,6 +4372,45 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const nextNodes = mode === "matrix"
       ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true)
       : styled.nodes;
+    set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
+  },
+
+  applyLayoutStartColor: (rootId, color) => {
+    const { nodes, edges } = get();
+    const hierarchyNodes = nodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    const root = hierarchyNodes.find((node) => node.id === rootId);
+    if (!root) return;
+    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+    if (mode !== "matrix") return;
+
+    const normalizedColor = typeof color === "string" && color.trim()
+      ? color.trim()
+      : undefined;
+    const preparedNodes = nodes.map((node) => node.id === rootId
+      ? {
+          ...node,
+          data: {
+            ...(node.data ?? {}),
+            layoutStartColor: normalizedColor,
+          },
+        }
+      : node);
+    const hierarchy = buildHierarchy(hierarchyNodes, edges);
+    get().pushHistory();
+    const styled = applyLayoutPalette(
+      preparedNodes,
+      edges,
+      hierarchy,
+      rootId,
+      mode,
+      layoutSchemeValue(preparedNodes, rootId)
+    );
+    const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    const nextNodes = withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true);
     set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
   },
 
