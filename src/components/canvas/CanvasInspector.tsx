@@ -34,6 +34,7 @@ import {
   resetNodeDimensions,
   type LayoutMode,
 } from "@/lib/layout";
+import { MATRIX_MAX_TABLE_HEIGHT } from "@/lib/layout/matrix-layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import type {
@@ -5268,7 +5269,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         label="Overall Matrix height"
                         value={matrixTableHeight}
                         min={100}
-                        max={6000}
+                        max={MATRIX_MAX_TABLE_HEIGHT}
                         onCommit={(value) => {
                           pushHistory();
                           updateNodeData(matrixRootNode.id, { matrixTableHeightOverride: value });

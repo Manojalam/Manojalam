@@ -2315,7 +2315,7 @@ test("peer Matrix rows share aligned tracks while preserving an exact column wid
 
 test("overall Matrix width and height overrides scale the composed table exactly", () => {
   const { nodes, edges } = buildTree([
-    { id: "root", parentId: null, matrixTableWidth: 760, matrixTableHeight: 420 },
+    { id: "root", parentId: null, matrixTableWidth: 760, matrixTableHeight: 10000 },
     { id: "a", parentId: "root" },
     { id: "b", parentId: "root" },
     { id: "c", parentId: "root" },
@@ -2324,7 +2324,7 @@ test("overall Matrix width and height overrides scale the composed table exactly
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
 
   assert.equal(result.bounds.width, 760);
-  assert.equal(result.bounds.height, 420);
+  assert.equal(result.bounds.height, 10000);
   assert.equal(result.header.width, 760);
   assert.equal(result.header.y, result.bounds.top);
   assertClean(result);

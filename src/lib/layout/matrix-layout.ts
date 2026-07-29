@@ -111,7 +111,8 @@ export const MATRIX_MAX_SIBLING_GAP = 240;
 export const MATRIX_MIN_TABLE_WIDTH = 160;
 export const MATRIX_MAX_TABLE_WIDTH = 6000;
 export const MATRIX_MIN_TABLE_HEIGHT = 100;
-export const MATRIX_MAX_TABLE_HEIGHT = 6000;
+export const MATRIX_MAX_TABLE_HEIGHT = 10000;
+const MATRIX_MAX_CELL_HEIGHT = 6000;
 
 export const MATRIX_DENSITY_SETTINGS: Record<MatrixTableDensity, DensitySettings> = {
   compact: {
@@ -407,7 +408,7 @@ function requiredCellHeight(
   const data = (node.data ?? {}) as Record<string, unknown>;
   const userHeight = positiveNumber(data.matrixHeightOverride);
   if (userHeight) {
-    return Math.ceil(clamp(userHeight, MATRIX_DENSITY_SETTINGS.compact.minRowHeight, MATRIX_MAX_TABLE_HEIGHT));
+    return Math.ceil(clamp(userHeight, MATRIX_DENSITY_SETTINGS.compact.minRowHeight, MATRIX_MAX_CELL_HEIGHT));
   }
   const text = nodeText(node);
   const metrics = fontMetrics(node);
