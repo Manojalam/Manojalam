@@ -155,6 +155,7 @@ export function radialColorScheme(value: unknown): RadialColorSchemeDefinition {
 }
 
 const MAX_MATRIX_ROW_HUE_STEP = 32;
+const MATRIX_ROW_LIGHTNESS = 64;
 
 /**
  * Returns one coordinated anchor for a Matrix row.
@@ -178,7 +179,9 @@ export function matrixRowAnchorColor(
   return hslString({
     h: startHue + span * progress,
     s: scheme.saturation,
-    l: scheme.lightness,
+    // A common lightness floor keeps Matrix body labels consistently dark.
+    // The root remains a deliberately dark, white-text chart header.
+    l: Math.max(scheme.lightness, MATRIX_ROW_LIGHTNESS),
   });
 }
 
