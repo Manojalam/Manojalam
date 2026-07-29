@@ -5,6 +5,11 @@ export type RadialColorSchemeDefinition = {
   label: string;
   swatches: string[];
   hues: number[];
+  /**
+   * Unwrapped hue endpoints for a smooth top-to-bottom Matrix row sequence.
+   * Values may sit outside 0-360 to preserve the intended travel direction.
+   */
+  matrixHueRange: readonly [number, number];
   saturation: number;
   lightness: number;
   rootFill: string;
@@ -69,6 +74,7 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
     label: "Spectrum",
     swatches: ["#bf4059", "#bf9940", "#40bf9d", "#4088bf", "#a140bf"],
     hues: [348, 42, 62, 164, 198, 246, 286, 18, 122, 322, 94, 214],
+    matrixHueRange: [348, 682],
     saturation: 50,
     lightness: 50,
     rootFill: "#29344f",
@@ -81,6 +87,7 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
     label: "Sanskrit",
     swatches: ["#aa3c59", "#aa5d3c", "#aa893c", "#3caa9f", "#3c43aa"],
     hues: [344, 18, 42, 174, 236, 278, 110],
+    matrixHueRange: [344, 638],
     saturation: 48,
     lightness: 45,
     rootFill: "#4b2632",
@@ -93,6 +100,7 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
     label: "Lotus",
     swatches: ["#b83d7a", "#b83d5c", "#b83da3", "#b8773d", "#9a3db8"],
     hues: [330, 345, 4, 28, 48, 286, 310],
+    matrixHueRange: [330, 408],
     saturation: 50,
     lightness: 48,
     rootFill: "#51243f",
@@ -105,6 +113,7 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
     label: "Ocean",
     swatches: ["#4289a9", "#4279a9", "#429da9", "#42a99e", "#4263a9"],
     hues: [198, 207, 186, 174, 221, 238],
+    matrixHueRange: [174, 238],
     saturation: 44,
     lightness: 46,
     rootFill: "#243f56",
@@ -117,6 +126,7 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
     label: "Forest",
     swatches: ["#42944f", "#429467", "#6b9442", "#948242", "#42948b"],
     hues: [132, 151, 88, 47, 26, 174],
+    matrixHueRange: [26, 174],
     saturation: 38,
     lightness: 42,
     rootFill: "#263f32",
@@ -129,6 +139,7 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
     label: "Scholar",
     swatches: ["#415b9f", "#9f7d41", "#9f4154", "#419f96", "#7d419f"],
     hues: [222, 38, 348, 174, 278, 202],
+    matrixHueRange: [38, -186],
     saturation: 42,
     lightness: 44,
     rootFill: "#2c334f",
@@ -141,6 +152,34 @@ export const RADIAL_COLOR_SCHEMES: RadialColorSchemeDefinition[] = [
 export function radialColorScheme(value: unknown): RadialColorSchemeDefinition {
   return RADIAL_COLOR_SCHEMES.find((scheme) => scheme.id === value)
     ?? RADIAL_COLOR_SCHEMES.find((scheme) => scheme.id === DEFAULT_RADIAL_COLOR_SCHEME)!;
+}
+
+const MAX_MATRIX_ROW_HUE_STEP = 32;
+
+/**
+ * Returns one coordinated anchor for a Matrix row.
+ *
+ * The whole row count is sampled across one continuous hue path. Short
+ * matrices stop before adjacent rows would jump too far; long matrices spread
+ * the complete theme without wrapping back to the first swatch.
+ */
+export function matrixRowAnchorColor(
+  scheme: RadialColorSchemeDefinition,
+  branchIndex: number,
+  branchCount: number
+): string {
+  const count = Math.max(1, Math.floor(branchCount));
+  const index = clamp(Math.floor(branchIndex), 0, count - 1);
+  const [startHue, requestedEndHue] = scheme.matrixHueRange;
+  const requestedSpan = requestedEndHue - startHue;
+  const maximumSpan = MAX_MATRIX_ROW_HUE_STEP * Math.max(0, count - 1);
+  const span = Math.sign(requestedSpan) * Math.min(Math.abs(requestedSpan), maximumSpan);
+  const progress = count <= 1 ? 0 : index / (count - 1);
+  return hslString({
+    h: startHue + span * progress,
+    s: scheme.saturation,
+    l: scheme.lightness,
+  });
 }
 
 export function radialSectorColors(
@@ -201,7 +240,7 @@ function normalizeHue(value: number): number {
 }
 
 function hslString(color: HslColor): string {
-  return `hsl(${color.h.toFixed(1)}, ${color.s.toFixed(1)}%, ${color.l.toFixed(1)}%)`;
+  return `hsl(${normalizeHue(color.h).toFixed(1)}, ${color.s.toFixed(1)}%, ${color.l.toFixed(1)}%)`;
 }
 
 function parseColor(value: string | undefined): HslColor | null {

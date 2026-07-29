@@ -7,7 +7,11 @@ import {
   buildLayoutVisualStyles,
   resetDescendantLayoutFillOverrides,
 } from "./layout-palette";
-import { RADIAL_COLOR_SCHEMES, radialSectorColors } from "../radial-layout";
+import {
+  RADIAL_COLOR_SCHEMES,
+  matrixRowAnchorColor,
+  radialSectorColors,
+} from "../radial-layout";
 
 function hierarchyFixture(): { nodes: Node[]; edges: Edge[] } {
   const specs = [
@@ -111,6 +115,64 @@ test("Matrix automatic colors use branch hues with one shade per depth", () => {
   assert.notEqual(branchAGrandchildColors[0], branchBGrandchildColor);
   assert.notEqual(branchAColor, branchAGrandchildColors[0]);
   assert.notEqual(branchAGrandchildColors[0], branchAGreatGrandchildColor);
+});
+
+function hueFromHsl(color: string): number {
+  const hue = color.match(/^hsl\(([\d.]+),/)?.[1];
+  assert.ok(hue, `Expected an HSL color, received ${color}`);
+  return Number(hue);
+}
+
+function clockwiseHueDistance(from: number, to: number): number {
+  return ((to - from) % 360 + 360) % 360;
+}
+
+test("Matrix rows flow continuously through the palette without wrapping", () => {
+  const rowCount = 16;
+  const rowIds = Array.from({ length: rowCount }, (_, index) => `row-${index}`);
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 0, y: 0 },
+      data: { text: "root", childOrder: rowIds, layoutMode: "matrix" },
+    },
+    ...rowIds.map((id, index) => ({
+      id,
+      type: "shape",
+      position: { x: 0, y: index * 50 },
+      data: { text: id, parentId: "root", childOrder: [] },
+    })),
+  ];
+  const edges: Edge[] = rowIds.map((id) => ({
+    id: `edge-root-${id}`,
+    source: "root",
+    target: id,
+    type: "branch",
+  }));
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum");
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+  const steps = hues.slice(1).map((hue, index) => clockwiseHueDistance(hues[index], hue));
+
+  assert.ok(steps.every((step) => step > 0 && step <= 32));
+  assert.ok(clockwiseHueDistance(hues[0], hues.at(-1)!) > 300);
+  assert.notEqual(hues[0], hues.at(-1));
+});
+
+test("short Matrix palettes stop before neighboring rows make a large hue jump", () => {
+  for (const scheme of RADIAL_COLOR_SCHEMES) {
+    const first = hueFromHsl(matrixRowAnchorColor(scheme, 0, 3));
+    const second = hueFromHsl(matrixRowAnchorColor(scheme, 1, 3));
+    const third = hueFromHsl(matrixRowAnchorColor(scheme, 2, 3));
+    const direction = Math.sign(scheme.matrixHueRange[1] - scheme.matrixHueRange[0]);
+    const distance = (from: number, to: number) => direction >= 0
+      ? clockwiseHueDistance(from, to)
+      : clockwiseHueDistance(to, from);
+
+    assert.ok(distance(first, second) <= 32, `${scheme.label} row 1 to 2 should flow`);
+    assert.ok(distance(second, third) <= 32, `${scheme.label} row 2 to 3 should flow`);
+  }
 });
 
 function colorChannels(color: string): [number, number, number] {
