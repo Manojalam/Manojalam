@@ -211,6 +211,26 @@ function colorContrast(first: string, second: string): number {
   return (luminances[0] + 0.05) / (luminances[1] + 0.05);
 }
 
+test("Matrix rows keep one readable dark text color across every palette and depth", () => {
+  for (const scheme of RADIAL_COLOR_SCHEMES) {
+    for (let branchIndex = 0; branchIndex < 16; branchIndex += 1) {
+      const anchor = matrixRowAnchorColor(scheme, branchIndex, 16);
+      for (let depth = 1; depth <= 12; depth += 1) {
+        const colors = radialSectorColors(scheme, branchIndex, depth, 0, 1, anchor);
+        assert.equal(
+          colors.text,
+          "#020617",
+          `${scheme.label} row ${branchIndex} depth ${depth} should use dark text`
+        );
+        assert.ok(
+          colorContrast(colors.fill, colors.text) >= 4.5,
+          `${scheme.label} row ${branchIndex} depth ${depth} needs readable dark text`
+        );
+      }
+    }
+  }
+});
+
 test("automatic palette fills keep readable text through deep hierarchies", () => {
   for (const scheme of RADIAL_COLOR_SCHEMES) {
     assert.ok(scheme.saturation <= 50, `${scheme.label} should stay below highlighter saturation`);
