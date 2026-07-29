@@ -5,12 +5,14 @@ export const MATRIX_GRID_RADIUS = 4;
 
 /**
  * Matrix keeps authored node shapes visually independent from its flat table
- * grid. Large merged labels stay restrained while short labels can be pill-like.
+ * grid. Table-sized corners stay legible even after a large Matrix is fitted
+ * into the viewport; pill-sized corners make adjacent compact rows look as if
+ * they overlap.
  */
 export function matrixCellBorderRadius(role: MatrixCellRole | string | undefined): number {
-  if (role === "header") return 24;
-  if (role === "category") return 20;
-  return 18;
+  if (role === "header") return 8;
+  if (role === "category") return 6;
+  return 4;
 }
 
 /** Expand a division to the midpoint of the standard gap between Matrix cells. */

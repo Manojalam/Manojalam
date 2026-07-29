@@ -330,6 +330,7 @@ export function ImportDialog({
       refreshDraftScripts(finalized.roots);
       const { content, rootId } = hierarchyDraftToBoardContent(finalized, {
         presentation: layoutMode === "cards" ? "cards" : "hierarchy",
+        initialLayout: layoutMode === "cards" ? undefined : layoutMode,
       });
       if (destination === "current") {
         const canvas = useCanvasStore.getState();

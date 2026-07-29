@@ -815,14 +815,14 @@ export function matrixAncestorSpanOverrideResets(
 }
 
 const MATRIX_AUTO_ROW_MIN_SIBLINGS = 4;
-const MATRIX_AUTO_ROW_MAX_SIBLINGS = 8;
-const MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS = 16;
-const DEVANAGARI_CHARACTER = /[\u0900-\u097f]/u;
+const MATRIX_AUTO_ROW_MAX_COLUMNS = 5;
+const MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS = 32;
 
 /**
- * Compact terminal sets such as अ/इ/उ/ऋ/ऌ or क/ख/ग/घ/ङ are semantic table
- * rows. Treating every item as another root-to-leaf row creates the extremely
- * tall, narrow Matrix seen in alphabet and classification boards.
+ * Compact terminal sets such as metre names, अ/इ/उ/ऋ/ऌ, or short English
+ * classifications are semantic table rows. Treating every item as another
+ * root-to-leaf row creates the extremely tall, narrow Matrix seen in imported
+ * alphabet and classification boards.
  */
 function isCompactLeafSiblingGroup(
   nodeId: string,
@@ -830,10 +830,7 @@ function isCompactLeafSiblingGroup(
   byId: Map<string, Node>
 ): boolean {
   const children = visibleChildren(nodeId, hierarchy, byId);
-  if (
-    children.length < MATRIX_AUTO_ROW_MIN_SIBLINGS
-    || children.length > MATRIX_AUTO_ROW_MAX_SIBLINGS
-  ) return false;
+  if (children.length < MATRIX_AUTO_ROW_MIN_SIBLINGS) return false;
   return children.every((childId) => {
     if (visibleChildren(childId, hierarchy, byId).length) return false;
     const child = byId.get(childId);
@@ -841,8 +838,7 @@ function isCompactLeafSiblingGroup(
     const text = nodeText(child);
     const compactLabelLength = Array.from(text.replace(/\s+/g, "")).length;
     return compactLabelLength > 0
-      && compactLabelLength <= MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS
-      && DEVANAGARI_CHARACTER.test(text);
+      && compactLabelLength <= MATRIX_AUTO_ROW_MAX_LABEL_CHARACTERS;
   });
 }
 
@@ -1470,10 +1466,27 @@ function equalizeTerminalSiblingHeights(
 
 function orientedChildSections(
   parentData: Record<string, unknown>,
-  children: OrientedChildEntry[]
+  children: OrientedChildEntry[],
+  automaticMaximumSectionSize = 0
 ): OrientedChildEntry[][] {
   const childIds = children.map((child) => child.nodeId);
-  const idSections = resolvedFoldSections(parentData, childIds);
+  let idSections = resolvedFoldSections(parentData, childIds);
+  if (
+    idSections.length === 1
+    && automaticMaximumSectionSize > 0
+    && children.length > automaticMaximumSectionSize
+  ) {
+    const sectionCount = Math.ceil(children.length / automaticMaximumSectionSize);
+    const baseSize = Math.floor(children.length / sectionCount);
+    const largerSectionCount = children.length % sectionCount;
+    let start = 0;
+    idSections = Array.from({ length: sectionCount }, (_, sectionIndex) => {
+      const sectionSize = baseSize + (sectionIndex < largerSectionCount ? 1 : 0);
+      const section = childIds.slice(start, start + sectionSize);
+      start += sectionSize;
+      return section;
+    });
+  }
   const byChildId = new Map(children.map((child) => [child.nodeId, child]));
   return idSections.map((section) => section.flatMap((childId) => byChildId.get(childId) ?? []));
 }
@@ -1570,11 +1583,16 @@ function layoutOrientedChildSections(
   siblingGap: number,
   preserveEmptySlots: boolean,
   minimumWidth = 0,
-  minimumHeight = 0
+  minimumHeight = 0,
+  automaticMaximumSectionSize = 0
 ): OrientedBranchLayout {
   if (!children.length) return { width: minimumWidth, height: minimumHeight, cells: [] };
   const siblingGroup = equalizeTerminalSiblingHeights(children);
-  const rawSections = orientedChildSections(parentData, siblingGroup.children);
+  const rawSections = orientedChildSections(
+    parentData,
+    siblingGroup.children,
+    automaticMaximumSectionSize
+  );
   const foldedTerminalGroup = rawSections.length > 1
     && rawSections.every((section) => section.every(isTerminalSibling));
   const sections = childFlow === "column"
@@ -1757,6 +1775,10 @@ function computeOrientedMatrixLayout(
     }
 
     const siblingGap = matrixSiblingGapForNode(nodeId, settings.cellGap, byId);
+    const automaticMaximumSectionSize = packCompactGroups
+      && isCompactLeafSiblingGroup(nodeId, hierarchy, byId)
+      ? MATRIX_AUTO_ROW_MAX_COLUMNS
+      : 0;
     const childArea = layoutOrientedChildSections(
       data,
       children,
@@ -1765,7 +1787,8 @@ function computeOrientedMatrixLayout(
       siblingGap,
       preserveEmptySlots,
       orientation === "vertical" ? width : 0,
-      orientation === "horizontal" ? ownRequiredHeight : 0
+      orientation === "horizontal" ? ownRequiredHeight : 0,
+      automaticMaximumSectionSize
     );
 
     if (orientation === "vertical") {
@@ -1824,6 +1847,10 @@ function computeOrientedMatrixLayout(
     MATRIX_HEADER_MIN_WIDTH,
     760
   ));
+  const automaticRootSectionSize = packCompactGroups
+    && isCompactLeafSiblingGroup(rootId, hierarchy, byId)
+    ? MATRIX_AUTO_ROW_MAX_COLUMNS
+    : 0;
   const body = layoutOrientedChildSections(
     rootData,
     builtRootChildren,
@@ -1832,7 +1859,8 @@ function computeOrientedMatrixLayout(
     matrixSiblingGapForNode(rootId, settings.cellGap, byId),
     preserveEmptySlots,
     preferredHeaderWidth,
-    0
+    0,
+    automaticRootSectionSize
   );
   const tableWidth = body.width;
   const bodyHeight = body.height;
