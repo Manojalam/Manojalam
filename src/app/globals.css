@@ -309,6 +309,25 @@ body {
 .ProseMirror h1 { font-size: 1.5em; font-weight: 700; }
 .ProseMirror h2 { font-size: 1.25em; font-weight: 600; }
 .ProseMirror h3 { font-size: 1.1em; font-weight: 600; }
+/* A diagram label's Size control is literal: semantic heading blocks may keep
+   their emphasis, but must not silently multiply the displayed pixel size. */
+[data-shape-label-content="true"] .ProseMirror h1,
+[data-shape-label-content="true"] .ProseMirror h2,
+[data-shape-label-content="true"] .ProseMirror h3 {
+  font-size: inherit;
+}
+/* Shape labels are short display text rather than prose. Center explicitly
+   resized runs optically so mixed sizes do not sit on an awkward baseline. */
+[data-shape-label-content="true"] .ProseMirror span[style*="font-size"] {
+  vertical-align: middle;
+}
+/* Superscript and subscript own their vertical placement. */
+[data-shape-label-content="true"] .ProseMirror sup span[style*="font-size"],
+[data-shape-label-content="true"] .ProseMirror sub span[style*="font-size"],
+[data-shape-label-content="true"] .ProseMirror span[style*="font-size"]:has(sup),
+[data-shape-label-content="true"] .ProseMirror span[style*="font-size"]:has(sub) {
+  vertical-align: baseline;
+}
 /* Force correct rendering for inline marks — browser synthesizes italic/bold if face is missing */
 .ProseMirror strong, .ProseMirror b { font-weight: 700 !important; }
 .ProseMirror em, .ProseMirror i     { font-style:  italic !important; }
