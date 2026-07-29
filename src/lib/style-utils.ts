@@ -42,6 +42,25 @@ export function getTextStyle(
   };
 }
 
+/** Explicit whole-object typography only, suitable for specialized card fields. */
+export function getAuthoredTextStyle(d: Record<string, unknown>): CSSProperties {
+  return {
+    fontSize: typeof d.fontSize === "number" ? `${d.fontSize}px` : undefined,
+    fontFamily: typeof d.fontFamily === "string" && d.fontFamily
+      ? d.fontFamily
+      : undefined,
+    fontStyle: d.fontStyle === "italic"
+      ? "italic"
+      : d.fontStyle === "normal" ? "normal" : undefined,
+    fontWeight: d.fontWeight === "bold"
+      ? 700
+      : d.fontWeight === "normal" ? 400 : undefined,
+    color: typeof d.textColor === "string" && d.textColor
+      ? d.textColor
+      : undefined,
+  };
+}
+
 function plainTextForFitting(d: Record<string, unknown>): string {
   if (typeof d.richText === "string" && d.richText.trim()) {
     return d.richText

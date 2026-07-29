@@ -8,6 +8,7 @@ import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { MATRIX_GRID_RADIUS } from "@/lib/layout/matrix-presentation";
+import { getAuthoredTextStyle } from "@/lib/style-utils";
 
 function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d = data as FrameNodeData;
@@ -19,6 +20,7 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const frameHeight = typeof height === "number" && height > 0 ? height : 1;
   const gridStrokeWidth = typeof d.borderWidth === "number" ? d.borderWidth : 1;
   const resizeControls = useNodeManualResize(id);
+  const authoredTextStyle = getAuthoredTextStyle(d as Record<string, unknown>);
 
   return (
     <>
@@ -89,6 +91,7 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
             style={{
               backgroundColor: d.color ?? "#6366f1",
               color: "white",
+              ...authoredTextStyle,
             }}
           >
             {d.title || "Frame"}

@@ -11,6 +11,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { toast } from "sonner";
 import { NodeQuickActions } from "./NodeQuickActions";
 import {
+  getAuthoredTextStyle,
   getTextStyle,
   resolveBorderColor,
   resolveBorderStyle,
@@ -41,6 +42,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
     borderWidth: resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
+  const authoredTextStyle = getAuthoredTextStyle(dd);
   const resizeControls = useNodeManualResize(id);
 
   const copyText = (text: string) => {
@@ -89,8 +91,8 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
       >
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-foreground">{d.title || "Sanskrit Card"}</h3>
-            {d.source && <p className="text-xs text-muted-foreground">{d.source}</p>}
+            <h3 className="font-semibold text-foreground" style={authoredTextStyle}>{d.title || "Sanskrit Card"}</h3>
+            {d.source && <p className="text-xs text-muted-foreground" style={authoredTextStyle}>{d.source}</p>}
           </div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={cycleMode}>
             {mode.replace("-", " ")}
@@ -99,29 +101,37 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
 
         {(mode === "devanagari" || mode === "both-stacked" || mode === "both-side") && d.devanagari && (
           <div className={cn(mode === "both-side" && "inline-block w-1/2 align-top")}>
-            <p className="font-devanagari text-lg leading-relaxed text-foreground">{d.devanagari}</p>
+            <p className="font-devanagari text-lg leading-relaxed text-foreground" style={authoredTextStyle}>{d.devanagari}</p>
           </div>
         )}
 
         {(mode === "iast" || mode === "both-stacked" || mode === "both-side") && d.iast && (
-          <div className={cn("font-iast text-sm italic text-muted-foreground", mode === "both-stacked" && "mt-1")}>
+          <div
+            className={cn("font-iast text-sm italic text-muted-foreground", mode === "both-stacked" && "mt-1")}
+            style={authoredTextStyle}
+          >
             {d.iast}
           </div>
         )}
 
         {d.translation && (
-          <p className="mt-2 border-t border-amber-200/50 pt-2 text-sm dark:border-amber-800/30">
+          <p className="mt-2 border-t border-amber-200/50 pt-2 text-sm dark:border-amber-800/30" style={authoredTextStyle}>
             {d.translation}
           </p>
         )}
 
         {d.grammarNotes && (
-          <p className="mt-1 text-xs text-muted-foreground">{d.grammarNotes}</p>
+          <p className="mt-1 text-xs text-muted-foreground" style={authoredTextStyle}>{d.grammarNotes}</p>
         )}
 
         <div className="mt-2 flex flex-wrap gap-1">
           {d.tags?.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-[10px] bg-amber-100/50 dark:bg-amber-900/20">
+            <Badge
+              key={tag}
+              variant="outline"
+              className="text-[10px] bg-amber-100/50 dark:bg-amber-900/20"
+              style={authoredTextStyle}
+            >
               {tag}
             </Badge>
           ))}

@@ -8,6 +8,7 @@ import type { GrammarCardNodeData } from "@/lib/types";
 import { GRAMMAR_CATEGORY_LABELS } from "@/lib/sanskrit/transliterate";
 import { NodeQuickActions } from "./NodeQuickActions";
 import {
+  getAuthoredTextStyle,
   getTextStyle,
   resolveBorderColor,
   resolveBorderStyle,
@@ -36,6 +37,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
     borderWidth: resolveBorderWidth(dd),
     color: getTextStyle(dd).color,
   } : {};
+  const authoredTextStyle = getAuthoredTextStyle(dd);
   const resizeControls = useNodeManualResize(id);
 
   return (
@@ -72,27 +74,33 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="font-semibold">{d.topic || "Grammar Rule"}</h3>
-          <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 text-[10px]">
+          <h3 className="font-semibold" style={authoredTextStyle}>{d.topic || "Grammar Rule"}</h3>
+          <Badge
+            className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 text-[10px]"
+            style={authoredTextStyle}
+          >
             {GRAMMAR_CATEGORY_LABELS[d.category] ?? d.category}
           </Badge>
         </div>
 
-        <div className="rounded-lg border border-indigo-100 bg-white/60 p-2 text-sm dark:border-indigo-900 dark:bg-indigo-950/20">
+        <div
+          className="rounded-lg border border-indigo-100 bg-white/60 p-2 text-sm dark:border-indigo-900 dark:bg-indigo-950/20"
+          style={authoredTextStyle}
+        >
           {d.rule || "Enter rule..."}
         </div>
 
         {d.examples && d.examples.length > 0 && (
           <div className="mt-2">
-            <p className="text-xs font-medium text-muted-foreground">Examples</p>
+            <p className="text-xs font-medium text-muted-foreground" style={authoredTextStyle}>Examples</p>
             {d.examples.map((ex, i) => (
-              <p key={i} className="font-devanagari mt-0.5 text-sm">{ex}</p>
+              <p key={i} className="font-devanagari mt-0.5 text-sm" style={authoredTextStyle}>{ex}</p>
             ))}
           </div>
         )}
 
         {d.exceptions && (
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2 text-xs text-muted-foreground" style={authoredTextStyle}>
             <span className="font-medium">Exceptions:</span> {d.exceptions}
           </p>
         )}
@@ -100,7 +108,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         {d.tags && d.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {d.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
+              <Badge key={tag} variant="outline" className="text-[10px]" style={authoredTextStyle}>{tag}</Badge>
             ))}
           </div>
         )}

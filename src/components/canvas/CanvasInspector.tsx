@@ -166,6 +166,12 @@ import {
 } from "@/lib/canvas/text-callout";
 import { normalizeTextCalloutOwnerAnchor } from "@/lib/canvas/node-note";
 import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
+import {
+  selectionNodeTextStylePatch,
+  selectionNodeTextStyleValue,
+  supportsSelectionTextStyle,
+  type SelectionTextStyleKey,
+} from "@/lib/canvas/selection-text-style";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1298,6 +1304,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     && selectedMatrixCells.length === selectedNodes.length;
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
   const selectedHierarchyNumberNodes = selectedNodes.filter(participatesInHierarchyNumbering);
+  const selectedTextNodes = selectedNodes.filter(supportsSelectionTextStyle);
+  const selectedTextLayoutNodes = selectedTextNodes.filter((node) =>
+    ["mindmap", "sticky", "text", "shape", "sunburst"].includes(node.type ?? "")
+  );
   const selectedShapeNodes = selectedNodes.filter((node) => node.type === "shape");
   const selectedShapeTransformNodes = selectedNodes.filter(supportsShapeTransform);
   const allShapeNodes = nodes.filter((node) => node.type === "shape" && !node.hidden);
@@ -2003,6 +2013,83 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     return values.every((value) => value === values[0]) ? values[0] : undefined;
   };
 
+  const commonSelectionTextValue = (key: SelectionTextStyleKey) => {
+    const edgeKey = key === "textColor"
+      ? "labelColor"
+      : key === "fontFamily"
+        ? "labelFontFamily"
+        : key === "fontSize"
+          ? "labelFontSize"
+          : key === "fontWeight" ? "labelFontWeight" : "labelFontStyle";
+    const values = [
+      ...selectedTextNodes.map((node) => selectionNodeTextStyleValue(node, key)),
+      ...editableSelectionEdges.map((edge) => {
+        const owner = findConnectorLabelOwnerEdge(edges, edge.id) ?? edge;
+        return ((owner.data ?? {}) as Record<string, unknown>)[edgeKey];
+      }),
+    ];
+    return values.length && values.every((value) => value === values[0])
+      ? values[0]
+      : undefined;
+  };
+
+  const setSelectionTextField = (key: SelectionTextStyleKey, value: unknown) => {
+    if (!selectedTextNodes.length && !editableSelectionEdges.length) return;
+    pushHistory();
+    for (const node of selectedTextNodes) {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      const basePatch = fieldPatch(data, key, value);
+      updateNodeData(
+        node.id,
+        selectionNodeTextStylePatch(node, key, value, basePatch)
+      );
+    }
+    if (!editableSelectionEdges.length) return;
+    const update: ConnectorLabelStyleUpdate = key === "textColor"
+      ? { labelColor: typeof value === "string" ? value : null }
+      : key === "fontFamily"
+        ? { labelFontFamily: typeof value === "string" ? value : "" }
+        : key === "fontSize"
+          ? { labelFontSize: Number(value) }
+          : key === "fontWeight"
+            ? { labelFontWeight: value === "bold" ? "bold" : "normal" }
+            : { labelFontStyle: value === "italic" ? "italic" : "normal" };
+    useCanvasStore.setState((state) => ({
+      edges: editableSelectionEdges.reduce(
+        (currentEdges, edge) => applyConnectorLabelStyleUpdate(
+          currentEdges,
+          edge.id,
+          update
+        ),
+        state.edges
+      ),
+      saveStatus: "unsaved",
+    }));
+  };
+
+  const commonSelectedTextNodeValue = (key: string) => {
+    const values = selectedTextLayoutNodes.map((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      return key === "textColor" && typeof data.sunburstHiddenFor === "string"
+        ? data.radialTextColor ?? data.textColor
+        : data[key];
+    });
+    return values.length && values.every((value) => value === values[0])
+      ? values[0]
+      : undefined;
+  };
+
+  const setSelectedTextNodeField = (key: string, value: unknown) => {
+    if (!selectedTextLayoutNodes.length) return;
+    pushHistory();
+    for (const node of selectedTextLayoutNodes) {
+      updateNodeData(
+        node.id,
+        fieldPatch((node.data ?? {}) as Record<string, unknown>, key, value)
+      );
+    }
+  };
+
   const deleteEditableConnections = () => {
     deleteEdges(editableSelectionEdges.map((edge) => edge.id));
   };
@@ -2019,8 +2106,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   };
 
   if (selectedNodes.length > 1 || (selectedNodes.length > 0 && selectedEdges.length > 0)) {
-    const commonFontSize = typeof commonValue("fontSize") === "number" ? commonValue("fontSize") as number : 14;
-    const commonFontFamily = typeof commonValue("fontFamily") === "string" ? commonValue("fontFamily") as string : "";
+    const commonSelectionFontSize = commonSelectionTextValue("fontSize");
+    const commonFontSize = typeof commonSelectionFontSize === "number"
+      ? commonSelectionFontSize
+      : 14;
+    const commonSelectionFontFamily = commonSelectionTextValue("fontFamily");
+    const commonFontFamily = typeof commonSelectionFontFamily === "string"
+      ? commonSelectionFontFamily
+      : "";
     const commonFillColorValue = commonValue("fillColor");
     const effectiveFillOpacities = selectedNodes.map((node) =>
       resolveEffectiveFillOpacity((node.data ?? {}) as Record<string, unknown>)
@@ -2694,47 +2787,79 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </div>
             </Section>
           )}
-          <Section label="Text">
-            <Row label="Align">
+          {(selectedTextNodes.length > 0 || editableSelectionEdges.length > 0) && <Section label="Text">
+            <p className="text-[9px] leading-snug text-muted-foreground">
+              Font, size, bold, italic, and color apply to all {selectedTextNodes.length} text object{
+                selectedTextNodes.length === 1 ? "" : "s"
+              }{editableSelectionEdges.length > 0
+                ? ` and ${editableSelectionEdges.length} connection label${editableSelectionEdges.length === 1 ? "" : "s"}`
+                : ""}. Alignment and text-space controls apply to compatible nodes only.
+            </p>
+            {selectedTextLayoutNodes.length > 0 && <Row label="Align">
               {([
                 ["left",    <AlignLeft    key="l" className="h-3.5 w-3.5" />, "Left"],
                 ["center",  <AlignCenter  key="c" className="h-3.5 w-3.5" />, "Center"],
                 ["right",   <AlignRight   key="r" className="h-3.5 w-3.5" />, "Right"],
                 ["justify", <AlignJustify key="j" className="h-3.5 w-3.5" />, "Justify"],
               ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
-                <IconBtn key={val} active={commonValue("textAlign") === val} onClick={() => setSelectedField("textAlign", val)} title={title}>{icon}</IconBtn>
+                <IconBtn
+                  key={val}
+                  active={commonSelectedTextNodeValue("textAlign") === val}
+                  onClick={() => setSelectedTextNodeField("textAlign", val)}
+                  title={title}
+                >
+                  {icon}
+                </IconBtn>
               ))}
-            </Row>
-            <Row label="Vertical">
+            </Row>}
+            {selectedTextLayoutNodes.length > 0 && <Row label="Vertical">
               {([
                 ["top",    <AlignStartHorizontal  key="t" className="h-3.5 w-3.5" />, "Top"],
                 ["middle", <AlignCenterHorizontal key="m" className="h-3.5 w-3.5" />, "Middle"],
                 ["bottom", <AlignEndHorizontal   key="b" className="h-3.5 w-3.5" />, "Bottom"],
               ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
-                <IconBtn key={val} active={(commonValue("textVerticalAlign") ?? "middle") === val} onClick={() => setSelectedField("textVerticalAlign", val)} title={title}>{icon}</IconBtn>
+                <IconBtn
+                  key={val}
+                  active={(commonSelectedTextNodeValue("textVerticalAlign") ?? "middle") === val}
+                  onClick={() => setSelectedTextNodeField("textVerticalAlign", val)}
+                  title={title}
+                >
+                  {icon}
+                </IconBtn>
               ))}
-            </Row>
+            </Row>}
             <Row label="Style">
               <IconBtn
-                active={commonValue("fontWeight") === "bold"}
-                onClick={() => setSelectedField("fontWeight", commonValue("fontWeight") === "bold" ? "normal" : "bold")}
-                title="Bold"
+                active={commonSelectionTextValue("fontWeight") === "bold"}
+                onClick={() => setSelectionTextField(
+                  "fontWeight",
+                  commonSelectionTextValue("fontWeight") === "bold" ? "normal" : "bold"
+                )}
+                title="Bold all selected text"
               >
                 <Bold className="h-3.5 w-3.5" />
               </IconBtn>
               <IconBtn
-                active={commonValue("fontStyle") === "italic"}
-                onClick={() => setSelectedField("fontStyle", commonValue("fontStyle") === "italic" ? "normal" : "italic")}
-                title="Italic"
+                active={commonSelectionTextValue("fontStyle") === "italic"}
+                onClick={() => setSelectionTextField(
+                  "fontStyle",
+                  commonSelectionTextValue("fontStyle") === "italic" ? "normal" : "italic"
+                )}
+                title="Italicize all selected text"
               >
                 <Italic className="h-3.5 w-3.5" />
               </IconBtn>
             </Row>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
-              <ThicknessControl value={commonFontSize} onChange={(v) => setSelectedField("fontSize", v)} max={96} />
+              <ThicknessControl
+                value={commonFontSize}
+                onChange={(v) => setSelectionTextField("fontSize", v)}
+                min={Math.max(MIN_BOARD_FONT_SIZE, MIN_CONNECTOR_LABEL_FONT_SIZE)}
+                max={editableSelectionEdges.length ? MAX_CONNECTOR_LABEL_FONT_SIZE : MAX_BOARD_FONT_SIZE}
+              />
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
+            {selectedTextLayoutNodes.length > 0 && <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
               <div>
                 <p className="text-[10px] font-medium text-foreground">Fill available text space</p>
                 <p className="text-[9px] leading-relaxed text-muted-foreground">
@@ -2742,11 +2867,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </p>
               </div>
               <Switch
-                checked={commonValue("maximizeText") === true}
-                onCheckedChange={(value) => setSelectedField("maximizeText", value)}
+                checked={commonSelectedTextNodeValue("maximizeText") === true}
+                onCheckedChange={(value) => setSelectedTextNodeField("maximizeText", value)}
                 aria-label="Fill available text space for selected nodes"
               />
-            </div>
+            </div>}
             {selectedShapeNodes.length > 0 && (
               <div className="rounded-md border border-border bg-muted/25 p-2">
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -2824,7 +2949,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font family</p>
               <Select
                 value={commonFontFamily || "__default_font__"}
-                onValueChange={(value) => setSelectedField("fontFamily", value === "__default_font__" ? undefined : value)}
+                onValueChange={(value) => setSelectionTextField(
+                  "fontFamily",
+                  value === "__default_font__" ? undefined : value
+                )}
               >
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Mixed / default" /></SelectTrigger>
                 <SelectContent className="max-h-72">
@@ -2845,16 +2973,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
               <ColorSwatchPicker
-                value={(commonValue("textColor") as string) ?? ""}
+                value={(commonSelectionTextValue("textColor") as string) ?? ""}
                 extra={settings.customTextColors}
                 onCustomColor={(color) => setSettings({
                   customTextColors: rememberCustomColor(settings.customTextColors, color),
                 })}
-                onChange={(v) => setSelectedField("textColor", v || undefined)}
+                onChange={(v) => setSelectionTextField("textColor", v || undefined)}
                 size="sm"
               />
             </div>
-          </Section>
+          </Section>}
 
           <Section label="Fill">
             {isRadialMultiSelection && (

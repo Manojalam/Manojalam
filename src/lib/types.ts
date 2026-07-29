@@ -373,6 +373,9 @@ export interface ConcentricShapeLayer {
   text?: string;
   textColor?: string;
   fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
 }
 
 export interface RadialChartSegment {
@@ -381,6 +384,9 @@ export interface RadialChartSegment {
   fillColor?: string;
   textColor?: string;
   fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
   textRotation?: number;
   /** Number of sections in the next ring. Zero merges this section through that ring. */
   childCount?: number;
@@ -406,6 +412,9 @@ export interface RadialChartData {
   centerColor?: string;
   centerTextColor?: string;
   centerFontSize?: number;
+  centerFontFamily?: string;
+  centerFontWeight?: "normal" | "bold";
+  centerFontStyle?: "normal" | "italic";
   centerRadius?: number;
   debugLabelBoxes?: boolean;
   rings?: RadialChartRing[];
