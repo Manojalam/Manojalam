@@ -163,6 +163,8 @@ export interface BoardSettings {
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
   snapToGrid: boolean;
+  /** Prefix every hierarchy label with its board-wide outline number. */
+  hierarchicalNumbering?: boolean;
   /** Show editor-only outlines for label layout areas across the canvas. */
   showLabelBoxGuides?: boolean;
   defaultScriptMode: ScriptMode;
@@ -756,6 +758,7 @@ export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   background: "dots",
   theme: "system",
   snapToGrid: false,
+  hierarchicalNumbering: false,
   showLabelBoxGuides: false,
   defaultScriptMode: "plain",
   defaultNodeColor: "#6366f1",
