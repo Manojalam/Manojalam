@@ -3,7 +3,14 @@ const DEFAULT_COLOR_INPUT_VALUE = "#000000";
 
 export const MAX_CUSTOM_COLORS = 18;
 
-/** General-purpose swatches grouped by visual family, including flat metallic hues. */
+export const METALLIC_COLORS = [
+  "#d4af37", "#c9b37e", "#b08d32", "#cd7f32", "#b87333",
+  "#b76e79", "#e5e4e2", "#c0c0c0", "#71797e", "#2a3439",
+] as const;
+
+const METALLIC_COLOR_SET = new Set<string>(METALLIC_COLORS);
+
+/** General-purpose swatches grouped by visual family. */
 export const COLOR_SWATCH_GROUPS = [
   {
     name: "Bright",
@@ -35,10 +42,7 @@ export const COLOR_SWATCH_GROUPS = [
   },
   {
     name: "Metallic",
-    colors: [
-      "#d4af37", "#c9b37e", "#b08d32", "#cd7f32", "#b87333",
-      "#b76e79", "#e5e4e2", "#c0c0c0", "#71797e", "#2a3439",
-    ],
+    colors: METALLIC_COLORS,
   },
 ] as const;
 
@@ -182,6 +186,11 @@ export function normalizeHexColor(value: unknown): string | null {
   const trimmed = value.trim();
   const candidate = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
   return HEX_COLOR_PATTERN.test(candidate) ? candidate.toLowerCase() : null;
+}
+
+export function isMetallicColor(value: unknown): boolean {
+  const normalized = normalizeHexColor(value);
+  return normalized !== null && METALLIC_COLOR_SET.has(normalized);
 }
 
 function hslToRgbColor(hue: number, saturation: number, lightness: number): RgbColor {
