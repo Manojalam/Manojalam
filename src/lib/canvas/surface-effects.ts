@@ -35,6 +35,7 @@ export const SURFACE_EFFECT_PRESETS: ReadonlyArray<{
   { id: "raised", label: "Raised", description: "Layered card with directional depth", depth: 10, strength: 56, angle: 45 },
   { id: "bevel", label: "Bevel", description: "Sculpted inner highlight and edge", depth: 6, strength: 62, angle: 45 },
   { id: "glass", label: "Glass", description: "Glossy highlight with soft depth", depth: 8, strength: 44, angle: 45 },
+  { id: "metallic", label: "Metal", description: "Polished directional bands with a specular edge", depth: 6, strength: 72, angle: 20 },
   { id: "glow", label: "Glow", description: "Colored halo around the surface", depth: 12, strength: 58, angle: 45 },
 ] as const;
 
@@ -144,6 +145,24 @@ export function surfaceEffectStyle(
         `inset ${-inset}px ${-inset}px ${rounded(inset * 1.8)}px ${highlight}`,
         `inset ${inset}px ${inset}px ${rounded(inset * 1.9)}px ${shade}`,
         `${rounded(dx * 0.55)}px ${rounded(dy * 0.55)}px ${rounded(blur * 0.65)}px ${softDark}`,
+      ].join(","),
+    };
+  }
+
+  if (settings.preset === "metallic") {
+    const metalHighlight = rgba(255, 255, 255, 0.2 + strength * 0.58);
+    const metalReflection = rgba(255, 255, 255, 0.05 + strength * 0.2);
+    const metalShade = rgba(2, 6, 23, 0.1 + strength * 0.34);
+    return {
+      backgroundImage: [
+        `linear-gradient(${gradientAngle}deg, ${metalShade} 0%, transparent 14%, ${metalReflection} 24%, ${metalHighlight} 34%, ${metalReflection} 42%, transparent 55%, ${metalShade} 68%, transparent 80%, ${metalHighlight} 91%, ${metalShade} 100%)`,
+        `linear-gradient(${gradientAngle + 90}deg, ${metalReflection} 0%, transparent 38%, ${metalShade} 100%)`,
+      ].join(","),
+      backgroundBlendMode: "overlay,soft-light",
+      boxShadow: [
+        `${rounded(dx * 0.42)}px ${rounded(dy * 0.42)}px ${rounded(blur * 0.58)}px ${softDark}`,
+        `inset 0 1px 0 ${metalHighlight}`,
+        `inset 0 -1px 0 ${metalShade}`,
       ].join(","),
     };
   }
