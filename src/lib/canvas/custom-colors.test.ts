@@ -7,6 +7,7 @@ import {
   colorInputValue,
   colorSwatchHex,
   colorSwatchMatches,
+  forgetCustomColor,
   hexToHsv,
   hexToRgb,
   hsvToHex,
@@ -128,4 +129,15 @@ test("moves the most recently chosen color to the end and enforces the limit", (
   ));
   assert.deepEqual(rememberCustomColor(colors, colors[0]), [...colors.slice(1), colors[0]]);
   assert.deepEqual(rememberCustomColor(colors, "#ffffff"), [...colors.slice(1), "#ffffff"]);
+});
+
+test("removes only the requested saved color", () => {
+  assert.deepEqual(
+    forgetCustomColor(["#AABBCC", "#123456", "#abcdef"], "#aabbcc"),
+    ["#123456", "#abcdef"]
+  );
+  assert.deepEqual(
+    forgetCustomColor(["#aabbcc"], "not-a-color"),
+    ["#aabbcc"]
+  );
 });

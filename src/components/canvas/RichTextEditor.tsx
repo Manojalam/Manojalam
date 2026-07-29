@@ -25,7 +25,7 @@ import {
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
-import { rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { forgetCustomColor, rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
   correctedGuideContentScale,
   correctedShapeFlowHorizontalOffset,
@@ -1861,20 +1861,15 @@ export function RichTextEditor({
 
   const chooseCustomTextColor = useCallback((color: string) => {
     applyPickerSelectionCommand((chain) => chain.setColor(color));
-    updateAppSettings({
-      customColors: rememberCustomColor(customColors, color),
-    });
     setSettings({
       customTextColors: rememberCustomColor(customTextColors, color),
     });
     setTextColorPickerOpen(false);
   }, [
     applyPickerSelectionCommand,
-    customColors,
     customTextColors,
     setSettings,
     setTextColorPickerOpen,
-    updateAppSettings,
   ]);
 
   const chooseCustomHighlightColor = useCallback((color: string) => {
@@ -1882,20 +1877,15 @@ export function RichTextEditor({
       color,
       vidyaScope: "explicit",
     }));
-    updateAppSettings({
-      customColors: rememberCustomColor(customColors, color),
-    });
     setSettings({
       customHighlightColors: rememberCustomColor(customHighlightColors, color),
     });
     setHighlightPickerOpen(false);
   }, [
     applyPickerSelectionCommand,
-    customColors,
     customHighlightColors,
     setHighlightPickerOpen,
     setSettings,
-    updateAppSettings,
   ]);
 
   const availableTextColors = editor ? explicitTextColors(editor) : [];
@@ -1989,9 +1979,6 @@ export function RichTextEditor({
     }
     pendingReportReasonRef.current = "format";
     editor.view.dispatch(transaction);
-    updateAppSettings({
-      customColors: rememberCustomColor(customColors, replaceToColor),
-    });
     setSettings({
       customTextColors: rememberCustomColor(customTextColors, replaceToColor),
     });
@@ -2001,26 +1988,28 @@ export function RichTextEditor({
     });
   }, [
     closeColorReplace,
-    customColors,
     customTextColors,
     editor,
     replaceFromColor,
     replaceToColor,
     setSettings,
-    updateAppSettings,
   ]);
 
   const fontGroups = groupFontsByCategory(FONT_OPTIONS);
   const textColorSwatches = Array.from(new Set([
     ...legacyCustomColors,
-    ...customColors,
     ...customTextColors,
   ]));
   const highlightColorSwatches = Array.from(new Set([
     ...legacyCustomColors,
-    ...customColors,
     ...customHighlightColors,
   ]));
+  const saveSiteColor = (color: string) => {
+    updateAppSettings({ customColors: rememberCustomColor(customColors, color) });
+  };
+  const removeSiteColor = (color: string) => {
+    updateAppSettings({ customColors: forgetCustomColor(customColors, color) });
+  };
 
   const effectiveSelectionRanges = additiveSelectionRanges.length
     ? additiveSelectionRanges
@@ -2321,6 +2310,9 @@ export function RichTextEditor({
                 <ColorPickerPanel
                   value={textColorPickerValue ?? "#111827"}
                   extraColors={textColorSwatches}
+                  savedColors={customColors}
+                  onSaveColor={saveSiteColor}
+                  onRemoveSavedColor={removeSiteColor}
                   showHeading={false}
                   selectionSafe
                   onChange={chooseCustomTextColor}
@@ -2384,6 +2376,9 @@ export function RichTextEditor({
                 <ColorPickerPanel
                   value={highlightPickerValue ?? "#fde68a"}
                   extraColors={highlightColorSwatches}
+                  savedColors={customColors}
+                  onSaveColor={saveSiteColor}
+                  onRemoveSavedColor={removeSiteColor}
                   showHeading={false}
                   selectionSafe
                   onChange={chooseCustomHighlightColor}
@@ -2555,6 +2550,9 @@ export function RichTextEditor({
                   <ColorPickerPanel
                     value={replaceToColor}
                     extraColors={textColorSwatches}
+                    savedColors={customColors}
+                    onSaveColor={saveSiteColor}
+                    onRemoveSavedColor={removeSiteColor}
                     showHeading={false}
                     onChange={setReplaceToColor}
                   />
