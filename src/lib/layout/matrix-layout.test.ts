@@ -21,6 +21,7 @@ import {
   MATRIX_DENSITY_SETTINGS,
   MATRIX_HEADER_MIN_WIDTH,
   MATRIX_MAX_COLUMN_WIDTH,
+  MATRIX_MIN_COMPRESSED_CELL_HEIGHT,
   buildMatrixLeafRows,
   computeMatrixLayout,
   resolveMatrixCellResize,
@@ -2356,6 +2357,63 @@ test("overall Matrix width and height overrides have no upper ceiling", () => {
   assert.equal(result.bounds.height, 25000);
   assert.equal(result.header.width, 12000);
   assert.equal(result.header.y, result.bounds.top);
+  assertClean(result);
+});
+
+test("overall Matrix height shrinks row boxes without collapsing their gaps", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, matrixTableHeight: 1000 },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      id: `row-${index}`,
+      parentId: "root",
+      text: `वृत्तम् ${index + 1}`,
+    })),
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const gap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
+  const ordered = [...result.cells].sort((first, second) => first.y - second.y);
+
+  assert.equal(result.bounds.height, 1000);
+  assert.ok(result.header.height >= MATRIX_MIN_COMPRESSED_CELL_HEIGHT);
+  assert.ok(ordered.every((cell) => cell.height >= MATRIX_MIN_COMPRESSED_CELL_HEIGHT));
+  for (let index = 1; index < ordered.length; index++) {
+    assert.ok(Math.abs(
+      ordered[index].y - (ordered[index - 1].y + ordered[index - 1].height) - gap
+    ) < 0.001);
+  }
+  assertClean(result);
+});
+
+test("overall Matrix height clamps before compressed rows can overlap", () => {
+  const { nodes, edges } = buildTree([
+    { id: "root", parentId: null, matrixTableHeight: 500 },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      id: `row-${index}`,
+      parentId: "root",
+      text: `वृत्तम् ${index + 1}`,
+    })),
+  ]);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const gap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
+  const ordered = [...result.cells].sort((first, second) => first.y - second.y);
+  const minimumExpectedHeight = result.header.height
+    + gap
+    + ordered.reduce((sum, cell) => sum + cell.height, 0)
+    + gap * (ordered.length - 1);
+
+  assert.ok(result.bounds.height > 500);
+  assert.ok(Math.abs(result.bounds.height - minimumExpectedHeight) < 0.001);
+  assert.ok(ordered.every((cell) => cell.height >= MATRIX_MIN_COMPRESSED_CELL_HEIGHT));
   assertClean(result);
 });
 
