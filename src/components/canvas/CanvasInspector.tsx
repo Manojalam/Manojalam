@@ -5511,15 +5511,20 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell constraints"}
+                {selectedNode.id === matrixRootNode.id ? "Header cell size" : "Selected cell size"}
               </p>
               <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
                 {selectedNode.id === matrixRootNode.id
                   ? "Sets this Matrix header's exact height and preferred width. The header can still stretch across the body; Overall Matrix size below controls the whole table."
                   : matrixTableSizeLocked
-                    ? "The overall Matrix is locked. These natural track constraints change this cell's share while the outer boundary stays fixed."
-                    : "Sets this cell's natural Matrix track. Row peers share their tallest height, and terminal cells can merge across unused trailing columns."}
+                    ? "Base size is the editable constraint. The current rendered size below is the box you see after the locked Matrix redistributes its space."
+                    : "Base size is the editable constraint. The current rendered size below is the box you see after shared rows and merged tracks."}
               </p>
+              {selectedNode.id !== matrixRootNode.id && (
+                <p className="mb-1 text-[9px] font-medium text-muted-foreground">
+                  Base size (editable)
+                </p>
+              )}
               <div className="mb-1.5 grid grid-cols-2 gap-1.5">
                 <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
                   <span>Width (px)</span>
@@ -5543,12 +5548,19 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </label>
               </div>
               {selectedNode.id !== matrixRootNode.id && selectedMatrixDimensions && (
-                <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
-                  Rendered box: {Math.round(selectedMatrixDimensions.width * 10) / 10}
-                  {" × "}
-                  {Math.round(selectedMatrixDimensions.height * 10) / 10}px
-                  {" (after shared rows and merged tracks)"}
-                </p>
+                <div className="mb-1.5 rounded-md border border-border bg-muted/30 px-2 py-1.5">
+                  <p className="text-[9px] font-medium text-muted-foreground">
+                    Current rendered size
+                  </p>
+                  <p className="text-[11px] font-semibold text-foreground">
+                    {Math.round(selectedMatrixDimensions.width * 10) / 10}
+                    {" × "}
+                    {Math.round(selectedMatrixDimensions.height * 10) / 10}px
+                  </p>
+                  <p className="text-[8px] leading-snug text-muted-foreground">
+                    The box size currently visible on the canvas.
+                  </p>
+                </div>
               )}
               <div className="grid grid-cols-2 gap-1">
                 <button
