@@ -7,6 +7,42 @@ export interface SameLevelMatrixSelection {
   parentIds: string[];
 }
 
+export interface DescendantSelectionLevel {
+  level: number;
+  nodeIds: string[];
+}
+
+/**
+ * Group a node's descendants by their distance below that node.
+ *
+ * Level 1 contains direct children, level 2 contains grandchildren, and so
+ * on. Breadth-first traversal preserves the hierarchy's authored sibling
+ * order and creates only the levels that actually exist in the subtree.
+ */
+export function descendantSelectionLevels(
+  rootId: string,
+  hierarchy: Hierarchy
+): DescendantSelectionLevel[] {
+  const root = hierarchy.get(rootId);
+  if (!root) return [];
+
+  const levels: DescendantSelectionLevel[] = [];
+  const visited = new Set([rootId]);
+  let nodeIds = root.childIds.filter((nodeId) => !visited.has(nodeId));
+  let level = 1;
+
+  while (nodeIds.length) {
+    nodeIds.forEach((nodeId) => visited.add(nodeId));
+    levels.push({ level, nodeIds });
+    nodeIds = nodeIds.flatMap((nodeId) =>
+      (hierarchy.get(nodeId)?.childIds ?? []).filter((childId) => !visited.has(childId))
+    );
+    level += 1;
+  }
+
+  return levels;
+}
+
 function matrixRootIdForNode(
   node: Node,
   nodesById: ReadonlyMap<string, Node>,
