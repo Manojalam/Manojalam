@@ -30,6 +30,7 @@ import { RichTextEditor } from "../RichTextEditor";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 import { useNodeTextEditRequest } from "./useNodeTextEditRequest";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -225,6 +226,9 @@ function TextBlockNodeComponent({
             setEditing(true);
           }}
         >
+        <HierarchyNumberBadge
+          number={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
+        />
         {hasTextFrame && (
           <TextCalloutSurface
             style={textFrameStyle}
@@ -304,7 +308,6 @@ function TextBlockNodeComponent({
             nodeId={id}
             initialContent={initialContent}
             editable={editing}
-            hierarchyNumber={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}
             initialFocusPoint={editFocusPoint}
             className={cn(
               textPresentation.singleWord && "single-word-fit",

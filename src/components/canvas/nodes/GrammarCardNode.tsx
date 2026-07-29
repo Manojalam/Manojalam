@@ -19,6 +19,7 @@ import {
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
+import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 
 function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as GrammarCardNodeData;
@@ -51,6 +52,12 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
         <div
+          className="pointer-events-none absolute inset-0 z-20"
+          style={objectRotationStyle("grammar", dd)}
+        >
+          <HierarchyNumberBadge number={hierarchyNumber} />
+        </div>
+        <div
         data-node-content-layer="true"
         className={cn(
           "absolute inset-0 rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-slate-50 p-4 shadow-md dark:border-indigo-800/40 dark:from-indigo-950/30 dark:to-slate-900/50",
@@ -65,10 +72,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="font-semibold">
-            {hierarchyNumber && `${hierarchyNumber} `}
-            {d.topic || "Grammar Rule"}
-          </h3>
+          <h3 className="font-semibold">{d.topic || "Grammar Rule"}</h3>
           <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 text-[10px]">
             {GRAMMAR_CATEGORY_LABELS[d.category] ?? d.category}
           </Badge>

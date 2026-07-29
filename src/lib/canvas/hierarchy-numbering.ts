@@ -9,17 +9,23 @@ const NON_CONTENT_NODE_TYPES = new Set([
   "sunburst",
 ]);
 
-function participatesInHierarchyNumbering(node: Node): boolean {
+export type HierarchyNumberFormat = "outline" | "sibling";
+
+export function participatesInHierarchyNumbering(node: Node): boolean {
   if (NON_CONTENT_NODE_TYPES.has(node.type ?? "")) return false;
   return (node.data as { externalNote?: unknown } | undefined)?.externalNote !== true;
 }
 
 /**
- * Derive outline-style numbers from the board hierarchy without changing any
- * authored labels. Roots and siblings are one-based; descendants append their
- * sibling index (for example 1, 1.1, 1.2, 1.2.1).
+ * Derive display numbers from the board hierarchy without changing authored
+ * labels. Outline mode appends descendant ordinals; sibling mode shows only
+ * the local one-based ordinal and restarts under each parent.
  */
-export function hierarchyNumberMap(nodes: Node[], edges: Edge[]): Map<string, string> {
+export function hierarchyNumberMap(
+  nodes: Node[],
+  edges: Edge[],
+  format: HierarchyNumberFormat = "outline"
+): Map<string, string> {
   const contentNodes = nodes.filter(participatesInHierarchyNumbering);
   const contentNodeIds = new Set(contentNodes.map((node) => node.id));
   const hierarchy = buildHierarchy(
@@ -34,34 +40,31 @@ export function hierarchyNumberMap(nodes: Node[], edges: Edge[]): Map<string, st
   });
   const numbers = new Map<string, string>();
 
-  const visit = (nodeId: string, number: string) => {
-    numbers.set(nodeId, number);
+  const visit = (nodeId: string, outlineNumber: string, siblingNumber: number) => {
+    numbers.set(
+      nodeId,
+      format === "sibling" ? String(siblingNumber) : outlineNumber
+    );
     const childIds = hierarchy.get(nodeId)?.childIds ?? [];
-    childIds.forEach((childId, index) => visit(childId, `${number}.${index + 1}`));
+    childIds.forEach((childId, index) => {
+      const childNumber = index + 1;
+      visit(childId, `${outlineNumber}.${childNumber}`, childNumber);
+    });
   };
 
-  roots.forEach((rootId, index) => visit(rootId, String(index + 1)));
+  roots.forEach((rootId, index) => {
+    const rootNumber = index + 1;
+    visit(rootId, String(rootNumber), rootNumber);
+  });
   return numbers;
 }
 
-export function prependHierarchyNumber(label: string, number: string | undefined): string {
-  return number ? `${number} ${label}`.trimEnd() : label;
-}
-
-/**
- * Add a presentation-only number to the first rich-text block. Callers must
- * continue persisting the original HTML, never this derived display value.
- */
-export function prependHierarchyNumberToRichText(
-  html: string,
-  number: string | undefined
-): string {
-  if (!number) return html;
-  const prefix = `${number.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}&nbsp;`;
-  if (!html.trim()) return `<p>${prefix}</p>`;
-  const firstBlock = /<(p|h[1-6])(\s[^>]*)?>/i;
-  if (firstBlock.test(html)) {
-    return html.replace(firstBlock, (openingTag) => `${openingTag}${prefix}`);
+export function hierarchyNumberForNode(
+  node: Node,
+  numbers: ReadonlyMap<string, string>
+): string | undefined {
+  if ((node.data as { hideHierarchyNumber?: unknown } | undefined)?.hideHierarchyNumber === true) {
+    return undefined;
   }
-  return `${prefix}${html}`;
+  return numbers.get(node.id);
 }

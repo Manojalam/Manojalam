@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import {
+  hierarchyNumberForNode,
   hierarchyNumberMap,
-  prependHierarchyNumber,
-  prependHierarchyNumberToRichText,
 } from "./hierarchy-numbering";
 
 function node(
@@ -54,6 +53,26 @@ test("uses directed edges as hierarchy fallback and orders separate roots by pos
   });
 });
 
+test("simple numbers restart for every sibling group", () => {
+  const nodes = [
+    node("root-a", 0, 0, { childOrder: ["a-1", "a-2"] }),
+    node("a-1", 0, 100, { parentId: "root-a", childOrder: ["a-1-1", "a-1-2"] }),
+    node("a-2", 100, 100, { parentId: "root-a" }),
+    node("a-1-1", 0, 200, { parentId: "a-1" }),
+    node("a-1-2", 100, 200, { parentId: "a-1" }),
+    node("root-b", 0, 300),
+  ];
+
+  assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [], "sibling")), {
+    "root-a": "1",
+    "a-1": "1",
+    "a-1-1": "1",
+    "a-1-2": "2",
+    "a-2": "2",
+    "root-b": "2",
+  });
+});
+
 test("ignores generated canvas objects and attached notes", () => {
   const nodes = [
     node("frame", -200, -200, {}, "frame"),
@@ -65,14 +84,37 @@ test("ignores generated canvas objects and attached notes", () => {
   assert.deepEqual(Object.fromEntries(hierarchyNumberMap(nodes, [])), { root: "1" });
 });
 
-test("prefixes plain and rich text without altering the authored value", () => {
-  const richText = '<p style="text-align: center">Topic</p>';
+test("hidden badges preserve structural ordinals for later siblings and descendants", () => {
+  const nodes = [
+    node("root", 0, 0, { childOrder: ["first", "hidden", "third"] }),
+    node("first", 0, 100, { parentId: "root" }),
+    node("hidden", 100, 100, {
+      parentId: "root",
+      hideHierarchyNumber: true,
+      childOrder: ["hidden-child"],
+    }),
+    node("hidden-child", 100, 200, { parentId: "hidden" }),
+    node("third", 200, 100, { parentId: "root" }),
+  ];
+  const numbers = hierarchyNumberMap(nodes, []);
 
-  assert.equal(prependHierarchyNumber("Topic", "2.3"), "2.3 Topic");
-  assert.equal(
-    prependHierarchyNumberToRichText(richText, "2.3"),
-    '<p style="text-align: center">2.3&nbsp;Topic</p>'
-  );
-  assert.equal(prependHierarchyNumberToRichText(richText, undefined), richText);
-  assert.equal(prependHierarchyNumberToRichText("", "1"), "<p>1&nbsp;</p>");
+  assert.equal(numbers.get("hidden"), "1.2");
+  assert.equal(numbers.get("hidden-child"), "1.2.1");
+  assert.equal(numbers.get("third"), "1.3");
+  assert.equal(hierarchyNumberForNode(nodes[2], numbers), undefined);
+  assert.equal(hierarchyNumberForNode(nodes[3], numbers), "1.2.1");
+});
+
+test("deriving display numbers never mutates authored text or rich text", () => {
+  const authored = node("root", 0, 0, {
+    text: "Topic",
+    richText: '<p style="text-align: center">Topic</p>',
+  });
+  const originalData = { ...authored.data };
+  const numbers = hierarchyNumberMap([authored], []);
+
+  assert.equal(hierarchyNumberForNode(authored, numbers), "1");
+  assert.deepEqual(authored.data, originalData);
+  assert.equal(authored.data.text, "Topic");
+  assert.equal(authored.data.richText, '<p style="text-align: center">Topic</p>');
 });
