@@ -132,6 +132,7 @@ import {
   unselectedHierarchyDescendants,
 } from "@/lib/canvas/hierarchy-mutations";
 import {
+  matrixMeasurementNeedsReflow,
   patchNeedsListReflow,
   patchNeedsMatrixReflow,
   patchUsesOrientedMatrixComposition,
@@ -3159,6 +3160,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   updateNodeData: (nodeId, data) => {
+    const reflowSourceData = (get().nodes.find((node) => node.id === nodeId)?.data ?? {}) as Record<string, unknown>;
     set((state) => {
       const sourceNode = state.nodes.find((node) => node.id === nodeId);
       if (!sourceNode) return { nodes: state.nodes, saveStatus: "unsaved" };
@@ -3232,7 +3234,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // descendants, so refresh that Matrix immediately. Explicit descendant
     // overrides remain untouched by applyLayoutPalette.
     if (patchNeedsListReflow(data)) get().scheduleListReflow(nodeId);
-    if (patchNeedsMatrixReflow(data)) get().scheduleMatrixReflow(nodeId);
+    if (patchNeedsMatrixReflow(data, reflowSourceData)) get().scheduleMatrixReflow(nodeId);
     if (
       Object.prototype.hasOwnProperty.call(data, "layoutFoldCount")
       || Object.prototype.hasOwnProperty.call(data, "layoutFoldBreakAfter")
@@ -3641,8 +3643,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       get().scheduleMatrixReflow(nodeId);
       get().scheduleStructuredReflow(nodeId);
     } else if (intrinsicChanged) {
-      if (activeLayoutMode === "matrix") get().scheduleMatrixReflow(nodeId);
-      else if (activeLayoutMode === "list") get().scheduleListReflow(nodeId);
+      if (activeLayoutMode === "matrix") {
+        if (matrixMeasurementNeedsReflow(reason)) get().scheduleMatrixReflow(nodeId);
+      } else if (activeLayoutMode === "list") get().scheduleListReflow(nodeId);
       else if (activeLayoutMode) get().scheduleStructuredReflow(nodeId);
     }
   },
