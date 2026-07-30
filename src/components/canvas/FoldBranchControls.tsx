@@ -79,7 +79,9 @@ export function FoldBranchControls({
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
         {terminalItems
-          ? "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued ancestors repeat beneath one shared root."
+          ? parentData.matrixFoldRootMode === "divided"
+            ? "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued ancestors and the root repeat in each section."
+            : "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued ancestors repeat beneath one shared root."
           : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
       </p>
 
@@ -108,6 +110,32 @@ export function FoldBranchControls({
 
       {sectionCount > 1 && (
         <>
+          {terminalItems && (
+            <>
+              <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
+                Root presentation
+              </label>
+              <select
+                value={parentData.matrixFoldRootMode === "divided" ? "divided" : "continuous"}
+                aria-label="Fold root presentation"
+                onChange={(event) => {
+                  commit({
+                    matrixFoldRootMode: event.target.value === "divided"
+                      ? "divided"
+                      : undefined,
+                  });
+                }}
+                className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+              >
+                <option value="continuous">Continuous · one root across sections</option>
+                <option value="divided">Divided · repeat root per section</option>
+              </select>
+              <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                Divided roots stay linked for styling and add a Fold selector for combined export.
+              </p>
+            </>
+          )}
+
           <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
             Break placement
           </label>

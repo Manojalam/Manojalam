@@ -105,10 +105,11 @@ function generatedRepeatedCellNodes(
   root: Node,
   section: MatrixFoldSectionPresentation,
   byId: Map<string, Node>,
-  sectionIndex: number
+  sectionIndex: number,
+  cells: readonly MatrixFoldRepeatedCell[] = section.repeatedCells
 ): RepeatedPresentationNode[] {
   const rootRect = matrixPresentationRect(root);
-  return section.repeatedCells.flatMap((cell, cellIndex) => {
+  return cells.flatMap((cell, cellIndex) => {
     const source = byId.get(cell.sourceNodeId);
     if (
       !source
@@ -361,11 +362,13 @@ function buildMatrixFrameNode(
   rootId: string,
   presentationNodes: readonly Node[],
   repeatedNodes: readonly RepeatedPresentationNode[],
-  frameId: string
+  frameId: string,
+  paddingOverride?: number
 ): Node | null {
   const rootColors = visualColors(root);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
-  const gridPadding = matrixCellDivisionPadding(rootData.matrixDensity);
+  const gridPadding = paddingOverride
+    ?? matrixCellDivisionPadding(rootData.matrixDensity);
   const outerBounds = enclosingRect(presentationNodes, gridPadding);
   if (!outerBounds) return null;
   const gridVisible = rootData.matrixGridVisible !== false;
@@ -398,6 +401,8 @@ function buildMatrixFrameNode(
     zIndex: -10,
     selectable: false,
     draggable: false,
+    deletable: false,
+    focusable: false,
   };
 }
 
@@ -430,6 +435,7 @@ export function buildMatrixFrameNodes(
   }
 
   const rootRect = matrixPresentationRect(root);
+  const dividedRoot = rootData.matrixFoldRootMode === "divided";
   return storedFoldSections.flatMap((section, sectionIndex) => {
     if (
       ![section.x, section.y, section.width, section.height].every(Number.isFinite)
@@ -451,18 +457,59 @@ export function buildMatrixFrameNodes(
         && rect.centerY <= sectionBounds.bottom + GRID_ALIGNMENT_TOLERANCE;
     };
     const repeatedNodes = generatedRepeatedCellNodes(root, section, byId, sectionIndex);
+    const repeatedRootNodes = repeatedNodes.filter((repeated) =>
+      repeated.cell.role === "header");
+    const repeatedBodyNodes = repeatedNodes.filter((repeated) =>
+      repeated.cell.role !== "header");
+    const authoredSectionNodes = scopedNodes.filter(insideSection);
     const presentationNodes = [
-      ...scopedNodes.filter(insideSection),
+      ...authoredSectionNodes,
       ...emptySlotNodes.filter(insideSection),
-      ...repeatedNodes.map((repeated) => repeated.node),
+      ...repeatedBodyNodes.map((repeated) => repeated.node),
     ];
-    const frame = buildMatrixFrameNode(
+    const bodyFrame = buildMatrixFrameNode(
       root,
       rootId,
       presentationNodes,
-      repeatedNodes,
+      repeatedBodyNodes,
       `matrix-frame-${rootId}-${sectionIndex}`
     );
-    return frame ? [frame] : [];
+    const sectionNodeIds = authoredSectionNodes
+      .filter((node) => node.id !== rootId)
+      .map((node) => node.id);
+    if (dividedRoot && sectionIndex === 0) sectionNodeIds.unshift(rootId);
+    if (bodyFrame && dividedRoot) {
+      bodyFrame.data = {
+        ...(bodyFrame.data ?? {}),
+        matrixFoldSectionIndex: sectionIndex,
+        matrixFoldSectionNodeIds: sectionNodeIds,
+        matrixFoldSectionSelectorOffset: {
+          x: sectionBounds.left - bodyFrame.position.x + 8,
+          y: rootRect.top - bodyFrame.position.y + 8,
+        },
+      };
+    }
+    const rootFrames = dividedRoot
+      ? repeatedRootNodes.flatMap((repeated, repeatedIndex) => {
+          const frame = buildMatrixFrameNode(
+            root,
+            rootId,
+            [repeated.node],
+            [repeated],
+            `matrix-fold-root-${rootId}-${sectionIndex}-${repeatedIndex}`,
+            0
+          );
+          if (!frame) return [];
+          frame.data = {
+            ...(frame.data ?? {}),
+            matrixFoldSectionIndex: sectionIndex,
+          };
+          return [frame];
+        })
+      : [];
+    return [
+      ...(bodyFrame ? [bodyFrame] : []),
+      ...rootFrames,
+    ];
   });
 }

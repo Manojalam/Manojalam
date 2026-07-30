@@ -28,6 +28,40 @@ function selectRepeatedSource(nodeId: string, additive: boolean): void {
   });
 }
 
+function selectMatrixFoldSection(
+  matrixRootId: string,
+  sectionIndex: number,
+  authoredNodeIds: readonly string[],
+  additive: boolean
+): void {
+  useCanvasStore.setState((state) => {
+    const sectionIds = new Set(authoredNodeIds);
+    state.nodes.forEach((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      if (
+        data.matrixFrameFor === matrixRootId
+        && data.matrixFoldSectionIndex === sectionIndex
+      ) {
+        sectionIds.add(node.id);
+      }
+    });
+    const selectedIds = new Set(additive ? state.selectedNodeIds : []);
+    const removeSection = additive
+      && sectionIds.size > 0
+      && [...sectionIds].every((nodeId) => selectedIds.has(nodeId));
+    sectionIds.forEach((nodeId) => {
+      if (removeSection) selectedIds.delete(nodeId);
+      else selectedIds.add(nodeId);
+    });
+    return {
+      nodes: state.nodes.map((node) => ({ ...node, selected: selectedIds.has(node.id) })),
+      edges: state.edges.map((edge) => ({ ...edge, selected: false })),
+      selectedNodeIds: Array.from(selectedIds),
+      selectedEdgeIds: [],
+    };
+  });
+}
+
 function FrameNodeComponent({
   id,
   data,
@@ -41,6 +75,17 @@ function FrameNodeComponent({
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
   const matrixGridLines = Array.isArray(d.matrixGridLines) ? d.matrixGridLines : null;
   const matrixRepeatedCells = Array.isArray(d.matrixRepeatedCells) ? d.matrixRepeatedCells : [];
+  const matrixFoldSectionIndex = typeof d.matrixFoldSectionIndex === "number"
+    ? d.matrixFoldSectionIndex
+    : null;
+  const matrixFoldSectionNodeIds = Array.isArray(d.matrixFoldSectionNodeIds)
+    ? d.matrixFoldSectionNodeIds
+    : [];
+  const matrixFoldSectionSelectorOffset = d.matrixFoldSectionSelectorOffset
+    && typeof d.matrixFoldSectionSelectorOffset.x === "number"
+    && typeof d.matrixFoldSectionSelectorOffset.y === "number"
+    ? d.matrixFoldSectionSelectorOffset
+    : null;
   const isMatrixGrid = isMatrixFrame && matrixGridLines !== null;
   const matrixOuterBorderVisible = d.matrixOuterBorderVisible !== false;
   const frameWidth = typeof width === "number" && width > 0 ? width : 1;
@@ -55,7 +100,7 @@ function FrameNodeComponent({
       <NodeResizer
         minWidth={200}
         minHeight={150}
-        isVisible={selected}
+        isVisible={selected && !d.locked}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
       />
@@ -204,6 +249,42 @@ function FrameNodeComponent({
               />
             );
           })}
+        </ViewportPortal>
+      )}
+      {isMatrixGrid
+        && typeof d.matrixFrameFor === "string"
+        && matrixFoldSectionIndex !== null
+        && matrixFoldSectionSelectorOffset && (
+        <ViewportPortal>
+          <button
+            type="button"
+            data-export-ignore
+            aria-label={`Select Fold ${matrixFoldSectionIndex + 1}`}
+            aria-pressed={selected}
+            className={cn(
+              "nodrag nopan pointer-events-auto absolute z-40 h-5 rounded-full border px-2 text-[9px] font-semibold shadow-sm",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              selected
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-background/90 text-foreground hover:border-primary hover:bg-muted"
+            )}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              selectMatrixFoldSection(
+                d.matrixFrameFor!,
+                matrixFoldSectionIndex,
+                matrixFoldSectionNodeIds,
+                event.shiftKey || event.ctrlKey || event.metaKey
+              );
+            }}
+            style={{
+              left: positionAbsoluteX + matrixFoldSectionSelectorOffset.x,
+              top: positionAbsoluteY + matrixFoldSectionSelectorOffset.y,
+            }}
+          >
+            Fold {matrixFoldSectionIndex + 1}
+          </button>
         </ViewportPortal>
       )}
     </>

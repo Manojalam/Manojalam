@@ -62,6 +62,7 @@ export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
 export type MatrixIncompleteRowMode = "stretch" | "empty";
+export type MatrixFoldRootMode = "continuous" | "divided";
 
 export interface MatrixFoldRepeatedCell {
   sourceNodeId: string;
@@ -557,6 +558,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutFoldCount?: number;
   /** Item IDs after which custom Fold sections end (terminal rows for Matrix roots). */
   layoutFoldBreakAfter?: string[];
+  /** Whether a folded Matrix uses one spanning root or repeats the root above every section. */
+  matrixFoldRootMode?: MatrixFoldRootMode;
   /** @deprecated Legacy maximum children per Fold group. */
   layoutWrapAfter?: number;
   /** Layout mode last applied to this node's branch (set on the branch root). */
@@ -725,6 +728,12 @@ export interface FrameNodeData extends BaseNodeData {
   background?: string;
   presentationOrder?: number;
   matrixFrameFor?: string;
+  /** Zero-based generated Matrix Fold section represented by this frame. */
+  matrixFoldSectionIndex?: number;
+  /** Authored nodes physically rendered inside this generated Fold section. */
+  matrixFoldSectionNodeIds?: string[];
+  /** Position of the section-selection control relative to this frame. */
+  matrixFoldSectionSelectorOffset?: { x: number; y: number };
   /** Straight separator segments rendered inside one generated Matrix grid. */
   matrixGridLines?: Array<{
     x1: number;

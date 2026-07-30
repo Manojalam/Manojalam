@@ -1660,6 +1660,97 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
   assertClean(result);
 });
 
+test("a divided Matrix Fold repeats selectable styled roots above independent sections", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, matrixTableWidth: 720 },
+    ...Array.from({ length: 8 }, (_, index) => ({
+      id: `terminal-${index}`,
+      parentId: "root",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutFoldCount: 2,
+          matrixFoldRootMode: "divided",
+          surfaceEffect: "glass",
+          surfaceEffectDepth: 8,
+          surfaceEffectStrength: 70,
+        },
+      }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node]))
+  );
+  const sections = result.foldSections ?? [];
+
+  assert.equal(sections.length, 2);
+  assert.equal(result.header.width, sections[0].width);
+  assert.equal(result.placements.root.width, sections[0].width);
+  assert.equal(
+    result.bounds.width,
+    sections[0].width * 2 + MATRIX_FOLD_SECTION_GAP
+  );
+  assert.equal(
+    sections[0].repeatedCells.some((cell) => cell.sourceNodeId === "root"),
+    false
+  );
+  assert.equal(
+    sections[1].repeatedCells.some((cell) =>
+      cell.sourceNodeId === "root"
+      && cell.role === "header"
+      && cell.x === sections[1].x
+      && cell.y === result.header.y),
+    true
+  );
+
+  const frames = buildMatrixFrameNodes(
+    renderedMatrixNodes(result, hierarchy, nodes),
+    "root"
+  );
+  const bodyFrames = frames.filter((frame) => frame.id.startsWith("matrix-frame-root-"));
+  const repeatedRootFrame = frames.find((frame) =>
+    frame.id.startsWith("matrix-fold-root-root-1-"));
+  assert.equal(bodyFrames.length, 2);
+  assert.ok(repeatedRootFrame);
+  assert.deepEqual(
+    bodyFrames.map((frame) =>
+      (frame.data as Record<string, unknown>).matrixFoldSectionIndex),
+    [0, 1]
+  );
+  assert.equal(
+    ((bodyFrames[0].data as Record<string, unknown>).matrixFoldSectionNodeIds as string[])
+      .includes("root"),
+    true
+  );
+  assert.equal(
+    ((bodyFrames[1].data as Record<string, unknown>).matrixFoldSectionNodeIds as string[])
+      .includes("root"),
+    false
+  );
+  assert.equal(
+    (repeatedRootFrame.data as Record<string, unknown>).matrixFoldSectionIndex,
+    1
+  );
+  assert.equal(
+    ((repeatedRootFrame.data as Record<string, unknown>).matrixRepeatedCells as Array<{
+      backgroundImage?: string;
+      backdropFilter?: string;
+      sourceNodeId: string;
+    }>).some((cell) =>
+      cell.sourceNodeId === "root"
+      && cell.backgroundImage?.includes("linear-gradient")
+      && cell.backdropFilter?.includes("blur")),
+    true
+  );
+  assertClean(result);
+});
+
 test("Matrix Auto Fold leaves an uneven terminal-row remainder only in the final section", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
