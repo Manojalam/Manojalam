@@ -2,8 +2,10 @@ import type { Edge, Node } from "@xyflow/react";
 import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
 import {
+  fixedCapacityFoldSections,
   resolvedFoldSectionCount,
   resolvedFoldSections,
+  resolvedManualFoldBreakAfter,
 } from "./child-group-wrap";
 import {
   createNodeRect,
@@ -2491,7 +2493,14 @@ export function computeMatrixLayout(
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const rows = buildMatrixLeafRows(rootId, hierarchy, byId);
   const terminalIds = rows.flatMap((row) => row.path.at(-1) ?? []);
-  const rootFoldSections = resolvedFoldSections(rootData, terminalIds);
+  const rootFoldSectionCount = resolvedFoldSectionCount(rootData, terminalIds.length);
+  const rootFoldSections = resolvedManualFoldBreakAfter(
+    rootData,
+    terminalIds,
+    rootFoldSectionCount
+  )
+    ? resolvedFoldSections(rootData, terminalIds)
+    : fixedCapacityFoldSections(terminalIds, rootFoldSectionCount);
   if (rootFoldSections.length > 1) {
     const unfoldedRootData = { ...rootData };
     delete unfoldedRootData.layoutFoldCount;
