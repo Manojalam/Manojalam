@@ -404,13 +404,17 @@ function requiredCellHeight(
   node: Node,
   width: number,
   settings: DensitySettings,
-  minimum = settings.minRowHeight
+  minimum = settings.minRowHeight,
+  allowTextCompression = false
 ): number {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const userHeight = positiveNumber(data.matrixHeightOverride);
-  if (userHeight) {
+  if (userHeight && allowTextCompression) {
     return Math.ceil(clamp(userHeight, MATRIX_DENSITY_SETTINGS.compact.minRowHeight, MATRIX_MAX_CELL_HEIGHT));
   }
+  const requestedHeight = userHeight
+    ? clamp(userHeight, MATRIX_DENSITY_SETTINGS.compact.minRowHeight, MATRIX_MAX_CELL_HEIGHT)
+    : 0;
   const text = nodeText(node);
   const metrics = fontMetrics(node);
   const usableWidth = Math.max(48, width - settings.paddingX * 2);
@@ -439,6 +443,7 @@ function requiredCellHeight(
   const textHeight = estimatedLines * metrics.lineHeight + settings.paddingY * 2;
   return Math.ceil(Math.max(
     minimum,
+    requestedHeight,
     textHeight,
     measuredHeight,
     measuredLinesHeight
@@ -1704,7 +1709,8 @@ function computeOrientedMatrixLayout(
   settings: DensitySettings,
   tableX: number,
   tableY: number,
-  packCompactGroups: boolean
+  packCompactGroups: boolean,
+  allowTextCompression: boolean
 ): MatrixLayoutResult {
   const root = byId.get(rootId)!;
   const rootData = (root.data ?? {}) as Record<string, unknown>;
@@ -1741,7 +1747,13 @@ function computeOrientedMatrixLayout(
     const width = exactWidth
       ? Math.ceil(clamp(exactWidth, MATRIX_USER_MIN_COLUMN_WIDTH, MATRIX_USER_MAX_COLUMN_WIDTH))
       : automaticColumnWidths[column] ?? preferredCellWidth(node, column, settings, false);
-    const ownRequiredHeight = requiredCellHeight(node, width, settings);
+    const ownRequiredHeight = requiredCellHeight(
+      node,
+      width,
+      settings,
+      settings.minRowHeight,
+      allowTextCompression
+    );
     const nextAncestors = new Set(ancestors).add(nodeId);
     const children = visibleChildren(nodeId, hierarchy, byId)
       .filter((childId) => !nextAncestors.has(childId))
@@ -1864,7 +1876,13 @@ function computeOrientedMatrixLayout(
   );
   const tableWidth = body.width;
   const bodyHeight = body.height;
-  const headerHeight = requiredCellHeight(root, tableWidth, settings, settings.minHeaderHeight);
+  const headerHeight = requiredCellHeight(
+    root,
+    tableWidth,
+    settings,
+    settings.minHeaderHeight,
+    allowTextCompression
+  );
   const bodyY = tableY + headerHeight + (builtRootChildren.length ? settings.cellGap : 0);
   const bodyX = tableX;
   const orientedCells = mergeOrientedTerminalCellsToOuterEdge(
@@ -1921,7 +1939,15 @@ function computeOrientedMatrixLayout(
     settings.minRowHeight,
     ...row.path.map((nodeId, column) => {
       const node = byId.get(nodeId);
-      return node ? requiredCellHeight(node, columnWidths[column] ?? MATRIX_MIN_COLUMN_WIDTH, settings) : 0;
+      return node
+        ? requiredCellHeight(
+            node,
+            columnWidths[column] ?? MATRIX_MIN_COLUMN_WIDTH,
+            settings,
+            settings.minRowHeight,
+            allowTextCompression
+          )
+        : 0;
     })
   ));
   const rowY: number[] = [];
@@ -1967,6 +1993,8 @@ function applyMatrixTableSizeOverrides(
   const requestedWidth = positiveNumber(data.matrixTableWidthOverride);
   const requestedHeight = positiveNumber(data.matrixTableHeightOverride);
   if (!requestedWidth && !requestedHeight) return result;
+  const settings = MATRIX_DENSITY_SETTINGS[result.density];
+  const allowTextCompression = data.matrixFillCellLabels === true;
 
   const targetWidth = requestedWidth
     ? Math.max(requestedWidth, MATRIX_MIN_TABLE_WIDTH)
@@ -1980,7 +2008,15 @@ function applyMatrixTableSizeOverrides(
     if (!node) continue;
     scaledCellMinimums.set(
       cell.nodeId,
-      compressedCellHeight(node, cell.width * scaleX)
+      allowTextCompression
+        ? compressedCellHeight(node, cell.width * scaleX)
+        : requiredCellHeight(
+            node,
+            cell.width * scaleX,
+            settings,
+            cell.nodeId === root.id ? settings.minHeaderHeight : settings.minRowHeight,
+            false
+          )
     );
   }
 
@@ -2001,11 +2037,8 @@ function applyMatrixTableSizeOverrides(
     });
 
   if (requestedHeight && usesRowTracks) {
-    const naturalRows = [...result.rowHeights];
-    const minimumRows = naturalRows.map((height) =>
-      Math.min(height, MATRIX_MIN_COMPRESSED_CELL_HEIGHT)
-    );
-    const rowGaps = naturalRows.slice(0, -1).map((height, index) =>
+    const originalRows = [...result.rowHeights];
+    const rowGaps = originalRows.slice(0, -1).map((height, index) =>
       Math.max(0, result.rowY[index + 1] - (result.rowY[index] + height))
     );
     const headerGap = Math.max(
@@ -2018,15 +2051,40 @@ function applyMatrixTableSizeOverrides(
         first.rowSpan - second.rowSpan
         || first.rowStart - second.rowStart
     );
+    const naturalRows = [...originalRows];
+    if (!allowTextCompression) {
+      // A fixed outer Matrix height is a preference, not permission to paint
+      // literal text into adjacent rows. Rebuild the natural row tracks for
+      // the final scaled widths before considering the requested table height.
+      for (const cell of orderedCells) {
+        const required = scaledCellMinimums.get(cell.nodeId) ?? settings.minRowHeight;
+        const internalGap = rowGaps
+          .slice(cell.rowStart, cell.rowEnd)
+          .reduce((sum, gap) => sum + gap, 0);
+        const available = naturalRows
+          .slice(cell.rowStart, cell.rowEnd + 1)
+          .reduce((sum, height) => sum + height, 0)
+          + internalGap;
+        const deficit = required - available;
+        if (deficit <= 0.5) continue;
+        const addPerRow = deficit / cell.rowSpan;
+        for (let row = cell.rowStart; row <= cell.rowEnd; row++) {
+          naturalRows[row] += addPerRow;
+        }
+      }
+    }
+    const minimumRows = allowTextCompression
+      ? naturalRows.map((height) => Math.min(height, MATRIX_MIN_COMPRESSED_CELL_HEIGHT))
+      : [...naturalRows];
     const minimumCellHeights = new Map<string, number>();
     for (let iteration = 0; iteration < 3; iteration++) {
       let changed = false;
       for (const cell of orderedCells) {
-        const requestedMinimum = Math.min(
-          cell.height,
-          scaledCellMinimums.get(cell.nodeId)
-            ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT
-        );
+        const scaledMinimum = scaledCellMinimums.get(cell.nodeId)
+          ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT;
+        const requestedMinimum = allowTextCompression
+          ? Math.min(cell.height, scaledMinimum)
+          : scaledMinimum;
         minimumCellHeights.set(cell.nodeId, requestedMinimum);
         const internalGap = rowGaps
           .slice(cell.rowStart, cell.rowEnd)
@@ -2058,14 +2116,17 @@ function applyMatrixTableSizeOverrides(
       if (!changed) break;
     }
 
-    const minimumHeaderHeight = Math.min(
-      result.header.height,
-      scaledCellMinimums.get(result.header.nodeId)
-        ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT
-    );
+    const scaledHeaderMinimum = scaledCellMinimums.get(result.header.nodeId)
+      ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT;
+    const naturalHeaderHeight = allowTextCompression
+      ? result.header.height
+      : Math.max(result.header.height, scaledHeaderMinimum);
+    const minimumHeaderHeight = allowTextCompression
+      ? Math.min(result.header.height, scaledHeaderMinimum)
+      : naturalHeaderHeight;
     const totalGapHeight = headerGap
       + rowGaps.reduce((sum, gap) => sum + gap, 0);
-    const naturalContentHeight = result.header.height
+    const naturalContentHeight = naturalHeaderHeight
       + naturalRows.reduce((sum, height) => sum + height, 0);
     const minimumContentHeight = minimumHeaderHeight
       + minimumRows.reduce((sum, height) => sum + height, 0);
@@ -2093,7 +2154,7 @@ function applyMatrixTableSizeOverrides(
         ? minimum + (natural - minimum) * shrinkProgress
         : natural * expansionScale;
 
-    const headerHeight = resizeTrack(result.header.height, minimumHeaderHeight);
+    const headerHeight = resizeTrack(naturalHeaderHeight, minimumHeaderHeight);
     const rowHeights = naturalRows.map((height, index) =>
       resizeTrack(height, minimumRows[index])
     );
@@ -2113,10 +2174,16 @@ function applyMatrixTableSizeOverrides(
           scaledCellMinimums.get(cell.nodeId)
             ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT
         );
+      const naturalRequiredHeight = allowTextCompression
+        ? cell.requiredHeight
+        : Math.max(
+            cell.requiredHeight,
+            scaledCellMinimums.get(cell.nodeId) ?? cell.requiredHeight
+          );
       const requiredHeight = shrinking
         ? minimumRequired
-          + (cell.requiredHeight - minimumRequired) * shrinkProgress
-        : cell.requiredHeight;
+          + (naturalRequiredHeight - minimumRequired) * shrinkProgress
+        : naturalRequiredHeight;
       return {
         ...cell,
         x: originX + (cell.x - originX) * scaleX,
@@ -2129,10 +2196,13 @@ function applyMatrixTableSizeOverrides(
     const cells = result.cells.map(resizeCell);
     const headerMinimum = scaledCellMinimums.get(result.header.nodeId)
       ?? minimumHeaderHeight;
+    const naturalHeaderRequiredHeight = allowTextCompression
+      ? result.header.requiredHeight
+      : Math.max(result.header.requiredHeight, scaledHeaderMinimum);
     const headerRequiredHeight = shrinking
       ? headerMinimum
-        + (result.header.requiredHeight - headerMinimum) * shrinkProgress
-      : result.header.requiredHeight;
+        + (naturalHeaderRequiredHeight - headerMinimum) * shrinkProgress
+      : naturalHeaderRequiredHeight;
     const header: MatrixCellGeometry = {
       ...result.header,
       x: originX + (result.header.x - originX) * scaleX,
@@ -2165,18 +2235,26 @@ function applyMatrixTableSizeOverrides(
   const requestedTargetHeight = requestedHeight
     ? Math.max(requestedHeight, MATRIX_MIN_TABLE_HEIGHT)
     : result.bounds.height;
-  const minimumScaleY = requestedTargetHeight < result.bounds.height
-    ? Math.max(
-        ...[result.header, ...result.cells].map((cell) =>
-          Math.min(
-            1,
-            (scaledCellMinimums.get(cell.nodeId)
-              ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT)
-              / Math.max(1, cell.height)
+  const minimumScaleY = allowTextCompression
+    ? requestedTargetHeight < result.bounds.height
+      ? Math.max(
+          ...[result.header, ...result.cells].map((cell) =>
+            Math.min(
+              1,
+              (scaledCellMinimums.get(cell.nodeId)
+                ?? MATRIX_MIN_COMPRESSED_CELL_HEIGHT)
+                / Math.max(1, cell.height)
+            )
           )
         )
-      )
-    : 0;
+      : 0
+    : Math.max(
+        1,
+        ...[result.header, ...result.cells].map((cell) =>
+          (scaledCellMinimums.get(cell.nodeId) ?? cell.requiredHeight)
+            / Math.max(1, cell.height)
+        )
+      );
   const targetHeight = Math.max(
     requestedTargetHeight,
     result.bounds.height * minimumScaleY
@@ -2412,6 +2490,7 @@ export function computeMatrixLayout(
     ?? (rows.length >= 24 ? "compact" : savedDensity)
     ?? "comfortable";
   const settings = MATRIX_DENSITY_SETTINGS[density];
+  const allowTextCompression = rootData.matrixFillCellLabels === true;
   const rootRect = getNodeRect(root);
   const tableX = rootRect.left;
   const tableY = rootRect.top;
@@ -2500,7 +2579,8 @@ export function computeMatrixLayout(
       settings,
       tableX,
       tableY,
-      packCompactGroups
+      packCompactGroups,
+      allowTextCompression
     ), root, byId);
   }
 
@@ -2519,7 +2599,13 @@ export function computeMatrixLayout(
   for (const span of spanMap.values()) {
     const node = byId.get(span.nodeId);
     if (!node) continue;
-    const requiredHeight = requiredCellHeight(node, columnWidths[span.column], settings);
+    const requiredHeight = requiredCellHeight(
+      node,
+      columnWidths[span.column],
+      settings,
+      settings.minRowHeight,
+      allowTextCompression
+    );
     cellRequirements.set(span.nodeId, requiredHeight);
     if (span.rowStart === span.rowEnd) {
       rowHeights[span.rowStart] = Math.max(rowHeights[span.rowStart], requiredHeight);
@@ -2569,7 +2655,13 @@ export function computeMatrixLayout(
     if (!changed) break;
   }
 
-  const headerHeight = requiredCellHeight(root, bodyWidth, settings, settings.minHeaderHeight);
+  const headerHeight = requiredCellHeight(
+    root,
+    bodyWidth,
+    settings,
+    settings.minHeaderHeight,
+    allowTextCompression
+  );
   const bodyY = tableY + headerHeight + (rows.length ? settings.cellGap : 0);
   const rowY: number[] = [];
   let nextY = bodyY;
