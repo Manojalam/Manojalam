@@ -71,7 +71,7 @@ import {
 } from "@/lib/layout/matrix-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
-import type { LayoutMode, MatrixRowColorPattern, RadialColorScheme } from "@/lib/types";
+import type { LayoutColorPattern, LayoutMode, RadialColorScheme } from "@/lib/types";
 import {
   effectiveCornerRadius,
   fitShapeToContent,
@@ -272,14 +272,14 @@ interface CanvasState {
   ) => void;
   applyLayoutColorScheme: (rootId: string, scheme: RadialColorScheme, resetOverrides?: boolean) => void;
   applyLayoutStartColor: (rootId: string, color?: string) => void;
-  applyMatrixRowColorPattern: (rootId: string, pattern: MatrixRowColorPattern) => void;
-  applyMatrixRowEndColor: (rootId: string, color?: string) => void;
-  applyMatrixPalettePatch: (
+  applyLayoutColorPattern: (rootId: string, pattern: LayoutColorPattern) => void;
+  applyLayoutEndColor: (rootId: string, color?: string) => void;
+  applyLayoutPalettePatch: (
     rootId: string,
     patch: {
       layoutStartColor?: string;
-      matrixRowColorPattern?: MatrixRowColorPattern;
-      matrixRowEndColor?: string;
+      layoutColorPattern?: LayoutColorPattern;
+      layoutEndColor?: string;
     }
   ) => void;
 }
@@ -4405,21 +4405,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const normalizedColor = typeof color === "string" && color.trim()
       ? color.trim()
       : undefined;
-    get().applyMatrixPalettePatch(rootId, { layoutStartColor: normalizedColor });
+    get().applyLayoutPalettePatch(rootId, { layoutStartColor: normalizedColor });
   },
 
-  applyMatrixRowColorPattern: (rootId, pattern) => {
-    get().applyMatrixPalettePatch(rootId, { matrixRowColorPattern: pattern });
+  applyLayoutColorPattern: (rootId, pattern) => {
+    get().applyLayoutPalettePatch(rootId, { layoutColorPattern: pattern });
   },
 
-  applyMatrixRowEndColor: (rootId, color) => {
+  applyLayoutEndColor: (rootId, color) => {
     const normalizedColor = typeof color === "string" && color.trim()
       ? color.trim()
       : undefined;
-    get().applyMatrixPalettePatch(rootId, { matrixRowEndColor: normalizedColor });
+    get().applyLayoutPalettePatch(rootId, { layoutEndColor: normalizedColor });
   },
 
-  applyMatrixPalettePatch: (rootId, patch) => {
+  applyLayoutPalettePatch: (rootId, patch) => {
     const { nodes, edges } = get();
     const hierarchyNodes = nodes.filter((node) =>
       !isAutoMatrixFrame(node)
@@ -4429,7 +4429,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const root = hierarchyNodes.find((node) => node.id === rootId);
     if (!root) return;
     const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
-    if (mode !== "matrix") return;
+    if (!supportsAutomaticLayoutColors(mode)) return;
 
     const preparedNodes = nodes.map((node) => node.id === rootId
       ? {
@@ -4437,6 +4437,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           data: {
             ...(node.data ?? {}),
             ...patch,
+            ...("layoutColorPattern" in patch ? { matrixRowColorPattern: undefined } : {}),
+            ...("layoutEndColor" in patch ? { matrixRowEndColor: undefined } : {}),
           },
         }
       : node);
@@ -4451,7 +4453,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       layoutSchemeValue(preparedNodes, rootId)
     );
     const scopeIds = new Set(getSubtree(rootId, hierarchy));
-    const nextNodes = withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true);
+    const nextNodes = mode === "matrix"
+      ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true)
+      : styled.nodes;
     set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
   },
 

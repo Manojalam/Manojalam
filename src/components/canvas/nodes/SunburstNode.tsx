@@ -33,6 +33,8 @@ import {
   radialLabelUsesCurvedText,
 } from "@/lib/canvas/radial-curved-label";
 import {
+  layoutBranchAnchorColor,
+  layoutColorPattern,
   radialColorScheme,
   radialHierarchyWeight,
   radialOutermostCommonFontSize,
@@ -848,22 +850,42 @@ function collectSegments(
   byId: Map<string, Node>,
   scheme: RadialColorSchemeDefinition,
   hierarchyNumbers: ReadonlyMap<string, string>,
-  chartStyle: Record<string, unknown> = {}
+  chartStyle: Record<string, unknown> = {},
+  paletteData: Record<string, unknown> = {}
 ): SunburstSegment[] {
   const segments: SunburstSegment[] = [];
+  const branchCount = Math.max(1, node.children.length);
+  const colorPattern = layoutColorPattern(paletteData.layoutColorPattern, "curated");
+  const startColor = typeof paletteData.layoutStartColor === "string"
+    ? paletteData.layoutStartColor
+    : undefined;
+  const endColor = typeof paletteData.layoutEndColor === "string"
+    ? paletteData.layoutEndColor
+    : undefined;
   const walk = (candidate: SunburstTreeNode) => {
     if (candidate.depth > 0) {
       const source = byId.get(candidate.id);
       const data = (source?.data ?? {}) as Record<string, unknown>;
       const branchData = (byId.get(candidate.branchId)?.data ?? {}) as Record<string, unknown>;
       const label = nodeLabel(source);
+      const branchBaseColor = typeof branchData.radialFillColor === "string"
+        ? branchData.radialFillColor
+        : layoutBranchAnchorColor(
+            scheme,
+            candidate.branchIndex,
+            branchCount,
+            startColor,
+            colorPattern,
+            endColor,
+            scheme.lightness
+          );
       const paletteColors = radialSectorColors(
         scheme,
         candidate.branchIndex,
         candidate.depth,
         candidate.siblingIndex,
         candidate.siblingCount,
-        branchData.radialFillColor as string | undefined,
+        branchBaseColor,
         data.radialFillColor as string | undefined
       );
       segments.push({
@@ -1103,7 +1125,8 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
       byId,
       scheme,
       hierarchyNumbers,
-      d as unknown as Record<string, unknown>
+      d as unknown as Record<string, unknown>,
+      rootData
     );
     return {
       root,

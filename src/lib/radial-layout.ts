@@ -1,4 +1,8 @@
-import type { MatrixRowColorPattern, RadialColorScheme } from "./types";
+import type {
+  LayoutColorPattern,
+  MatrixRowColorPattern,
+  RadialColorScheme,
+} from "./types";
 
 export type RadialColorSchemeDefinition = {
   id: RadialColorScheme;
@@ -19,7 +23,10 @@ export type RadialColorSchemeDefinition = {
 };
 
 export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
-export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern = "flow";
+export const DEFAULT_LAYOUT_COLOR_PATTERN: LayoutColorPattern = "flow";
+/** @deprecated Use DEFAULT_LAYOUT_COLOR_PATTERN. */
+export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern =
+  DEFAULT_LAYOUT_COLOR_PATTERN;
 
 /**
  * Resolves the angular weight of a hierarchy sector.
@@ -157,25 +164,35 @@ export function radialColorScheme(value: unknown): RadialColorSchemeDefinition {
 
 const MAX_MATRIX_ROW_HUE_STEP = 32;
 const GENTLE_MATRIX_HUE_SPAN = 56;
-const MATRIX_ROW_LIGHTNESS = 64;
+export const DEFAULT_LAYOUT_BRANCH_LIGHTNESS = 64;
 
-export function matrixRowColorPattern(value: unknown): MatrixRowColorPattern {
+export function layoutColorPattern(
+  value: unknown,
+  fallback: LayoutColorPattern = DEFAULT_LAYOUT_COLOR_PATTERN
+): LayoutColorPattern {
   if (
-    value === "gentle"
+    value === "flow"
+    || value === "gentle"
     || value === "duotone"
     || value === "alternating"
     || value === "curated"
+    || value === "sectioned"
   ) {
     return value;
   }
-  return DEFAULT_MATRIX_ROW_COLOR_PATTERN;
+  return fallback;
+}
+
+/** @deprecated Use layoutColorPattern. */
+export function matrixRowColorPattern(value: unknown): MatrixRowColorPattern {
+  return layoutColorPattern(value);
 }
 
 function shortestHueDelta(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
 }
 
-function matrixSecondaryAnchor(
+function layoutSecondaryAnchor(
   scheme: RadialColorSchemeDefinition,
   endColor?: string
 ): HslColor {
@@ -184,25 +201,44 @@ function matrixSecondaryAnchor(
   return parseColor(endColor) ?? {
     h: paletteHue,
     s: scheme.saturation,
-    l: MATRIX_ROW_LIGHTNESS,
+    l: DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   };
 }
 
+export function layoutColorPatternProgress(
+  pattern: LayoutColorPattern,
+  branchIndex: number,
+  branchCount: number
+): number {
+  const count = Math.max(1, Math.floor(branchCount));
+  const index = clamp(Math.floor(branchIndex), 0, count - 1);
+  if (pattern === "alternating") return index % 2;
+  if (pattern === "sectioned") {
+    const sectionCount = Math.min(4, count);
+    if (sectionCount <= 1) return 0;
+    const sectionIndex = Math.min(
+      sectionCount - 1,
+      Math.floor(index * sectionCount / count)
+    );
+    return sectionIndex / (sectionCount - 1);
+  }
+  return count <= 1 ? 0 : index / (count - 1);
+}
+
 /**
- * Returns one coordinated anchor for a Matrix row.
+ * Returns one coordinated anchor for a top-level layout branch.
  *
- * Flow patterns sample the row count across a continuous hue path, while
- * discrete patterns alternate or repeat coordinated palette anchors. Every
- * pattern keeps one shared lightness so the independent column fade remains
- * predictable.
+ * Flow patterns sample the branch count across a continuous hue path.
+ * Sectioned holds four sampled hues across neighboring branch groups.
  */
-export function matrixRowAnchorColor(
+export function layoutBranchAnchorColor(
   scheme: RadialColorSchemeDefinition,
   branchIndex: number,
   branchCount: number,
   startColor?: string,
-  pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN,
-  endColor?: string
+  pattern: LayoutColorPattern = DEFAULT_LAYOUT_COLOR_PATTERN,
+  endColor?: string,
+  targetLightness = DEFAULT_LAYOUT_BRANCH_LIGHTNESS
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const index = clamp(Math.floor(branchIndex), 0, count - 1);
@@ -210,24 +246,24 @@ export function matrixRowAnchorColor(
   const customAnchor = parseColor(startColor);
   const startHue = customAnchor?.h ?? defaultStartHue;
   const startSaturation = customAnchor ? Math.min(customAnchor.s, 58) : scheme.saturation;
-  const progress = count <= 1 ? 0 : index / (count - 1);
+  const lightness = clamp(targetLightness, 26, 78);
+  const progress = layoutColorPatternProgress(pattern, index, count);
 
-  if (pattern === "duotone" || pattern === "alternating") {
+  if (pattern === "duotone" || pattern === "alternating" || pattern === "sectioned") {
     const startAnchor: HslColor = {
       h: startHue,
       s: startSaturation,
-      l: MATRIX_ROW_LIGHTNESS,
+      l: lightness,
     };
-    const endAnchor = matrixSecondaryAnchor(scheme, endColor);
-    const mix = pattern === "alternating" ? index % 2 : progress;
+    const endAnchor = layoutSecondaryAnchor(scheme, endColor);
     return hslString({
-      h: startAnchor.h + shortestHueDelta(startAnchor.h, endAnchor.h) * mix,
+      h: startAnchor.h + shortestHueDelta(startAnchor.h, endAnchor.h) * progress,
       s: clamp(
-        startAnchor.s + (Math.min(endAnchor.s, 58) - startAnchor.s) * mix,
+        startAnchor.s + (Math.min(endAnchor.s, 58) - startAnchor.s) * progress,
         0,
         58
       ),
-      l: MATRIX_ROW_LIGHTNESS,
+      l: lightness,
     });
   }
 
@@ -238,7 +274,7 @@ export function matrixRowAnchorColor(
     return hslString({
       h: paletteHue + rotation,
       s: startSaturation,
-      l: MATRIX_ROW_LIGHTNESS,
+      l: lightness,
     });
   }
 
@@ -251,19 +287,37 @@ export function matrixRowAnchorColor(
   return hslString({
     h: startHue + span * progress,
     s: startSaturation,
-    // Matrix flow uses the chosen hue and moderated chroma, but one shared
-    // lightness keeps row progression and dark label contrast predictable.
-    l: MATRIX_ROW_LIGHTNESS,
+    l: lightness,
   });
 }
 
-/** Dark chart-root treatment summarizing the complete automatic row flow. */
-export function matrixRootPaletteGradient(
+/** @deprecated Use layoutBranchAnchorColor. */
+export function matrixRowAnchorColor(
   scheme: RadialColorSchemeDefinition,
+  branchIndex: number,
   branchCount: number,
   startColor?: string,
   pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN,
   endColor?: string
+): string {
+  return layoutBranchAnchorColor(
+    scheme,
+    branchIndex,
+    branchCount,
+    startColor,
+    pattern,
+    endColor
+  );
+}
+
+/** Dark summary treatment for the complete automatic branch flow. */
+export function layoutRootPaletteGradient(
+  scheme: RadialColorSchemeDefinition,
+  branchCount: number,
+  startColor?: string,
+  pattern: LayoutColorPattern = DEFAULT_LAYOUT_COLOR_PATTERN,
+  endColor?: string,
+  targetLightness = DEFAULT_LAYOUT_BRANCH_LIGHTNESS
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const stopCount = Math.min(7, Math.max(2, count));
@@ -271,7 +325,15 @@ export function matrixRootPaletteGradient(
     const progress = stopCount <= 1 ? 0 : stopIndex / (stopCount - 1);
     const branchIndex = count <= 1 ? 0 : Math.round(progress * (count - 1));
     const anchor = parseColor(
-      matrixRowAnchorColor(scheme, branchIndex, count, startColor, pattern, endColor)
+      layoutBranchAnchorColor(
+        scheme,
+        branchIndex,
+        count,
+        startColor,
+        pattern,
+        endColor,
+        targetLightness
+      )
     )!;
     const darkAnchor = hslString({
       h: anchor.h,
@@ -281,6 +343,23 @@ export function matrixRootPaletteGradient(
     return `${darkAnchor} ${(progress * 100).toFixed(1)}%`;
   });
   return `linear-gradient(100deg, ${stops.join(", ")})`;
+}
+
+/** @deprecated Use layoutRootPaletteGradient. */
+export function matrixRootPaletteGradient(
+  scheme: RadialColorSchemeDefinition,
+  branchCount: number,
+  startColor?: string,
+  pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN,
+  endColor?: string
+): string {
+  return layoutRootPaletteGradient(
+    scheme,
+    branchCount,
+    startColor,
+    pattern,
+    endColor
+  );
 }
 
 export function radialSectorColors(

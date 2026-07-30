@@ -42,7 +42,7 @@ import type {
   BorderLayer,
   ConcentricShapeLayer,
   InternalFillRegion,
-  MatrixRowColorPattern,
+  LayoutColorPattern,
   RadialChartData,
   RadialChartRing,
   RadialChartSegment,
@@ -65,11 +65,13 @@ import { ClearableColorInput } from "./ClearableColorInput";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import {
+  DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   RADIAL_COLOR_SCHEMES,
-  matrixRowAnchorColor,
-  matrixRowColorPattern,
-  matrixRootPaletteGradient,
+  layoutBranchAnchorColor,
+  layoutColorPattern,
+  layoutRootPaletteGradient,
   radialColorScheme,
+  type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
 import {
   legacyRadiusToPercent,
@@ -694,8 +696,8 @@ function inspectorLayoutLabel(value: unknown): string {
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 
-const MATRIX_ROW_COLOR_PATTERN_OPTIONS: Array<{
-  value: MatrixRowColorPattern;
+const LAYOUT_COLOR_PATTERN_OPTIONS: Array<{
+  value: LayoutColorPattern;
   label: string;
 }> = [
   { value: "flow", label: "Flow" },
@@ -703,7 +705,157 @@ const MATRIX_ROW_COLOR_PATTERN_OPTIONS: Array<{
   { value: "duotone", label: "Two-color Blend" },
   { value: "alternating", label: "Alternating Pair" },
   { value: "curated", label: "Curated Palette" },
+  { value: "sectioned", label: "Sectioned Palette" },
 ];
+
+function LayoutColorPatternControls({
+  itemKind,
+  scheme,
+  pattern,
+  startColor,
+  endColor,
+  onPatternChange,
+  onStartColorChange,
+  onEndColorChange,
+}: {
+  itemKind: "row" | "branch";
+  scheme: RadialColorSchemeDefinition;
+  pattern: LayoutColorPattern;
+  startColor?: string;
+  endColor?: string;
+  onPatternChange: (pattern: LayoutColorPattern) => void;
+  onStartColorChange: (color?: string) => void;
+  onEndColorChange: (color?: string) => void;
+}) {
+  const matrixRows = itemKind === "row";
+  const targetLightness = matrixRows
+    ? DEFAULT_LAYOUT_BRANCH_LIGHTNESS
+    : scheme.lightness;
+  const showsEndColor = pattern === "duotone"
+    || pattern === "alternating"
+    || pattern === "sectioned";
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-2">
+      <div>
+        <Label className="text-[10px] font-medium">
+          {matrixRows ? "Row" : "Branch"} color pattern
+        </Label>
+        <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+          {matrixRows
+            ? "Changes row hues only. The existing column fade stays the same."
+            : "Changes top-level branch hues. Descendants keep coordinated depth tones."}
+        </p>
+        <Select
+          value={pattern}
+          onValueChange={(value) => onPatternChange(value as LayoutColorPattern)}
+        >
+          <SelectTrigger className="mt-2 h-7 text-[10px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LAYOUT_COLOR_PATTERN_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Separator className="my-2" />
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-[10px] font-medium">
+          {matrixRows ? "First child row color" : "First branch color"}
+        </Label>
+        <span className="text-[9px] text-muted-foreground">
+          {startColor ? "Custom" : "Palette default"}
+        </span>
+      </div>
+      <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+        {matrixRows
+          ? "The root summarizes the full palette; its first child row starts at this hue."
+          : "Sets the first top-level branch hue; descendants remain related."}
+      </p>
+      <div className="mt-2 overflow-hidden rounded border border-border/70">
+        {matrixRows && (
+          <span
+            className="block h-2 w-full"
+            aria-label="Root palette summary preview"
+            style={{
+              backgroundImage: layoutRootPaletteGradient(
+                scheme,
+                8,
+                startColor,
+                pattern,
+                endColor,
+                targetLightness
+              ),
+            }}
+          />
+        )}
+        <span className="flex h-4 w-full" aria-label="Automatic branch color flow preview">
+          {Array.from({ length: 8 }, (_, branchIndex) => (
+            <span
+              key={branchIndex}
+              className="h-full flex-1"
+              style={{
+                backgroundColor: layoutBranchAnchorColor(
+                  scheme,
+                  branchIndex,
+                  8,
+                  startColor,
+                  pattern,
+                  endColor,
+                  targetLightness
+                ),
+              }}
+            />
+          ))}
+        </span>
+      </div>
+      <div className="mt-2">
+        <ColorSwatchPicker
+          value={startColor}
+          size="sm"
+          onChange={onStartColorChange}
+          onClear={() => onStartColorChange()}
+        />
+      </div>
+      {showsEndColor && (
+        <div className="mt-2 rounded border border-border/70 bg-background/60 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-[10px] font-medium">
+              {pattern === "duotone"
+                ? `Last ${itemKind} color`
+                : pattern === "alternating"
+                  ? `Alternate ${itemKind} color`
+                  : "Final section color"}
+            </Label>
+            <span className="text-[9px] text-muted-foreground">
+              {endColor ? "Custom" : "Palette default"}
+            </span>
+          </div>
+          <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+            {pattern === "duotone"
+              ? `${matrixRows ? "Rows" : "Branches"} blend toward this hue.`
+              : pattern === "alternating"
+                ? `Every second ${itemKind} uses this hue.`
+                : `Neighboring ${matrixRows ? "rows" : "branches"} form up to four color sections between these hues.`}
+          </p>
+          <div className="mt-2">
+            <ColorSwatchPicker
+              value={endColor}
+              size="sm"
+              defaultSectionsOpen={false}
+              onChange={onEndColorChange}
+              onClear={() => onEndColorChange()}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function normalizeWholeTextFormat(
   data: Record<string, unknown>,
@@ -1290,8 +1442,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const applyLayout = useCanvasStore((s) => s.applyLayout);
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const applyLayoutStartColor = useCanvasStore((s) => s.applyLayoutStartColor);
-  const applyMatrixRowColorPattern = useCanvasStore((s) => s.applyMatrixRowColorPattern);
-  const applyMatrixRowEndColor = useCanvasStore((s) => s.applyMatrixRowEndColor);
+  const applyLayoutColorPattern = useCanvasStore((s) => s.applyLayoutColorPattern);
+  const applyLayoutEndColor = useCanvasStore((s) => s.applyLayoutEndColor);
   const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
@@ -1570,11 +1722,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeLayoutStartColor = typeof structuredLayoutRootData.layoutStartColor === "string"
     ? structuredLayoutRootData.layoutStartColor
     : undefined;
-  const activeMatrixRowColorPattern = matrixRowColorPattern(
-    structuredLayoutRootData.matrixRowColorPattern
+  const activeLayoutColorPattern = layoutColorPattern(
+    structuredLayoutRootData.layoutColorPattern
+      ?? structuredLayoutRootData.matrixRowColorPattern,
+    structuredLayoutMode === "matrix" ? "flow" : "curated"
   );
-  const activeMatrixRowEndColor = typeof structuredLayoutRootData.matrixRowEndColor === "string"
-    ? structuredLayoutRootData.matrixRowEndColor
+  const activeLayoutEndColor = typeof structuredLayoutRootData.layoutEndColor === "string"
+    ? structuredLayoutRootData.layoutEndColor
+    : typeof structuredLayoutRootData.matrixRowEndColor === "string"
+      ? structuredLayoutRootData.matrixRowEndColor
     : undefined;
   const foldsMatrixTerminalRows = !!selectedNode
     && !!matrixRootNode
@@ -1660,6 +1816,16 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     selectedRingMaxShare
   );
   const activeRadialColorScheme = radialColorScheme(radialRootData.radialColorScheme);
+  const activeRadialColorPattern = layoutColorPattern(
+    radialRootData.layoutColorPattern,
+    "curated"
+  );
+  const activeRadialStartColor = typeof radialRootData.layoutStartColor === "string"
+    ? radialRootData.layoutStartColor
+    : undefined;
+  const activeRadialEndColor = typeof radialRootData.layoutEndColor === "string"
+    ? radialRootData.layoutEndColor
+    : undefined;
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
     : null;
@@ -1824,6 +1990,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (!radialRootId) return;
     pushHistory();
     updateNodeData(radialRootId, { radialColorScheme: scheme });
+  };
+  const applyRadialPalettePatch = (patch: Record<string, unknown>) => {
+    if (!radialRootId) return;
+    pushHistory();
+    updateNodeData(radialRootId, patch);
   };
 
   const selectNodesById = (ids: string[]) => {
@@ -5061,140 +5232,38 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </button>
               ))}
             </div>
-            {structuredLayoutMode === "matrix" && (
-              <div className="rounded-md border border-border bg-muted/20 p-2">
-                <div>
-                  <Label className="text-[10px] font-medium">Row color pattern</Label>
-                  <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                    Changes row hues only. The existing column fade stays the same.
-                  </p>
-                  <Select
-                    value={activeMatrixRowColorPattern}
-                    onValueChange={(value) => {
-                      const pattern = value as MatrixRowColorPattern;
-                      applyMatrixRowColorPattern(structuredLayoutRootNode.id, pattern);
-                      const label = MATRIX_ROW_COLOR_PATTERN_OPTIONS.find(
-                        (option) => option.value === pattern
-                      )?.label ?? "Flow";
-                      toast.success(`Applied ${label} row colors.`, {
-                        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="mt-2 h-7 text-[10px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MATRIX_ROW_COLOR_PATTERN_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Separator className="my-2" />
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="text-[10px] font-medium">First child row color</Label>
-                  <span className="text-[9px] text-muted-foreground">
-                    {activeLayoutStartColor ? "Custom" : "Palette default"}
-                  </span>
-                </div>
-                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                  Set this on the whole chart. The root summarizes the full palette; its first child row starts at this hue.
-                </p>
-                <div className="mt-2 overflow-hidden rounded border border-border/70">
-                  <span
-                    className="block h-2 w-full"
-                    aria-label="Root palette summary preview"
-                    style={{
-                      backgroundImage: matrixRootPaletteGradient(
-                        activeStructuredScheme,
-                        8,
-                        activeLayoutStartColor,
-                        activeMatrixRowColorPattern,
-                        activeMatrixRowEndColor
-                      ),
-                    }}
-                  />
-                  <span className="flex h-4 w-full" aria-label="Automatic row color flow preview">
-                    {Array.from({ length: 8 }, (_, branchIndex) => (
-                      <span
-                        key={branchIndex}
-                        className="h-full flex-1"
-                        style={{
-                          backgroundColor: matrixRowAnchorColor(
-                            activeStructuredScheme,
-                            branchIndex,
-                            8,
-                            activeLayoutStartColor,
-                            activeMatrixRowColorPattern,
-                            activeMatrixRowEndColor
-                          ),
-                        }}
-                      />
-                    ))}
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <ColorSwatchPicker
-                    value={activeLayoutStartColor}
-                    size="sm"
-                    onChange={(value) => {
-                      applyLayoutStartColor(structuredLayoutRootNode.id, value);
-                      toast.success("Updated the first child row color.", {
-                        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-                      });
-                    }}
-                    onClear={() => {
-                      applyLayoutStartColor(structuredLayoutRootNode.id);
-                      toast.success("Restored the palette's default first-row color.", {
-                        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-                      });
-                    }}
-                  />
-                </div>
-                {(activeMatrixRowColorPattern === "duotone"
-                  || activeMatrixRowColorPattern === "alternating") && (
-                  <div className="mt-2 rounded border border-border/70 bg-background/60 p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label className="text-[10px] font-medium">
-                        {activeMatrixRowColorPattern === "duotone"
-                          ? "Last row color"
-                          : "Alternate row color"}
-                      </Label>
-                      <span className="text-[9px] text-muted-foreground">
-                        {activeMatrixRowEndColor ? "Custom" : "Palette default"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                      {activeMatrixRowColorPattern === "duotone"
-                        ? "Rows blend toward this hue; the column fade remains independent."
-                        : "Every second row uses this hue; the column fade remains independent."}
-                    </p>
-                    <div className="mt-2">
-                      <ColorSwatchPicker
-                        value={activeMatrixRowEndColor}
-                        size="sm"
-                        defaultSectionsOpen={false}
-                        onChange={(value) => {
-                          applyMatrixRowEndColor(structuredLayoutRootNode.id, value);
-                          toast.success("Updated the secondary row color.", {
-                            action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-                          });
-                        }}
-                        onClear={() => {
-                          applyMatrixRowEndColor(structuredLayoutRootNode.id);
-                          toast.success("Restored the palette's default secondary color.", {
-                            action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-                          });
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            <LayoutColorPatternControls
+              itemKind={structuredLayoutMode === "matrix" ? "row" : "branch"}
+              scheme={activeStructuredScheme}
+              pattern={activeLayoutColorPattern}
+              startColor={activeLayoutStartColor}
+              endColor={activeLayoutEndColor}
+              onPatternChange={(pattern) => {
+                applyLayoutColorPattern(structuredLayoutRootNode.id, pattern);
+                const label = LAYOUT_COLOR_PATTERN_OPTIONS.find(
+                  (option) => option.value === pattern
+                )?.label ?? "Flow";
+                toast.success(`Applied ${label} automatic colors.`, {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onStartColorChange={(value) => {
+                applyLayoutStartColor(structuredLayoutRootNode.id, value);
+                toast.success(value
+                  ? "Updated the first automatic color."
+                  : "Restored the palette's default first color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onEndColorChange={(value) => {
+                applyLayoutEndColor(structuredLayoutRootNode.id, value);
+                toast.success(value
+                  ? "Updated the secondary automatic color."
+                  : "Restored the palette's default secondary color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            />
             <Button
               type="button"
               variant="outline"
@@ -5202,13 +5271,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               className="h-7 w-full text-[10px]"
               onClick={() => {
                 applyLayoutColorScheme(structuredLayoutRootNode.id, activeStructuredColorScheme, true);
-                toast.success("Restored automatic colors for every cell in the chart.", {
+                toast.success("Restored automatic colors throughout the chart.", {
                   action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
                 });
               }}
             >
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Reset every cell to automatic
+              Reset every {structuredLayoutMode === "matrix" ? "cell" : "item"} to automatic
             </Button>
           </Section>
         )}
@@ -6067,6 +6136,38 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 </button>
               ))}
             </div>
+            <LayoutColorPatternControls
+              itemKind="branch"
+              scheme={activeRadialColorScheme}
+              pattern={activeRadialColorPattern}
+              startColor={activeRadialStartColor}
+              endColor={activeRadialEndColor}
+              onPatternChange={(pattern) => {
+                applyRadialPalettePatch({ layoutColorPattern: pattern });
+                const label = LAYOUT_COLOR_PATTERN_OPTIONS.find(
+                  (option) => option.value === pattern
+                )?.label ?? "Curated Palette";
+                toast.success(`Applied ${label} radial colors.`, {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onStartColorChange={(value) => {
+                applyRadialPalettePatch({ layoutStartColor: value });
+                toast.success(value
+                  ? "Updated the first radial branch color."
+                  : "Restored the radial palette's first color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onEndColorChange={(value) => {
+                applyRadialPalettePatch({ layoutEndColor: value });
+                toast.success(value
+                  ? "Updated the secondary radial branch color."
+                  : "Restored the radial palette's secondary color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            />
           </Section>
         )}
 

@@ -1,8 +1,8 @@
 import type { Edge, Node } from "@xyflow/react";
 import type {
+  LayoutColorPattern,
   LayoutMode,
   LayoutVisualStyle,
-  MatrixRowColorPattern,
   RadialColorScheme,
   VidyaEdgeData,
 } from "../types";
@@ -12,10 +12,12 @@ import {
   surfaceEffectPresetPatch,
 } from "../canvas/surface-effects";
 import {
+  DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   DEFAULT_RADIAL_COLOR_SCHEME,
-  matrixRowAnchorColor,
-  matrixRowColorPattern,
-  matrixRootPaletteGradient,
+  layoutBranchAnchorColor,
+  layoutColorPattern,
+  layoutColorPatternProgress,
+  layoutRootPaletteGradient,
   radialColorScheme,
   radialSectorColors,
 } from "../radial-layout";
@@ -23,6 +25,7 @@ import { getLayoutOwnedSubtree, getSubtree, type Hierarchy } from "./hierarchy";
 import { layoutFontSizeFor } from "./layout-presentation";
 
 const AUTOMATIC_COLOR_MODES = new Set<LayoutMode>([
+  "freeForm",
   "fromParentFreeForm",
   "horizontal",
   "vertical",
@@ -103,12 +106,12 @@ function branchIndexes(rootId: string, hierarchy: Hierarchy): Map<string, number
   return indexes;
 }
 
-const MATRIX_METALLIC_SETTINGS = normalizeSurfaceEffect(
+const LAYOUT_METALLIC_SETTINGS = normalizeSurfaceEffect(
   surfaceEffectPresetPatch("metallic")
 );
 
-function matrixMetallicEffect(
-  pattern: MatrixRowColorPattern,
+function layoutMetallicEffect(
+  pattern: LayoutColorPattern,
   branchIndex: number,
   branchCount: number,
   startColor?: string,
@@ -118,24 +121,20 @@ function matrixMetallicEffect(
   const endIsMetallic = isMetallicColor(endColor);
   let metallicAmount = startIsMetallic ? 1 : 0;
 
-  if (pattern === "alternating") {
-    metallicAmount = branchIndex % 2 === 0
-      ? (startIsMetallic ? 1 : 0)
-      : (endIsMetallic ? 1 : 0);
-  } else if (pattern === "duotone") {
-    const progress = branchCount <= 1 ? 0 : branchIndex / (branchCount - 1);
+  if (pattern === "alternating" || pattern === "duotone" || pattern === "sectioned") {
+    const progress = layoutColorPatternProgress(pattern, branchIndex, branchCount);
     metallicAmount = (startIsMetallic ? 1 - progress : 0)
       + (endIsMetallic ? progress : 0);
   }
 
   if (metallicAmount <= 0) return {};
   return {
-    surfaceEffect: MATRIX_METALLIC_SETTINGS.preset,
-    surfaceEffectDepth: MATRIX_METALLIC_SETTINGS.depth,
+    surfaceEffect: LAYOUT_METALLIC_SETTINGS.preset,
+    surfaceEffectDepth: LAYOUT_METALLIC_SETTINGS.depth,
     surfaceEffectStrength: Math.round(
-      MATRIX_METALLIC_SETTINGS.strength * metallicAmount * 100
+      LAYOUT_METALLIC_SETTINGS.strength * metallicAmount * 100
     ) / 100,
-    surfaceEffectAngle: MATRIX_METALLIC_SETTINGS.angle,
+    surfaceEffectAngle: LAYOUT_METALLIC_SETTINGS.angle,
   };
 }
 
@@ -196,10 +195,17 @@ export function buildLayoutVisualStyles(
   const layoutStartColor = typeof rootData.layoutStartColor === "string"
     ? rootData.layoutStartColor
     : undefined;
-  const rowColorPattern = matrixRowColorPattern(rootData.matrixRowColorPattern);
-  const rowEndColor = typeof rootData.matrixRowEndColor === "string"
-    ? rootData.matrixRowEndColor
+  const colorPattern = layoutColorPattern(
+    rootData.layoutColorPattern ?? rootData.matrixRowColorPattern,
+    mode === "matrix" ? "flow" : "curated"
+  );
+  const layoutEndColor = typeof rootData.layoutEndColor === "string"
+    ? rootData.layoutEndColor
+    : typeof rootData.matrixRowEndColor === "string" ? rootData.matrixRowEndColor
     : undefined;
+  const branchLightness = mode === "matrix"
+    ? DEFAULT_LAYOUT_BRANCH_LIGHTNESS
+    : scheme.lightness;
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
   const layoutNodeIds = nodes.length
@@ -225,12 +231,13 @@ export function buildLayoutVisualStyles(
         fillColor: manualColors?.fill ?? scheme.rootFill,
         ...(!manualColors && mode === "matrix"
           ? {
-              fillGradient: matrixRootPaletteGradient(
+              fillGradient: layoutRootPaletteGradient(
                 scheme,
                 branchCount,
                 layoutStartColor,
-                rowColorPattern,
-                rowEndColor
+                colorPattern,
+                layoutEndColor,
+                branchLightness
               ),
             }
           : {}),
@@ -249,23 +256,22 @@ export function buildLayoutVisualStyles(
       : [];
     const matrixDepthBand = mode === "matrix";
     const branchBaseColor = fillAnchor?.color
-      ?? (matrixDepthBand
-        ? matrixRowAnchorColor(
-            scheme,
-            branchIndex,
-            branchCount,
-            layoutStartColor,
-            rowColorPattern,
-            rowEndColor
-          )
-        : undefined);
-    const matrixSurfaceEffect = matrixDepthBand && !fillAnchor
-      ? matrixMetallicEffect(
-          rowColorPattern,
+      ?? layoutBranchAnchorColor(
+        scheme,
+        branchIndex,
+        branchCount,
+        layoutStartColor,
+        colorPattern,
+        layoutEndColor,
+        branchLightness
+      );
+    const layoutSurfaceEffect = !fillAnchor
+      ? layoutMetallicEffect(
+          colorPattern,
           branchIndex,
           branchCount,
           layoutStartColor,
-          rowEndColor
+          layoutEndColor
         )
       : {};
     const colors = radialSectorColors(
@@ -285,7 +291,7 @@ export function buildLayoutVisualStyles(
       depth,
       branchIndex,
       fillColor: colors.fill,
-      ...matrixSurfaceEffect,
+      ...layoutSurfaceEffect,
       borderColor: colors.border,
       textColor: colors.text,
       accentColor: colors.border,
