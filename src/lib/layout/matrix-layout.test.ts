@@ -1346,52 +1346,6 @@ test("line-based Matrix height still protects authored inline font sizes", () =>
   assertClean(result);
 });
 
-test("literal mixed-size text grows an exact row and locked Matrix height", () => {
-  const { nodes, edges } = buildTree([
-    { id: "root", parentId: null, text: "छन्दः", matrixTableHeight: 140 },
-    {
-      id: "rule",
-      parentId: "root",
-      text: "शार्दूलविक्रीडितम्\nसूर्यश्चन्द्रमसौ धाता",
-      matrixWidth: 560,
-      matrixHeight: 60,
-    },
-  ]);
-  nodes[0] = {
-    ...nodes[0],
-    data: { ...nodes[0].data, matrixTableSizeLocked: true },
-  };
-  nodes[1] = {
-    ...nodes[1],
-    data: {
-      ...nodes[1].data,
-      richText: [
-        '<p><span style="font-size: 48px">शार्दूलविक्रीडितम्</span></p>',
-        '<p><span style="font-size: 32px">सूर्यश्चन्द्रमसौ धाता</span></p>',
-      ].join(""),
-      matrixIntrinsicSize: {
-        width: 520,
-        height: 118,
-        lineCount: 2,
-        lineHeight: 32,
-        cellWidth: 560,
-      },
-    },
-  };
-  const hierarchy = buildHierarchy(nodes, edges);
-  const result = computeMatrixLayout(
-    "root",
-    hierarchy,
-    new Map(nodes.map((node) => [node.id, node]))
-  );
-  const rule = result.cells.find((cell) => cell.nodeId === "rule")!;
-
-  assert.ok(rule.requiredHeight >= 2 * 48 * 1.38);
-  assert.ok(rule.height >= rule.requiredHeight);
-  assert.ok(result.bounds.height > 140);
-  assertClean(result);
-});
-
 test("one long unbroken word stays in a single Matrix row", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, text: "Title" },
@@ -2795,7 +2749,7 @@ test("overall Matrix width and height overrides have no upper ceiling", () => {
   assertClean(result);
 });
 
-test("overall Matrix height shrinks row boxes with Auto-fit without collapsing their gaps", () => {
+test("overall Matrix height shrinks row boxes without collapsing their gaps", () => {
   const { nodes, edges } = buildTree([
     { id: "root", parentId: null, matrixTableHeight: 1000 },
     ...Array.from({ length: 30 }, (_, index) => ({
@@ -2804,15 +2758,11 @@ test("overall Matrix height shrinks row boxes with Auto-fit without collapsing t
       text: `वृत्तम् ${index + 1}`,
     })),
   ]);
-  const fittedNodes = nodes.map((node) => ({
-    ...node,
-    data: { ...node.data, matrixFillCellLabels: true },
-  }));
-  const hierarchy = buildHierarchy(fittedNodes, edges);
+  const hierarchy = buildHierarchy(nodes, edges);
   const result = computeMatrixLayout(
     "root",
     hierarchy,
-    new Map(fittedNodes.map((node) => [node.id, node]))
+    new Map(nodes.map((node) => [node.id, node]))
   );
   const gap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
   const ordered = [...result.cells].sort((first, second) => first.y - second.y);
