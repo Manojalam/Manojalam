@@ -1,4 +1,4 @@
-import type { RadialColorScheme } from "./types";
+import type { MatrixRowColorPattern, RadialColorScheme } from "./types";
 
 export type RadialColorSchemeDefinition = {
   id: RadialColorScheme;
@@ -19,6 +19,7 @@ export type RadialColorSchemeDefinition = {
 };
 
 export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
+export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern = "flow";
 
 /**
  * Resolves the angular weight of a hierarchy sector.
@@ -155,7 +156,12 @@ export function radialColorScheme(value: unknown): RadialColorSchemeDefinition {
 }
 
 const MAX_MATRIX_ROW_HUE_STEP = 32;
+const GENTLE_MATRIX_HUE_SPAN = 56;
 const MATRIX_ROW_LIGHTNESS = 64;
+
+export function matrixRowColorPattern(value: unknown): MatrixRowColorPattern {
+  return value === "gentle" ? "gentle" : DEFAULT_MATRIX_ROW_COLOR_PATTERN;
+}
 
 /**
  * Returns one coordinated anchor for a Matrix row.
@@ -168,7 +174,8 @@ export function matrixRowAnchorColor(
   scheme: RadialColorSchemeDefinition,
   branchIndex: number,
   branchCount: number,
-  startColor?: string
+  startColor?: string,
+  pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const index = clamp(Math.floor(branchIndex), 0, count - 1);
@@ -177,7 +184,10 @@ export function matrixRowAnchorColor(
   const startHue = customAnchor?.h ?? defaultStartHue;
   const requestedSpan = requestedEndHue - defaultStartHue;
   const maximumSpan = MAX_MATRIX_ROW_HUE_STEP * Math.max(0, count - 1);
-  const span = Math.sign(requestedSpan) * Math.min(Math.abs(requestedSpan), maximumSpan);
+  const patternSpan = pattern === "gentle"
+    ? Math.min(Math.abs(requestedSpan), GENTLE_MATRIX_HUE_SPAN)
+    : Math.abs(requestedSpan);
+  const span = Math.sign(requestedSpan) * Math.min(patternSpan, maximumSpan);
   const progress = count <= 1 ? 0 : index / (count - 1);
   return hslString({
     h: startHue + span * progress,
@@ -192,14 +202,15 @@ export function matrixRowAnchorColor(
 export function matrixRootPaletteGradient(
   scheme: RadialColorSchemeDefinition,
   branchCount: number,
-  startColor?: string
+  startColor?: string,
+  pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const stopCount = Math.min(7, Math.max(2, count));
   const stops = Array.from({ length: stopCount }, (_, stopIndex) => {
     const progress = stopCount <= 1 ? 0 : stopIndex / (stopCount - 1);
     const branchIndex = count <= 1 ? 0 : Math.round(progress * (count - 1));
-    const anchor = parseColor(matrixRowAnchorColor(scheme, branchIndex, count, startColor))!;
+    const anchor = parseColor(matrixRowAnchorColor(scheme, branchIndex, count, startColor, pattern))!;
     const darkAnchor = hslString({
       h: anchor.h,
       s: Math.min(anchor.s, 52),

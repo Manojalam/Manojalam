@@ -41,6 +41,7 @@ import type {
   BorderLayer,
   ConcentricShapeLayer,
   InternalFillRegion,
+  MatrixRowColorPattern,
   RadialChartData,
   RadialChartRing,
   RadialChartSegment,
@@ -65,6 +66,7 @@ import { generateId } from "@/lib/utils";
 import {
   RADIAL_COLOR_SCHEMES,
   matrixRowAnchorColor,
+  matrixRowColorPattern,
   matrixRootPaletteGradient,
   radialColorScheme,
 } from "@/lib/radial-layout";
@@ -1276,6 +1278,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const applyLayout = useCanvasStore((s) => s.applyLayout);
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const applyLayoutStartColor = useCanvasStore((s) => s.applyLayoutStartColor);
+  const applyMatrixRowColorPattern = useCanvasStore((s) => s.applyMatrixRowColorPattern);
   const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
@@ -1554,6 +1557,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeLayoutStartColor = typeof structuredLayoutRootData.layoutStartColor === "string"
     ? structuredLayoutRootData.layoutStartColor
     : undefined;
+  const activeMatrixRowColorPattern = matrixRowColorPattern(
+    structuredLayoutRootData.matrixRowColorPattern
+  );
   const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
@@ -5030,6 +5036,34 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
             {structuredLayoutMode === "matrix" && (
               <div className="rounded-md border border-border bg-muted/20 p-2">
+                <div>
+                  <Label className="text-[10px] font-medium">Row color pattern</Label>
+                  <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                    Changes row hues only. The existing column fade stays the same.
+                  </p>
+                  <Select
+                    value={activeMatrixRowColorPattern}
+                    onValueChange={(value) => {
+                      const pattern = value as MatrixRowColorPattern;
+                      applyMatrixRowColorPattern(structuredLayoutRootNode.id, pattern);
+                      toast.success(
+                        pattern === "gentle"
+                          ? "Applied a gentle row color flow."
+                          : "Restored the full row color flow.",
+                        { action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() } }
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="mt-2 h-7 text-[10px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="flow">Flow</SelectItem>
+                      <SelectItem value="gentle">Gentle Flow</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Separator className="my-2" />
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-[10px] font-medium">First child row color</Label>
                   <span className="text-[9px] text-muted-foreground">
@@ -5047,7 +5081,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                       backgroundImage: matrixRootPaletteGradient(
                         activeStructuredScheme,
                         8,
-                        activeLayoutStartColor
+                        activeLayoutStartColor,
+                        activeMatrixRowColorPattern
                       ),
                     }}
                   />
@@ -5061,7 +5096,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             activeStructuredScheme,
                             branchIndex,
                             8,
-                            activeLayoutStartColor
+                            activeLayoutStartColor,
+                            activeMatrixRowColorPattern
                           ),
                         }}
                       />
