@@ -476,6 +476,7 @@ function clearMatrixPresentationData(data: Record<string, unknown>): Record<stri
     matrixRowSpan,
     matrixFillCellLabels,
     matrixEmptySlots,
+    matrixFoldSections,
     ...rest
   } = data;
   void matrixCell;
@@ -487,6 +488,7 @@ function clearMatrixPresentationData(data: Record<string, unknown>): Record<stri
   void matrixRowSpan;
   void matrixFillCellLabels;
   void matrixEmptySlots;
+  void matrixFoldSections;
   if ((layoutSizeOverride as { mode?: unknown } | undefined)?.mode !== "matrix") {
     return { ...rest, ...(layoutSizeOverride !== undefined ? { layoutSizeOverride } : {}) };
   }
@@ -646,6 +648,20 @@ function applyMatrixResultToNodes(
           height: cell.height,
         }))
         : undefined;
+      data.matrixFoldSections = result.foldSections?.map((section) => ({
+        x: section.x - result.bounds.left,
+        y: section.y - result.bounds.top,
+        width: section.width,
+        height: section.height,
+        repeatedCells: section.repeatedCells.map((cell) => ({
+          sourceNodeId: cell.sourceNodeId,
+          role: cell.role,
+          x: cell.x - result.bounds.left,
+          y: cell.y - result.bounds.top,
+          width: cell.width,
+          height: cell.height,
+        })),
+      }));
     } else if (data.layoutMode !== undefined) {
       const { layoutMode: _layoutMode, ...rest } = data;
       void _layoutMode;
