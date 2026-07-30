@@ -34,7 +34,7 @@ Vercel deployment will be configured later.
 - Sanskrit cards, śloka cards, grammar cards
 - Transliteration helper (IAST, ITRANS, HK, Devanāgarī)
 - 19+ templates including Sanskrit study maps
-- Export JSON and Markdown; import JSON backup
+- Export JSON backups plus complete hierarchical Markdown, TXT, HTML, and PDF outlines; import JSON backup
 - Undo/redo, search, command palette (⌘/Ctrl+K)
 - Board sharing with owner, editor, and viewer roles
 - Live refresh when a collaborator saves an open board
@@ -145,7 +145,7 @@ See `/help/shortcuts` for the full list.
 ## Export / import
 
 - **Export JSON** — full board backup with nodes, edges, settings
-- **Export Markdown** — outline with Sanskrit sections formatted
+- **Export outline** — complete parent/child hierarchy in Markdown, TXT, standalone HTML, or paginated PDF, including authored details, cross-links, and relationships
 - **Import JSON** — restore from `.vidyamap.json` backup
 - PNG/SVG export — planned (menu items disabled)
 

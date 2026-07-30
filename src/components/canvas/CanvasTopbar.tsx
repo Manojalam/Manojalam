@@ -17,8 +17,11 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import {
+  downloadHtmlOutline,
   downloadJson,
   downloadMarkdown,
+  downloadPdfOutline,
+  downloadTextOutline,
 } from "@/lib/export";
 import { cn } from "@/lib/utils";
 import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
@@ -26,6 +29,7 @@ import type { BoardContent, VidyaBoard } from "@/lib/types";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { BoardShareDialog } from "@/components/canvas/BoardShareDialog";
 import { ImportDialog } from "@/components/canvas/ImportDialog";
+import { toast } from "sonner";
 
 /* ── Save status dot ── */
 function SaveStatus({ status, readOnly }: { status: string; readOnly: boolean }) {
@@ -192,16 +196,44 @@ export function CanvasTopbar() {
               <ChevronDown className="h-3 w-3 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-xl">
+          <DropdownMenuContent align="end" className="w-52 rounded-xl shadow-xl">
             <DropdownMenuLabel className="text-xs text-muted-foreground">Export as</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => {
               const snapshot = currentBoardSnapshot();
               if (snapshot) downloadJson(snapshot);
             }}>JSON backup</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Hierarchical outline</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => {
               const snapshot = currentBoardSnapshot();
               if (snapshot) downloadMarkdown(snapshot);
-            }}>Markdown outline</DropdownMenuItem>
+            }}>Markdown (.md)</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const snapshot = currentBoardSnapshot();
+              if (snapshot) downloadTextOutline(snapshot);
+            }}>Plain text (.txt)</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const snapshot = currentBoardSnapshot();
+              if (snapshot) downloadHtmlOutline(snapshot);
+            }}>Web page (.html)</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const snapshot = currentBoardSnapshot();
+              if (!snapshot) return;
+              const toastId = toast.loading("Preparing hierarchical PDF outline...");
+              void downloadPdfOutline(snapshot)
+                .then(({ pageCount }) => {
+                  toast.success(
+                    `PDF outline download initiated (${pageCount} page${pageCount === 1 ? "" : "s"}).`,
+                    { id: toastId }
+                  );
+                })
+                .catch((error: unknown) => {
+                  toast.error(
+                    error instanceof Error ? error.message : "Unable to export the PDF outline.",
+                    { id: toastId }
+                  );
+                });
+            }}>Document (.pdf)</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               disabled={!board || Boolean(relationshipSelection)}
@@ -213,7 +245,7 @@ export function CanvasTopbar() {
                 title: board?.title,
               })}
             >
-              Board or selection…
+              Visual board or selection…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
