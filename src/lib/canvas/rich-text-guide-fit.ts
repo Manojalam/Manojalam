@@ -22,9 +22,14 @@ export function correctedGuideContentScale(
   content: RenderedBoundsSize,
   guide: RenderedBoundsSize,
   inset = 2,
-  localToScreenScale = 1
+  localToScreenScale = 1,
+  allowShrink = false
 ): number {
   const normalizedScale = Number.isFinite(currentScale) ? Math.max(0.05, currentScale) : 1;
+  // Authored text is literal unless the user explicitly enables Auto-fit.
+  // The guide may still align that text, but it must not introduce a second,
+  // invisible scale when a font-size change causes overflow.
+  if (!allowShrink) return normalizedScale;
   const contentWidth = Math.max(0, Number.isFinite(content.width) ? content.width : 0);
   const contentHeight = Math.max(0, Number.isFinite(content.height) ? content.height : 0);
   if (contentWidth <= 0 || contentHeight <= 0) return normalizedScale;

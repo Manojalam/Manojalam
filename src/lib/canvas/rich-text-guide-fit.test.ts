@@ -10,7 +10,10 @@ test("rendered rich text is reduced to the actual label guide", () => {
   const corrected = correctedGuideContentScale(
     2.8,
     { width: 380, height: 74 },
-    { width: 182, height: 182 }
+    { width: 182, height: 182 },
+    2,
+    1,
+    true
   );
 
   assert.ok(corrected < 2.8);
@@ -19,18 +22,29 @@ test("rendered rich text is reduced to the actual label guide", () => {
 
 test("content already inside the guide keeps its requested scale", () => {
   assert.equal(
-    correctedGuideContentScale(1.6, { width: 140, height: 60 }, { width: 182, height: 100 }),
+    correctedGuideContentScale(1.6, { width: 140, height: 60 }, { width: 182, height: 100 }, 2, 1, true),
     1.6
   );
 });
 
+test("guide overflow cannot shrink literal text while Auto-fit is off", () => {
+  const content = { width: 420, height: 120 };
+  const guide = { width: 190, height: 80 };
+
+  assert.equal(
+    correctedGuideContentScale(1, content, guide, 2, 1, false),
+    1
+  );
+  assert.ok(correctedGuideContentScale(1, content, guide, 2, 1, true) < 1);
+});
+
 test("guide correction always returns a finite renderable scale", () => {
   assert.equal(
-    correctedGuideContentScale(Number.NaN, { width: 0, height: 0 }, { width: 100, height: 100 }),
+    correctedGuideContentScale(Number.NaN, { width: 0, height: 0 }, { width: 100, height: 100 }, 2, 1, true),
     1
   );
   assert.equal(
-    correctedGuideContentScale(0.01, { width: 1000, height: 1000 }, { width: 1, height: 1 }),
+    correctedGuideContentScale(0.01, { width: 1000, height: 1000 }, { width: 1, height: 1 }, 2, 1, true),
     0.05
   );
 });
@@ -41,14 +55,16 @@ test("guide correction is invariant across canvas zoom levels", () => {
     { width: 220, height: 60 },
     { width: 200, height: 100 },
     2,
-    1
+    1,
+    true
   );
   const zoomedOut = correctedGuideContentScale(
     1.5,
     { width: 55, height: 15 },
     { width: 50, height: 25 },
     2,
-    0.25
+    0.25,
+    true
   );
 
   assert.ok(Math.abs(normal - zoomedOut) < 0.000001);
