@@ -155,6 +155,9 @@ export function buildLayoutVisualStyles(
     ? rootData.layoutStartColor
     : undefined;
   const rowColorPattern = matrixRowColorPattern(rootData.matrixRowColorPattern);
+  const rowEndColor = typeof rootData.matrixRowEndColor === "string"
+    ? rootData.matrixRowEndColor
+    : undefined;
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
   const layoutNodeIds = nodes.length
@@ -179,7 +182,15 @@ export function buildLayoutVisualStyles(
         branchIndex: -1,
         fillColor: manualColors?.fill ?? scheme.rootFill,
         ...(!manualColors && mode === "matrix"
-          ? { fillGradient: matrixRootPaletteGradient(scheme, branchCount, layoutStartColor, rowColorPattern) }
+          ? {
+              fillGradient: matrixRootPaletteGradient(
+                scheme,
+                branchCount,
+                layoutStartColor,
+                rowColorPattern,
+                rowEndColor
+              ),
+            }
           : {}),
         borderColor: manualColors?.border ?? scheme.rootBorder,
         textColor: manualColors?.text ?? scheme.rootText,
@@ -197,7 +208,14 @@ export function buildLayoutVisualStyles(
     const matrixDepthBand = mode === "matrix";
     const branchBaseColor = fillAnchor?.color
       ?? (matrixDepthBand
-        ? matrixRowAnchorColor(scheme, branchIndex, branchCount, layoutStartColor, rowColorPattern)
+        ? matrixRowAnchorColor(
+            scheme,
+            branchIndex,
+            branchCount,
+            layoutStartColor,
+            rowColorPattern,
+            rowEndColor
+          )
         : undefined);
     const colors = radialSectorColors(
       scheme,
