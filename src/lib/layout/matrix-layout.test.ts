@@ -1875,7 +1875,7 @@ test("a nested vertical Fold uses the normal Matrix cell gap", () => {
   assertClean(result);
 });
 
-test("a compact nested Fold divides outer branches evenly by count", () => {
+test("a compact nested Fold balances outer branches by terminal descendants", () => {
   const groups = [
     ["varna", 4],
     ["yant", 4],
@@ -1905,14 +1905,14 @@ test("a compact nested Fold divides outer branches evenly by count", () => {
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
 
-  assert.equal(cells.get("varna")!.x, cells.get("guna")!.x);
-  assert.ok(cells.get("vrddhi")!.x > cells.get("guna")!.x);
-  assert.equal(cells.get("vrddhi")!.x, cells.get("para")!.x);
-  assert.equal(cells.get("varna")!.y, cells.get("vrddhi")!.y);
+  assert.equal(cells.get("varna")!.x, cells.get("savarna")!.x);
+  assert.ok(cells.get("guna")!.x > cells.get("savarna")!.x);
+  assert.equal(cells.get("guna")!.x, cells.get("para")!.x);
+  assert.equal(cells.get("varna")!.y, cells.get("guna")!.y);
   assertClean(result);
 });
 
-test("count-balanced top-level Fold sections preserve natural nested branch geometry", () => {
+test("terminal-balanced top-level Fold sections preserve natural nested branch geometry", () => {
   const groups = [
     ["varna", 4],
     ["yant", 4],
@@ -1948,8 +1948,8 @@ test("count-balanced top-level Fold sections preserve natural nested branch geom
 
   assert.equal(savarna.height, guna.height);
   assert.equal(savarnaExample.height, savarnaExample.requiredHeight);
-  assert.equal(guna.x, savarna.x);
-  assert.ok(vrddhi.x > guna.x);
+  assert.ok(guna.x > savarna.x);
+  assert.equal(vrddhi.x, guna.x);
   assertClean(result);
 });
 

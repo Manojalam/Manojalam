@@ -256,7 +256,7 @@ export function computeListRootTopPlacement(
 
   const rootChildren = (hierarchy.get(rootId)?.childIds ?? []).filter((childId) => byId.has(childId));
   const headerBounds = boundsForNodeIds(rootChildren, placements, byId) ?? contentBounds;
-  const rootFolded = resolvedFoldSections(rootData, rootChildren).length > 1;
+  const rootFolded = resolvedFoldSections(rootData, rootChildren, hierarchy).length > 1;
   const rootRect = rectAt(root, rootPlacement);
   return {
     x: rootFolded
@@ -328,7 +328,8 @@ export function computeListLayout(
         : density.siblingSubtreeGapY;
       const sections = resolvedFoldSections(
         (parent.data ?? {}) as Record<string, unknown>,
-        children
+        children,
+        hierarchy
       );
       const parentRect = rectAt(parent, parentPlacement);
       const firstChildTop = parentRect.bottom + (

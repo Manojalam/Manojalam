@@ -49,7 +49,26 @@ export function hasFoldedChildSections(nodes: Node[]): boolean {
   });
 }
 
-function balancedChildSections(children: string[], sectionCount: number): string[][] {
+function countTerminalDescendants(rootId: string, hierarchy: Hierarchy): number {
+  const memo = new Map<string, number>();
+  const visiting = new Set<string>();
+  const visit = (nodeId: string): number => {
+    const cached = memo.get(nodeId);
+    if (cached !== undefined) return cached;
+    if (visiting.has(nodeId)) return 0;
+    visiting.add(nodeId);
+    const children = hierarchy.get(nodeId)?.childIds ?? [];
+    const count = children.length
+      ? Math.max(1, children.reduce((sum, childId) => sum + visit(childId), 0))
+      : 1;
+    visiting.delete(nodeId);
+    memo.set(nodeId, count);
+    return count;
+  };
+  return visit(rootId);
+}
+
+function countBalancedChildSections(children: string[], sectionCount: number): string[][] {
   const baseSize = Math.floor(children.length / sectionCount);
   const largerSectionCount = children.length % sectionCount;
   const sections: string[][] = [];
@@ -62,9 +81,86 @@ function balancedChildSections(children: string[], sectionCount: number): string
   return sections;
 }
 
-/** Default custom break points use the same stable count distribution as older Fold boards. */
-export function defaultFoldBreakAfter(children: string[], sectionCount: number): string[] {
-  const sections = balancedChildSections(children, Math.max(1, Math.min(children.length, sectionCount)));
+type PartitionCost = {
+  maximumWeight: number;
+  squaredDeviation: number;
+};
+
+function betterPartitionCost(candidate: PartitionCost, current: PartitionCost | null): boolean {
+  if (!current) return true;
+  if (candidate.maximumWeight !== current.maximumWeight) {
+    return candidate.maximumWeight < current.maximumWeight;
+  }
+  return candidate.squaredDeviation < current.squaredDeviation;
+}
+
+/**
+ * Split ordered direct-child branches into non-empty sections while balancing
+ * the number of terminal descendants represented by each section.
+ */
+function terminalBalancedChildSections(
+  children: string[],
+  sectionCount: number,
+  hierarchy?: Hierarchy
+): string[][] {
+  if (!hierarchy) return countBalancedChildSections(children, sectionCount);
+  const weights = children.map((childId) => countTerminalDescendants(childId, hierarchy));
+  if (weights.every((weight) => weight === weights[0])) {
+    return countBalancedChildSections(children, sectionCount);
+  }
+
+  const prefixWeights = [0];
+  weights.forEach((weight) => prefixWeights.push(prefixWeights[prefixWeights.length - 1] + weight));
+  const idealWeight = prefixWeights[prefixWeights.length - 1] / sectionCount;
+  const costs = Array.from(
+    { length: sectionCount + 1 },
+    () => Array<PartitionCost | null>(children.length + 1).fill(null)
+  );
+  const previousEnds = Array.from(
+    { length: sectionCount + 1 },
+    () => Array<number>(children.length + 1).fill(-1)
+  );
+  costs[0][0] = { maximumWeight: 0, squaredDeviation: 0 };
+
+  for (let sections = 1; sections <= sectionCount; sections += 1) {
+    for (let end = sections; end <= children.length; end += 1) {
+      for (let start = end - 1; start >= sections - 1; start -= 1) {
+        const previous = costs[sections - 1][start];
+        if (!previous) continue;
+        const sectionWeight = prefixWeights[end] - prefixWeights[start];
+        const candidate = {
+          maximumWeight: Math.max(previous.maximumWeight, sectionWeight),
+          squaredDeviation: previous.squaredDeviation + (sectionWeight - idealWeight) ** 2,
+        };
+        if (!betterPartitionCost(candidate, costs[sections][end])) continue;
+        costs[sections][end] = candidate;
+        previousEnds[sections][end] = start;
+      }
+    }
+  }
+
+  const sections: string[][] = [];
+  let end = children.length;
+  for (let section = sectionCount; section > 0; section -= 1) {
+    const start = previousEnds[section][end];
+    if (start < 0) return countBalancedChildSections(children, sectionCount);
+    sections.unshift(children.slice(start, end));
+    end = start;
+  }
+  return sections;
+}
+
+/** Default custom break points preserve the current automatic Fold distribution. */
+export function defaultFoldBreakAfter(
+  children: string[],
+  sectionCount: number,
+  hierarchy?: Hierarchy
+): string[] {
+  const sections = terminalBalancedChildSections(
+    children,
+    Math.max(1, Math.min(children.length, sectionCount)),
+    hierarchy
+  );
   return sections.slice(0, -1).flatMap((section) => section[section.length - 1] ?? []);
 }
 
@@ -133,14 +229,15 @@ function sectionsFromBreakAfter(children: string[], breakAfter: string[]): strin
 /** Resolve the same stable Fold sections for every structured layout. */
 export function resolvedFoldSections(
   data: Record<string, unknown>,
-  children: string[]
+  children: string[],
+  hierarchy?: Hierarchy
 ): string[][] {
   const sectionCount = resolvedFoldSectionCount(data, children.length);
   if (sectionCount < 2) return [children];
   const manualBreakAfter = resolvedManualFoldBreakAfter(data, children, sectionCount);
   return manualBreakAfter
     ? sectionsFromBreakAfter(children, manualBreakAfter)
-    : balancedChildSections(children, sectionCount);
+    : terminalBalancedChildSections(children, sectionCount, hierarchy);
 }
 
 /**
@@ -172,7 +269,7 @@ export function wrapChildGroups<T extends WrappablePlacement>(
     const data = (parent.data ?? {}) as Record<string, unknown>;
     const children = parentEntry.childIds.filter((childId) => !!next[childId]);
     const flow = flowForParent(parentEntry.id);
-    const chunks = resolvedFoldSections(data, children);
+    const chunks = resolvedFoldSections(data, children, hierarchy);
     if (chunks.length < 2) continue;
 
     const chunkNodes = chunks.map((chunk) => [...new Set(chunk.flatMap((childId) => getSubtree(childId, hierarchy)))])

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Node } from "@xyflow/react";
+import type { Hierarchy } from "@/lib/layout/hierarchy";
 import {
   defaultFoldBreakAfter,
   resolvedFoldSectionCount,
@@ -13,6 +14,7 @@ interface FoldBranchControlsProps {
   parentId: string;
   parentData: Record<string, unknown>;
   childIds: string[];
+  hierarchy: Hierarchy;
   nodes: Node[];
   compact?: boolean;
   className?: string;
@@ -42,6 +44,7 @@ export function FoldBranchControls({
   parentId,
   parentData,
   childIds,
+  hierarchy,
   nodes,
   compact = false,
   className,
@@ -72,7 +75,7 @@ export function FoldBranchControls({
         Fold into sections
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-        Automatic divides children evenly in their existing order. Custom lets you place every break.
+        Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break.
       </p>
 
       <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
@@ -109,13 +112,13 @@ export function FoldBranchControls({
             onChange={(event) => {
               commit({
                 layoutFoldBreakAfter: event.target.value === "custom"
-                  ? defaultFoldBreakAfter(childIds, sectionCount)
+                  ? defaultFoldBreakAfter(childIds, sectionCount, hierarchy)
                   : undefined,
               });
             }}
             className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
           >
-            <option value="automatic">Automatic · balance child count</option>
+            <option value="automatic">Automatic · balance terminal children</option>
             <option value="custom">Custom · choose each break</option>
           </select>
 
