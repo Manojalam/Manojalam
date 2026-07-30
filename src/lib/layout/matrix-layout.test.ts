@@ -1741,11 +1741,15 @@ test("a divided Matrix Fold repeats selectable styled roots above independent se
     ((repeatedRootFrame.data as Record<string, unknown>).matrixRepeatedCells as Array<{
       backgroundImage?: string;
       backdropFilter?: string;
+      exportSurfaceEffectShadow?: string;
+      exportSurfaceEffectShadowLayers?: string;
       sourceNodeId: string;
     }>).some((cell) =>
       cell.sourceNodeId === "root"
       && cell.backgroundImage?.includes("linear-gradient")
-      && cell.backdropFilter?.includes("blur")),
+      && cell.backdropFilter?.includes("blur")
+      && cell.exportSurfaceEffectShadow?.includes("inset")
+      && cell.exportSurfaceEffectShadowLayers?.includes('"blur"')),
     true
   );
   assertClean(result);
