@@ -5,6 +5,7 @@ import type {
   ExportRenderer,
 } from "./types";
 import type { ConnectorPathStyle } from "../types";
+import type { SurfaceEffectShadowLayer } from "../canvas/surface-effects";
 import {
   embedDomExportAssets,
   waitForExportFonts,
@@ -109,6 +110,12 @@ export interface ExportHeaderOverlay {
   bounds: ExportBounds;
   text: string;
   backgroundColor: string;
+  backgroundImage?: string;
+  backgroundBlendMode?: string;
+  backdropFilter?: string;
+  boxShadow?: string;
+  surfaceEffectShadowLayers?: SurfaceEffectShadowLayer[];
+  surfaceEffectShadow?: string;
   color: string;
   borderColor?: string;
   borderWidth?: number;
@@ -778,6 +785,29 @@ function appendExportHeaderOverlay(
   header.style.setProperty("line-height", "1.25");
   header.style.setProperty("z-index", "10000");
   header.style.setProperty("background-color", overlay.backgroundColor);
+  if (overlay.backgroundImage) {
+    header.style.setProperty("background-image", overlay.backgroundImage);
+  }
+  if (overlay.backgroundBlendMode) {
+    header.style.setProperty("background-blend-mode", overlay.backgroundBlendMode);
+  }
+  if (overlay.backdropFilter) {
+    header.style.setProperty("backdrop-filter", overlay.backdropFilter);
+    header.style.setProperty("-webkit-backdrop-filter", overlay.backdropFilter);
+  }
+  if (overlay.boxShadow) header.style.setProperty("box-shadow", overlay.boxShadow);
+  if (overlay.surfaceEffectShadowLayers?.length) {
+    header.setAttribute(
+      "data-export-surface-effect-shadow-layers",
+      JSON.stringify(overlay.surfaceEffectShadowLayers)
+    );
+  }
+  if (overlay.surfaceEffectShadow) {
+    header.setAttribute(
+      "data-export-surface-effect-shadow",
+      overlay.surfaceEffectShadow
+    );
+  }
   header.style.setProperty("color", overlay.color);
   header.style.setProperty("border-color", overlay.borderColor ?? "transparent");
   header.style.setProperty("border-width", `${Math.max(0, overlay.borderWidth ?? 0)}px`);

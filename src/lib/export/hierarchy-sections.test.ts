@@ -81,6 +81,12 @@ function exactMatrixFoldFixture(rootMode: "continuous" | "divided"): {
         layoutMode: "matrix",
         matrixCell: true,
         matrixFoldRootMode: rootMode,
+        fillColor: "#1e3a5f",
+        borderColor: "#0f172a",
+        surfaceEffect: "glass",
+        surfaceEffectDepth: 8,
+        surfaceEffectStrength: 70,
+        surfaceEffectAngle: 35,
         childOrder: ["branch-a", "branch-b"],
         matrixFoldSections: [
           { x: 0, y: 48, width: 240, height: 200, repeatedCells: [] },
@@ -303,6 +309,14 @@ test("plans continuous Matrix terminal-row folds from their exact generated fram
     { x: 0, y: 0, width: 240, height: 48 },
     { x: 300, y: 0, width: 240, height: 48 },
   ]);
+  const continuousHeaders = plan.folds.map((fold) => fold.headerOverlay);
+  assert.ok(continuousHeaders.every((header) =>
+    header?.backgroundImage?.includes("linear-gradient")
+    && header.backgroundBlendMode === "screen,soft-light"
+    && header.backdropFilter?.includes("blur")
+    && header.boxShadow?.includes("inset")
+    && header.surfaceEffectShadowLayers?.length === 1
+    && header.surfaceEffectShadow?.includes("inset")));
 });
 
 test("plans divided Matrix folds with their selectable native root frames", () => {
