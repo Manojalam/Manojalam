@@ -74,6 +74,7 @@ import {
   createCrossBoardDiagramPayload,
   type CrossBoardDiagramPayload,
 } from "@/lib/canvas/cross-board-copy";
+import { MediaAttachmentMenu } from "@/components/canvas/MediaAttachmentMenu";
 
 function ActionButton({
   label,
@@ -715,6 +716,12 @@ export function SelectionToolbar() {
         label="Move shape toolbar"
       />
       <Divider />
+      {singleId && (
+        <>
+          <MediaAttachmentMenu node={selected[0]} />
+          <Divider />
+        </>
+      )}
 
       {singleIsExternalNote && (
         <>

@@ -99,6 +99,7 @@ import {
   normalizeTextFrameStyle,
 } from "@/lib/canvas/text-callout";
 import { useBoardRealtime } from "@/lib/collaboration/use-board-realtime";
+import { NodeMediaLayer } from "./NodeMediaLayer";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -1711,6 +1712,7 @@ function VidyaCanvasInner({
       <ListTreeConnectors />
       <StructuredTreeConnectors />
       {canEdit && !relationshipSelection && <SelectionToolbar />}
+      <NodeMediaLayer nodes={displayNodes} />
       {canEdit && <RelationshipSelectionToolbar />}
       {canEdit && <AlignmentGuides guides={guides} />}
       <CanvasZoomControls />

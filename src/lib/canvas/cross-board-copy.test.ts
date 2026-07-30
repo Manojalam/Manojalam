@@ -64,7 +64,19 @@ test("copies a selected hierarchy with its descendants and attached notes", () =
         id: "root",
         type: "shape",
         position: { x: 100, y: 100 },
-        data: { text: "Root", childOrder: ["child"] },
+        data: {
+          text: "Root",
+          childOrder: ["child"],
+          mediaAttachments: [{
+            id: "image-1",
+            kind: "image",
+            name: "diagram.png",
+            mimeType: "image/png",
+            size: 1,
+            dataUrl: "data:image/png;base64,AA==",
+            createdAt: "2026-07-29T12:00:00.000Z",
+          }],
+        },
         style: { width: 180, height: 80 },
       },
       {
@@ -115,6 +127,14 @@ test("copies a selected hierarchy with its descendants and attached notes", () =
   const copiedNote = inserted.nodes.find((node) => node.data.text === "Note")!;
   assert.notEqual(copiedRoot.id, "root");
   assert.deepEqual(copiedRoot.data.childOrder, [copiedChild.id]);
+  assert.deepEqual(
+    copiedRoot.data.mediaAttachments,
+    source.nodes[0].data.mediaAttachments
+  );
+  assert.notEqual(
+    copiedRoot.data.mediaAttachments,
+    source.nodes[0].data.mediaAttachments
+  );
   assert.equal(copiedChild.data.parentId, copiedRoot.id);
   assert.equal(copiedNote.data.noteForNodeId, copiedChild.id);
   assert.equal(inserted.edges[0].source, copiedRoot.id);

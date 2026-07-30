@@ -447,8 +447,29 @@ export interface TextCalloutOwnerAnchor {
   y: number;
 }
 
+export type MediaAttachmentKind = "image" | "audio";
+
+/**
+ * Portable media embedded in board content. Keeping the payload with the node
+ * preserves attachments through undo, export/import, duplication, and
+ * cross-board copy without relying on expiring or board-scoped URLs.
+ */
+export interface MediaAttachment {
+  id: string;
+  kind: MediaAttachmentKind;
+  name: string;
+  mimeType: string;
+  size: number;
+  dataUrl: string;
+  createdAt: string;
+  width?: number;
+  height?: number;
+}
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
+  /** Images and audio files attached to this canvas object or Matrix cell. */
+  mediaAttachments?: MediaAttachment[];
   /** Start a hierarchy-numbering scope at this node. */
   hierarchicalNumbering?: boolean;
   /** Number presentation for the scope rooted at this node. */

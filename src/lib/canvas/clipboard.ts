@@ -46,6 +46,7 @@ const NODE_CONTENT_FIELDS = [
 const NODE_CONTENT_COLLECTIONS = [
   "examples",
   "tags",
+  "mediaAttachments",
 ] as const;
 
 export interface ClearNodeContentsResult {
