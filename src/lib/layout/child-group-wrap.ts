@@ -81,6 +81,42 @@ function countBalancedChildSections(children: string[], sectionCount: number): s
   return sections;
 }
 
+/**
+ * Fill ordered items into a common left-to-right section capacity, leaving
+ * only the final section short whenever the item count makes that possible.
+ */
+export function fixedCapacityFoldSections(
+  children: string[],
+  requestedSectionCount: number
+): string[][] {
+  if (!children.length) return [[]];
+  const sectionCount = Math.max(1, Math.min(children.length, requestedSectionCount));
+  if (sectionCount === 1) return [children];
+  const capacity = Math.ceil(children.length / sectionCount);
+  const sections: string[][] = [];
+  let start = 0;
+  for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex += 1) {
+    const sectionsAfter = sectionCount - sectionIndex - 1;
+    const remaining = children.length - start;
+    const size = sectionsAfter === 0
+      ? remaining
+      : Math.min(capacity, remaining - sectionsAfter);
+    sections.push(children.slice(start, start + size));
+    start += size;
+  }
+  return sections;
+}
+
+/** Default break points for fixed-capacity, left-to-right Matrix pagination. */
+export function fixedCapacityFoldBreakAfter(
+  children: string[],
+  sectionCount: number
+): string[] {
+  return fixedCapacityFoldSections(children, sectionCount)
+    .slice(0, -1)
+    .flatMap((section) => section[section.length - 1] ?? []);
+}
+
 type PartitionCost = {
   maximumWeight: number;
   squaredDeviation: number;

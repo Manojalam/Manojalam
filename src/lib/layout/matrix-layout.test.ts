@@ -1635,6 +1635,26 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
   assertClean(result);
 });
 
+test("Matrix Auto Fold leaves an uneven terminal-row remainder only in the final section", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    ...Array.from({ length: 46 }, (_, index) => ({
+      id: `terminal-${index}`,
+      parentId: "root",
+    })),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 4 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+
+  assert.deepEqual(result.foldSections?.map((section) => section.terminalIds.length), [12, 12, 12, 10]);
+  assert.equal(result.foldSections?.[2].terminalIds.at(-1), "terminal-35");
+  assert.equal(result.foldSections?.[3].terminalIds[0], "terminal-36");
+  assertClean(result);
+});
+
 test("manual top-level Fold breaks paginate the selected terminal rows", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, matrixTableWidth: 640 },

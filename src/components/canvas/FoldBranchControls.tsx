@@ -4,6 +4,7 @@ import type { Node } from "@xyflow/react";
 import type { Hierarchy } from "@/lib/layout/hierarchy";
 import {
   defaultFoldBreakAfter,
+  fixedCapacityFoldBreakAfter,
   resolvedFoldSectionCount,
   resolvedManualFoldBreakAfter,
 } from "@/lib/layout/child-group-wrap";
@@ -78,7 +79,7 @@ export function FoldBranchControls({
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
         {terminalItems
-          ? "Automatic gives every Matrix section the same number of terminal rows. If a branch continues, its root and ancestors repeat in the next section."
+          ? "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued roots and ancestors repeat."
           : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
       </p>
 
@@ -116,7 +117,9 @@ export function FoldBranchControls({
             onChange={(event) => {
               commit({
                 layoutFoldBreakAfter: event.target.value === "custom"
-                  ? defaultFoldBreakAfter(childIds, sectionCount, terminalItems ? undefined : hierarchy)
+                  ? terminalItems
+                    ? fixedCapacityFoldBreakAfter(childIds, sectionCount)
+                    : defaultFoldBreakAfter(childIds, sectionCount, hierarchy)
                   : undefined,
               });
             }}
