@@ -18,7 +18,7 @@ const FEATURES = [
   { icon: Languages, title: "Sanskrit-capable notes", desc: "Devanāgarī, IAST, transliteration helpers, grammar tags." },
   { icon: Scroll, title: "Śloka study cards", desc: "Padaccheda, anvaya, padārtha, chandas sections." },
   { icon: LayoutTemplate, title: "Templates", desc: "Study maps, grammar rules, project planning, and more." },
-  { icon: Download, title: "Export / import", desc: "JSON backup and Markdown outlines." },
+  { icon: Download, title: "Export / import", desc: "JSON backups and complete hierarchical outlines in Markdown, TXT, HTML, and PDF." },
   { icon: HardDrive, title: "Local-first demo mode", desc: "Works immediately without any backend setup." },
   { icon: Cloud, title: "Supabase-ready", desc: "Add env vars later for cloud sync and auth." },
 ];
