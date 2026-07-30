@@ -220,6 +220,15 @@ test("standalone clear content handles multiple shapes and text boxes without ch
       data: {
         text: "अग्निः",
         richText: "<p>अग्निः</p>",
+        mediaAttachments: [{
+          id: "image-1",
+          kind: "image",
+          name: "fire.png",
+          mimeType: "image/png",
+          size: 1,
+          dataUrl: "data:image/png;base64,AA==",
+          createdAt: "2026-07-29T12:00:00.000Z",
+        }],
         fillColor: "#fef3c7",
         borderColor: "#d97706",
       },
@@ -250,6 +259,7 @@ test("standalone clear content handles multiple shapes and text boxes without ch
   assert.deepEqual(cleared.clearedNodeIds, ["shape", "text-box"]);
   assert.equal(shapeData.text, "");
   assert.equal(shapeData.richText, "");
+  assert.deepEqual(shapeData.mediaAttachments, []);
   assert.equal(shapeData.fillColor, "#fef3c7");
   assert.equal(shapeData.borderColor, "#d97706");
   assert.equal(textData.text, "");
