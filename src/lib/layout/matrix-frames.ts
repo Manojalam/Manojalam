@@ -4,7 +4,16 @@ import {
   MATRIX_GRID_STROKE_WIDTH,
   matrixCellDivisionPadding,
 } from "./matrix-presentation";
-import type { FrameNodeData, MatrixGeneratedEmptySlot } from "../types";
+import {
+  getTextStyle,
+  resolveFillColor,
+} from "../style-utils";
+import type {
+  FrameNodeData,
+  MatrixFoldRepeatedCell,
+  MatrixFoldSectionPresentation,
+  MatrixGeneratedEmptySlot,
+} from "../types";
 
 type MatrixGridLine = NonNullable<FrameNodeData["matrixGridLines"]>[number];
 type AxisSegment = { position: number; start: number; end: number };
@@ -79,6 +88,111 @@ function generatedEmptySlotNodes(
       draggable: false,
     } satisfies Node];
   });
+}
+
+type RepeatedPresentationNode = {
+  node: Node;
+  source: Node;
+  cell: MatrixFoldRepeatedCell;
+};
+
+function generatedRepeatedCellNodes(
+  root: Node,
+  section: MatrixFoldSectionPresentation,
+  byId: Map<string, Node>,
+  sectionIndex: number
+): RepeatedPresentationNode[] {
+  const rootRect = matrixPresentationRect(root);
+  return section.repeatedCells.flatMap((cell, cellIndex) => {
+    const source = byId.get(cell.sourceNodeId);
+    if (
+      !source
+      || ![cell.x, cell.y, cell.width, cell.height].every(Number.isFinite)
+      || cell.width <= 0
+      || cell.height <= 0
+    ) return [];
+    return [{
+      source,
+      cell,
+      node: {
+        id: `matrix-fold-repeat-${root.id}-${sectionIndex}-${cellIndex}`,
+        type: source.type,
+        position: {
+          x: rootRect.left + cell.x,
+          y: rootRect.top + cell.y,
+        },
+        data: {
+          ...(source.data ?? {}),
+          layoutSizeOverride: {
+            mode: "matrix",
+            width: cell.width,
+            height: cell.height,
+          },
+          matrixCell: true,
+          matrixCellRole: cell.role,
+        },
+        style: { ...(source.style ?? {}), width: cell.width, height: cell.height },
+        selectable: false,
+        draggable: false,
+      } satisfies Node,
+    }];
+  });
+}
+
+function repeatedCellText(source: Node): { html?: string; text: string } {
+  const data = (source.data ?? {}) as Record<string, unknown>;
+  const html = typeof data.richText === "string" && data.richText.trim()
+    ? data.richText
+    : undefined;
+  const text = [
+    "text",
+    "title",
+    "topic",
+    "label",
+    "devanagari",
+    "iast",
+    "translation",
+    "rule",
+  ]
+    .map((field) => data[field])
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+    ?? "";
+  return { html, text };
+}
+
+function repeatedCellRenderData(
+  repeated: RepeatedPresentationNode,
+  bounds: NodeRect
+): NonNullable<FrameNodeData["matrixRepeatedCells"]>[number] {
+  const rect = matrixPresentationRect(repeated.node);
+  const data = (repeated.source.data ?? {}) as Record<string, unknown>;
+  const background = resolveFillColor(data);
+  const textStyle = getTextStyle(data, background);
+  const content = repeatedCellText(repeated.source);
+  const textAlign = data.textAlign === "left"
+    || data.textAlign === "right"
+    || data.textAlign === "justify"
+    ? data.textAlign
+    : "center";
+  return {
+    key: repeated.node.id,
+    role: repeated.cell.role,
+    x: rect.left - bounds.left,
+    y: rect.top - bounds.top,
+    width: rect.width,
+    height: rect.height,
+    html: content.html,
+    text: content.text,
+    background,
+    color: typeof textStyle.color === "string" ? textStyle.color : undefined,
+    fontSize: typeof textStyle.fontSize === "string" ? textStyle.fontSize : undefined,
+    fontFamily: typeof textStyle.fontFamily === "string" ? textStyle.fontFamily : undefined,
+    fontStyle: typeof textStyle.fontStyle === "string" ? textStyle.fontStyle : undefined,
+    fontWeight: typeof textStyle.fontWeight === "string" || typeof textStyle.fontWeight === "number"
+      ? textStyle.fontWeight
+      : undefined,
+    textAlign,
+  };
 }
 
 function mergeAxisSegments(segments: readonly AxisSegment[]): AxisSegment[] {
@@ -227,31 +341,25 @@ function matrixGridLines(
   return [...internalHorizontal, ...internalVertical];
 }
 
-/** Builds one flat Matrix table grid with complete, de-duplicated cell edges. */
-export function buildMatrixFrameNodes(
-  scopedNodes: readonly Node[],
-  rootId: string
-): Node[] {
-  if (!scopedNodes.length) return [];
-  const byId = new Map(scopedNodes.map((node) => [node.id, node]));
-  const root = byId.get(rootId);
-  const rootData = (root?.data ?? {}) as Record<string, unknown>;
-  const storedEmptySlots = Array.isArray(rootData.matrixEmptySlots)
-    ? rootData.matrixEmptySlots as MatrixGeneratedEmptySlot[]
-    : [];
-  const emptySlotNodes = generatedEmptySlotNodes(root, storedEmptySlots);
-  const presentationNodes = [...scopedNodes, ...emptySlotNodes];
+function buildMatrixFrameNode(
+  root: Node,
+  rootId: string,
+  presentationNodes: readonly Node[],
+  repeatedNodes: readonly RepeatedPresentationNode[],
+  frameId: string
+): Node | null {
   const rootColors = visualColors(root);
+  const rootData = (root.data ?? {}) as Record<string, unknown>;
   const gridPadding = matrixCellDivisionPadding(rootData.matrixDensity);
   const outerBounds = enclosingRect(presentationNodes, gridPadding);
-  if (!outerBounds) return [];
+  if (!outerBounds) return null;
   const gridVisible = rootData.matrixGridVisible !== false;
   const outerBorderVisible = rootData.matrixOuterBorderVisible !== false;
-  const lines = root && gridVisible
+  const lines = gridVisible
     ? matrixGridLines(presentationNodes, outerBounds, gridPadding)
     : [];
-  return [{
-    id: `matrix-frame-${rootId}`,
+  return {
+    id: frameId,
     type: "frame",
     position: { x: outerBounds.left, y: outerBounds.top },
     data: {
@@ -267,11 +375,79 @@ export function buildMatrixFrameNodes(
       matrixOuterBorderVisible: outerBorderVisible,
       matrixGridVisible: gridVisible,
       matrixGridLines: lines,
+      matrixRepeatedCells: repeatedNodes.map((repeated) =>
+        repeatedCellRenderData(repeated, outerBounds)),
       tags: [],
     },
     style: { width: outerBounds.width, height: outerBounds.height },
     zIndex: -10,
     selectable: false,
     draggable: false,
-  }];
+  };
+}
+
+/** Builds independent Matrix grids, including presentation-only Fold repetitions. */
+export function buildMatrixFrameNodes(
+  scopedNodes: readonly Node[],
+  rootId: string
+): Node[] {
+  if (!scopedNodes.length) return [];
+  const byId = new Map(scopedNodes.map((node) => [node.id, node]));
+  const root = byId.get(rootId);
+  if (!root) return [];
+  const rootData = (root.data ?? {}) as Record<string, unknown>;
+  const storedEmptySlots = Array.isArray(rootData.matrixEmptySlots)
+    ? rootData.matrixEmptySlots as MatrixGeneratedEmptySlot[]
+    : [];
+  const emptySlotNodes = generatedEmptySlotNodes(root, storedEmptySlots);
+  const storedFoldSections = Array.isArray(rootData.matrixFoldSections)
+    ? rootData.matrixFoldSections as MatrixFoldSectionPresentation[]
+    : [];
+  if (!storedFoldSections.length) {
+    const frame = buildMatrixFrameNode(
+      root,
+      rootId,
+      [...scopedNodes, ...emptySlotNodes],
+      [],
+      `matrix-frame-${rootId}`
+    );
+    return frame ? [frame] : [];
+  }
+
+  const rootRect = matrixPresentationRect(root);
+  return storedFoldSections.flatMap((section, sectionIndex) => {
+    if (
+      ![section.x, section.y, section.width, section.height].every(Number.isFinite)
+      || section.width <= 0
+      || section.height <= 0
+    ) return [];
+    const sectionBounds = createNodeRect(
+      `matrix-fold-section-${rootId}-${sectionIndex}`,
+      rootRect.left + section.x,
+      rootRect.top + section.y,
+      section.width,
+      section.height
+    );
+    const insideSection = (node: Node) => {
+      const rect = matrixPresentationRect(node);
+      return rect.centerX >= sectionBounds.left - GRID_ALIGNMENT_TOLERANCE
+        && rect.centerX <= sectionBounds.right + GRID_ALIGNMENT_TOLERANCE
+        && rect.centerY >= sectionBounds.top - GRID_ALIGNMENT_TOLERANCE
+        && rect.centerY <= sectionBounds.bottom + GRID_ALIGNMENT_TOLERANCE;
+    };
+    const repeatedNodes = generatedRepeatedCellNodes(root, section, byId, sectionIndex);
+    const presentationNodes = [
+      ...scopedNodes.filter(insideSection),
+      ...emptySlotNodes.filter(insideSection),
+      ...repeatedNodes.map((repeated) => repeated.node),
+    ];
+    const frame = buildMatrixFrameNode(
+      root,
+      rootId,
+      presentationNodes,
+      repeatedNodes,
+      `matrix-frame-${rootId}-${sectionIndex}`
+    );
+    return frame ? [frame] : [];
+  });
 }

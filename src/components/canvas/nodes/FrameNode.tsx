@@ -7,13 +7,17 @@ import type { FrameNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
-import { MATRIX_GRID_RADIUS } from "@/lib/layout/matrix-presentation";
+import {
+  MATRIX_GRID_RADIUS,
+  matrixCellBorderRadius,
+} from "@/lib/layout/matrix-presentation";
 import { getAuthoredTextStyle } from "@/lib/style-utils";
 
 function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const d = data as FrameNodeData;
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
   const matrixGridLines = Array.isArray(d.matrixGridLines) ? d.matrixGridLines : null;
+  const matrixRepeatedCells = Array.isArray(d.matrixRepeatedCells) ? d.matrixRepeatedCells : [];
   const isMatrixGrid = isMatrixFrame && matrixGridLines !== null;
   const matrixOuterBorderVisible = d.matrixOuterBorderVisible !== false;
   const frameWidth = typeof width === "number" && width > 0 ? width : 1;
@@ -49,10 +53,24 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
           ...objectRotationStyle("frame", d as Record<string, unknown>),
         }}
       >
+        {isMatrixGrid && matrixRepeatedCells.map((cell) => (
+          <div
+            key={`${cell.key}-background`}
+            className="pointer-events-none absolute"
+            style={{
+              left: cell.x,
+              top: cell.y,
+              width: cell.width,
+              height: cell.height,
+              borderRadius: matrixCellBorderRadius(cell.role),
+              backgroundColor: cell.background,
+            }}
+          />
+        ))}
         {isMatrixGrid && (
           <svg
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+            className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
             viewBox={`0 0 ${frameWidth} ${frameHeight}`}
             preserveAspectRatio="none"
             shapeRendering="geometricPrecision"
@@ -84,6 +102,29 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
             ))}
           </svg>
         )}
+        {isMatrixGrid && matrixRepeatedCells.map((cell) => (
+          <div
+            key={`${cell.key}-content`}
+            data-matrix-repeated-cell={cell.key}
+            className="pointer-events-none absolute z-20 flex items-center justify-center overflow-hidden px-2 py-1 text-sm font-medium [&_p]:m-0"
+            style={{
+              left: cell.x,
+              top: cell.y,
+              width: cell.width,
+              height: cell.height,
+              color: cell.color,
+              fontSize: cell.fontSize,
+              fontFamily: cell.fontFamily,
+              fontStyle: cell.fontStyle,
+              fontWeight: cell.fontWeight,
+              textAlign: cell.textAlign,
+            }}
+          >
+            {cell.html
+              ? <div className="w-full" dangerouslySetInnerHTML={{ __html: cell.html }} />
+              : <div className="w-full">{cell.text}</div>}
+          </div>
+        ))}
         {d.title !== "" && (
           <div
             data-canvas-label-box="true"

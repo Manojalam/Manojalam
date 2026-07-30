@@ -62,6 +62,23 @@ export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
 export type MatrixIncompleteRowMode = "stretch" | "empty";
+
+export interface MatrixFoldRepeatedCell {
+  sourceNodeId: string;
+  role: "header" | "category" | "cell";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface MatrixFoldSectionPresentation {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  repeatedCells: MatrixFoldRepeatedCell[];
+}
 export interface MatrixGeneratedEmptySlot {
   /** Position relative to the Matrix root's top-left presentation bounds. */
   x: number;
@@ -524,9 +541,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   parentId?: string | null;
   /** Explicit sibling order (child node ids) for stable layouts. */
   childOrder?: string[];
-  /** Number of terminal-descendant-balanced sections used to Fold this parent's direct children. */
+  /** Number of visual Fold sections. Matrix roots paginate terminal rows; other layouts group direct children. */
   layoutFoldCount?: number;
-  /** Direct-child ids after which custom Fold sections end. Omit to balance terminal descendants. */
+  /** Item IDs after which custom Fold sections end (terminal rows for Matrix roots). */
   layoutFoldBreakAfter?: string[];
   /** @deprecated Legacy maximum children per Fold group. */
   layoutWrapAfter?: number;
@@ -564,6 +581,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixIncompleteRowMode?: MatrixIncompleteRowMode;
   /** Generated empty-cell geometry retained while Matrix presentation is active. */
   matrixEmptySlots?: MatrixGeneratedEmptySlot[];
+  /** Generated top-level Fold sections and presentation-only repeated ancestor cells. */
+  matrixFoldSections?: MatrixFoldSectionPresentation[];
   /** Expands every Matrix cell label to fill its safe authored-shape interior. */
   matrixFillCellLabels?: boolean;
   /** Exact gap, in canvas pixels, between this Matrix cell's direct children. */
@@ -696,6 +715,24 @@ export interface FrameNodeData extends BaseNodeData {
     y1: number;
     x2: number;
     y2: number;
+  }>;
+  /** Presentation-only labels for ancestors repeated across Matrix Fold sections. */
+  matrixRepeatedCells?: Array<{
+    key: string;
+    role: "header" | "category" | "cell";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    html?: string;
+    text: string;
+    background?: string;
+    color?: string;
+    fontSize?: string;
+    fontFamily?: string;
+    fontStyle?: string;
+    fontWeight?: string | number;
+    textAlign?: "left" | "center" | "right" | "justify";
   }>;
 }
 

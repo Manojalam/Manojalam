@@ -19,6 +19,7 @@ import {
 import { buildMatrixFrameNodes } from "./matrix-frames";
 import {
   MATRIX_DENSITY_SETTINGS,
+  MATRIX_FOLD_SECTION_GAP,
   MATRIX_HEADER_MIN_WIDTH,
   MATRIX_MAX_COLUMN_WIDTH,
   MATRIX_MIN_COMPRESSED_CELL_HEIGHT,
@@ -108,6 +109,47 @@ function assertClean(result: MatrixLayoutResult): void {
     assert.ok(cell.width > 0 && cell.height > 0);
     assert.ok(cell.height >= cell.requiredHeight - 0.5);
   }
+}
+
+function renderedMatrixNodes(
+  result: MatrixLayoutResult,
+  hierarchy: ReturnType<typeof buildHierarchy>,
+  sourceNodes: Node[]
+): Node[] {
+  const sourceById = new Map(sourceNodes.map((node) => [node.id, node]));
+  return [result.header, ...result.cells].map<Node>((cell) => {
+    const source = sourceById.get(cell.nodeId);
+    return {
+      id: cell.nodeId,
+      type: source?.type ?? "shape",
+      position: { x: cell.x, y: cell.y },
+      style: { ...(source?.style ?? {}), width: cell.width, height: cell.height },
+      data: {
+        ...(source?.data ?? {}),
+        matrixCell: true,
+        matrixDensity: result.density,
+        parentId: hierarchy.get(cell.nodeId)?.parentId,
+        ...(cell.nodeId === result.rootId && result.foldSections
+          ? {
+              matrixFoldSections: result.foldSections.map((section) => ({
+                x: section.x - result.bounds.left,
+                y: section.y - result.bounds.top,
+                width: section.width,
+                height: section.height,
+                repeatedCells: section.repeatedCells.map((repeated) => ({
+                  sourceNodeId: repeated.sourceNodeId,
+                  role: repeated.role,
+                  x: repeated.x - result.bounds.left,
+                  y: repeated.y - result.bounds.top,
+                  width: repeated.width,
+                  height: repeated.height,
+                })),
+              })),
+            }
+          : {}),
+      },
+    };
+  });
 }
 
 function assertMatrixBodyTiled(result: MatrixLayoutResult): void {
@@ -1431,16 +1473,20 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const first = result.cells.find((cell) => cell.nodeId === "child-0")!;
   const sixth = result.cells.find((cell) => cell.nodeId === "child-5")!;
-  const cellGap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
-
   assert.equal(first.y, sixth.y);
-  assert.equal(sixth.x - (first.x + first.width), cellGap);
-  assert.equal(result.header.width, result.bounds.width);
-  assertMatrixBodyTiled(result);
+  assert.equal(sixth.x - (first.x + first.width), MATRIX_FOLD_SECTION_GAP);
+  assert.equal(result.foldSections?.length, 2);
+  assert.deepEqual(result.foldSections?.map((section) => section.terminalIds.length), [5, 5]);
+  assert.equal(result.header.width * 2 + MATRIX_FOLD_SECTION_GAP, result.bounds.width);
+  assert.equal(
+    result.foldSections?.[1].repeatedCells.some((cell) =>
+      cell.role === "header" && cell.sourceNodeId === "root"),
+    true
+  );
   assertClean(result);
 });
 
-test("top-level Fold gives every section the complete current Matrix width", () => {
+test("top-level Fold paginates terminal rows across complete Matrix-width sections", () => {
   const fixture = buildTree([
     {
       id: "root",
@@ -1476,64 +1522,120 @@ test("top-level Fold gives every section the complete current Matrix width", () 
     foldedHierarchy,
     new Map(foldedNodes.map((node) => [node.id, node]))
   );
-  const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
-  const foldedCells = new Map(folded.cells.map((cell) => [cell.nodeId, cell]));
-
   assert.equal(unfolded.header.width, 840);
-  assert.equal(folded.header.width, unfolded.header.width * 3 + 22 * 2);
+  assert.equal(folded.header.width, unfolded.header.width);
+  assert.equal(
+    folded.bounds.width,
+    unfolded.header.width * 3 + MATRIX_FOLD_SECTION_GAP * 2
+  );
   assert.equal(folded.header.height, unfolded.header.height);
   assert.equal(folded.header.x, unfolded.header.x);
   assert.equal(folded.header.y, unfolded.header.y);
-  for (const [nodeId, before] of unfoldedCells) {
-    const after = foldedCells.get(nodeId)!;
-    assert.equal(after.width, before.width, `${nodeId} width changed during top-level Fold`);
-    assert.equal(after.height, before.height, `${nodeId} height changed during top-level Fold`);
+  assert.deepEqual(folded.foldSections?.map((section) => section.terminalIds.length), [4, 4, 4]);
+  assert.deepEqual(folded.foldSections?.[0].terminalIds, [
+    "example-0-0",
+    "example-1-0",
+    "example-1-1",
+    "example-2-0",
+  ]);
+  assert.deepEqual(folded.foldSections?.[1].terminalIds, [
+    "example-2-1",
+    "example-2-2",
+    "example-3-0",
+    "example-4-0",
+  ]);
+  assert.deepEqual(folded.foldSections?.[2].terminalIds, [
+    "example-4-1",
+    "example-5-0",
+    "example-5-1",
+    "example-5-2",
+  ]);
+  assert.equal(
+    folded.foldSections?.[1].repeatedCells.some((cell) => cell.sourceNodeId === "group-2"),
+    true
+  );
+  assert.equal(
+    folded.foldSections?.[2].repeatedCells.some((cell) => cell.sourceNodeId === "group-4"),
+    true
+  );
+  folded.foldSections?.forEach((section, sectionIndex) => {
+    assert.equal(section.width, unfolded.header.width);
     assert.equal(
-      after.requiredHeight,
-      before.requiredHeight,
-      `${nodeId} required height changed during top-level Fold`
+      section.x,
+      unfolded.header.x + sectionIndex * (unfolded.header.width + MATRIX_FOLD_SECTION_GAP)
     );
-  }
-
-  const sectionStride = unfolded.header.width + 22;
-  const sectionStarts = ["group-0", "group-2", "group-4"].map((nodeId) => foldedCells.get(nodeId)!);
-  assert.equal(sectionStarts[0].y, sectionStarts[1].y);
-  assert.equal(sectionStarts[1].y, sectionStarts[2].y);
-  assert.equal(sectionStarts[1].x - sectionStarts[0].x, sectionStride);
-  assert.equal(sectionStarts[2].x - sectionStarts[1].x, sectionStride);
-  for (const groupIndexes of [[0, 1], [2, 3], [4, 5]]) {
-    const anchorId = `group-${groupIndexes[0]}`;
-    const anchorBefore = unfoldedCells.get(anchorId)!;
-    const anchorAfter = foldedCells.get(anchorId)!;
-    const sectionDelta = {
-      x: anchorAfter.x - anchorBefore.x,
-      y: anchorAfter.y - anchorBefore.y,
-    };
-    const sectionNodeIds = groupIndexes.flatMap((groupIndex) => [
-      `group-${groupIndex}`,
-      `rule-${groupIndex}`,
-      ...Array.from(
-        { length: groupIndex % 3 + 1 },
-        (_, exampleIndex) => `example-${groupIndex}-${exampleIndex}`
-      ),
-    ]);
-    for (const nodeId of sectionNodeIds) {
-      const before = unfoldedCells.get(nodeId)!;
-      const after = foldedCells.get(nodeId)!;
-      assert.ok(
-        Math.abs(after.x - before.x - sectionDelta.x) < 0.001,
-        `${nodeId} moved horizontally within its section`
-      );
-      assert.ok(
-        Math.abs(after.y - before.y - sectionDelta.y) < 0.001,
-        `${nodeId} moved vertically within its section`
-      );
-    }
-  }
+  });
   assertClean(folded);
 });
 
-test("manual top-level Fold breaks never shrink later sections", () => {
+test("Fold 4 divides forty terminal descendants exactly and repeats continued ancestors", () => {
+  const groups = [
+    ["first", 13],
+    ["second", 7],
+    ["third", 20],
+  ] as const;
+  const fixture = buildTree([
+    { id: "root", parentId: null, matrixTableWidth: 720 },
+    ...groups.flatMap(([groupId, count]) => [
+      { id: groupId, parentId: "root" },
+      ...Array.from({ length: count }, (_, index) => ({
+        id: `${groupId}-${index}`,
+        parentId: groupId,
+      })),
+    ]),
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 4 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
+  const sections = result.foldSections ?? [];
+
+  assert.equal(sections.length, 4);
+  assert.deepEqual(sections.map((section) => section.terminalIds.length), [10, 10, 10, 10]);
+  assert.deepEqual(sections[0].terminalIds, Array.from({ length: 10 }, (_, index) => `first-${index}`));
+  assert.deepEqual(sections[1].terminalIds, [
+    "first-10",
+    "first-11",
+    "first-12",
+    ...Array.from({ length: 7 }, (_, index) => `second-${index}`),
+  ]);
+  assert.deepEqual(sections[2].terminalIds, Array.from({ length: 10 }, (_, index) => `third-${index}`));
+  assert.deepEqual(sections[3].terminalIds, Array.from({ length: 10 }, (_, index) => `third-${index + 10}`));
+  assert.equal(
+    sections[1].repeatedCells.some((cell) => cell.sourceNodeId === "first"),
+    true
+  );
+  assert.equal(
+    sections[3].repeatedCells.some((cell) => cell.sourceNodeId === "third"),
+    true
+  );
+  assert.equal(
+    sections.slice(1).every((section) =>
+      section.repeatedCells.some((cell) => cell.role === "header" && cell.sourceNodeId === "root")),
+    true
+  );
+
+  const frames = buildMatrixFrameNodes(renderedMatrixNodes(result, hierarchy, nodes), "root");
+  assert.equal(frames.length, 4);
+  assert.deepEqual(
+    frames.map((frame) => frame.id),
+    [0, 1, 2, 3].map((index) => `matrix-frame-root-${index}`)
+  );
+  assert.ok(
+    frames[1].position.x
+      - (frames[0].position.x + Number(frames[0].style?.width))
+      > MATRIX_DENSITY_SETTINGS[result.density].cellGap
+  );
+  assert.equal(
+    ((frames[1].data as Record<string, unknown>).matrixRepeatedCells as Array<{ text: string }>)
+      .some((cell) => cell.text === "root"),
+    true
+  );
+  assertClean(result);
+});
+
+test("manual top-level Fold breaks paginate the selected terminal rows", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, matrixTableWidth: 640 },
     ...Array.from({ length: 7 }, (_, index) => ({
@@ -1565,50 +1667,33 @@ test("manual top-level Fold breaks never shrink later sections", () => {
   );
   const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
   const foldedCells = new Map(folded.cells.map((cell) => [cell.nodeId, cell]));
-  const gap = MATRIX_DENSITY_SETTINGS[folded.density].cellGap;
-  const stride = unfolded.header.width + gap;
+  const stride = unfolded.header.width + MATRIX_FOLD_SECTION_GAP;
 
-  assert.equal(folded.header.width, unfolded.header.width * 3 + gap * 2);
+  assert.equal(folded.header.width, unfolded.header.width);
+  assert.equal(folded.bounds.width, unfolded.header.width * 3 + MATRIX_FOLD_SECTION_GAP * 2);
   assert.equal(foldedCells.get("child-1")!.x - foldedCells.get("child-0")!.x, stride);
   assert.equal(foldedCells.get("child-5")!.x - foldedCells.get("child-1")!.x, stride);
   assert.equal(foldedCells.get("child-0")!.y, foldedCells.get("child-1")!.y);
   assert.equal(foldedCells.get("child-1")!.y, foldedCells.get("child-5")!.y);
+  assert.deepEqual(
+    folded.foldSections?.map((section) => section.terminalIds),
+    [["child-0"], ["child-1", "child-2", "child-3", "child-4"], ["child-5", "child-6"]]
+  );
   for (const [nodeId, before] of unfoldedCells) {
     const after = foldedCells.get(nodeId)!;
     assert.equal(after.width, before.width, `${nodeId} width changed`);
     assert.equal(after.height, before.height, `${nodeId} height changed`);
   }
-  const renderedNodes = [folded.header, ...folded.cells].map<Node>((cell) => ({
-    id: cell.nodeId,
-    type: "shape",
-    position: { x: cell.x, y: cell.y },
-    style: { width: cell.width, height: cell.height },
-    data: {
-      matrixCell: true,
-      matrixDensity: folded.density,
-      parentId: foldedHierarchy.get(cell.nodeId)?.parentId,
-    },
-  }));
-  const frame = buildMatrixFrameNodes(renderedNodes, "root")[0];
-  const gridLines = (frame.data as Record<string, unknown>).matrixGridLines as Array<{
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-  }>;
-  const expectedSectionDivisions = ["child-0", "child-1"].map((nodeId) => {
-    const cell = foldedCells.get(nodeId)!;
-    return cell.x + cell.width + gap / 2;
-  });
-  const verticalDivisionX = gridLines
-    .filter((line) => Math.abs(line.x1 - line.x2) < 0.5)
-    .map((line) => line.x1 + frame.position.x);
-  for (const expectedX of expectedSectionDivisions) {
-    assert.ok(
-      verticalDivisionX.some((actualX) => Math.abs(actualX - expectedX) < 0.5),
-      `missing Matrix section division at ${expectedX}`
-    );
-  }
+  const frames = buildMatrixFrameNodes(
+    renderedMatrixNodes(folded, foldedHierarchy, foldedNodes),
+    "root"
+  );
+  assert.equal(frames.length, 3);
+  assert.equal(
+    frames.every((frame) =>
+      (frame.data as Record<string, unknown>).matrixFrameFor === "root"),
+    true
+  );
   assertClean(folded);
 });
 
@@ -1664,7 +1749,7 @@ test("a stretched nested vertical Fold keeps its section rows equally tall", () 
   assertClean(result);
 });
 
-test("a top-level branch Fold preserves the shorter section's natural height", () => {
+test("a top-level Fold splits an oversized branch and repeats it in the next section", () => {
   const fixture = buildTree([
     { id: "root", parentId: null },
     { id: "tall", parentId: "root" },
@@ -1681,20 +1766,22 @@ test("a top-level branch Fold preserves the shorter section's natural height", (
   );
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
-  const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
-  const tall = cells.get("tall")!;
-  const short = cells.get("short")!;
+  const sections = result.foldSections ?? [];
 
-  assert.equal(tall.y, short.y);
-  assert.ok(tall.height > short.requiredHeight);
-  assert.equal(short.height, short.requiredHeight);
-  assert.ok(short.height < tall.height);
+  assert.deepEqual(sections.map((section) => section.terminalIds.length), [3, 2]);
+  assert.deepEqual(sections[0].terminalIds, ["tall-0", "tall-1", "tall-2"]);
+  assert.deepEqual(sections[1].terminalIds, ["tall-3", "short"]);
+  assert.equal(
+    sections[1].repeatedCells.some((cell) => cell.sourceNodeId === "tall"),
+    true
+  );
+  assert.ok(sections[0].height > sections[1].height);
   assert.equal(result.header.x, unfolded.header.x);
   assert.equal(result.header.y, unfolded.header.y);
   assertClean(result);
 });
 
-test("a top-level vertical Matrix Fold uses full-width sections without resizing children", () => {
+test("a top-level vertical Matrix Fold still uses independent full-width sections", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, orientation: "vertical" },
     { id: "wide", parentId: "root" },
@@ -1715,14 +1802,19 @@ test("a top-level vertical Matrix Fold uses full-width sections without resizing
   const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
   const wide = cells.get("wide")!;
   const short = cells.get("short")!;
-  const gap = MATRIX_DENSITY_SETTINGS[result.density].cellGap;
-
-  assert.equal(short.x - wide.x, unfolded.header.width + gap);
-  assert.equal(wide.y, short.y);
   assert.equal(wide.width, unfoldedCells.get("wide")!.width);
   assert.equal(short.width, unfoldedCells.get("short")!.width);
   assert.ok(short.width < wide.width);
-  assert.equal(result.header.width, unfolded.header.width * 2 + gap);
+  assert.equal(result.header.width, unfolded.header.width);
+  assert.equal(
+    result.foldSections?.[1].x,
+    result.foldSections![0].x + result.foldSections![0].width + MATRIX_FOLD_SECTION_GAP
+  );
+  assert.deepEqual(result.foldSections?.map((section) => section.terminalIds.length), [3, 2]);
+  assert.equal(
+    result.foldSections?.[1].repeatedCells.some((cell) => cell.sourceNodeId === "wide"),
+    true
+  );
   assertClean(result);
 });
 

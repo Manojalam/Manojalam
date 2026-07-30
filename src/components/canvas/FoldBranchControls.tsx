@@ -16,6 +16,7 @@ interface FoldBranchControlsProps {
   childIds: string[];
   hierarchy: Hierarchy;
   nodes: Node[];
+  terminalItems?: boolean;
   compact?: boolean;
   className?: string;
 }
@@ -46,6 +47,7 @@ export function FoldBranchControls({
   childIds,
   hierarchy,
   nodes,
+  terminalItems = false,
   compact = false,
   className,
 }: FoldBranchControlsProps) {
@@ -75,7 +77,9 @@ export function FoldBranchControls({
         Fold into sections
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-        Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break.
+        {terminalItems
+          ? "Automatic gives every Matrix section the same number of terminal rows. If a branch continues, its root and ancestors repeat in the next section."
+          : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
       </p>
 
       <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
@@ -112,13 +116,15 @@ export function FoldBranchControls({
             onChange={(event) => {
               commit({
                 layoutFoldBreakAfter: event.target.value === "custom"
-                  ? defaultFoldBreakAfter(childIds, sectionCount, hierarchy)
+                  ? defaultFoldBreakAfter(childIds, sectionCount, terminalItems ? undefined : hierarchy)
                   : undefined,
               });
             }}
             className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
           >
-            <option value="automatic">Automatic · balance terminal children</option>
+            <option value="automatic">
+              {terminalItems ? "Automatic · equal terminal rows" : "Automatic · balance terminal children"}
+            </option>
             <option value="custom">Custom · choose each break</option>
           </select>
 
@@ -133,11 +139,11 @@ export function FoldBranchControls({
                 return (
                   <label key={`${breakIndex}-${breakChildId}`} className="block">
                     <span className="block text-[9px] font-medium text-muted-foreground">
-                      Section {breakIndex + 1} ends after
+                      Section {breakIndex + 1} ends after{terminalItems ? " terminal row" : ""}
                     </span>
                     <select
                       value={breakChildId}
-                      aria-label={`Section ${breakIndex + 1} ends after`}
+                      aria-label={`Section ${breakIndex + 1} ends after${terminalItems ? " terminal row" : ""}`}
                       onChange={(event) => updateManualBreak(breakIndex, event.target.value)}
                       className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
                     >

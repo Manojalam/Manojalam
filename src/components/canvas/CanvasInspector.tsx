@@ -35,6 +35,7 @@ import {
   type LayoutMode,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { buildMatrixLeafRows } from "@/lib/layout/matrix-layout";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
 import { resolveLayoutFontSize } from "@/lib/layout/layout-presentation";
 import type {
@@ -1554,7 +1555,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeLayoutStartColor = typeof structuredLayoutRootData.layoutStartColor === "string"
     ? structuredLayoutRootData.layoutStartColor
     : undefined;
-  const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
+  const foldsMatrixTerminalRows = !!selectedNode
+    && !!matrixRootNode
+    && selectedNode.id === matrixRootNode.id;
+  const foldItemIds = foldsMatrixTerminalRows
+    ? buildMatrixLeafRows(
+        selectedNode.id,
+        hierarchy,
+        new Map(nodes.map((node) => [node.id, node]))
+      ).flatMap((row) => row.path.at(-1) ?? [])
+    : childIds;
+  const canFoldSelectedBranch = !!structuredLayoutRootNode && foldItemIds.length > 1;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
     ? nodes.find((node) => node.type === "sunburst" && (node.data as Record<string, unknown>).sunburstFor === d.sunburstHiddenFor)
@@ -4950,9 +4961,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <FoldBranchControls
               parentId={selectedNode.id}
               parentData={d}
-              childIds={childIds}
+              childIds={foldItemIds}
               hierarchy={hierarchy}
               nodes={nodes}
+              terminalItems={foldsMatrixTerminalRows}
               compact
             />
           </Section>

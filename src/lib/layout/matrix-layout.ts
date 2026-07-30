@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import { getSubtree, type Hierarchy } from "./hierarchy";
+import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
 import {
   resolvedFoldSectionCount,
@@ -43,6 +43,22 @@ export interface MatrixEmptyCellGeometry {
   height: number;
 }
 
+export interface MatrixRepeatedCellGeometry extends MatrixCellGeometry {
+  sourceNodeId: string;
+  sectionIndex: number;
+  role: "header" | "category" | "cell";
+}
+
+export interface MatrixFoldSectionGeometry {
+  sectionIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  terminalIds: string[];
+  repeatedCells: MatrixRepeatedCellGeometry[];
+}
+
 export interface MatrixPlacement {
   x: number;
   y: number;
@@ -67,6 +83,8 @@ export interface MatrixLayoutResult {
   cells: MatrixCellGeometry[];
   /** Generated visual cells that preserve missing trailing row positions. */
   emptyCells: MatrixEmptyCellGeometry[];
+  /** Independent top-level Fold sections with presentation-only repeated ancestor cells. */
+  foldSections?: MatrixFoldSectionGeometry[];
   placements: Record<string, MatrixPlacement>;
   columnWidths: number[];
   columnX: number[];
@@ -138,6 +156,9 @@ export const MATRIX_DENSITY_SETTINGS: Record<MatrixTableDensity, DensitySettings
     minHeaderHeight: 72,
   },
 };
+
+/** Fold continuations are separate tables, not ordinary adjacent Matrix columns. */
+export const MATRIX_FOLD_SECTION_GAP = 56;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -2233,126 +2254,204 @@ function applyMatrixTableSizeOverrides(
   };
 }
 
-type TopLevelFoldSection = {
-  nodeIds: ReadonlySet<string>;
-  bounds: NodeRect;
-  dx: number;
-  dy: number;
+type FoldSectionSpan = {
+  nodeId: string;
+  column: number;
+  rowStart: number;
+  rowEnd: number;
 };
 
-function combinedCellBounds(
-  id: string,
-  cells: MatrixCellGeometry[]
-): NodeRect | null {
-  if (!cells.length) return null;
-  const left = Math.min(...cells.map((cell) => cell.x));
-  const top = Math.min(...cells.map((cell) => cell.y));
-  const right = Math.max(...cells.map((cell) => cell.x + cell.width));
-  const bottom = Math.max(...cells.map((cell) => cell.y + cell.height));
-  return createNodeRect(id, left, top, right - left, bottom - top);
-}
-
-function rectangleIntersectionArea(
-  first: Pick<NodeRect, "left" | "top" | "right" | "bottom">,
-  second: Pick<NodeRect, "left" | "top" | "right" | "bottom">
-): number {
-  const width = Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left));
-  const height = Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
-  return width * height;
-}
-
 /**
- * Top-level Fold is a presentation-only cut of an already-computed Matrix.
- * Each section receives one full copy of the current table width while its
- * child branches move rigidly; no child width or height is recomputed.
+ * Top-level Matrix Fold paginates ordered root-to-leaf rows. Ancestors that
+ * cross a section boundary receive presentation-only repetitions, while every
+ * authored node retains exactly one editable placement.
  */
 function applyTopLevelMatrixFold(
   result: MatrixLayoutResult,
   rootId: string,
   hierarchy: Hierarchy,
   byId: Map<string, Node>,
-  sections: string[][]
+  terminalSections: string[][]
 ): MatrixLayoutResult {
-  if (sections.length < 2 || !result.cells.length) return result;
+  if (terminalSections.length < 2 || !result.cells.length) return result;
 
   const settings = MATRIX_DENSITY_SETTINGS[result.density];
-  const sectionGap = matrixSiblingGapForNode(rootId, settings.cellGap, byId);
+  const sectionGap = MATRIX_FOLD_SECTION_GAP;
   const sectionWidth = result.header.width;
-  const bodyTop = Math.min(
-    ...result.cells.map((cell) => cell.y),
-    ...result.emptyCells.map((cell) => cell.y)
-  );
   const sectionStride = sectionWidth + sectionGap;
-  const sectionLayouts = sections.flatMap<TopLevelFoldSection>((childIds, sectionIndex) => {
-    const nodeIds = new Set(childIds.flatMap((childId) => getSubtree(childId, hierarchy)));
-    const sectionCells = result.cells.filter((cell) => nodeIds.has(cell.nodeId));
-    const bounds = combinedCellBounds(`matrix-fold-section-${sectionIndex}`, sectionCells);
-    if (!bounds) return [];
-    return [{
-      nodeIds,
-      bounds,
-      dx: result.header.x + sectionIndex * sectionStride - bounds.left,
-      dy: bodyTop - bounds.top,
-    }];
-  });
-  if (sectionLayouts.length !== sections.length) return result;
-
-  const sectionForNode = new Map<string, TopLevelFoldSection>();
-  for (const section of sectionLayouts) {
-    for (const nodeId of section.nodeIds) sectionForNode.set(nodeId, section);
-  }
-  const cells = result.cells.map((cell) => {
-    const section = sectionForNode.get(cell.nodeId);
-    return section
-      ? { ...cell, x: cell.x + section.dx, y: cell.y + section.dy }
-      : cell;
-  });
-  const emptyCells = result.emptyCells.map((cell) => {
-    const emptyBounds = createNodeRect(
-      "matrix-empty-cell",
-      cell.x,
-      cell.y,
-      cell.width,
-      cell.height
-    );
-    const section = sectionLayouts
-      .map((candidate) => ({
-        candidate,
-        overlap: rectangleIntersectionArea(emptyBounds, candidate.bounds),
-        distance: (
-          (cell.x + cell.width / 2) - (candidate.bounds.left + candidate.bounds.width / 2)
-        ) ** 2 + (
-          (cell.y + cell.height / 2) - (candidate.bounds.top + candidate.bounds.height / 2)
-        ) ** 2,
-      }))
-      .sort((first, second) => second.overlap - first.overlap || first.distance - second.distance)[0]
-      ?.candidate;
-    return section
-      ? { ...cell, x: cell.x + section.dx, y: cell.y + section.dy }
-      : cell;
-  });
-
-  const header = {
-    ...result.header,
-    width: sectionWidth * sections.length + sectionGap * (sections.length - 1),
-  };
+  const rowsByTerminalId = new Map(result.rows.flatMap((row) => {
+    const terminalId = row.path.at(-1);
+    return terminalId ? [[terminalId, row] as const] : [];
+  }));
+  const sourceCells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const placedNodeIds = new Set<string>([rootId]);
+  const cells: MatrixCellGeometry[] = [];
   const placements: Record<string, MatrixPlacement> = {};
-  for (const cell of [header, ...cells]) {
-    const node = byId.get(cell.nodeId);
-    if (!node) continue;
-    const position = nodePositionForRect(node, cell.x, cell.y, cell.width, cell.height);
-    placements[cell.nodeId] = { ...position, width: cell.width, height: cell.height };
+  const foldSections: MatrixFoldSectionGeometry[] = [];
+  const header = { ...result.header, width: sectionWidth };
+  const rootNode = byId.get(rootId);
+  if (rootNode) {
+    const position = nodePositionForRect(
+      rootNode,
+      header.x,
+      header.y,
+      header.width,
+      header.height
+    );
+    placements[rootId] = { ...position, width: header.width, height: header.height };
   }
-  const bottom = Math.max(
-    header.y + header.height,
-    ...cells.map((cell) => cell.y + cell.height),
-    ...emptyCells.map((cell) => cell.y + cell.height)
-  );
+
+  terminalSections.forEach((terminalIds, sectionIndex) => {
+    const sectionRows = terminalIds.flatMap((terminalId) => rowsByTerminalId.get(terminalId) ?? []);
+    if (!sectionRows.length) return;
+    const sectionX = result.header.x + sectionIndex * sectionStride;
+    const bodyY = result.header.y + result.header.height + settings.cellGap;
+    const sourceRowTracks = sectionRows
+      .flatMap((row) => {
+        const terminalId = row.path.at(-1);
+        const terminalCell = terminalId ? sourceCells.get(terminalId) : undefined;
+        return terminalCell ? [{ y: terminalCell.y, rows: [row] }] : [];
+      })
+      .sort((first, second) => first.y - second.y)
+      .reduce<Array<{ y: number; rows: MatrixRow[] }>>((tracks, candidate) => {
+        const existing = tracks.find((track) => Math.abs(track.y - candidate.y) <= 0.5);
+        if (existing) {
+          existing.rows.push(...candidate.rows);
+        } else {
+          tracks.push(candidate);
+        }
+        return tracks;
+      }, []);
+    const trackIndexByTerminalId = new Map<string, number>();
+    sourceRowTracks.forEach((track, trackIndex) => {
+      track.rows.forEach((row) => {
+        const terminalId = row.path.at(-1);
+        if (terminalId) trackIndexByTerminalId.set(terminalId, trackIndex);
+      });
+    });
+    const spans = new Map<string, FoldSectionSpan>();
+    sectionRows.forEach((row) => {
+      const terminalId = row.path.at(-1);
+      const localRowIndex = terminalId ? trackIndexByTerminalId.get(terminalId) : undefined;
+      if (localRowIndex === undefined) return;
+      row.path.forEach((nodeId, column) => {
+        const current = spans.get(nodeId);
+        if (!current) {
+          spans.set(nodeId, {
+            nodeId,
+            column,
+            rowStart: localRowIndex,
+            rowEnd: localRowIndex,
+          });
+          return;
+        }
+        current.rowEnd = localRowIndex;
+      });
+    });
+    const rowHeights = sourceRowTracks.map((track) => Math.max(
+      settings.minRowHeight,
+      ...track.rows.map((row) =>
+        result.rowHeights[result.rows.indexOf(row)] ?? settings.minRowHeight)
+    ));
+    const rowY: number[] = [];
+    let nextRowY = bodyY;
+    rowHeights.forEach((height) => {
+      rowY.push(nextRowY);
+      nextRowY += height + settings.cellGap;
+    });
+    const repeatedCells: MatrixRepeatedCellGeometry[] = [];
+    let sectionCellBottom = result.header.y + result.header.height;
+    if (sectionIndex > 0) {
+      repeatedCells.push({
+        ...result.header,
+        nodeId: `matrix-fold-repeat:${rootId}:${sectionIndex}:${rootId}`,
+        sourceNodeId: rootId,
+        sectionIndex,
+        role: "header",
+        x: sectionX,
+        width: sectionWidth,
+      });
+    }
+
+    [...spans.values()]
+      .sort((first, second) => first.rowStart - second.rowStart || first.column - second.column)
+      .forEach((span) => {
+        const sourceCell = sourceCells.get(span.nodeId);
+        if (!sourceCell) return;
+        const height = rowHeights
+          .slice(span.rowStart, span.rowEnd + 1)
+          .reduce((sum, rowHeight) => sum + rowHeight, 0)
+          + settings.cellGap * (span.rowEnd - span.rowStart);
+        const geometry: MatrixCellGeometry = {
+          nodeId: span.nodeId,
+          column: sourceCell.column,
+          rowStart: result.orientation === "vertical"
+            ? sourceCell.rowStart
+            : Math.min(...sourceRowTracks[span.rowStart].rows.map((row) => row.index)),
+          rowEnd: result.orientation === "vertical"
+            ? sourceCell.rowEnd
+            : Math.max(...sourceRowTracks[span.rowEnd].rows.map((row) => row.index)),
+          rowSpan: result.orientation === "vertical"
+            ? sourceCell.rowSpan
+            : span.rowEnd - span.rowStart + 1,
+          x: sectionX + (sourceCell.x - result.header.x),
+          y: result.orientation === "vertical" ? sourceCell.y : rowY[span.rowStart],
+          width: sourceCell.width,
+          height: result.orientation === "vertical" ? sourceCell.height : height,
+          requiredHeight: sourceCell.requiredHeight,
+        };
+        sectionCellBottom = Math.max(sectionCellBottom, geometry.y + geometry.height);
+        if (placedNodeIds.has(span.nodeId)) {
+          repeatedCells.push({
+            ...geometry,
+            nodeId: `matrix-fold-repeat:${rootId}:${sectionIndex}:${span.nodeId}`,
+            sourceNodeId: span.nodeId,
+            sectionIndex,
+            role: hierarchy.get(span.nodeId)?.parentId === rootId ? "category" : "cell",
+          });
+          return;
+        }
+        placedNodeIds.add(span.nodeId);
+        cells.push(geometry);
+        const node = byId.get(span.nodeId);
+        if (!node) return;
+        const position = nodePositionForRect(
+          node,
+          geometry.x,
+          geometry.y,
+          geometry.width,
+          geometry.height
+        );
+        placements[span.nodeId] = {
+          ...position,
+          width: geometry.width,
+          height: geometry.height,
+        };
+      });
+
+    const bodyBottom = result.orientation === "vertical"
+      ? sectionCellBottom
+      : rowHeights.length
+      ? rowY[rowY.length - 1] + rowHeights[rowHeights.length - 1]
+      : result.header.y + result.header.height;
+    foldSections.push({
+      sectionIndex,
+      x: sectionX,
+      y: result.header.y,
+      width: sectionWidth,
+      height: bodyBottom - result.header.y,
+      terminalIds: sectionRows.map((row) => row.path.at(-1)).filter((id): id is string => !!id),
+      repeatedCells,
+    });
+  });
+
+  if (foldSections.length !== terminalSections.length) return result;
+  const bottom = Math.max(...foldSections.map((section) => section.y + section.height));
   const bounds = createNodeRect(
     result.bounds.id,
     result.bounds.left,
     result.bounds.top,
-    header.width,
+    sectionWidth * terminalSections.length + sectionGap * (terminalSections.length - 1),
     bottom - result.bounds.top
   );
   const diagnostics = diagnoseMatrix(
@@ -2372,7 +2471,8 @@ function applyTopLevelMatrixFold(
   return {
     ...result,
     cells,
-    emptyCells,
+    emptyCells: [],
+    foldSections,
     placements,
     header,
     bounds,
@@ -2389,8 +2489,9 @@ export function computeMatrixLayout(
   const root = byId.get(rootId);
   if (!root) throw new Error(`Matrix root ${rootId} does not exist.`);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
-  const rootChildren = visibleChildren(rootId, hierarchy, byId);
-  const rootFoldSections = resolvedFoldSections(rootData, rootChildren, hierarchy);
+  const rows = buildMatrixLeafRows(rootId, hierarchy, byId);
+  const terminalIds = rows.flatMap((row) => row.path.at(-1) ?? []);
+  const rootFoldSections = resolvedFoldSections(rootData, terminalIds);
   if (rootFoldSections.length > 1) {
     const unfoldedRootData = { ...rootData };
     delete unfoldedRootData.layoutFoldCount;
@@ -2407,7 +2508,6 @@ export function computeMatrixLayout(
       rootFoldSections
     );
   }
-  const rows = buildMatrixLeafRows(rootId, hierarchy, byId);
   const savedDensity = storedDensity(rootData.matrixDensity);
   const userSelectedDensity = rootData.matrixDensityUserSet === true
     || savedDensity === "compact"
