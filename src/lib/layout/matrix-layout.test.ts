@@ -1656,6 +1656,20 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
       && cell.boxShadow?.includes("inset")),
     true
   );
+  assert.deepEqual(
+    frames.map((frame) =>
+      (frame.data as Record<string, unknown>).matrixFoldSectionIndex),
+    [0, 1, 2, 3]
+  );
+  assert.ok(frames.every((frame) =>
+    Array.isArray(
+      (frame.data as Record<string, unknown>).matrixFoldSectionNodeIds
+    )));
+  assert.ok(frames.every((frame) => {
+    const selectorOffset = (frame.data as Record<string, unknown>)
+      .matrixFoldSectionSelectorOffset as { x?: unknown; y?: unknown } | undefined;
+    return Number.isFinite(selectorOffset?.x) && Number.isFinite(selectorOffset?.y);
+  }));
   assert.ok(frames.every((frame) => frame.position.y > result.header.y + result.header.height));
   assertClean(result);
 });

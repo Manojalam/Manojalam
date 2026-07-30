@@ -488,7 +488,7 @@ export function buildMatrixFrameNodes(
       .filter((node) => node.id !== rootId)
       .map((node) => node.id);
     if (dividedRoot && sectionIndex === 0) sectionNodeIds.unshift(rootId);
-    if (bodyFrame && dividedRoot) {
+    if (bodyFrame) {
       bodyFrame.data = {
         ...(bodyFrame.data ?? {}),
         matrixFoldSectionIndex: sectionIndex,
