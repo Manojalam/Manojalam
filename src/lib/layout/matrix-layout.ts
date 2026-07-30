@@ -2283,6 +2283,9 @@ function applyTopLevelMatrixFold(
   const sectionStride = sectionWidth + sectionGap;
   const foldedWidth = sectionWidth * terminalSections.length
     + sectionGap * (terminalSections.length - 1);
+  const rootNode = byId.get(rootId);
+  const rootData = (rootNode?.data ?? {}) as Record<string, unknown>;
+  const dividedRoot = rootData.matrixFoldRootMode === "divided";
   const rowsByTerminalId = new Map(result.rows.flatMap((row) => {
     const terminalId = row.path.at(-1);
     return terminalId ? [[terminalId, row] as const] : [];
@@ -2292,8 +2295,10 @@ function applyTopLevelMatrixFold(
   const cells: MatrixCellGeometry[] = [];
   const placements: Record<string, MatrixPlacement> = {};
   const foldSections: MatrixFoldSectionGeometry[] = [];
-  const header = { ...result.header, width: foldedWidth };
-  const rootNode = byId.get(rootId);
+  const header = {
+    ...result.header,
+    width: dividedRoot ? sectionWidth : foldedWidth,
+  };
   if (rootNode) {
     const position = nodePositionForRect(
       rootNode,
@@ -2364,6 +2369,17 @@ function applyTopLevelMatrixFold(
       nextRowY += height + settings.cellGap;
     });
     const repeatedCells: MatrixRepeatedCellGeometry[] = [];
+    if (dividedRoot && sectionIndex > 0) {
+      repeatedCells.push({
+        ...result.header,
+        nodeId: `matrix-fold-repeat:${rootId}:${sectionIndex}:${rootId}`,
+        sourceNodeId: rootId,
+        sectionIndex,
+        role: "header",
+        x: sectionX,
+        width: sectionWidth,
+      });
+    }
     let sectionCellBottom = bodyY;
 
     [...spans.values()]

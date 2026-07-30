@@ -17,7 +17,7 @@ const MATRIX_TYPOGRAPHY_FIELDS = new Set([
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_REFLOW_FIELDS,
   "fillColor", "fillOpacity", "color", "layoutAutoFill",
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixDensity", "matrixCompositionMode", "matrixOuterBorderVisible", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixIncompleteRowMode", "matrixFillCellLabels",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixFoldRootMode", "matrixDensity", "matrixCompositionMode", "matrixOuterBorderVisible", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixIncompleteRowMode", "matrixFillCellLabels",
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 
