@@ -6,8 +6,13 @@ import {
 } from "./matrix-presentation";
 import {
   getTextStyle,
+  resolveBorderColor,
+  resolveBorderStyle,
+  resolveBorderWidth,
   resolveFillColor,
+  resolveLayoutFillGradient,
 } from "../style-utils";
+import { surfaceEffectStyle } from "../canvas/surface-effects";
 import type {
   FrameNodeData,
   MatrixFoldRepeatedCell,
@@ -169,6 +174,8 @@ function repeatedCellRenderData(
   const background = resolveFillColor(data);
   const textStyle = getTextStyle(data, background);
   const content = repeatedCellText(repeated.source);
+  const borderColor = resolveBorderColor(data);
+  const effectStyle = surfaceEffectStyle(data, borderColor);
   const textAlign = data.textAlign === "left"
     || data.textAlign === "right"
     || data.textAlign === "justify"
@@ -185,6 +192,13 @@ function repeatedCellRenderData(
     html: content.html,
     text: content.text,
     background,
+    backgroundImage: effectStyle.backgroundImage ?? resolveLayoutFillGradient(data),
+    backgroundBlendMode: effectStyle.backgroundBlendMode,
+    backdropFilter: effectStyle.backdropFilter,
+    boxShadow: effectStyle.boxShadow,
+    borderColor,
+    borderStyle: resolveBorderStyle(data),
+    borderWidth: resolveBorderWidth(data),
     color: typeof textStyle.color === "string" ? textStyle.color : undefined,
     fontSize: typeof textStyle.fontSize === "string" ? textStyle.fontSize : undefined,
     fontFamily: typeof textStyle.fontFamily === "string" ? textStyle.fontFamily : undefined,

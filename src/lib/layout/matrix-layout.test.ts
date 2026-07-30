@@ -1590,6 +1590,17 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
   ]);
   const nodes = fixture.nodes.map((node) => node.id === "root"
     ? { ...node, data: { ...node.data, layoutFoldCount: 4 } }
+    : node.id === "first"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            surfaceEffect: "glass",
+            surfaceEffectDepth: 8,
+            surfaceEffectStrength: 70,
+            surfaceEffectAngle: 35,
+          },
+        }
     : node);
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
@@ -1634,9 +1645,15 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
   );
   assert.equal(
     ((frames[1].data as Record<string, unknown>).matrixRepeatedCells as Array<{
+      backgroundImage?: string;
+      boxShadow?: string;
       sourceNodeId: string;
       text: string;
-    }>).some((cell) => cell.sourceNodeId === "first" && cell.text === "first"),
+    }>).some((cell) =>
+      cell.sourceNodeId === "first"
+      && cell.text === "first"
+      && cell.backgroundImage?.includes("linear-gradient")
+      && cell.boxShadow?.includes("inset")),
     true
   );
   assert.ok(frames.every((frame) => frame.position.y > result.header.y + result.header.height));

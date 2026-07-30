@@ -79,6 +79,13 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
               height: cell.height,
               borderRadius: matrixCellBorderRadius(cell.role),
               backgroundColor: cell.background,
+              backgroundImage: cell.backgroundImage,
+              backgroundBlendMode: cell.backgroundBlendMode,
+              backdropFilter: cell.backdropFilter,
+              boxShadow: cell.boxShadow,
+              borderColor: cell.borderColor,
+              borderStyle: cell.borderStyle,
+              borderWidth: cell.borderWidth,
             }}
           />
         ))}
