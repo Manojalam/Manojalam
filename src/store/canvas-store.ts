@@ -71,7 +71,7 @@ import {
 } from "@/lib/layout/matrix-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
-import type { LayoutMode, RadialColorScheme } from "@/lib/types";
+import type { LayoutMode, MatrixRowColorPattern, RadialColorScheme } from "@/lib/types";
 import {
   effectiveCornerRadius,
   fitShapeToContent,
@@ -272,6 +272,7 @@ interface CanvasState {
   ) => void;
   applyLayoutColorScheme: (rootId: string, scheme: RadialColorScheme, resetOverrides?: boolean) => void;
   applyLayoutStartColor: (rootId: string, color?: string) => void;
+  applyMatrixRowColorPattern: (rootId: string, pattern: MatrixRowColorPattern) => void;
 }
 
 const pendingListReflowNodeIds = new Set<string>();
@@ -4396,6 +4397,42 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           data: {
             ...(node.data ?? {}),
             layoutStartColor: normalizedColor,
+          },
+        }
+      : node);
+    const hierarchy = buildHierarchy(hierarchyNodes, edges);
+    get().pushHistory();
+    const styled = applyLayoutPalette(
+      preparedNodes,
+      edges,
+      hierarchy,
+      rootId,
+      mode,
+      layoutSchemeValue(preparedNodes, rootId)
+    );
+    const scopeIds = new Set(getSubtree(rootId, hierarchy));
+    const nextNodes = withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true);
+    set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
+  },
+
+  applyMatrixRowColorPattern: (rootId, pattern) => {
+    const { nodes, edges } = get();
+    const hierarchyNodes = nodes.filter((node) =>
+      !isAutoMatrixFrame(node)
+      && !isAutoSunburstNode(node)
+      && node.type !== "relationshipDiagram"
+    );
+    const root = hierarchyNodes.find((node) => node.id === rootId);
+    if (!root) return;
+    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+    if (mode !== "matrix") return;
+
+    const preparedNodes = nodes.map((node) => node.id === rootId
+      ? {
+          ...node,
+          data: {
+            ...(node.data ?? {}),
+            matrixRowColorPattern: pattern,
           },
         }
       : node);

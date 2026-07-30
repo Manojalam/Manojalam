@@ -81,6 +81,8 @@ export type RadialColorScheme =
   | "forest"
   | "scholar";
 
+export type MatrixRowColorPattern = "flow" | "gentle";
+
 export interface LayoutVisualStyle {
   rootId: string;
   mode: LayoutMode;
@@ -536,6 +538,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutColorScheme?: RadialColorScheme;
   /** Optional user-selected hue anchor for the first automatic Matrix row. */
   layoutStartColor?: string;
+  /** Controls row hue distribution independently from the Matrix column fade. */
+  matrixRowColorPattern?: MatrixRowColorPattern;
   /** Generated presentation layer. Original node styling remains untouched underneath it. */
   layoutVisualStyle?: LayoutVisualStyle;
   /** Per-surface opt-outs set when a user explicitly changes a generated style. */

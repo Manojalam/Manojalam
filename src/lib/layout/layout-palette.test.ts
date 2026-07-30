@@ -170,15 +170,17 @@ function clockwiseHueDistance(from: number, to: number): number {
   return ((to - from) % 360 + 360) % 360;
 }
 
-test("Matrix rows flow continuously through the palette without wrapping", () => {
-  const rowCount = 16;
+function matrixRowsFixture(
+  rowCount: number,
+  rootData: Record<string, unknown> = {}
+): { nodes: Node[]; edges: Edge[]; rowIds: string[] } {
   const rowIds = Array.from({ length: rowCount }, (_, index) => `row-${index}`);
   const nodes: Node[] = [
     {
       id: "root",
       type: "shape",
       position: { x: 0, y: 0 },
-      data: { text: "root", childOrder: rowIds, layoutMode: "matrix" },
+      data: { text: "root", childOrder: rowIds, layoutMode: "matrix", ...rootData },
     },
     ...rowIds.map((id, index) => ({
       id,
@@ -193,6 +195,11 @@ test("Matrix rows flow continuously through the palette without wrapping", () =>
     target: id,
     type: "branch",
   }));
+  return { nodes, edges, rowIds };
+}
+
+test("Matrix rows flow continuously through the palette without wrapping", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(16);
   const hierarchy = buildHierarchy(nodes, edges);
   const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum");
   const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
@@ -201,6 +208,20 @@ test("Matrix rows flow continuously through the palette without wrapping", () =>
   assert.ok(steps.every((step) => step > 0 && step <= 32));
   assert.ok(clockwiseHueDistance(hues[0], hues.at(-1)!) > 300);
   assert.notEqual(hues[0], hues.at(-1));
+});
+
+test("Gentle Matrix row colors stay within one analogous hue range", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(12, {
+    matrixRowColorPattern: "gentle",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+  const totalTravel = clockwiseHueDistance(hues[0], hues.at(-1)!);
+  const steps = hues.slice(1).map((hue, index) => clockwiseHueDistance(hues[index], hue));
+
+  assert.ok(totalTravel > 0 && totalTravel <= 56);
+  assert.ok(steps.every((step) => step > 0 && step < 8));
 });
 
 test("short Matrix palettes stop before neighboring rows make a large hue jump", () => {
