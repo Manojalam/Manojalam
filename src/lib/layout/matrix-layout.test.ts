@@ -1477,11 +1477,15 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   assert.equal(sixth.x - (first.x + first.width), MATRIX_FOLD_SECTION_GAP);
   assert.equal(result.foldSections?.length, 2);
   assert.deepEqual(result.foldSections?.map((section) => section.terminalIds.length), [5, 5]);
-  assert.equal(result.header.width * 2 + MATRIX_FOLD_SECTION_GAP, result.bounds.width);
+  assert.equal(result.header.width, result.bounds.width);
+  assert.equal(
+    result.foldSections![0].width * 2 + MATRIX_FOLD_SECTION_GAP,
+    result.header.width
+  );
   assert.equal(
     result.foldSections?.[1].repeatedCells.some((cell) =>
       cell.role === "header" && cell.sourceNodeId === "root"),
-    true
+    false
   );
   assertClean(result);
 });
@@ -1523,7 +1527,7 @@ test("top-level Fold paginates terminal rows across complete Matrix-width sectio
     new Map(foldedNodes.map((node) => [node.id, node]))
   );
   assert.equal(unfolded.header.width, 840);
-  assert.equal(folded.header.width, unfolded.header.width);
+  assert.equal(folded.header.width, folded.bounds.width);
   assert.equal(
     folded.bounds.width,
     unfolded.header.width * 3 + MATRIX_FOLD_SECTION_GAP * 2
@@ -1612,9 +1616,10 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
   );
   assert.equal(
     sections.slice(1).every((section) =>
-      section.repeatedCells.some((cell) => cell.role === "header" && cell.sourceNodeId === "root")),
+      section.repeatedCells.every((cell) => cell.sourceNodeId !== "root")),
     true
   );
+  assert.equal(result.header.width, result.bounds.width);
 
   const frames = buildMatrixFrameNodes(renderedMatrixNodes(result, hierarchy, nodes), "root");
   assert.equal(frames.length, 4);
@@ -1628,10 +1633,13 @@ test("Fold 4 divides forty terminal descendants exactly and repeats continued an
       > MATRIX_DENSITY_SETTINGS[result.density].cellGap
   );
   assert.equal(
-    ((frames[1].data as Record<string, unknown>).matrixRepeatedCells as Array<{ text: string }>)
-      .some((cell) => cell.text === "root"),
+    ((frames[1].data as Record<string, unknown>).matrixRepeatedCells as Array<{
+      sourceNodeId: string;
+      text: string;
+    }>).some((cell) => cell.sourceNodeId === "first" && cell.text === "first"),
     true
   );
+  assert.ok(frames.every((frame) => frame.position.y > result.header.y + result.header.height));
   assertClean(result);
 });
 
@@ -1689,7 +1697,7 @@ test("manual top-level Fold breaks paginate the selected terminal rows", () => {
   const foldedCells = new Map(folded.cells.map((cell) => [cell.nodeId, cell]));
   const stride = unfolded.header.width + MATRIX_FOLD_SECTION_GAP;
 
-  assert.equal(folded.header.width, unfolded.header.width);
+  assert.equal(folded.header.width, folded.bounds.width);
   assert.equal(folded.bounds.width, unfolded.header.width * 3 + MATRIX_FOLD_SECTION_GAP * 2);
   assert.equal(foldedCells.get("child-1")!.x - foldedCells.get("child-0")!.x, stride);
   assert.equal(foldedCells.get("child-5")!.x - foldedCells.get("child-1")!.x, stride);
@@ -1825,7 +1833,7 @@ test("a top-level vertical Matrix Fold still uses independent full-width section
   assert.equal(wide.width, unfoldedCells.get("wide")!.width);
   assert.equal(short.width, unfoldedCells.get("short")!.width);
   assert.ok(short.width < wide.width);
-  assert.equal(result.header.width, unfolded.header.width);
+  assert.equal(result.header.width, result.bounds.width);
   assert.equal(
     result.foldSections?.[1].x,
     result.foldSections![0].x + result.foldSections![0].width + MATRIX_FOLD_SECTION_GAP

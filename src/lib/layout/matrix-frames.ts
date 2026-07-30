@@ -176,6 +176,7 @@ function repeatedCellRenderData(
     : "center";
   return {
     key: repeated.node.id,
+    sourceNodeId: repeated.cell.sourceNodeId,
     role: repeated.cell.role,
     x: rect.left - bounds.left,
     y: rect.top - bounds.top,
