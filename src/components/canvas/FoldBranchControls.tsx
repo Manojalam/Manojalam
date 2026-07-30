@@ -79,7 +79,7 @@ export function FoldBranchControls({
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
         {terminalItems
-          ? "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued roots and ancestors repeat."
+          ? "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued ancestors repeat beneath one shared root."
           : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
       </p>
 

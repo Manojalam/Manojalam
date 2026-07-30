@@ -2281,6 +2281,8 @@ function applyTopLevelMatrixFold(
   const sectionGap = MATRIX_FOLD_SECTION_GAP;
   const sectionWidth = result.header.width;
   const sectionStride = sectionWidth + sectionGap;
+  const foldedWidth = sectionWidth * terminalSections.length
+    + sectionGap * (terminalSections.length - 1);
   const rowsByTerminalId = new Map(result.rows.flatMap((row) => {
     const terminalId = row.path.at(-1);
     return terminalId ? [[terminalId, row] as const] : [];
@@ -2290,7 +2292,7 @@ function applyTopLevelMatrixFold(
   const cells: MatrixCellGeometry[] = [];
   const placements: Record<string, MatrixPlacement> = {};
   const foldSections: MatrixFoldSectionGeometry[] = [];
-  const header = { ...result.header, width: sectionWidth };
+  const header = { ...result.header, width: foldedWidth };
   const rootNode = byId.get(rootId);
   if (rootNode) {
     const position = nodePositionForRect(
@@ -2362,18 +2364,7 @@ function applyTopLevelMatrixFold(
       nextRowY += height + settings.cellGap;
     });
     const repeatedCells: MatrixRepeatedCellGeometry[] = [];
-    let sectionCellBottom = result.header.y + result.header.height;
-    if (sectionIndex > 0) {
-      repeatedCells.push({
-        ...result.header,
-        nodeId: `matrix-fold-repeat:${rootId}:${sectionIndex}:${rootId}`,
-        sourceNodeId: rootId,
-        sectionIndex,
-        role: "header",
-        x: sectionX,
-        width: sectionWidth,
-      });
-    }
+    let sectionCellBottom = bodyY;
 
     [...spans.values()]
       .sort((first, second) => first.rowStart - second.rowStart || first.column - second.column)
@@ -2439,21 +2430,24 @@ function applyTopLevelMatrixFold(
     foldSections.push({
       sectionIndex,
       x: sectionX,
-      y: result.header.y,
+      y: bodyY,
       width: sectionWidth,
-      height: bodyBottom - result.header.y,
+      height: bodyBottom - bodyY,
       terminalIds: sectionRows.map((row) => row.path.at(-1)).filter((id): id is string => !!id),
       repeatedCells,
     });
   });
 
   if (foldSections.length !== terminalSections.length) return result;
-  const bottom = Math.max(...foldSections.map((section) => section.y + section.height));
+  const bottom = Math.max(
+    header.y + header.height,
+    ...foldSections.map((section) => section.y + section.height)
+  );
   const bounds = createNodeRect(
     result.bounds.id,
     result.bounds.left,
     result.bounds.top,
-    sectionWidth * terminalSections.length + sectionGap * (terminalSections.length - 1),
+    foldedWidth,
     bottom - result.bounds.top
   );
   const diagnostics = diagnoseMatrix(

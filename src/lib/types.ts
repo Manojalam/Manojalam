@@ -730,6 +730,7 @@ export interface FrameNodeData extends BaseNodeData {
   /** Presentation-only labels for ancestors repeated across Matrix Fold sections. */
   matrixRepeatedCells?: Array<{
     key: string;
+    sourceNodeId: string;
     role: "header" | "category" | "cell";
     x: number;
     y: number;
