@@ -114,10 +114,10 @@ export function resolveLayoutFontSize(data: Record<string, unknown>): number | u
     && Number.isFinite(visualStyle.fontSize)
   ) {
     if (visualStyle.mode === "matrix") {
-      // Matrix is a dense comparative view. Its generated scale is
-      // authoritative unless the user explicitly opts out, otherwise a large
-      // freeform label expands every row and column around it.
-      return visualStyle.fontSize;
+      // A visible Matrix size control must report the size that is actually
+      // rendered. Generated hierarchy sizing is only a fallback for legacy
+      // nodes that do not yet have an authored size.
+      return storedFontSize ?? visualStyle.fontSize;
     }
     // Layout typography is a readability floor. It must never shrink text the
     // user already made larger before arranging the branch.

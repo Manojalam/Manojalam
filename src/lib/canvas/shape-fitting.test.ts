@@ -561,9 +561,33 @@ test("whole-node maximum fitting is opt-in and preserves the authored font size"
   assert.ok(maximized.scale > 1);
 });
 
-test("a Matrix-level fill-labels setting enlarges roomy cell text", () => {
+test("Matrix text stays at its literal size while chart-wide Auto-fit is off", () => {
   const presentation = getFittedTextPresentation(
-    { text: "जिह्वामूलीयः", fontSize: 17, matrixFillCellLabels: true },
+    {
+      text: "सूर्यश्चन्द्रमसौ धाता यथापूर्वमकल्पयत्",
+      fontSize: 30,
+      matrixCell: true,
+      // Legacy per-node fitting must not bypass the one Matrix-wide switch.
+      maximizeText: true,
+    },
+    180,
+    14,
+    { availableHeight: 36, constrain: true }
+  );
+
+  assert.equal(presentation.authoredFontSize, 30);
+  assert.equal(presentation.fontSize, 30);
+  assert.equal(presentation.scale, 1);
+});
+
+test("Matrix Auto-fit explicitly opts cells into independent text scaling", () => {
+  const presentation = getFittedTextPresentation(
+    {
+      text: "जिह्वामूलीयः",
+      fontSize: 17,
+      matrixCell: true,
+      matrixFillCellLabels: true,
+    },
     320,
     14,
     { availableHeight: 80, constrain: true }
@@ -613,7 +637,7 @@ test("measurement identity changes with text and authored typography", () => {
   assert.notEqual(original, textMeasurementKey({ text: "अवसानः", fontSize: 14 }));
 });
 
-test("fill available space never shrinks the normal rendered fit", () => {
+test("authored size stays literal until Auto-fit is explicitly enabled", () => {
   const text = [
     "अथ योगानुशासनम्",
     "योगश्चित्तवृत्तिनिरोधः",
@@ -638,11 +662,35 @@ test("fill available space never shrinks the normal rendered fit", () => {
   };
   const options = { availableHeight: 120, constrain: true };
   const ordinary = getFittedTextPresentation(data, 260, 14, options);
-  const maximized = getFittedTextPresentation({ ...data, maximizeText: true }, 260, 14, options);
+  const autoFitted = getFittedTextPresentation({ ...data, maximizeText: true }, 260, 14, options);
 
-  assert.ok(ordinary.scale < 1);
-  assert.ok(maximized.scale >= ordinary.scale);
-  assert.ok(maximized.fontSize >= ordinary.fontSize);
+  assert.equal(ordinary.authoredFontSize, 33);
+  assert.equal(ordinary.fontSize, 33);
+  assert.equal(ordinary.scale, 1);
+  assert.ok(autoFitted.scale < 1);
+  assert.ok(autoFitted.fontSize < ordinary.fontSize);
+});
+
+test("raising an authored size by one pixel never makes un-fitted text smaller", () => {
+  const options = { availableHeight: 38, constrain: true };
+  const atSeventeen = getFittedTextPresentation(
+    { text: "सूर्यश्चन्द्रमसौ धाता यथापूर्वमकल्पयत्", fontSize: 17 },
+    190,
+    14,
+    options
+  );
+  const atEighteen = getFittedTextPresentation(
+    { text: "सूर्यश्चन्द्रमसौ धाता यथापूर्वमकल्पयत्", fontSize: 18 },
+    190,
+    14,
+    options
+  );
+
+  assert.equal(atSeventeen.fontSize, 17);
+  assert.equal(atSeventeen.scale, 1);
+  assert.equal(atEighteen.fontSize, 18);
+  assert.equal(atEighteen.scale, 1);
+  assert.ok(atEighteen.fontSize > atSeventeen.fontSize);
 });
 
 test("fill available space maximizes the actual compact rich-text measurement", () => {

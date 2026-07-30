@@ -36,6 +36,7 @@ import {
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
+import { resolveLayoutFontSize } from "@/lib/layout/layout-presentation";
 import type {
   BorderLayer,
   ConcentricShapeLayer,
@@ -1391,6 +1392,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? nodes.find((node) => node.id === matrixRootId) ?? null
     : null;
   const matrixBranchIds = matrixRootNode ? getSubtree(matrixRootNode.id, hierarchy) : [];
+  const matrixNodes = matrixBranchIds
+    .map((nodeId) => nodes.find((node) => node.id === nodeId))
+    .filter((node): node is Node => !!node);
   const matrixBranchIdSet = new Set(matrixBranchIds);
   const selectedMatrixBranchNodes = selectedNode && matrixRootNode
     ? getSubtree(selectedNode.id, hierarchy)
@@ -1432,6 +1436,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? Math.max(...matrixRects.map((rect) => rect.bottom)) - Math.min(...matrixRects.map((rect) => rect.top))
     : undefined;
   const matrixRootData = (matrixRootNode?.data ?? {}) as Record<string, unknown>;
+  const matrixFontSizes = matrixNodes.map((node) => {
+    const value = resolveLayoutFontSize((node.data ?? {}) as Record<string, unknown>);
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  });
+  const firstMatrixFontSize = matrixFontSizes.find((value): value is number => value !== null)
+    ?? settings.defaultFontSize;
+  const matrixFontSizeMixed = matrixFontSizes.some((value) => value !== firstMatrixFontSize);
   const matrixTableSizeLocked = matrixRootData.matrixTableSizeLocked === true;
   const matrixTableWidth = hasPositiveDimensionOverride(matrixRootData.matrixTableWidthOverride)
     ? Number(matrixRootData.matrixTableWidthOverride)
@@ -1481,6 +1492,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
       detail: { mode: "matrix", rootId, nodeIds: getSubtree(rootId, hierarchy) },
     })));
+  };
+  const setMatrixFontSize = (value: number) => {
+    if (!matrixRootNode) return;
+    matrixNodes.forEach((node) => {
+      const data = (node.data ?? {}) as Record<string, unknown>;
+      updateNodeData(node.id, {
+        ...fieldPatch(data, "fontSize", value),
+        // Matrix Auto-fit is chart-wide; discard legacy per-cell scaling.
+        maximizeText: undefined,
+      });
+    });
+    requestMatrixReflow(matrixRootNode.id);
   };
   const commitSelectedMatrixCellSize = (
     axis: "width" | "height",
@@ -2873,17 +2896,17 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 max={editableSelectionEdges.length ? MAX_CONNECTOR_LABEL_FONT_SIZE : MAX_BOARD_FONT_SIZE}
               />
             </div>
-            {selectedTextLayoutNodes.length > 0 && <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
+            {selectedTextLayoutNodes.length > 0 && !isMatrixCellMultiSelection && <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
               <div>
-                <p className="text-[10px] font-medium text-foreground">Fill available text space</p>
+                <p className="text-[10px] font-medium text-foreground">Auto-fit text</p>
                 <p className="text-[9px] leading-relaxed text-muted-foreground">
-                  Maximizes text inside every selected node&apos;s safe shape area.
+                  Lets each selected node grow or shrink its text to fit.
                 </p>
               </div>
               <Switch
                 checked={commonSelectedTextNodeValue("maximizeText") === true}
                 onCheckedChange={(value) => setSelectedTextNodeField("maximizeText", value)}
-                aria-label="Fill available text space for selected nodes"
+                aria-label="Auto-fit text for selected nodes"
               />
             </div>}
             {selectedShapeNodes.length > 0 && (
@@ -4084,15 +4107,15 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
               {diagramSpec.maximizeLabelText && (
                 <p className="mt-1 text-[9px] leading-relaxed text-muted-foreground">
-                  Used as the preferred minimum; labels grow to fill their safe region and still shrink when required.
+                  Used as the preferred size; Auto-fit may grow or shrink labels to fit their safe region.
                 </p>
               )}
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <Label className="text-xs">Fill available text space</Label>
+                <Label className="text-xs">Auto-fit text</Label>
                 <p className="text-[9px] leading-relaxed text-muted-foreground">
-                  Applies intelligently to every relationship layout.
+                  Lets labels grow or shrink to fit every relationship layout.
                 </p>
               </div>
               <Switch
@@ -5185,18 +5208,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
-            {!selectedTextRange && (
+            {!selectedTextRange && !matrixRootNode && (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
                 <div>
-                  <p className="text-[10px] font-medium text-foreground">Fill available text space</p>
+                  <p className="text-[10px] font-medium text-foreground">Auto-fit text</p>
                   <p className="text-[9px] leading-relaxed text-muted-foreground">
-                    Uses this size as a preference, then fills the node or radial sector safely.
+                    Off keeps the size above exact. On lets this node grow or shrink its text to fit.
                   </p>
                 </div>
                 <Switch
                   checked={d.maximizeText === true}
                   onCheckedChange={(value) => setField("maximizeText", value)}
-                  aria-label="Fill available text space"
+                  aria-label="Auto-fit text"
                 />
               </div>
             )}
@@ -5396,11 +5419,29 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 })}
               </div>
             </div>
+            <div className="mb-2 rounded-md border border-border/70 bg-muted/35 p-2">
+              <p className="text-[10px] font-medium text-foreground">Text size</p>
+              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                One authored size for every Matrix cell.
+              </p>
+              <div className="mt-2">
+                <SliderControl
+                  value={firstMatrixFontSize}
+                  mixed={matrixFontSizeMixed}
+                  min={MIN_BOARD_FONT_SIZE}
+                  max={MAX_BOARD_FONT_SIZE}
+                  step={1}
+                  suffix="px"
+                  onChangeStart={pushHistory}
+                  onChange={setMatrixFontSize}
+                />
+              </div>
+            </div>
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
-                <p className="text-[10px] font-medium text-foreground">Fill cell labels</p>
+                <p className="text-[10px] font-medium text-foreground">Auto-fit text</p>
                 <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-                  Expand every label to fill its safe shape interior consistently.
+                  Off keeps the size above exact. On lets each cell grow or shrink its text independently.
                 </p>
               </div>
               <Switch
@@ -5414,7 +5455,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
                   })));
                 }}
-                aria-label="Fill labels in this Matrix"
+                aria-label="Auto-fit text in this Matrix"
               />
             </div>
             <div>
