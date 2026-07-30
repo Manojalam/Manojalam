@@ -99,12 +99,16 @@ export type RadialColorScheme =
   | "forest"
   | "scholar";
 
-export type MatrixRowColorPattern =
+export type LayoutColorPattern =
   | "flow"
   | "gentle"
   | "duotone"
   | "alternating"
-  | "curated";
+  | "curated"
+  | "sectioned";
+
+/** @deprecated Use LayoutColorPattern. Retained for persisted Matrix boards. */
+export type MatrixRowColorPattern = LayoutColorPattern;
 
 export interface LayoutVisualStyle {
   rootId: string;
@@ -566,11 +570,15 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutMode?: LayoutMode;
   /** Palette selected for non-radial hierarchy layouts. */
   layoutColorScheme?: RadialColorScheme;
-  /** Optional user-selected hue anchor for the first automatic Matrix row. */
+  /** Optional user-selected hue anchor for the first automatic layout branch. */
   layoutStartColor?: string;
-  /** Controls row hue distribution independently from the Matrix column fade. */
+  /** Controls hue distribution across top-level branches in every layout. */
+  layoutColorPattern?: LayoutColorPattern;
+  /** Optional second hue used by two-color, alternating, and sectioned patterns. */
+  layoutEndColor?: string;
+  /** @deprecated Legacy Matrix field read when layoutColorPattern is absent. */
   matrixRowColorPattern?: MatrixRowColorPattern;
-  /** Optional second hue used by two-color and alternating Matrix rows. */
+  /** @deprecated Legacy Matrix field read when layoutEndColor is absent. */
   matrixRowEndColor?: string;
   /** Generated presentation layer. Original node styling remains untouched underneath it. */
   layoutVisualStyle?: LayoutVisualStyle;

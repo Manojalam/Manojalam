@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
+import type { LayoutMode } from "../types";
 import { buildHierarchy } from "./hierarchy";
 import {
   applyLayoutPalette,
   buildLayoutVisualStyles,
   resetDescendantLayoutFillOverrides,
+  supportsAutomaticLayoutColors,
 } from "./layout-palette";
 import {
   RADIAL_COLOR_SCHEMES,
+  layoutBranchAnchorColor,
   matrixRowAnchorColor,
   radialSectorColors,
 } from "../radial-layout";
@@ -312,6 +315,77 @@ test("Curated Matrix rows use and repeat the selected palette swatches", () => {
   assert.deepEqual(hues.slice(scheme.hues.length), scheme.hues.slice(0, 2));
 });
 
+test("Sectioned Palette holds one hue across each neighboring branch group", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(8, {
+    layoutColorPattern: "sectioned",
+    layoutStartColor: "#ff0000",
+    layoutEndColor: "#0000ff",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+
+  assert.deepEqual(hues, [0, 0, 320, 320, 280, 280, 240, 240]);
+});
+
+test("every node-based layout supports the same branch color patterns", () => {
+  const modes: LayoutMode[] = [
+    "freeForm",
+    "fromParentFreeForm",
+    "horizontal",
+    "vertical",
+    "list",
+    "topDown",
+    "linear",
+    "matrix",
+  ];
+
+  for (const mode of modes) {
+    const { nodes, edges } = hierarchyFixture();
+    const configuredNodes = nodes.map((node) => node.id === "root"
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            layoutMode: mode,
+            layoutColorPattern: "alternating",
+            layoutStartColor: "#ff0000",
+            layoutEndColor: "#0000ff",
+          },
+        }
+      : node);
+    const hierarchy = buildHierarchy(configuredNodes, edges);
+    const styles = buildLayoutVisualStyles(
+      "root",
+      hierarchy,
+      mode,
+      "spectrum",
+      configuredNodes
+    );
+
+    assert.equal(supportsAutomaticLayoutColors(mode), true);
+    assert.equal(hueFromHsl(styles.get("branch-a")!.fillColor), 0);
+    assert.equal(hueFromHsl(styles.get("branch-b")!.fillColor), 240);
+  }
+});
+
+test("Radial uses the same Sectioned Palette branch anchors", () => {
+  const scheme = RADIAL_COLOR_SCHEMES[0];
+  const hues = Array.from({ length: 8 }, (_, branchIndex) => hueFromHsl(
+    layoutBranchAnchorColor(
+      scheme,
+      branchIndex,
+      8,
+      "#ff0000",
+      "sectioned",
+      "#0000ff",
+      scheme.lightness
+    )
+  ));
+
+  assert.deepEqual(hues, [0, 0, 320, 320, 280, 280, 240, 240]);
+});
+
 test("short Matrix palettes stop before neighboring rows make a large hue jump", () => {
   for (const scheme of RADIAL_COLOR_SCHEMES) {
     const first = hueFromHsl(matrixRowAnchorColor(scheme, 0, 3));
@@ -402,7 +476,7 @@ function colorContrast(first: string, second: string): number {
 }
 
 test("Matrix rows keep one readable dark text color across every palette and depth", () => {
-  for (const pattern of ["flow", "gentle", "duotone", "alternating", "curated"] as const) {
+  for (const pattern of ["flow", "gentle", "duotone", "alternating", "curated", "sectioned"] as const) {
     for (const scheme of RADIAL_COLOR_SCHEMES) {
       for (let branchIndex = 0; branchIndex < 16; branchIndex += 1) {
         const anchor = matrixRowAnchorColor(scheme, branchIndex, 16, undefined, pattern);
@@ -538,17 +612,23 @@ test("resetting descendant fills keeps the selected parent and unrelated branche
   assert.notEqual(styleFor("a-1-child").fillColor, styleFor("a-1").fillColor);
 });
 
-test("free form removes only the generated presentation layer", () => {
+test("Free Form keeps automatic colors without moving the diagram", () => {
   const { nodes, edges } = hierarchyFixture();
   const hierarchy = buildHierarchy(nodes, edges);
   const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "horizontal", "lotus");
-  const cleared = applyLayoutPalette(styled.nodes, styled.edges, hierarchy, "root", "freeForm", "lotus");
-  const childData = cleared.nodes[1].data as Record<string, unknown>;
-  const edgeData = cleared.edges[0].data as Record<string, unknown>;
+  const freeForm = applyLayoutPalette(styled.nodes, styled.edges, hierarchy, "root", "freeForm", "lotus");
+  const childData = freeForm.nodes[1].data as Record<string, unknown>;
+  const edgeData = freeForm.edges[0].data as Record<string, unknown>;
+  const childStyle = childData.layoutVisualStyle as { mode: string; fillColor: string };
 
-  assert.equal(childData.layoutVisualStyle, undefined);
+  assert.equal(childStyle.mode, "freeForm");
+  assert.match(childStyle.fillColor, /^hsl\(/);
   assert.equal(childData.fillColor, "#ffffff");
-  assert.equal(edgeData.layoutColor, undefined);
-  assert.equal(edgeData.layoutColorRootId, undefined);
-  assert.equal((cleared.edges[0].markerEnd as { color?: string }).color, "#123456");
+  assert.equal(typeof edgeData.layoutColor, "string");
+  assert.equal(edgeData.layoutColorRootId, "root");
+  assert.equal(edgeData.layoutOriginalMarkerColor, "#123456");
+  assert.deepEqual(
+    freeForm.nodes.map((node) => node.position),
+    nodes.map((node) => node.position)
+  );
 });
