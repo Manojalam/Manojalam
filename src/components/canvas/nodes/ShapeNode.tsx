@@ -1522,6 +1522,11 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       measurementFontSize={textPresentation.authoredFontSize}
                       contentScale={textPresentation.scale}
                       constrainToShapeGuide
+                      allowGuideScaleCorrection={
+                        matrixCell
+                          ? dd.matrixFillCellLabels === true
+                          : dd.maximizeText === true
+                      }
                       shapeTextFlow={renderContourTextFlow ? {
                         leftExclusion: flowLayout.leftExclusion,
                         rightExclusion: flowLayout.rightExclusion,

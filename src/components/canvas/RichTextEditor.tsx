@@ -533,6 +533,8 @@ interface RichTextEditorProps {
   contentScale?: number;
   /** Keep the final rendered glyph bounds inside the owning shape label guide. */
   constrainToShapeGuide?: boolean;
+  /** Allow the guide to reduce content scale when Auto-fit is explicitly enabled. */
+  allowGuideScaleCorrection?: boolean;
   /** Exclusion polygons that let wrapped text occupy a non-rectangular silhouette. */
   shapeTextFlow?: {
     leftExclusion: string;
@@ -564,6 +566,7 @@ export function RichTextEditor({
   measurementFontSize,
   contentScale = 1,
   constrainToShapeGuide = false,
+  allowGuideScaleCorrection = false,
   shapeTextFlow,
   blockAlign,
   initialFocusPoint,
@@ -891,7 +894,8 @@ export function RichTextEditor({
       { width: contentBounds.width, height: contentBounds.height },
       { width: guideBounds.width, height: guideBounds.height },
       2,
-      guideLocalToScreenScale
+      guideLocalToScreenScale,
+      allowGuideScaleCorrection
     );
     if (
       correctedScale < currentScale - 0.001
@@ -967,6 +971,7 @@ export function RichTextEditor({
       }
     }
   }, [
+    allowGuideScaleCorrection,
     constrainToShapeGuide,
     editor,
     flowHorizontalAlign,
