@@ -170,15 +170,17 @@ function clockwiseHueDistance(from: number, to: number): number {
   return ((to - from) % 360 + 360) % 360;
 }
 
-test("Matrix rows flow continuously through the palette without wrapping", () => {
-  const rowCount = 16;
+function matrixRowsFixture(
+  rowCount: number,
+  rootData: Record<string, unknown> = {}
+): { nodes: Node[]; edges: Edge[]; rowIds: string[] } {
   const rowIds = Array.from({ length: rowCount }, (_, index) => `row-${index}`);
   const nodes: Node[] = [
     {
       id: "root",
       type: "shape",
       position: { x: 0, y: 0 },
-      data: { text: "root", childOrder: rowIds, layoutMode: "matrix" },
+      data: { text: "root", childOrder: rowIds, layoutMode: "matrix", ...rootData },
     },
     ...rowIds.map((id, index) => ({
       id,
@@ -193,6 +195,11 @@ test("Matrix rows flow continuously through the palette without wrapping", () =>
     target: id,
     type: "branch",
   }));
+  return { nodes, edges, rowIds };
+}
+
+test("Matrix rows flow continuously through the palette without wrapping", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(16);
   const hierarchy = buildHierarchy(nodes, edges);
   const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum");
   const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
@@ -201,6 +208,59 @@ test("Matrix rows flow continuously through the palette without wrapping", () =>
   assert.ok(steps.every((step) => step > 0 && step <= 32));
   assert.ok(clockwiseHueDistance(hues[0], hues.at(-1)!) > 300);
   assert.notEqual(hues[0], hues.at(-1));
+});
+
+test("Gentle Matrix row colors stay within one analogous hue range", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(12, {
+    matrixRowColorPattern: "gentle",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+  const totalTravel = clockwiseHueDistance(hues[0], hues.at(-1)!);
+  const steps = hues.slice(1).map((hue, index) => clockwiseHueDistance(hues[index], hue));
+
+  assert.ok(totalTravel > 0 && totalTravel <= 56);
+  assert.ok(steps.every((step) => step > 0 && step < 8));
+});
+
+test("Two-color Matrix rows blend between the selected endpoints", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(5, {
+    matrixRowColorPattern: "duotone",
+    layoutStartColor: "#ff0000",
+    matrixRowEndColor: "#0000ff",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+
+  assert.deepEqual(hues, [0, 330, 300, 270, 240]);
+});
+
+test("Alternating Matrix rows repeat exactly two selected hues", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(6, {
+    matrixRowColorPattern: "alternating",
+    layoutStartColor: "#ff0000",
+    matrixRowEndColor: "#0000ff",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+
+  assert.deepEqual(hues, [0, 240, 0, 240, 0, 240]);
+});
+
+test("Curated Matrix rows use and repeat the selected palette swatches", () => {
+  const scheme = RADIAL_COLOR_SCHEMES[0];
+  const { nodes, edges, rowIds } = matrixRowsFixture(scheme.hues.length + 2, {
+    matrixRowColorPattern: "curated",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", scheme.id, nodes);
+  const hues = rowIds.map((id) => hueFromHsl(styles.get(id)!.fillColor));
+
+  assert.deepEqual(hues.slice(0, scheme.hues.length), scheme.hues);
+  assert.deepEqual(hues.slice(scheme.hues.length), scheme.hues.slice(0, 2));
 });
 
 test("short Matrix palettes stop before neighboring rows make a large hue jump", () => {
@@ -293,20 +353,22 @@ function colorContrast(first: string, second: string): number {
 }
 
 test("Matrix rows keep one readable dark text color across every palette and depth", () => {
-  for (const scheme of RADIAL_COLOR_SCHEMES) {
-    for (let branchIndex = 0; branchIndex < 16; branchIndex += 1) {
-      const anchor = matrixRowAnchorColor(scheme, branchIndex, 16);
-      for (let depth = 1; depth <= 12; depth += 1) {
-        const colors = radialSectorColors(scheme, branchIndex, depth, 0, 1, anchor);
-        assert.equal(
-          colors.text,
-          "#020617",
-          `${scheme.label} row ${branchIndex} depth ${depth} should use dark text`
-        );
-        assert.ok(
-          colorContrast(colors.fill, colors.text) >= 4.5,
-          `${scheme.label} row ${branchIndex} depth ${depth} needs readable dark text`
-        );
+  for (const pattern of ["flow", "gentle", "duotone", "alternating", "curated"] as const) {
+    for (const scheme of RADIAL_COLOR_SCHEMES) {
+      for (let branchIndex = 0; branchIndex < 16; branchIndex += 1) {
+        const anchor = matrixRowAnchorColor(scheme, branchIndex, 16, undefined, pattern);
+        for (let depth = 1; depth <= 12; depth += 1) {
+          const colors = radialSectorColors(scheme, branchIndex, depth, 0, 1, anchor);
+          assert.equal(
+            colors.text,
+            "#020617",
+            `${scheme.label} ${pattern} row ${branchIndex} depth ${depth} should use dark text`
+          );
+          assert.ok(
+            colorContrast(colors.fill, colors.text) >= 4.5,
+            `${scheme.label} ${pattern} row ${branchIndex} depth ${depth} needs readable dark text`
+          );
+        }
       }
     }
   }

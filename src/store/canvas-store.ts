@@ -71,7 +71,7 @@ import {
 } from "@/lib/layout/matrix-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
-import type { LayoutMode, RadialColorScheme } from "@/lib/types";
+import type { LayoutMode, MatrixRowColorPattern, RadialColorScheme } from "@/lib/types";
 import {
   effectiveCornerRadius,
   fitShapeToContent,
@@ -272,6 +272,16 @@ interface CanvasState {
   ) => void;
   applyLayoutColorScheme: (rootId: string, scheme: RadialColorScheme, resetOverrides?: boolean) => void;
   applyLayoutStartColor: (rootId: string, color?: string) => void;
+  applyMatrixRowColorPattern: (rootId: string, pattern: MatrixRowColorPattern) => void;
+  applyMatrixRowEndColor: (rootId: string, color?: string) => void;
+  applyMatrixPalettePatch: (
+    rootId: string,
+    patch: {
+      layoutStartColor?: string;
+      matrixRowColorPattern?: MatrixRowColorPattern;
+      matrixRowEndColor?: string;
+    }
+  ) => void;
 }
 
 const pendingListReflowNodeIds = new Set<string>();
@@ -4392,6 +4402,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   applyLayoutStartColor: (rootId, color) => {
+    const normalizedColor = typeof color === "string" && color.trim()
+      ? color.trim()
+      : undefined;
+    get().applyMatrixPalettePatch(rootId, { layoutStartColor: normalizedColor });
+  },
+
+  applyMatrixRowColorPattern: (rootId, pattern) => {
+    get().applyMatrixPalettePatch(rootId, { matrixRowColorPattern: pattern });
+  },
+
+  applyMatrixRowEndColor: (rootId, color) => {
+    const normalizedColor = typeof color === "string" && color.trim()
+      ? color.trim()
+      : undefined;
+    get().applyMatrixPalettePatch(rootId, { matrixRowEndColor: normalizedColor });
+  },
+
+  applyMatrixPalettePatch: (rootId, patch) => {
     const { nodes, edges } = get();
     const hierarchyNodes = nodes.filter((node) =>
       !isAutoMatrixFrame(node)
@@ -4403,15 +4431,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
     if (mode !== "matrix") return;
 
-    const normalizedColor = typeof color === "string" && color.trim()
-      ? color.trim()
-      : undefined;
     const preparedNodes = nodes.map((node) => node.id === rootId
       ? {
           ...node,
           data: {
             ...(node.data ?? {}),
-            layoutStartColor: normalizedColor,
+            ...patch,
           },
         }
       : node);

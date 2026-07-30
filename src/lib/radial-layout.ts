@@ -1,4 +1,4 @@
-import type { RadialColorScheme } from "./types";
+import type { MatrixRowColorPattern, RadialColorScheme } from "./types";
 
 export type RadialColorSchemeDefinition = {
   id: RadialColorScheme;
@@ -19,6 +19,7 @@ export type RadialColorSchemeDefinition = {
 };
 
 export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
+export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern = "flow";
 
 /**
  * Resolves the angular weight of a hierarchy sector.
@@ -155,33 +156,101 @@ export function radialColorScheme(value: unknown): RadialColorSchemeDefinition {
 }
 
 const MAX_MATRIX_ROW_HUE_STEP = 32;
+const GENTLE_MATRIX_HUE_SPAN = 56;
 const MATRIX_ROW_LIGHTNESS = 64;
+
+export function matrixRowColorPattern(value: unknown): MatrixRowColorPattern {
+  if (
+    value === "gentle"
+    || value === "duotone"
+    || value === "alternating"
+    || value === "curated"
+  ) {
+    return value;
+  }
+  return DEFAULT_MATRIX_ROW_COLOR_PATTERN;
+}
+
+function shortestHueDelta(from: number, to: number): number {
+  return ((to - from + 540) % 360) - 180;
+}
+
+function matrixSecondaryAnchor(
+  scheme: RadialColorSchemeDefinition,
+  endColor?: string
+): HslColor {
+  const paletteHue = scheme.hues[Math.floor(scheme.hues.length / 2)]
+    ?? normalizeHue(scheme.matrixHueRange[1]);
+  return parseColor(endColor) ?? {
+    h: paletteHue,
+    s: scheme.saturation,
+    l: MATRIX_ROW_LIGHTNESS,
+  };
+}
 
 /**
  * Returns one coordinated anchor for a Matrix row.
  *
- * The whole row count is sampled across one continuous hue path. Short
- * matrices stop before adjacent rows would jump too far; long matrices spread
- * the complete theme without wrapping back to the first swatch.
+ * Flow patterns sample the row count across a continuous hue path, while
+ * discrete patterns alternate or repeat coordinated palette anchors. Every
+ * pattern keeps one shared lightness so the independent column fade remains
+ * predictable.
  */
 export function matrixRowAnchorColor(
   scheme: RadialColorSchemeDefinition,
   branchIndex: number,
   branchCount: number,
-  startColor?: string
+  startColor?: string,
+  pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN,
+  endColor?: string
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const index = clamp(Math.floor(branchIndex), 0, count - 1);
   const [defaultStartHue, requestedEndHue] = scheme.matrixHueRange;
   const customAnchor = parseColor(startColor);
   const startHue = customAnchor?.h ?? defaultStartHue;
+  const startSaturation = customAnchor ? Math.min(customAnchor.s, 58) : scheme.saturation;
+  const progress = count <= 1 ? 0 : index / (count - 1);
+
+  if (pattern === "duotone" || pattern === "alternating") {
+    const startAnchor: HslColor = {
+      h: startHue,
+      s: startSaturation,
+      l: MATRIX_ROW_LIGHTNESS,
+    };
+    const endAnchor = matrixSecondaryAnchor(scheme, endColor);
+    const mix = pattern === "alternating" ? index % 2 : progress;
+    return hslString({
+      h: startAnchor.h + shortestHueDelta(startAnchor.h, endAnchor.h) * mix,
+      s: clamp(
+        startAnchor.s + (Math.min(endAnchor.s, 58) - startAnchor.s) * mix,
+        0,
+        58
+      ),
+      l: MATRIX_ROW_LIGHTNESS,
+    });
+  }
+
+  if (pattern === "curated") {
+    const paletteStartHue = scheme.hues[0] ?? defaultStartHue;
+    const rotation = customAnchor ? customAnchor.h - paletteStartHue : 0;
+    const paletteHue = scheme.hues[index % scheme.hues.length] ?? defaultStartHue;
+    return hslString({
+      h: paletteHue + rotation,
+      s: startSaturation,
+      l: MATRIX_ROW_LIGHTNESS,
+    });
+  }
+
   const requestedSpan = requestedEndHue - defaultStartHue;
   const maximumSpan = MAX_MATRIX_ROW_HUE_STEP * Math.max(0, count - 1);
-  const span = Math.sign(requestedSpan) * Math.min(Math.abs(requestedSpan), maximumSpan);
-  const progress = count <= 1 ? 0 : index / (count - 1);
+  const patternSpan = pattern === "gentle"
+    ? Math.min(Math.abs(requestedSpan), GENTLE_MATRIX_HUE_SPAN)
+    : Math.abs(requestedSpan);
+  const span = Math.sign(requestedSpan) * Math.min(patternSpan, maximumSpan);
   return hslString({
     h: startHue + span * progress,
-    s: customAnchor ? Math.min(customAnchor.s, 58) : scheme.saturation,
+    s: startSaturation,
     // Matrix flow uses the chosen hue and moderated chroma, but one shared
     // lightness keeps row progression and dark label contrast predictable.
     l: MATRIX_ROW_LIGHTNESS,
@@ -192,14 +261,18 @@ export function matrixRowAnchorColor(
 export function matrixRootPaletteGradient(
   scheme: RadialColorSchemeDefinition,
   branchCount: number,
-  startColor?: string
+  startColor?: string,
+  pattern: MatrixRowColorPattern = DEFAULT_MATRIX_ROW_COLOR_PATTERN,
+  endColor?: string
 ): string {
   const count = Math.max(1, Math.floor(branchCount));
   const stopCount = Math.min(7, Math.max(2, count));
   const stops = Array.from({ length: stopCount }, (_, stopIndex) => {
     const progress = stopCount <= 1 ? 0 : stopIndex / (stopCount - 1);
     const branchIndex = count <= 1 ? 0 : Math.round(progress * (count - 1));
-    const anchor = parseColor(matrixRowAnchorColor(scheme, branchIndex, count, startColor))!;
+    const anchor = parseColor(
+      matrixRowAnchorColor(scheme, branchIndex, count, startColor, pattern, endColor)
+    )!;
     const darkAnchor = hslString({
       h: anchor.h,
       s: Math.min(anchor.s, 52),

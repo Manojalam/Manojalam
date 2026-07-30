@@ -35,6 +35,8 @@ interface ColorSwatchPickerProps {
   /** Additional colors relevant to this control. */
   extra?: string[];
   size?: "sm" | "md";
+  /** Initial state for the General, Saved, and Used palette sections. */
+  defaultSectionsOpen?: boolean;
   /** Prevents implying that Clear is selected when a multi-selection has mixed colors. */
   mixed?: boolean;
   /** Apply before pointer focus can clear an active rich-text selection. */
@@ -152,6 +154,7 @@ function PaletteSection({
   value,
   mixed,
   compact,
+  defaultOpen,
   selectionSafe,
   onChange,
   onRemove,
@@ -162,6 +165,7 @@ function PaletteSection({
   value?: string;
   mixed: boolean;
   compact: boolean;
+  defaultOpen: boolean;
   selectionSafe: boolean;
   onChange: (color: string) => void;
   onRemove?: (color: string) => void;
@@ -171,6 +175,7 @@ function PaletteSection({
     <CollapsibleColorSection
       label={label}
       hint={hint}
+      defaultOpen={defaultOpen}
       preserveCurrentFocus={selectionSafe}
     >
       <div className="grid grid-cols-8 gap-2">
@@ -198,6 +203,7 @@ export function ColorSwatchPicker({
   onCustomColor,
   extra = [],
   size = "md",
+  defaultSectionsOpen = true,
   mixed = false,
   selectionSafe = false,
 }: ColorSwatchPickerProps) {
@@ -242,6 +248,7 @@ export function ColorSwatchPicker({
         value={value}
         mixed={mixed}
         compact={compact}
+        defaultOpen={defaultSectionsOpen}
         selectionSafe={selectionSafe}
         onChange={onChange}
         onRemove={removeSavedColor}
@@ -254,6 +261,7 @@ export function ColorSwatchPicker({
         value={value}
         mixed={mixed}
         compact={compact}
+        defaultOpen={defaultSectionsOpen}
         selectionSafe={selectionSafe}
         onChange={onChange}
       />
@@ -265,6 +273,7 @@ export function ColorSwatchPicker({
         value={value}
         mixed={mixed}
         compact={compact}
+        defaultOpen={defaultSectionsOpen}
         selectionSafe={selectionSafe}
         onChange={onChange}
       />
