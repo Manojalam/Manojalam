@@ -250,6 +250,55 @@ test("Alternating Matrix rows repeat exactly two selected hues", () => {
   assert.deepEqual(hues, [0, 240, 0, 240, 0, 240]);
 });
 
+test("Alternating Matrix rows preserve metallic endpoints on their matching rows", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(6, {
+    matrixRowColorPattern: "alternating",
+    layoutStartColor: "#ff0000",
+    matrixRowEndColor: "#d4af37",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+
+  assert.deepEqual(
+    rowIds.map((id) => styles.get(id)!.surfaceEffect),
+    [undefined, "metallic", undefined, "metallic", undefined, "metallic"]
+  );
+  assert.deepEqual(
+    rowIds.map((id) => styles.get(id)!.surfaceEffectStrength),
+    [undefined, 72, undefined, 72, undefined, 72]
+  );
+});
+
+test("Two-color Matrix rows blend metallic intensity between endpoint materials", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(5, {
+    matrixRowColorPattern: "duotone",
+    layoutStartColor: "#ff0000",
+    matrixRowEndColor: "#d4af37",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+
+  assert.deepEqual(
+    rowIds.map((id) => styles.get(id)!.surfaceEffectStrength),
+    [undefined, 18, 36, 54, 72]
+  );
+});
+
+test("Metallic Matrix start colors carry their surface through flowing row hues", () => {
+  const { nodes, edges, rowIds } = matrixRowsFixture(4, {
+    matrixRowColorPattern: "gentle",
+    layoutStartColor: "#c0c0c0",
+  });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styles = buildLayoutVisualStyles("root", hierarchy, "matrix", "spectrum", nodes);
+
+  assert.deepEqual(
+    rowIds.map((id) => styles.get(id)!.surfaceEffect),
+    ["metallic", "metallic", "metallic", "metallic"]
+  );
+  assert.equal(styles.get("root")!.surfaceEffect, undefined);
+});
+
 test("Curated Matrix rows use and repeat the selected palette swatches", () => {
   const scheme = RADIAL_COLOR_SCHEMES[0];
   const { nodes, edges, rowIds } = matrixRowsFixture(scheme.hues.length + 2, {

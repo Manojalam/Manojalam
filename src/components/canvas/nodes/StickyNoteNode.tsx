@@ -14,6 +14,7 @@ import {
   resolveFillOpacity,
   resolveLayoutVisualStyle,
   resolveNodeBorderRadius,
+  resolveSurfaceEffectData,
   textMeasurementKey,
   themeAwareNodeFillColor,
 } from "@/lib/style-utils";
@@ -66,6 +67,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const bg       = resolveLayoutVisualStyle(dd) && dd.layoutAutoFill !== false
     ? resolveFillColor(dd) ?? palette.bg
     : (dd.fillColor as string) ?? palette.bg;
+  const surfaceEffectData = resolveSurfaceEffectData(dd);
   const border   = resolveBorderColor(dd) ?? palette.border;
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
@@ -82,9 +84,9 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const borderLayers = (dd.borderLayers as BorderLayer[]) ?? [];
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
-  const hasSurfaceEffect = typeof dd.surfaceEffect === "string";
-  const exportEffectStyle = surfaceEffectExportStyle(dd, border);
-  const exportShadowLayers = surfaceEffectExportShadowLayers(dd, border);
+  const hasSurfaceEffect = typeof surfaceEffectData.surfaceEffect === "string";
+  const exportEffectStyle = surfaceEffectExportStyle(surfaceEffectData, border);
+  const exportShadowLayers = surfaceEffectExportShadowLayers(surfaceEffectData, border);
 
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
@@ -170,7 +172,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             backgroundColor: themeAwareNodeFillColor(bg),
             border: `${bWidth}px ${bStyle} ${border}`,
             borderRadius: bRadius,
-            ...surfaceEffectStyle(dd, border),
+            ...surfaceEffectStyle(surfaceEffectData, border),
             ...objectRotationStyle("sticky", dd),
           }}
           onDoubleClick={(event) => {

@@ -2,9 +2,15 @@ import type { Edge, Node } from "@xyflow/react";
 import type {
   LayoutMode,
   LayoutVisualStyle,
+  MatrixRowColorPattern,
   RadialColorScheme,
   VidyaEdgeData,
 } from "../types";
+import { isMetallicColor } from "../canvas/custom-colors";
+import {
+  normalizeSurfaceEffect,
+  surfaceEffectPresetPatch,
+} from "../canvas/surface-effects";
 import {
   DEFAULT_RADIAL_COLOR_SCHEME,
   matrixRowAnchorColor,
@@ -95,6 +101,42 @@ function branchIndexes(rootId: string, hierarchy: Hierarchy): Map<string, number
     visit(childId);
   });
   return indexes;
+}
+
+const MATRIX_METALLIC_SETTINGS = normalizeSurfaceEffect(
+  surfaceEffectPresetPatch("metallic")
+);
+
+function matrixMetallicEffect(
+  pattern: MatrixRowColorPattern,
+  branchIndex: number,
+  branchCount: number,
+  startColor?: string,
+  endColor?: string
+): Partial<LayoutVisualStyle> {
+  const startIsMetallic = isMetallicColor(startColor);
+  const endIsMetallic = isMetallicColor(endColor);
+  let metallicAmount = startIsMetallic ? 1 : 0;
+
+  if (pattern === "alternating") {
+    metallicAmount = branchIndex % 2 === 0
+      ? (startIsMetallic ? 1 : 0)
+      : (endIsMetallic ? 1 : 0);
+  } else if (pattern === "duotone") {
+    const progress = branchCount <= 1 ? 0 : branchIndex / (branchCount - 1);
+    metallicAmount = (startIsMetallic ? 1 - progress : 0)
+      + (endIsMetallic ? progress : 0);
+  }
+
+  if (metallicAmount <= 0) return {};
+  return {
+    surfaceEffect: MATRIX_METALLIC_SETTINGS.preset,
+    surfaceEffectDepth: MATRIX_METALLIC_SETTINGS.depth,
+    surfaceEffectStrength: Math.round(
+      MATRIX_METALLIC_SETTINGS.strength * metallicAmount * 100
+    ) / 100,
+    surfaceEffectAngle: MATRIX_METALLIC_SETTINGS.angle,
+  };
 }
 
 type ManualFillAnchor = {
@@ -217,6 +259,15 @@ export function buildLayoutVisualStyles(
             rowEndColor
           )
         : undefined);
+    const matrixSurfaceEffect = matrixDepthBand && !fillAnchor
+      ? matrixMetallicEffect(
+          rowColorPattern,
+          branchIndex,
+          branchCount,
+          layoutStartColor,
+          rowEndColor
+        )
+      : {};
     const colors = radialSectorColors(
       scheme,
       branchIndex,
@@ -234,6 +285,7 @@ export function buildLayoutVisualStyles(
       depth,
       branchIndex,
       fillColor: colors.fill,
+      ...matrixSurfaceEffect,
       borderColor: colors.border,
       textColor: colors.text,
       accentColor: colors.border,

@@ -8,7 +8,7 @@ import { NodeHandles } from "./NodeHandles";
 import {
   getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveNodeBorderRadius, resolveFillOpacity, resolveBorderStyle,
-  textMeasurementKey, themeAwareNodeFillColor,
+  resolveSurfaceEffectData, textMeasurementKey, themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import {
   shapeTextContentSize,
@@ -76,6 +76,7 @@ function TextBlockNodeComponent({
   const isDrawing           = drawingModeNodeId === id;
 
   const fillColor    = resolveFillColor(dd);
+  const surfaceEffectData = resolveSurfaceEffectData(dd);
   const borderColor  = resolveBorderColor(dd);
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
@@ -130,9 +131,12 @@ function TextBlockNodeComponent({
   const resizeControls = useNodeManualResize(id);
   const textFrameBody = textFrameBodyBox(textFrameStyle, renderedTextCalloutDirection);
   const hasTextFrame = textFrameStyle !== "plain";
-  const exportEffectStyle = surfaceEffectExportStyle(hasTextFrame ? {} : dd, borderColor);
+  const exportEffectStyle = surfaceEffectExportStyle(
+    hasTextFrame ? {} : surfaceEffectData,
+    borderColor
+  );
   const exportShadowLayers = surfaceEffectExportShadowLayers(
-    hasTextFrame ? {} : dd,
+    hasTextFrame ? {} : surfaceEffectData,
     borderColor
   );
   const editHistoryCaptured = useRef(false);
@@ -213,7 +217,7 @@ function TextBlockNodeComponent({
               backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
               border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
               borderRadius: bRadius,
-              ...surfaceEffectStyle(dd, borderColor),
+              ...surfaceEffectStyle(surfaceEffectData, borderColor),
             }),
             ...objectRotationStyle("text", dd),
           }}
@@ -238,7 +242,7 @@ function TextBlockNodeComponent({
             borderWidth={bWidth}
             borderStyle={bStyle}
             selected={selected}
-            filter={surfaceEffectFilter(dd, borderColor)}
+            filter={surfaceEffectFilter(surfaceEffectData, borderColor)}
             size={nodeSize}
             tailTip={textCalloutTailTip}
             tailDragTitle={noteOwner ? "Drag within the parent shape" : undefined}

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { surfaceEffectStyle } from "./canvas/surface-effects";
 
 import {
   automaticNodeTextColor,
@@ -14,6 +15,7 @@ import {
   resolveFillColor,
   resolveFillSourceColor,
   resolveLayoutFillGradient,
+  resolveSurfaceEffectData,
   themeAwareLayoutConnectorColor,
   themeAwareNodeFillColor,
 } from "./style-utils";
@@ -41,6 +43,41 @@ test("generated root gradients render only while the layout owns the fill", () =
     }),
     undefined
   );
+});
+
+test("generated surface effects render only while the layout owns the fill", () => {
+  const metallicLayoutStyle = {
+    ...automaticLayoutStyle,
+    surfaceEffect: "metallic" as const,
+    surfaceEffectDepth: 6,
+    surfaceEffectStrength: 54,
+    surfaceEffectAngle: 20,
+  };
+  assert.deepEqual(
+    resolveSurfaceEffectData({
+      surfaceEffect: "glow",
+      layoutVisualStyle: metallicLayoutStyle,
+    }),
+    {
+      surfaceEffect: "metallic",
+      surfaceEffectDepth: 6,
+      surfaceEffectStrength: 54,
+      surfaceEffectAngle: 20,
+      layoutVisualStyle: metallicLayoutStyle,
+    }
+  );
+  const generatedEffectStyle = surfaceEffectStyle(
+    resolveSurfaceEffectData({ layoutVisualStyle: metallicLayoutStyle })
+  );
+  assert.match(generatedEffectStyle.backgroundImage ?? "", /linear-gradient/);
+  assert.equal(generatedEffectStyle.backgroundBlendMode, "overlay,soft-light");
+
+  const manualEffect = {
+    surfaceEffect: "glow",
+    layoutVisualStyle: metallicLayoutStyle,
+    layoutAutoFill: false,
+  };
+  assert.equal(resolveSurfaceEffectData(manualEffect), manualEffect);
 });
 
 test("a cleared node fill stays transparent instead of falling back to blue", () => {
