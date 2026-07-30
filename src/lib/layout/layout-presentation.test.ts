@@ -137,12 +137,21 @@ test("an explicit typography override wins over generated layout text size", () 
   assert.equal(resolveLayoutFontSize(data), 22);
 });
 
-test("Matrix normalizes existing type while automatic typography is active", () => {
+test("Matrix renders an authored size literally instead of hiding it behind a depth size", () => {
   const { nodes, edges } = fixture();
   nodes[1] = {
     ...nodes[1],
     data: { ...nodes[1].data, fontSize: 30 },
   };
+  const hierarchy = buildHierarchy(nodes, edges);
+  const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "matrix", "ocean");
+  const data = styled.nodes[1].data as Record<string, unknown>;
+
+  assert.equal(resolveLayoutFontSize(data), 30);
+});
+
+test("Matrix uses its generated depth size only when no authored size exists", () => {
+  const { nodes, edges } = fixture();
   const hierarchy = buildHierarchy(nodes, edges);
   const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "matrix", "ocean");
   const data = styled.nodes[1].data as Record<string, unknown>;

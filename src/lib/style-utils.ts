@@ -137,8 +137,16 @@ export function getFittedTextPresentation(
   const singleWord = !!plainText && !/\s/u.test(plainText);
   const availableHeight = options.availableHeight ?? Number.POSITIVE_INFINITY;
   const minimumFontSize = Math.max(4, Math.min(preferredFontSize, options.minimumFontSize ?? 8));
-  const shouldConstrain = options.constrain ?? options.fitMultiline ?? false;
-  const shouldMaximize = (d.maximizeText === true || d.matrixFillCellLabels === true)
+  const matrixCell = d.matrixCell === true;
+  // Text fitting is always explicit. With Auto-fit off, the authored size is
+  // literal in every shape; a fixed or layout-owned box must never apply a
+  // second hidden scale that makes 18px render smaller than 17px.
+  const autoFitText = matrixCell
+    ? d.matrixFillCellLabels === true
+    : d.maximizeText === true;
+  const shouldConstrain = (options.constrain ?? options.fitMultiline ?? false)
+    && autoFitText;
+  const shouldMaximize = autoFitText
     && Number.isFinite(availableHeight)
     && !!plainText;
   let scale = 1;
@@ -164,12 +172,6 @@ export function getFittedTextPresentation(
     : undefined;
 
   if (shouldMaximize) {
-    const normalScale = getFittedTextPresentation(
-      { ...d, maximizeText: false, matrixFillCellLabels: false },
-      availableWidth,
-      fallbackFontSize,
-      options
-    ).scale;
     const maximumFontSize = maximumFittedTextFontSize(
       plainText,
       { width: availableWidth, height: availableHeight },
@@ -179,17 +181,15 @@ export function getFittedTextPresentation(
       width: availableWidth,
       height: availableHeight,
     });
-    // Fill-space is monotonic across every shared consumer: it can enlarge the
-    // normal rendered fit, but enabling it must never make that text smaller.
-    // Compact rich text uses its real authored dimensions so inline font marks
-    // cannot make one same-sized node look arbitrarily smaller than another.
+    // Auto-fit is the single explicit owner of both growing and shrinking.
+    // Without it, scale remains exactly 1.
     const estimatedScale = maximumFontSize / preferredFontSize;
     const safeFillScale = measuredScale == null
       ? estimatedScale
       : measuredScale.compact
         ? measuredScale.scale
         : Math.min(estimatedScale, measuredScale.scale);
-    scale = Math.max(normalScale, safeFillScale);
+    scale = safeFillScale;
     scale = Math.max(minimumFontSize / preferredFontSize, Math.min(96 / preferredFontSize, scale));
   } else if (shouldConstrain && storedMeasurement) {
     scale = fittedContentScale(
