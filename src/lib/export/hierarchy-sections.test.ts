@@ -65,6 +65,89 @@ function fixture(): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
+function exactMatrixFoldFixture(rootMode: "continuous" | "divided"): {
+  nodes: Node[];
+  edges: Edge[];
+} {
+  const divided = rootMode === "divided";
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 0, y: 0 },
+      style: { width: divided ? 240 : 540, height: 48 },
+      data: {
+        text: "Matrix title",
+        layoutMode: "matrix",
+        matrixCell: true,
+        matrixFoldRootMode: rootMode,
+        childOrder: ["branch-a", "branch-b"],
+        matrixFoldSections: [
+          { x: 0, y: 48, width: 240, height: 200, repeatedCells: [] },
+          { x: 300, y: 48, width: 240, height: 200, repeatedCells: [] },
+        ],
+      },
+    },
+    {
+      id: "branch-a",
+      type: "shape",
+      position: { x: 0, y: 48 },
+      style: { width: 240, height: 200 },
+      data: { text: "First branch", parentId: "root", childOrder: [] },
+    },
+    {
+      id: "branch-b",
+      type: "shape",
+      position: { x: 300, y: 48 },
+      style: { width: 240, height: 200 },
+      data: { text: "Second branch", parentId: "root", childOrder: [] },
+    },
+    {
+      id: "matrix-frame-root-0",
+      type: "frame",
+      position: { x: 0, y: 48 },
+      style: { width: 240, height: 200 },
+      data: {
+        title: "",
+        matrixFrameFor: "root",
+        matrixFoldSectionIndex: 0,
+        matrixFoldSectionNodeIds: divided
+          ? ["root", "branch-a"]
+          : ["branch-a"],
+      },
+    },
+    {
+      id: "matrix-frame-root-1",
+      type: "frame",
+      position: { x: 300, y: 48 },
+      style: { width: 240, height: 200 },
+      data: {
+        title: "",
+        matrixFrameFor: "root",
+        matrixFoldSectionIndex: 1,
+        matrixFoldSectionNodeIds: ["branch-b"],
+      },
+    },
+    ...(divided ? [{
+      id: "matrix-fold-root-root-1-0",
+      type: "frame",
+      position: { x: 300, y: 0 },
+      style: { width: 240, height: 48 },
+      data: {
+        title: "",
+        matrixFrameFor: "root",
+        matrixFoldSectionIndex: 1,
+        matrixRepeatedCells: [{ role: "header", sourceNodeId: "root" }],
+      },
+    } satisfies Node] : []),
+  ];
+  const edges: Edge[] = [
+    { id: "root-a", source: "root", target: "branch-a" },
+    { id: "root-b", source: "root", target: "branch-b" },
+  ];
+  return { nodes, edges };
+}
+
 test("compacts distant folded groups toward the parent on the separated axis", () => {
   assert.deepEqual(
     compactHierarchyPlacement(
@@ -196,6 +279,54 @@ test("plans authored root folds and manual breakpoints as full-width printable g
   assert.equal(plan.folds[0].bounds.width, 600);
   assert.equal(plan.folds[1].bounds.width, 600);
   assert.equal(plan.folds[2].bounds.width, 600);
+});
+
+test("plans continuous Matrix terminal-row folds from their exact generated frames", () => {
+  const { nodes, edges } = exactMatrixFoldFixture("continuous");
+  const plan = resolveHierarchySectionExportPlan("root", nodes, edges);
+
+  assert.ok(plan);
+  assert.equal(plan.folds.length, 2);
+  assert.deepEqual(plan.folds[0].nodeIds, [
+    "branch-a",
+    "matrix-frame-root-0",
+  ]);
+  assert.deepEqual(plan.folds[1].nodeIds, [
+    "branch-b",
+    "matrix-frame-root-1",
+  ]);
+  assert.deepEqual(plan.folds.map((fold) => fold.bounds), [
+    { x: 0, y: 0, width: 240, height: 248 },
+    { x: 300, y: 0, width: 240, height: 248 },
+  ]);
+  assert.deepEqual(plan.folds.map((fold) => fold.headerOverlay?.bounds), [
+    { x: 0, y: 0, width: 240, height: 48 },
+    { x: 300, y: 0, width: 240, height: 48 },
+  ]);
+});
+
+test("plans divided Matrix folds with their selectable native root frames", () => {
+  const { nodes, edges } = exactMatrixFoldFixture("divided");
+  const plan = resolveHierarchySectionExportPlan("root", nodes, edges);
+
+  assert.ok(plan);
+  assert.equal(plan.folds.length, 2);
+  assert.deepEqual(plan.folds[0].nodeIds, [
+    "root",
+    "branch-a",
+    "matrix-frame-root-0",
+  ]);
+  assert.deepEqual(plan.folds[1].nodeIds, [
+    "branch-b",
+    "matrix-frame-root-1",
+    "matrix-fold-root-root-1-0",
+  ]);
+  assert.equal(plan.folds[0].headerOverlay, undefined);
+  assert.equal(plan.folds[1].headerOverlay, undefined);
+  assert.deepEqual(plan.folds.map((fold) => fold.bounds), [
+    { x: 0, y: 0, width: 240, height: 248 },
+    { x: 300, y: 0, width: 240, height: 248 },
+  ]);
 });
 
 test("plans folds for List, horizontal, and other hierarchy layouts", () => {
