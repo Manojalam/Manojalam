@@ -94,6 +94,51 @@ export function correctedShapeFlowOffset(
 }
 
 /**
+ * Visually align a rectangular label from its rendered glyph bounds instead
+ * of the editor's line box. Rich-text line boxes can contain invisible empty
+ * paragraphs or asymmetric font leading, neither of which should make a
+ * visibly centered label appear low or high inside its shape.
+ */
+export function correctedGuideVerticalOffset(
+  currentOffset: number,
+  content: RenderedBoundsRect,
+  guide: RenderedBoundsRect,
+  verticalAlign: ShapeTextVerticalAlign,
+  options: {
+    inset?: number;
+    localToScreenScale?: number;
+  } = {}
+): number {
+  const normalizedOffset = Number.isFinite(currentOffset) ? currentOffset : 0;
+  const localToScreenScale = Number.isFinite(options.localToScreenScale)
+    ? Math.max(0.01, options.localToScreenScale ?? 1)
+    : 1;
+  const inset = Number.isFinite(options.inset) ? Math.max(0, options.inset ?? 0) : 0;
+  if (
+    !Number.isFinite(content.top)
+    || !Number.isFinite(content.height)
+    || !Number.isFinite(guide.top)
+    || !Number.isFinite(guide.bottom)
+    || !Number.isFinite(guide.height)
+    || content.height <= 0
+    || guide.height <= 0
+  ) return normalizedOffset;
+
+  const screenInset = Math.min(guide.height / 2, inset * localToScreenScale);
+  const targetTop = verticalAlign === "top"
+    ? guide.top + screenInset
+    : verticalAlign === "bottom"
+      ? guide.bottom - screenInset - content.height
+      : guide.top + (guide.height - content.height) / 2;
+  const nextOffset = normalizedOffset + (targetTop - content.top) / localToScreenScale;
+  const maximumOffset = Math.max(guide.height / localToScreenScale, 8);
+  return Math.max(
+    -maximumOffset,
+    Math.min(maximumOffset, Number.isFinite(nextOffset) ? nextOffset : normalizedOffset)
+  );
+}
+
+/**
  * Correct a small horizontal drift introduced by CSS shape-outside floats.
  * The offset is visual only, so it never changes line wrapping or the guide
  * polygons themselves. Rectangles are browser (screen) coordinates and the

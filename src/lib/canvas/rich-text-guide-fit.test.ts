@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  correctedGuideVerticalOffset,
   correctedGuideContentScale,
   correctedShapeFlowHorizontalOffset,
   correctedShapeFlowOffset,
@@ -110,6 +111,22 @@ test("contour alignment ignores invalid geometry and clamps within its guide", (
     width: 20,
     height: 20,
   }, guide, "top"), 0);
+});
+
+test("rectangular middle alignment removes visible downward drift", () => {
+  const content = { left: 150, top: 160, right: 350, bottom: 200, width: 200, height: 40 };
+
+  assert.equal(correctedGuideVerticalOffset(0, content, guide, "middle"), -30);
+});
+
+test("rectangular alignment honors top, bottom, and canvas zoom", () => {
+  const content = { left: 150, top: 100, right: 350, bottom: 140, width: 200, height: 40 };
+
+  assert.equal(correctedGuideVerticalOffset(0, content, guide, "top", { inset: 10 }), -40);
+  assert.equal(correctedGuideVerticalOffset(0, content, guide, "bottom", { inset: 10 }), 100);
+  assert.equal(correctedGuideVerticalOffset(0, content, guide, "middle", {
+    localToScreenScale: 2,
+  }), 15);
 });
 
 test("horizontal contour alignment removes the measured rightward drift", () => {

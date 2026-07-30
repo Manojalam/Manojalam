@@ -27,6 +27,7 @@ import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
 import { forgetCustomColor, rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
+  correctedGuideVerticalOffset,
   correctedGuideContentScale,
   correctedShapeFlowHorizontalOffset,
   correctedShapeFlowOffset,
@@ -535,6 +536,10 @@ interface RichTextEditorProps {
   constrainToShapeGuide?: boolean;
   /** Allow the guide to reduce content scale when Auto-fit is explicitly enabled. */
   allowGuideScaleCorrection?: boolean;
+  /** Align rectangular labels from their visible glyph bounds, not hidden line-box space. */
+  guideVerticalAlign?: ShapeTextVerticalAlign;
+  guideVerticalInset?: number;
+  guideRotation?: number;
   /** Exclusion polygons that let wrapped text occupy a non-rectangular silhouette. */
   shapeTextFlow?: {
     leftExclusion: string;
@@ -567,6 +572,9 @@ export function RichTextEditor({
   contentScale = 1,
   constrainToShapeGuide = false,
   allowGuideScaleCorrection = false,
+  guideVerticalAlign = "middle",
+  guideVerticalInset = 0,
+  guideRotation = 0,
   shapeTextFlow,
   blockAlign,
   initialFocusPoint,
@@ -613,9 +621,11 @@ export function RichTextEditor({
   const requestedFlowOffset = Math.max(0, shapeTextFlow?.verticalOffset ?? 0);
   const [renderedFlowOffset, setRenderedFlowOffset] = useState(requestedFlowOffset);
   const [renderedFlowHorizontalOffset, setRenderedFlowHorizontalOffset] = useState(0);
+  const [renderedGuideVerticalOffset, setRenderedGuideVerticalOffset] = useState(0);
   const renderedContentScaleRef = useRef(contentScale);
   const renderedFlowOffsetRef = useRef(requestedFlowOffset);
   const renderedFlowHorizontalOffsetRef = useRef(0);
+  const renderedGuideVerticalOffsetRef = useRef(0);
   const shapeGuideCorrectionCountRef = useRef(0);
   const shapeGuideFrameRef = useRef(0);
   const richTextRootRef = useRef<HTMLDivElement>(null);
@@ -654,6 +664,7 @@ export function RichTextEditor({
   const hasMeasuredPresentationRef = useRef(false);
   const guidePresentationRef = useRef(`${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`);
   const flowPresentationRef = useRef("");
+  const guideAlignmentPresentationRef = useRef("");
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -853,9 +864,9 @@ export function RichTextEditor({
 
   const guidePresentation = `${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`;
   const hasShapeTextFlow = !!shapeTextFlow;
-  const flowVerticalAlign = shapeTextFlow?.verticalAlign ?? "middle";
-  const flowVerticalInset = shapeTextFlow?.verticalInset ?? 0;
-  const flowRotation = shapeTextFlow?.rotation ?? 0;
+  const flowVerticalAlign = shapeTextFlow?.verticalAlign ?? guideVerticalAlign;
+  const flowVerticalInset = shapeTextFlow?.verticalInset ?? guideVerticalInset;
+  const flowRotation = shapeTextFlow?.rotation ?? guideRotation;
   const flowHorizontalAlign: ShapeTextHorizontalAlign = blockAlign === "left"
     ? "left"
     : blockAlign === "right" ? "right" : "center";
@@ -872,6 +883,13 @@ export function RichTextEditor({
         shapeTextFlow.guideHeight ?? 0,
       ].join("|")
     : "";
+  const guideAlignmentPresentation = [
+    guidePresentation,
+    flowVerticalAlign,
+    flowVerticalInset,
+    flowRotation,
+    hasShapeTextFlow ? "flow" : "rectangular",
+  ].join("|");
   const reconcileShapeGuide = useCallback(() => {
     if (!constrainToShapeGuide) return;
     const root = richTextRootRef.current;
@@ -907,67 +925,85 @@ export function RichTextEditor({
       return;
     }
 
-    // Exclusion polygons define horizontal line widths, but CSS has no native
-    // way to vertically align the resulting irregular group. Correct the
-    // first block's offset from the browser's real glyph bounds after fonts,
-    // wrapping, inline sizes, and canvas zoom have all been applied.
-    if (hasShapeTextFlow && Math.abs(flowRotation) < 0.001) {
+    // Flexbox centers the editor's complete line box. That box can include
+    // invisible empty paragraphs or asymmetric font leading, so its visible
+    // glyphs can still look substantially low or high. Align from the real
+    // rendered glyph bounds after fonts, wrapping, inline sizes, and canvas
+    // zoom have all been applied.
+    if (Math.abs(flowRotation) < 0.001) {
       const rootBounds = root.getBoundingClientRect();
       const localToScreenScale = root.offsetHeight > 0
         ? rootBounds.height / root.offsetHeight
         : 1;
-      const currentOffset = renderedFlowOffsetRef.current;
-      const corrected = correctedShapeFlowOffset(
-        currentOffset,
-        contentBounds,
-        {
-          left: guideBounds.left,
-          top: guideBounds.top,
-          right: guideBounds.right,
-          bottom: guideBounds.bottom,
-          width: guideBounds.width,
-          height: guideBounds.height,
-        },
-        flowVerticalAlign,
-        {
-          inset: flowVerticalInset,
-          localToScreenScale,
-        }
-      );
-      if (
-        Math.abs(corrected - currentOffset) * localToScreenScale > 0.75
-        && shapeGuideCorrectionCountRef.current < 6
-      ) {
-        shapeGuideCorrectionCountRef.current += 1;
-        renderedFlowOffsetRef.current = corrected;
-        setRenderedFlowOffset(corrected);
-      }
+      const guideRect = {
+        left: guideBounds.left,
+        top: guideBounds.top,
+        right: guideBounds.right,
+        bottom: guideBounds.bottom,
+        width: guideBounds.width,
+        height: guideBounds.height,
+      };
 
-      const currentHorizontalOffset = renderedFlowHorizontalOffsetRef.current;
-      const correctedHorizontal = correctedShapeFlowHorizontalOffset(
-        currentHorizontalOffset,
-        contentBounds,
-        {
-          left: guideBounds.left,
-          top: guideBounds.top,
-          right: guideBounds.right,
-          bottom: guideBounds.bottom,
-          width: guideBounds.width,
-          height: guideBounds.height,
-        },
-        flowHorizontalAlign,
-        {
-          inset: flowVerticalInset,
-          localToScreenScale,
+      if (hasShapeTextFlow) {
+        const currentOffset = renderedFlowOffsetRef.current;
+        const corrected = correctedShapeFlowOffset(
+          currentOffset,
+          contentBounds,
+          guideRect,
+          flowVerticalAlign,
+          {
+            inset: flowVerticalInset,
+            localToScreenScale,
+          }
+        );
+        if (
+          Math.abs(corrected - currentOffset) * localToScreenScale > 0.75
+          && shapeGuideCorrectionCountRef.current < 6
+        ) {
+          shapeGuideCorrectionCountRef.current += 1;
+          renderedFlowOffsetRef.current = corrected;
+          setRenderedFlowOffset(corrected);
         }
-      );
-      if (
-        Math.abs(correctedHorizontal - currentHorizontalOffset) * localToScreenScale > 0.25
-        && shapeGuideCorrectionCountRef.current < 6
-      ) {
-        shapeGuideCorrectionCountRef.current += 1;
-        renderedFlowHorizontalOffsetRef.current = correctedHorizontal;
-        setRenderedFlowHorizontalOffset(correctedHorizontal);
+
+        const currentHorizontalOffset = renderedFlowHorizontalOffsetRef.current;
+        const correctedHorizontal = correctedShapeFlowHorizontalOffset(
+          currentHorizontalOffset,
+          contentBounds,
+          guideRect,
+          flowHorizontalAlign,
+          {
+            inset: flowVerticalInset,
+            localToScreenScale,
+          }
+        );
+        if (
+          Math.abs(correctedHorizontal - currentHorizontalOffset) * localToScreenScale > 0.25
+          && shapeGuideCorrectionCountRef.current < 6
+        ) {
+          shapeGuideCorrectionCountRef.current += 1;
+          renderedFlowHorizontalOffsetRef.current = correctedHorizontal;
+          setRenderedFlowHorizontalOffset(correctedHorizontal);
+        }
+      } else {
+        const currentOffset = renderedGuideVerticalOffsetRef.current;
+        const corrected = correctedGuideVerticalOffset(
+          currentOffset,
+          contentBounds,
+          guideRect,
+          flowVerticalAlign,
+          {
+            inset: flowVerticalInset,
+            localToScreenScale,
+          }
+        );
+        if (
+          Math.abs(corrected - currentOffset) * localToScreenScale > 0.75
+          && shapeGuideCorrectionCountRef.current < 6
+        ) {
+          shapeGuideCorrectionCountRef.current += 1;
+          renderedGuideVerticalOffsetRef.current = corrected;
+          setRenderedGuideVerticalOffset(corrected);
+        }
       }
     }
   }, [
@@ -998,12 +1034,14 @@ export function RichTextEditor({
     renderedContentScale,
     renderedFlowHorizontalOffset,
     renderedFlowOffset,
+    renderedGuideVerticalOffset,
     scheduleShapeGuideReconciliation,
   ]);
 
   useLayoutEffect(() => {
     const guideChanged = guidePresentationRef.current !== guidePresentation;
     const flowChanged = flowPresentationRef.current !== flowPresentation;
+    const guideAlignmentChanged = guideAlignmentPresentationRef.current !== guideAlignmentPresentation;
     if (guideChanged) {
       guidePresentationRef.current = guidePresentation;
       renderedContentScaleRef.current = contentScale;
@@ -1016,11 +1054,17 @@ export function RichTextEditor({
       renderedFlowHorizontalOffsetRef.current = 0;
       setRenderedFlowHorizontalOffset(0);
     }
-    if (guideChanged || flowChanged) shapeGuideCorrectionCountRef.current = 0;
+    if (guideAlignmentChanged) {
+      guideAlignmentPresentationRef.current = guideAlignmentPresentation;
+      renderedGuideVerticalOffsetRef.current = 0;
+      setRenderedGuideVerticalOffset(0);
+    }
+    if (guideChanged || flowChanged || guideAlignmentChanged) shapeGuideCorrectionCountRef.current = 0;
     scheduleShapeGuideReconciliation();
   }, [
     contentScale,
     flowPresentation,
+    guideAlignmentPresentation,
     guidePresentation,
     requestedFlowOffset,
     scheduleShapeGuideReconciliation,
@@ -2076,6 +2120,10 @@ export function RichTextEditor({
     ? drag.top < window.innerHeight / 2
     : !!anchor && autoTop >= anchor.bottom;
   const scaleStyle: CSSProperties | undefined = getRichTextScaleStyle(renderedContentScale);
+  const guideVerticalStyle: CSSProperties | undefined = !shapeTextFlow
+    && Math.abs(renderedGuideVerticalOffset) > 0.01
+    ? { position: "relative", top: `${renderedGuideVerticalOffset}px` }
+    : undefined;
   const editorStyle = shapeTextFlow
     ? ({
         ...scaleStyle,
@@ -2084,7 +2132,10 @@ export function RichTextEditor({
         "--shape-text-flow-offset": `${renderedFlowOffset}px`,
         "--shape-text-flow-horizontal-offset": `${renderedFlowHorizontalOffset}px`,
       } as CSSProperties)
-    : scaleStyle;
+    : {
+        ...scaleStyle,
+        ...guideVerticalStyle,
+      };
 
   return (
     <>

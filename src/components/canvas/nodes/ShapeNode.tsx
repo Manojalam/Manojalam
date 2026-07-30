@@ -1527,6 +1527,9 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                           ? dd.matrixFillCellLabels === true
                           : dd.maximizeText === true
                       }
+                      guideVerticalAlign={textVerticalAlign}
+                      guideVerticalInset={flowVerticalInset}
+                      guideRotation={textRotation}
                       shapeTextFlow={renderContourTextFlow ? {
                         leftExclusion: flowLayout.leftExclusion,
                         rightExclusion: flowLayout.rightExclusion,
