@@ -693,6 +693,17 @@ function inspectorLayoutLabel(value: unknown): string {
   return LAYOUT_OPTIONS.find((option) => option.mode === value)?.label ?? "Free Form";
 }
 
+const MATRIX_ROW_COLOR_PATTERN_OPTIONS: Array<{
+  value: MatrixRowColorPattern;
+  label: string;
+}> = [
+  { value: "flow", label: "Flow" },
+  { value: "gentle", label: "Gentle Flow" },
+  { value: "duotone", label: "Two-color Blend" },
+  { value: "alternating", label: "Alternating Pair" },
+  { value: "curated", label: "Curated Palette" },
+];
+
 function normalizeWholeTextFormat(
   data: Record<string, unknown>,
   key: "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
@@ -1279,6 +1290,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const applyLayoutColorScheme = useCanvasStore((s) => s.applyLayoutColorScheme);
   const applyLayoutStartColor = useCanvasStore((s) => s.applyLayoutStartColor);
   const applyMatrixRowColorPattern = useCanvasStore((s) => s.applyMatrixRowColorPattern);
+  const applyMatrixRowEndColor = useCanvasStore((s) => s.applyMatrixRowEndColor);
   const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
@@ -1560,6 +1572,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeMatrixRowColorPattern = matrixRowColorPattern(
     structuredLayoutRootData.matrixRowColorPattern
   );
+  const activeMatrixRowEndColor = typeof structuredLayoutRootData.matrixRowEndColor === "string"
+    ? structuredLayoutRootData.matrixRowEndColor
+    : undefined;
   const canFoldSelectedBranch = !!structuredLayoutRootNode && childIds.length > 1;
   const isRadialLayoutSector = typeof d.sunburstHiddenFor === "string";
   const radialChartNode = isRadialLayoutSector
@@ -5046,20 +5061,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     onValueChange={(value) => {
                       const pattern = value as MatrixRowColorPattern;
                       applyMatrixRowColorPattern(structuredLayoutRootNode.id, pattern);
-                      toast.success(
-                        pattern === "gentle"
-                          ? "Applied a gentle row color flow."
-                          : "Restored the full row color flow.",
-                        { action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() } }
-                      );
+                      const label = MATRIX_ROW_COLOR_PATTERN_OPTIONS.find(
+                        (option) => option.value === pattern
+                      )?.label ?? "Flow";
+                      toast.success(`Applied ${label} row colors.`, {
+                        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                      });
                     }}
                   >
                     <SelectTrigger className="mt-2 h-7 text-[10px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="flow">Flow</SelectItem>
-                      <SelectItem value="gentle">Gentle Flow</SelectItem>
+                      {MATRIX_ROW_COLOR_PATTERN_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -5082,7 +5100,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                         activeStructuredScheme,
                         8,
                         activeLayoutStartColor,
-                        activeMatrixRowColorPattern
+                        activeMatrixRowColorPattern,
+                        activeMatrixRowEndColor
                       ),
                     }}
                   />
@@ -5097,7 +5116,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                             branchIndex,
                             8,
                             activeLayoutStartColor,
-                            activeMatrixRowColorPattern
+                            activeMatrixRowColorPattern,
+                            activeMatrixRowEndColor
                           ),
                         }}
                       />
@@ -5122,6 +5142,45 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     }}
                   />
                 </div>
+                {(activeMatrixRowColorPattern === "duotone"
+                  || activeMatrixRowColorPattern === "alternating") && (
+                  <div className="mt-2 rounded border border-border/70 bg-background/60 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-[10px] font-medium">
+                        {activeMatrixRowColorPattern === "duotone"
+                          ? "Last row color"
+                          : "Alternate row color"}
+                      </Label>
+                      <span className="text-[9px] text-muted-foreground">
+                        {activeMatrixRowEndColor ? "Custom" : "Palette default"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                      {activeMatrixRowColorPattern === "duotone"
+                        ? "Rows blend toward this hue; the column fade remains independent."
+                        : "Every second row uses this hue; the column fade remains independent."}
+                    </p>
+                    <div className="mt-2">
+                      <ColorSwatchPicker
+                        value={activeMatrixRowEndColor}
+                        size="sm"
+                        defaultSectionsOpen={false}
+                        onChange={(value) => {
+                          applyMatrixRowEndColor(structuredLayoutRootNode.id, value);
+                          toast.success("Updated the secondary row color.", {
+                            action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                          });
+                        }}
+                        onClear={() => {
+                          applyMatrixRowEndColor(structuredLayoutRootNode.id);
+                          toast.success("Restored the palette's default secondary color.", {
+                            action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <Button
