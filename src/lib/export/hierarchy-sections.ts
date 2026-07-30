@@ -4,6 +4,15 @@ import { resolvedFoldSections } from "../layout/child-group-wrap";
 import { buildHierarchy } from "../layout/hierarchy";
 import { matrixCellBorderRadius } from "../layout/matrix-presentation";
 import { resolveConnectorPathStyle } from "../canvas/connector-path-style";
+import {
+  surfaceEffectExportShadowLayers,
+  surfaceEffectExportStyle,
+  surfaceEffectStyle,
+} from "../canvas/surface-effects";
+import {
+  resolveLayoutFillGradient,
+  resolveSurfaceEffectData,
+} from "../style-utils";
 import type {
   MatrixFoldSectionPresentation,
   VidyaEdgeData,
@@ -212,11 +221,24 @@ function rootHeaderStyle(root: Node, bounds: ExportBounds): ExportHeaderOverlay 
   const borderWidth = automaticBorder && data.matrixCell === true && visual
     ? 0
     : Math.max(0, finiteDimension(data.borderWidth) ?? 0);
+  const effectData = resolveSurfaceEffectData(data);
+  const effectStyle = surfaceEffectStyle(effectData, borderColor);
+  const exportEffectStyle = surfaceEffectExportStyle(effectData, borderColor);
+  const surfaceEffectShadowLayers = surfaceEffectExportShadowLayers(
+    effectData,
+    borderColor
+  );
 
   return {
     bounds,
     text: nodeLabel(root, "Matrix"),
     backgroundColor: fillColor,
+    backgroundImage: effectStyle.backgroundImage ?? resolveLayoutFillGradient(data),
+    backgroundBlendMode: effectStyle.backgroundBlendMode,
+    backdropFilter: effectStyle.backdropFilter,
+    boxShadow: effectStyle.boxShadow,
+    surfaceEffectShadowLayers,
+    surfaceEffectShadow: exportEffectStyle.boxShadow,
     color: textColor,
     borderColor,
     borderWidth,
