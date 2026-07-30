@@ -1467,10 +1467,11 @@ function equalizeTerminalSiblingHeights(
 function orientedChildSections(
   parentData: Record<string, unknown>,
   children: OrientedChildEntry[],
+  hierarchy: Hierarchy,
   automaticMaximumSectionSize = 0
 ): OrientedChildEntry[][] {
   const childIds = children.map((child) => child.nodeId);
-  let idSections = resolvedFoldSections(parentData, childIds);
+  let idSections = resolvedFoldSections(parentData, childIds, hierarchy);
   if (
     idSections.length === 1
     && automaticMaximumSectionSize > 0
@@ -1578,6 +1579,7 @@ function proportionalShare(total: number, index: number, count: number): number 
 function layoutOrientedChildSections(
   parentData: Record<string, unknown>,
   children: OrientedChildEntry[],
+  hierarchy: Hierarchy,
   childFlow: MatrixChildFlow,
   settings: DensitySettings,
   siblingGap: number,
@@ -1591,6 +1593,7 @@ function layoutOrientedChildSections(
   const rawSections = orientedChildSections(
     parentData,
     siblingGroup.children,
+    hierarchy,
     automaticMaximumSectionSize
   );
   const foldedTerminalGroup = rawSections.length > 1
@@ -1782,6 +1785,7 @@ function computeOrientedMatrixLayout(
     const childArea = layoutOrientedChildSections(
       data,
       children,
+      hierarchy,
       childFlow,
       settings,
       siblingGap,
@@ -1854,6 +1858,7 @@ function computeOrientedMatrixLayout(
   const body = layoutOrientedChildSections(
     rootData,
     builtRootChildren,
+    hierarchy,
     rootChildFlow,
     settings,
     matrixSiblingGapForNode(rootId, settings.cellGap, byId),
@@ -2385,7 +2390,7 @@ export function computeMatrixLayout(
   if (!root) throw new Error(`Matrix root ${rootId} does not exist.`);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
   const rootChildren = visibleChildren(rootId, hierarchy, byId);
-  const rootFoldSections = resolvedFoldSections(rootData, rootChildren);
+  const rootFoldSections = resolvedFoldSections(rootData, rootChildren, hierarchy);
   if (rootFoldSections.length > 1) {
     const unfoldedRootData = { ...rootData };
     delete unfoldedRootData.layoutFoldCount;

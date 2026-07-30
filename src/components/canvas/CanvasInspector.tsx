@@ -4951,6 +4951,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               parentId={selectedNode.id}
               parentData={d}
               childIds={childIds}
+              hierarchy={hierarchy}
               nodes={nodes}
               compact
             />

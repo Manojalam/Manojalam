@@ -139,7 +139,7 @@ function compactFoldedTreePlacements(
 
     const childGap = parentEntry.depth === 0 ? spacing.rootBranchGap : spacing.siblingGap;
     const data = (parent.data ?? {}) as Record<string, unknown>;
-    const sections = resolvedFoldSections(data, children);
+    const sections = resolvedFoldSections(data, children, hierarchy);
     const sectionSpans = sections.map((section) => section.reduce((sum, childId, index) => {
       const bounds = subtreeBounds.get(childId)!;
       return sum + (horizontal ? bounds.height : bounds.width) + (index > 0 ? childGap : 0);

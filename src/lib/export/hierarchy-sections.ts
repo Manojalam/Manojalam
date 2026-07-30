@@ -412,7 +412,7 @@ export function resolveHierarchySectionExportPlan(
   const sections = sectionIds.map((sectionId, index) =>
     createGroup(sectionId, index, "child", [sectionId]));
 
-  const foldChildGroups = resolvedFoldSections(parentData, sectionIds);
+  const foldChildGroups = resolvedFoldSections(parentData, sectionIds, hierarchy);
   const foldAnchorX = foldChildGroups.map((childIds) => {
     const anchorTarget = resolveExportTarget(
       { kind: "selection", nodeIds: [childIds[0]], edgeIds: [] },

@@ -6,6 +6,7 @@ import {
   defaultFoldBreakAfter,
   hasFoldedChildSections,
   resolvedFoldSectionCount,
+  resolvedFoldSections,
   resolvedManualFoldBreakAfter,
   wrapChildGroups,
 } from "./child-group-wrap";
@@ -112,6 +113,79 @@ test("automatic Fold keeps equal child counts despite unequal rendered heights",
   assert.equal(wrapped["child-0"].x, wrapped["child-6"].x);
   assert.ok(wrapped["child-7"].x > wrapped["child-6"].x);
   assert.equal(wrapped["child-7"].x, wrapped["child-13"].x);
+});
+
+test("automatic Fold balances terminal descendants while keeping direct branches intact", () => {
+  const root = node("root", 0, 180, { layoutFoldCount: 2 });
+  const directChildren = [
+    node("branch-a", 200, 0, { parentId: "root" }),
+    node("branch-b", 200, 100, { parentId: "root" }),
+    node("branch-c", 200, 200, { parentId: "root" }),
+    node("branch-d", 200, 300, { parentId: "root" }),
+  ];
+  const branchLeaves = Array.from(
+    { length: 4 },
+    (_, index) => node(`branch-a-leaf-${index}`, 400, index * 60, { parentId: "branch-a" })
+  );
+  const nodes = [root, ...directChildren, ...branchLeaves];
+  const edges: Edge[] = [
+    ...directChildren.map((child) => ({
+      id: `root-${child.id}`,
+      source: "root",
+      target: child.id,
+    })),
+    ...branchLeaves.map((child) => ({
+      id: `branch-a-${child.id}`,
+      source: "branch-a",
+      target: child.id,
+    })),
+  ];
+  const hierarchy = buildHierarchy(nodes, edges);
+  const childIds = hierarchy.get("root")!.childIds;
+
+  assert.deepEqual(
+    resolvedFoldSections(root.data as Record<string, unknown>, childIds, hierarchy),
+    [["branch-a"], ["branch-b", "branch-c", "branch-d"]]
+  );
+  assert.deepEqual(
+    defaultFoldBreakAfter(childIds, 2, hierarchy),
+    ["branch-a"]
+  );
+});
+
+test("custom Fold breaks override terminal-descendant balancing", () => {
+  const nodes = [
+    node("root", 0, 180, {
+      layoutFoldCount: 2,
+      layoutFoldBreakAfter: ["branch-b"],
+    }),
+    node("branch-a", 200, 0, { parentId: "root" }),
+    node("branch-b", 200, 100, { parentId: "root" }),
+    node("branch-c", 200, 200, { parentId: "root" }),
+    node("branch-d", 200, 300, { parentId: "root" }),
+    ...Array.from(
+      { length: 4 },
+      (_, index) => node(`branch-a-leaf-${index}`, 400, index * 60, { parentId: "branch-a" })
+    ),
+  ];
+  const edges: Edge[] = nodes
+    .filter((item) => typeof (item.data as Record<string, unknown>).parentId === "string")
+    .map((item) => ({
+      id: `edge-${item.id}`,
+      source: (item.data as Record<string, unknown>).parentId as string,
+      target: item.id,
+    }));
+  const hierarchy = buildHierarchy(nodes, edges);
+  const childIds = hierarchy.get("root")!.childIds;
+
+  assert.deepEqual(
+    resolvedFoldSections(
+      nodes[0].data as Record<string, unknown>,
+      childIds,
+      hierarchy
+    ),
+    [["branch-a", "branch-b"], ["branch-c", "branch-d"]]
+  );
 });
 
 test("stacked Fold sections balance child count without measuring rendered width", () => {
