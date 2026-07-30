@@ -9,7 +9,7 @@ import {
   getFittedTextPresentation, resolveFillColor, resolveBorderColor,
   resolveBorderWidth, resolveFillOpacity, resolveNodeBorderRadius,
   colorWithOpacity, resolveBorderStyle, textMeasurementKey,
-  themeAwareNodeFillColor, resolveLayoutFillGradient,
+  themeAwareNodeFillColor, resolveLayoutFillGradient, resolveSurfaceEffectData,
 } from "@/lib/style-utils";
 import {
   shapeLabelBox,
@@ -1075,6 +1075,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
   const fillColor    = resolveFillColor(dd);
   const fillGradient = resolveLayoutFillGradient(dd);
+  const surfaceEffectData = resolveSurfaceEffectData(dd);
   const borderColor  = resolveBorderColor(dd) ?? (d.color ?? "#4262ff");
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const resolvedBorderWidth = resolveBorderWidth(dd);
@@ -1341,7 +1342,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
             borderRadius={bRadius}
             selected={selected}
             petalCount={petalCount}
-            effectData={dd}
+            effectData={surfaceEffectData}
           />
           <HierarchyNumberBadge
             number={typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined}

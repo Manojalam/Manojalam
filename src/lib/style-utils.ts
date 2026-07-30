@@ -487,6 +487,30 @@ export function resolveLayoutFillGradient(d: Record<string, unknown>): string | 
   return layoutStyle.fillGradient;
 }
 
+/**
+ * Resolve the surface treatment paired with an automatic layout fill.
+ * Authored effects remain untouched and resume when a user overrides the fill.
+ */
+export function resolveSurfaceEffectData(
+  d: Record<string, unknown>
+): Record<string, unknown> {
+  const layoutStyle = resolveLayoutVisualStyle(d);
+  if (
+    !layoutStyle
+    || d.layoutAutoFill === false
+    || typeof layoutStyle.surfaceEffect !== "string"
+  ) {
+    return d;
+  }
+  return {
+    ...d,
+    surfaceEffect: layoutStyle.surfaceEffect,
+    surfaceEffectDepth: layoutStyle.surfaceEffectDepth,
+    surfaceEffectStrength: layoutStyle.surfaceEffectStrength,
+    surfaceEffectAngle: layoutStyle.surfaceEffectAngle,
+  };
+}
+
 /** Resolve a node's border color: uses explicit borderColor or accent color. */
 export function resolveBorderColor(d: Record<string, unknown>): string | undefined {
   const layoutStyle = resolveLayoutVisualStyle(d);

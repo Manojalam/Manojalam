@@ -97,6 +97,11 @@ export interface LayoutVisualStyle {
   fillColor: string;
   /** Optional generated CSS gradient layered over the automatic fill. */
   fillGradient?: string;
+  /** Optional generated surface treatment paired with an automatic fill. */
+  surfaceEffect?: SurfaceEffectPreset;
+  surfaceEffectDepth?: number;
+  surfaceEffectStrength?: number;
+  surfaceEffectAngle?: number;
   borderColor: string;
   textColor: string;
   accentColor: string;
