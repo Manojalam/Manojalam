@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { NodeResizer, type NodeProps } from "@xyflow/react";
+import { NodeResizer, ViewportPortal, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import type { FrameNodeData } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
@@ -28,7 +28,15 @@ function selectRepeatedSource(nodeId: string, additive: boolean): void {
   });
 }
 
-function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
+function FrameNodeComponent({
+  id,
+  data,
+  selected,
+  width,
+  height,
+  positionAbsoluteX,
+  positionAbsoluteY,
+}: NodeProps) {
   const d = data as FrameNodeData;
   const isMatrixFrame = typeof d.matrixFrameFor === "string";
   const matrixGridLines = Array.isArray(d.matrixGridLines) ? d.matrixGridLines : null;
@@ -40,6 +48,7 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const gridStrokeWidth = typeof d.borderWidth === "number" ? d.borderWidth : 1;
   const resizeControls = useNodeManualResize(id);
   const authoredTextStyle = getAuthoredTextStyle(d as Record<string, unknown>);
+  const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
 
   return (
     <>
@@ -125,20 +134,10 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
           </svg>
         )}
         {isMatrixGrid && matrixRepeatedCells.map((cell) => (
-          <button
-            type="button"
+          <div
             key={`${cell.key}-content`}
-            data-matrix-repeated-cell={cell.key}
-            aria-label={`Select ${cell.text || "continued Matrix ancestor"}`}
-            className="pointer-events-auto absolute z-20 flex cursor-pointer items-center justify-center overflow-hidden border-0 bg-transparent px-2 py-1 text-sm font-medium hover:ring-2 hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&_p]:m-0"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              selectRepeatedSource(
-                cell.sourceNodeId,
-                event.shiftKey || event.ctrlKey || event.metaKey
-              );
-            }}
+            aria-hidden="true"
+            className="pointer-events-none absolute z-20 flex items-center justify-center overflow-hidden px-2 py-1 text-sm font-medium [&_p]:m-0"
             style={{
               left: cell.x,
               top: cell.y,
@@ -155,7 +154,7 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
             {cell.html
               ? <div className="w-full" dangerouslySetInnerHTML={{ __html: cell.html }} />
               : <div className="w-full">{cell.text}</div>}
-          </button>
+          </div>
         ))}
         {d.title !== "" && (
           <div
@@ -172,6 +171,41 @@ function FrameNodeComponent({ id, data, selected, width, height }: NodeProps) {
         )}
         </div>
       </div>
+      {isMatrixGrid && matrixRepeatedCells.length > 0 && (
+        <ViewportPortal>
+          {matrixRepeatedCells.map((cell) => {
+            const sourceSelected = selectedNodeIds.includes(cell.sourceNodeId);
+            return (
+              <button
+                type="button"
+                key={`${cell.key}-interaction`}
+                data-matrix-repeated-cell={cell.key}
+                aria-label={`Select ${cell.text || "continued Matrix ancestor"}`}
+                aria-pressed={sourceSelected}
+                className={cn(
+                  "nodrag nopan pointer-events-auto absolute z-20 cursor-pointer border-0 bg-transparent p-0",
+                  "hover:ring-2 hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  sourceSelected && "ring-2 ring-primary ring-inset"
+                )}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  selectRepeatedSource(
+                    cell.sourceNodeId,
+                    event.shiftKey || event.ctrlKey || event.metaKey
+                  );
+                }}
+                style={{
+                  left: positionAbsoluteX + cell.x,
+                  top: positionAbsoluteY + cell.y,
+                  width: cell.width,
+                  height: cell.height,
+                }}
+              />
+            );
+          })}
+        </ViewportPortal>
+      )}
     </>
   );
 }
