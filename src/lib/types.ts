@@ -739,6 +739,13 @@ export interface FrameNodeData extends BaseNodeData {
     html?: string;
     text: string;
     background?: string;
+    backgroundImage?: string;
+    backgroundBlendMode?: string;
+    backdropFilter?: string;
+    boxShadow?: string;
+    borderColor?: string;
+    borderStyle?: "solid" | "dashed" | "dotted";
+    borderWidth?: number;
     color?: string;
     fontSize?: string;
     fontFamily?: string;
