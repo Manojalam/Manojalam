@@ -125,6 +125,10 @@ function FrameNodeComponent({
         {isMatrixGrid && matrixRepeatedCells.map((cell) => (
           <div
             key={`${cell.key}-background`}
+            data-export-surface-effect-shadow-layers={
+              cell.exportSurfaceEffectShadowLayers
+            }
+            data-export-surface-effect-shadow={cell.exportSurfaceEffectShadow}
             className="pointer-events-none absolute"
             style={{
               left: cell.x,
@@ -224,6 +228,7 @@ function FrameNodeComponent({
               <button
                 type="button"
                 key={`${cell.key}-interaction`}
+                data-export-ignore
                 data-matrix-repeated-cell={cell.key}
                 aria-label={`Select ${cell.text || "continued Matrix ancestor"}`}
                 aria-pressed={sourceSelected}

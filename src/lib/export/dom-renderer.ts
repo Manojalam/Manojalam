@@ -21,9 +21,10 @@ import {
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 
-const EDITOR_UI_SELECTORS = [
+export const DOM_EXPORT_EDITOR_UI_SELECTORS = [
   "[data-export-ignore]",
   "[data-export-ui]",
+  "[data-matrix-repeated-cell]",
   ".react-flow__resize-control",
   ".react-flow__handle",
   ".react-flow__edge-interaction",
@@ -1175,7 +1176,7 @@ export function cloneReactFlowViewport(
     );
     filterIdentifiedEdgeElements(clone, options.edgeIds);
 
-    const editorElements = Array.from(clone.querySelectorAll(EDITOR_UI_SELECTORS));
+    const editorElements = Array.from(clone.querySelectorAll(DOM_EXPORT_EDITOR_UI_SELECTORS));
     for (const element of editorElements) element.remove();
     for (const element of Array.from(clone.querySelectorAll("script, noscript, iframe, object, embed"))) {
       element.remove();

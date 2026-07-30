@@ -12,7 +12,11 @@ import {
   resolveFillColor,
   resolveLayoutFillGradient,
 } from "../style-utils";
-import { surfaceEffectStyle } from "../canvas/surface-effects";
+import {
+  surfaceEffectExportShadowLayers,
+  surfaceEffectExportStyle,
+  surfaceEffectStyle,
+} from "../canvas/surface-effects";
 import type {
   FrameNodeData,
   MatrixFoldRepeatedCell,
@@ -177,6 +181,8 @@ function repeatedCellRenderData(
   const content = repeatedCellText(repeated.source);
   const borderColor = resolveBorderColor(data);
   const effectStyle = surfaceEffectStyle(data, borderColor);
+  const exportEffectStyle = surfaceEffectExportStyle(data, borderColor);
+  const exportShadowLayers = surfaceEffectExportShadowLayers(data, borderColor);
   const textAlign = data.textAlign === "left"
     || data.textAlign === "right"
     || data.textAlign === "justify"
@@ -197,6 +203,10 @@ function repeatedCellRenderData(
     backgroundBlendMode: effectStyle.backgroundBlendMode,
     backdropFilter: effectStyle.backdropFilter,
     boxShadow: effectStyle.boxShadow,
+    exportSurfaceEffectShadowLayers: exportShadowLayers.length
+      ? JSON.stringify(exportShadowLayers)
+      : undefined,
+    exportSurfaceEffectShadow: exportEffectStyle.boxShadow,
     borderColor,
     borderStyle: resolveBorderStyle(data),
     borderWidth: resolveBorderWidth(data),

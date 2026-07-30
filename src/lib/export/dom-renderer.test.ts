@@ -5,6 +5,7 @@ import {
   compositeExportColor,
   configureStandaloneSvgViewport,
   DOM_EXPORT_COMPUTED_STYLE_PROPERTIES,
+  DOM_EXPORT_EDITOR_UI_SELECTORS,
   exportEdgeReferenceMatches,
   isTransparentExportBackground,
   normalizeExportSurfaceEffects,
@@ -70,6 +71,11 @@ test("preserves the CSS exclusion geometry used by dense diamond labels", () => 
   assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("float"));
   assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("shape-outside"));
   assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes("shape-margin"));
+});
+
+test("removes Matrix repeated-cell interaction overlays from export clones", () => {
+  assert.match(DOM_EXPORT_EDITOR_UI_SELECTORS, /\[data-matrix-repeated-cell\]/);
+  assert.match(DOM_EXPORT_EDITOR_UI_SELECTORS, /\[data-export-ignore\]/);
 });
 
 test("scoped exports retain only connector artwork belonging to requested edges", () => {

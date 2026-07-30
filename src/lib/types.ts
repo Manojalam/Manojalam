@@ -757,6 +757,10 @@ export interface FrameNodeData extends BaseNodeData {
     backgroundBlendMode?: string;
     backdropFilter?: string;
     boxShadow?: string;
+    /** Serialized native-shadow metadata consumed by the DOM export renderer. */
+    exportSurfaceEffectShadowLayers?: string;
+    /** Surface-local inset shadow retained after export normalization. */
+    exportSurfaceEffectShadow?: string;
     borderColor?: string;
     borderStyle?: "solid" | "dashed" | "dotted";
     borderWidth?: number;
