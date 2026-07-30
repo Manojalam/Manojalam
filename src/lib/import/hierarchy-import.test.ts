@@ -195,6 +195,43 @@ test("supports spaces, bullets, and numbering as outline markers", () => {
   assert.equal(compact[0].children[0].children[0].label, "Grandchild");
 });
 
+test("re-imports native TXT exports without presentation metadata as nodes", () => {
+  const draft = parseTextHierarchy(`Sanskrit & Logic
+================
+
+A complete study outline.
+
+Outline
+-------
+1. Root [Shape]
+  Text: Root
+    Root note
+  1.1. अग्नि [Sanskrit card]
+    Source: ऋग्वेद
+    Notes: Child note
+  1.2. Sandhi [Shape]
+
+Connections
+-----------
+- अग्नि -> Sandhi: explains
+`, "Sanskrit-Logic.txt");
+
+  assert.equal(draft.title, "Sanskrit & Logic");
+  assert.equal(draft.roots.length, 1);
+  assert.equal(draft.roots[0].label, "Root");
+  assert.equal(draft.roots[0].notes, "Root note");
+  assert.deepEqual(
+    draft.roots[0].children.map((node) => node.label),
+    ["अग्नि", "Sandhi"]
+  );
+  assert.equal(draft.roots[0].children[0].notes, "Source: ऋग्वेद\nChild note");
+  assert.ok(
+    [draft.roots[0], ...draft.roots[0].children].every(
+      (node) => !/\[(?:Shape|Sanskrit card)\]|\bOutline\b/u.test(node.label)
+    )
+  );
+});
+
 test("uses an existing filename-matching root when combining top-level sections", () => {
   const draft = parseTextHierarchy(
     `छन्दः - समवृत्तानि
