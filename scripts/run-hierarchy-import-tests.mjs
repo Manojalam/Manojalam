@@ -9,6 +9,7 @@ const tsc = join(workspace, "node_modules", "typescript", "bin", "tsc");
 const sources = [
   "src/lib/types.ts",
   "src/lib/config.ts",
+  "src/lib/outline-payload.ts",
   "src/lib/utils.ts",
   "src/lib/import/types.ts",
   "src/lib/import/script.ts",
@@ -18,6 +19,7 @@ const sources = [
   "src/lib/import/raster.ts",
   "src/lib/import/pdf.ts",
   "src/lib/import/board.ts",
+  "src/lib/import/index.ts",
   "src/lib/import/hierarchy-import.test.ts",
 ];
 

@@ -132,6 +132,10 @@ interface NativeOutlineDetail {
 
 const NATIVE_OUTLINE_NODE =
   /^([\t ]*)(\d+(?:\.\d+)*)\.\s+(.+?)\s+\[([^\]\r\n]+)\]\s*$/u;
+const NATIVE_MARKDOWN_NODE =
+  /^([\t ]*)1\.\s+\*\*(.+)\*\*\s+_\(([^)]*)\)_\s*$/u;
+const NATIVE_MARKDOWN_DETAIL =
+  /^([\t ]*)-\s+\*\*(.+):\*\*\s*(.*)$/u;
 
 function nativeOutlineHeader(
   lines: readonly string[]
@@ -164,14 +168,18 @@ function isNativeOutlineSection(
     && /^-{3,}$/u.test(lines[index + 1]?.trim() ?? "");
 }
 
-function nativeDetailText(detail: NativeOutlineDetail): string {
-  const lines = detail.lines.map((line) => line.trim());
-  const label = normalizeImportedText(detail.label);
+function outlineDetailText(
+  nodeLabel: string,
+  detailLabel: string,
+  detailLines: readonly string[]
+): string {
+  const lines = detailLines.map((line) => line.trim());
+  const label = normalizeImportedText(detailLabel);
   if (label.toLocaleLowerCase() === "text") {
     if (
       lines.length
       && normalizeImportedText(lines[0]).toLocaleLowerCase()
-        === normalizeImportedText(detail.node.label).toLocaleLowerCase()
+        === normalizeImportedText(nodeLabel).toLocaleLowerCase()
     ) {
       lines.shift();
     }
@@ -182,6 +190,24 @@ function nativeDetailText(detail: NativeOutlineDetail): string {
   }
   const value = normalizeImportedText(lines.join("\n"));
   return value ? `${label}: ${value}` : label;
+}
+
+export function outlineDetailsToNotes(
+  nodeLabel: string,
+  details: readonly { label: string; value: string }[]
+): string {
+  return normalizeImportedText(
+    details
+      .map((detail) =>
+        outlineDetailText(nodeLabel, detail.label, detail.value.split("\n"))
+      )
+      .filter(Boolean)
+      .join("\n")
+  );
+}
+
+function nativeDetailText(detail: NativeOutlineDetail): string {
+  return outlineDetailText(detail.node.label, detail.label, detail.lines);
 }
 
 function parseNativeOutlineText(
@@ -275,12 +301,115 @@ function parseNativeOutlineText(
     : draft;
 }
 
+function unescapeOutlineMarkdown(value: string): string {
+  return value.replace(/\\([\\`*_[\]<>])/gu, "$1");
+}
+
+function parseNativeMarkdownText(
+  source: string,
+  sourceName: string
+): HierarchyDraft | null {
+  const lines = source.replace(/^\ufeff/u, "").replace(/\r\n?/g, "\n").split("\n");
+  const titleIndex = lines.findIndex((line) => /^#\s+/u.test(line));
+  const outlineIndex = lines.findIndex(
+    (line, index) =>
+      index > titleIndex && line.trim().toLocaleLowerCase() === "## outline"
+  );
+  if (titleIndex < 0 || outlineIndex < 0) return null;
+  if (!lines.slice(outlineIndex + 1).some((line) => NATIVE_MARKDOWN_NODE.test(line))) {
+    return null;
+  }
+
+  const titleMatch = lines[titleIndex].match(/^#\s+(.+)$/u);
+  if (!titleMatch) return null;
+  const roots: NativeOutlineNode[] = [];
+  const stack: NativeOutlineNode[] = [];
+  let currentNode: NativeOutlineNode | null = null;
+  let currentIndent = -1;
+  let currentDetail: NativeOutlineDetail | null = null;
+
+  const flushDetail = () => {
+    if (!currentDetail) return;
+    const text = nativeDetailText(currentDetail);
+    if (text) currentDetail.node.noteParts.push(text);
+    currentDetail = null;
+  };
+
+  for (let index = outlineIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^##\s+/u.test(line.trim())) break;
+    if (!line.trim()) continue;
+
+    const nodeMatch = line.match(NATIVE_MARKDOWN_NODE);
+    if (nodeMatch) {
+      flushDetail();
+      const indent = visualIndent(nodeMatch[1]);
+      if (indent % 4 !== 0) return null;
+      const depth = indent / 4;
+      if (depth > stack.length) return null;
+      const node: NativeOutlineNode = {
+        label: normalizeImportedText(unescapeOutlineMarkdown(nodeMatch[2])),
+        noteParts: [],
+        children: [],
+        line: index + 1,
+      };
+      if (depth === 0) {
+        roots.push(node);
+      } else {
+        const parent = stack[depth - 1];
+        if (!parent) return null;
+        parent.children.push(node);
+      }
+      stack.length = depth;
+      stack.push(node);
+      currentNode = node;
+      currentIndent = indent;
+      continue;
+    }
+
+    const detailMatch = line.match(NATIVE_MARKDOWN_DETAIL);
+    if (!detailMatch || !currentNode) return null;
+    const indent = visualIndent(detailMatch[1]);
+    if (indent !== currentIndent + 4) return null;
+    flushDetail();
+    currentDetail = {
+      label: unescapeOutlineMarkdown(detailMatch[2]),
+      lines: unescapeOutlineMarkdown(detailMatch[3])
+        .replace(/<br\s*\/?>/giu, "\n")
+        .split("\n"),
+      node: currentNode,
+    };
+  }
+  flushDetail();
+  if (!roots.length) return null;
+
+  const toDraftNode = (node: NativeOutlineNode): HierarchyDraftNode =>
+    createDraftNode(node.label, {
+      notes: node.noteParts.join("\n"),
+      children: node.children.map(toDraftNode),
+      source: { kind: "text", lineStart: node.line },
+    });
+  const title = normalizeImportedText(unescapeOutlineMarkdown(titleMatch[1]));
+  const draft = makeDraft(
+    "text",
+    sourceName,
+    title || filenameWithoutExtension(sourceName),
+    roots.map(toDraftNode),
+    source
+  );
+  return draft.roots.length > 1
+    ? ensureSingleDraftRoot(draft, draft.title)
+    : draft;
+}
+
 export function parseTextHierarchy(
   source: string,
   sourceName: string
 ): HierarchyDraft {
   const nativeOutline = parseNativeOutlineText(source, sourceName);
   if (nativeOutline) return nativeOutline;
+  const nativeMarkdown = parseNativeMarkdownText(source, sourceName);
+  if (nativeMarkdown) return nativeMarkdown;
   const roots = compactRawHierarchy(parseIndentedTextRaw(source));
   return makeDraft(
     "text",
@@ -323,6 +452,103 @@ function directListItems(list: Element): Element[] {
   return Array.from(list.children).filter(
     (child) => child.tagName.toLowerCase() === "li"
   );
+}
+
+function directChildWithClass(
+  element: Element,
+  tagName: string,
+  className: string
+): Element | null {
+  return Array.from(element.children).find(
+    (child) =>
+      child.tagName.toLowerCase() === tagName
+      && child.classList.contains(className)
+  ) ?? null;
+}
+
+function parseNativeHtmlListItem(
+  item: Element,
+  sourceLines: string[],
+  sourceIndex: { value: number }
+): HierarchyDraftNode | null {
+  const article = directChildWithClass(item, "article", "outline-node");
+  const titleElement = article?.querySelector(".outline-title");
+  const label = normalizeImportedText(titleElement?.textContent ?? "");
+  if (!article || !label) return null;
+
+  const details = Array.from(article.querySelectorAll("dl > div")).flatMap(
+    (row): Array<{ label: string; value: string }> => {
+      const term = row.querySelector("dt");
+      const description = row.querySelector("dd");
+      const detailLabel = normalizeImportedText(term?.textContent ?? "");
+      if (!detailLabel || !description) return [];
+      return [{
+        label: detailLabel,
+        value: directElementText(description),
+      }];
+    }
+  );
+  const notes = outlineDetailsToNotes(label, details);
+  sourceIndex.value += 1;
+  const line = sourceIndex.value;
+  sourceLines.push(...[label, notes].filter(Boolean));
+
+  const childList = directChildWithClass(item, "ol", "outline-list");
+  const children = childList
+    ? directListItems(childList).flatMap((child) => {
+        const parsed = parseNativeHtmlListItem(child, sourceLines, sourceIndex);
+        return parsed ? [parsed] : [];
+      })
+    : [];
+  return createDraftNode(label, {
+    notes,
+    children,
+    source: { kind: "html", lineStart: line },
+  });
+}
+
+function parseNativeHtmlOutline(
+  document: Document,
+  sourceName: string
+): HierarchyDraft | null {
+  const outlineList = Array.from(
+    document.body.querySelectorAll("ol.outline-list")
+  ).find((list) => {
+    if (list.parentElement?.closest("li")) return false;
+    const section = list.closest("section");
+    const heading = section
+      ? Array.from(section.children).find(
+          (child) => child.tagName.toLowerCase() === "h2"
+        )
+      : null;
+    return normalizeImportedText(heading?.textContent ?? "")
+      .toLocaleLowerCase() === "outline";
+  });
+  if (!outlineList) return null;
+
+  const sourceLines: string[] = [];
+  const sourceIndex = { value: 0 };
+  const roots = directListItems(outlineList).flatMap((item) => {
+    const parsed = parseNativeHtmlListItem(item, sourceLines, sourceIndex);
+    return parsed ? [parsed] : [];
+  });
+  if (!roots.length) return null;
+
+  const headingTitle = normalizeImportedText(
+    document.body.querySelector("main h1")?.textContent ?? ""
+  );
+  const documentTitle = normalizeImportedText(document.title)
+    .replace(/\s+-\s+Outline$/iu, "");
+  const draft = makeDraft(
+    "html",
+    sourceName,
+    headingTitle || documentTitle || filenameWithoutExtension(sourceName),
+    roots,
+    sourceLines.join("\n")
+  );
+  return draft.roots.length > 1
+    ? ensureSingleDraftRoot(draft, draft.title)
+    : draft;
 }
 
 function parseListItem(
@@ -416,6 +642,8 @@ export function parseHtmlHierarchy(
     .querySelectorAll("script,style,iframe,object,embed,form,noscript,template")
     .forEach((element) => element.remove());
   const body = document.body;
+  const nativeOutline = parseNativeHtmlOutline(document, sourceName);
+  if (nativeOutline) return nativeOutline;
   const sourceLines: string[] = [];
   const sourceIndex = { value: 0 };
   const lists = topLevelLists(body);
@@ -447,7 +675,7 @@ export async function parseTextFile(
   options: HierarchyParseOptions = {}
 ): Promise<HierarchyDraft> {
   if (file.size > TEXT_LIMIT_BYTES) {
-    throw new Error("TXT and HTML files must be 10 MB or smaller.");
+    throw new Error("TXT, Markdown, and HTML files must be 10 MB or smaller.");
   }
   if (options.signal?.aborted) throw new DOMException("Import cancelled", "AbortError");
   options.onProgress?.({ stage: "Reading text", progress: 0.2 });

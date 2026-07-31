@@ -1,14 +1,24 @@
-import { compactRawHierarchy, geometryLinesToRawHierarchy } from "./draft";
+import {
+  compactRawHierarchy,
+  createDraftNode,
+  ensureSingleDraftRoot,
+  geometryLinesToRawHierarchy,
+} from "./draft";
+import { decodeOutlinePdfMetadata } from "../outline-payload";
 import {
   canvasPreview,
   createLocalOcrWorker,
   OCR_MAX_EDGE,
   recognizeCanvasLines,
 } from "./raster";
-import { filenameWithoutExtension } from "./text";
+import {
+  filenameWithoutExtension,
+  outlineDetailsToNotes,
+} from "./text";
 import type {
   GeometryTextLine,
   HierarchyDraft,
+  HierarchyDraftNode,
   HierarchyParseOptions,
   HierarchyPreviewPage,
 } from "./types";
@@ -29,6 +39,30 @@ interface PdfTextItemLike {
   width: number;
   height: number;
   hasEOL: boolean;
+}
+
+export function parsePdfOutlineMetadata(
+  value: unknown,
+  sourceName: string
+): HierarchyDraft | null {
+  const outline = decodeOutlinePdfMetadata(value);
+  if (!outline) return null;
+  const toDraftNode = (
+    node: (typeof outline.roots)[number]
+  ): HierarchyDraftNode => createDraftNode(node.title, {
+    notes: outlineDetailsToNotes(node.title, node.details),
+    children: node.children.map(toDraftNode),
+  });
+  const draft: HierarchyDraft = {
+    title: outline.title || filenameWithoutExtension(sourceName),
+    sourceName,
+    sourceKind: "pdf",
+    roots: outline.roots.map(toDraftNode),
+    warnings: [],
+  };
+  return draft.roots.length > 1
+    ? ensureSingleDraftRoot(draft, draft.title)
+    : draft;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -159,6 +193,11 @@ export async function parsePdfFile(
     if (document.numPages > PDF_PAGE_LIMIT) {
       throw new Error(`PDF files may contain at most ${PDF_PAGE_LIMIT} pages.`);
     }
+    const metadata = await document.getMetadata();
+    const embeddedOutline = parsePdfOutlineMetadata(
+      metadata.metadata?.get("jspdf:metadata"),
+      file.name
+    );
     const lines: GeometryTextLine[] = [];
 
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
@@ -170,6 +209,17 @@ export async function parsePdfFile(
         pageCount: document.numPages,
       });
       const page = await document.getPage(pageNumber);
+      if (embeddedOutline) {
+        const rendered = await renderPdfPage(page, 1.7);
+        try {
+          previewPages.push(await canvasPreview(rendered.canvas, pageNumber));
+        } finally {
+          rendered.canvas.width = 1;
+          rendered.canvas.height = 1;
+          page.cleanup();
+        }
+        continue;
+      }
       const textContent = await page.getTextContent();
       const textItems = textContent.items.filter(
         (item): item is TextItem => "str" in item
@@ -225,6 +275,13 @@ export async function parsePdfFile(
     }
 
     throwIfAborted(options.signal);
+    if (embeddedOutline) {
+      options.onProgress?.({ stage: "Hierarchy ready for review", progress: 1 });
+      return {
+        ...embeddedOutline,
+        previewPages,
+      };
+    }
     if (!lines.length) throw new Error("No readable text was found in this PDF.");
     options.onProgress?.({ stage: "Recovering hierarchy", progress: 0.94 });
     const roots = compactRawHierarchy(geometryLinesToRawHierarchy(lines));

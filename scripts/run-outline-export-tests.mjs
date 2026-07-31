@@ -8,6 +8,7 @@ const output = join(workspace, ".outline-export-test");
 const tsc = join(workspace, "node_modules", "typescript", "bin", "tsc");
 const sources = [
   "src/lib/types.ts",
+  "src/lib/outline-payload.ts",
   "src/lib/layout/geometry.ts",
   "src/lib/layout/hierarchy.ts",
   "src/lib/export/outline.ts",

@@ -19,6 +19,7 @@ export * from "./layouts";
 
 const ACCEPTED_EXTENSIONS: Record<string, HierarchyImportKind> = {
   ".txt": "text",
+  ".md": "text",
   ".html": "html",
   ".htm": "html",
   ".pdf": "pdf",
@@ -35,10 +36,11 @@ export function hierarchyImportKindForFile(file: File): HierarchyImportKind {
   if (extension) return ACCEPTED_EXTENSIONS[extension];
   if (file.type === "application/pdf") return "pdf";
   if (file.type === "text/plain") return "text";
+  if (file.type === "text/markdown") return "text";
   if (file.type === "text/html") return "html";
   if (file.type === "image/jpeg") return "jpeg";
   if (file.type === "image/png") return "png";
-  throw new Error("Choose a PDF, TXT, HTML, JPEG, or PNG file.");
+  throw new Error("Choose a PDF, TXT, Markdown, HTML, JPEG, or PNG file.");
 }
 
 export async function parseHierarchyFile(
