@@ -80,8 +80,8 @@ export function FoldBranchControls({
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
         {terminalItems
           ? parentData.matrixFoldRootMode === "divided"
-            ? "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued ancestors and the root repeat in each section."
-            : "Automatic fills Matrix sections evenly from left to right, leaving any shorter remainder only at the end. Continued ancestors repeat beneath one shared root."
+            ? "Automatic balances rendered Matrix row heights and flows whole rows into the next section. Continued ancestors and the root repeat in each section."
+            : "Automatic balances rendered Matrix row heights and flows whole rows into the next section. Continued ancestors repeat beneath one shared root."
           : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
       </p>
 
@@ -154,7 +154,7 @@ export function FoldBranchControls({
             className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
           >
             <option value="automatic">
-              {terminalItems ? "Automatic · equal terminal rows" : "Automatic · balance terminal children"}
+              {terminalItems ? "Automatic · balance rendered rows" : "Automatic · balance terminal children"}
             </option>
             <option value="custom">Custom · choose each break</option>
           </select>
