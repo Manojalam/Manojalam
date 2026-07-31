@@ -12,6 +12,7 @@ import {
   diagnoseListLayout,
   getPreorderTraversal,
 } from "./list-layout";
+import { smoothListSharedPath } from "./list-connector-path";
 
 type TreeSpec = {
   id: string;
@@ -594,4 +595,25 @@ test("growing a row moves every later outline row by the growth amount", () => {
     assert.equal(after[nodeId].y - before[nodeId].y, 120, `${nodeId} should move with the later rows`);
   }
   assertNoOverlap(positionedNodes(resizedNodes, after));
+});
+
+test("List shared trunks curve smoothly out of offset parent anchors", () => {
+  const path = smoothListSharedPath([
+    { x1: 100, y1: 20, x2: 100, y2: 40 },
+    { x1: 100, y1: 40, x2: 84, y2: 40 },
+    { x1: 84, y1: 40, x2: 84, y2: 180 },
+  ]);
+
+  assert.equal(path, "M 100 20 C 100 30 84 30 84 40 L 84 180");
+  assert.equal(path.includes("L 100 40 L 84 40"), false);
+});
+
+test("aligned List shared trunks remain one clean straight segment", () => {
+  const path = smoothListSharedPath([
+    { x1: 84, y1: 20, x2: 84, y2: 40 },
+    { x1: 84, y1: 40, x2: 84, y2: 40 },
+    { x1: 84, y1: 40, x2: 84, y2: 180 },
+  ]);
+
+  assert.equal(path, "M 84 20 L 84 180");
 });
