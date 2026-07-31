@@ -4,13 +4,18 @@ import { useCallback, useRef, useState } from "react";
 import type { Node } from "@xyflow/react";
 import {
   AudioLines,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Download,
   ImageIcon,
   ImagePlus,
   LoaderCircle,
   Music2,
   Paperclip,
+  Pencil,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,7 +26,10 @@ import {
   MAX_MEDIA_ATTACHMENTS,
   createMediaAttachment,
   formattedMediaSize,
+  mediaAttachmentBaseName,
+  moveMediaAttachment,
   normalizeMediaAttachments,
+  renamedMediaAttachmentName,
 } from "@/lib/canvas/node-media";
 import type { MediaAttachmentKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -32,6 +40,8 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
   const [open, setOpen] = useState(false);
   const [busyKind, setBusyKind] = useState<MediaAttachmentKind | null>(null);
   const [recordingBusy, setRecordingBusy] = useState(false);
+  const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const attachments = normalizeMediaAttachments(
@@ -93,6 +103,54 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
     await addFiles("audio", [file]);
   }, [addFiles]);
 
+  const moveAttachment = (attachmentId: string, direction: -1 | 1) => {
+    const store = useCanvasStore.getState();
+    const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
+    if (!currentNode) return;
+    const currentAttachments = normalizeMediaAttachments(
+      ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
+    );
+    const reordered = moveMediaAttachment(currentAttachments, attachmentId, direction);
+    if (reordered === currentAttachments) return;
+    store.pushHistory();
+    store.updateNodeData(node.id, { mediaAttachments: reordered });
+  };
+
+  const beginRename = (attachmentId: string, currentName: string) => {
+    setEditingAttachmentId(attachmentId);
+    setRenameDraft(mediaAttachmentBaseName(currentName));
+  };
+
+  const cancelRename = () => {
+    setEditingAttachmentId(null);
+    setRenameDraft("");
+  };
+
+  const saveRename = (attachmentId: string) => {
+    const store = useCanvasStore.getState();
+    const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
+    if (!currentNode) return;
+    const currentAttachments = normalizeMediaAttachments(
+      ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
+    );
+    const attachment = currentAttachments.find((candidate) => candidate.id === attachmentId);
+    if (!attachment) return;
+    const nextName = renamedMediaAttachmentName(attachment.name, renameDraft);
+    if (!nextName) {
+      toast.error("Enter a name for this attachment.");
+      return;
+    }
+    if (nextName !== attachment.name) {
+      store.pushHistory();
+      store.updateNodeData(node.id, {
+        mediaAttachments: currentAttachments.map((candidate) =>
+          candidate.id === attachmentId ? { ...candidate, name: nextName } : candidate
+        ),
+      });
+    }
+    cancelRename();
+  };
+
   const removeAttachment = (attachmentId: string) => {
     const store = useCanvasStore.getState();
     const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
@@ -113,7 +171,13 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) cancelRename();
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -208,11 +272,33 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
 
         {attachments.length > 0 ? (
           <div className="mt-3 max-h-60 space-y-1 overflow-y-auto pr-1">
-            {attachments.map((attachment) => (
+            {attachments.map((attachment, index) => (
               <div
                 key={attachment.id}
                 className="flex items-center gap-2 rounded-md border border-border/70 p-2"
               >
+                <div className="flex shrink-0 flex-col">
+                  <button
+                    type="button"
+                    disabled={index === 0 || busyKind !== null || recordingBusy}
+                    title={`Move ${attachment.name} earlier`}
+                    aria-label={`Move ${attachment.name} earlier`}
+                    className="flex h-4 w-5 items-center justify-center rounded-sm hover:bg-muted disabled:opacity-25"
+                    onClick={() => moveAttachment(attachment.id, -1)}
+                  >
+                    <ChevronUp className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === attachments.length - 1 || busyKind !== null || recordingBusy}
+                    title={`Move ${attachment.name} later`}
+                    aria-label={`Move ${attachment.name} later`}
+                    className="flex h-4 w-5 items-center justify-center rounded-sm hover:bg-muted disabled:opacity-25"
+                    onClick={() => moveAttachment(attachment.id, 1)}
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                </div>
                 <span className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
                   attachment.kind === "image"
@@ -223,33 +309,79 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
                     ? <ImageIcon className="h-4 w-4" />
                     : <Music2 className="h-4 w-4" />}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium" title={attachment.name}>
-                    {attachment.name}
+                {editingAttachmentId === attachment.id ? (
+                  <span className="flex min-w-0 flex-1 items-center gap-1">
+                    <input
+                      autoFocus
+                      value={renameDraft}
+                      aria-label={`Rename ${attachment.name}`}
+                      className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") saveRename(attachment.id);
+                        if (event.key === "Escape") cancelRename();
+                      }}
+                    />
+                    <button
+                      type="button"
+                      title="Save name"
+                      aria-label="Save attachment name"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-500/10"
+                      onClick={() => saveRename(attachment.id)}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Cancel rename"
+                      aria-label="Cancel attachment rename"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-muted"
+                      onClick={cancelRename}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   </span>
-                  <span className="block text-[10px] text-muted-foreground">
-                    {formattedMediaSize(attachment.size)}
-                  </span>
-                </span>
-                <a
-                  href={attachment.dataUrl}
-                  download={attachment.name}
-                  title={`Download ${attachment.name}`}
-                  aria-label={`Download ${attachment.name}`}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </a>
-                <button
-                  type="button"
-                  title={`Remove ${attachment.name}`}
-                  aria-label={`Remove ${attachment.name}`}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
-                  onClick={() => removeAttachment(attachment.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium" title={attachment.name}>
+                        {attachment.name}
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        {formattedMediaSize(attachment.size)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busyKind !== null || recordingBusy}
+                      title={`Rename ${attachment.name}`}
+                      aria-label={`Rename ${attachment.name}`}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-muted disabled:opacity-40"
+                      onClick={() => beginRename(attachment.id, attachment.name)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <a
+                      href={attachment.dataUrl}
+                      download={attachment.name}
+                      title={`Download ${attachment.name}`}
+                      aria-label={`Download ${attachment.name}`}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </a>
+                    <button
+                      type="button"
+                      title={`Remove ${attachment.name}`}
+                      aria-label={`Remove ${attachment.name}`}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+                      onClick={() => removeAttachment(attachment.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>

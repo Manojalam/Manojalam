@@ -66,6 +66,49 @@ function extensionOf(name: string): string {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
+export function mediaAttachmentBaseName(name: string): string {
+  const trimmed = name.trim();
+  const dot = trimmed.lastIndexOf(".");
+  return dot > 0 && dot < trimmed.length - 1
+    ? trimmed.slice(0, dot)
+    : trimmed;
+}
+
+export function renamedMediaAttachmentName(
+  currentName: string,
+  requestedBaseName: string
+): string | null {
+  const extension = extensionOf(currentName);
+  const suffix = extension ? `.${extension}` : "";
+  let baseName = requestedBaseName
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
+  if (suffix && baseName.toLowerCase().endsWith(suffix)) {
+    baseName = baseName.slice(0, -suffix.length).trim();
+  }
+  const maximumBaseLength = Math.max(1, 180 - suffix.length);
+  baseName = baseName.slice(0, maximumBaseLength).trim();
+  return baseName ? `${baseName}${suffix}` : null;
+}
+
+export function moveMediaAttachment(
+  attachments: MediaAttachment[],
+  attachmentId: string,
+  direction: -1 | 1
+): MediaAttachment[] {
+  const currentIndex = attachments.findIndex((attachment) => attachment.id === attachmentId);
+  const nextIndex = currentIndex + direction;
+  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= attachments.length) {
+    return attachments;
+  }
+  const reordered = attachments.slice();
+  [reordered[currentIndex], reordered[nextIndex]] = [
+    reordered[nextIndex],
+    reordered[currentIndex],
+  ];
+  return reordered;
+}
+
 export function mediaFileMimeType(file: FileDescriptor): string {
   const declared = file.type.trim().toLowerCase();
   const inferred = MIME_BY_EXTENSION[extensionOf(file.name)] || "";
