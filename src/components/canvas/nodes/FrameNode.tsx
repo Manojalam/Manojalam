@@ -14,6 +14,17 @@ import {
 import { getAuthoredTextStyle } from "@/lib/style-utils";
 import { useCanvasStore } from "@/store/canvas-store";
 
+function matrixGridDashArray(
+  style: FrameNodeData["borderStyle"],
+  width: number
+): string | undefined {
+  if (style === "dashed") {
+    return `${Math.max(3, width * 5)} ${Math.max(2, width * 3)}`;
+  }
+  if (style === "dotted") return `0.1 ${Math.max(2, width * 3)}`;
+  return undefined;
+}
+
 function selectRepeatedSource(nodeId: string, additive: boolean): void {
   useCanvasStore.setState((state) => {
     const selectedIds = new Set(additive ? state.selectedNodeIds : []);
@@ -91,6 +102,7 @@ function FrameNodeComponent({
   const frameWidth = typeof width === "number" && width > 0 ? width : 1;
   const frameHeight = typeof height === "number" && height > 0 ? height : 1;
   const gridStrokeWidth = typeof d.borderWidth === "number" ? d.borderWidth : 1;
+  const gridStrokeDasharray = matrixGridDashArray(d.borderStyle, gridStrokeWidth);
   const resizeControls = useNodeManualResize(id);
   const authoredTextStyle = getAuthoredTextStyle(d as Record<string, unknown>);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
@@ -165,6 +177,8 @@ function FrameNodeComponent({
                 fill="none"
                 stroke={d.color ?? "#6366f1"}
                 strokeWidth={gridStrokeWidth}
+                strokeDasharray={gridStrokeDasharray}
+                strokeLinecap={d.borderStyle === "dotted" ? "round" : undefined}
                 vectorEffect="non-scaling-stroke"
               />
             )}
@@ -177,6 +191,8 @@ function FrameNodeComponent({
                 y2={line.y2}
                 stroke={d.color ?? "#6366f1"}
                 strokeWidth={gridStrokeWidth}
+                strokeDasharray={gridStrokeDasharray}
+                strokeLinecap={d.borderStyle === "dotted" ? "round" : undefined}
                 vectorEffect="non-scaling-stroke"
               />
             ))}

@@ -12,9 +12,11 @@ import {
   surfaceEffectPresetPatch,
 } from "../canvas/surface-effects";
 import {
+  automaticLayoutBorderColor,
   DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   DEFAULT_RADIAL_COLOR_SCHEME,
   layoutBranchAnchorColor,
+  layoutBorderLineStyle,
   layoutColorPattern,
   layoutColorPatternProgress,
   layoutRootPaletteGradient,
@@ -206,6 +208,8 @@ export function buildLayoutVisualStyles(
   const branchLightness = mode === "matrix"
     ? DEFAULT_LAYOUT_BRANCH_LIGHTNESS
     : scheme.lightness;
+  const borderTreatment = rootData.layoutBorderTreatment;
+  const borderLineStyle = layoutBorderLineStyle(rootData.layoutBorderStyle);
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
   const layoutNodeIds = nodes.length
@@ -222,13 +226,15 @@ export function buildLayoutVisualStyles(
       const manualColors = manualColor
         ? radialSectorColors(scheme, 0, 1, 0, 1, manualColor, manualColor)
         : null;
+      const fillColor = manualColors?.fill ?? scheme.rootFill;
+      const coordinatedBorder = manualColors?.border ?? scheme.rootBorder;
       styles.set(nodeId, {
         rootId,
         mode,
         scheme: scheme.id,
         depth,
         branchIndex: -1,
-        fillColor: manualColors?.fill ?? scheme.rootFill,
+        fillColor,
         ...(!manualColors && mode === "matrix"
           ? {
               fillGradient: layoutRootPaletteGradient(
@@ -241,11 +247,16 @@ export function buildLayoutVisualStyles(
               ),
             }
           : {}),
-        borderColor: manualColors?.border ?? scheme.rootBorder,
+        borderColor: automaticLayoutBorderColor(
+          fillColor,
+          coordinatedBorder,
+          borderTreatment,
+          depth
+        ),
         textColor: manualColors?.text ?? scheme.rootText,
-        accentColor: manualColors?.border ?? scheme.rootBorder,
+        accentColor: coordinatedBorder,
         borderWidth: borderWidthFor(mode, depth),
-        borderStyle: "solid",
+        borderStyle: borderLineStyle,
         fontSize: layoutFontSizeFor(mode, depth),
       });
       continue;
@@ -292,11 +303,16 @@ export function buildLayoutVisualStyles(
       branchIndex,
       fillColor: colors.fill,
       ...layoutSurfaceEffect,
-      borderColor: colors.border,
+      borderColor: automaticLayoutBorderColor(
+        colors.fill,
+        colors.border,
+        borderTreatment,
+        depth
+      ),
       textColor: colors.text,
       accentColor: colors.border,
       borderWidth: borderWidthFor(mode, depth),
-      borderStyle: "solid",
+      borderStyle: borderLineStyle,
       fontSize: layoutFontSizeFor(mode, depth),
     });
   }

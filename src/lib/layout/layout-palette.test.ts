@@ -11,6 +11,7 @@ import {
 } from "./layout-palette";
 import {
   RADIAL_COLOR_SCHEMES,
+  automaticLayoutBorderColor,
   layoutBranchAnchorColor,
   matrixRowAnchorColor,
   radialSectorColors,
@@ -74,6 +75,85 @@ test("hierarchy colors keep descendants related while separating root branches",
   assert.equal(styles.get("branch-a")?.fontSize, 19);
   assert.ok((styles.get("a-1")?.fontSize ?? 0) >= 17);
   assert.ok((styles.get("root")?.borderWidth ?? 0) > (styles.get("a-1")?.borderWidth ?? 0));
+});
+
+test("automatic border treatments change contrast without changing widths", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const hierarchy = buildHierarchy(nodes, edges);
+  const baseline = buildLayoutVisualStyles("root", hierarchy, "list", "spectrum", nodes);
+  const configuredNodes = nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutBorderTreatment: "hierarchy",
+          layoutBorderStyle: "dashed",
+        },
+      }
+    : node);
+  const hierarchyStyles = buildLayoutVisualStyles(
+    "root",
+    hierarchy,
+    "list",
+    "spectrum",
+    configuredNodes
+  );
+
+  for (const nodeId of ["root", "branch-a", "a-1", "a-1-child"]) {
+    assert.equal(
+      hierarchyStyles.get(nodeId)?.borderWidth,
+      baseline.get(nodeId)?.borderWidth,
+      `${nodeId} border width should remain fixed`
+    );
+    assert.equal(hierarchyStyles.get(nodeId)?.borderStyle, "dashed");
+  }
+  assert.notEqual(
+    hierarchyStyles.get("branch-a")?.borderColor,
+    hierarchyStyles.get("a-1-child")?.borderColor
+  );
+});
+
+test("automatic border treatment choices cover coordinated, soft, neutral, and none", () => {
+  const fill = "hsl(210.0, 40.0%, 64.0%)";
+  const coordinated = "hsla(210.0, 30.0%, 46.0%, 0.62)";
+
+  assert.equal(
+    automaticLayoutBorderColor(fill, coordinated, "coordinated", 1),
+    coordinated
+  );
+  assert.match(
+    automaticLayoutBorderColor(fill, coordinated, "soft", 2),
+    /0\.38\)$/
+  );
+  assert.equal(
+    automaticLayoutBorderColor(fill, coordinated, "neutral", 2),
+    "hsla(222.0, 47.0%, 11.0%, 0.34)"
+  );
+  assert.equal(
+    automaticLayoutBorderColor(fill, coordinated, "none", 2),
+    "transparent"
+  );
+});
+
+test("borderless automatic nodes retain connector accent colors", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const configuredNodes = nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: { ...node.data, layoutBorderTreatment: "none" },
+      }
+    : node);
+  const hierarchy = buildHierarchy(configuredNodes, edges);
+  const styles = buildLayoutVisualStyles(
+    "root",
+    hierarchy,
+    "list",
+    "spectrum",
+    configuredNodes
+  );
+
+  assert.equal(styles.get("branch-a")?.borderColor, "transparent");
+  assert.notEqual(styles.get("branch-a")?.accentColor, "transparent");
 });
 
 test("applying a palette preserves original style fields and colors hierarchy edges", () => {
@@ -351,6 +431,8 @@ test("every node-based layout supports the same branch color patterns", () => {
             layoutColorPattern: "alternating",
             layoutStartColor: "#ff0000",
             layoutEndColor: "#0000ff",
+            layoutBorderTreatment: "none",
+            layoutBorderStyle: "dotted",
           },
         }
       : node);
@@ -366,6 +448,10 @@ test("every node-based layout supports the same branch color patterns", () => {
     assert.equal(supportsAutomaticLayoutColors(mode), true);
     assert.equal(hueFromHsl(styles.get("branch-a")!.fillColor), 0);
     assert.equal(hueFromHsl(styles.get("branch-b")!.fillColor), 240);
+    for (const style of styles.values()) {
+      assert.equal(style.borderColor, "transparent", `${mode} should support borderless`);
+      assert.equal(style.borderStyle, "dotted", `${mode} should support dotted borders`);
+    }
   }
 });
 

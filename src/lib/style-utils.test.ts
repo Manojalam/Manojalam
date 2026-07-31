@@ -10,6 +10,7 @@ import {
   getTextStyle,
   lightenColor,
   resolveBorderColor,
+  resolveBorderStyle,
   resolveBorderWidth,
   resolveEffectiveFillOpacity,
   resolveFillColor,
@@ -114,6 +115,21 @@ test("Matrix divisions do not override user-controlled shape borders", () => {
     layoutVisualStyle: automaticLayoutStyle,
     matrixCell: true,
   }), "transparent");
+});
+
+test("automatic border line styles yield to a manual item override", () => {
+  const dottedLayoutStyle = {
+    ...automaticLayoutStyle,
+    borderStyle: "dotted" as const,
+  };
+  assert.equal(resolveBorderStyle({
+    layoutVisualStyle: dottedLayoutStyle,
+  }), "dotted");
+  assert.equal(resolveBorderStyle({
+    borderStyle: "dashed",
+    layoutAutoBorder: false,
+    layoutVisualStyle: dottedLayoutStyle,
+  }), "dashed");
 });
 
 test("fill controls report the effective automatic color and opacity", () => {

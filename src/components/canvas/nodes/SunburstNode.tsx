@@ -33,7 +33,9 @@ import {
   radialLabelUsesCurvedText,
 } from "@/lib/canvas/radial-curved-label";
 import {
+  automaticLayoutBorderColor,
   layoutBranchAnchorColor,
+  layoutBorderLineStyle,
   layoutColorPattern,
   radialColorScheme,
   radialHierarchyWeight,
@@ -862,6 +864,8 @@ function collectSegments(
   const endColor = typeof paletteData.layoutEndColor === "string"
     ? paletteData.layoutEndColor
     : undefined;
+  const borderTreatment = paletteData.layoutBorderTreatment;
+  const automaticBorderStyle = layoutBorderLineStyle(paletteData.layoutBorderStyle);
   const walk = (candidate: SunburstTreeNode) => {
     if (candidate.depth > 0) {
       const source = byId.get(candidate.id);
@@ -888,6 +892,12 @@ function collectSegments(
         branchBaseColor,
         data.radialFillColor as string | undefined
       );
+      const generatedBorderColor = automaticLayoutBorderColor(
+        paletteColors.fill,
+        paletteColors.border,
+        borderTreatment,
+        candidate.depth
+      );
       segments.push({
         ...candidate,
         label,
@@ -898,9 +908,13 @@ function collectSegments(
         fill: (chartStyle.fillColor as string | undefined) ?? paletteColors.fill,
         fillEnd: (chartStyle.fillColor as string | undefined) ?? paletteColors.fillEnd,
         textColor: (chartStyle.textColor as string | undefined) ?? (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
-        borderColor: (chartStyle.borderColor as string | undefined) ?? (data.radialBorderColor as string | undefined) ?? paletteColors.border,
+        borderColor: (chartStyle.borderColor as string | undefined) ?? (data.radialBorderColor as string | undefined) ?? generatedBorderColor,
         borderWidth: clamp(dimension(chartStyle.borderWidth ?? data.radialBorderWidth, 1.4), 0, 16),
-        borderStyle: (data.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid",
+        borderStyle: (
+          chartStyle.borderStyle as SunburstSegment["borderStyle"] | undefined
+        ) ?? (
+          data.radialBorderStyle as SunburstSegment["borderStyle"] | undefined
+        ) ?? automaticBorderStyle,
         fontFamily: (chartStyle.fontFamily as string | undefined) ?? (data.fontFamily as string | undefined),
         fontWeight: chartStyle.fontWeight === "bold"
           ? 700
@@ -1419,6 +1433,22 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     : selectedId
       ? `${clipPrefix}-${selectedId.replace(/[^a-zA-Z0-9_-]/g, "-")}`
       : null;
+  const centerFill = d.fillColor
+    ?? (rootData.radialFillColor as string | undefined)
+    ?? model.scheme.rootFill;
+  const centerBorder = d.borderColor
+    ?? (rootData.radialBorderColor as string | undefined)
+    ?? automaticLayoutBorderColor(
+      centerFill,
+      model.scheme.rootBorder,
+      rootData.layoutBorderTreatment,
+      0
+    );
+  const centerBorderStyle = (
+    d.borderStyle as SunburstSegment["borderStyle"] | undefined
+  ) ?? (
+    rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined
+  ) ?? layoutBorderLineStyle(rootData.layoutBorderStyle);
   const selectedTextStyle = selectedId === d.rootId
     ? {
         color: d.textColor ?? (rootData.radialTextColor as string | undefined) ?? (rootData.textColor as string | undefined) ?? model.scheme.rootText,
@@ -2116,10 +2146,10 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           cx={model.center}
           cy={model.center}
           r={model.centerRadius}
-          fill={d.fillColor ?? (rootData.radialFillColor as string | undefined) ?? model.scheme.rootFill}
-          stroke={d.borderColor ?? (rootData.radialBorderColor as string | undefined) ?? model.scheme.rootBorder}
+          fill={centerFill}
+          stroke={centerBorder}
           strokeWidth={dimension(d.borderWidth ?? rootData.radialBorderWidth, 4)}
-          strokeDasharray={dashArray((rootData.radialBorderStyle as SunburstSegment["borderStyle"] | undefined) ?? "solid")}
+          strokeDasharray={dashArray(centerBorderStyle)}
           className={activeRelationshipSession
             ? validRelationshipTargetIds.has(d.rootId) ? "cursor-pointer" : "cursor-not-allowed"
             : "cursor-text"}

@@ -30,7 +30,7 @@ function fixture(): { nodes: Node[]; edges: Edge[] } {
           textColor: "#ffffff",
           accentColor: "#082f49",
           borderWidth: 0,
-          borderStyle: "solid",
+          borderStyle: "dotted",
           fontSize: 20,
         },
       },
@@ -218,6 +218,7 @@ test("plans one export per top-level Matrix branch with a resized root header", 
   assert.equal(firstHeader.text, "Matrix title");
   assert.equal(firstHeader.backgroundColor, "#0c4a6e");
   assert.equal(firstHeader.color, "#ffffff");
+  assert.equal(firstHeader.borderStyle, "dotted");
 });
 
 test("plans authored root folds and manual breakpoints as full-width printable groups", () => {
