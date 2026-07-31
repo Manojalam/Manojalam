@@ -45,6 +45,7 @@ import type {
   LayoutBorderLineStyle,
   LayoutBorderTreatment,
   LayoutColorPattern,
+  LayoutTextTreatment,
   RadialChartData,
   RadialChartRing,
   RadialChartSegment,
@@ -68,6 +69,7 @@ import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import {
   automaticLayoutBorderColor,
+  automaticLayoutTextColor,
   DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   RADIAL_COLOR_SCHEMES,
   layoutBranchAnchorColor,
@@ -75,6 +77,7 @@ import {
   layoutBorderTreatment,
   layoutColorPattern,
   layoutRootPaletteGradient,
+  layoutTextTreatment,
   radialColorScheme,
   radialSectorColors,
   type RadialColorSchemeDefinition,
@@ -727,6 +730,14 @@ const LAYOUT_BORDER_TREATMENT_OPTIONS: Array<{
   { value: "none", label: "None" },
 ];
 
+const LAYOUT_TEXT_TREATMENT_OPTIONS: Array<{
+  value: LayoutTextTreatment;
+  label: string;
+}> = [
+  { value: "contrast", label: "Fill contrast" },
+  { value: "hierarchy", label: "Hierarchy colors" },
+];
+
 function LayoutColorPatternControls({
   itemKind,
   scheme,
@@ -872,6 +883,87 @@ function LayoutColorPatternControls({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function LayoutTextControls({
+  scheme,
+  treatment,
+  onTreatmentChange,
+}: {
+  scheme: RadialColorSchemeDefinition;
+  treatment: LayoutTextTreatment;
+  onTreatmentChange: (treatment: LayoutTextTreatment) => void;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-2">
+      <Label className="text-[10px] font-medium">Automatic text colors</Label>
+      <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+        Fill contrast follows automatic fills. Hierarchy colors remain distinct and readable when fills are empty.
+      </p>
+      <div
+        className="mt-2 grid grid-cols-2 gap-1.5"
+        role="radiogroup"
+        aria-label="Automatic chart text color treatment"
+      >
+        {LAYOUT_TEXT_TREATMENT_OPTIONS.map((option) => {
+          const preview = [0, 1].map((branchIndex) => {
+            const colors = radialSectorColors(
+              scheme,
+              branchIndex,
+              1,
+              0,
+              1
+            );
+            return {
+              fill: option.value === "contrast" ? colors.fill : "transparent",
+              text: automaticLayoutTextColor(
+                colors.text,
+                colors.fill,
+                option.value,
+                1
+              ),
+            };
+          });
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={treatment === option.value}
+              onClick={() => onTreatmentChange(option.value)}
+              className={cn(
+                "rounded-md border bg-background p-1.5 text-left transition-colors hover:border-primary/60",
+                treatment === option.value
+                  ? "border-primary bg-primary/5 ring-1 ring-primary/25"
+                  : "border-border"
+              )}
+            >
+              <span className="mb-1 grid h-5 grid-cols-2 gap-1">
+                {preview.map((item, index) => (
+                  <span
+                    key={index}
+                    className="flex items-center justify-center rounded-[4px] border border-border/70 text-[11px] font-semibold"
+                    style={{
+                      backgroundColor: item.fill,
+                      color: item.text,
+                    }}
+                  >
+                    अ
+                  </span>
+                ))}
+              </span>
+              <span className="block text-[9px] font-medium text-foreground">
+                {option.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
+        Text changed directly on an item remains manual until reset to automatic.
+      </p>
     </div>
   );
 }
@@ -1845,6 +1937,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     : undefined;
   const activeLayoutBorderTreatment = layoutBorderTreatment(
     structuredLayoutRootData.layoutBorderTreatment
+  );
+  const activeLayoutTextTreatment = layoutTextTreatment(
+    structuredLayoutRootData.layoutTextTreatment
   );
   const activeLayoutBorderStyle = layoutBorderLineStyle(
     structuredLayoutRootData.layoutBorderStyle
@@ -5388,6 +5483,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 toast.success(value
                   ? "Updated the secondary automatic color."
                   : "Restored the palette's default secondary color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            />
+            <LayoutTextControls
+              scheme={activeStructuredScheme}
+              treatment={activeLayoutTextTreatment}
+              onTreatmentChange={(layoutTextTreatment) => {
+                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                  layoutTextTreatment,
+                });
+                const label = LAYOUT_TEXT_TREATMENT_OPTIONS.find(
+                  (option) => option.value === layoutTextTreatment
+                )?.label ?? "Fill contrast";
+                toast.success(`Applied ${label} automatic text colors.`, {
                   action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
                 });
               }}

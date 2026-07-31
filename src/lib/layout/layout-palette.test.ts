@@ -12,7 +12,9 @@ import {
 import {
   RADIAL_COLOR_SCHEMES,
   automaticLayoutBorderColor,
+  automaticLayoutTextColor,
   layoutBranchAnchorColor,
+  layoutTextTreatment,
   matrixRowAnchorColor,
   radialSectorColors,
 } from "../radial-layout";
@@ -75,6 +77,100 @@ test("hierarchy colors keep descendants related while separating root branches",
   assert.equal(styles.get("branch-a")?.fontSize, 19);
   assert.ok((styles.get("a-1")?.fontSize ?? 0) >= 17);
   assert.ok((styles.get("root")?.borderWidth ?? 0) > (styles.get("a-1")?.borderWidth ?? 0));
+});
+
+test("automatic text treatment defaults to fill contrast and supports hierarchy colors", () => {
+  assert.equal(layoutTextTreatment(undefined), "contrast");
+  assert.equal(layoutTextTreatment("unsupported"), "contrast");
+  assert.equal(layoutTextTreatment("hierarchy"), "hierarchy");
+  assert.equal(
+    automaticLayoutTextColor("#ffffff", "#bf4059", "contrast", 1),
+    "#ffffff"
+  );
+  assert.equal(
+    automaticLayoutTextColor("#111827", "not-a-color", "hierarchy", 1),
+    "#111827"
+  );
+  assert.match(
+    automaticLayoutTextColor("#ffffff", "#bf4059", "hierarchy", 1),
+    /^color-mix\(in srgb, hsl\(348\.\d, 49\.\d%, 50\.0%\) 62%, var\(--foreground\)\)$/
+  );
+});
+
+test("hierarchy text colors separate branches while descendants retain their branch hue", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const hierarchy = buildHierarchy(nodes, edges);
+  const baseline = buildLayoutVisualStyles("root", hierarchy, "list", "spectrum", nodes);
+  const configuredNodes = nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutTextTreatment: "hierarchy",
+        },
+      }
+    : node);
+  const styles = buildLayoutVisualStyles(
+    "root",
+    hierarchy,
+    "list",
+    "spectrum",
+    configuredNodes
+  );
+  const hierarchyHue = (nodeId: string) => {
+    const color = styles.get(nodeId)?.textColor ?? "";
+    const match = color.match(/hsl\(([\d.]+),/);
+    assert.ok(match, `${nodeId} should use a hierarchy text color`);
+    return Number.parseFloat(match[1]);
+  };
+
+  assert.equal(styles.get("branch-a")?.fillColor, baseline.get("branch-a")?.fillColor);
+  assert.equal(styles.get("a-1")?.fillColor, baseline.get("a-1")?.fillColor);
+  assert.equal(hierarchyHue("branch-a"), hierarchyHue("a-1"));
+  assert.notEqual(hierarchyHue("branch-a"), hierarchyHue("branch-b"));
+  assert.match(styles.get("root")?.textColor ?? "", /^color-mix\(/);
+});
+
+test("a manual empty fill remains independent from automatic hierarchy text", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const configuredNodes = nodes.map((node) => {
+    if (node.id === "root") {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          layoutTextTreatment: "hierarchy",
+        },
+      };
+    }
+    if (node.id === "branch-a") {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          fillColor: "transparent",
+          layoutAutoFill: false,
+        },
+      };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(configuredNodes, edges);
+  const result = applyLayoutPalette(
+    configuredNodes,
+    edges,
+    hierarchy,
+    "root",
+    "list",
+    "spectrum"
+  );
+  const childData = result.nodes.find((node) => node.id === "branch-a")!.data as Record<string, unknown>;
+  const visualStyle = childData.layoutVisualStyle as { textColor: string };
+
+  assert.equal(childData.fillColor, "transparent");
+  assert.equal(childData.layoutAutoFill, false);
+  assert.notEqual(childData.layoutAutoText, false);
+  assert.match(visualStyle.textColor, /^color-mix\(/);
 });
 
 test("automatic border treatments change contrast without changing widths", () => {
