@@ -52,6 +52,7 @@ export type CanvasTool =
   | "frame"
   | "pen"
   | "image"
+  | "audio"
   | "sanskrit"
   | "shloka"
   | "grammar";
@@ -674,6 +675,15 @@ export interface FrameNodeData extends BaseNodeData {
   }>;
 }
 
+export interface AudioNodeData extends BaseNodeData {
+  title: string;
+  audioDataUrl?: string;
+  audioMimeType?: string;
+  audioDurationMs?: number;
+  audioRecordedAt?: string;
+  audioSizeBytes?: number;
+}
+
 export interface SunburstNodeData extends BaseNodeData {
   rootId: string;
   sunburstFor: string;
@@ -754,6 +764,7 @@ export type VidyaNode = Node<
   | ShlokaCardNodeData
   | GrammarCardNodeData
   | FrameNodeData
+  | AudioNodeData
   | SunburstNodeData
   | RelationshipDiagramNodeData
   | ConnectorJunctionNodeData

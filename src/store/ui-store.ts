@@ -248,6 +248,7 @@ export const TOOL_LABELS: Record<CanvasTool, string> = {
   frame: "Frame",
   pen: "Pen (placeholder)",
   image: "Image (placeholder)",
+  audio: "Audio Note",
   sanskrit: "Sanskrit Card",
   shloka: "Śloka Card",
   grammar: "Grammar Card",

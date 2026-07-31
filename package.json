@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:audio-recording": "node scripts/run-audio-recording-tests.mjs",
     "test:list-layout": "rm -rf .list-layout-test && tsc --outDir .list-layout-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/list-layout.ts src/lib/layout/list-layout.test.ts && node --test .list-layout-test/list-layout.test.js; status=$?; rm -rf .list-layout-test; exit $status",
     "test:matrix-layout": "rm -rf .matrix-layout-test && tsc --outDir .matrix-layout-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/matrix-layout.ts src/lib/layout/matrix-layout.test.ts && node --test .matrix-layout-test/layout/matrix-layout.test.js; status=$?; rm -rf .matrix-layout-test; exit $status",
     "test:layout-palette": "rm -rf .layout-palette-test && tsc --outDir .layout-palette-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/types.ts src/lib/radial-layout.ts src/lib/layout/geometry.ts src/lib/layout/hierarchy.ts src/lib/layout/layout-palette.ts src/lib/layout/layout-palette.test.ts && node --test .layout-palette-test/layout/layout-palette.test.js; status=$?; rm -rf .layout-palette-test; exit $status",
