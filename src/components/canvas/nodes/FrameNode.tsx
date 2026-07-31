@@ -189,7 +189,7 @@ function FrameNodeComponent({
                 y1={line.y1}
                 x2={line.x2}
                 y2={line.y2}
-                stroke={d.color ?? "#6366f1"}
+                stroke={line.color ?? d.color ?? "#6366f1"}
                 strokeWidth={gridStrokeWidth}
                 strokeDasharray={gridStrokeDasharray}
                 strokeLinecap={d.borderStyle === "dotted" ? "round" : undefined}

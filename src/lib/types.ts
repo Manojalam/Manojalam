@@ -762,6 +762,8 @@ export interface FrameNodeData extends BaseNodeData {
     y1: number;
     x2: number;
     y2: number;
+    /** Automatic border color for this grid segment. */
+    color?: string;
   }>;
   /** Presentation-only labels for ancestors repeated across Matrix Fold sections. */
   matrixRepeatedCells?: Array<{

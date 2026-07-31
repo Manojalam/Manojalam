@@ -7488,6 +7488,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {/* ── Border ── */}
         {isContentNode && !isRadialLayoutSector && (
           <Section label="Border" visible={singleNodeTab === "style"}>
+            {matrixRootNode && (
+              <p className="rounded-md border border-border bg-muted/20 p-2 text-[9px] leading-snug text-muted-foreground">
+                Matrix uses one continuous chart grid. Changing this item&apos;s
+                thickness creates a separate local outline; use Chart borders
+                for coordinated color and line pattern.
+              </p>
+            )}
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
