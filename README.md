@@ -30,7 +30,7 @@ Vercel deployment will be configured later.
 
 - Infinite pannable/zoomable canvas with React Flow
 - Mind-map nodes with Tab/Enter keyboard workflow
-- Sticky notes, text blocks, shapes, frames, and recordable audio notes
+- Sticky notes, text blocks, shapes, frames, and image/audio attachments with in-app recording
 - Sanskrit cards, śloka cards, grammar cards
 - Transliteration helper (IAST, ITRANS, HK, Devanāgarī)
 - 19+ templates including Sanskrit study maps

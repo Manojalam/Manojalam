@@ -4,6 +4,7 @@ import {
   audioFileExtension,
   formatRecordingDuration,
   microphoneErrorMessage,
+  normalizedRecordingMimeType,
   preferredAudioMimeType,
 } from "./audio-recording";
 
@@ -25,6 +26,12 @@ test("audioFileExtension maps browser recording formats to useful downloads", ()
   assert.equal(audioFileExtension("audio/mp4"), "m4a");
   assert.equal(audioFileExtension("audio/ogg;codecs=opus"), "ogg");
   assert.equal(audioFileExtension("audio/webm;codecs=opus"), "webm");
+});
+
+test("normalizedRecordingMimeType removes recorder codec parameters", () => {
+  assert.equal(normalizedRecordingMimeType("audio/webm;codecs=opus"), "audio/webm");
+  assert.equal(normalizedRecordingMimeType("audio/mp4; codecs=mp4a.40.2"), "audio/mp4");
+  assert.equal(normalizedRecordingMimeType(""), "audio/webm");
 });
 
 test("microphoneErrorMessage explains common permission and device failures", () => {

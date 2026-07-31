@@ -38,6 +38,12 @@ export function audioFileExtension(mimeType: string | undefined): string {
   return "webm";
 }
 
+/** Strip recorder codec parameters so uploaded-audio validation sees a canonical MIME type. */
+export function normalizedRecordingMimeType(mimeType: string | undefined): string {
+  const normalized = mimeType?.split(";", 1)[0]?.trim().toLowerCase();
+  return normalized?.startsWith("audio/") ? normalized : "audio/webm";
+}
+
 export function microphoneErrorMessage(error: unknown): string {
   const name = error instanceof DOMException
     ? error.name

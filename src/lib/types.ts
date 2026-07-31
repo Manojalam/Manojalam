@@ -52,7 +52,6 @@ export type CanvasTool =
   | "frame"
   | "pen"
   | "image"
-  | "audio"
   | "sanskrit"
   | "shloka"
   | "grammar";
