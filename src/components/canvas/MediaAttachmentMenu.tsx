@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Node } from "@xyflow/react";
 import {
   AudioLines,
@@ -26,10 +26,12 @@ import {
 import type { MediaAttachmentKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
+import { RecordedAudioAttachmentControl } from "./RecordedAudioAttachmentControl";
 
 export function MediaAttachmentMenu({ node }: { node: Node }) {
   const [open, setOpen] = useState(false);
   const [busyKind, setBusyKind] = useState<MediaAttachmentKind | null>(null);
+  const [recordingBusy, setRecordingBusy] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const attachments = normalizeMediaAttachments(
@@ -37,7 +39,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
   );
   const isFull = attachments.length >= MAX_MEDIA_ATTACHMENTS;
 
-  const addFiles = async (kind: MediaAttachmentKind, files: File[]) => {
+  const addFiles = useCallback(async (kind: MediaAttachmentKind, files: File[]) => {
     if (!files.length) return;
     const available = MAX_MEDIA_ATTACHMENTS - attachments.length;
     if (files.length > available) {
@@ -85,7 +87,11 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
     } finally {
       setBusyKind(null);
     }
-  };
+  }, [attachments, node.id]);
+
+  const attachRecording = useCallback(async (file: File) => {
+    await addFiles("audio", [file]);
+  }, [addFiles]);
 
   const removeAttachment = (attachmentId: string) => {
     const store = useCanvasStore.getState();
@@ -138,7 +144,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
           <div>
             <p className="text-sm font-semibold">Media attachments</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Add images or playable audio to this object.
+              Add images, upload audio, or record it for this object.
             </p>
           </div>
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -149,7 +155,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button
             type="button"
-            disabled={isFull || busyKind !== null}
+            disabled={isFull || busyKind !== null || recordingBusy}
             className="flex h-9 items-center justify-center gap-2 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => imageInputRef.current?.click()}
           >
@@ -160,7 +166,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
           </button>
           <button
             type="button"
-            disabled={isFull || busyKind !== null}
+            disabled={isFull || busyKind !== null || recordingBusy}
             className="flex h-9 items-center justify-center gap-2 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => audioInputRef.current?.click()}
           >
@@ -192,6 +198,11 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
               event.currentTarget.value = "";
               void addFiles("audio", files);
             }}
+          />
+          <RecordedAudioAttachmentControl
+            disabled={isFull || busyKind !== null}
+            onBusyChange={setRecordingBusy}
+            onRecorded={attachRecording}
           />
         </div>
 
@@ -249,7 +260,8 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
         )}
 
         <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-          Images up to 15 MB are optimized for the board. Audio files can be up to 6 MB.
+          Images up to 15 MB are optimized for the board. Upload or record up to 6 MB of audio;
+          recordings can be five minutes long.
         </p>
       </PopoverContent>
     </Popover>
