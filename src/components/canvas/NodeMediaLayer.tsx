@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { ViewportPortal, type Node } from "@xyflow/react";
-import { Download, Music2, Pause } from "lucide-react";
+import { Download, Pause, Play } from "lucide-react";
 
 import {
   Dialog,
@@ -104,9 +104,20 @@ function AudioAttachmentButton({
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   useEffect(() => () => {
-    audioRef.current?.pause();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onpause = null;
+      audio.onplay = null;
+      audio.ontimeupdate = null;
+      audio.onloadedmetadata = null;
+      audio.pause();
+      audio.src = "";
+    }
     audioRef.current = null;
   }, []);
 
@@ -114,12 +125,20 @@ function AudioAttachmentButton({
     event.stopPropagation();
     let audio = audioRef.current;
     if (!audio) {
-      audio = new Audio(attachment.dataUrl);
-      audio.preload = "metadata";
-      audio.addEventListener("ended", () => setPlaying(false));
-      audio.addEventListener("pause", () => setPlaying(false));
-      audio.addEventListener("play", () => setPlaying(true));
-      audioRef.current = audio;
+      const audioElement = new Audio(attachment.dataUrl);
+      audioElement.preload = "metadata";
+      audioElement.onended = () => {
+        setPlaying(false);
+        setCurrentTime(0);
+      };
+      audioElement.onpause = () => setPlaying(false);
+      audioElement.onplay = () => setPlaying(true);
+      audioElement.ontimeupdate = () => setCurrentTime(audioElement.currentTime);
+      audioElement.onloadedmetadata = () => {
+        setDuration(Number.isFinite(audioElement.duration) ? audioElement.duration : 0);
+      };
+      audioRef.current = audioElement;
+      audio = audioElement;
     }
     if (!audio.paused) {
       audio.pause();
@@ -132,12 +151,65 @@ function AudioAttachmentButton({
     }
   };
 
+  const timeLabel = (seconds: number) => {
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    const minutes = Math.floor(safeSeconds / 60);
+    return `${minutes}:${(safeSeconds % 60).toString().padStart(2, "0")}`;
+  };
+  const progress = duration > 0
+    ? Math.min(100, Math.max(0, currentTime / duration * 100))
+    : 0;
+  const displayName = attachment.name.startsWith("voice-recording-")
+    ? "Voice recording"
+    : attachment.name;
+
+  if (!compact) {
+    return (
+      <div
+        data-audio-attachment-player={attachment.id}
+        className="flex h-12 w-44 max-w-full shrink items-center gap-2 rounded-lg border border-border/80 bg-background/95 px-2 text-foreground shadow-md backdrop-blur-sm"
+        title={attachment.name}
+        onPointerDown={stopCanvasInteraction}
+        onClick={stopCanvasInteraction}
+      >
+        <button
+          type="button"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          title={`${playing ? "Pause" : "Play"} audio: ${attachment.name}`}
+          aria-label={`${playing ? "Pause" : "Play"} audio ${attachment.name}`}
+          aria-pressed={playing}
+          onClick={togglePlayback}
+        >
+          {playing
+            ? <Pause className="h-3.5 w-3.5" fill="currentColor" />
+            : <Play className="ml-0.5 h-3.5 w-3.5" fill="currentColor" />}
+        </button>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[10px] font-semibold leading-tight">
+            {displayName}
+          </span>
+          <span className="mt-1 flex items-center gap-1.5">
+            <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+              <span
+                className="block h-full rounded-full bg-primary transition-[width] duration-150"
+                style={{ width: `${progress}%` }}
+              />
+            </span>
+            <span className="shrink-0 font-mono text-[8px] tabular-nums text-muted-foreground">
+              {timeLabel(currentTime)}/{duration > 0 ? timeLabel(duration) : "--:--"}
+            </span>
+          </span>
+        </span>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground shadow-md transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-        compact ? "h-7 w-7" : "h-9 w-9"
+        "h-7 w-7"
       )}
       title={`${playing ? "Pause" : "Play"} audio: ${attachment.name}`}
       aria-label={`${playing ? "Pause" : "Play"} audio ${attachment.name}`}
@@ -146,8 +218,8 @@ function AudioAttachmentButton({
       onClick={togglePlayback}
     >
       {playing
-        ? <Pause className={compact ? "h-3 w-3" : "h-4 w-4"} fill="currentColor" />
-        : <Music2 className={compact ? "h-3 w-3" : "h-4 w-4"} />}
+        ? <Pause className="h-3 w-3" fill="currentColor" />
+        : <Play className="ml-px h-3 w-3" fill="currentColor" />}
     </button>
   );
 }
