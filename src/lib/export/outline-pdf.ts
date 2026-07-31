@@ -1,5 +1,9 @@
 import type { VidyaBoard } from "../types";
 import {
+  encodeOutlinePdfMetadata,
+  OUTLINE_PDF_METADATA_NAMESPACE,
+} from "../outline-payload";
+import {
   buildOutlineDocument,
   outlineFilename,
   type OutlineConnection,
@@ -370,6 +374,10 @@ export async function downloadPdfOutline(board: VidyaBoard): Promise<DownloadedO
     orientation: "portrait",
     margin: 0,
     title: `${outline.title} - Outline`,
+    xmpMetadata: {
+      value: encodeOutlinePdfMetadata(outline),
+      namespaceUri: OUTLINE_PDF_METADATA_NAMESPACE,
+    },
   });
   const filename = outlineFilename(outline.title, "pdf");
   initiateBlobDownload(pdf.blob, filename);

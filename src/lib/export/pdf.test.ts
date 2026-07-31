@@ -104,6 +104,7 @@ test("writes clickable URL annotations into the generated PDF", async () => {
 });
 
 test("creates one printable PDF page per selected Matrix section", async () => {
+  const metadataValue = "MANOJALAM_OUTLINE_V1:{\"version\":1}";
   const result = await createMultiPageBoardPdf({
     pages: [
       {
@@ -122,12 +123,28 @@ test("creates one printable PDF page per selected Matrix section", async () => {
     paperSize: "letter",
     orientation: "auto",
     title: "Matrix sections",
+    xmpMetadata: {
+      value: metadataValue,
+      namespaceUri: "https://manojalam.app/ns/outline/",
+    },
   });
   const bytes = new Uint8Array(await result.blob.arrayBuffer());
+  const source = Buffer.from(bytes).toString("utf8");
 
   assert.equal(Buffer.from(bytes.subarray(0, 4)).toString("ascii"), "%PDF");
   assert.equal(result.pageCount, 2);
   assert.equal(result.pageWidth, 792);
   assert.equal(result.pageHeight, 612);
   assert.equal(result.linkAnnotationCount, 0);
+  assert.match(source, /MANOJALAM_OUTLINE_V1:/);
+
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const loadingTask = pdfjs.getDocument({ data: bytes });
+  try {
+    const document = await loadingTask.promise;
+    const metadata = await document.getMetadata();
+    assert.equal(metadata.metadata?.get("jspdf:metadata"), metadataValue);
+  } finally {
+    await loadingTask.destroy();
+  }
 });

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseHTML } from "linkedom";
+import { OUTLINE_PDF_METADATA_PREFIX } from "../outline-payload";
 import {
   hierarchyDraftToBoardContent,
   remapHierarchyForBoardInsertion,
@@ -19,7 +20,7 @@ import {
   fontFamilyForText,
   scriptModeForText,
 } from "./script";
-import { hasUsablePdfText } from "./pdf";
+import { hasUsablePdfText, parsePdfOutlineMetadata } from "./pdf";
 import {
   decodeTextBuffer,
   parseHtmlHierarchy,
@@ -31,6 +32,7 @@ import {
   shouldUseDevanagariOcrRetry,
 } from "./raster";
 import { IMPORT_LAYOUT_OPTIONS, isImportLayoutMode } from "./layouts";
+import { hierarchyImportKindForFile } from "./index";
 
 const SAMPLE = `छन्दः - समवृत्तानि
 \t८ अक्षराणि अनुष्टुप्
@@ -232,6 +234,43 @@ Connections
   );
 });
 
+test("re-imports native Markdown exports and accepts .md files", () => {
+  const draft = parseTextHierarchy(`# Sanskrit & Logic
+
+A complete study outline.
+
+## Outline
+
+1. **Root** _(Shape)_
+    - **Text:** Root<br>Root note
+    1. **अग्नि** _(Sanskrit card)_
+        - **Source:** ऋग्वेद
+        - **Notes:** Child note
+    1. **Sandhi** _(Shape)_
+
+## Connections
+
+- Root -> अग्नि: explains
+`, "Sanskrit-Logic.md");
+
+  assert.equal(
+    hierarchyImportKindForFile({
+      name: "Sanskrit-Logic.md",
+      type: "text/markdown",
+    } as File),
+    "text"
+  );
+  assert.equal(draft.title, "Sanskrit & Logic");
+  assert.equal(draft.roots.length, 1);
+  assert.equal(draft.roots[0].label, "Root");
+  assert.equal(draft.roots[0].notes, "Root note");
+  assert.deepEqual(
+    draft.roots[0].children.map((node) => node.label),
+    ["अग्नि", "Sandhi"]
+  );
+  assert.equal(draft.roots[0].children[0].notes, "Source: ऋग्वेद\nChild note");
+});
+
 test("uses an existing filename-matching root when combining top-level sections", () => {
   const draft = parseTextHierarchy(
     `छन्दः - समवृत्तानि
@@ -248,6 +287,57 @@ test("uses an existing filename-matching root when combining top-level sections"
     finalized.roots[0].children.map((node) => node.label),
     ["८ अक्षराणि", "छन्दः"]
   );
+});
+
+test("re-imports native HTML exports without visual metadata or connection roots", () => {
+  const { window } = parseHTML(`<!doctype html><html><head>
+    <title>Sanskrit &amp; Logic - Outline</title>
+  </head><body><main>
+    <header><h1>Sanskrit &amp; Logic</h1></header>
+    <section><h2>Outline</h2>
+      <ol class="outline-list"><li>
+        <article class="outline-node"><header>
+          <span class="outline-number">1.</span>
+          <span class="outline-title">Root</span>
+          <span class="outline-type">Shape</span>
+        </header><dl><div><dt>Text</dt><dd>Root<br>Root note</dd></div></dl></article>
+        <ol class="outline-list"><li>
+          <article class="outline-node"><header>
+            <span class="outline-number">1.1.</span>
+            <span class="outline-title">अग्नि</span>
+            <span class="outline-type">Sanskrit card</span>
+          </header><dl><div><dt>Source</dt><dd>ऋग्वेद</dd></div></dl></article>
+        </li></ol>
+      </li></ol>
+    </section>
+    <section><h2>Connections</h2><ul class="connection-list">
+      <li>Root -&gt; अग्नि: explains</li>
+    </ul></section>
+  </main></body></html>`);
+  const previous = {
+    DOMParser: globalThis.DOMParser,
+    Node: globalThis.Node,
+    Element: globalThis.Element,
+  };
+  Object.assign(globalThis, {
+    DOMParser: window.DOMParser,
+    Node: window.Node,
+    Element: window.Element,
+  });
+  try {
+    const draft = parseHtmlHierarchy(window.document.toString(), "Sanskrit-Logic.html");
+    assert.equal(draft.title, "Sanskrit & Logic");
+    assert.equal(draft.roots.length, 1);
+    assert.equal(draft.roots[0].label, "Root");
+    assert.equal(draft.roots[0].notes, "Root note");
+    assert.deepEqual(
+      draft.roots[0].children.map((node) => node.label),
+      ["अग्नि"]
+    );
+    assert.equal(draft.roots[0].children[0].notes, "Source: ऋग्वेद");
+  } finally {
+    Object.assign(globalThis, previous);
+  }
 });
 
 test("parses nested HTML lists without executing or importing unsafe elements", () => {
@@ -299,6 +389,32 @@ test("parses nested HTML lists without executing or importing unsafe elements", 
   } finally {
     Object.assign(globalThis, previous);
   }
+});
+
+test("restores an exact hierarchy from an exported PDF metadata payload", () => {
+  const metadata = `${OUTLINE_PDF_METADATA_PREFIX}${JSON.stringify({
+    version: 1,
+    title: "छन्दः",
+    roots: [{
+      title: "अग्नि",
+      details: [
+        { label: "Text", value: "अग्नि\nऋग्वेदस्य प्रथमः शब्दः" },
+      ],
+      children: [{
+        title: "Child",
+        details: [{ label: "Notes", value: "Detail" }],
+        children: [],
+      }],
+    }],
+  })}`;
+  const draft = parsePdfOutlineMetadata(metadata, "छन्दः.pdf");
+
+  assert.ok(draft);
+  assert.equal(draft.title, "छन्दः");
+  assert.equal(draft.roots[0].label, "अग्नि");
+  assert.equal(draft.roots[0].notes, "ऋग्वेदस्य प्रथमः शब्दः");
+  assert.equal(draft.roots[0].children[0].label, "Child");
+  assert.equal(draft.roots[0].children[0].notes, "Detail");
 });
 
 test("keeps every explicit nested HTML list item as a hierarchy node", () => {

@@ -3,6 +3,10 @@ import test from "node:test";
 
 import type { VidyaBoard, VidyaNode } from "../types";
 import {
+  decodeOutlinePdfMetadata,
+  encodeOutlinePdfMetadata,
+} from "../outline-payload";
+import {
   buildOutlineDocument,
   outlineFilename,
   outlinePlainText,
@@ -125,6 +129,22 @@ test("builds the complete authored hierarchy in stored child order", () => {
     target: "Agni",
     label: "invokes",
   });
+});
+
+test("encodes a lossless Unicode hierarchy payload for PDF re-import", () => {
+  const outline = buildOutlineDocument(fixtureBoard());
+  const decoded = decodeOutlinePdfMetadata(encodeOutlinePdfMetadata(outline));
+
+  assert.ok(decoded);
+  assert.equal(decoded.title, "Sanskrit & Logic");
+  assert.deepEqual(decoded.roots.map((root) => root.title), ["Loose note", "Root"]);
+  assert.equal(decoded.roots[1].children[0].title, "Agni");
+  assert.equal(
+    decoded.roots[1].children[0].details.find(
+      (detail) => detail.label === "Devanagari"
+    )?.value,
+    "अग्नि"
+  );
 });
 
 test("serializes TXT and Markdown as nested outlines with all node details", () => {

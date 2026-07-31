@@ -77,9 +77,9 @@ const SOURCE_OPTIONS: Array<{
   },
   {
     kind: "text",
-    label: "Text outline",
-    description: "Read tabs, spaces, bullets, and numbering",
-    accept: ".txt,text/plain",
+    label: "Text or Markdown outline",
+    description: "Read TXT or Markdown hierarchy exports",
+    accept: ".txt,.md,text/plain,text/markdown",
     icon: FileText,
   },
   {

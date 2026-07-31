@@ -57,12 +57,18 @@ export interface BoardPdfPage {
   links?: PdfLinkAnnotation[];
 }
 
+export interface PdfXmpMetadata {
+  value: string;
+  namespaceUri?: string;
+}
+
 export interface CreateMultiPageBoardPdfOptions {
   pages: BoardPdfPage[];
   paperSize?: PdfPaperSize;
   orientation?: PdfPageOrientation;
   margin?: number;
   title?: string;
+  xmpMetadata?: PdfXmpMetadata;
 }
 
 export interface CreatedMultiPageBoardPdf extends CreatedBoardPdf {
@@ -321,6 +327,12 @@ export async function createMultiPageBoardPdf(
 
   if (options.title?.trim()) {
     document.setDocumentProperties({ title: options.title.trim() });
+  }
+  if (options.xmpMetadata?.value) {
+    document.addMetadata(
+      options.xmpMetadata.value,
+      options.xmpMetadata.namespaceUri
+    );
   }
   document.viewerPreferences({ FitWindow: true, DisplayDocTitle: true });
 
