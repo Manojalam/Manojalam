@@ -25,7 +25,15 @@ import type {
 } from "../types";
 
 type MatrixGridLine = NonNullable<FrameNodeData["matrixGridLines"]>[number];
-type AxisSegment = { position: number; start: number; end: number };
+type AxisSegment = {
+  position: number;
+  start: number;
+  end: number;
+  color?: string;
+  depth: number;
+  leadingSide: boolean;
+  order: number;
+};
 const GRID_ALIGNMENT_TOLERANCE = 0.5;
 
 function matrixPresentationRect(node: Node): NodeRect {
@@ -71,12 +79,14 @@ function visualColors(node: Node | undefined): {
   fillColor?: string;
   borderColor?: string;
   borderStyle?: "solid" | "dashed" | "dotted";
+  depth?: number;
 } {
   const data = (node?.data ?? {}) as Record<string, unknown>;
   return (data.layoutVisualStyle ?? {}) as {
     fillColor?: string;
     borderColor?: string;
     borderStyle?: "solid" | "dashed" | "dotted";
+    depth?: number;
   };
 }
 
@@ -229,32 +239,62 @@ function repeatedCellRenderData(
   };
 }
 
+function preferredAxisSegment(segments: readonly AxisSegment[]): AxisSegment {
+  return [...segments].sort((first, second) => {
+    const firstHasColor = typeof first.color === "string";
+    const secondHasColor = typeof second.color === "string";
+    if (firstHasColor !== secondHasColor) return firstHasColor ? -1 : 1;
+    if (first.depth !== second.depth) return first.depth - second.depth;
+    if (first.leadingSide !== second.leadingSide) return first.leadingSide ? -1 : 1;
+    return first.order - second.order;
+  })[0];
+}
+
 function mergeAxisSegments(segments: readonly AxisSegment[]): AxisSegment[] {
-  const groups = new Map<number, Array<{ start: number; end: number }>>();
+  const groups = new Map<number, AxisSegment[]>();
   for (const segment of segments) {
     const position = Math.round(segment.position * 2) / 2;
-    groups.set(position, [
-      ...(groups.get(position) ?? []),
-      {
-        start: Math.min(segment.start, segment.end),
-        end: Math.max(segment.start, segment.end),
-      },
-    ]);
+    groups.set(position, [...(groups.get(position) ?? []), {
+      ...segment,
+      position,
+      start: Math.min(segment.start, segment.end),
+      end: Math.max(segment.start, segment.end),
+    }]);
   }
 
   const merged: AxisSegment[] = [];
   for (const [position, intervals] of groups) {
-    const ordered = [...intervals].sort((a, b) => a.start - b.start || a.end - b.end);
-    let current = ordered[0];
-    for (const interval of ordered.slice(1)) {
-      if (interval.start <= current.end + GRID_ALIGNMENT_TOLERANCE) {
-        current = { start: current.start, end: Math.max(current.end, interval.end) };
+    const points = Array.from(new Set(
+      intervals.flatMap((interval) => [interval.start, interval.end])
+    )).sort((first, second) => first - second);
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const start = points[index];
+      const end = points[index + 1];
+      if (end - start <= GRID_ALIGNMENT_TOLERANCE) continue;
+      const midpoint = (start + end) / 2;
+      const contributors = intervals.filter((interval) =>
+        midpoint >= interval.start - GRID_ALIGNMENT_TOLERANCE
+        && midpoint <= interval.end + GRID_ALIGNMENT_TOLERANCE
+      );
+      if (!contributors.length) continue;
+      const preferred = preferredAxisSegment(contributors);
+      const previous = merged.at(-1);
+      if (
+        previous
+        && previous.position === position
+        && previous.color === preferred.color
+        && Math.abs(previous.end - start) <= GRID_ALIGNMENT_TOLERANCE
+      ) {
+        previous.end = end;
       } else {
-        merged.push({ position, ...current });
-        current = interval;
+        merged.push({
+          ...preferred,
+          position,
+          start,
+          end,
+        });
       }
     }
-    merged.push({ position, ...current });
   }
   return merged;
 }
@@ -335,18 +375,62 @@ function matrixGridLines(
   bounds: NodeRect,
   padding: number
 ): MatrixGridLine[] {
-  const rects = scopedNodes.map(matrixPresentationRect);
+  const entries = scopedNodes.map((node, order) => {
+    const colors = visualColors(node);
+    return {
+      rect: matrixPresentationRect(node),
+      color: typeof colors.borderColor === "string" ? colors.borderColor : undefined,
+      depth: typeof colors.depth === "number" && Number.isFinite(colors.depth)
+        ? Math.max(0, colors.depth)
+        : Number.POSITIVE_INFINITY,
+      order,
+    };
+  });
+  const rects = entries.map((entry) => entry.rect);
   const vertical: AxisSegment[] = [];
   const horizontal: AxisSegment[] = [];
-  for (const rect of rects) {
+  for (const entry of entries) {
+    const { rect, color, depth, order } = entry;
     const division = matrixDivisionRect(rect, rects, bounds, padding);
     vertical.push(
-      { position: division.left, start: division.top, end: division.bottom },
-      { position: division.right, start: division.top, end: division.bottom }
+      {
+        position: division.left,
+        start: division.top,
+        end: division.bottom,
+        color,
+        depth,
+        leadingSide: true,
+        order,
+      },
+      {
+        position: division.right,
+        start: division.top,
+        end: division.bottom,
+        color,
+        depth,
+        leadingSide: false,
+        order,
+      }
     );
     horizontal.push(
-      { position: division.top, start: division.left, end: division.right },
-      { position: division.bottom, start: division.left, end: division.right }
+      {
+        position: division.top,
+        start: division.left,
+        end: division.right,
+        color,
+        depth,
+        leadingSide: true,
+        order,
+      },
+      {
+        position: division.bottom,
+        start: division.left,
+        end: division.right,
+        color,
+        depth,
+        leadingSide: false,
+        order,
+      }
     );
   }
 
@@ -360,6 +444,7 @@ function matrixGridLines(
       y1: line.start - bounds.top,
       x2: line.position - bounds.left,
       y2: line.end - bounds.top,
+      ...(line.color ? { color: line.color } : {}),
     }));
   const internalHorizontal = mergeAxisSegments(horizontal)
     .filter((line) =>
@@ -371,6 +456,7 @@ function matrixGridLines(
       y1: line.position - bounds.top,
       x2: line.end - bounds.left,
       y2: line.position - bounds.top,
+      ...(line.color ? { color: line.color } : {}),
     }));
   return [...internalHorizontal, ...internalVertical];
 }

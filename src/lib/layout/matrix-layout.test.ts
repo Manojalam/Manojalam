@@ -960,7 +960,7 @@ test("Matrix presentation keeps rounded shapes inside a flat table grid", () => 
   assert.equal(matrixCellDivisionPadding("presentation"), 6);
 });
 
-test("Matrix creates one continuous grid with every merged-cell division", () => {
+test("Matrix creates one continuous grid with hierarchy-colored divisions", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -975,6 +975,7 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
           fillColor: "#047857",
           borderColor: "#064e3b",
           borderStyle: "dashed",
+          depth: 0,
         },
       },
     },
@@ -986,7 +987,7 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
       data: {
         parentId: "root",
         matrixCell: true,
-        layoutVisualStyle: { borderColor: "#065f46" },
+        layoutVisualStyle: { borderColor: "#065f46", depth: 1 },
       },
     },
     {
@@ -994,7 +995,11 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
       type: "shape",
       position: { x: 148, y: 86 },
       style: { width: 100, height: 50 },
-      data: { parentId: "short", matrixCell: true },
+      data: {
+        parentId: "short",
+        matrixCell: true,
+        layoutVisualStyle: { borderColor: "#34d399", depth: 2 },
+      },
     },
     {
       id: "long",
@@ -1004,7 +1009,7 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
       data: {
         parentId: "root",
         matrixCell: true,
-        layoutVisualStyle: { borderColor: "#047857" },
+        layoutVisualStyle: { borderColor: "#047857", depth: 1 },
       },
     },
     {
@@ -1012,21 +1017,33 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
       type: "shape",
       position: { x: 148, y: 144 },
       style: { width: 100, height: 50 },
-      data: { parentId: "long", matrixCell: true },
+      data: {
+        parentId: "long",
+        matrixCell: true,
+        layoutVisualStyle: { borderColor: "#6ee7b7", depth: 2 },
+      },
     },
     {
       id: "ii",
       type: "shape",
       position: { x: 148, y: 202 },
       style: { width: 100, height: 50 },
-      data: { parentId: "long", matrixCell: true },
+      data: {
+        parentId: "long",
+        matrixCell: true,
+        layoutVisualStyle: { borderColor: "#6ee7b7", depth: 2 },
+      },
     },
     {
       id: "standalone",
       type: "shape",
       position: { x: 256, y: 86 },
       style: { width: 100, height: 50 },
-      data: { parentId: "root", matrixCell: true },
+      data: {
+        parentId: "root",
+        matrixCell: true,
+        layoutVisualStyle: { borderColor: "#0f766e", depth: 1 },
+      },
     },
   ];
 
@@ -1042,11 +1059,15 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
   assert.equal(frameData.matrixOuterBorderVisible, true);
   assert.equal(frameData.matrixGridVisible, true);
   assert.deepEqual(frameData.matrixGridLines, [
-    { x1: 0, y1: 72, x2: 344, y2: 72 },
-    { x1: 0, y1: 134, x2: 344, y2: 134 },
-    { x1: 128, y1: 192, x2: 236, y2: 192 },
-    { x1: 128, y1: 72, x2: 128, y2: 250 },
-    { x1: 236, y1: 72, x2: 236, y2: 250 },
+    { x1: 0, y1: 72, x2: 344, y2: 72, color: "#064e3b" },
+    { x1: 0, y1: 134, x2: 128, y2: 134, color: "#047857" },
+    { x1: 128, y1: 134, x2: 236, y2: 134, color: "#6ee7b7" },
+    { x1: 236, y1: 134, x2: 344, y2: 134, color: "#0f766e" },
+    { x1: 128, y1: 192, x2: 236, y2: 192, color: "#6ee7b7" },
+    { x1: 128, y1: 72, x2: 128, y2: 134, color: "#065f46" },
+    { x1: 128, y1: 134, x2: 128, y2: 250, color: "#047857" },
+    { x1: 236, y1: 72, x2: 236, y2: 134, color: "#0f766e" },
+    { x1: 236, y1: 134, x2: 236, y2: 250, color: "#6ee7b7" },
   ]);
 });
 
@@ -1126,7 +1147,11 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
           width: 100,
           height: 50,
         }],
-        layoutVisualStyle: { fillColor: "#2563eb", borderColor: "#1e40af" },
+        layoutVisualStyle: {
+          fillColor: "#2563eb",
+          borderColor: "#1e40af",
+          depth: 0,
+        },
       },
     },
     {
@@ -1137,7 +1162,11 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
       data: {
         parentId: "root",
         matrixCell: true,
-        layoutVisualStyle: { fillColor: "#bfdbfe", borderColor: "#3b82f6" },
+        layoutVisualStyle: {
+          fillColor: "#bfdbfe",
+          borderColor: "#3b82f6",
+          depth: 1,
+        },
       },
     },
   ];
@@ -1153,8 +1182,8 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
 
   assert.equal(frameData.matrixEmptyCells, undefined);
   assert.deepEqual(lines, [
-    { x1: 0, y1: 69, x2: 308, y2: 69 },
-    { x1: 104, y1: 69, x2: 104, y2: 128 },
+    { x1: 0, y1: 69, x2: 308, y2: 69, color: "#1e40af" },
+    { x1: 104, y1: 69, x2: 104, y2: 128, color: "#3b82f6" },
     { x1: 208, y1: 69, x2: 208, y2: 128 },
   ]);
 });
