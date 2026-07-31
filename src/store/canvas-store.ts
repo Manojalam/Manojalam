@@ -76,6 +76,7 @@ import type {
   LayoutBorderTreatment,
   LayoutColorPattern,
   LayoutMode,
+  LayoutTextTreatment,
   RadialColorScheme,
 } from "@/lib/types";
 import {
@@ -288,6 +289,7 @@ interface CanvasState {
       layoutEndColor?: string;
       layoutBorderTreatment?: LayoutBorderTreatment;
       layoutBorderStyle?: LayoutBorderLineStyle;
+      layoutTextTreatment?: LayoutTextTreatment;
     }
   ) => void;
 }

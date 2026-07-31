@@ -2,6 +2,7 @@ import type {
   LayoutBorderLineStyle,
   LayoutBorderTreatment,
   LayoutColorPattern,
+  LayoutTextTreatment,
   MatrixRowColorPattern,
   RadialColorScheme,
 } from "./types";
@@ -28,6 +29,7 @@ export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
 export const DEFAULT_LAYOUT_COLOR_PATTERN: LayoutColorPattern = "flow";
 export const DEFAULT_LAYOUT_BORDER_TREATMENT: LayoutBorderTreatment = "coordinated";
 export const DEFAULT_LAYOUT_BORDER_STYLE: LayoutBorderLineStyle = "solid";
+export const DEFAULT_LAYOUT_TEXT_TREATMENT: LayoutTextTreatment = "contrast";
 /** @deprecated Use DEFAULT_LAYOUT_COLOR_PATTERN. */
 export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern =
   DEFAULT_LAYOUT_COLOR_PATTERN;
@@ -204,6 +206,40 @@ export function layoutBorderLineStyle(value: unknown): LayoutBorderLineStyle {
   return value === "dashed" || value === "dotted"
     ? value
     : DEFAULT_LAYOUT_BORDER_STYLE;
+}
+
+export function layoutTextTreatment(value: unknown): LayoutTextTreatment {
+  return value === "hierarchy"
+    ? value
+    : DEFAULT_LAYOUT_TEXT_TREATMENT;
+}
+
+/**
+ * Resolves automatic chart text independently from its fill.
+ *
+ * Contrast preserves the established black/white behavior. Hierarchy keeps
+ * each top-level branch in one hue family, while mixing that hue toward the
+ * active theme foreground so transparent items remain readable.
+ */
+export function automaticLayoutTextColor(
+  contrastTextColor: string,
+  hierarchyColor: string,
+  treatmentValue: unknown,
+  depth = 0
+): string {
+  if (layoutTextTreatment(treatmentValue) === "contrast") {
+    return contrastTextColor;
+  }
+
+  const anchor = parseColor(hierarchyColor);
+  if (!anchor) return contrastTextColor;
+  const normalizedDepth = Math.max(0, Math.floor(depth));
+  const color = hslString({
+    h: anchor.h,
+    s: clamp(Math.max(anchor.s, 42) - Math.max(0, normalizedDepth - 1) * 2, 34, 64),
+    l: 50,
+  });
+  return `color-mix(in srgb, ${color} 62%, var(--foreground))`;
 }
 
 /**

@@ -13,6 +13,7 @@ import {
 } from "../canvas/surface-effects";
 import {
   automaticLayoutBorderColor,
+  automaticLayoutTextColor,
   DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   DEFAULT_RADIAL_COLOR_SCHEME,
   layoutBranchAnchorColor,
@@ -20,6 +21,7 @@ import {
   layoutColorPattern,
   layoutColorPatternProgress,
   layoutRootPaletteGradient,
+  layoutTextTreatment,
   radialColorScheme,
   radialSectorColors,
 } from "../radial-layout";
@@ -210,6 +212,7 @@ export function buildLayoutVisualStyles(
     : scheme.lightness;
   const borderTreatment = rootData.layoutBorderTreatment;
   const borderLineStyle = layoutBorderLineStyle(rootData.layoutBorderStyle);
+  const textTreatment = layoutTextTreatment(rootData.layoutTextTreatment);
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
   const layoutNodeIds = nodes.length
@@ -253,7 +256,12 @@ export function buildLayoutVisualStyles(
           borderTreatment,
           depth
         ),
-        textColor: manualColors?.text ?? scheme.rootText,
+        textColor: automaticLayoutTextColor(
+          manualColors?.text ?? scheme.rootText,
+          layoutStartColor ?? scheme.rootBorder,
+          textTreatment,
+          depth
+        ),
         accentColor: coordinatedBorder,
         borderWidth: borderWidthFor(mode, depth),
         borderStyle: borderLineStyle,
@@ -309,7 +317,12 @@ export function buildLayoutVisualStyles(
         borderTreatment,
         depth
       ),
-      textColor: colors.text,
+      textColor: automaticLayoutTextColor(
+        colors.text,
+        branchBaseColor,
+        textTreatment,
+        depth
+      ),
       accentColor: colors.border,
       borderWidth: borderWidthFor(mode, depth),
       borderStyle: borderLineStyle,

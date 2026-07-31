@@ -117,6 +117,8 @@ export type LayoutBorderTreatment =
 
 export type LayoutBorderLineStyle = "solid" | "dashed" | "dotted";
 
+export type LayoutTextTreatment = "contrast" | "hierarchy";
+
 /** @deprecated Use LayoutColorPattern. Retained for persisted Matrix boards. */
 export type MatrixRowColorPattern = LayoutColorPattern;
 
@@ -590,6 +592,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutBorderTreatment?: LayoutBorderTreatment;
   /** Chart-wide automatic border line pattern. Does not change geometry. */
   layoutBorderStyle?: LayoutBorderLineStyle;
+  /** Chart-wide automatic text color strategy. Fill colors remain independent. */
+  layoutTextTreatment?: LayoutTextTreatment;
   /** @deprecated Legacy Matrix field read when layoutColorPattern is absent. */
   matrixRowColorPattern?: MatrixRowColorPattern;
   /** @deprecated Legacy Matrix field read when layoutEndColor is absent. */
