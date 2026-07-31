@@ -1,5 +1,7 @@
 import {
   compactRawHierarchy,
+  createDraftNode,
+  ensureSingleDraftRoot,
   preserveRawHierarchy,
   type RawHierarchyNode,
 } from "./draft";
@@ -115,10 +117,170 @@ function makeDraft(
   };
 }
 
+interface NativeOutlineNode {
+  label: string;
+  noteParts: string[];
+  children: NativeOutlineNode[];
+  line: number;
+}
+
+interface NativeOutlineDetail {
+  label: string;
+  lines: string[];
+  node: NativeOutlineNode;
+}
+
+const NATIVE_OUTLINE_NODE =
+  /^([\t ]*)(\d+(?:\.\d+)*)\.\s+(.+?)\s+\[([^\]\r\n]+)\]\s*$/u;
+
+function nativeOutlineHeader(
+  lines: readonly string[]
+): { title: string; bodyStart: number } | null {
+  const titleIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (titleIndex < 0 || !/^={3,}$/u.test(lines[titleIndex + 1]?.trim() ?? "")) {
+    return null;
+  }
+
+  for (let index = titleIndex + 2; index + 1 < lines.length; index += 1) {
+    if (
+      lines[index].trim().toLocaleLowerCase() === "outline"
+      && /^-{3,}$/u.test(lines[index + 1].trim())
+      && lines.slice(index + 2).some((line) => NATIVE_OUTLINE_NODE.test(line))
+    ) {
+      return {
+        title: normalizeImportedText(lines[titleIndex]),
+        bodyStart: index + 2,
+      };
+    }
+  }
+  return null;
+}
+
+function isNativeOutlineSection(
+  lines: readonly string[],
+  index: number
+): boolean {
+  return /^(?:connections|relationships)$/iu.test(lines[index]?.trim() ?? "")
+    && /^-{3,}$/u.test(lines[index + 1]?.trim() ?? "");
+}
+
+function nativeDetailText(detail: NativeOutlineDetail): string {
+  const lines = detail.lines.map((line) => line.trim());
+  const label = normalizeImportedText(detail.label);
+  if (label.toLocaleLowerCase() === "text") {
+    if (
+      lines.length
+      && normalizeImportedText(lines[0]).toLocaleLowerCase()
+        === normalizeImportedText(detail.node.label).toLocaleLowerCase()
+    ) {
+      lines.shift();
+    }
+    return normalizeImportedText(lines.join("\n"));
+  }
+  if (label.toLocaleLowerCase() === "notes") {
+    return normalizeImportedText(lines.join("\n"));
+  }
+  const value = normalizeImportedText(lines.join("\n"));
+  return value ? `${label}: ${value}` : label;
+}
+
+function parseNativeOutlineText(
+  source: string,
+  sourceName: string
+): HierarchyDraft | null {
+  const lines = source.replace(/^\ufeff/u, "").replace(/\r\n?/g, "\n").split("\n");
+  const header = nativeOutlineHeader(lines);
+  if (!header) return null;
+
+  const roots: NativeOutlineNode[] = [];
+  const nodesByPath = new Map<string, NativeOutlineNode>();
+  let currentNode: NativeOutlineNode | null = null;
+  let currentIndent = -1;
+  let currentDetail: NativeOutlineDetail | null = null;
+
+  const flushDetail = () => {
+    if (!currentDetail) return;
+    const text = nativeDetailText(currentDetail);
+    if (text) currentDetail.node.noteParts.push(text);
+    currentDetail = null;
+  };
+
+  for (let index = header.bodyStart; index < lines.length; index += 1) {
+    if (isNativeOutlineSection(lines, index)) break;
+    const line = lines[index];
+    const nodeMatch = line.match(NATIVE_OUTLINE_NODE);
+    if (nodeMatch) {
+      flushDetail();
+      const path = nodeMatch[2];
+      const pathParts = path.split(".");
+      const node: NativeOutlineNode = {
+        label: normalizeImportedText(nodeMatch[3]),
+        noteParts: [],
+        children: [],
+        line: index + 1,
+      };
+      if (nodesByPath.has(path)) return null;
+      if (pathParts.length === 1) {
+        roots.push(node);
+      } else {
+        const parentPath = pathParts.slice(0, -1).join(".");
+        const parent = nodesByPath.get(parentPath);
+        if (!parent) return null;
+        parent.children.push(node);
+      }
+      nodesByPath.set(path, node);
+      currentNode = node;
+      currentIndent = visualIndent(nodeMatch[1]);
+      continue;
+    }
+
+    const text = line.trim();
+    if (!text) continue;
+    if (!currentNode) return null;
+    const prefix = line.match(/^[\t ]*/u)?.[0] ?? "";
+    const indent = visualIndent(prefix);
+    if (indent <= currentIndent) return null;
+    const detailMatch = text.match(/^([^:]+):(?:\s*(.*))?$/u);
+    if (indent === currentIndent + 2 && detailMatch) {
+      flushDetail();
+      currentDetail = {
+        label: detailMatch[1],
+        lines: [detailMatch[2] ?? ""],
+        node: currentNode,
+      };
+    } else if (currentDetail) {
+      currentDetail.lines.push(text);
+    } else {
+      currentNode.noteParts.push(text);
+    }
+  }
+  flushDetail();
+  if (!roots.length) return null;
+
+  const toDraftNode = (node: NativeOutlineNode): HierarchyDraftNode =>
+    createDraftNode(node.label, {
+      notes: node.noteParts.join("\n"),
+      children: node.children.map(toDraftNode),
+      source: { kind: "text", lineStart: node.line },
+    });
+  const draft = makeDraft(
+    "text",
+    sourceName,
+    header.title || filenameWithoutExtension(sourceName),
+    roots.map(toDraftNode),
+    source
+  );
+  return draft.roots.length > 1
+    ? ensureSingleDraftRoot(draft, draft.title)
+    : draft;
+}
+
 export function parseTextHierarchy(
   source: string,
   sourceName: string
 ): HierarchyDraft {
+  const nativeOutline = parseNativeOutlineText(source, sourceName);
+  if (nativeOutline) return nativeOutline;
   const roots = compactRawHierarchy(parseIndentedTextRaw(source));
   return makeDraft(
     "text",
