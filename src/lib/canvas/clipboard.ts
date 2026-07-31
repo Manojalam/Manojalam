@@ -41,6 +41,7 @@ const NODE_CONTENT_FIELDS = [
   "grammarNotes",
   "exceptions",
   "notes",
+  "audioDataUrl",
 ] as const;
 
 const NODE_CONTENT_COLLECTIONS = [

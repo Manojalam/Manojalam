@@ -8,6 +8,7 @@ import { FrameNode } from "./FrameNode";
 import { SunburstNode } from "./SunburstNode";
 import { RelationshipDiagramNode } from "./RelationshipDiagramNode";
 import { ConnectorJunctionNode } from "./ConnectorJunctionNode";
+import { AudioNode } from "./AudioNode";
 
 export const nodeTypes = {
   // Legacy "mindmap" nodes are migrated to shapes on load; alias to ShapeNode
@@ -20,6 +21,7 @@ export const nodeTypes = {
   shloka: ShlokaCardNode,
   grammar: GrammarCardNode,
   frame: FrameNode,
+  audio: AudioNode,
   sunburst: SunburstNode,
   relationshipDiagram: RelationshipDiagramNode,
   junction: ConnectorJunctionNode,
@@ -33,6 +35,7 @@ export {
   ShlokaCardNode,
   GrammarCardNode,
   FrameNode,
+  AudioNode,
   SunburstNode,
   RelationshipDiagramNode,
   ConnectorJunctionNode,

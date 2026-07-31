@@ -1225,6 +1225,11 @@ function VidyaCanvasInner({
             data: { title: "Frame", color: "#6366f1", background: "#6366f108", tags: [] },
             style: { width: 400, height: 300 }, zIndex: -1 };
           break;
+        case "audio":
+          newNode = { id, type: "audio", position,
+            data: { title: "Audio note", color: "#7c3aed", tags: [] },
+            style: { width: 320, height: 190 } };
+          break;
         case "sanskrit":
           newNode = { id, type: "sanskrit", position,
             data: { title: "Sanskrit Card", devanagari: "", iast: "", displayMode: "both-stacked", tags: [] },

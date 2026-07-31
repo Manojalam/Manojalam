@@ -1,5 +1,6 @@
 import type { VidyaBoard, VidyaEdge, VidyaNode } from "../types";
 import { buildHierarchy, getRoots } from "../layout/hierarchy";
+import { formatRecordingDuration } from "../canvas/audio-recording";
 
 export type OutlineTextFormat = "markdown" | "txt" | "html";
 
@@ -39,6 +40,7 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   shloka: "Shloka card",
   grammar: "Grammar card",
   frame: "Frame",
+  audio: "Audio note",
   sunburst: "Radial chart",
   relationshipDiagram: "Relationship diagram",
 };
@@ -182,6 +184,17 @@ function nodeDetails(node: VidyaNode, title: string): OutlineDetail[] {
       addDetail(details, "Rule", data.rule, seen);
       addDetail(details, "Examples", data.examples, seen);
       addDetail(details, "Exceptions", data.exceptions, seen);
+      break;
+    case "audio":
+      addDetail(
+        details,
+        "Duration",
+        typeof data.audioDurationMs === "number"
+          ? formatRecordingDuration(data.audioDurationMs)
+          : undefined,
+        seen
+      );
+      addDetail(details, "Recorded", data.audioRecordedAt, seen);
       break;
     case "shape": {
       const layers = Array.isArray(data.concentricLayers)
