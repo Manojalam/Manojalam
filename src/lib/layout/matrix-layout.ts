@@ -2263,6 +2263,152 @@ type FoldSectionSpan = {
   rowEnd: number;
 };
 
+type MatrixFoldSourceRowTrack = {
+  y: number;
+  rows: MatrixRow[];
+  terminalIds: string[];
+  height: number;
+};
+
+function matrixFoldSourceRowTracks(
+  result: MatrixLayoutResult,
+  terminalIds: string[]
+): MatrixFoldSourceRowTrack[] {
+  const settings = MATRIX_DENSITY_SETTINGS[result.density];
+  const rowsByTerminalId = new Map(result.rows.flatMap((row) => {
+    const terminalId = row.path.at(-1);
+    return terminalId ? [[terminalId, row] as const] : [];
+  }));
+  const rowIndexByTerminalId = new Map(result.rows.flatMap((row, rowIndex) => {
+    const terminalId = row.path.at(-1);
+    return terminalId ? [[terminalId, rowIndex] as const] : [];
+  }));
+  const sourceCells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+
+  return terminalIds
+    .flatMap((terminalId, order) => {
+      const row = rowsByTerminalId.get(terminalId);
+      const terminalCell = sourceCells.get(terminalId);
+      return row && terminalCell
+        ? [{ y: terminalCell.y, order, rows: [row], terminalIds: [terminalId] }]
+        : [];
+    })
+    .sort((first, second) => first.y - second.y || first.order - second.order)
+    .reduce<Array<{
+      y: number;
+      rows: MatrixRow[];
+      terminalIds: string[];
+    }>>((tracks, candidate) => {
+      const existing = tracks.find((track) => Math.abs(track.y - candidate.y) <= 0.5);
+      if (existing) {
+        existing.rows.push(...candidate.rows);
+        existing.terminalIds.push(...candidate.terminalIds);
+      } else {
+        tracks.push({
+          y: candidate.y,
+          rows: candidate.rows,
+          terminalIds: candidate.terminalIds,
+        });
+      }
+      return tracks;
+    }, [])
+    .map((track) => ({
+      ...track,
+      height: Math.max(
+        settings.minRowHeight,
+        ...track.terminalIds.map((terminalId) => {
+          const rowIndex = rowIndexByTerminalId.get(terminalId);
+          return rowIndex === undefined
+            ? settings.minRowHeight
+            : result.rowHeights[rowIndex] ?? settings.minRowHeight;
+        })
+      ),
+    }));
+}
+
+type MatrixFoldPartitionState = {
+  maximumHeight: number;
+  cuts: number[];
+};
+
+function preferMatrixFoldPartition(
+  candidate: MatrixFoldPartitionState,
+  current: MatrixFoldPartitionState | null
+): boolean {
+  if (!current) return true;
+  if (candidate.maximumHeight < current.maximumHeight - 0.001) return true;
+  if (candidate.maximumHeight > current.maximumHeight + 0.001) return false;
+  for (let index = 0; index < candidate.cuts.length; index += 1) {
+    if (candidate.cuts[index] === current.cuts[index]) continue;
+    // Preserve the existing left-filled behavior when several partitions have
+    // the same tallest section, so any equal-height remainder stays at the end.
+    return candidate.cuts[index] > current.cuts[index];
+  }
+  return false;
+}
+
+function balancedMatrixFoldSections(
+  result: MatrixLayoutResult,
+  terminalIds: string[],
+  sectionCount: number
+): string[][] {
+  if (result.orientation === "vertical") {
+    return fixedCapacityFoldSections(terminalIds, sectionCount);
+  }
+
+  const tracks = matrixFoldSourceRowTracks(result, terminalIds);
+  if (
+    tracks.length < sectionCount
+    || tracks.flatMap((track) => track.terminalIds).length !== terminalIds.length
+  ) {
+    return fixedCapacityFoldSections(terminalIds, sectionCount);
+  }
+
+  const settings = MATRIX_DENSITY_SETTINGS[result.density];
+  const prefixHeights = [0];
+  tracks.forEach((track) => {
+    prefixHeights.push(prefixHeights[prefixHeights.length - 1] + track.height);
+  });
+  const sectionHeight = (start: number, end: number) =>
+    prefixHeights[end] - prefixHeights[start]
+    + settings.cellGap * Math.max(0, end - start - 1);
+  const states = Array.from(
+    { length: sectionCount + 1 },
+    () => Array<MatrixFoldPartitionState | null>(tracks.length + 1).fill(null)
+  );
+  states[0][0] = { maximumHeight: 0, cuts: [] };
+
+  for (let sections = 1; sections <= sectionCount; sections += 1) {
+    for (let end = sections; end <= tracks.length; end += 1) {
+      for (let start = sections - 1; start < end; start += 1) {
+        const previous = states[sections - 1][start];
+        if (!previous) continue;
+        const candidate: MatrixFoldPartitionState = {
+          maximumHeight: Math.max(
+            previous.maximumHeight,
+            sectionHeight(start, end)
+          ),
+          cuts: sections === 1
+            ? []
+            : [...previous.cuts, start],
+        };
+        if (preferMatrixFoldPartition(candidate, states[sections][end])) {
+          states[sections][end] = candidate;
+        }
+      }
+    }
+  }
+
+  const partition = states[sectionCount][tracks.length];
+  if (!partition) return fixedCapacityFoldSections(terminalIds, sectionCount);
+  const boundaries = [0, ...partition.cuts, tracks.length];
+  return boundaries.slice(0, -1).map((start, sectionIndex) =>
+    tracks
+      .slice(start, boundaries[sectionIndex + 1])
+      .flatMap((track) => track.terminalIds)
+  );
+}
+
 /**
  * Top-level Matrix Fold paginates ordered root-to-leaf rows. Ancestors that
  * cross a section boundary receive presentation-only repetitions, while every
@@ -2315,22 +2461,7 @@ function applyTopLevelMatrixFold(
     if (!sectionRows.length) return;
     const sectionX = result.header.x + sectionIndex * sectionStride;
     const bodyY = result.header.y + result.header.height + settings.cellGap;
-    const sourceRowTracks = sectionRows
-      .flatMap((row) => {
-        const terminalId = row.path.at(-1);
-        const terminalCell = terminalId ? sourceCells.get(terminalId) : undefined;
-        return terminalCell ? [{ y: terminalCell.y, rows: [row] }] : [];
-      })
-      .sort((first, second) => first.y - second.y)
-      .reduce<Array<{ y: number; rows: MatrixRow[] }>>((tracks, candidate) => {
-        const existing = tracks.find((track) => Math.abs(track.y - candidate.y) <= 0.5);
-        if (existing) {
-          existing.rows.push(...candidate.rows);
-        } else {
-          tracks.push(candidate);
-        }
-        return tracks;
-      }, []);
+    const sourceRowTracks = matrixFoldSourceRowTracks(result, terminalIds);
     const trackIndexByTerminalId = new Map<string, number>();
     sourceRowTracks.forEach((track, trackIndex) => {
       track.rows.forEach((row) => {
@@ -2357,11 +2488,7 @@ function applyTopLevelMatrixFold(
         current.rowEnd = localRowIndex;
       });
     });
-    const rowHeights = sourceRowTracks.map((track) => Math.max(
-      settings.minRowHeight,
-      ...track.rows.map((row) =>
-        result.rowHeights[result.rows.indexOf(row)] ?? settings.minRowHeight)
-    ));
+    const rowHeights = sourceRowTracks.map((track) => track.height);
     const rowY: number[] = [];
     let nextRowY = bodyY;
     rowHeights.forEach((height) => {
@@ -2504,14 +2631,12 @@ export function computeMatrixLayout(
   const rows = buildMatrixLeafRows(rootId, hierarchy, byId);
   const terminalIds = rows.flatMap((row) => row.path.at(-1) ?? []);
   const rootFoldSectionCount = resolvedFoldSectionCount(rootData, terminalIds.length);
-  const rootFoldSections = resolvedManualFoldBreakAfter(
+  const manualRootFoldBreakAfter = resolvedManualFoldBreakAfter(
     rootData,
     terminalIds,
     rootFoldSectionCount
-  )
-    ? resolvedFoldSections(rootData, terminalIds)
-    : fixedCapacityFoldSections(terminalIds, rootFoldSectionCount);
-  if (rootFoldSections.length > 1) {
+  );
+  if (rootFoldSectionCount > 1) {
     const unfoldedRootData = { ...rootData };
     delete unfoldedRootData.layoutFoldCount;
     delete unfoldedRootData.layoutFoldBreakAfter;
@@ -2519,6 +2644,13 @@ export function computeMatrixLayout(
     const unfoldedById = new Map(byId);
     unfoldedById.set(rootId, { ...root, data: unfoldedRootData });
     const unfoldedResult = computeMatrixLayout(rootId, hierarchy, unfoldedById, options);
+    const rootFoldSections = manualRootFoldBreakAfter
+      ? resolvedFoldSections(rootData, terminalIds)
+      : balancedMatrixFoldSections(
+          unfoldedResult,
+          terminalIds,
+          rootFoldSectionCount
+        );
     return applyTopLevelMatrixFold(
       unfoldedResult,
       rootId,

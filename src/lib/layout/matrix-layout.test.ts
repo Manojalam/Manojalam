@@ -1824,6 +1824,115 @@ test("Matrix Auto Fold leaves an uneven terminal-row remainder only in the final
   assertClean(result);
 });
 
+test("Matrix Auto Fold flows whole rendered rows into the next section to balance height", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    ...Array.from({ length: 8 }, (_, index) => [
+      { id: `group-${index}`, parentId: "root" },
+      {
+        id: `terminal-${index}`,
+        parentId: `group-${index}`,
+        ...(index === 3 ? { matrixHeight: 240 } : {}),
+      },
+    ]).flat(),
+  ]);
+  const automaticNodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 3 } }
+    : node);
+  const fixedBreakNodes = automaticNodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutFoldBreakAfter: ["terminal-2", "terminal-5"],
+        },
+      }
+    : node);
+  const automaticHierarchy = buildHierarchy(automaticNodes, fixture.edges);
+  const fixedBreakHierarchy = buildHierarchy(fixedBreakNodes, fixture.edges);
+  const automatic = computeMatrixLayout(
+    "root",
+    automaticHierarchy,
+    new Map(automaticNodes.map((node) => [node.id, node]))
+  );
+  const fixedBreak = computeMatrixLayout(
+    "root",
+    fixedBreakHierarchy,
+    new Map(fixedBreakNodes.map((node) => [node.id, node]))
+  );
+
+  assert.deepEqual(
+    automatic.foldSections?.map((section) => section.terminalIds),
+    [
+      ["terminal-0", "terminal-1", "terminal-2"],
+      ["terminal-3"],
+      ["terminal-4", "terminal-5", "terminal-6", "terminal-7"],
+    ]
+  );
+  assert.ok(
+    Math.max(...automatic.foldSections!.map((section) => section.height))
+      < Math.max(...fixedBreak.foldSections!.map((section) => section.height))
+  );
+  assertClean(automatic);
+  assertClean(fixedBreak);
+});
+
+test("Matrix Auto Fold does not split terminals that share one rendered row", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "row-a", parentId: "root", childFlow: "row" },
+    { id: "a-0", parentId: "row-a" },
+    { id: "a-1", parentId: "row-a" },
+    { id: "a-2", parentId: "row-a" },
+    { id: "row-b", parentId: "root" },
+    { id: "b-0", parentId: "row-b" },
+    { id: "row-c", parentId: "root", childFlow: "row" },
+    { id: "c-0", parentId: "row-c" },
+    { id: "c-1", parentId: "row-c" },
+  ]);
+  const foldedNodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const unfoldedHierarchy = buildHierarchy(fixture.nodes, fixture.edges);
+  const foldedHierarchy = buildHierarchy(foldedNodes, fixture.edges);
+  const unfolded = computeMatrixLayout(
+    "root",
+    unfoldedHierarchy,
+    new Map(fixture.nodes.map((node) => [node.id, node]))
+  );
+  const folded = computeMatrixLayout(
+    "root",
+    foldedHierarchy,
+    new Map(foldedNodes.map((node) => [node.id, node]))
+  );
+  const unfoldedTerminalCells = unfolded.cells.filter((cell) =>
+    ["a-0", "a-1", "a-2", "b-0", "c-0", "c-1"].includes(cell.nodeId)
+  );
+  const sectionByTerminalId = new Map(
+    folded.foldSections?.flatMap((section) =>
+      section.terminalIds.map((terminalId) => [terminalId, section.sectionIndex] as const)
+    )
+  );
+  const renderedRows = unfoldedTerminalCells.reduce<Array<{
+    y: number;
+    terminalIds: string[];
+  }>>((rows, cell) => {
+    const row = rows.find((candidate) => Math.abs(candidate.y - cell.y) <= 0.5);
+    if (row) row.terminalIds.push(cell.nodeId);
+    else rows.push({ y: cell.y, terminalIds: [cell.nodeId] });
+    return rows;
+  }, []);
+
+  assert.equal(renderedRows.some((row) => row.terminalIds.length > 1), true);
+  renderedRows.forEach((row) => {
+    assert.equal(
+      new Set(row.terminalIds.map((terminalId) => sectionByTerminalId.get(terminalId))).size,
+      1
+    );
+  });
+  assertClean(folded);
+});
+
 test("manual top-level Fold breaks paginate the selected terminal rows", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, matrixTableWidth: 640 },
@@ -2156,7 +2265,7 @@ test("a nested vertical Fold uses the normal Matrix cell gap", () => {
   assertClean(result);
 });
 
-test("a compact nested Fold balances outer branches by terminal descendants", () => {
+test("a compact nested Fold balances outer branches by rendered row height", () => {
   const groups = [
     ["varna", 4],
     ["yant", 4],
@@ -2185,11 +2294,19 @@ test("a compact nested Fold balances outer branches by terminal descendants", ()
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
   const cells = new Map(result.cells.map((cell) => [cell.nodeId, cell]));
+  const sections = result.foldSections ?? [];
 
   assert.equal(cells.get("varna")!.x, cells.get("savarna")!.x);
-  assert.ok(cells.get("guna")!.x > cells.get("savarna")!.x);
-  assert.equal(cells.get("guna")!.x, cells.get("para")!.x);
-  assert.equal(cells.get("varna")!.y, cells.get("guna")!.y);
+  assert.equal(cells.get("guna")!.x, cells.get("savarna")!.x);
+  assert.ok(cells.get("vrddhi")!.x > cells.get("guna")!.x);
+  assert.equal(cells.get("vrddhi")!.x, cells.get("para")!.x);
+  assert.equal(sections[0].terminalIds.at(-1), "guna-example-0");
+  assert.equal(sections[1].terminalIds[0], "guna-example-1");
+  assert.equal(
+    sections[1].repeatedCells.some((cell) => cell.sourceNodeId === "guna"),
+    true
+  );
+  assert.ok(Math.abs(sections[0].height - sections[1].height) <= 48);
   assertClean(result);
 });
 
