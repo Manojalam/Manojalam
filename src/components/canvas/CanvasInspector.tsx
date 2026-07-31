@@ -42,6 +42,8 @@ import type {
   BorderLayer,
   ConcentricShapeLayer,
   InternalFillRegion,
+  LayoutBorderLineStyle,
+  LayoutBorderTreatment,
   LayoutColorPattern,
   RadialChartData,
   RadialChartRing,
@@ -65,12 +67,16 @@ import { ClearableColorInput } from "./ClearableColorInput";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import { generateId } from "@/lib/utils";
 import {
+  automaticLayoutBorderColor,
   DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   RADIAL_COLOR_SCHEMES,
   layoutBranchAnchorColor,
+  layoutBorderLineStyle,
+  layoutBorderTreatment,
   layoutColorPattern,
   layoutRootPaletteGradient,
   radialColorScheme,
+  radialSectorColors,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
 import {
@@ -158,6 +164,8 @@ import {
   borderMatchedFillColor,
   borderMatchedFillPatch,
   resolveBorderColor,
+  resolveBorderStyle,
+  resolveBorderWidth,
   resolveEffectiveFillOpacity,
   resolveFillSourceColor,
 } from "@/lib/style-utils";
@@ -708,6 +716,17 @@ const LAYOUT_COLOR_PATTERN_OPTIONS: Array<{
   { value: "sectioned", label: "Sectioned Palette" },
 ];
 
+const LAYOUT_BORDER_TREATMENT_OPTIONS: Array<{
+  value: LayoutBorderTreatment;
+  label: string;
+}> = [
+  { value: "coordinated", label: "Coordinated" },
+  { value: "hierarchy", label: "Hierarchy" },
+  { value: "soft", label: "Soft" },
+  { value: "neutral", label: "Neutral" },
+  { value: "none", label: "None" },
+];
+
 function LayoutColorPatternControls({
   itemKind,
   scheme,
@@ -853,6 +872,97 @@ function LayoutColorPatternControls({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function LayoutBorderControls({
+  scheme,
+  treatment,
+  lineStyle,
+  onTreatmentChange,
+  onLineStyleChange,
+}: {
+  scheme: RadialColorSchemeDefinition;
+  treatment: LayoutBorderTreatment;
+  lineStyle: LayoutBorderLineStyle;
+  onTreatmentChange: (treatment: LayoutBorderTreatment) => void;
+  onLineStyleChange: (style: LayoutBorderLineStyle) => void;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-2">
+      <Label className="text-[10px] font-medium">Chart borders</Label>
+      <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+        Changes automatic border color and line pattern only. Widths, spacing, and layout stay fixed.
+      </p>
+      <div
+        className="mt-2 grid grid-cols-2 gap-1.5"
+        role="radiogroup"
+        aria-label="Automatic chart border treatment"
+      >
+        {LAYOUT_BORDER_TREATMENT_OPTIONS.map((option) => {
+          const preview = [0, 1].map((branchIndex) => {
+            const colors = radialSectorColors(
+              scheme,
+              branchIndex,
+              branchIndex + 1,
+              0,
+              1
+            );
+            return {
+              fill: colors.fill,
+              border: automaticLayoutBorderColor(
+                colors.fill,
+                colors.border,
+                option.value,
+                branchIndex + 1
+              ),
+            };
+          });
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={treatment === option.value}
+              onClick={() => onTreatmentChange(option.value)}
+              className={cn(
+                "rounded-md border bg-background p-1.5 text-left transition-colors hover:border-primary/60",
+                treatment === option.value
+                  ? "border-primary bg-primary/5 ring-1 ring-primary/25"
+                  : "border-border"
+              )}
+            >
+              <span className="mb-1 flex h-4 items-center gap-1">
+                {preview.map((item, index) => (
+                  <span
+                    key={index}
+                    className="h-4 flex-1 rounded-[4px]"
+                    style={{
+                      backgroundColor: item.fill,
+                      borderColor: item.border,
+                      borderStyle: lineStyle,
+                      borderWidth: 2,
+                    }}
+                  />
+                ))}
+              </span>
+              <span className="block text-[9px] font-medium text-foreground">
+                {option.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2">
+        <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Line pattern
+        </p>
+        <BorderStylePicker value={lineStyle} onChange={onLineStyleChange} />
+      </div>
+      <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
+        Borders changed directly on an item remain manual until reset to automatic.
+      </p>
     </div>
   );
 }
@@ -1444,6 +1554,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const applyLayoutStartColor = useCanvasStore((s) => s.applyLayoutStartColor);
   const applyLayoutColorPattern = useCanvasStore((s) => s.applyLayoutColorPattern);
   const applyLayoutEndColor = useCanvasStore((s) => s.applyLayoutEndColor);
+  const applyLayoutPalettePatch = useCanvasStore((s) => s.applyLayoutPalettePatch);
   const resetMatrixDescendantFillOverrides = useCanvasStore((s) => s.resetMatrixDescendantFillOverrides);
   const pushHistory     = useCanvasStore((s) => s.pushHistory);
   const convertNode     = useCanvasStore((s) => s.convertNode);
@@ -1732,6 +1843,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     : typeof structuredLayoutRootData.matrixRowEndColor === "string"
       ? structuredLayoutRootData.matrixRowEndColor
     : undefined;
+  const activeLayoutBorderTreatment = layoutBorderTreatment(
+    structuredLayoutRootData.layoutBorderTreatment
+  );
+  const activeLayoutBorderStyle = layoutBorderLineStyle(
+    structuredLayoutRootData.layoutBorderStyle
+  );
   const foldsMatrixTerminalRows = !!selectedNode
     && !!matrixRootNode
     && selectedNode.id === matrixRootNode.id;
@@ -1826,6 +1943,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeRadialEndColor = typeof radialRootData.layoutEndColor === "string"
     ? radialRootData.layoutEndColor
     : undefined;
+  const activeRadialBorderTreatment = layoutBorderTreatment(
+    radialRootData.layoutBorderTreatment
+  );
+  const activeRadialBorderStyle = layoutBorderLineStyle(
+    radialRootData.layoutBorderStyle
+  );
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
     : null;
@@ -4692,6 +4815,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const autoSizeMode = resolveAutoSizeMode(d);
 
   const borderWidth   = typeof d.borderWidth   === "number" ? d.borderWidth   : 2;
+  const effectiveBorderWidth = resolveBorderWidth(d);
+  const effectiveBorderStyle = resolveBorderStyle(d);
+  const hasAutomaticBorder = !!d.layoutVisualStyle
+    && typeof (d.layoutVisualStyle as Record<string, unknown>).borderColor === "string";
+  const usesAutomaticBorder = hasAutomaticBorder && d.layoutAutoBorder !== false;
   const borderRadius  = cornerRadiusPercentForNode(selectedNode);
   // Corner-radius only makes sense for rectangular-ish shapes.
   const shapeType     = (d.shapeType as string) ?? "";
@@ -5260,6 +5388,30 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 toast.success(value
                   ? "Updated the secondary automatic color."
                   : "Restored the palette's default secondary color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            />
+            <LayoutBorderControls
+              scheme={activeStructuredScheme}
+              treatment={activeLayoutBorderTreatment}
+              lineStyle={activeLayoutBorderStyle}
+              onTreatmentChange={(treatment) => {
+                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                  layoutBorderTreatment: treatment,
+                });
+                const label = LAYOUT_BORDER_TREATMENT_OPTIONS.find(
+                  (option) => option.value === treatment
+                )?.label ?? "Coordinated";
+                toast.success(`Applied ${label} automatic borders.`, {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onLineStyleChange={(layoutBorderStyle) => {
+                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                  layoutBorderStyle,
+                });
+                toast.success(`Applied ${layoutBorderStyle} automatic border lines.`, {
                   action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
                 });
               }}
@@ -6168,6 +6320,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 });
               }}
             />
+            <LayoutBorderControls
+              scheme={activeRadialColorScheme}
+              treatment={activeRadialBorderTreatment}
+              lineStyle={activeRadialBorderStyle}
+              onTreatmentChange={(layoutBorderTreatment) => {
+                applyRadialPalettePatch({ layoutBorderTreatment });
+                const label = LAYOUT_BORDER_TREATMENT_OPTIONS.find(
+                  (option) => option.value === layoutBorderTreatment
+                )?.label ?? "Coordinated";
+                toast.success(`Applied ${label} radial borders.`, {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onLineStyleChange={(layoutBorderStyle) => {
+                applyRadialPalettePatch({ layoutBorderStyle });
+                toast.success(`Applied ${layoutBorderStyle} radial border lines.`, {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            />
           </Section>
         )}
 
@@ -6231,7 +6403,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 });
               }}
             >
-              Use automatic colors
+              Use automatic appearance
             </Button>
           </Section>
         )}
@@ -7317,9 +7489,18 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {isContentNode && !isRadialLayoutSector && (
           <Section label="Border" visible={singleNodeTab === "style"}>
             <div>
-              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Color
+                </p>
+                {hasAutomaticBorder && (
+                  <span className="text-[9px] text-muted-foreground">
+                    {usesAutomaticBorder ? "Automatic" : "Manual"}
+                  </span>
+                )}
+              </div>
               <ColorSwatchPicker
-                value={(d.borderColor as string) ?? ""}
+                value={resolveBorderColor(d) ?? ""}
                 onChange={(v) => setField("borderColor", v || undefined)}
                 onClear={() => setField("borderColor", "transparent")}
               />
@@ -7327,13 +7508,29 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Thickness</p>
-              <ThicknessControl value={borderWidth} onChange={(v) => setField("borderWidth", v)} />
+              <ThicknessControl value={effectiveBorderWidth} onChange={(v) => setField("borderWidth", v)} />
             </div>
 
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Style</p>
-              <BorderStylePicker value={(d.borderStyle as string)} onChange={(v) => setField("borderStyle", v)} />
+              <BorderStylePicker value={effectiveBorderStyle} onChange={(v) => setField("borderStyle", v)} />
             </div>
+
+            {hasAutomaticBorder && !usesAutomaticBorder && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 w-full text-[10px]"
+                onClick={() => {
+                  pushHistory();
+                  updateNodeData(selectedNode.id, { layoutAutoBorder: undefined });
+                }}
+              >
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                Restore automatic border
+              </Button>
+            )}
 
             {supportsRadius && (
               <div>

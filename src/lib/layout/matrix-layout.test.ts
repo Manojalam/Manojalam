@@ -971,7 +971,11 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
         parentId: null,
         matrixCell: true,
         matrixDensity: "comfortable",
-        layoutVisualStyle: { fillColor: "#047857", borderColor: "#064e3b" },
+        layoutVisualStyle: {
+          fillColor: "#047857",
+          borderColor: "#064e3b",
+          borderStyle: "dashed",
+        },
       },
     },
     {
@@ -1033,6 +1037,8 @@ test("Matrix creates one continuous grid with every merged-cell division", () =>
   assert.equal(frames[0].style?.height, 250);
   const frameData = frames[0].data as Record<string, unknown>;
   assert.equal(frameData.borderWidth, 1);
+  assert.equal(frameData.color, "#064e3b");
+  assert.equal(frameData.borderStyle, "dashed");
   assert.equal(frameData.matrixOuterBorderVisible, true);
   assert.equal(frameData.matrixGridVisible, true);
   assert.deepEqual(frameData.matrixGridLines, [

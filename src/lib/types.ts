@@ -107,6 +107,15 @@ export type LayoutColorPattern =
   | "curated"
   | "sectioned";
 
+export type LayoutBorderTreatment =
+  | "coordinated"
+  | "hierarchy"
+  | "soft"
+  | "neutral"
+  | "none";
+
+export type LayoutBorderLineStyle = "solid" | "dashed" | "dotted";
+
 /** @deprecated Use LayoutColorPattern. Retained for persisted Matrix boards. */
 export type MatrixRowColorPattern = LayoutColorPattern;
 
@@ -128,7 +137,7 @@ export interface LayoutVisualStyle {
   textColor: string;
   accentColor: string;
   borderWidth: number;
-  borderStyle: "solid";
+  borderStyle: LayoutBorderLineStyle;
   fontSize: number;
 }
 
@@ -576,6 +585,10 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutColorPattern?: LayoutColorPattern;
   /** Optional second hue used by two-color, alternating, and sectioned patterns. */
   layoutEndColor?: string;
+  /** Chart-wide automatic border contrast treatment. Does not change border width. */
+  layoutBorderTreatment?: LayoutBorderTreatment;
+  /** Chart-wide automatic border line pattern. Does not change geometry. */
+  layoutBorderStyle?: LayoutBorderLineStyle;
   /** @deprecated Legacy Matrix field read when layoutColorPattern is absent. */
   matrixRowColorPattern?: MatrixRowColorPattern;
   /** @deprecated Legacy Matrix field read when layoutEndColor is absent. */

@@ -67,9 +67,17 @@ function enclosingRect(nodes: readonly Node[], padding: number): NodeRect | null
   );
 }
 
-function visualColors(node: Node | undefined): { fillColor?: string; borderColor?: string } {
+function visualColors(node: Node | undefined): {
+  fillColor?: string;
+  borderColor?: string;
+  borderStyle?: "solid" | "dashed" | "dotted";
+} {
   const data = (node?.data ?? {}) as Record<string, unknown>;
-  return (data.layoutVisualStyle ?? {}) as { fillColor?: string; borderColor?: string };
+  return (data.layoutVisualStyle ?? {}) as {
+    fillColor?: string;
+    borderColor?: string;
+    borderStyle?: "solid" | "dashed" | "dotted";
+  };
 }
 
 function generatedEmptySlotNodes(
@@ -377,6 +385,12 @@ function buildMatrixFrameNode(
 ): Node | null {
   const rootColors = visualColors(root);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
+  const gridBorderColor = resolveBorderColor(rootData)
+    ?? rootColors.borderColor
+    ?? "#334155";
+  const gridBorderStyle = rootData.layoutAutoBorder !== false && rootColors.borderStyle
+    ? rootColors.borderStyle
+    : resolveBorderStyle(rootData);
   const gridPadding = paddingOverride
     ?? matrixCellDivisionPadding(rootData.matrixDensity);
   const outerBounds = enclosingRect(presentationNodes, gridPadding);
@@ -392,11 +406,11 @@ function buildMatrixFrameNode(
     position: { x: outerBounds.left, y: outerBounds.top },
     data: {
       title: "",
-      color: rootColors.borderColor ?? "#334155",
+      color: gridBorderColor,
       background: rootColors.fillColor
         ? `color-mix(in srgb, ${rootColors.fillColor} 2%, transparent)`
         : "rgba(15, 23, 42, 0.01)",
-      borderStyle: "solid",
+      borderStyle: gridBorderStyle,
       borderWidth: MATRIX_GRID_STROKE_WIDTH,
       locked: true,
       matrixFrameFor: rootId,

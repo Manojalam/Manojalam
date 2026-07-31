@@ -71,7 +71,13 @@ import {
 } from "@/lib/layout/matrix-layout";
 import { canonicalRelationshipType } from "@/lib/relationships";
 import { normalizeRelationshipDiagramSpec } from "@/lib/relationship-diagram";
-import type { LayoutColorPattern, LayoutMode, RadialColorScheme } from "@/lib/types";
+import type {
+  LayoutBorderLineStyle,
+  LayoutBorderTreatment,
+  LayoutColorPattern,
+  LayoutMode,
+  RadialColorScheme,
+} from "@/lib/types";
 import {
   effectiveCornerRadius,
   fitShapeToContent,
@@ -280,6 +286,8 @@ interface CanvasState {
       layoutStartColor?: string;
       layoutColorPattern?: LayoutColorPattern;
       layoutEndColor?: string;
+      layoutBorderTreatment?: LayoutBorderTreatment;
+      layoutBorderStyle?: LayoutBorderLineStyle;
     }
   ) => void;
 }

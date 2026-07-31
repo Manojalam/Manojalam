@@ -10,6 +10,7 @@ import {
   surfaceEffectStyle,
 } from "../canvas/surface-effects";
 import {
+  resolveBorderStyle,
   resolveLayoutFillGradient,
   resolveSurfaceEffectData,
 } from "../style-utils";
@@ -242,9 +243,7 @@ function rootHeaderStyle(root: Node, bounds: ExportBounds): ExportHeaderOverlay 
     color: textColor,
     borderColor,
     borderWidth,
-    borderStyle: data.borderStyle === "dashed" || data.borderStyle === "dotted"
-      ? data.borderStyle
-      : "solid",
+    borderStyle: resolveBorderStyle(data),
     borderRadius: matrixCellBorderRadius("header"),
     fontSize,
     fontFamily: typeof data.fontFamily === "string" ? data.fontFamily : undefined,

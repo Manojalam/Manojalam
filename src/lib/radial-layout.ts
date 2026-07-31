@@ -1,4 +1,6 @@
 import type {
+  LayoutBorderLineStyle,
+  LayoutBorderTreatment,
   LayoutColorPattern,
   MatrixRowColorPattern,
   RadialColorScheme,
@@ -24,6 +26,8 @@ export type RadialColorSchemeDefinition = {
 
 export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
 export const DEFAULT_LAYOUT_COLOR_PATTERN: LayoutColorPattern = "flow";
+export const DEFAULT_LAYOUT_BORDER_TREATMENT: LayoutBorderTreatment = "coordinated";
+export const DEFAULT_LAYOUT_BORDER_STYLE: LayoutBorderLineStyle = "solid";
 /** @deprecated Use DEFAULT_LAYOUT_COLOR_PATTERN. */
 export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern =
   DEFAULT_LAYOUT_COLOR_PATTERN;
@@ -181,6 +185,69 @@ export function layoutColorPattern(
     return value;
   }
   return fallback;
+}
+
+export function layoutBorderTreatment(value: unknown): LayoutBorderTreatment {
+  if (
+    value === "coordinated"
+    || value === "hierarchy"
+    || value === "soft"
+    || value === "neutral"
+    || value === "none"
+  ) {
+    return value;
+  }
+  return DEFAULT_LAYOUT_BORDER_TREATMENT;
+}
+
+export function layoutBorderLineStyle(value: unknown): LayoutBorderLineStyle {
+  return value === "dashed" || value === "dotted"
+    ? value
+    : DEFAULT_LAYOUT_BORDER_STYLE;
+}
+
+/**
+ * Resolves a chart-owned border without changing its existing width.
+ *
+ * Coordinated preserves the established palette border. The other treatments
+ * adjust only color/contrast, so applying them never changes layout geometry.
+ */
+export function automaticLayoutBorderColor(
+  fillColor: string,
+  coordinatedBorder: string,
+  treatmentValue: unknown,
+  depth: number
+): string {
+  const treatment = layoutBorderTreatment(treatmentValue);
+  if (treatment === "none") return "transparent";
+  if (treatment === "coordinated") return coordinatedBorder;
+
+  const fill = parseColor(fillColor);
+  if (!fill) return coordinatedBorder;
+  const darkFill = readableTextColor(fill) === "#ffffff";
+  const normalizedDepth = Math.max(0, Math.floor(depth));
+
+  if (treatment === "neutral") {
+    return darkFill
+      ? "hsla(210.0, 40.0%, 96.0%, 0.58)"
+      : "hsla(222.0, 47.0%, 11.0%, 0.34)";
+  }
+
+  if (treatment === "soft") {
+    const lightness = darkFill
+      ? clamp(fill.l + 15, 32, 78)
+      : clamp(fill.l - 9, 18, 68);
+    return `hsla(${fill.h.toFixed(1)}, ${clamp(fill.s - 18, 10, 52).toFixed(1)}%, ${lightness.toFixed(1)}%, 0.38)`;
+  }
+
+  const emphasized = normalizedDepth <= 1;
+  const lightness = darkFill
+    ? clamp(fill.l + (emphasized ? 20 : 13), 32, 78)
+    : clamp(fill.l - (emphasized ? 24 : 10), 18, 68);
+  const alpha = emphasized
+    ? 0.86
+    : Math.max(0.28, 0.46 - Math.max(0, normalizedDepth - 2) * 0.04);
+  return `hsla(${fill.h.toFixed(1)}, ${clamp(fill.s - (emphasized ? 4 : 16), 12, 58).toFixed(1)}%, ${lightness.toFixed(1)}%, ${alpha.toFixed(2)})`;
 }
 
 /** @deprecated Use layoutColorPattern. */
