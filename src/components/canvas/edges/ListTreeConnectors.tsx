@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { EdgeLabelRenderer, ViewportPortal, type Edge } from "@xyflow/react";
+import { EdgeLabelRenderer, ViewportPortal, type Edge, type Node } from "@xyflow/react";
 import type { VidyaEdgeData } from "@/lib/types";
 import {
   buildListConnectorModel,
@@ -11,6 +11,18 @@ import {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { resolveAccentColor, themeAwareLayoutConnectorColor } from "@/lib/style-utils";
+import {
+  getTextStyle,
+  resolveBorderColor,
+  resolveBorderStyle,
+  resolveBorderWidth,
+  resolveFillColor,
+  resolveLayoutFillGradient,
+  resolveNodeBorderRadius,
+  resolveSurfaceEffectData,
+} from "@/lib/style-utils";
+import { nodePlainText } from "@/lib/canvas/node-text";
+import { ShapeSurface } from "../nodes/ShapeNode";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorSvgPath } from "./ConnectorPath";
 
@@ -58,6 +70,103 @@ function selectEdges(edgeIds: string[], additive: boolean): void {
   });
 }
 
+function selectNode(nodeId: string, additive: boolean): void {
+  useCanvasStore.setState((state) => {
+    const selectedIds = new Set(additive ? state.selectedNodeIds : []);
+    if (additive && selectedIds.has(nodeId)) selectedIds.delete(nodeId);
+    else selectedIds.add(nodeId);
+    return {
+      nodes: state.nodes.map((node) => ({ ...node, selected: selectedIds.has(node.id) })),
+      edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
+      selectedNodeIds: Array.from(selectedIds),
+      selectedEdgeIds: [],
+    };
+  });
+}
+
+function ListFoldRootCopy({
+  source,
+  copy,
+  selected,
+}: {
+  source: Node;
+  copy: ListConnectorModel["rootCopies"][number];
+  selected: boolean;
+}) {
+  const data = (source.data ?? {}) as Record<string, unknown>;
+  const size = { width: copy.width, height: copy.height };
+  const fillColor = resolveFillColor(data);
+  const borderColor = resolveBorderColor(data) ?? (data.color as string | undefined) ?? "#4262ff";
+  const richText = typeof data.richText === "string" && data.richText.trim()
+    ? data.richText
+    : undefined;
+  const text = nodePlainText(data);
+  const textAlign = data.textAlign === "left"
+    || data.textAlign === "right"
+    || data.textAlign === "justify"
+    ? data.textAlign
+    : "center";
+  const shapeType = source.type === "shape" || source.type === "mindmap"
+    ? String(data.shapeType ?? "rounded")
+    : "rounded";
+
+  return (
+    <>
+      <div
+        data-list-fold-root-copy={copy.key}
+        data-export-node-id={copy.sourceNodeId}
+        className="pointer-events-none absolute"
+        style={{
+          left: copy.x,
+          top: copy.y,
+          width: copy.width,
+          height: copy.height,
+          zIndex: Math.max(1, source.zIndex ?? 0),
+        }}
+      >
+        <div className="relative h-full w-full">
+          <ShapeSurface
+            shapeType={shapeType}
+            fillColor={fillColor}
+            fillGradient={resolveLayoutFillGradient(data)}
+            borderColor={borderColor}
+            borderWidth={resolveBorderWidth(data)}
+            borderStyle={resolveBorderStyle(data)}
+            borderRadius={resolveNodeBorderRadius(data, size, 40)}
+            selected={selected}
+            petalCount={typeof data.petalCount === "number" ? data.petalCount : undefined}
+            effectData={resolveSurfaceEffectData(data)}
+          />
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden px-4 py-2 font-medium [&_p]:m-0"
+            style={{
+              ...getTextStyle(data, fillColor),
+              textAlign,
+            }}
+          >
+            {richText
+              ? <div className="w-full" dangerouslySetInnerHTML={{ __html: richText }} />
+              : <div className="w-full">{text}</div>}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        data-export-ignore
+        aria-label={`Select ${text || "List Fold root"}`}
+        aria-pressed={selected}
+        className="nodrag nopan pointer-events-auto absolute z-30 cursor-pointer border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        style={{ left: copy.x, top: copy.y, width: copy.width, height: copy.height }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          selectNode(copy.sourceNodeId, event.shiftKey || event.ctrlKey || event.metaKey);
+        }}
+      />
+    </>
+  );
+}
+
 function sharedGroupExplicitColor(edges: Edge[]): string | undefined {
   const colors = edges.map((edge) => edgeData(edge).color);
   const first = colors[0];
@@ -87,14 +196,31 @@ export function ListTreeConnectors() {
   }, [edges, nodes]);
 
   const groups = model.groups;
+  const rootCopies = model.rootCopies;
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  if (relationshipSelection || !groups.length) return null;
+  if (relationshipSelection || (!groups.length && !rootCopies.length)) return null;
 
   const branches = groups.flatMap((group) => group.branches);
 
   return (
     <>
+      {rootCopies.length > 0 && (
+        <ViewportPortal>
+          {rootCopies.map((copy) => {
+            const source = nodesById.get(copy.sourceNodeId);
+            if (!source) return null;
+            return (
+              <ListFoldRootCopy
+                key={copy.key}
+                source={source}
+                copy={copy}
+                selected={source.selected === true}
+              />
+            );
+          })}
+        </ViewportPortal>
+      )}
       <ViewportPortal>
         <svg
           aria-hidden="true"

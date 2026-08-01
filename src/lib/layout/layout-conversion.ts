@@ -8,6 +8,7 @@ const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "layoutSizeOverride",
   "listManualOverride",
   "listDensity",
+  "listFoldRootMode",
   "treeManualOverride",
   "matrixDensity",
   "matrixDensityUserSet",

@@ -595,6 +595,20 @@ function filterByIds(
     .filter((id): id is string => Boolean(id));
 }
 
+function filterIdentifiedNodeElements(
+  clone: HTMLElement,
+  nodeIds: Iterable<string> | undefined
+): void {
+  if (nodeIds === undefined) return;
+  const requested = new Set(nodeIds);
+  for (const element of Array.from(clone.querySelectorAll<HTMLElement>(
+    "[data-export-node-id]"
+  ))) {
+    const nodeId = element.getAttribute("data-export-node-id");
+    if (!nodeId || !requested.has(nodeId)) element.remove();
+  }
+}
+
 export function exportEdgeReferenceMatches(
   edgeId: string | null,
   edgeIds: string | null,
@@ -1199,6 +1213,7 @@ export function cloneReactFlowViewport(
       ".react-flow__node[data-id]",
       options.nodeIds
     );
+    filterIdentifiedNodeElements(clone, options.nodeIds);
     const includedEdgeIds = filterByIds(
       clone,
       ".react-flow__edge[data-id]",
@@ -1233,6 +1248,9 @@ export function cloneReactFlowViewport(
     }
 
     if (options.layoutAdjustment) {
+      for (const copy of Array.from(clone.querySelectorAll(
+        "[data-list-fold-root-copy]"
+      ))) copy.remove();
       applyExportLayoutAdjustment(clone, options.layoutAdjustment);
     }
     if (options.headerOverlay) appendExportHeaderOverlay(clone, options.headerOverlay);

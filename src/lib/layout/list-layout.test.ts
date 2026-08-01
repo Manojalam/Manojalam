@@ -7,6 +7,7 @@ import {
   LIST_COLUMN_GUTTER,
   LIST_DENSITIES,
   buildListConnectorModel,
+  computeListFoldRootSizes,
   computeListLayout,
   computeListRootTopPlacement,
   diagnoseListLayout,
@@ -142,9 +143,20 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
     : node);
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const placements = computeListLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
-  const placed = positionedNodes(nodes, placements);
+  const naturalPlaced = positionedNodes(nodes, placements);
+  const foldSizes = computeListFoldRootSizes(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    placements
+  );
+  const placed = naturalPlaced.map((node) => {
+    const size = foldSizes.get(node.id);
+    return size ? { ...node, measured: size, style: size } : node;
+  });
   const first = getNodeRect(placed.find((node) => node.id === "child-0")!);
   const sixth = getNodeRect(placed.find((node) => node.id === "child-5")!);
+  const naturalRoot = getNodeRect(naturalPlaced.find((node) => node.id === "root")!);
   const root = getNodeRect(placed.find((node) => node.id === "root")!);
   const headers = placed
     .filter((node) => node.id !== "root")
@@ -154,16 +166,15 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
 
   assert.equal(first.top, sixth.top);
   assert.ok(sixth.left > first.right);
-  assert.equal(
-    root.centerX,
-    (Math.min(...headers.map((rect) => rect.left)) + Math.max(...headers.map((rect) => rect.right))) / 2
-  );
+  assert.equal(root.left, naturalRoot.left);
+  assert.ok(root.right >= Math.max(...headers.map((rect) => rect.right)) + 24);
   assert.equal(
     Math.min(...headers.map((rect) => rect.top)) - root.bottom,
     LIST_DENSITIES.compact.rootToFirstRowGapY
   );
   assert.equal(rootGroup?.branches.length, 10);
-  assert.equal(rootGroup?.sharedSegments.length, 4);
+  assert.equal(rootGroup?.sharedSegments.length, 2);
+  assert.equal(model.rootCopies.length, 0);
   const firstBranch = rootGroup?.branches.find((branch) => branch.childId === "child-0")?.segments[0];
   const sixthBranch = rootGroup?.branches.find((branch) => branch.childId === "child-5")?.segments[0];
   assert.ok(firstBranch);
@@ -173,9 +184,59 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
   assert.equal(sixthBranch!.x1, sixth.left - LIST_DENSITIES.compact.connectorGutterX);
   assert.equal(sixthBranch!.x2, sixth.left);
   assert.notEqual(firstBranch!.x1, sixthBranch!.x1);
+  assert.deepEqual(
+    new Set(rootGroup?.sharedSegments.map((segment) => segment.x1)),
+    new Set([firstBranch!.x1, sixthBranch!.x1])
+  );
+  assert.ok(rootGroup?.sharedSegments.every((segment) => segment.y1 === root.bottom));
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
   assert.deepEqual(model.obstacleIntersections, []);
   assertNoOverlap(placed);
+});
+
+test("Duplicated List Fold roots repeat above sections and emit independent trunks", () => {
+  const specs: TreeSpec[] = [
+    { id: "root", parentId: null, width: 220, height: 72 },
+    ...Array.from({ length: 6 }, (_, index) => ({
+      id: `child-${index}`,
+      parentId: "root",
+      width: 180,
+      height: 58,
+    })),
+  ];
+  const fixture = buildTree(specs);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutFoldCount: 2,
+          listFoldRootMode: "divided",
+        },
+      }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const placements = computeListLayout("root", hierarchy, byId);
+  const placed = positionedNodes(nodes, placements);
+  const model = buildListConnectorModel(placed, fixture.edges);
+  const rootGroup = model.groups.find((group) => group.parentId === "root")!;
+  const rootRect = getNodeRect(placed.find((node) => node.id === "root")!);
+  const copy = model.rootCopies[0];
+
+  assert.equal(computeListFoldRootSizes("root", hierarchy, byId, placements).has("root"), false);
+  assert.equal(rootGroup.sharedSegments.length, 2);
+  assert.equal(model.rootCopies.length, 1);
+  assert.equal(copy.sourceNodeId, "root");
+  assert.equal(copy.y, rootRect.top);
+  assert.equal(copy.width, rootRect.width);
+  assert.equal(copy.height, rootRect.height);
+  assert.ok(copy.x > rootRect.right);
+  assert.deepEqual(
+    rootGroup.sharedSegments.map((segment) => segment.y1),
+    [rootRect.bottom, copy.y + copy.height]
+  );
+  assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
 test("Fold preserves a manually positioned List root", () => {

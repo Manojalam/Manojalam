@@ -10,6 +10,7 @@ import {
   resolvedFoldSections,
 } from "./child-group-wrap";
 import {
+  createNodeRect,
   getNodeRect,
   inflateRect,
   segmentIntersectsRect,
@@ -99,8 +100,18 @@ export interface ListConnectorGroup {
   branches: ListConnectorBranch[];
 }
 
+export interface ListFoldRootCopy {
+  key: string;
+  sourceNodeId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ListConnectorModel {
   groups: ListConnectorGroup[];
+  rootCopies: ListFoldRootCopy[];
   duplicateEdgeIds: string[];
   duplicateHierarchyRelations: string[];
   duplicateVisibleConnectorSegments: string[];
@@ -234,8 +245,9 @@ export function diagnoseListLayout(
 /**
  * List descendants may keep their authored or previously generated positions,
  * but the root remains a header above the complete outline. Preserve its authored
- * horizontal anchor for a normal single-column outline; only Fold-created
- * multi-column groups center the root across their first-level headers.
+ * horizontal anchor. Fold presentation can stretch that root or repeat it,
+ * so moving the authored root to the middle of the section group would make
+ * both the node and its connectors drift on every reflow.
  */
 export function computeListRootTopPlacement(
   rootId: string,
@@ -261,7 +273,7 @@ export function computeListRootTopPlacement(
   const rootRect = rectAt(root, rootPlacement);
   return {
     x: rootFolded
-      ? rootPlacement.x + headerBounds.centerX - rootRect.centerX
+      ? rootPlacement.x + headerBounds.left - density.childIndentX - rootRect.left
       : rootPlacement.x,
     y: rootPlacement.y + contentBounds.top - density.rootToFirstRowGapY
       - rootRect.height - rootRect.top,
@@ -394,6 +406,54 @@ export function computeListLayout(
   return placements;
 }
 
+/**
+ * Widths for the default List Fold presentation. Fold roots keep their left
+ * edge as the stable layout anchor and stretch far enough to own every section
+ * beneath them. Descendant Fold widths are included bottom-up so an outer Fold
+ * reserves their complete visible span in the same reflow.
+ */
+export function computeListFoldRootSizes(
+  rootId: string,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>,
+  placements: ListPlacements
+): Map<string, { width: number; height: number }> {
+  const sizes = new Map<string, { width: number; height: number }>();
+  const virtualWidths = new Map<string, number>();
+  const nodeIds = getSubtree(rootId, hierarchy)
+    .filter((nodeId) => byId.has(nodeId) && placements[nodeId])
+    .sort((firstId, secondId) =>
+      (hierarchy.get(secondId)?.depth ?? 0) - (hierarchy.get(firstId)?.depth ?? 0));
+
+  for (const nodeId of nodeIds) {
+    const node = byId.get(nodeId)!;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const childIds = (hierarchy.get(nodeId)?.childIds ?? []).filter((childId) => byId.has(childId));
+    if (
+      data.listFoldRootMode === "divided"
+      || resolvedFoldSections(data, childIds, hierarchy).length <= 1
+    ) continue;
+
+    const rect = rectAt(node, placements[nodeId]);
+    let visibleRight = rect.right;
+    for (const descendantId of getSubtree(nodeId, hierarchy)) {
+      if (descendantId === nodeId) continue;
+      const descendant = byId.get(descendantId);
+      const placement = placements[descendantId];
+      if (!descendant || !placement) continue;
+      const descendantRect = rectAt(descendant, placement);
+      visibleRight = Math.max(
+        visibleRight,
+        descendantRect.left + (virtualWidths.get(descendantId) ?? descendantRect.width)
+      );
+    }
+    const width = Math.ceil(Math.max(rect.width, visibleRight - rect.left + LIST_OUTER_PADDING));
+    sizes.set(nodeId, { width, height: rect.height });
+    virtualWidths.set(nodeId, width);
+  }
+  return sizes;
+}
+
 export function isListHierarchyEdge(edge: Edge, byId: Map<string, Node>): boolean {
   const data = (edge.data ?? {}) as Record<string, unknown>;
   if (data.manualRoute === true) return false;
@@ -463,6 +523,7 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     .filter((node) => !node.hidden && node.type !== "frame" && node.type !== "sunburst")
     .map(getNodeRect);
   const groups: ListConnectorGroup[] = [];
+  const rootCopies: ListFoldRootCopy[] = [];
   const obstacleIntersections: ListConnectorModel["obstacleIntersections"] = [];
 
   for (const [parentId, parentEdges] of byParent) {
@@ -494,21 +555,26 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     const rootData = (root.data ?? {}) as Record<string, unknown>;
     const density = LIST_DENSITIES[rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY];
     const childById = new Map(childRects.map((item) => [item.edge.target, item]));
+    const parentData = (parent.data ?? {}) as Record<string, unknown>;
     const foldSections = resolvedFoldSections(
-      (parent.data ?? {}) as Record<string, unknown>,
+      parentData,
       order,
       hierarchy
     )
       .map((section) => section.flatMap((childId) => childById.get(childId) ?? []))
       .filter((section) => section.length > 0);
     const folded = foldSections.length > 1;
+    const dividedRoot = folded && parentData.listFoldRootMode === "divided";
     const sectionTrunks = (folded ? foldSections : [childRects]).map((section) => ({
       items: section,
       x: Math.min(...section.map((item) => item.rect.left)) - density.connectorGutterX,
     }));
-    const parentAnchor = folded
-      ? nodeShapeConnectionPoint(parent, parentRect, "bottom")
-      : nodeShapeConnectionPointAtAxis(parent, parentRect, "bottom", sectionTrunks[0].x);
+    const parentAnchor = nodeShapeConnectionPointAtAxis(
+      parent,
+      parentRect,
+      "bottom",
+      sectionTrunks[0].x
+    );
     const connectorSections = folded
       ? sectionTrunks
       : [{ ...sectionTrunks[0], x: parentAnchor.x }];
@@ -516,22 +582,53 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     connectorSections.forEach((section) => {
       section.items.forEach((item) => trunkByChildId.set(item.edge.target, section.x));
     });
+    const firstTrunkOffset = connectorSections[0].x - parentRect.left;
+    const sectionRootRects = connectorSections.map((section, sectionIndex) => {
+      if (!dividedRoot || sectionIndex === 0) return parentRect;
+      const rect = createNodeRect(
+        `list-fold-root-copy-${parentId}-${sectionIndex}`,
+        section.x - firstTrunkOffset,
+        parentRect.top,
+        parentRect.width,
+        parentRect.height
+      );
+      rootCopies.push({
+        key: rect.id,
+        sourceNodeId: parentId,
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+      return rect;
+    });
     const sharedSegments: OrthogonalSegment[] = folded
-      ? (() => {
-          const nearestChildTop = Math.min(...childRects.map((item) => item.rect.top));
-          const busY = parentAnchor.y + Math.max(0, (nearestChildTop - parentAnchor.y) / 2);
-          const busXs = [parentAnchor.x, ...connectorSections.map((section) => section.x)];
+      ? connectorSections.flatMap((section, sectionIndex) => {
+          const anchor = nodeShapeConnectionPointAtAxis(
+            parent,
+            sectionRootRects[sectionIndex],
+            "bottom",
+            section.x
+          );
+          const trunkBottom = Math.max(
+            anchor.y,
+            ...section.items.map((item) => item.rect.centerY)
+          );
           return [
-            { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: busY },
-            { x1: Math.min(...busXs), y1: busY, x2: Math.max(...busXs), y2: busY },
-            ...connectorSections.map((section) => ({
-              x1: section.x,
-              y1: busY,
+            ...(Math.abs(anchor.x - section.x) > 0.001 ? [{
+              x1: anchor.x,
+              y1: anchor.y,
               x2: section.x,
-              y2: Math.max(busY, ...section.items.map((item) => item.rect.centerY)),
-            })),
+              y2: anchor.y,
+            }] : []),
+            {
+              x1: section.x,
+              y1: anchor.y,
+              x2: section.x,
+              y2: trunkBottom,
+            },
           ];
-        })()
+        })
       : [{
           x1: connectorSections[0].x,
           y1: parentAnchor.y,
@@ -596,6 +693,7 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
   }
   return {
     groups,
+    rootCopies,
     duplicateEdgeIds,
     duplicateHierarchyRelations,
     duplicateVisibleConnectorSegments,

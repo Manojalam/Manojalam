@@ -42,6 +42,7 @@ import {
 } from "@/lib/layout/layout-presentation";
 import {
   computeListLayout,
+  computeListFoldRootSizes,
   computeListRootTopPlacement,
   type ListPlacements,
 } from "@/lib/layout/list-layout";
@@ -574,6 +575,56 @@ function applyGeneratedLayoutPresentation(
   });
 }
 
+function applyListFoldRootPresentation(
+  nodes: Node[],
+  hierarchy: ReturnType<typeof buildHierarchy>,
+  rootId: string,
+  placements: ListPlacements
+): Node[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const sizes = computeListFoldRootSizes(rootId, hierarchy, byId, placements);
+  if (!sizes.size) return nodes;
+  return nodes.map((node) => {
+    const size = sizes.get(node.id);
+    const placement = placements[node.id];
+    if (!size || !placement) return node;
+    const positioned = { ...node, position: { ...placement } };
+    const rect = getNodeRect(positioned);
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const normalSize = storedNodeSize(data.userSize) ?? {
+      width: rect.width,
+      height: rect.height,
+    };
+    const override = data.layoutSizeOverride as Partial<{
+      mode: LayoutMode;
+      width: number;
+      height: number;
+    }> | undefined;
+    if (
+      override?.mode === "list"
+      && Math.abs((override.width ?? 0) - size.width) < 0.5
+      && Math.abs((override.height ?? 0) - size.height) < 0.5
+      && Math.abs(numericDimension(node.style?.width, 0) - size.width) < 0.5
+      && Math.abs(numericDimension(node.style?.height, 0) - size.height) < 0.5
+      && Math.abs(node.position.x - placement.x) < 0.5
+      && Math.abs(node.position.y - placement.y) < 0.5
+    ) return node;
+    return resetNodeDimensions({
+      ...positioned,
+      position: nodePositionFromTopLeft(
+        positioned,
+        { x: rect.left, y: rect.top },
+        size
+      ),
+      data: {
+        ...data,
+        userSize: normalSize,
+        layoutSizeOverride: { mode: "list", width: size.width, height: size.height },
+      },
+    }, size.width, size.height);
+  });
+}
+
 function applyMatrixResultToNodes(
   nodes: Node[],
   result: MatrixLayoutResult,
@@ -1090,7 +1141,7 @@ function rebuildPersistedListRootPositions(nodes: Node[], edges: Edge[]): Node[]
   if (!rootIds.length) return nodes;
 
   const rootIdSet = new Set(rootIds);
-  return nodes.map((node) => {
+  let rebuiltNodes = nodes.map((node) => {
     if (!rootIdSet.has(node.id)) return node;
     const placement = placements[node.id];
     if (
@@ -1102,6 +1153,15 @@ function rebuildPersistedListRootPositions(nodes: Node[], edges: Edge[]): Node[]
     ) return node;
     return { ...node, position: placement };
   });
+  for (const rootId of rootIds) {
+    rebuiltNodes = applyListFoldRootPresentation(
+      rebuiltNodes,
+      hierarchy,
+      rootId,
+      placements
+    );
+  }
+  return rebuiltNodes;
 }
 
 /**
@@ -3895,9 +3955,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         const currentById = new Map(nextNodes
           .filter((node) => !isAutoMatrixFrame(node) && !isAutoSunburstNode(node))
           .map((node) => [node.id, node]));
-        const placements = computeListLayout(rootId, hierarchy, currentById, {
+        let placements = computeListLayout(rootId, hierarchy, currentById, {
           preserveManualOverrides: true,
         });
+        const foldSizedNodes = applyListFoldRootPresentation(
+          nextNodes,
+          hierarchy,
+          rootId,
+          placements
+        );
+        if (foldSizedNodes.some((node, index) => node !== nextNodes[index])) {
+          changed = true;
+          nextNodes = foldSizedNodes;
+          placements = computeListLayout(
+            rootId,
+            hierarchy,
+            new Map(nextNodes
+              .filter((node) => !isAutoMatrixFrame(node) && !isAutoSunburstNode(node))
+              .map((node) => [node.id, node])),
+            { preserveManualOverrides: true }
+          );
+        }
         nextNodes = nextNodes.map((node) => {
           const placement = placements[node.id];
           if (!placement) return node;
@@ -4214,18 +4292,31 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       mode,
       layoutSchemeValue(layoutNodes, rootId)
     );
-    const preparedLayoutNodes = applyGeneratedLayoutPresentation(
+    let preparedLayoutNodes = applyGeneratedLayoutPresentation(
       paletteSeed.nodes,
       hierarchy,
       rootId,
       mode
     );
-    const byId = new Map(preparedLayoutNodes.map((n) => [n.id, n]));
+    let byId = new Map(preparedLayoutNodes.map((n) => [n.id, n]));
     const matrixResult = mode === "matrix"
       ? computeMatrixLayout(rootId, hierarchy, byId)
       : null;
-    const positions = matrixResult?.placements
+    let positions = matrixResult?.placements
       ?? (sunburstEnabled ? {} : computeLayout(preparedLayoutNodes, layoutEdges, mode, { rootId }));
+    if (mode === "list") {
+      const foldSizedNodes = applyListFoldRootPresentation(
+        preparedLayoutNodes,
+        hierarchy,
+        rootId,
+        positions
+      );
+      if (foldSizedNodes.some((node, index) => node !== preparedLayoutNodes[index])) {
+        preparedLayoutNodes = foldSizedNodes;
+        byId = new Map(preparedLayoutNodes.map((node) => [node.id, node]));
+        positions = computeLayout(preparedLayoutNodes, layoutEdges, mode, { rootId });
+      }
+    }
 
     if (options?.recordHistory !== false) get().pushHistory();
 

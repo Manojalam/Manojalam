@@ -32,6 +32,7 @@ test("Matrix fill-anchor edits refresh automatic descendants immediately", () =>
   assert.equal(patchNeedsMatrixReflow({ fillOpacity: 0.7 }), true);
   assert.equal(patchNeedsMatrixReflow({ matrixOuterBorderVisible: false }), true);
   assert.equal(patchNeedsMatrixReflow({ matrixFoldRootMode: "divided" }), true);
+  assert.equal(patchNeedsListReflow({ listFoldRootMode: "divided" }), true);
   assert.equal(patchNeedsMatrixReflow({ textColor: "#1d4ed8" }), false);
   assert.equal(patchNeedsListReflow({ fillColor: "#8b5cf6" }), false);
 });

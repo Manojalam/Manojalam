@@ -5556,6 +5556,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               hierarchy={hierarchy}
               nodes={nodes}
               terminalItems={foldsMatrixTerminalRows}
+              listItems={structuredLayoutMode === "list"}
               compact
             />
           </Section>
