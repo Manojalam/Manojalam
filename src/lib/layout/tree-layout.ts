@@ -558,17 +558,21 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
 
     let group: TreeConnectorGroup;
     if (orientation === "vertical") {
-      const rows: Array<{ center: number; top: number; items: typeof children }> = [];
+      const rows: Array<{ top: number; bottom: number; items: typeof children }> = [];
       for (const child of children) {
-        const row = rows.find((candidate) => Math.abs(candidate.center - child.rect.centerY) < 1);
+        const row = rows.find((candidate) =>
+          child.rect.top < candidate.bottom - 1
+          && child.rect.bottom > candidate.top + 1
+        );
         if (row) {
           row.items.push(child);
           row.top = Math.min(row.top, child.rect.top);
+          row.bottom = Math.max(row.bottom, child.rect.bottom);
         } else {
-          rows.push({ center: child.rect.centerY, top: child.rect.top, items: [child] });
+          rows.push({ top: child.rect.top, bottom: child.rect.bottom, items: [child] });
         }
       }
-      rows.sort((a, b) => a.center - b.center);
+      rows.sort((a, b) => a.top - b.top);
       if (rows.length === 1) {
         const nearestChildTop = rows[0].top;
         const clearance = Math.max(0, nearestChildTop - parentRect.bottom);
@@ -629,17 +633,21 @@ export function buildTreeConnectorModel(nodes: Node[], edges: Edge[]): TreeConne
         };
       }
     } else {
-      const lanes: Array<{ center: number; left: number; items: typeof children }> = [];
+      const lanes: Array<{ left: number; right: number; items: typeof children }> = [];
       for (const child of children) {
-        const lane = lanes.find((candidate) => Math.abs(candidate.center - child.rect.centerX) < 1);
+        const lane = lanes.find((candidate) =>
+          child.rect.left < candidate.right - 1
+          && child.rect.right > candidate.left + 1
+        );
         if (lane) {
           lane.items.push(child);
           lane.left = Math.min(lane.left, child.rect.left);
+          lane.right = Math.max(lane.right, child.rect.right);
         } else {
-          lanes.push({ center: child.rect.centerX, left: child.rect.left, items: [child] });
+          lanes.push({ left: child.rect.left, right: child.rect.right, items: [child] });
         }
       }
-      lanes.sort((a, b) => a.center - b.center);
+      lanes.sort((a, b) => a.left - b.left);
       if (lanes.length === 1) {
         const nearestChildLeft = lanes[0].left;
         const clearance = Math.max(0, nearestChildLeft - parentRect.right);
