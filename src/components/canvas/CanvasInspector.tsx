@@ -667,6 +667,17 @@ function supportsSurfaceEffects(node: Node): boolean {
 }
 
 const CONTENT_SIZED_COLUMN_NODE_TYPES = new Set(["mindmap", "shape", "sticky", "text"]);
+const EXACT_DIMENSION_NODE_TYPES = new Set([
+  "mindmap",
+  "shape",
+  "sticky",
+  "text",
+  "sanskrit",
+  "shloka",
+  "grammar",
+  "audio",
+  "frame",
+]);
 const FIXED_ASPECT_COLUMN_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 
 function supportsFreeformSelectionSize(node: Node): boolean {
@@ -1207,7 +1218,7 @@ type InspectorTab = "style" | "text" | "shape" | "layout" | "data";
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: "style", label: "Style" },
   { id: "text", label: "Text" },
-  { id: "shape", label: "Shape" },
+  { id: "shape", label: "Size" },
   { id: "layout", label: "Structure" },
   { id: "data", label: "Data" },
 ];
@@ -5176,6 +5187,30 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const borderRadius  = cornerRadiusPercentForNode(selectedNode);
   // Corner-radius only makes sense for rectangular-ish shapes.
   const shapeType     = (d.shapeType as string) ?? "";
+  const supportsIndividualDimensions = EXACT_DIMENSION_NODE_TYPES.has(nodeType)
+    && !isRadialLayoutSector;
+  const individualWidth = matrixRootNode ? selectedMatrixWidth : currentNodeSize.width;
+  const individualHeight = matrixRootNode ? selectedMatrixHeight : currentNodeSize.height;
+  const commitIndividualDimension = (
+    axis: "width" | "height",
+    value: number | undefined
+  ) => {
+    if (matrixRootNode) {
+      commitSelectedMatrixCellSize(axis, value);
+      return;
+    }
+    if (value === undefined) return;
+    const fixedAspect = hasFixedAspectRatio(selectedNode);
+    setNodeSize(selectedNode.id, axis === "width"
+      ? {
+          width: value,
+          height: fixedAspect ? value : currentNodeSize.height,
+        }
+      : {
+          width: fixedAspect ? value : currentNodeSize.width,
+          height: value,
+        });
+  };
   const textFrameStyle = normalizeTextFrameStyle(d.textFrameStyle);
   const textCalloutDirection = normalizeTextCalloutDirection(d.textCalloutDirection);
   const textCalloutAnchor = normalizeTextCalloutAnchor(d.textCalloutAnchor);
@@ -7157,8 +7192,71 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
+        {supportsIndividualDimensions && (
+          <Section label="Dimensions" visible={singleNodeTab === "shape"}>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              {matrixRootNode
+                ? "Set this Matrix item's minimum dimensions. Simple cells use them exactly; aligned or merged cells may grow."
+                : "Enter the exact box dimensions. This switches the item to a fixed size and reflows its structured layout when needed."}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {matrixRootNode ? "Min width" : "Width"}
+                </span>
+                <ExactNumberField
+                  label={matrixRootNode ? "Selected Matrix item minimum width" : "Selected item width"}
+                  value={individualWidth}
+                  min={matrixRootNode ? 80 : 60}
+                  max={matrixRootNode ? 1200 : 4096}
+                  onCommit={(value) => commitIndividualDimension("width", value)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {matrixRootNode ? "Min height" : "Height"}
+                </span>
+                <ExactNumberField
+                  label={matrixRootNode ? "Selected Matrix item minimum height" : "Selected item height"}
+                  value={individualHeight}
+                  min={40}
+                  max={6000}
+                  onCommit={(value) => commitIndividualDimension("height", value)}
+                />
+              </label>
+            </div>
+            {hasFixedAspectRatio(selectedNode) && (
+              <p className="text-[9px] leading-relaxed text-muted-foreground">
+                This shape keeps equal width and height.
+              </p>
+            )}
+            {matrixRootNode && (
+              <div className="grid grid-cols-2 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[9px]"
+                  onClick={() => commitIndividualDimension("width", undefined)}
+                >
+                  Auto width
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[9px]"
+                  onClick={() => commitIndividualDimension("height", undefined)}
+                >
+                  Auto height
+                </Button>
+              </div>
+            )}
+          </Section>
+        )}
+
         {isContentNode && !isRadialLayoutSector && !matrixRootNode && (
-          <Section label="Size" visible={singleNodeTab === "shape"}>
+          <Section label="Content fit" visible={singleNodeTab === "shape"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fit</p>
               <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Text sizing mode">
@@ -7190,55 +7288,6 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mt-1.5 text-[9px] leading-relaxed text-muted-foreground">
                 Smart grows with content. Keep width grows vertically. Fixed fits text inside your chosen box.
               </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <label htmlFor={`node-width-${selectedNode.id}`} className="space-y-1">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Width</span>
-                <Input
-                  key={`${selectedNode.id}-width-${Math.round(currentNodeSize.width)}`}
-                  id={`node-width-${selectedNode.id}`}
-                  name="node-width"
-                  type="number"
-                  min={60}
-                  defaultValue={Math.round(currentNodeSize.width)}
-                  className="h-8 text-xs"
-                  onBlur={(event) => {
-                    const width = Number(event.currentTarget.value);
-                    if (Number.isFinite(width) && width > 0 && Math.abs(width - currentNodeSize.width) > 1) {
-                      setNodeSize(selectedNode.id, {
-                        width,
-                        height: ["circle", "diamond", "star", "flower"].includes(shapeType)
-                          ? width
-                          : currentNodeSize.height,
-                      });
-                    }
-                  }}
-                />
-              </label>
-              <label htmlFor={`node-height-${selectedNode.id}`} className="space-y-1">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Height</span>
-                <Input
-                  key={`${selectedNode.id}-height-${Math.round(currentNodeSize.height)}`}
-                  id={`node-height-${selectedNode.id}`}
-                  name="node-height"
-                  type="number"
-                  min={40}
-                  defaultValue={Math.round(currentNodeSize.height)}
-                  className="h-8 text-xs"
-                  onBlur={(event) => {
-                    const height = Number(event.currentTarget.value);
-                    if (Number.isFinite(height) && height > 0 && Math.abs(height - currentNodeSize.height) > 1) {
-                      setNodeSize(selectedNode.id, {
-                        width: ["circle", "diamond", "star", "flower"].includes(shapeType)
-                          ? height
-                          : currentNodeSize.width,
-                        height,
-                      });
-                    }
-                  }}
-                />
-              </label>
             </div>
 
             <Button
