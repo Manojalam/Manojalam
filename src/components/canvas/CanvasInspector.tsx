@@ -740,6 +740,8 @@ const LAYOUT_TEXT_TREATMENT_OPTIONS: Array<{
 }> = [
   { value: "contrast", label: "Fill contrast" },
   { value: "hierarchy", label: "Hierarchy colors" },
+  { value: "uniform-dark", label: "Uniform dark" },
+  { value: "uniform-light", label: "Uniform light" },
 ];
 
 function LayoutColorPatternControls({
@@ -904,7 +906,7 @@ function LayoutTextControls({
     <div className="rounded-md border border-border bg-muted/20 p-2">
       <Label className="text-[10px] font-medium">Automatic text colors</Label>
       <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-        Fill contrast follows automatic fills. Hierarchy colors remain distinct and readable when fills are empty.
+        Fill contrast follows each fill. Uniform modes use one descendant text color while keeping the root readable.
       </p>
       <div
         className="mt-2 grid grid-cols-2 gap-1.5"
@@ -921,7 +923,7 @@ function LayoutTextControls({
               1
             );
             return {
-              fill: option.value === "contrast" ? colors.fill : "transparent",
+              fill: option.value === "hierarchy" ? "transparent" : colors.fill,
               text: automaticLayoutTextColor(
                 colors.text,
                 colors.fill,
@@ -2085,6 +2087,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     : undefined;
   const activeRadialBorderTreatment = layoutBorderTreatment(
     radialRootData.layoutBorderTreatment
+  );
+  const activeRadialTextTreatment = layoutTextTreatment(
+    radialRootData.layoutTextTreatment
   );
   const activeRadialBorderStyle = layoutBorderLineStyle(
     radialRootData.layoutBorderStyle
@@ -6477,6 +6482,19 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 toast.success(value
                   ? "Updated the secondary radial branch color."
                   : "Restored the radial palette's secondary color.", {
+                  action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+            />
+            <LayoutTextControls
+              scheme={activeRadialColorScheme}
+              treatment={activeRadialTextTreatment}
+              onTreatmentChange={(layoutTextTreatment) => {
+                applyRadialPalettePatch({ layoutTextTreatment });
+                const label = LAYOUT_TEXT_TREATMENT_OPTIONS.find(
+                  (option) => option.value === layoutTextTreatment
+                )?.label ?? "Fill contrast";
+                toast.success(`Applied ${label} radial text.`, {
                   action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
                 });
               }}

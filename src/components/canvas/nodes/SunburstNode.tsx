@@ -35,6 +35,7 @@ import {
 import { nodePlainText, nodeRichTextPlainText } from "@/lib/canvas/node-text";
 import {
   automaticLayoutBorderColor,
+  automaticLayoutTextColor,
   layoutBranchAnchorColor,
   layoutBorderLineStyle,
   layoutColorPattern,
@@ -845,6 +846,7 @@ function collectSegments(
     ? paletteData.layoutEndColor
     : undefined;
   const borderTreatment = paletteData.layoutBorderTreatment;
+  const textTreatment = paletteData.layoutTextTreatment;
   const automaticBorderStyle = layoutBorderLineStyle(paletteData.layoutBorderStyle);
   const walk = (candidate: SunburstTreeNode) => {
     if (candidate.depth > 0) {
@@ -887,7 +889,15 @@ function collectSegments(
           : undefined,
         fill: (chartStyle.fillColor as string | undefined) ?? paletteColors.fill,
         fillEnd: (chartStyle.fillColor as string | undefined) ?? paletteColors.fillEnd,
-        textColor: (chartStyle.textColor as string | undefined) ?? (data.radialTextColor as string | undefined) ?? (data.textColor as string | undefined) ?? paletteColors.text,
+        textColor: (chartStyle.textColor as string | undefined)
+          ?? (data.radialTextColor as string | undefined)
+          ?? (data.textColor as string | undefined)
+          ?? automaticLayoutTextColor(
+            paletteColors.text,
+            branchBaseColor,
+            textTreatment,
+            candidate.depth
+          ),
         borderColor: (chartStyle.borderColor as string | undefined) ?? (data.radialBorderColor as string | undefined) ?? generatedBorderColor,
         borderWidth: clamp(dimension(chartStyle.borderWidth ?? data.radialBorderWidth, 1.4), 0, 16),
         borderStyle: (
