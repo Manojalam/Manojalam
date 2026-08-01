@@ -669,10 +669,19 @@ function supportsSurfaceEffects(node: Node): boolean {
 const CONTENT_SIZED_COLUMN_NODE_TYPES = new Set(["mindmap", "shape", "sticky", "text"]);
 const FIXED_ASPECT_COLUMN_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 
-function supportsMatchedSelectionSize(node: Node): boolean {
+function supportsFreeformSelectionSize(node: Node): boolean {
   if (!CONTENT_SIZED_COLUMN_NODE_TYPES.has(node.type ?? "")) return false;
   const data = (node.data ?? {}) as Record<string, unknown>;
   return data.matrixCell !== true && !data.layoutSizeOverride && !data.radialChart;
+}
+
+function supportsSelectedBoxDimensions(node: Node): boolean {
+  if (!CONTENT_SIZED_COLUMN_NODE_TYPES.has(node.type ?? "")) return false;
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const layoutSizeOverride = data.layoutSizeOverride as Partial<{ mode: LayoutMode }> | undefined;
+  return data.matrixCell !== true
+    && layoutSizeOverride?.mode !== "matrix"
+    && !data.radialChart;
 }
 
 function hasFixedAspectRatio(node: Node): boolean {
@@ -2706,61 +2715,43 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     const spaceSelectedNodes = (axis: "x" | "y") => {
       updateSelectedGeometry(compactEqualSpacing(selectedNodes, axis));
     };
-    const canMatchSelectionSize = selectedNodes.every(supportsMatchedSelectionSize);
-    const matchSelectedSize = (mode: "width" | "height" | "both") => {
-      if (!canMatchSelectionSize) return;
+    const canMatchSelectionSize = selectedNodes.every(supportsSelectedBoxDimensions);
+    const canEqualizeTidySize = selectedNodes.every(supportsFreeformSelectionSize);
+    const selectedBoxSizes = selectedNodes.map((node) => getNodeDimensions(node));
+    const commonSelectedBoxWidth = selectedBoxSizes.length
+      && selectedBoxSizes.every((size) => Math.abs(size.width - selectedBoxSizes[0].width) < 0.05)
+      ? selectedBoxSizes[0].width
+      : undefined;
+    const commonSelectedBoxHeight = selectedBoxSizes.length
+      && selectedBoxSizes.every((size) => Math.abs(size.height - selectedBoxSizes[0].height) < 0.05)
+      ? selectedBoxSizes[0].height
+      : undefined;
+    const applySelectedSizes = (
+      targetSizes: ReadonlyMap<string, { width: number; height: number }>,
+      successMessage: string
+    ) => {
+      if (!targetSizes.size) return;
       const baselineNodes = useCanvasStore.getState().nodes;
-      const selectedIds = new Set(selectedNodes.map((node) => node.id));
-      const flowNodes = baselineNodes.filter(supportsMatchedSelectionSize);
-      const dimensions = flowNodes
-        .filter((node) => selectedIds.has(node.id))
-        .map((node) => ({
-          node,
-          size: getNodeDimensions(node),
-        }));
-      if (!dimensions.length) return;
-      const widest = Math.max(...dimensions.map(({ size }) => size.width));
-      const tallest = Math.max(...dimensions.map(({ size }) => size.height));
-      const fixedAspectSelection = dimensions.some(({ node }) => hasFixedAspectRatio(node));
-      const commonSide = Math.max(widest, tallest);
-      const targetSizes = new Map(dimensions.map(({ node, size }) => {
-        const width = mode === "both"
-          ? (fixedAspectSelection ? commonSide : widest)
-          : mode === "width"
-            ? widest
-            : size.width;
-        const height = mode === "both"
-          ? (fixedAspectSelection ? commonSide : tallest)
-          : mode === "height"
-            ? tallest
-            : size.height;
-        const autoSizeMode: AutoSizeMode = "fixed";
-        return [node.id, { width, height, autoSizeMode }] as const;
-      }));
-      const growthAdjustedPositions = (
-        sizes: ReadonlyMap<string, { width: number; height: number }>
-      ) => {
-        const vertical = pushNodesBelowSelectionGrowth(
-          flowNodes,
-          new Map([...sizes].map(([id, size]) => [id, size.height]))
-        );
-        const horizontal = pushNodesRightOfSelectionGrowth(
-          flowNodes,
-          new Map([...sizes].map(([id, size]) => [id, size.width]))
-        );
-        const positions = new Map<string, { x: number; y: number }>();
-        for (const node of flowNodes) {
-          const verticalPosition = vertical.get(node.id);
-          const horizontalPosition = horizontal.get(node.id);
-          if (!verticalPosition && !horizontalPosition) continue;
-          positions.set(node.id, {
-            x: horizontalPosition?.x ?? node.position.x,
-            y: verticalPosition?.y ?? node.position.y,
-          });
-        }
-        return positions;
-      };
-      const immediatePositions = growthAdjustedPositions(targetSizes);
+      const selectedIds = new Set(targetSizes.keys());
+      const flowNodes = baselineNodes.filter(supportsSelectedBoxDimensions);
+      const vertical = pushNodesBelowSelectionGrowth(
+        flowNodes,
+        new Map([...targetSizes].map(([id, size]) => [id, size.height]))
+      );
+      const horizontal = pushNodesRightOfSelectionGrowth(
+        flowNodes,
+        new Map([...targetSizes].map(([id, size]) => [id, size.width]))
+      );
+      const immediatePositions = new Map<string, { x: number; y: number }>();
+      for (const node of flowNodes) {
+        const verticalPosition = vertical.get(node.id);
+        const horizontalPosition = horizontal.get(node.id);
+        if (!verticalPosition && !horizontalPosition) continue;
+        immediatePositions.set(node.id, {
+          x: horizontalPosition?.x ?? node.position.x,
+          y: verticalPosition?.y ?? node.position.y,
+        });
+      }
 
       pushHistory();
       useCanvasStore.setState((state) => ({
@@ -2773,8 +2764,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             ...(position ? { position } : {}),
             data: {
               ...(node.data ?? {}),
-              autoSizeMode: target.autoSizeMode,
-              userSize: { width: target.width, height: target.height },
+              autoSizeMode: "fixed" as AutoSizeMode,
+              userSize: target,
             },
           }, target.width, target.height);
         }),
@@ -2786,21 +2777,76 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           detail: { nodeIds: [...selectedIds] },
         }));
       });
+      const state = useCanvasStore.getState();
+      for (const nodeId of selectedIds) {
+        state.scheduleListReflow(nodeId);
+        state.scheduleMatrixReflow(nodeId);
+        state.scheduleStructuredReflow(nodeId);
+      }
+      toast.success(successMessage, {
+        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+      });
+    };
+    const setSelectedBoxDimension = (axis: "width" | "height", value: number | undefined) => {
+      if (!canMatchSelectionSize || value === undefined) return;
+      const targetSizes = new Map(selectedNodes.map((node) => {
+        const size = getNodeDimensions(node);
+        const fixedAspect = hasFixedAspectRatio(node);
+        return [node.id, axis === "width"
+          ? { width: value, height: fixedAspect ? value : size.height }
+          : { width: fixedAspect ? value : size.width, height: value }] as const;
+      }));
+      applySelectedSizes(
+        targetSizes,
+        `Set ${axis} for ${selectedNodes.length} selected boxes.`
+      );
+    };
+    const matchSelectedSize = (mode: "width" | "height" | "both") => {
+      if (!canMatchSelectionSize) return;
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const baselineNodes = useCanvasStore.getState().nodes;
+      const dimensions = baselineNodes
+        .filter(supportsSelectedBoxDimensions)
+        .filter((node) => selectedIds.has(node.id))
+        .map((node) => ({
+          node,
+          size: getNodeDimensions(node),
+        }));
+      if (!dimensions.length) return;
+      const widest = Math.max(...dimensions.map(({ size }) => size.width));
+      const tallest = Math.max(...dimensions.map(({ size }) => size.height));
+      const commonSide = Math.max(widest, tallest);
+      const targetSizes = new Map(dimensions.map(({ node, size }) => {
+        const fixedAspect = hasFixedAspectRatio(node);
+        const width = fixedAspect
+          ? (mode === "height" ? tallest : mode === "both" ? commonSide : widest)
+          : mode === "both"
+            ? widest
+            : mode === "width"
+              ? widest
+              : size.width;
+        const height = fixedAspect
+          ? width
+          : mode === "both"
+            ? tallest
+            : mode === "height"
+              ? tallest
+              : size.height;
+        return [node.id, { width, height }] as const;
+      }));
       const label = mode === "width"
         ? "width"
         : mode === "height"
           ? "height"
           : "width and height";
-      toast.success(`Matched ${label} for ${selectedNodes.length} objects.`, {
-        action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-      });
+      applySelectedSizes(targetSizes, `Matched ${label} for ${selectedNodes.length} objects.`);
     };
     const effectiveTidyLaneCount = Math.max(
       1,
       Math.min(selectedNodes.length, tidyLaneCount)
     );
     const tidySelectedArrangement = () => {
-      const equalizeSizes = tidyEqualizeCrossAxis && canMatchSelectionSize;
+      const equalizeSizes = tidyEqualizeCrossAxis && canEqualizeTidySize;
       const widest = Math.max(...selectedNodes.map((node) => getNodeDimensions(node).width));
       const tallest = Math.max(...selectedNodes.map((node) => getNodeDimensions(node).height));
       const targetSizes = new Map<string, { width: number; height: number }>();
@@ -3016,6 +3062,42 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </p>
             </Section>
           )}
+          {!isRadialMultiSelection && selectedNodes.length > 1 && canMatchSelectionSize && (
+            <Section label="Selected box dimensions">
+              <p className="text-[9px] leading-snug text-muted-foreground">
+                Enter an exact dimension for all {selectedNodes.length} selected boxes. The other dimension stays unchanged, and structured layouts reflow automatically.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Width (px)</span>
+                  <ExactNumberField
+                    label="Selected boxes width"
+                    value={commonSelectedBoxWidth}
+                    mixed={commonSelectedBoxWidth === undefined}
+                    min={60}
+                    max={4096}
+                    onCommit={(value) => setSelectedBoxDimension("width", value)}
+                  />
+                </label>
+                <label className="space-y-1 text-[9px] font-medium text-muted-foreground">
+                  <span>Height (px)</span>
+                  <ExactNumberField
+                    label="Selected boxes height"
+                    value={commonSelectedBoxHeight}
+                    mixed={commonSelectedBoxHeight === undefined}
+                    min={40}
+                    max={6000}
+                    onCommit={(value) => setSelectedBoxDimension("height", value)}
+                  />
+                </label>
+              </div>
+              {selectedNodes.some(hasFixedAspectRatio) && (
+                <p className="text-[9px] leading-snug text-muted-foreground">
+                  Circles, diamonds, stars, and flowers keep equal width and height.
+                </p>
+              )}
+            </Section>
+          )}
           {!isRadialMultiSelection && selectedNodes.length > 1 && (
             <Section label="Arrange">
               <div className="space-y-2 rounded-lg border border-border bg-muted/25 p-2">
@@ -3079,8 +3161,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                     </p>
                   </div>
                   <Switch
-                    checked={tidyEqualizeCrossAxis && canMatchSelectionSize}
-                    disabled={!canMatchSelectionSize}
+                    checked={tidyEqualizeCrossAxis && canEqualizeTidySize}
+                    disabled={!canEqualizeTidySize}
                     onCheckedChange={setTidyEqualizeCrossAxis}
                     aria-label={`Use equal ${tidyDirection === "columns" ? "widths" : "heights"} while tidying`}
                   />
@@ -3147,7 +3229,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   </p>
                 ) : (
                   <p className="mt-1.5 text-[9px] leading-snug text-muted-foreground">
-                    Size matching is available when the selection contains only free-form cards and shapes.
+                    Size matching is available for regular cards and shapes. Matrix cells use their dedicated size controls.
                   </p>
                 )}
               </div>
@@ -5484,13 +5566,23 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 variant="outline"
                 size="sm"
                 className="h-7 text-[10px]"
-                onClick={() => {
-                  selectNodesById([selectedNode.id, ...descendantIds]);
-                }}
+                disabled={!childIds.length}
+                onClick={() => selectNodesById(childIds)}
               >
-                Select branch
+                Select children
               </Button>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 w-full text-[10px]"
+              disabled={!descendantIds.length}
+              onClick={() => {
+                selectNodesById([selectedNode.id, ...descendantIds]);
+              }}
+            >
+              Select branch
+            </Button>
             {selectedDescendantLevels.length > 0 && (
               <div className="space-y-1 rounded-md border border-border/70 bg-muted/25 p-1.5">
                 <p className="px-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">

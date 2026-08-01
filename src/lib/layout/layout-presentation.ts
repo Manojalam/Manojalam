@@ -236,6 +236,17 @@ function canShareListWidth(node: Node): boolean {
   return !NON_UNIFORM_SHAPES.has(shapeType);
 }
 
+function canShareAutomaticHeight(node: Node, mode: LayoutMode): boolean {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  if (resolveAutoSizeMode(data) === "fixed") return false;
+  if (node.type !== "shape") return true;
+  const shapeType = layoutPresentationShapeType(
+    mode,
+    String(data.shapeType ?? "rectangle")
+  );
+  return !NON_UNIFORM_SHAPES.has(shapeType);
+}
+
 /**
  * Compute render dimensions before layout positioning. This lets the layout
  * engine operate on the same boxes the user will see, rather than stale DOM
@@ -260,6 +271,29 @@ export function computeLayoutNodeSizes(
     const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
     const size = nodeLayoutSize(node, mode, depth);
     if (size) sizes.set(nodeId, size);
+  }
+
+  // Automatic cards at the same hierarchy level should form a clean visual
+  // row. A long wrapping label may establish the row height, while fixed-size
+  // cards remain independent so manual resizing is always respected.
+  const maximumAutomaticHeightByDepth = new Map<number, number>();
+  for (const [nodeId, size] of sizes) {
+    const node = byId.get(nodeId)!;
+    if (!canShareAutomaticHeight(node, mode)) continue;
+    const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
+    maximumAutomaticHeightByDepth.set(
+      depth,
+      Math.max(maximumAutomaticHeightByDepth.get(depth) ?? 0, size.height)
+    );
+  }
+  for (const [nodeId, size] of sizes) {
+    const node = byId.get(nodeId)!;
+    if (!canShareAutomaticHeight(node, mode)) continue;
+    const depth = Math.max(0, (hierarchy.get(nodeId)?.depth ?? rootDepth) - rootDepth);
+    sizes.set(nodeId, {
+      ...size,
+      height: maximumAutomaticHeightByDepth.get(depth) ?? size.height,
+    });
   }
 
   if (mode !== "list") return sizes;

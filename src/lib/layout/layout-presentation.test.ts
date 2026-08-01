@@ -70,14 +70,28 @@ test("generated typography remains readable and follows hierarchy roles", () => 
   assert.ok((resolveLayoutFontSize(childData) ?? 0) >= 17);
 });
 
-test("List keeps readable node sizes and lets long text increase row height", () => {
+test("List keeps readable node sizes and gives automatic peers a consistent height", () => {
   const { nodes, edges } = fixture();
   const hierarchy = buildHierarchy(nodes, edges);
   const styled = applyLayoutPalette(nodes, edges, hierarchy, "root", "list", "forest");
   const sizes = computeLayoutNodeSizes(styled.nodes, hierarchy, "root", "list");
 
-  assert.ok((sizes.get("long")?.height ?? 0) > (sizes.get("short")?.height ?? 0));
+  assert.equal(sizes.get("long")?.height, sizes.get("short")?.height);
   assert.ok((sizes.get("root")?.width ?? 0) >= 240);
+});
+
+test("structured auto layouts use a consistent height at each hierarchy level", () => {
+  const { nodes, edges } = fixture();
+  const hierarchy = buildHierarchy(nodes, edges);
+
+  for (const mode of ["horizontal", "vertical", "topDown", "linear"] as const) {
+    const sizes = computeLayoutNodeSizes(nodes, hierarchy, "root", mode);
+    assert.equal(
+      sizes.get("short")?.height,
+      sizes.get("long")?.height,
+      `${mode} should align automatic peer heights`
+    );
+  }
 });
 
 test("a wide node in one List branch does not widen another branch", () => {
