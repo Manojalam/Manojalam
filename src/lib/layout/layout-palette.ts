@@ -41,6 +41,7 @@ const AUTOMATIC_COLOR_MODES = new Set<LayoutMode>([
 
 export interface ApplyLayoutPaletteOptions {
   resetOverrides?: boolean;
+  resetBorderOverrides?: boolean;
 }
 
 export interface LayoutPaletteResult {
@@ -396,6 +397,7 @@ export function applyLayoutPalette(
 
   const scheme = selectedLayoutColorScheme(schemeValue);
   const resetOverrides = options.resetOverrides === true;
+  const resetBorderOverrides = options.resetBorderOverrides === true;
   const visualStyles = buildLayoutVisualStyles(
     rootId,
     hierarchy,
@@ -413,7 +415,9 @@ export function applyLayoutPalette(
             layoutAutoBorder: undefined,
             layoutAutoText: undefined,
           }
-        : {};
+        : resetBorderOverrides
+          ? { layoutAutoBorder: undefined }
+          : {};
       return {
         ...node,
         data: {
