@@ -1,4 +1,5 @@
 import type { Node, Edge } from "@xyflow/react";
+import type { LayoutMode } from "../types";
 import { getNodeRect } from "./geometry";
 
 export interface HierarchyNode {
@@ -10,6 +11,11 @@ export interface HierarchyNode {
 }
 
 export type Hierarchy = Map<string, HierarchyNode>;
+
+export interface LayoutRoot {
+  id: string;
+  mode?: LayoutMode;
+}
 
 type XY = { x: number; y: number };
 
@@ -130,6 +136,33 @@ export function buildHierarchy(nodes: Node[], edges: Edge[]): Hierarchy {
   }
 
   return hierarchy;
+}
+
+/**
+ * Find the nearest explicit layout root above a node. When supported modes are
+ * supplied, nested charts using another mode are skipped so their surrounding
+ * layout can repack after the nested chart changes size.
+ */
+export function findLayoutRoot(
+  nodeId: string,
+  nodes: readonly Node[],
+  hierarchy: Hierarchy,
+  supportedModes?: ReadonlySet<LayoutMode>
+): LayoutRoot {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let currentId: string | null = nodeId;
+  let fallbackId = nodeId;
+  const seen = new Set<string>();
+  while (currentId && !seen.has(currentId)) {
+    seen.add(currentId);
+    fallbackId = currentId;
+    const mode = ((byId.get(currentId)?.data ?? {}) as { layoutMode?: LayoutMode }).layoutMode;
+    if (mode && (!supportedModes || supportedModes.has(mode))) {
+      return { id: currentId, mode };
+    }
+    currentId = hierarchy.get(currentId)?.parentId ?? null;
+  }
+  return { id: fallbackId };
 }
 
 /** All descendant ids of root (inclusive), depth-first, cycle-safe. */
