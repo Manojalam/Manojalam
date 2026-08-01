@@ -2,7 +2,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { nodeShapeConnectionPoint } from "../canvas/shape-connection-geometry";
 import type { LayoutMode } from "../types";
 import type { Hierarchy } from "./hierarchy";
-import { buildHierarchy, getSubtree } from "./hierarchy";
+import { buildHierarchy, getLayoutOwnedSubtree, getSubtree } from "./hierarchy";
 import {
   DEFAULT_CHILD_GROUP_GAP,
   resolvedFoldSections,
@@ -112,13 +112,16 @@ function compactFoldedTreePlacements(
   hierarchy: Hierarchy,
   byId: Map<string, Node>,
   orientation: OrthogonalTreeOrientation,
-  spacing: OrthogonalTreeSpacing
+  spacing: OrthogonalTreeSpacing,
+  ownedParentIds: ReadonlySet<string>
 ): TreePlacements {
   const next = Object.fromEntries(
     Object.entries(placements).map(([nodeId, placement]) => [nodeId, { ...placement }])
   ) as TreePlacements;
   const horizontal = orientation === "horizontal";
-  const parents = [...hierarchy.values()].sort((first, second) => second.depth - first.depth);
+  const parents = [...hierarchy.values()]
+    .filter((entry) => ownedParentIds.has(entry.id))
+    .sort((first, second) => second.depth - first.depth);
 
   for (const parentEntry of parents) {
     const parent = byId.get(parentEntry.id);
@@ -219,6 +222,13 @@ export function computeOrthogonalTreeLayout(
 
   const spacing = ORTHOGONAL_TREE_SPACING[orientation];
   const horizontal = orientation === "horizontal";
+  const ownedNodeIds = new Set(getLayoutOwnedSubtree(rootId, hierarchy, [...byId.values()]));
+  const nestedRootIds = new Set<string>();
+  for (const nodeId of ownedNodeIds) {
+    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) {
+      if (byId.has(childId) && !ownedNodeIds.has(childId)) nestedRootIds.add(childId);
+    }
+  }
   const levelMaxMain = new Map<number, number>();
   const depthById = new Map<string, number>();
   const collected = new Set<string>();
@@ -232,6 +242,7 @@ export function computeOrthogonalTreeLayout(
     const size = getNodeDimensions(node);
     const mainSize = horizontal ? size.width : size.height;
     levelMaxMain.set(depth, Math.max(levelMaxMain.get(depth) ?? 0, mainSize));
+    if (nestedRootIds.has(nodeId)) return;
     for (const childId of hierarchy.get(nodeId)?.childIds ?? []) collect(childId, depth + 1);
   };
   collect(rootId, 0);
@@ -316,7 +327,35 @@ export function computeOrthogonalTreeLayout(
       size
     );
   }
-  return compactFoldedTreePlacements(placements, hierarchy, byId, orientation, spacing);
+
+  // A descendant with its own layout mode is a completed nested chart. The
+  // outer tree positions its root, then translates the entire chart by the
+  // same delta instead of rebuilding its internal rows or columns.
+  for (const nestedRootId of nestedRootIds) {
+    const nestedRoot = byId.get(nestedRootId);
+    const nestedPlacement = placements[nestedRootId];
+    if (!nestedRoot || !nestedPlacement) continue;
+    const deltaX = nestedPlacement.x - nestedRoot.position.x;
+    const deltaY = nestedPlacement.y - nestedRoot.position.y;
+    for (const descendantId of getSubtree(nestedRootId, hierarchy)) {
+      if (descendantId === nestedRootId) continue;
+      const descendant = byId.get(descendantId);
+      if (!descendant) continue;
+      placements[descendantId] = {
+        x: descendant.position.x + deltaX,
+        y: descendant.position.y + deltaY,
+      };
+    }
+  }
+
+  return compactFoldedTreePlacements(
+    placements,
+    hierarchy,
+    byId,
+    orientation,
+    spacing,
+    ownedNodeIds
+  );
 }
 
 export interface TreeConnectorBranch {

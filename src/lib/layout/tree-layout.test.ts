@@ -227,6 +227,84 @@ test("nested Fold compacts the next root branch from the visible subtree bounds"
   }
 });
 
+test("a Vertical parent reflow preserves a nested List as one block", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 600, y: 80 },
+      measured: { width: 240, height: 80 },
+      data: { parentId: null, childOrder: ["list", "other"], layoutMode: "vertical" },
+    },
+    {
+      id: "list",
+      type: "shape",
+      position: { x: 120, y: 280 },
+      measured: { width: 220, height: 80 },
+      data: { parentId: "root", childOrder: ["a", "b", "c"], layoutMode: "list" },
+    },
+    ...["a", "b", "c"].map<Node>((id, index) => ({
+      id,
+      type: "shape",
+      position: { x: 280, y: 400 + index * 120 },
+      measured: { width: 190, height: 70 },
+      data: { parentId: "list", childOrder: [] },
+    })),
+    {
+      id: "other",
+      type: "shape",
+      position: { x: 920, y: 280 },
+      measured: { width: 220, height: 80 },
+      data: { parentId: "root", childOrder: ["other-leaf"] },
+    },
+    {
+      id: "other-leaf",
+      type: "shape",
+      position: { x: 920, y: 500 },
+      measured: { width: 190, height: 70 },
+      data: { parentId: "other", childOrder: [] },
+    },
+  ];
+  const edges: Edge[] = [
+    ["root", "list"],
+    ["root", "other"],
+    ["list", "a"],
+    ["list", "b"],
+    ["list", "c"],
+    ["other", "other-leaf"],
+  ].map(([source, target]) => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    type: "branch",
+    data: { layoutMode: source === "list" ? "list" : "vertical" },
+  }));
+  const hierarchy = buildHierarchy(nodes, edges);
+  const placements = computeOrthogonalTreeLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    "vertical"
+  );
+  const deltaFor = (nodeId: string) => {
+    const node = nodes.find((candidate) => candidate.id === nodeId)!;
+    return {
+      x: placements[nodeId].x - node.position.x,
+      y: placements[nodeId].y - node.position.y,
+    };
+  };
+
+  assert.deepEqual(deltaFor("a"), deltaFor("list"));
+  assert.deepEqual(deltaFor("b"), deltaFor("list"));
+  assert.deepEqual(deltaFor("c"), deltaFor("list"));
+
+  const placed = nodes.map((node) => ({ ...node, position: placements[node.id] ?? node.position }));
+  const listBounds = crossBounds(placed, getSubtree("list", hierarchy), "vertical");
+  const otherBounds = crossBounds(placed, getSubtree("other", hierarchy), "vertical");
+  assert.equal(otherBounds.start - listBounds.end, ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
+  assertNoOverlap(placed, "vertical");
+});
+
 test("shared tree buses replace overlapping per-child elbows and avoid every box", () => {
   const fixture = denseTree();
   for (const orientation of ["horizontal", "vertical"] as const) {
