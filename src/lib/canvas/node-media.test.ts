@@ -3,8 +3,11 @@ import test from "node:test";
 import {
   MAX_AUDIO_BYTES,
   estimatedDataUrlBytes,
+  mediaAttachmentBaseName,
   mediaFileMimeType,
+  moveMediaAttachment,
   normalizeMediaAttachments,
+  renamedMediaAttachmentName,
   validateMediaFile,
 } from "./node-media";
 
@@ -92,4 +95,31 @@ test("normalizes safe persisted attachments and drops malformed payloads", () =>
     width: 20,
     height: 10,
   }]);
+});
+
+test("renames attachments while preserving their file extension", () => {
+  assert.equal(mediaAttachmentBaseName("voice-recording.webm"), "voice-recording");
+  assert.equal(
+    renamedMediaAttachmentName("voice-recording.webm", "Opening chant"),
+    "Opening chant.webm"
+  );
+  assert.equal(
+    renamedMediaAttachmentName("voice-recording.webm", "Opening chant.webm"),
+    "Opening chant.webm"
+  );
+  assert.equal(renamedMediaAttachmentName("voice-recording.webm", "  "), null);
+});
+
+test("moves attachments one position without changing their payloads", () => {
+  const attachments = [
+    { id: "first", name: "First.webm" },
+    { id: "second", name: "Second.webm" },
+    { id: "third", name: "Third.webm" },
+  ] as unknown as Parameters<typeof moveMediaAttachment>[0];
+
+  assert.deepEqual(
+    moveMediaAttachment(attachments, "second", -1).map((attachment) => attachment.id),
+    ["second", "first", "third"]
+  );
+  assert.equal(moveMediaAttachment(attachments, "first", -1), attachments);
 });

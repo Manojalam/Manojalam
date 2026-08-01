@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   formattedMediaSize,
+  mediaAttachmentBaseName,
   normalizeMediaAttachments,
 } from "@/lib/canvas/node-media";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -159,9 +160,10 @@ function AudioAttachmentButton({
   const progress = duration > 0
     ? Math.min(100, Math.max(0, currentTime / duration * 100))
     : 0;
-  const displayName = attachment.name.startsWith("voice-recording-")
+  const baseName = mediaAttachmentBaseName(attachment.name);
+  const displayName = baseName.startsWith("voice-recording-")
     ? "Voice recording"
-    : attachment.name;
+    : baseName;
 
   if (!compact) {
     return (
@@ -231,7 +233,7 @@ function NodeMediaStrip({ node }: { node: Node }) {
 
   const rect = getNodeRect(node);
   const compact = rect.width < 130 || rect.height < 90;
-  const visible = attachments.slice(-3);
+  const visible = attachments.slice(0, 3);
   const hiddenCount = attachments.length - visible.length;
 
   return (

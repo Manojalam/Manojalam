@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, Mic, Square, X } from "lucide-react";
+import { LoaderCircle, Mic, Pause, Play, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,7 +15,7 @@ import {
 } from "@/lib/canvas/audio-recording";
 import { MAX_AUDIO_BYTES } from "@/lib/canvas/node-media";
 
-type RecordingStatus = "idle" | "requesting" | "recording" | "processing";
+type RecordingStatus = "idle" | "requesting" | "recording" | "paused" | "processing";
 
 interface RecordedAudioAttachmentControlProps {
   disabled: boolean;
@@ -38,17 +38,15 @@ export function RecordedAudioAttachmentControl({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const startedAtRef = useRef(0);
+  const activeSegmentStartedAtRef = useRef(0);
+  const recordedDurationMsRef = useRef(0);
   const intervalRef = useRef<number | null>(null);
-  const maximumTimerRef = useRef<number | null>(null);
   const cancelRequestedRef = useRef(false);
   const disposedRef = useRef(false);
 
   const clearTimers = useCallback(() => {
     if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
-    if (maximumTimerRef.current !== null) window.clearTimeout(maximumTimerRef.current);
     intervalRef.current = null;
-    maximumTimerRef.current = null;
   }, []);
 
   const stopStream = useCallback(() => {
@@ -60,15 +58,13 @@ export function RecordedAudioAttachmentControl({
     clearTimers();
     stopStream();
     recorderRef.current = null;
-    const durationMs = Math.min(
-      MAX_AUDIO_RECORDING_MS,
-      Math.max(0, Date.now() - startedAtRef.current)
-    );
+    const durationMs = Math.min(MAX_AUDIO_RECORDING_MS, recordedDurationMsRef.current);
     const chunks = chunksRef.current;
     chunksRef.current = [];
 
     if (cancelRequestedRef.current || disposedRef.current) {
       if (!disposedRef.current) {
+        recordedDurationMsRef.current = 0;
         setElapsedMs(0);
         setStatus("idle");
       }
@@ -162,20 +158,25 @@ export function RecordedAudioAttachmentControl({
       }, { once: true });
 
       recorder.start(1000);
-      startedAtRef.current = Date.now();
+      recordedDurationMsRef.current = 0;
+      activeSegmentStartedAtRef.current = Date.now();
       setElapsedMs(0);
       setStatus("recording");
       intervalRef.current = window.setInterval(() => {
-        setElapsedMs(Date.now() - startedAtRef.current);
-      }, 250);
-      maximumTimerRef.current = window.setTimeout(() => {
         const activeRecorder = recorderRef.current;
-        if (activeRecorder?.state === "recording") {
+        if (activeRecorder?.state !== "recording") return;
+        const durationMs = Math.min(
+          MAX_AUDIO_RECORDING_MS,
+          recordedDurationMsRef.current + Date.now() - activeSegmentStartedAtRef.current
+        );
+        setElapsedMs(durationMs);
+        if (durationMs >= MAX_AUDIO_RECORDING_MS) {
+          recordedDurationMsRef.current = MAX_AUDIO_RECORDING_MS;
           setStatus("processing");
           activeRecorder.stop();
           toast.info("The five-minute recording limit was reached.");
         }
-      }, MAX_AUDIO_RECORDING_MS);
+      }, 250);
     } catch (error) {
       clearTimers();
       stopStream();
@@ -187,12 +188,49 @@ export function RecordedAudioAttachmentControl({
     }
   }, [clearTimers, disabled, finalizeRecording, status, stopStream]);
 
-  const stopRecording = useCallback(() => {
+  const captureActiveSegment = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (recorder?.state === "recording") {
+      recordedDurationMsRef.current = Math.min(
+        MAX_AUDIO_RECORDING_MS,
+        recordedDurationMsRef.current + Date.now() - activeSegmentStartedAtRef.current
+      );
+      activeSegmentStartedAtRef.current = Date.now();
+      setElapsedMs(recordedDurationMsRef.current);
+    }
+  }, []);
+
+  const pauseRecording = useCallback(() => {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state !== "recording") return;
+    captureActiveSegment();
+    try {
+      recorder.pause();
+      setStatus("paused");
+    } catch {
+      toast.error("This browser could not pause the recording.");
+    }
+  }, [captureActiveSegment]);
+
+  const resumeRecording = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "paused") return;
+    try {
+      recorder.resume();
+      activeSegmentStartedAtRef.current = Date.now();
+      setStatus("recording");
+    } catch {
+      toast.error("This browser could not resume the recording.");
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    const recorder = recorderRef.current;
+    if (!recorder || (recorder.state !== "recording" && recorder.state !== "paused")) return;
+    captureActiveSegment();
     setStatus("processing");
     recorder.stop();
-  }, []);
+  }, [captureActiveSegment]);
 
   const cancelRecording = useCallback(() => {
     cancelRequestedRef.current = true;
@@ -204,6 +242,7 @@ export function RecordedAudioAttachmentControl({
     }
     clearTimers();
     stopStream();
+    recordedDurationMsRef.current = 0;
     setElapsedMs(0);
     setStatus("idle");
   }, [clearTimers, stopStream]);
@@ -228,17 +267,39 @@ export function RecordedAudioAttachmentControl({
     };
   }, [clearTimers, stopStream]);
 
-  if (status === "recording") {
+  if (status === "recording" || status === "paused") {
+    const paused = status === "paused";
     return (
-      <div className="col-span-2 rounded-md border border-red-500/40 bg-red-500/5 p-2">
+      <div className={paused
+        ? "col-span-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2"
+        : "col-span-2 rounded-md border border-red-500/40 bg-red-500/5 p-2"}
+      >
         <div className="mb-2 flex items-center justify-center gap-2" aria-live="polite">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-          <span className="text-xs font-medium text-red-600 dark:text-red-400">Recording</span>
+          <span className={paused
+            ? "h-2 w-2 rounded-full bg-amber-500"
+            : "h-2 w-2 animate-pulse rounded-full bg-red-500"}
+          />
+          <span className={paused
+            ? "text-xs font-medium text-amber-700 dark:text-amber-400"
+            : "text-xs font-medium text-red-600 dark:text-red-400"}
+          >
+            {paused ? "Paused" : "Recording"}
+          </span>
           <span className="font-mono text-xs tabular-nums">
             {formatRecordingDuration(elapsedMs)}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            className="flex h-9 items-center justify-center gap-2 rounded-md border border-border text-xs font-medium hover:bg-muted"
+            onClick={paused ? resumeRecording : pauseRecording}
+          >
+            {paused
+              ? <Play className="h-3.5 w-3.5 fill-current" />
+              : <Pause className="h-3.5 w-3.5 fill-current" />}
+            {paused ? "Resume" : "Pause"}
+          </button>
           <button
             type="button"
             className="flex h-9 items-center justify-center gap-2 rounded-md bg-red-600 text-xs font-medium text-white hover:bg-red-700"
@@ -249,7 +310,7 @@ export function RecordedAudioAttachmentControl({
           </button>
           <button
             type="button"
-            className="flex h-9 items-center justify-center gap-2 rounded-md border border-border text-xs font-medium hover:bg-muted"
+            className="col-span-2 flex h-9 items-center justify-center gap-2 rounded-md border border-border text-xs font-medium hover:bg-muted"
             onClick={cancelRecording}
           >
             <X className="h-4 w-4" />
