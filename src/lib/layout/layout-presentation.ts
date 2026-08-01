@@ -10,6 +10,7 @@ import {
 import type { Hierarchy } from "./hierarchy";
 import { getLayoutOwnedSubtree } from "./hierarchy";
 import { resolveAutoSizeMode } from "../canvas/node-sizing";
+import { nodePlainText } from "../canvas/node-text";
 
 const SIZED_LAYOUT_MODES = new Set<LayoutMode>([
   "fromParentFreeForm",
@@ -41,26 +42,8 @@ function positiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function stripRichText(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
 function nodeText(data: Record<string, unknown>): string {
-  if (typeof data.richText === "string" && data.richText.trim()) {
-    return stripRichText(data.richText).trim();
-  }
-  return ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"]
-    .map((field) => data[field])
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join("\n")
-    .trim();
+  return nodePlainText(data);
 }
 
 function wrappedLineCount(lines: string[], charactersPerLine: number): number {

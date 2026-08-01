@@ -355,7 +355,7 @@ function markdownNodes(nodes: readonly OutlineNode[], depth = 0): string[] {
   const lines: string[] = [];
   for (const node of nodes) {
     const indent = "    ".repeat(depth);
-    lines.push(`${indent}1. **${escapeMarkdown(node.title)}** _(${escapeMarkdown(node.type)})_`);
+    lines.push(`${indent}1. **${escapeMarkdown(node.title)}**`);
     for (const detail of node.details) {
       lines.push(
         `${indent}    - **${escapeMarkdown(detail.label)}:** ${markdownDetailValue(detail.value)}`
@@ -404,7 +404,7 @@ function textNodes(
   nodes.forEach((node, index) => {
     const nodePath = [...path, index + 1];
     const indent = "  ".repeat(depth);
-    lines.push(`${indent}${nodePath.join(".")}. ${node.title} [${node.type}]`);
+    lines.push(`${indent}${nodePath.join(".")}. ${node.title}`);
     for (const detail of node.details) {
       const detailIndent = "  ".repeat(depth + 1);
       const detailLines = detail.value.split("\n");
@@ -476,8 +476,7 @@ function htmlNodes(
       "<li>",
       "<article class=\"outline-node\">",
       `<header><span class="outline-number">${nodePath.join(".")}.</span>`,
-      `<span class="outline-title" dir="auto">${escapeHtml(node.title)}</span>`,
-      `<span class="outline-type">${escapeHtml(node.type)}</span></header>`,
+      `<span class="outline-title" dir="auto">${escapeHtml(node.title)}</span></header>`,
       details,
       "</article>",
       htmlNodes(node.children, nodePath),
@@ -528,7 +527,6 @@ export function serializeOutlineHtml(outline: OutlineDocument): string {
     .outline-node header { display: flex; align-items: baseline; flex-wrap: wrap; gap: .5rem; }
     .outline-number { min-width: 2rem; color: #2563eb; font-variant-numeric: tabular-nums; font-weight: 700; }
     .outline-title { font-weight: 700; }
-    .outline-type { padding: .15rem .45rem; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: .72rem; font-weight: 600; }
     dl { margin: .55rem 0 0 2.5rem; color: #475569; font-size: .9rem; }
     dl div { display: grid; grid-template-columns: minmax(7rem, max-content) 1fr; gap: .5rem; margin-top: .3rem; }
     dt { font-weight: 650; color: #334155; }

@@ -67,7 +67,7 @@ function sourceLinesForNode(
 ): PdfBlock[] {
   const indent = Math.min(depth * 24, MAX_INDENT);
   const lines: PdfSourceLine[] = [{
-    text: `${path.join(".")}. ${node.title} [${node.type}]`,
+    text: `${path.join(".")}. ${node.title}`,
     indent,
     style: "node",
   }];

@@ -1,5 +1,6 @@
 import type { Node } from "@xyflow/react";
 
+import { nodePlainText } from "@/lib/canvas/node-text";
 import {
   getSubtree,
   isDescendant,
@@ -80,17 +81,6 @@ export function canonicalRelationshipType(relationType: string): string {
   return relationType.trim();
 }
 
-const LABEL_FIELDS = [
-  "text",
-  "title",
-  "topic",
-  "label",
-  "devanagari",
-  "iast",
-  "translation",
-  "rule",
-] as const;
-
 function decodeHtmlEntities(value: string): string {
   const named: Record<string, string> = {
     amp: "&",
@@ -114,30 +104,11 @@ function decodeHtmlEntities(value: string): string {
   });
 }
 
-function stripRichText(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return decodeHtmlEntities(value)
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, " ")
-    .trim();
-}
-
 /** Returns the same human-readable content used by hierarchy-driven charts. */
 export function nodeDisplayLabel(node: Node | undefined): string {
   if (!node) return "";
   const data = (node.data ?? {}) as Record<string, unknown>;
-  const richText = stripRichText(data.richText);
-  if (richText) return richText;
-
-  return LABEL_FIELDS
-    .map((field) => data[field])
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join(" ")
-    .replace(/\s+/gu, " ")
-    .trim();
+  return nodePlainText(data, " ").replace(/\s+/gu, " ").trim();
 }
 
 /**

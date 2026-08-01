@@ -53,6 +53,13 @@ test("Matrix typography changes preserve layout-owned cell geometry", () => {
     text: "स्थानेऽन्तरतमम्",
     richText: "<p>स्थानेऽन्तरतमम्</p>",
   }, current), true);
+  assert.equal(
+    patchNeedsMatrixReflow(
+      { label: undefined },
+      { text: "स्थानेऽन्तरतमः", label: "स्थानेऽन्तरतमः" }
+    ),
+    false
+  );
   assert.equal(matrixMeasurementNeedsReflow("format"), false);
   assert.equal(matrixMeasurementNeedsReflow("layout"), false);
   assert.equal(matrixMeasurementNeedsReflow("input"), true);

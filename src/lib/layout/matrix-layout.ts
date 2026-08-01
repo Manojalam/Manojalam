@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import { nodePlainText } from "../canvas/node-text";
 import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
 import {
@@ -310,28 +311,9 @@ export function matrixRenderedSizeChanged(
     || Math.abs(previous.height - next.height) > tolerance;
 }
 
-function stripRichText(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
 function nodeText(node: Node): string {
   const data = (node.data ?? {}) as Record<string, unknown>;
-  if (typeof data.richText === "string" && data.richText.trim()) {
-    return stripRichText(data.richText).trim();
-  }
-  const fields = ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"];
-  return fields
-    .map((field) => data[field])
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join("\n")
-    .trim();
+  return nodePlainText(data);
 }
 
 function fontMetrics(node: Node): { fontSize: number; charWidth: number; lineHeight: number } {
