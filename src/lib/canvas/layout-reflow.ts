@@ -24,7 +24,7 @@ const MATRIX_REFLOW_FIELDS = new Set([
 
 const LIST_REFLOW_FIELDS = new Set([
   ...AUTOFIT_REFLOW_FIELDS,
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "listDensity",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "listDensity", "listFoldRootMode",
 ]);
 
 const ORIENTED_MATRIX_COMPOSITION_FIELDS = new Set([

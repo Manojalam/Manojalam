@@ -63,6 +63,7 @@ export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
 export type MatrixIncompleteRowMode = "stretch" | "empty";
 export type MatrixFoldRootMode = "continuous" | "divided";
+export type ListFoldRootMode = "expanded" | "divided";
 
 export interface MatrixFoldRepeatedCell {
   sourceNodeId: string;
@@ -581,6 +582,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutFoldBreakAfter?: string[];
   /** Whether a folded Matrix uses one spanning root or repeats the root above every section. */
   matrixFoldRootMode?: MatrixFoldRootMode;
+  /** Whether a folded List stretches one root across sections or repeats it above every section. */
+  listFoldRootMode?: ListFoldRootMode;
   /** @deprecated Legacy maximum children per Fold group. */
   layoutWrapAfter?: number;
   /** Layout mode last applied to this node's branch (set on the branch root). */

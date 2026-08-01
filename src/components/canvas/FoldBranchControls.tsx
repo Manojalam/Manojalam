@@ -18,6 +18,7 @@ interface FoldBranchControlsProps {
   hierarchy: Hierarchy;
   nodes: Node[];
   terminalItems?: boolean;
+  listItems?: boolean;
   compact?: boolean;
   className?: string;
 }
@@ -49,6 +50,7 @@ export function FoldBranchControls({
   hierarchy,
   nodes,
   terminalItems = false,
+  listItems = false,
   compact = false,
   className,
 }: FoldBranchControlsProps) {
@@ -82,7 +84,11 @@ export function FoldBranchControls({
           ? parentData.matrixFoldRootMode === "divided"
             ? "Automatic balances rendered Matrix row heights and flows whole rows into the next section. Continued ancestors and the root repeat in each section."
             : "Automatic balances rendered Matrix row heights and flows whole rows into the next section. Continued ancestors repeat beneath one shared root."
-          : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
+          : listItems
+            ? parentData.listFoldRootMode === "divided"
+              ? "Automatic balances terminal children while keeping each branch together. The root repeats above every section."
+              : "Automatic balances terminal children while keeping each branch together. One root expands across every section."
+            : "Automatic balances terminal children while keeping each direct-child branch together. Custom lets you place every break."}
       </p>
 
       <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
@@ -132,6 +138,32 @@ export function FoldBranchControls({
               </select>
               <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
                 Divided roots stay linked for styling and add a Fold selector for combined export.
+              </p>
+            </>
+          )}
+
+          {listItems && !terminalItems && (
+            <>
+              <label className="mt-2 block text-[9px] font-medium text-muted-foreground">
+                Root presentation
+              </label>
+              <select
+                value={parentData.listFoldRootMode === "divided" ? "divided" : "expanded"}
+                aria-label="List Fold root presentation"
+                onChange={(event) => {
+                  commit({
+                    listFoldRootMode: event.target.value === "divided"
+                      ? "divided"
+                      : undefined,
+                  });
+                }}
+                className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+              >
+                <option value="expanded">Expanded · one root across sections</option>
+                <option value="divided">Duplicated · repeat root per section</option>
+              </select>
+              <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                Every section connector starts directly from its root presentation.
               </p>
             </>
           )}

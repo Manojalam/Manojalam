@@ -49,6 +49,7 @@ test("chart conversion keeps hierarchy and authored content but drops source geo
     layoutSizeOverride: { mode: "matrix", width: 500, height: 90 },
     listManualOverride: true,
     listDensity: "compact",
+    listFoldRootMode: "divided",
     treeManualOverride: true,
     matrixOuterBorderVisible: false,
     matrixDensity: "presentation",

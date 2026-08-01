@@ -978,7 +978,7 @@ function SvgShapeSurface({
   return null;
 }
 
-function ShapeSurface({
+export function ShapeSurface({
   shapeType,
   fillColor,
   fillGradient,
