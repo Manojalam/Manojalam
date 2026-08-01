@@ -15,6 +15,7 @@ import {
   MATRIX_GRID_STROKE_WIDTH,
   matrixCellDivisionPadding,
   matrixCellBorderRadius,
+  matrixGridStrokeWidth,
 } from "./matrix-presentation";
 import { buildMatrixFrameNodes } from "./matrix-frames";
 import {
@@ -954,10 +955,64 @@ test("Matrix presentation keeps rounded shapes inside a flat table grid", () => 
   assert.equal(matrixCellBorderRadius("category"), 6);
   assert.equal(matrixCellBorderRadius("cell"), 4);
   assert.equal(MATRIX_GRID_STROKE_WIDTH, 1);
+  assert.equal(matrixGridStrokeWidth(undefined), 1);
+  assert.equal(matrixGridStrokeWidth(3), 3);
+  assert.equal(matrixGridStrokeWidth(20), 6);
   assert.equal(MATRIX_GRID_RADIUS, 4);
   assert.equal(matrixCellDivisionPadding("compact"), 3);
   assert.equal(matrixCellDivisionPadding("comfortable"), 4);
   assert.equal(matrixCellDivisionPadding("presentation"), 6);
+});
+
+test("Matrix chart border thickness controls the shared grid without adding cell borders", () => {
+  const nodes: Node[] = [
+    {
+      id: "root",
+      type: "shape",
+      position: { x: 20, y: 10 },
+      style: { width: 300, height: 60 },
+      data: {
+        matrixCell: true,
+        layoutBorderWidth: 3,
+        layoutVisualStyle: {
+          fillColor: "transparent",
+          borderColor: "#38bdf8",
+          borderStyle: "solid",
+          borderWidth: 0,
+          depth: 0,
+        },
+      },
+    },
+    {
+      id: "leaf",
+      type: "shape",
+      position: { x: 20, y: 80 },
+      style: { width: 100, height: 50 },
+      data: {
+        parentId: "root",
+        matrixCell: true,
+        fillColor: "transparent",
+        layoutAutoFill: false,
+        layoutVisualStyle: {
+          fillColor: "#bae6fd",
+          borderColor: "#0284c7",
+          borderWidth: 0,
+          depth: 1,
+        },
+      },
+    },
+  ];
+
+  const frame = buildMatrixFrameNodes(nodes, "root")[0];
+  const frameData = frame.data as Record<string, unknown>;
+
+  assert.equal(frameData.borderWidth, 3);
+  assert.equal(frameData.color, "#38bdf8");
+  assert.notDeepEqual(frameData.matrixGridLines, []);
+  assert.equal(
+    ((nodes[1].data as Record<string, unknown>).layoutVisualStyle as { borderWidth: number }).borderWidth,
+    0
+  );
 });
 
 test("Matrix creates one continuous grid with hierarchy-colored divisions", () => {

@@ -6,6 +6,7 @@ import { buildHierarchy } from "./hierarchy";
 import {
   applyLayoutPalette,
   buildLayoutVisualStyles,
+  layoutBorderWidthFor,
   resetDescendantLayoutFillOverrides,
   supportsAutomaticLayoutColors,
 } from "./layout-palette";
@@ -207,6 +208,36 @@ test("automatic border treatments change contrast without changing widths", () =
     hierarchyStyles.get("branch-a")?.borderColor,
     hierarchyStyles.get("a-1-child")?.borderColor
   );
+});
+
+test("chart border thickness is visible outside Matrix while Matrix reserves it for the shared grid", () => {
+  assert.equal(layoutBorderWidthFor("list", 0), 2.5);
+  assert.equal(layoutBorderWidthFor("list", 2), 1.5);
+  assert.equal(layoutBorderWidthFor("list", 2, 3), 3);
+  assert.equal(layoutBorderWidthFor("matrix", 0, 3), 0);
+
+  const { nodes, edges } = hierarchyFixture();
+  const configuredNodes = nodes.map((node) => node.id === "root"
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutBorderWidth: 3,
+        },
+      }
+    : node);
+  const hierarchy = buildHierarchy(configuredNodes, edges);
+  const styles = buildLayoutVisualStyles(
+    "root",
+    hierarchy,
+    "list",
+    "spectrum",
+    configuredNodes
+  );
+
+  assert.equal(styles.get("root")?.borderWidth, 3);
+  assert.equal(styles.get("branch-a")?.borderWidth, 3);
+  assert.equal(styles.get("a-1")?.borderWidth, 3);
 });
 
 test("automatic border treatment choices cover coordinated, soft, neutral, and none", () => {
