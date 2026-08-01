@@ -10,6 +10,7 @@ import {
   ORTHOGONAL_TREE_SPACING,
   type OrthogonalTreeOrientation,
 } from "./tree-layout";
+import { LIST_DENSITIES } from "./list-layout";
 
 function denseTree(): { nodes: Node[]; edges: Edge[] } {
   const branchIds = Array.from({ length: 16 }, (_, index) => `branch-${index}`);
@@ -303,6 +304,82 @@ test("a Vertical parent reflow preserves a nested List as one block", () => {
   const listBounds = crossBounds(placed, getSubtree("list", hierarchy), "vertical");
   const otherBounds = crossBounds(placed, getSubtree("other", hierarchy), "vertical");
   assert.equal(otherBounds.start - listBounds.end, ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
+  assertNoOverlap(placed, "vertical");
+});
+
+test("a Vertical tree reserves the connector gutter before a nested folded List", () => {
+  const nodes: Node[] = [{
+    id: "root",
+    type: "shape",
+    position: { x: 600, y: 80 },
+    measured: { width: 240, height: 80 },
+    data: { parentId: null, childOrder: ["previous", "list"], layoutMode: "vertical" },
+  }, {
+    id: "previous",
+    type: "shape",
+    position: { x: 80, y: 280 },
+    measured: { width: 220, height: 70 },
+    data: { parentId: "root", childOrder: ["previous-child"] },
+  }, {
+    id: "previous-child",
+    type: "shape",
+    position: { x: 240, y: 400 },
+    measured: { width: 190, height: 64 },
+    data: { parentId: "previous", childOrder: [] },
+  }, {
+    id: "list",
+    type: "shape",
+    position: { x: 680, y: 280 },
+    measured: { width: 220, height: 70 },
+    data: {
+      parentId: "root",
+      childOrder: ["a", "b", "c", "d"],
+      layoutMode: "list",
+      layoutFoldCount: 2,
+    },
+  }, ...["a", "b", "c", "d"].map<Node>((id, index) => ({
+    id,
+    type: "shape",
+    position: {
+      x: 520 + (index > 1 ? 280 : 0),
+      y: 400 + (index % 2) * 100,
+    },
+    measured: { width: 220, height: 64 },
+    data: { parentId: "list", childOrder: [] },
+  }))];
+  const edges: Edge[] = [
+    ["root", "previous"],
+    ["root", "list"],
+    ["previous", "previous-child"],
+    ["list", "a"],
+    ["list", "b"],
+    ["list", "c"],
+    ["list", "d"],
+  ].map(([source, target]) => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    type: "branch",
+    data: { layoutMode: source === "list" ? "list" : "vertical" },
+  }));
+  const hierarchy = buildHierarchy(nodes, edges);
+  const placements = computeOrthogonalTreeLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    "vertical"
+  );
+  const placed = nodes.map((node) => ({ ...node, position: placements[node.id] ?? node.position }));
+  const previousBounds = crossBounds(placed, getSubtree("previous", hierarchy), "vertical");
+  const firstSectionLeft = Math.min(
+    ...["a", "b"].map((id) => getNodeRect(placed.find((node) => node.id === id)!).left)
+  );
+  const connectorX = firstSectionLeft - LIST_DENSITIES.compact.connectorGutterX;
+
+  assert.equal(
+    connectorX - previousBounds.end,
+    ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap
+  );
   assertNoOverlap(placed, "vertical");
 });
 

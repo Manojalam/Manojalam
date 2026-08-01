@@ -17,6 +17,7 @@ import {
   type NodeRect,
   type OrthogonalSegment,
 } from "./geometry";
+import { DEFAULT_LIST_DENSITY, LIST_DENSITIES } from "./list-layout";
 
 export type OrthogonalTreeOrientation = "horizontal" | "vertical";
 
@@ -78,10 +79,35 @@ function treePlacementBounds(
     return node && placement ? [treePlacementRect(node, placement)] : [];
   });
   if (!rects.length) return null;
-  const left = Math.min(...rects.map((rect) => rect.left));
+  let left = Math.min(...rects.map((rect) => rect.left));
   const top = Math.min(...rects.map((rect) => rect.top));
   const right = Math.max(...rects.map((rect) => rect.right));
   const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  const includedIds = new Set(nodeIds);
+  for (const nodeId of nodeIds) {
+    const node = byId.get(nodeId);
+    const data = (node?.data ?? {}) as Record<string, unknown>;
+    if (data.layoutMode !== "list") continue;
+    const childRects = nodeIds.flatMap((childId) => {
+      const child = byId.get(childId);
+      const childData = (child?.data ?? {}) as Record<string, unknown>;
+      const placement = placements[childId];
+      return child
+        && placement
+        && includedIds.has(childId)
+        && childData.parentId === nodeId
+        ? [treePlacementRect(child, placement)]
+        : [];
+    });
+    if (!childRects.length) continue;
+    const density = LIST_DENSITIES[
+      data.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY
+    ];
+    left = Math.min(
+      left,
+      Math.min(...childRects.map((rect) => rect.left)) - density.connectorGutterX
+    );
+  }
   return createNodeRect("tree-subtree-bounds", left, top, right - left, bottom - top);
 }
 
