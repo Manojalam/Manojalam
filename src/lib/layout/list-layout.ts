@@ -1,6 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import {
   nodeShapeConnectionPoint,
+  nodeShapeConnectionPointAtAxis,
 } from "../canvas/shape-connection-geometry";
 import type { Hierarchy } from "./hierarchy";
 import { buildHierarchy, getLayoutOwnedSubtree, getSubtree } from "./hierarchy";
@@ -492,29 +493,22 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     }
     const rootData = (root.data ?? {}) as Record<string, unknown>;
     const density = LIST_DENSITIES[rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY];
-    const junctionY = Math.min(
-      Math.min(...childRects.map((item) => item.rect.centerY)),
-      parentRect.bottom + Math.max(6, Math.min(10, density.parentChildGapY / 2))
-    );
-    const parentAnchor = nodeShapeConnectionPoint(parent, parentRect, "bottom");
     // A List parent owns one outline bus. Slightly different child X positions
     // (especially Matrix roots with different widths) must not create parallel
     // trunks that appear as duplicate connectors.
-    const trunkX = Math.min(...childRects.map((item) => item.rect.left)) - density.connectorGutterX;
+    const desiredTrunkX = Math.min(...childRects.map((item) => item.rect.left)) - density.connectorGutterX;
+    const parentAnchor = nodeShapeConnectionPointAtAxis(parent, parentRect, "bottom", desiredTrunkX);
+    const trunkX = parentAnchor.x;
     const trunk = {
       x1: trunkX,
-      y1: junctionY,
+      y1: parentAnchor.y,
       x2: trunkX,
-      y2: Math.max(junctionY, ...childRects.map((item) => item.rect.centerY)),
+      y2: Math.max(parentAnchor.y, ...childRects.map((item) => item.rect.centerY)),
     };
     const group: ListConnectorGroup = {
       parentId,
       orientation: "vertical",
-      sharedSegments: [
-        { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: junctionY },
-        { x1: parentAnchor.x, y1: junctionY, x2: trunkX, y2: junctionY },
-        trunk,
-      ],
+      sharedSegments: [trunk],
       branches: childRects.map(({ edge, node, rect }) => {
         const childAnchor = nodeShapeConnectionPoint(node, rect, "left");
         return {

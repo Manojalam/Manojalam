@@ -3,6 +3,7 @@ import test from "node:test";
 import { SHAPE_TYPES } from "../types";
 import {
   nodeShapeConnectionPoint,
+  nodeShapeConnectionPointAtAxis,
   shapeConnectionPoint,
   type ConnectionSide,
   type ShapeConnectionPoint,
@@ -98,6 +99,29 @@ test("node outline points convert normalized star geometry into canvas coordinat
 
   assertPointClose(nodeShapeConnectionPoint(node, rect, "bottom"), { x: 300, y: 480 }, "node bottom");
   assertPointClose(nodeShapeConnectionPoint(node, rect, "left"), { x: 189.818182, y: 400 }, "node left");
+});
+
+test("axis-aligned node points keep straight trunks on the visible silhouette", () => {
+  const rounded = { type: "shape", data: { shapeType: "rounded" } };
+  const roundedRect = { x: 100, y: 200, width: 400, height: 200 };
+  assertPointClose(
+    nodeShapeConnectionPointAtAxis(rounded, roundedRect, "bottom", 220),
+    { x: 220, y: 400 },
+    "rounded bottom axis"
+  );
+  assertPointClose(
+    nodeShapeConnectionPointAtAxis(rounded, roundedRect, "bottom", 50),
+    { x: 100, y: 360 },
+    "rounded clamped bottom axis"
+  );
+
+  const star = { type: "shape", data: { shapeType: "star" } };
+  const starRect = { x: 100, y: 200, width: 400, height: 400 };
+  assertPointClose(
+    nodeShapeConnectionPointAtAxis(star, starRect, "bottom", 184),
+    { x: 184, y: 564 },
+    "star bottom axis"
+  );
 });
 
 test("node outline points include persisted object rotation", () => {
