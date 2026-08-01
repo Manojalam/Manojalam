@@ -50,7 +50,12 @@ export function LayoutPanel() {
     }
     if (mode === "list" || mode === "matrix") {
       window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
-        detail: { mode, rootId: selectedNode.id, nodeIds: branchIds },
+        detail: {
+          mode,
+          rootId: selectedNode.id,
+          nodeIds: branchIds,
+          fitAfter: true,
+        },
       }));
     } else {
       applyLayout(mode, selectedNode.id);
