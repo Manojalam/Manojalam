@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
-import { buildHierarchy, getSubtree } from "./hierarchy";
+import { buildHierarchy, findLayoutRoot, getSubtree } from "./hierarchy";
+import type { LayoutMode } from "../types";
 import { getNodeRect, rectsOverlap } from "./geometry";
 import {
   buildTreeConnectorModel,
@@ -303,6 +304,65 @@ test("a Vertical parent reflow preserves a nested List as one block", () => {
   const otherBounds = crossBounds(placed, getSubtree("other", hierarchy), "vertical");
   assert.equal(otherBounds.start - listBounds.end, ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
   assertNoOverlap(placed, "vertical");
+});
+
+test("a folded nested List resolves the surrounding Vertical root for repacking", () => {
+  const nodes: Node[] = [{
+    id: "root",
+    type: "shape",
+    position: { x: 600, y: 80 },
+    measured: { width: 220, height: 80 },
+    data: { parentId: null, childOrder: ["list", "next"], layoutMode: "vertical" },
+  }, {
+    id: "list",
+    type: "shape",
+    position: { x: 180, y: 280 },
+    measured: { width: 220, height: 70 },
+    data: {
+      parentId: "root",
+      childOrder: ["a", "b", "c", "d"],
+      layoutMode: "list",
+      layoutFoldCount: 2,
+    },
+  }, ...["a", "b", "c", "d"].map<Node>((id, index) => ({
+    id,
+    type: "shape",
+    position: { x: 340 + (index > 1 ? 240 : 0), y: 400 + (index % 2) * 100 },
+    measured: { width: 190, height: 64 },
+    data: { parentId: "list", childOrder: [] },
+  })), {
+    id: "next",
+    type: "shape",
+    position: { x: 780, y: 280 },
+    measured: { width: 220, height: 70 },
+    data: { parentId: "root", childOrder: [] },
+  }];
+  const edges: Edge[] = [
+    ["root", "list"],
+    ["root", "next"],
+    ["list", "a"],
+    ["list", "b"],
+    ["list", "c"],
+    ["list", "d"],
+  ].map(([source, target]) => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    type: "branch",
+  }));
+  const hierarchy = buildHierarchy(nodes, edges);
+  const structuredModes = new Set<LayoutMode>([
+    "fromParentFreeForm",
+    "horizontal",
+    "vertical",
+    "topDown",
+    "linear",
+  ]);
+
+  assert.deepEqual(
+    findLayoutRoot("list", nodes, hierarchy, structuredModes),
+    { id: "root", mode: "vertical" }
+  );
 });
 
 test("Vertical root headers keep one uniform gap across differently sized nested Lists", () => {

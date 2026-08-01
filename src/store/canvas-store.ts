@@ -30,7 +30,7 @@ import {
   sizeOf,
   type LayoutPlacement,
 } from "@/lib/layout";
-import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { buildHierarchy, findLayoutRoot, getSubtree } from "@/lib/layout/hierarchy";
 import {
   applyLayoutPalette,
   resetDescendantLayoutFillOverrides,
@@ -718,21 +718,6 @@ function matrixGeometryChanged(before: Node[], after: Node[], rootId: string): b
     ) return true;
   }
   return before.filter(relevant).length !== after.filter(relevant).length;
-}
-
-function findLayoutRoot(nodeId: string, nodes: Node[], hierarchy: ReturnType<typeof buildHierarchy>): { id: string; mode?: LayoutMode } {
-  let cur: string | null = nodeId;
-  let fallback = nodeId;
-  const seen = new Set<string>();
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    fallback = cur;
-    const node = nodes.find((n) => n.id === cur);
-    const mode = (node?.data as { layoutMode?: LayoutMode } | undefined)?.layoutMode;
-    if (mode) return { id: cur, mode };
-    cur = hierarchy.get(cur)?.parentId ?? null;
-  }
-  return { id: fallback };
 }
 
 function normalizeAutomaticHierarchyEdgeLayoutModes(nodes: Node[], edges: Edge[]): Edge[] {
@@ -4069,7 +4054,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ]);
       for (const requestedNodeId of requestedNodeIds) {
         if (!byId.has(requestedNodeId)) continue;
-        const root = findLayoutRoot(requestedNodeId, layoutNodes, hierarchy);
+        const root = findLayoutRoot(requestedNodeId, layoutNodes, hierarchy, supportedModes);
         if (root.mode && supportedModes.has(root.mode)) {
           roots.set(root.id, root.mode);
           if (forcedNodeIds.has(requestedNodeId)) forcedRootIds.add(root.id);
