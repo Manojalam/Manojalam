@@ -305,6 +305,65 @@ test("a Vertical parent reflow preserves a nested List as one block", () => {
   assertNoOverlap(placed, "vertical");
 });
 
+test("Vertical root headers keep one uniform gap across differently sized nested Lists", () => {
+  const specs: Array<{
+    id: string;
+    parentId: string | null;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    children: string[];
+    mode?: "vertical" | "list";
+  }> = [
+    { id: "root", parentId: null, x: 600, y: 80, width: 220, height: 80, children: ["wide", "narrow", "medium"], mode: "vertical" },
+    { id: "wide", parentId: "root", x: 0, y: 280, width: 160, height: 70, children: ["wide-a", "wide-b"], mode: "list" },
+    { id: "wide-a", parentId: "wide", x: 160, y: 390, width: 260, height: 60, children: [] },
+    { id: "wide-b", parentId: "wide", x: 160, y: 480, width: 260, height: 60, children: [] },
+    { id: "narrow", parentId: "root", x: 600, y: 280, width: 160, height: 70, children: ["narrow-a"], mode: "list" },
+    { id: "narrow-a", parentId: "narrow", x: 760, y: 390, width: 120, height: 60, children: [] },
+    { id: "medium", parentId: "root", x: 1000, y: 280, width: 160, height: 70, children: ["medium-a"], mode: "list" },
+    { id: "medium-a", parentId: "medium", x: 1160, y: 390, width: 190, height: 60, children: [] },
+  ];
+  const nodes = specs.map<Node>((spec) => ({
+    id: spec.id,
+    type: "shape",
+    position: { x: spec.x, y: spec.y },
+    measured: { width: spec.width, height: spec.height },
+    data: {
+      parentId: spec.parentId,
+      childOrder: [...spec.children],
+      ...(spec.mode ? { layoutMode: spec.mode } : {}),
+    },
+  }));
+  const edges = specs.flatMap<Edge>((spec) => spec.parentId ? [{
+      id: `${spec.parentId}-${spec.id}`,
+      source: spec.parentId,
+      target: spec.id,
+      type: "branch",
+      data: { layoutMode: spec.parentId === "root" ? "vertical" : "list" },
+    }] : []);
+  const hierarchy = buildHierarchy(nodes, edges);
+  const placements = computeOrthogonalTreeLayout(
+    "root",
+    hierarchy,
+    new Map(nodes.map((node) => [node.id, node])),
+    "vertical"
+  );
+  const placed = nodes.map((node) => ({ ...node, position: placements[node.id] ?? node.position }));
+  const headers = ["wide", "narrow", "medium"].map((id) => getNodeRect(placed.find((node) => node.id === id)!));
+  const firstGap = headers[1].left - headers[0].right;
+  const secondGap = headers[2].left - headers[1].right;
+
+  assert.ok(Math.abs(firstGap - secondGap) < 0.001);
+  const subtreeBounds = ["wide", "narrow", "medium"].map((id) => (
+    crossBounds(placed, getSubtree(id, hierarchy), "vertical")
+  ));
+  assert.ok(subtreeBounds[1].start - subtreeBounds[0].end >= ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
+  assert.ok(subtreeBounds[2].start - subtreeBounds[1].end >= ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
+  assertNoOverlap(placed, "vertical");
+});
+
 test("shared tree buses replace overlapping per-child elbows and avoid every box", () => {
   const fixture = denseTree();
   for (const orientation of ["horizontal", "vertical"] as const) {
