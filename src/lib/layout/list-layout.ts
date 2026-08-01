@@ -493,24 +493,58 @@ export function buildListConnectorModel(nodes: Node[], edges: Edge[]): ListConne
     }
     const rootData = (root.data ?? {}) as Record<string, unknown>;
     const density = LIST_DENSITIES[rootData.listDensity === "comfortable" ? "comfortable" : DEFAULT_LIST_DENSITY];
-    // A List parent owns one outline bus. Slightly different child X positions
-    // (especially Matrix roots with different widths) must not create parallel
-    // trunks that appear as duplicate connectors.
-    const desiredTrunkX = Math.min(...childRects.map((item) => item.rect.left)) - density.connectorGutterX;
-    const parentAnchor = nodeShapeConnectionPointAtAxis(parent, parentRect, "bottom", desiredTrunkX);
-    const trunkX = parentAnchor.x;
-    const trunk = {
-      x1: trunkX,
-      y1: parentAnchor.y,
-      x2: trunkX,
-      y2: Math.max(parentAnchor.y, ...childRects.map((item) => item.rect.centerY)),
-    };
+    const childById = new Map(childRects.map((item) => [item.edge.target, item]));
+    const foldSections = resolvedFoldSections(
+      (parent.data ?? {}) as Record<string, unknown>,
+      order,
+      hierarchy
+    )
+      .map((section) => section.flatMap((childId) => childById.get(childId) ?? []))
+      .filter((section) => section.length > 0);
+    const folded = foldSections.length > 1;
+    const sectionTrunks = (folded ? foldSections : [childRects]).map((section) => ({
+      items: section,
+      x: Math.min(...section.map((item) => item.rect.left)) - density.connectorGutterX,
+    }));
+    const parentAnchor = folded
+      ? nodeShapeConnectionPoint(parent, parentRect, "bottom")
+      : nodeShapeConnectionPointAtAxis(parent, parentRect, "bottom", sectionTrunks[0].x);
+    const connectorSections = folded
+      ? sectionTrunks
+      : [{ ...sectionTrunks[0], x: parentAnchor.x }];
+    const trunkByChildId = new Map<string, number>();
+    connectorSections.forEach((section) => {
+      section.items.forEach((item) => trunkByChildId.set(item.edge.target, section.x));
+    });
+    const sharedSegments: OrthogonalSegment[] = folded
+      ? (() => {
+          const nearestChildTop = Math.min(...childRects.map((item) => item.rect.top));
+          const busY = parentAnchor.y + Math.max(0, (nearestChildTop - parentAnchor.y) / 2);
+          const busXs = [parentAnchor.x, ...connectorSections.map((section) => section.x)];
+          return [
+            { x1: parentAnchor.x, y1: parentAnchor.y, x2: parentAnchor.x, y2: busY },
+            { x1: Math.min(...busXs), y1: busY, x2: Math.max(...busXs), y2: busY },
+            ...connectorSections.map((section) => ({
+              x1: section.x,
+              y1: busY,
+              x2: section.x,
+              y2: Math.max(busY, ...section.items.map((item) => item.rect.centerY)),
+            })),
+          ];
+        })()
+      : [{
+          x1: connectorSections[0].x,
+          y1: parentAnchor.y,
+          x2: connectorSections[0].x,
+          y2: Math.max(parentAnchor.y, ...childRects.map((item) => item.rect.centerY)),
+        }];
     const group: ListConnectorGroup = {
       parentId,
       orientation: "vertical",
-      sharedSegments: [trunk],
+      sharedSegments,
       branches: childRects.map(({ edge, node, rect }) => {
         const childAnchor = nodeShapeConnectionPoint(node, rect, "left");
+        const trunkX = trunkByChildId.get(edge.target) ?? connectorSections[0].x;
         return {
           edge,
           childId: edge.target,
