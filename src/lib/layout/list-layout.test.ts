@@ -239,6 +239,70 @@ test("Duplicated List Fold roots repeat above sections and emit independent trun
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
 
+test("Expanded List Fold roots ignore deep descendant width", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "first", parentId: "root", width: 180, height: 58 },
+    { id: "second", parentId: "root", width: 180, height: 58 },
+    { id: "deep-one", parentId: "second", width: 260, height: 58 },
+    { id: "deep-two", parentId: "deep-one", width: 420, height: 58 },
+  ]);
+  const nodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(nodes, fixture.edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const placements = computeListLayout("root", hierarchy, byId);
+  const rects = positionedRects(nodes, placements);
+  const size = computeListFoldRootSizes("root", hierarchy, byId, placements).get("root")!;
+  const root = rects.get("root")!;
+  const directRight = Math.max(rects.get("first")!.right, rects.get("second")!.right);
+
+  assert.equal(size.width, Math.ceil(directRight - root.left + 24));
+  assert.ok(root.left + size.width < rects.get("deep-two")!.right);
+});
+
+test("Expanded List Fold roots shrink stale oversized presentations instead of growing again", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null, width: 220, height: 72 },
+    { id: "first", parentId: "root", width: 180, height: 58 },
+    { id: "second", parentId: "root", width: 180, height: 58 },
+  ]);
+  const naturalNodes = fixture.nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutFoldCount: 2 } }
+    : node);
+  const hierarchy = buildHierarchy(naturalNodes, fixture.edges);
+  const naturalById = new Map(naturalNodes.map((node) => [node.id, node]));
+  const placements = computeListLayout("root", hierarchy, naturalById);
+  const oversizedNodes = naturalNodes.map((node) => node.id === "root"
+    ? { ...node, measured: { width: 2400, height: 72 }, style: { width: 2400, height: 72 } }
+    : node);
+  const oversizedById = new Map(oversizedNodes.map((node) => [node.id, node]));
+  const size = computeListFoldRootSizes("root", hierarchy, oversizedById, placements).get("root")!;
+  const directRects = ["first", "second"].map((nodeId) =>
+    getNodeRect({ ...oversizedById.get(nodeId)!, position: placements[nodeId] }));
+  const rootRect = getNodeRect({ ...oversizedById.get("root")!, position: placements.root });
+
+  assert.equal(
+    size.width,
+    Math.ceil(Math.max(...directRects.map((rect) => rect.right)) - rootRect.left + 24)
+  );
+  assert.ok(size.width < 2400);
+
+  const normalizedNodes = oversizedNodes.map((node) => node.id === "root"
+    ? { ...node, measured: { width: size.width, height: size.height }, style: { width: size.width, height: size.height } }
+    : node);
+  const normalizedById = new Map(normalizedNodes.map((node) => [node.id, node]));
+  const secondPassSize = computeListFoldRootSizes(
+    "root",
+    hierarchy,
+    normalizedById,
+    placements
+  ).get("root")!;
+
+  assert.deepEqual(secondPassSize, size);
+});
+
 test("Fold preserves a manually positioned List root", () => {
   const fixture = buildTree([
     { id: "root", parentId: null, width: 220, height: 72 },
