@@ -177,6 +177,7 @@ import {
   resolveFillSourceColor,
 } from "@/lib/style-utils";
 import { FoldBranchControls } from "./FoldBranchControls";
+import { RelationshipDiagramItemMediaMenu } from "./RelationshipDiagramItemMediaMenu";
 import {
   normalizeSurfaceEffect,
   SURFACE_EFFECT_PRESETS,
@@ -1710,6 +1711,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeTextSelection = useUIStore((s) => s.activeTextSelection);
   const openRelationshipDiagram = useUIStore((s) => s.openRelationshipDiagram);
   const openBoardExport = useUIStore((s) => s.openBoardExport);
+  const relationshipDiagramItemSelection = useUIStore(
+    (s) => s.relationshipDiagramItemSelection
+  );
+  const setRelationshipDiagramItemSelection = useUIStore(
+    (s) => s.setRelationshipDiagramItemSelection
+  );
 
   const selectedNodes = selectedNodeIds.length
     ? nodes.filter((n) => selectedNodeIds.includes(n.id))
@@ -4311,6 +4318,12 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       relationships,
       hierarchy,
     });
+    const selectedDiagramItem = relationshipDiagramItemSelection?.diagramNodeId === selectedNode.id
+      ? diagramGroups.find((group) => group.itemId === relationshipDiagramItemSelection.itemId)
+      : undefined;
+    const selectedDiagramItemIndex = selectedDiagramItem
+      ? diagramGroups.findIndex((group) => group.itemId === selectedDiagramItem.itemId)
+      : -1;
     const legacyAutomaticFlowerLayerCount = Math.ceil(
       diagramGroups.length / diagramSpec.flowerPetalsPerLayer
     );
@@ -4445,6 +4458,102 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               </Button>
             </div>
           </div>
+
+          {selectedDiagramItem && (
+            <Section label="Selected relationship item">
+              <div className="flex items-center gap-2 rounded-lg border border-primary/35 bg-primary/5 p-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold text-foreground">
+                    {selectedDiagramItem.itemLabel ?? selectedDiagramItem.sourceLabel}
+                  </span>
+                  <span className="block text-[9px] text-muted-foreground">
+                    Item {selectedDiagramItemIndex + 1} of {diagramGroups.length}
+                  </span>
+                </span>
+                <RelationshipDiagramItemMediaMenu
+                  diagramNodeId={selectedNode.id}
+                  itemId={selectedDiagramItem.itemId}
+                  itemLabel={selectedDiagramItem.itemLabel ?? selectedDiagramItem.sourceLabel}
+                />
+              </div>
+              {(() => {
+                const style = relationshipDiagramItemStyle(selectedDiagramItem, diagramSpec);
+                const sourceColor = hexInputColor(
+                  relationshipDiagramItemColor(selectedDiagramItem, selectedDiagramItemIndex, diagramSpec),
+                  "#6366f1"
+                );
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Fill
+                        <ClearableColorInput
+                          aria-label="Selected relationship item fill color"
+                          value={sourceColor}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
+                          onColorChange={(color) => updateItemStyle(selectedDiagramItem.itemId, { fillColor: color })}
+                          onClear={() => updateItemStyle(selectedDiagramItem.itemId, { fillColor: "transparent" })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Border
+                        <ClearableColorInput
+                          aria-label="Selected relationship item border color"
+                          value={hexInputColor(style.borderColor ?? diagramSpec.borderColor, sourceColor)}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
+                          onColorChange={(color) => updateItemStyle(selectedDiagramItem.itemId, { borderColor: color })}
+                          onClear={() => updateItemStyle(selectedDiagramItem.itemId, { borderColor: "transparent" })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Text
+                        <ClearableColorInput
+                          aria-label="Selected relationship item text color"
+                          value={hexInputColor(style.textColor ?? diagramSpec.textColor, "#0f172a")}
+                          inputClassName="h-7 w-full rounded border border-border bg-background"
+                          onColorChange={(color) => updateItemStyle(selectedDiagramItem.itemId, { textColor: color })}
+                          onClear={() => updateItemStyle(selectedDiagramItem.itemId, { textColor: undefined })}
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Font size
+                        <Input
+                          type="number"
+                          min={8}
+                          max={72}
+                          value={style.fontSize ?? diagramSpec.textSize}
+                          className="h-7 text-xs"
+                          onChange={(event) => updateItemStyle(selectedDiagramItem.itemId, { fontSize: Number(event.target.value) })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Rotation
+                        <Input
+                          type="number"
+                          min={-180}
+                          max={180}
+                          value={style.rotation ?? 0}
+                          className="h-7 text-xs"
+                          onChange={(event) => updateItemStyle(selectedDiagramItem.itemId, { rotation: Number(event.target.value) })}
+                        />
+                      </label>
+                    </div>
+                  </>
+                );
+              })()}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 w-full text-[10px]"
+                onClick={() => setRelationshipDiagramItemSelection(null)}
+              >
+                Select whole diagram
+              </Button>
+            </Section>
+          )}
 
           <Section label="Size">
             <div className="grid grid-cols-2 gap-2">
@@ -4806,11 +4915,28 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   "#6366f1"
                 );
                 return (
-                  <div key={group.itemId} className="space-y-2 rounded-lg border border-border p-2">
+                  <div
+                    key={group.itemId}
+                    data-relationship-diagram-inspector-item={group.itemId}
+                    className={cn(
+                      "space-y-2 rounded-lg border p-2",
+                      selectedDiagramItem?.itemId === group.itemId
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/25"
+                        : "border-border"
+                    )}
+                  >
                     <div className="flex items-center gap-1">
-                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium" title={group.itemLabel ?? group.sourceLabel}>
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate text-left text-[10px] font-medium hover:text-primary"
+                        title={`Select ${group.itemLabel ?? group.sourceLabel}`}
+                        onClick={() => setRelationshipDiagramItemSelection({
+                          diagramNodeId: selectedNode.id,
+                          itemId: group.itemId,
+                        })}
+                      >
                         {index + 1}. {group.itemLabel ?? group.sourceLabel}
-                      </span>
+                      </button>
                       <Button
                         type="button"
                         variant="outline"

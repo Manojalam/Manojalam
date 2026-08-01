@@ -24,6 +24,11 @@ export interface RelationshipDiagramRequest {
   diagramNodeId?: string;
 }
 
+export interface RelationshipDiagramItemSelection {
+  diagramNodeId: string;
+  itemId: string;
+}
+
 export interface BoardExportRequest {
   scope?: "board" | "selection" | "subtree" | "frame" | "node";
   nodeIds?: string[];
@@ -52,6 +57,8 @@ interface UIState {
   relationshipDiagramRequest: RelationshipDiagramRequest | null;
   openRelationshipDiagram: (request: RelationshipDiagramRequest) => void;
   closeRelationshipDiagram: () => void;
+  relationshipDiagramItemSelection: RelationshipDiagramItemSelection | null;
+  setRelationshipDiagramItemSelection: (selection: RelationshipDiagramItemSelection | null) => void;
   boardExportRequest: BoardExportRequest | null;
   openBoardExport: (request?: BoardExportRequest) => void;
   closeBoardExport: () => void;
@@ -162,6 +169,10 @@ export const useUIStore = create<UIState>((set, get) => ({
     },
   }),
   closeRelationshipDiagram: () => set({ relationshipDiagramRequest: null }),
+  relationshipDiagramItemSelection: null,
+  setRelationshipDiagramItemSelection: (selection) => set({
+    relationshipDiagramItemSelection: selection,
+  }),
   boardExportRequest: null,
   openBoardExport: (request = {}) => set({
     boardExportRequest: {

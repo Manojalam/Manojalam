@@ -10,6 +10,10 @@ import {
   renamedMediaAttachmentName,
   validateMediaFile,
 } from "./node-media";
+import {
+  relationshipDiagramItemMediaAttachments,
+  relationshipDiagramItemStylesWithMedia,
+} from "../relationship-diagram-item-media";
 
 const ONE_BYTE_PNG = "data:image/png;base64,AA==";
 
@@ -122,4 +126,31 @@ test("moves attachments one position without changing their payloads", () => {
     ["second", "first", "third"]
   );
   assert.equal(moveMediaAttachment(attachments, "first", -1), attachments);
+});
+
+test("stores media on one relationship item without disturbing its styling", () => {
+  const attachment = normalizeMediaAttachments([{
+    id: "audio-1",
+    kind: "audio",
+    name: "petal.mp3",
+    mimeType: "audio/mpeg",
+    size: 1,
+    dataUrl: "data:audio/mpeg;base64,YQ==",
+    createdAt: "2026-07-31T00:00:00.000Z",
+  }])[0];
+  assert.ok(attachment);
+
+  const styles = relationshipDiagramItemStylesWithMedia({
+    petal: { fillColor: "#334155" },
+  }, "petal", [attachment]);
+
+  assert.equal(styles?.petal.fillColor, "#334155");
+  assert.deepEqual(
+    relationshipDiagramItemMediaAttachments(styles, "petal"),
+    [attachment]
+  );
+  assert.equal(
+    relationshipDiagramItemStylesWithMedia(styles, "petal", [])?.petal.fillColor,
+    "#334155"
+  );
 });

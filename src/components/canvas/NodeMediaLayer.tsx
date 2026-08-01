@@ -226,6 +226,47 @@ function AudioAttachmentButton({
   );
 }
 
+export function MediaAttachmentPreviewStrip({
+  attachments: rawAttachments,
+  compact = false,
+}: {
+  attachments: readonly MediaAttachment[];
+  compact?: boolean;
+}) {
+  const attachments = normalizeMediaAttachments(rawAttachments);
+  const visible = attachments.slice(0, 3);
+  const hiddenCount = attachments.length - visible.length;
+  if (!attachments.length) return null;
+
+  return (
+    <>
+      {hiddenCount > 0 && (
+        <span
+          className="flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-background bg-background/95 px-1 text-[10px] font-semibold text-foreground shadow-md"
+          title={`${hiddenCount} more attachment${hiddenCount === 1 ? "" : "s"}`}
+        >
+          +{hiddenCount}
+        </span>
+      )}
+      {visible.map((attachment) => attachment.kind === "image"
+        ? (
+            <ImageAttachmentButton
+              key={attachment.id}
+              attachment={attachment}
+              compact={compact}
+            />
+          )
+        : (
+            <AudioAttachmentButton
+              key={attachment.id}
+              attachment={attachment}
+              compact={compact}
+            />
+          ))}
+    </>
+  );
+}
+
 function NodeMediaStrip({ node }: { node: Node }) {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const attachments = normalizeMediaAttachments(data.mediaAttachments);
@@ -233,8 +274,6 @@ function NodeMediaStrip({ node }: { node: Node }) {
 
   const rect = getNodeRect(node);
   const compact = rect.width < 130 || rect.height < 90;
-  const visible = attachments.slice(0, 3);
-  const hiddenCount = attachments.length - visible.length;
 
   return (
     <div
@@ -257,29 +296,7 @@ function NodeMediaStrip({ node }: { node: Node }) {
         onPointerDown={stopCanvasInteraction}
         onDoubleClick={stopCanvasInteraction}
       >
-        {hiddenCount > 0 && (
-          <span
-            className="flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-background bg-background/95 px-1 text-[10px] font-semibold text-foreground shadow-md"
-            title={`${hiddenCount} more attachment${hiddenCount === 1 ? "" : "s"}`}
-          >
-            +{hiddenCount}
-          </span>
-        )}
-        {visible.map((attachment) => attachment.kind === "image"
-          ? (
-              <ImageAttachmentButton
-                key={attachment.id}
-                attachment={attachment}
-                compact={compact}
-              />
-            )
-          : (
-              <AudioAttachmentButton
-                key={attachment.id}
-                attachment={attachment}
-                compact={compact}
-              />
-            ))}
+        <MediaAttachmentPreviewStrip attachments={attachments} compact={compact} />
       </div>
     </div>
   );

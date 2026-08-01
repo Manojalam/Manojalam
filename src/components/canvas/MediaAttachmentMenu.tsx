@@ -31,20 +31,24 @@ import {
   normalizeMediaAttachments,
   renamedMediaAttachmentName,
 } from "@/lib/canvas/node-media";
-import type { MediaAttachmentKind } from "@/lib/types";
+import type { MediaAttachment, MediaAttachmentKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { RecordedAudioAttachmentControl } from "./RecordedAudioAttachmentControl";
 
-export function MediaAttachmentMenu({
-  node,
-  objectLabel = "object",
-  triggerClassName,
-}: {
-  node: Node;
+type MediaAttachmentMenuProps = {
   objectLabel?: string;
   triggerClassName?: string;
-}) {
+} & ({
+  node: Node;
+} | {
+  attachments: MediaAttachment[];
+  targetLabel: string;
+  getAttachments: () => MediaAttachment[];
+  onAttachmentsChange: (attachments: MediaAttachment[]) => void;
+});
+
+export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
   const [open, setOpen] = useState(false);
   const [busyKind, setBusyKind] = useState<MediaAttachmentKind | null>(null);
   const [recordingBusy, setRecordingBusy] = useState(false);
@@ -52,11 +56,39 @@ export function MediaAttachmentMenu({
   const [renameDraft, setRenameDraft] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const attachments = normalizeMediaAttachments(
-    ((node.data ?? {}) as Record<string, unknown>).mediaAttachments
-  );
+  const node = "node" in props ? props.node : null;
+  const itemTarget = "attachments" in props ? props : null;
+  const attachments = node
+    ? normalizeMediaAttachments(((node.data ?? {}) as Record<string, unknown>).mediaAttachments)
+    : normalizeMediaAttachments(itemTarget?.attachments);
+  const objectLabel = props.objectLabel ?? (itemTarget ? "relationship item" : "object");
+  const targetLabel = itemTarget?.targetLabel ?? `this ${objectLabel}`;
+  const triggerClassName = props.triggerClassName;
   const isFull = attachments.length >= MAX_MEDIA_ATTACHMENTS;
   const isDefaultObjectLabel = objectLabel === "object";
+
+  const getCurrentAttachments = useCallback(() => {
+    if (node) {
+      const currentNode = useCanvasStore.getState().nodes.find(
+        (candidate) => candidate.id === node.id
+      );
+      if (!currentNode) throw new Error("The selected object no longer exists.");
+      return normalizeMediaAttachments(
+        ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
+      );
+    }
+    return normalizeMediaAttachments(itemTarget?.getAttachments());
+  }, [itemTarget, node]);
+
+  const persistAttachments = useCallback((nextAttachments: MediaAttachment[]) => {
+    if (node) {
+      const store = useCanvasStore.getState();
+      store.pushHistory();
+      store.updateNodeData(node.id, { mediaAttachments: nextAttachments });
+      return;
+    }
+    itemTarget?.onAttachmentsChange(nextAttachments);
+  }, [itemTarget, node]);
 
   const addFiles = useCallback(async (kind: MediaAttachmentKind, files: File[]) => {
     if (!files.length) return;
@@ -79,20 +111,12 @@ export function MediaAttachmentMenu({
         created.push(await createMediaAttachment(file, kind));
       }
 
-      const store = useCanvasStore.getState();
-      const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
-      if (!currentNode) throw new Error("The selected object no longer exists.");
-      const currentAttachments = normalizeMediaAttachments(
-        ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
-      );
+      const currentAttachments = getCurrentAttachments();
       if (currentAttachments.length + created.length > MAX_MEDIA_ATTACHMENTS) {
         throw new Error(`An object can have up to ${MAX_MEDIA_ATTACHMENTS} attachments.`);
       }
 
-      store.pushHistory();
-      store.updateNodeData(node.id, {
-        mediaAttachments: [...currentAttachments, ...created],
-      });
+      persistAttachments([...currentAttachments, ...created]);
       toast.success(
         created.length === 1
           ? `${kind === "image" ? "Image" : "Audio"} attached`
@@ -106,23 +130,17 @@ export function MediaAttachmentMenu({
     } finally {
       setBusyKind(null);
     }
-  }, [attachments, node.id, objectLabel]);
+  }, [attachments, getCurrentAttachments, objectLabel, persistAttachments]);
 
   const attachRecording = useCallback(async (file: File) => {
     await addFiles("audio", [file]);
   }, [addFiles]);
 
   const moveAttachment = (attachmentId: string, direction: -1 | 1) => {
-    const store = useCanvasStore.getState();
-    const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
-    if (!currentNode) return;
-    const currentAttachments = normalizeMediaAttachments(
-      ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
-    );
+    const currentAttachments = getCurrentAttachments();
     const reordered = moveMediaAttachment(currentAttachments, attachmentId, direction);
     if (reordered === currentAttachments) return;
-    store.pushHistory();
-    store.updateNodeData(node.id, { mediaAttachments: reordered });
+    persistAttachments(reordered);
   };
 
   const beginRename = (attachmentId: string, currentName: string) => {
@@ -136,12 +154,7 @@ export function MediaAttachmentMenu({
   };
 
   const saveRename = (attachmentId: string) => {
-    const store = useCanvasStore.getState();
-    const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
-    if (!currentNode) return;
-    const currentAttachments = normalizeMediaAttachments(
-      ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
-    );
+    const currentAttachments = getCurrentAttachments();
     const attachment = currentAttachments.find((candidate) => candidate.id === attachmentId);
     if (!attachment) return;
     const nextName = renamedMediaAttachmentName(attachment.name, renameDraft);
@@ -150,30 +163,21 @@ export function MediaAttachmentMenu({
       return;
     }
     if (nextName !== attachment.name) {
-      store.pushHistory();
-      store.updateNodeData(node.id, {
-        mediaAttachments: currentAttachments.map((candidate) =>
-          candidate.id === attachmentId ? { ...candidate, name: nextName } : candidate
-        ),
-      });
+      persistAttachments(currentAttachments.map((candidate) =>
+        candidate.id === attachmentId ? { ...candidate, name: nextName } : candidate
+      ));
     }
     cancelRename();
   };
 
   const removeAttachment = (attachmentId: string) => {
-    const store = useCanvasStore.getState();
-    const currentNode = store.nodes.find((candidate) => candidate.id === node.id);
-    if (!currentNode) return;
-    const currentAttachments = normalizeMediaAttachments(
-      ((currentNode.data ?? {}) as Record<string, unknown>).mediaAttachments
-    );
+    const currentAttachments = getCurrentAttachments();
     const nextAttachments = currentAttachments.filter(
       (attachment) => attachment.id !== attachmentId
     );
     if (nextAttachments.length === currentAttachments.length) return;
 
-    store.pushHistory();
-    store.updateNodeData(node.id, { mediaAttachments: nextAttachments });
+    persistAttachments(nextAttachments);
     toast.success("Attachment removed", {
       action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
     });
@@ -220,7 +224,7 @@ export function MediaAttachmentMenu({
           <div>
             <p className="text-sm font-semibold">Media attachments</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Add images, upload audio, or record it for this {objectLabel}.
+              Add images, upload audio, or record it for {targetLabel}.
             </p>
           </div>
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
