@@ -1,7 +1,15 @@
 export type MatrixCellRole = "header" | "category" | "cell";
 
 export const MATRIX_GRID_STROKE_WIDTH = 1;
+export const MAX_MATRIX_GRID_STROKE_WIDTH = 6;
 export const MATRIX_GRID_RADIUS = 4;
+
+export function matrixGridStrokeWidth(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return MATRIX_GRID_STROKE_WIDTH;
+  }
+  return Math.max(0.5, Math.min(MAX_MATRIX_GRID_STROKE_WIDTH, value));
+}
 
 /**
  * Matrix keeps authored node shapes visually independent from its flat table

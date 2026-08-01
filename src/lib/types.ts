@@ -591,6 +591,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutBorderTreatment?: LayoutBorderTreatment;
   /** Chart-wide automatic border line pattern. Does not change geometry. */
   layoutBorderStyle?: LayoutBorderLineStyle;
+  /** Chart-wide automatic border thickness. Matrix applies this to its shared grid. */
+  layoutBorderWidth?: number;
   /** Chart-wide automatic text color strategy. Fill colors remain independent. */
   layoutTextTreatment?: LayoutTextTreatment;
   /** @deprecated Legacy Matrix field read when layoutColorPattern is absent. */

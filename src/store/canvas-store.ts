@@ -289,6 +289,7 @@ interface CanvasState {
       layoutEndColor?: string;
       layoutBorderTreatment?: LayoutBorderTreatment;
       layoutBorderStyle?: LayoutBorderLineStyle;
+      layoutBorderWidth?: number;
       layoutTextTreatment?: LayoutTextTreatment;
     }
   ) => void;

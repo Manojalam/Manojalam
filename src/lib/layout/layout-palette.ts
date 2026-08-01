@@ -90,8 +90,15 @@ export function selectedLayoutColorScheme(value: unknown): RadialColorScheme {
   return radialColorScheme(value ?? DEFAULT_RADIAL_COLOR_SCHEME).id;
 }
 
-function borderWidthFor(mode: LayoutMode, depth: number): number {
+export function layoutBorderWidthFor(
+  mode: LayoutMode,
+  depth: number,
+  widthValue?: unknown
+): number {
   if (mode === "matrix") return 0;
+  if (typeof widthValue === "number" && Number.isFinite(widthValue)) {
+    return Math.max(0.5, Math.min(6, widthValue));
+  }
   if (mode === "list") return depth === 0 ? 2.5 : depth === 1 ? 2 : 1.5;
   return depth === 0 ? 2.5 : 1.75;
 }
@@ -212,6 +219,7 @@ export function buildLayoutVisualStyles(
     : scheme.lightness;
   const borderTreatment = rootData.layoutBorderTreatment;
   const borderLineStyle = layoutBorderLineStyle(rootData.layoutBorderStyle);
+  const borderWidthValue = rootData.layoutBorderWidth;
   const textTreatment = layoutTextTreatment(rootData.layoutTextTreatment);
   const fillAnchors = manualFillAnchors(rootId, hierarchy, nodes);
   const styles = new Map<string, LayoutVisualStyle>();
@@ -263,7 +271,7 @@ export function buildLayoutVisualStyles(
           depth
         ),
         accentColor: coordinatedBorder,
-        borderWidth: borderWidthFor(mode, depth),
+        borderWidth: layoutBorderWidthFor(mode, depth, borderWidthValue),
         borderStyle: borderLineStyle,
         fontSize: layoutFontSizeFor(mode, depth),
       });
@@ -324,7 +332,7 @@ export function buildLayoutVisualStyles(
         depth
       ),
       accentColor: colors.border,
-      borderWidth: borderWidthFor(mode, depth),
+      borderWidth: layoutBorderWidthFor(mode, depth, borderWidthValue),
       borderStyle: borderLineStyle,
       fontSize: layoutFontSizeFor(mode, depth),
     });

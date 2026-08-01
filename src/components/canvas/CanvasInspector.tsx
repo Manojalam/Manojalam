@@ -36,8 +36,12 @@ import {
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
 import { buildMatrixLeafRows } from "@/lib/layout/matrix-layout";
-import { supportsAutomaticLayoutColors } from "@/lib/layout/layout-palette";
+import {
+  layoutBorderWidthFor,
+  supportsAutomaticLayoutColors,
+} from "@/lib/layout/layout-palette";
 import { resolveLayoutFontSize } from "@/lib/layout/layout-presentation";
+import { matrixGridStrokeWidth } from "@/lib/layout/matrix-presentation";
 import type {
   BorderLayer,
   ConcentricShapeLayer,
@@ -972,20 +976,24 @@ function LayoutBorderControls({
   scheme,
   treatment,
   lineStyle,
+  borderWidth,
   onTreatmentChange,
   onLineStyleChange,
+  onBorderWidthChange,
 }: {
   scheme: RadialColorSchemeDefinition;
   treatment: LayoutBorderTreatment;
   lineStyle: LayoutBorderLineStyle;
+  borderWidth?: number;
   onTreatmentChange: (treatment: LayoutBorderTreatment) => void;
   onLineStyleChange: (style: LayoutBorderLineStyle) => void;
+  onBorderWidthChange?: (width: number) => void;
 }) {
   return (
     <div className="rounded-md border border-border bg-muted/20 p-2">
       <Label className="text-[10px] font-medium">Chart borders</Label>
       <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-        Changes automatic border color and line pattern only. Widths, spacing, and layout stay fixed.
+        Changes automatic border color, thickness, and line pattern. Spacing and layout stay fixed.
       </p>
       <div
         className="mt-2 grid grid-cols-2 gap-1.5"
@@ -1034,7 +1042,7 @@ function LayoutBorderControls({
                       backgroundColor: item.fill,
                       borderColor: item.border,
                       borderStyle: lineStyle,
-                      borderWidth: 2,
+                      borderWidth: Math.max(1, Math.min(4, borderWidth ?? 2)),
                     }}
                   />
                 ))}
@@ -1052,6 +1060,36 @@ function LayoutBorderControls({
         </p>
         <BorderStylePicker value={lineStyle} onChange={onLineStyleChange} />
       </div>
+      {typeof borderWidth === "number" && onBorderWidthChange && (
+        <div className="mt-2">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Line thickness
+          </p>
+          <div
+            className="grid grid-cols-5 gap-1"
+            role="radiogroup"
+            aria-label="Automatic chart border thickness"
+          >
+            {[1, 2, 2.5, 3, 4].map((width) => (
+              <button
+                key={width}
+                type="button"
+                role="radio"
+                aria-checked={borderWidth === width}
+                onClick={() => onBorderWidthChange(width)}
+                className={cn(
+                  "h-7 rounded border text-[9px] transition-colors hover:border-primary/60",
+                  borderWidth === width
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground"
+                )}
+              >
+                {width}px
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
         Borders changed directly on an item remain manual until reset to automatic.
       </p>
@@ -1944,6 +1982,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const activeLayoutBorderStyle = layoutBorderLineStyle(
     structuredLayoutRootData.layoutBorderStyle
   );
+  const activeLayoutBorderWidth = structuredLayoutMode === "matrix"
+    ? matrixGridStrokeWidth(structuredLayoutRootData.layoutBorderWidth)
+    : layoutBorderWidthFor(
+        structuredLayoutMode ?? "freeForm",
+        0,
+        structuredLayoutRootData.layoutBorderWidth
+      );
   const foldsMatrixTerminalRows = !!selectedNode
     && !!matrixRootNode
     && selectedNode.id === matrixRootNode.id;
@@ -5506,6 +5551,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               scheme={activeStructuredScheme}
               treatment={activeLayoutBorderTreatment}
               lineStyle={activeLayoutBorderStyle}
+              borderWidth={activeLayoutBorderWidth}
               onTreatmentChange={(treatment) => {
                 applyLayoutPalettePatch(structuredLayoutRootNode.id, {
                   layoutBorderTreatment: treatment,
@@ -5523,6 +5569,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 });
                 toast.success(`Applied ${layoutBorderStyle} automatic border lines.`, {
                   action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+                });
+              }}
+              onBorderWidthChange={(layoutBorderWidth) => {
+                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                  layoutBorderWidth,
                 });
               }}
             />

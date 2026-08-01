@@ -3,6 +3,7 @@ import { createNodeRect, getNodeRect, type NodeRect } from "./geometry";
 import {
   MATRIX_GRID_STROKE_WIDTH,
   matrixCellDivisionPadding,
+  matrixGridStrokeWidth,
 } from "./matrix-presentation";
 import {
   getTextStyle,
@@ -497,7 +498,9 @@ function buildMatrixFrameNode(
         ? `color-mix(in srgb, ${rootColors.fillColor} 2%, transparent)`
         : "rgba(15, 23, 42, 0.01)",
       borderStyle: gridBorderStyle,
-      borderWidth: MATRIX_GRID_STROKE_WIDTH,
+      borderWidth: matrixGridStrokeWidth(
+        rootData.layoutBorderWidth ?? MATRIX_GRID_STROKE_WIDTH
+      ),
       locked: true,
       matrixFrameFor: rootId,
       matrixOuterBorderVisible: outerBorderVisible,
