@@ -150,6 +150,7 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
     .filter((node) => node.id !== "root")
     .map((node) => getNodeRect(node));
   const model = buildListConnectorModel(placed, fixture.edges);
+  const rootGroup = model.groups.find((group) => group.parentId === "root");
 
   assert.equal(first.top, sixth.top);
   assert.ok(sixth.left > first.right);
@@ -161,7 +162,18 @@ test("Fold continues a long List branch in an adjacent vertical group", () => {
     Math.min(...headers.map((rect) => rect.top)) - root.bottom,
     LIST_DENSITIES.compact.rootToFirstRowGapY
   );
-  assert.equal(model.groups.find((group) => group.parentId === "root")?.branches.length, 10);
+  assert.equal(rootGroup?.branches.length, 10);
+  assert.equal(rootGroup?.sharedSegments.length, 4);
+  const firstBranch = rootGroup?.branches.find((branch) => branch.childId === "child-0")?.segments[0];
+  const sixthBranch = rootGroup?.branches.find((branch) => branch.childId === "child-5")?.segments[0];
+  assert.ok(firstBranch);
+  assert.ok(sixthBranch);
+  assert.equal(firstBranch!.x1, first.left - LIST_DENSITIES.compact.connectorGutterX);
+  assert.equal(firstBranch!.x2, first.left);
+  assert.equal(sixthBranch!.x1, sixth.left - LIST_DENSITIES.compact.connectorGutterX);
+  assert.equal(sixthBranch!.x2, sixth.left);
+  assert.notEqual(firstBranch!.x1, sixthBranch!.x1);
+  assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
   assert.deepEqual(model.obstacleIntersections, []);
   assertNoOverlap(placed);
 });
