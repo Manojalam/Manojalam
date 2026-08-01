@@ -7,6 +7,16 @@ import type {
   HierarchySourceReference,
 } from "./types";
 
+const LEGACY_OUTLINE_TYPE_SUFFIX = new RegExp(
+  String.raw`\s*(?:\[|_?\()(?:Mind map|Sticky note|Text|Shape|Sanskrit card|Shloka card|Grammar card|Frame|Audio note|Radial chart|Relationship diagram|Connector junction|Element)(?:\]|\)_?)\s*$`,
+  "iu"
+);
+
+/** Remove presentation metadata printed by older Manojalam outline exports. */
+export function stripLegacyOutlineTypeSuffix(value: string): string {
+  return value.replace(LEGACY_OUTLINE_TYPE_SUFFIX, "").trim();
+}
+
 export interface RawHierarchyNode {
   text: string;
   children: RawHierarchyNode[];
@@ -20,7 +30,7 @@ export function createDraftNode(
     children?: HierarchyDraftNode[];
   } = {}
 ): HierarchyDraftNode {
-  const normalizedLabel = normalizeImportedText(label) || "Untitled";
+  const normalizedLabel = normalizeImportedText(stripLegacyOutlineTypeSuffix(label)) || "Untitled";
   const notes = normalizeImportedText(options.notes ?? "");
   return {
     id: generateId(),

@@ -131,9 +131,9 @@ interface NativeOutlineDetail {
 }
 
 const NATIVE_OUTLINE_NODE =
-  /^([\t ]*)(\d+(?:\.\d+)*)\.\s+(.+?)\s+\[([^\]\r\n]+)\]\s*$/u;
+  /^([\t ]*)(\d+(?:\.\d+)*)\.\s+(.+?)(?:\s+\[([^\]\r\n]+)\])?\s*$/u;
 const NATIVE_MARKDOWN_NODE =
-  /^([\t ]*)1\.\s+\*\*(.+)\*\*\s+_\(([^)]*)\)_\s*$/u;
+  /^([\t ]*)1\.\s+\*\*(.+)\*\*(?:\s+_\(([^)]*)\)_)?\s*$/u;
 const NATIVE_MARKDOWN_DETAIL =
   /^([\t ]*)-\s+\*\*(.+):\*\*\s*(.*)$/u;
 

@@ -1,4 +1,5 @@
 import type { ContentResizeReason } from "./node-sizing";
+import { nodePlainText } from "./node-text";
 
 const AUTOFIT_REFLOW_FIELDS = new Set([
   "text", "richText", "label", "title", "topic", "devanagari", "iast", "translation",
@@ -38,30 +39,11 @@ const ORIENTED_MATRIX_COMPOSITION_FIELDS = new Set([
   "matrixHeightOverride",
 ]);
 
-function stripRichText(value: string): string {
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
+function matrixTextContent(data: Record<string, unknown>): string {
+  return nodePlainText(data)
     .split(/\r?\n/u)
     .map((line) => line.replace(/\s+/gu, " ").trim())
-    .join("\n")
-    .replace(/\n{2,}/gu, "\n")
-    .trim();
-}
-
-function matrixTextContent(data: Record<string, unknown>): string {
-  if (typeof data.richText === "string" && data.richText.trim()) {
-    return stripRichText(data.richText);
-  }
-  return ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"]
-    .map((field) => data[field])
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .map((value) => value.replace(/\s+/gu, " ").trim())
+    .filter(Boolean)
     .join("\n");
 }
 

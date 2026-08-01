@@ -311,7 +311,6 @@ export function hierarchyDraftToBoardContent(
         y: 100 + row * 96,
       },
       data: {
-        label: node.label,
         text: node.label,
         notes: node.notes || undefined,
         scriptMode,

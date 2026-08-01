@@ -118,6 +118,7 @@ import {
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
 import { normalizeConnectorLabelPresets } from "@/lib/canvas/connector-label-presets";
+import { nodePlainText } from "@/lib/canvas/node-text";
 import {
   remapHierarchyForBoardInsertion,
   restoreImportedCardHierarchyEdges,
@@ -1202,8 +1203,7 @@ function childTypeFor(parentType: string | undefined): string {
 }
 
 function getNodeText(data: Record<string, unknown>): string {
-  const fields = ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"];
-  return fields.map((f) => data[f]).filter(Boolean).join(" ");
+  return nodePlainText(data, " ");
 }
 
 const AUTOFIT_NODE_TYPES = new Set(["shape", "sticky", "text", "mindmap"]);

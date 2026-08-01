@@ -12,6 +12,7 @@ import {
   ensureSingleDraftRoot,
   isLikelyStructuralLabel,
   locateDraftNode,
+  stripLegacyOutlineTypeSuffix,
 } from "./draft";
 import {
   DEVANAGARI_FONT,
@@ -195,6 +196,35 @@ test("supports spaces, bullets, and numbering as outline markers", () => {
   const compact = compactRawHierarchy(raw);
   assert.equal(compact[0].children.length, 2);
   assert.equal(compact[0].children[0].children[0].label, "Grandchild");
+});
+
+test("imports new type-free native TXT and Markdown outlines", () => {
+  const textDraft = parseTextHierarchy(`Study
+=====
+
+Outline
+-------
+1. Root
+  1.1. Child
+`, "study.txt");
+  const markdownDraft = parseTextHierarchy(`# Study
+
+## Outline
+
+1. **Root**
+    1. **Child**
+`, "study.md");
+
+  for (const draft of [textDraft, markdownDraft]) {
+    assert.equal(draft.roots[0].label, "Root");
+    assert.equal(draft.roots[0].children[0].label, "Child");
+  }
+});
+
+test("removes known legacy object-type suffixes from fallback and OCR labels", () => {
+  assert.equal(stripLegacyOutlineTypeSuffix("Root [Shape]"), "Root");
+  assert.equal(stripLegacyOutlineTypeSuffix("अग्नि _(Sanskrit card)_"), "अग्नि");
+  assert.equal(stripLegacyOutlineTypeSuffix("A mathematical [group]"), "A mathematical [group]");
 });
 
 test("re-imports native TXT exports without presentation metadata as nodes", () => {
@@ -538,6 +568,7 @@ test("converts a reviewed draft to stable board hierarchy data", () => {
   assert.equal(content.nodes[0].type, "mindmap");
   assert.equal(content.nodes[0].data.parentId, null);
   assert.equal(content.edges.length, content.nodes.length - 1);
+  assert.ok(content.nodes.every((node) => !("label" in node.data)));
 
   for (const edge of content.edges) {
     const child = content.nodes.find((node) => node.id === edge.target);

@@ -153,8 +153,9 @@ test("serializes TXT and Markdown as nested outlines with all node details", () 
   const markdown = serializeOutlineMarkdown(outline);
 
   assert.match(text, /^Sanskrit & Logic\n/m);
-  assert.match(text, /^2\. Root \[Mind map\]$/m);
-  assert.match(text, /^  2\.1\. Agni \[Sanskrit card\]$/m);
+  assert.match(text, /^2\. Root$/m);
+  assert.match(text, /^  2\.1\. Agni$/m);
+  assert.doesNotMatch(text, /\[(?:Mind map|Shape|Sanskrit card|Text)\]/);
   assert.match(text, /^    Devanagari: अग्नि$/m);
   assert.match(text, /^Connections\n-+/m);
   assert.match(text, /Agni -> Loose note: explains/);
@@ -163,6 +164,7 @@ test("serializes TXT and Markdown as nested outlines with all node details", () 
   assert.match(markdown, /^1\. \*\*Loose note\*\*/m);
   assert.match(markdown, /^1\. \*\*Root\*\*/m);
   assert.match(markdown, /^    1\. \*\*Agni\*\*/m);
+  assert.doesNotMatch(markdown, /_\((?:Mind map|Shape|Sanskrit card|Text)\)_/);
   assert.match(markdown, /\*\*Devanagari:\*\* अग्नि/);
 });
 
@@ -174,6 +176,7 @@ test("serializes a standalone semantic HTML document and escapes authored conten
   assert.match(html, /A complete &lt;study&gt; outline\./);
   assert.match(html, /class="outline-number">2\.1\.<\/span>/);
   assert.match(html, /<span class="outline-title" dir="auto">Agni<\/span>/);
+  assert.doesNotMatch(html, /outline-type|>Sanskrit card</);
   assert.match(html, /<dt>Devanagari<\/dt><dd dir="auto">अग्नि<\/dd>/);
   assert.doesNotMatch(html, /Generated frame|Connector junction/);
 });

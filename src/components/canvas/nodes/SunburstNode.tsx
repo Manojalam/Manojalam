@@ -32,6 +32,7 @@ import {
   radialCurvedLabelLayout,
   radialLabelUsesCurvedText,
 } from "@/lib/canvas/radial-curved-label";
+import { nodePlainText, nodeRichTextPlainText } from "@/lib/canvas/node-text";
 import {
   automaticLayoutBorderColor,
   layoutBranchAnchorColor,
@@ -277,20 +278,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function stripRichText(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -302,14 +289,7 @@ function escapeHtml(value: string): string {
 function nodeLabel(node: Node | undefined): string {
   if (!node) return "";
   const data = (node.data ?? {}) as Record<string, unknown>;
-  const richText = stripRichText(data.richText);
-  if (richText) return richText;
-  const fields = ["text", "title", "topic", "label", "devanagari", "iast", "translation", "rule"];
-  const text = fields
-    .map((field) => data[field])
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .join(" ");
-  return text.replace(/[ \t]+/g, " ").trim();
+  return nodePlainText(data, " ").replace(/[ \t]+/g, " ").trim();
 }
 
 function nodeRichText(node: Node | undefined, label: string): string {
@@ -967,7 +947,7 @@ function dashArray(style: SunburstSegment["borderStyle"]): string | undefined {
 
 function editableTextPatch(node: Node, html: string): Record<string, unknown> {
   const data = (node.data ?? {}) as Record<string, unknown>;
-  const plain = stripRichText(html);
+  const plain = nodeRichTextPlainText(html);
   if ("text" in data || ["shape", "mindmap", "sticky", "text"].includes(node.type ?? "")) {
     return { richText: html, text: plain };
   }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
+import { nodePlainText, uniqueNodeTextValues } from "../canvas/node-text";
 import { buildHierarchy } from "./hierarchy";
 import { applyLayoutPalette } from "./layout-palette";
 import {
@@ -40,6 +41,22 @@ function fixture(): { nodes: Node[]; edges: Edge[] } {
   ];
   return { nodes, edges };
 }
+
+test("shared chart text removes duplicate imported aliases but keeps distinct semantic fields", () => {
+  const imported = { text: "छन्दः", label: "  छन्दः\n" };
+  const semantic = { text: "Fire", devanagari: "अग्नि", translation: "Fire" };
+
+  assert.equal(nodePlainText(imported, " "), "छन्दः");
+  assert.deepEqual(uniqueNodeTextValues(semantic), ["Fire", "अग्नि"]);
+  assert.equal(
+    nodePlainText({ ...imported, richText: "<p>Formatted&nbsp;<strong>title</strong></p>" }),
+    "Formatted title"
+  );
+  assert.equal(
+    nodePlainText({ richText: "<p>Root &#x2192; Child &#8594; Leaf</p>" }),
+    "Root → Child → Leaf"
+  );
+});
 
 test("generated typography remains readable and follows hierarchy roles", () => {
   const { nodes, edges } = fixture();
