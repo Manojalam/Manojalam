@@ -384,6 +384,46 @@ test("shared tree buses replace overlapping per-child elbows and avoid every box
   }
 });
 
+test("aligned children with different sizes share one connector bus", () => {
+  for (const orientation of ["vertical", "horizontal"] as const) {
+    const nodes: Node[] = [{
+      id: "parent",
+      type: "shape",
+      position: { x: 300, y: 80 },
+      measured: { width: 160, height: 70 },
+      data: { text: "Parent", parentId: null, childOrder: ["short", "tall"] },
+    }, {
+      id: "short",
+      type: "shape",
+      position: orientation === "vertical" ? { x: 120, y: 280 } : { x: 560, y: 120 },
+      measured: { width: 110, height: 54 },
+      data: { text: "Short", parentId: "parent", childOrder: [] },
+    }, {
+      id: "tall",
+      type: "shape",
+      position: orientation === "vertical" ? { x: 420, y: 280 } : { x: 560, y: 320 },
+      measured: { width: 190, height: 96 },
+      data: { text: "Tall", parentId: "parent", childOrder: [] },
+    }];
+    const edges: Edge[] = ["short", "tall"].map((target) => ({
+      id: `parent-${target}`,
+      source: "parent",
+      target,
+      type: "branch",
+      data: { layoutMode: orientation, curveStyle: "step" },
+    }));
+
+    const group = buildTreeConnectorModel(nodes, edges).groups[0];
+    assert.ok(group);
+    assert.equal(group.sharedSegments.length, 2);
+    if (orientation === "vertical") {
+      assert.equal(group.branches[0].segments[0].y1, group.branches[1].segments[0].y1);
+    } else {
+      assert.equal(group.branches[0].segments[0].x1, group.branches[1].segments[0].x1);
+    }
+  }
+});
+
 test("Fold packs direct children into adjacent groups and routes outside earlier groups", () => {
   const fixture = denseTree();
   const nodes = fixture.nodes.map((node) => node.id === "root"
