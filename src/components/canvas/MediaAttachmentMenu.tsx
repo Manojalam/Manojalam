@@ -36,7 +36,15 @@ import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { RecordedAudioAttachmentControl } from "./RecordedAudioAttachmentControl";
 
-export function MediaAttachmentMenu({ node }: { node: Node }) {
+export function MediaAttachmentMenu({
+  node,
+  objectLabel = "object",
+  triggerClassName,
+}: {
+  node: Node;
+  objectLabel?: string;
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [busyKind, setBusyKind] = useState<MediaAttachmentKind | null>(null);
   const [recordingBusy, setRecordingBusy] = useState(false);
@@ -48,6 +56,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
     ((node.data ?? {}) as Record<string, unknown>).mediaAttachments
   );
   const isFull = attachments.length >= MAX_MEDIA_ATTACHMENTS;
+  const isDefaultObjectLabel = objectLabel === "object";
 
   const addFiles = useCallback(async (kind: MediaAttachmentKind, files: File[]) => {
     if (!files.length) return;
@@ -55,8 +64,8 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
     if (files.length > available) {
       toast.error(
         available > 0
-          ? `You can add ${available} more attachment${available === 1 ? "" : "s"} to this object.`
-          : `This object already has ${MAX_MEDIA_ATTACHMENTS} attachments.`
+          ? `You can add ${available} more attachment${available === 1 ? "" : "s"} to this ${objectLabel}.`
+          : `This ${objectLabel} already has ${MAX_MEDIA_ATTACHMENTS} attachments.`
       );
       return;
     }
@@ -97,7 +106,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
     } finally {
       setBusyKind(null);
     }
-  }, [attachments, node.id]);
+  }, [attachments, node.id, objectLabel]);
 
   const attachRecording = useCallback(async (file: File) => {
     await addFiles("audio", [file]);
@@ -182,14 +191,17 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
         <button
           type="button"
           title={attachments.length
-            ? `Media attachments (${attachments.length})`
-            : "Add image or audio"}
+            ? `${isDefaultObjectLabel ? "Media" : `${objectLabel} media`} attachments (${attachments.length})`
+            : `Add image or audio${isDefaultObjectLabel ? "" : ` to ${objectLabel}`}`}
           aria-label={attachments.length
-            ? `Manage ${attachments.length} media attachments`
-            : "Add image or audio"}
+            ? `Manage ${attachments.length} media attachments${isDefaultObjectLabel ? "" : ` for ${objectLabel}`}`
+            : `Add image or audio${isDefaultObjectLabel ? "" : ` to ${objectLabel}`}`}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
-          className="relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className={cn(
+            "relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            triggerClassName
+          )}
         >
           <Paperclip className="h-4 w-4" />
           {attachments.length > 0 && (
@@ -208,7 +220,7 @@ export function MediaAttachmentMenu({ node }: { node: Node }) {
           <div>
             <p className="text-sm font-semibold">Media attachments</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Add images, upload audio, or record it for this object.
+              Add images, upload audio, or record it for this {objectLabel}.
             </p>
           </div>
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

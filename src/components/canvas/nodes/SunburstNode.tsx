@@ -60,6 +60,7 @@ import {
   hierarchyNumberForNode,
   hierarchyNumberMap,
 } from "@/lib/canvas/hierarchy-numbering";
+import { MediaAttachmentMenu } from "../MediaAttachmentMenu";
 import { RichTextEditor } from "../RichTextEditor";
 
 type PolarPoint = { x: number; y: number };
@@ -978,6 +979,7 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
     const state = useCanvasStore.getState();
     return { nodes: state.nodes, edges: state.edges };
   }, [canvasDragging, hierarchyEdgeToken, nodeContentToken]);
+  const chartNode = nodes.find((node) => node.id === id);
   const relationships = useCanvasStore((state) => state.relationships);
   const relationshipFans = useCanvasStore((state) => state.relationshipFans);
   const showCanvasLabelBoxGuides = useCanvasStore(
@@ -2457,6 +2459,13 @@ function SunburstNodeComponent({ data, id, selected }: NodeProps) {
           onPointerDown={(event) => event.stopPropagation()}
           data-export-ignore
         >
+          {chartNode && (
+            <MediaAttachmentMenu
+              node={chartNode}
+              objectLabel="radial chart"
+              triggerClassName="h-7 w-7 rounded-full border-2 border-white bg-violet-600 text-white shadow-lg transition-transform hover:scale-110 hover:bg-violet-700 hover:text-white"
+            />
+          )}
           {selectedRelationshipPolicy?.ok && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
