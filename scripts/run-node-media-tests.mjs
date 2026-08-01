@@ -12,6 +12,7 @@ const sources = [
   "src/lib/types.ts",
   "src/lib/utils.ts",
   "src/lib/canvas/node-media.ts",
+  "src/lib/relationship-diagram-item-media.ts",
   "src/lib/canvas/node-media.test.ts",
 ];
 

@@ -1,4 +1,10 @@
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 
 import {
   isTransparentRelationshipDiagramBackground,
@@ -28,6 +34,8 @@ type RelationshipDiagramSvgProps = {
   exportId?: string;
   measureText?: boolean;
   showLabelBoxGuides?: boolean;
+  selectedItemId?: string;
+  onItemSelect?: (itemId: string) => void;
 };
 
 type Point = { x: number; y: number };
@@ -40,6 +48,66 @@ const DiagramVisualStyleContext = createContext<Pick<
 let measurementCanvas: HTMLCanvasElement | null = null;
 const TextMeasurementContext = createContext(false);
 const LabelBoxGuidesContext = createContext(false);
+
+function RelationshipDiagramItemGroup({
+  group,
+  selectedItemId,
+  onItemSelect,
+  transform,
+  anchor = false,
+  focusable = true,
+  showSelection = true,
+  children,
+}: {
+  group: RelationshipGroup;
+  selectedItemId?: string;
+  onItemSelect?: (itemId: string) => void;
+  transform?: string;
+  anchor?: boolean;
+  focusable?: boolean;
+  showSelection?: boolean;
+  children: ReactNode;
+}) {
+  const selected = selectedItemId === group.itemId;
+  const label = group.itemLabel ?? group.sourceLabel;
+  const selectItem = () => onItemSelect?.(group.itemId);
+  const stopAndSelect = (event: PointerEvent<SVGGElement>) => {
+    if (!onItemSelect) return;
+    event.stopPropagation();
+  };
+  const selectFromKeyboard = (event: KeyboardEvent<SVGGElement>) => {
+    if (!onItemSelect || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectItem();
+  };
+
+  return (
+    <g
+      data-relationship-diagram-item-id={group.itemId}
+      data-relationship-diagram-item-anchor={anchor ? "true" : undefined}
+      role={onItemSelect && focusable ? "button" : undefined}
+      tabIndex={onItemSelect && focusable ? 0 : undefined}
+      aria-label={onItemSelect && focusable ? `Select relationship item ${label}` : undefined}
+      aria-pressed={onItemSelect && focusable ? selected : undefined}
+      transform={transform}
+      onPointerDown={stopAndSelect}
+      onClick={onItemSelect ? (event) => {
+        event.stopPropagation();
+        selectItem();
+      } : undefined}
+      onKeyDown={selectFromKeyboard}
+      style={{
+        cursor: onItemSelect ? "pointer" : undefined,
+        filter: selected && showSelection
+          ? "drop-shadow(0 0 5px rgba(37, 99, 235, 0.95))"
+          : undefined,
+      }}
+    >
+      {children}
+    </g>
+  );
+}
 
 function normalizeHex(color: string | undefined): string | null {
   if (!color) return null;
@@ -457,7 +525,12 @@ function arcFanMetrics(groups: RelationshipGroup[], spec: RelationshipDiagramSpe
   };
 }
 
-function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
+function ArcFanLayout({
+  groups,
+  spec,
+  selectedItemId,
+  onItemSelect,
+}: RelationshipDiagramSvgProps) {
   const metrics = arcFanMetrics(groups, spec);
   const {
     width,
@@ -500,41 +573,40 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       if (labelRotation > 90) labelRotation -= 180;
       if (labelRotation < -90) labelRotation += 180;
       pieces.push(
-        <path
-          key={"relationship-" + group.itemId}
-          d={annularPath(cx, cy, hubRadius, targetRadius, sourceStart, sourceEnd)}
-          fill={tint(color, 0.7)}
-          fillOpacity={groupFillOpacity(spec)}
-          stroke={spec.borderColor || style.borderColor ? stroke : tint(color, 0.14)}
-          strokeWidth={groupStrokeWidth(spec)}
-        />,
-        <SvgLabel
-          key={"relationship-label-" + group.itemId}
-          value={sourceDisplayLabel(group, spec)}
-          x={labelPoint.x}
-          y={labelPoint.y}
-          width={labelArcWidth}
-          height={targetRadius - hubRadius - 30}
-          fontSize={style.fontSize ?? targetFontSize}
-          fillOverride={style.textColor}
-          weight={700}
-          maximumLines={targetMaximumLines}
-          transform={"rotate(" + labelRotation + " " + labelPoint.x + " " + labelPoint.y + ")"}
-        />
+        <RelationshipDiagramItemGroup
+          key={group.itemId}
+          group={group}
+          selectedItemId={selectedItemId}
+          onItemSelect={onItemSelect}
+          transform={style.rotation
+            ? `rotate(${style.rotation} ${labelPoint.x} ${labelPoint.y})`
+            : undefined}
+          anchor
+        >
+          <path
+            d={annularPath(cx, cy, hubRadius, targetRadius, sourceStart, sourceEnd)}
+            fill={tint(color, 0.7)}
+            fillOpacity={groupFillOpacity(spec)}
+            stroke={spec.borderColor || style.borderColor ? stroke : tint(color, 0.14)}
+            strokeWidth={groupStrokeWidth(spec)}
+          />
+          <SvgLabel
+            value={sourceDisplayLabel(group, spec)}
+            x={labelPoint.x}
+            y={labelPoint.y}
+            width={labelArcWidth}
+            height={targetRadius - hubRadius - 30}
+            fontSize={style.fontSize ?? targetFontSize}
+            fillOverride={style.textColor}
+            weight={700}
+            maximumLines={targetMaximumLines}
+            transform={"rotate(" + labelRotation + " " + labelPoint.x + " " + labelPoint.y + ")"}
+          />
+        </RelationshipDiagramItemGroup>
       );
       cursor += span;
       return;
     }
-    pieces.push(
-      <path
-        key={"source-" + group.itemId}
-        d={annularPath(cx, cy, hubRadius, sourceRadius, sourceStart, sourceEnd)}
-        fill={color}
-        fillOpacity={groupFillOpacity(spec)}
-        stroke={spec.borderColor || style.borderColor ? stroke : "#ffffff"}
-        strokeWidth={groupStrokeWidth(spec)}
-      />
-    );
     const sourceLabelRadius = (hubRadius + sourceRadius) / 2;
     const sourcePoint = polar(cx, cy, sourceLabelRadius, sourceMid);
     const sourceArcWidth = Math.max(
@@ -545,33 +617,6 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
     while (sourceRotation > 180) sourceRotation -= 360;
     if (sourceRotation > 90) sourceRotation -= 180;
     if (sourceRotation < -90) sourceRotation += 180;
-    pieces.push(
-      <SvgLabel
-        key={"source-label-" + group.itemId}
-        value={sourceDisplayLabel(group, spec) + (showGroupCount(group, spec) ? " (" + group.count + ")" : "")}
-        x={sourcePoint.x}
-        y={sourcePoint.y}
-        width={sourceArcWidth}
-        height={sourceRadius - hubRadius - 24}
-        fontSize={style.fontSize ?? sourceFontSize}
-        fill={contrastText(color)}
-        fillOverride={style.textColor}
-        weight={750}
-        maximumLines={sourceMaximumLines}
-        transform={"rotate(" + sourceRotation + " " + sourcePoint.x + " " + sourcePoint.y + ")"}
-      />
-    );
-
-    pieces.push(
-      <path
-        key={"target-panel-" + group.itemId}
-        d={annularPath(cx, cy, sourceRadius, targetRadius, sourceStart, sourceEnd)}
-        fill={tint(color, 0.76)}
-        fillOpacity={groupFillOpacity(spec)}
-        stroke={spec.borderColor || style.borderColor ? stroke : tint(color, 0.14)}
-        strokeWidth={groupStrokeWidth(spec)}
-      />
-    );
     const labelRadius = (sourceRadius + targetRadius) / 2;
     const labelPoint = polar(cx, cy, labelRadius, sourceMid);
     let targetRotation = sourceMid + 90;
@@ -584,19 +629,56 @@ function ArcFanLayout({ groups, spec }: RelationshipDiagramSvgProps) {
     );
     const targetText = arcFanTargetText(group);
     pieces.push(
-      <SvgLabel
-        key={"target-list-" + group.itemId}
-        value={targetText}
-        x={labelPoint.x}
-        y={labelPoint.y}
-        width={targetArcWidth}
-        height={targetRadius - sourceRadius - 30}
-        fontSize={style.fontSize ? Math.max(9, style.fontSize * 0.9) : targetFontSize}
-        fillOverride={style.textColor}
-        weight={600}
-        maximumLines={targetMaximumLines}
-        transform={"rotate(" + targetRotation + " " + labelPoint.x + " " + labelPoint.y + ")"}
-      />
+      <RelationshipDiagramItemGroup
+        key={group.itemId}
+        group={group}
+        selectedItemId={selectedItemId}
+        onItemSelect={onItemSelect}
+        transform={style.rotation
+          ? `rotate(${style.rotation} ${labelPoint.x} ${labelPoint.y})`
+          : undefined}
+        anchor
+      >
+        <path
+          d={annularPath(cx, cy, hubRadius, sourceRadius, sourceStart, sourceEnd)}
+          fill={color}
+          fillOpacity={groupFillOpacity(spec)}
+          stroke={spec.borderColor || style.borderColor ? stroke : "#ffffff"}
+          strokeWidth={groupStrokeWidth(spec)}
+        />
+        <SvgLabel
+          value={sourceDisplayLabel(group, spec) + (showGroupCount(group, spec) ? " (" + group.count + ")" : "")}
+          x={sourcePoint.x}
+          y={sourcePoint.y}
+          width={sourceArcWidth}
+          height={sourceRadius - hubRadius - 24}
+          fontSize={style.fontSize ?? sourceFontSize}
+          fill={contrastText(color)}
+          fillOverride={style.textColor}
+          weight={750}
+          maximumLines={sourceMaximumLines}
+          transform={"rotate(" + sourceRotation + " " + sourcePoint.x + " " + sourcePoint.y + ")"}
+        />
+        <path
+          d={annularPath(cx, cy, sourceRadius, targetRadius, sourceStart, sourceEnd)}
+          fill={tint(color, 0.76)}
+          fillOpacity={groupFillOpacity(spec)}
+          stroke={spec.borderColor || style.borderColor ? stroke : tint(color, 0.14)}
+          strokeWidth={groupStrokeWidth(spec)}
+        />
+        <SvgLabel
+          value={targetText}
+          x={labelPoint.x}
+          y={labelPoint.y}
+          width={targetArcWidth}
+          height={targetRadius - sourceRadius - 30}
+          fontSize={style.fontSize ? Math.max(9, style.fontSize * 0.9) : targetFontSize}
+          fillOverride={style.textColor}
+          weight={600}
+          maximumLines={targetMaximumLines}
+          transform={"rotate(" + targetRotation + " " + labelPoint.x + " " + labelPoint.y + ")"}
+        />
+      </RelationshipDiagramItemGroup>
     );
     cursor += span;
   });
@@ -815,7 +897,12 @@ function SvgTextLines({
   );
 }
 
-function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
+function FlowerLayout({
+  groups,
+  spec,
+  selectedItemId,
+  onItemSelect,
+}: RelationshipDiagramSvgProps) {
   const { width, height, hubRadius, petals, emptyPetals, layerSlotCount } = flowerMetrics(groups, spec);
   const cx = width / 2;
   const cy = height / 2;
@@ -844,6 +931,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
     const color = relationshipDiagramPaletteColor(paletteIndex, spec.palette);
     return {
       key: `flower-empty-${petal.layerIndex}-${petal.slotIndex}-${index}`,
+      group: undefined,
       petal,
       geometry,
       color,
@@ -854,6 +942,7 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   const shapeItems = [
     ...items.map((item) => ({
       key: `flower-shape-${item.group.itemId}`,
+      group: item.group,
       petal: item.petal,
       geometry: item.geometry,
       color: item.color,
@@ -879,22 +968,28 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
       + group.targets.map((target) => target.label).join(", ");
     if (petal.flow.overflowed) {
       return (
-        <g
+        <RelationshipDiagramItemGroup
           key={`flower-content-${group.itemId}`}
-          role="img"
-          aria-label={accessibleLabel}
+          group={group}
+          selectedItemId={selectedItemId}
+          onItemSelect={onItemSelect}
           transform={transform}
+          focusable={false}
+          showSelection={false}
         >
           <title>{accessibleLabel}</title>
-        </g>
+        </RelationshipDiagramItemGroup>
       );
     }
     return (
-      <g
+      <RelationshipDiagramItemGroup
         key={`flower-content-${group.itemId}`}
-        role="group"
-        aria-label={group.itemLabel ?? group.sourceLabel}
+        group={group}
+        selectedItemId={selectedItemId}
+        onItemSelect={onItemSelect}
         transform={transform}
+        focusable={false}
+        showSelection={false}
       >
         <title>{group.sourceLabel + ": " + group.targets.map((target) => target.label).join(", ")}</title>
         <SvgTextLines
@@ -933,19 +1028,15 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
             </g>
           );
         })}
-      </g>
+      </RelationshipDiagramItemGroup>
     );
   };
   return (
     <>
       {orderedLayers.map(({ layerIndex, shapes, content }) => (
         <g key={`flower-layer-${layerIndex}`}>
-          {shapes.map(({ key, geometry, color, stroke, transform }) => (
-            <g
-              key={key}
-              transform={transform}
-              aria-hidden="true"
-            >
+          {shapes.map(({ key, geometry, color, stroke, transform, ...shape }) => {
+            const path = (
               <path
                 d={geometry.path}
                 fill={tint(color, 0.7)}
@@ -955,8 +1046,24 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
-            </g>
-          ))}
+            );
+            return shape.group ? (
+              <RelationshipDiagramItemGroup
+                key={key}
+                group={shape.group}
+                selectedItemId={selectedItemId}
+                onItemSelect={onItemSelect}
+                transform={transform}
+                anchor
+              >
+                {path}
+              </RelationshipDiagramItemGroup>
+            ) : (
+              <g key={key} transform={transform} aria-hidden="true">
+                {path}
+              </g>
+            );
+          })}
           {content.map(renderContent)}
         </g>
       ))}
@@ -983,7 +1090,12 @@ function FlowerLayout({ groups, spec }: RelationshipDiagramSvgProps) {
   );
 }
 
-function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
+function CardGridLayout({
+  groups,
+  spec,
+  selectedItemId,
+  onItemSelect,
+}: RelationshipDiagramSvgProps) {
   const columns = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(Math.max(1, groups.length) * 1.35))));
   const cardWidth = spec.density === "compact" ? 240 : 278;
   const targetLineHeight = Math.max(23, spec.textSize * 1.45);
@@ -1009,8 +1121,12 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         const style = relationshipDiagramItemStyle(group, spec);
         const stroke = groupStrokeColor(group, index, spec);
         return (
-          <g
+          <RelationshipDiagramItemGroup
             key={group.itemId}
+            group={group}
+            selectedItemId={selectedItemId}
+            onItemSelect={onItemSelect}
+            anchor
             transform={style.rotation ? `rotate(${style.rotation} ${x + cardWidth / 2} ${y + cardHeight / 2})` : undefined}
           >
             <rect x={x} y={y} width={cardWidth} height={cardHeight} rx="18" fill={tint(color, 0.84)} fillOpacity={groupFillOpacity(spec)} stroke={stroke} strokeWidth={groupStrokeWidth(spec)} />
@@ -1064,14 +1180,19 @@ function CardGridLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                 />
               </g>
             ))}
-          </g>
+          </RelationshipDiagramItemGroup>
         );
       })}
     </>
   );
 }
 
-function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
+function MatrixLayout({
+  groups,
+  spec,
+  selectedItemId,
+  onItemSelect,
+}: RelationshipDiagramSvgProps) {
   const targets = Array.from(new Map(
     groups.flatMap((group) => group.targets).map((target) => [target.id, target])
   ).values());
@@ -1115,8 +1236,12 @@ function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         const stroke = groupStrokeColor(group, rowIndex, spec);
         const related = new Set(group.targets.map((target) => target.id));
         return (
-          <g
+          <RelationshipDiagramItemGroup
             key={group.itemId}
+            group={group}
+            selectedItemId={selectedItemId}
+            onItemSelect={onItemSelect}
+            anchor
             transform={style.rotation ? `rotate(${style.rotation} ${width / 2} ${y})` : undefined}
           >
             <rect
@@ -1153,7 +1278,7 @@ function MatrixLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                 strokeWidth="2"
               />
             ) : null)}
-          </g>
+          </RelationshipDiagramItemGroup>
         );
       })}
     </>
@@ -1172,7 +1297,12 @@ function radialHubMetrics(groups: RelationshipGroup[], spec: RelationshipDiagram
   return { count, radius, width: size, height: size, panelWidth, panelHeight };
 }
 
-function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
+function RadialHubLayout({
+  groups,
+  spec,
+  selectedItemId,
+  onItemSelect,
+}: RelationshipDiagramSvgProps) {
   const { count, radius, width, height, panelWidth, panelHeight } = radialHubMetrics(groups, spec);
   const cx = width / 2;
   const cy = height / 2 + 16;
@@ -1187,8 +1317,12 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
         const style = relationshipDiagramItemStyle(group, spec);
         const stroke = groupStrokeColor(group, index, spec);
         return (
-          <g
+          <RelationshipDiagramItemGroup
             key={group.itemId}
+            group={group}
+            selectedItemId={selectedItemId}
+            onItemSelect={onItemSelect}
+            anchor
             transform={style.rotation ? `rotate(${style.rotation} ${point.x} ${point.y})` : undefined}
           >
             <path
@@ -1233,7 +1367,7 @@ function RadialHubLayout({ groups, spec }: RelationshipDiagramSvgProps) {
                 maximumLines={1}
               />
             ))}
-          </g>
+          </RelationshipDiagramItemGroup>
         );
       })}
       <circle
@@ -1305,17 +1439,20 @@ export function RelationshipDiagramSvg({
   exportId,
   measureText = false,
   showLabelBoxGuides = false,
+  selectedItemId,
+  onItemSelect,
 }: RelationshipDiagramSvgProps) {
   const { width, height } = relationshipDiagramDimensions(groups, spec);
   const background = isTransparentRelationshipDiagramBackground(spec.background)
     ? "transparent"
     : spec.background;
+  const layoutProps = { groups, spec, selectedItemId, onItemSelect };
   let content: ReactNode;
-  if (spec.layout === "flower") content = <FlowerLayout groups={groups} spec={spec} />;
-  else if (spec.layout === "matrix") content = <MatrixLayout groups={groups} spec={spec} />;
-  else if (spec.layout === "card-grid") content = <CardGridLayout groups={groups} spec={spec} />;
-  else if (spec.layout === "radial-hub") content = <RadialHubLayout groups={groups} spec={spec} />;
-  else content = <ArcFanLayout groups={groups} spec={spec} />;
+  if (spec.layout === "flower") content = <FlowerLayout {...layoutProps} />;
+  else if (spec.layout === "matrix") content = <MatrixLayout {...layoutProps} />;
+  else if (spec.layout === "card-grid") content = <CardGridLayout {...layoutProps} />;
+  else if (spec.layout === "radial-hub") content = <RadialHubLayout {...layoutProps} />;
+  else content = <ArcFanLayout {...layoutProps} />;
 
   return (
     <DiagramVisualStyleContext.Provider value={{

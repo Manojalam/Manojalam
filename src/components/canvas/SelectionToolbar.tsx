@@ -75,6 +75,11 @@ import {
   type CrossBoardDiagramPayload,
 } from "@/lib/canvas/cross-board-copy";
 import { MediaAttachmentMenu } from "@/components/canvas/MediaAttachmentMenu";
+import { RelationshipDiagramItemMediaMenu } from "@/components/canvas/RelationshipDiagramItemMediaMenu";
+import {
+  buildRelationshipGroupsForSpec,
+  normalizeRelationshipDiagramSpec,
+} from "@/lib/relationship-diagram";
 
 function ActionButton({
   label,
@@ -522,6 +527,12 @@ export function SelectionToolbar() {
   const setMoveOnlyNodeId = useUIStore((state) => state.setMoveOnlyNodeId);
   const openRelationshipDiagram = useUIStore((state) => state.openRelationshipDiagram);
   const openBoardExport = useUIStore((state) => state.openBoardExport);
+  const relationshipDiagramItemSelection = useUIStore(
+    (state) => state.relationshipDiagramItemSelection
+  );
+  const setRelationshipDiagramItemSelection = useUIStore(
+    (state) => state.setRelationshipDiagramItemSelection
+  );
   const shapeFormatPainter = useUIStore((state) => state.shapeFormatPainter);
   const setShapeFormatPainter = useUIStore((state) => state.setShapeFormatPainter);
   const { screenToFlowPosition } = useReactFlow();
@@ -652,6 +663,21 @@ export function SelectionToolbar() {
     ? ((selected[0].data ?? {}) as Record<string, unknown>)
     : null;
   const hierarchy = buildHierarchy(nodes, edges);
+  const relationshipDiagramSpec = singleIsRelationshipDiagram
+    ? normalizeRelationshipDiagramSpec(
+        ((selected[0].data ?? {}) as Record<string, unknown>).relationshipDiagramSpec
+      )
+    : null;
+  const selectedRelationshipDiagramItem = singleId
+    && relationshipDiagramSpec
+    && relationshipDiagramItemSelection?.diagramNodeId === singleId
+    ? buildRelationshipGroupsForSpec({
+        spec: relationshipDiagramSpec,
+        nodes,
+        relationships,
+        hierarchy,
+      }).find((group) => group.itemId === relationshipDiagramItemSelection.itemId)
+    : undefined;
   const singleParentId = singleId ? hierarchy.get(singleId)?.parentId : undefined;
   const siblingIds = singleParentId ? hierarchy.get(singleParentId)?.childIds ?? [] : [];
   const singleSiblingIndex = singleId ? siblingIds.indexOf(singleId) : -1;
@@ -718,7 +744,37 @@ export function SelectionToolbar() {
       <Divider />
       {singleId && (
         <>
-          <MediaAttachmentMenu node={selected[0]} />
+          {selectedRelationshipDiagramItem ? (
+            <RelationshipDiagramItemMediaMenu
+              diagramNodeId={singleId}
+              itemId={selectedRelationshipDiagramItem.itemId}
+              itemLabel={selectedRelationshipDiagramItem.itemLabel ?? selectedRelationshipDiagramItem.sourceLabel}
+            />
+          ) : (
+            <MediaAttachmentMenu node={selected[0]} />
+          )}
+          <Divider />
+        </>
+      )}
+
+      {selectedRelationshipDiagramItem && (
+        <>
+          <div
+            role="status"
+            className="flex h-9 max-w-48 items-center gap-1.5 rounded-md bg-primary/10 px-2 text-xs font-medium text-primary"
+            title={selectedRelationshipDiagramItem.itemLabel ?? selectedRelationshipDiagramItem.sourceLabel}
+          >
+            <Share2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              Item: {selectedRelationshipDiagramItem.itemLabel ?? selectedRelationshipDiagramItem.sourceLabel}
+            </span>
+          </div>
+          <ActionButton
+            label="Select the whole relationship diagram"
+            onClick={() => setRelationshipDiagramItemSelection(null)}
+          >
+            <Maximize2 className="h-4 w-4" />
+          </ActionButton>
           <Divider />
         </>
       )}
@@ -906,7 +962,7 @@ export function SelectionToolbar() {
         </>
       )}
 
-      <RotationPicker nodes={selected} />
+      {!selectedRelationshipDiagramItem && <RotationPicker nodes={selected} />}
 
       {singleId && (
         <ActionButton

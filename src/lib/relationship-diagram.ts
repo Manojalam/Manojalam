@@ -27,6 +27,7 @@ import {
   splitSingleSourceRelationshipItems,
   type RelationshipDiagramItemGroup,
 } from "@/lib/relationship-diagram-items";
+import { normalizeMediaAttachments } from "@/lib/canvas/node-media";
 
 export {
   DEFAULT_FLOWER_PETALS_PER_LAYER,
@@ -200,6 +201,7 @@ function normalizeItemStyles(value: unknown): Record<string, RelationshipDiagram
     const flowerLayer = style.flowerLayer === undefined
       ? undefined
       : normalizeFlowerLayerCount(style.flowerLayer) || undefined;
+    const mediaAttachments = normalizeMediaAttachments(style.mediaAttachments);
     const normalized: RelationshipDiagramItemStyle = {
       ...(fillColor ? { fillColor } : {}),
       ...(borderColor ? { borderColor } : {}),
@@ -207,6 +209,7 @@ function normalizeItemStyles(value: unknown): Record<string, RelationshipDiagram
       ...(fontSize !== undefined ? { fontSize } : {}),
       ...(rotation !== undefined ? { rotation } : {}),
       ...(flowerLayer !== undefined ? { flowerLayer } : {}),
+      ...(mediaAttachments.length ? { mediaAttachments } : {}),
     };
     if (Object.keys(normalized).length) result[nodeId] = normalized;
   }

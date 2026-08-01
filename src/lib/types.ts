@@ -307,6 +307,8 @@ export interface RelationshipDiagramItemStyle {
   rotation?: number;
   /** Optional one-based manual petal layer used by the flower layout. */
   flowerLayer?: number;
+  /** Images and audio attached to this independently selectable diagram item. */
+  mediaAttachments?: MediaAttachment[];
 }
 
 export interface RelationshipDiagramScope {

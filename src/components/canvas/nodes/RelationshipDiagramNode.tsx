@@ -1,6 +1,14 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
 import { Move } from "lucide-react";
 
@@ -8,6 +16,7 @@ import {
   RelationshipDiagramSvg,
   relationshipDiagramDimensions,
 } from "@/components/canvas/RelationshipDiagramSvg";
+import { MediaAttachmentPreviewStrip } from "@/components/canvas/NodeMediaLayer";
 import {
   CHART_NODE_MAX_SIZE,
   RELATIONSHIP_DIAGRAM_MIN_HEIGHT,
@@ -26,6 +35,14 @@ import {
   chartHierarchyEdgeToken,
   chartNodeContentToken,
 } from "@/lib/canvas/chart-render-data";
+import { relationshipDiagramItemMediaAttachments } from "@/lib/relationship-diagram-item-media";
+
+interface RelationshipItemMediaPlacement {
+  itemId: string;
+  left: number;
+  top: number;
+  attachments: ReturnType<typeof relationshipDiagramItemMediaAttachments>;
+}
 
 const MemoizedRelationshipDiagramSvg = memo(RelationshipDiagramSvg);
 
@@ -49,7 +66,11 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
   const beginManualNodeResize = useCanvasStore((state) => state.beginManualNodeResize);
   const finishManualNodeResize = useCanvasStore((state) => state.finishManualNodeResize);
   const setNodeSize = useCanvasStore((state) => state.setNodeSize);
+  const itemSelection = useUIStore((state) => state.relationshipDiagramItemSelection);
+  const setItemSelection = useUIStore((state) => state.setRelationshipDiagramItemSelection);
   const [fontMetricsReady, setFontMetricsReady] = useState(false);
+  const [mediaPlacements, setMediaPlacements] = useState<RelationshipItemMediaPlacement[]>([]);
+  const contentRef = useRef<HTMLDivElement>(null);
   const spec = useMemo(
     () => normalizeRelationshipDiagramSpec(d.relationshipDiagramSpec),
     [d.relationshipDiagramSpec]
@@ -72,6 +93,76 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
     }),
     [hierarchy, nodes, relationships, spec]
   );
+  const selectedItemId = itemSelection?.diagramNodeId === id
+    && groups.some((group) => group.itemId === itemSelection.itemId)
+    ? itemSelection.itemId
+    : undefined;
+
+  const selectItem = useCallback((itemId: string) => {
+    const selectedIds = new Set([id]);
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => ({ ...node, selected: selectedIds.has(node.id) })),
+      edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
+      selectedNodeIds: [id],
+      selectedEdgeIds: [],
+    }));
+    setItemSelection({ diagramNodeId: id, itemId });
+  }, [id, setItemSelection]);
+
+  useEffect(() => {
+    if (
+      itemSelection?.diagramNodeId === id
+      && (!selected || !groups.some((group) => group.itemId === itemSelection.itemId))
+    ) {
+      setItemSelection(null);
+    }
+  }, [groups, id, itemSelection, selected, setItemSelection]);
+
+  const refreshMediaPlacements = useCallback(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const intrinsic = relationshipDiagramDimensions(groups, spec);
+    const scale = Math.min(
+      content.clientWidth / Math.max(1, intrinsic.width),
+      content.clientHeight / Math.max(1, intrinsic.height)
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    const offsetX = (content.clientWidth - intrinsic.width * scale) / 2;
+    const offsetY = (content.clientHeight - intrinsic.height * scale) / 2;
+    const placements: RelationshipItemMediaPlacement[] = [];
+    const anchors = new Map(
+      Array.from(content.querySelectorAll<SVGGElement>(
+        '[data-relationship-diagram-item-anchor="true"]'
+      )).map((anchor) => [anchor.dataset.relationshipDiagramItemId, anchor])
+    );
+
+    for (const group of groups) {
+      const attachments = relationshipDiagramItemMediaAttachments(spec.itemStyles, group.itemId);
+      if (!attachments.length) continue;
+      const anchor = anchors.get(group.itemId);
+      if (!anchor) continue;
+      const bounds = anchor.getBBox();
+      placements.push({
+        itemId: group.itemId,
+        left: offsetX + (bounds.x + bounds.width) * scale - 4,
+        top: offsetY + (bounds.y + bounds.height) * scale - 4,
+        attachments,
+      });
+    }
+    setMediaPlacements(placements);
+  }, [groups, spec]);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const frame = window.requestAnimationFrame(refreshMediaPlacements);
+    const observer = new ResizeObserver(refreshMediaPlacements);
+    observer.observe(content);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [fontMetricsReady, refreshMediaPlacements]);
 
   useEffect(() => {
     if (typeof document === "undefined" || !document.fonts) return;
@@ -114,15 +205,37 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
           ...objectRotationStyle("relationshipDiagram", d as Record<string, unknown>),
         }}
         aria-label={spec.title || "Relationship diagram"}
+        onPointerDown={() => {
+          if (itemSelection?.diagramNodeId === id) setItemSelection(null);
+        }}
       >
-        <div className="relative h-full w-full" data-export-fill-node>
+        <div ref={contentRef} className="relative h-full w-full" data-export-fill-node>
           <MemoizedRelationshipDiagramSvg
             groups={groups}
             spec={spec}
             exportId={id}
             measureText={fontMetricsReady}
             showLabelBoxGuides={showLabelBoxGuides}
+            selectedItemId={selectedItemId}
+            onItemSelect={selectItem}
           />
+          {mediaPlacements.map((placement) => (
+            <div
+              key={placement.itemId}
+              className="nodrag nopan nowheel absolute z-50 flex items-center gap-0.5"
+              style={{
+                left: placement.left,
+                top: placement.top,
+                transform: "translate(-100%, -100%)",
+              }}
+              data-relationship-diagram-item-media={placement.itemId}
+              data-export-ignore
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MediaAttachmentPreviewStrip attachments={placement.attachments} compact />
+            </div>
+          ))}
         </div>
         {selected && (
           <div
