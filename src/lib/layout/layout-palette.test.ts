@@ -84,6 +84,8 @@ test("automatic text treatment defaults to fill contrast and supports hierarchy 
   assert.equal(layoutTextTreatment(undefined), "contrast");
   assert.equal(layoutTextTreatment("unsupported"), "contrast");
   assert.equal(layoutTextTreatment("hierarchy"), "hierarchy");
+  assert.equal(layoutTextTreatment("uniform-dark"), "uniform-dark");
+  assert.equal(layoutTextTreatment("uniform-light"), "uniform-light");
   assert.equal(
     automaticLayoutTextColor("#ffffff", "#bf4059", "contrast", 1),
     "#ffffff"
@@ -95,6 +97,18 @@ test("automatic text treatment defaults to fill contrast and supports hierarchy 
   assert.match(
     automaticLayoutTextColor("#ffffff", "#bf4059", "hierarchy", 1),
     /^color-mix\(in srgb, hsl\(348\.\d, 49\.\d%, 50\.0%\) 62%, var\(--foreground\)\)$/
+  );
+  assert.equal(
+    automaticLayoutTextColor("#ffffff", "#bf4059", "uniform-dark", 1),
+    "#020617"
+  );
+  assert.equal(
+    automaticLayoutTextColor("#020617", "#bf4059", "uniform-light", 2),
+    "#ffffff"
+  );
+  assert.equal(
+    automaticLayoutTextColor("#fffaf2", "#bf4059", "uniform-dark", 0),
+    "#fffaf2"
   );
 });
 
@@ -130,6 +144,26 @@ test("hierarchy text colors separate branches while descendants retain their bra
   assert.equal(hierarchyHue("branch-a"), hierarchyHue("a-1"));
   assert.notEqual(hierarchyHue("branch-a"), hierarchyHue("branch-b"));
   assert.match(styles.get("root")?.textColor ?? "", /^color-mix\(/);
+});
+
+test("uniform text treatments keep the root contrasting and make every descendant consistent", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const hierarchy = buildHierarchy(nodes, edges);
+  const darkNodes = nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutTextTreatment: "uniform-dark" } }
+    : node);
+  const lightNodes = nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, layoutTextTreatment: "uniform-light" } }
+    : node);
+  const darkStyles = buildLayoutVisualStyles("root", hierarchy, "list", "spectrum", darkNodes);
+  const lightStyles = buildLayoutVisualStyles("root", hierarchy, "list", "spectrum", lightNodes);
+
+  assert.equal(darkStyles.get("root")?.textColor, "#ffffff");
+  assert.equal(lightStyles.get("root")?.textColor, "#ffffff");
+  for (const nodeId of ["branch-a", "a-1", "a-1-child", "a-2", "branch-b", "b-1"]) {
+    assert.equal(darkStyles.get(nodeId)?.textColor, "#020617");
+    assert.equal(lightStyles.get(nodeId)?.textColor, "#ffffff");
+  }
 });
 
 test("a manual empty fill remains independent from automatic hierarchy text", () => {

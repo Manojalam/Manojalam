@@ -116,7 +116,11 @@ export type LayoutBorderTreatment =
 
 export type LayoutBorderLineStyle = "solid" | "dashed" | "dotted";
 
-export type LayoutTextTreatment = "contrast" | "hierarchy";
+export type LayoutTextTreatment =
+  | "contrast"
+  | "hierarchy"
+  | "uniform-dark"
+  | "uniform-light";
 
 /** @deprecated Use LayoutColorPattern. Retained for persisted Matrix boards. */
 export type MatrixRowColorPattern = LayoutColorPattern;

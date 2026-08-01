@@ -210,6 +210,8 @@ export function layoutBorderLineStyle(value: unknown): LayoutBorderLineStyle {
 
 export function layoutTextTreatment(value: unknown): LayoutTextTreatment {
   return value === "hierarchy"
+    || value === "uniform-dark"
+    || value === "uniform-light"
     ? value
     : DEFAULT_LAYOUT_TEXT_TREATMENT;
 }
@@ -217,9 +219,11 @@ export function layoutTextTreatment(value: unknown): LayoutTextTreatment {
 /**
  * Resolves automatic chart text independently from its fill.
  *
- * Contrast preserves the established black/white behavior. Hierarchy keeps
- * each top-level branch in one hue family, while mixing that hue toward the
- * active theme foreground so transparent items remain readable.
+ * Contrast preserves the established per-fill black/white behavior. Uniform
+ * modes keep the chart root contrasting, then use one exact color for every
+ * descendant. Hierarchy keeps each top-level branch in one hue family, while
+ * mixing that hue toward the active theme foreground so transparent items
+ * remain readable.
  */
 export function automaticLayoutTextColor(
   contrastTextColor: string,
@@ -227,8 +231,13 @@ export function automaticLayoutTextColor(
   treatmentValue: unknown,
   depth = 0
 ): string {
-  if (layoutTextTreatment(treatmentValue) === "contrast") {
-    return contrastTextColor;
+  const treatment = layoutTextTreatment(treatmentValue);
+  if (treatment === "contrast") return contrastTextColor;
+  if (treatment === "uniform-dark") {
+    return depth <= 0 ? contrastTextColor : "#020617";
+  }
+  if (treatment === "uniform-light") {
+    return depth <= 0 ? contrastTextColor : "#ffffff";
   }
 
   const anchor = parseColor(hierarchyColor);
