@@ -526,6 +526,46 @@ function contourConnectionPoint(
   return selected?.point ?? null;
 }
 
+function contourAxisConnectionPoint(
+  contours: readonly ShapeContour[],
+  side: ConnectionSide,
+  axis: number
+): ShapeConnectionPoint | null {
+  const vertical = side === "top" || side === "bottom";
+  const candidates: ShapeConnectionPoint[] = [];
+
+  for (const points of contours) {
+    for (let index = 0; index < points.length; index += 1) {
+      const start = points[index];
+      const end = points[(index + 1) % points.length];
+      const startAxis = vertical ? start.x : start.y;
+      const endAxis = vertical ? end.x : end.y;
+      const axisDelta = endAxis - startAxis;
+
+      if (Math.abs(axisDelta) <= INTERSECTION_EPSILON) {
+        if (Math.abs(axis - startAxis) <= INTERSECTION_EPSILON) {
+          candidates.push(start, end);
+        }
+        continue;
+      }
+
+      const progress = (axis - startAxis) / axisDelta;
+      if (progress < -INTERSECTION_EPSILON || progress > 1 + INTERSECTION_EPSILON) continue;
+      candidates.push(vertical
+        ? { x: axis, y: start.y + (end.y - start.y) * progress }
+        : { x: start.x + (end.x - start.x) * progress, y: axis });
+    }
+  }
+
+  if (!candidates.length) return null;
+  return candidates.reduce((selected, candidate) => {
+    if (side === "bottom") return candidate.y > selected.y ? candidate : selected;
+    if (side === "top") return candidate.y < selected.y ? candidate : selected;
+    if (side === "right") return candidate.x > selected.x ? candidate : selected;
+    return candidate.x < selected.x ? candidate : selected;
+  });
+}
+
 export function isSvgShapeType(shapeType: string): boolean {
   const kind = SHAPE_OUTLINE_KINDS[shapeType as ShapeType];
   return kind === "polygon"
@@ -562,6 +602,43 @@ export function shapeConnectionPoint(
     outline.strategy
   );
   if (!point) return DEFAULT_CONNECTION_POINTS[side];
+  return {
+    x: point.x / width * 100,
+    y: point.y / height * 100,
+  };
+}
+
+/** Return a silhouette point on a requested vertical or horizontal axis. */
+export function shapeConnectionPointAtAxis(
+  shapeType: string | undefined,
+  side: ConnectionSide,
+  axisPercent: number,
+  options: ShapeConnectionOptions = {}
+): ShapeConnectionPoint {
+  const width = finitePositive(options.width, 100);
+  const height = finitePositive(options.height, 100);
+  const center = { x: width / 2, y: height / 2 };
+  const outline = shapeContours(shapeType, width, height, options);
+  const rotation = typeof options.rotation === "number" && Number.isFinite(options.rotation)
+    ? options.rotation
+    : 0;
+  const rotatedContours = rotation
+    ? outline.contours.map((contour) =>
+        contour.map((point) => rotatePoint(point, center, rotation))
+      )
+    : outline.contours;
+  const vertical = side === "top" || side === "bottom";
+  const requestedAxis = axisPercent / 100 * (vertical ? width : height);
+  const contourAxes = rotatedContours.flatMap((contour) =>
+    contour.map((point) => vertical ? point.x : point.y)
+  );
+  const minimumAxis = Math.min(...contourAxes);
+  const maximumAxis = Math.max(...contourAxes);
+  const axis = Number.isFinite(requestedAxis)
+    ? Math.max(minimumAxis, Math.min(maximumAxis, requestedAxis))
+    : (minimumAxis + maximumAxis) / 2;
+  const point = contourAxisConnectionPoint(rotatedContours, side, axis);
+  if (!point) return shapeConnectionPoint(shapeType, side, options);
   return {
     x: point.x / width * 100,
     y: point.y / height * 100,
@@ -611,6 +688,33 @@ export function nodeShapeConnectionPoint(
   const normalized = shapeConnectionPoint(
     shapeType,
     side,
+    nodeShapeConnectionOptions(node, rect, shapeType)
+  );
+  return {
+    x: rect.x + rect.width * normalized.x / 100,
+    y: rect.y + rect.height * normalized.y / 100,
+  };
+}
+
+/** Resolve a node silhouette point while keeping a connector on one canvas axis. */
+export function nodeShapeConnectionPointAtAxis(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  side: ConnectionSide,
+  axisCoordinate: number
+): ShapeConnectionPoint {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const shapeType = node.type === "shape"
+    ? typeof data.shapeType === "string" ? data.shapeType : "rounded"
+    : "rectangle";
+  const vertical = side === "top" || side === "bottom";
+  const axisPercent = vertical
+    ? (axisCoordinate - rect.x) / rect.width * 100
+    : (axisCoordinate - rect.y) / rect.height * 100;
+  const normalized = shapeConnectionPointAtAxis(
+    shapeType,
+    side,
+    axisPercent,
     nodeShapeConnectionOptions(node, rect, shapeType)
   );
   return {

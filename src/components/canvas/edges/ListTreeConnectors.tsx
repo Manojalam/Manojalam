@@ -8,7 +8,6 @@ import {
   DEFAULT_LIST_CONNECTOR_WIDTH,
   type ListConnectorModel,
 } from "@/lib/layout/list-layout";
-import { smoothListSharedPath } from "@/lib/layout/list-connector-path";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { resolveAccentColor, themeAwareLayoutConnectorColor } from "@/lib/style-utils";
@@ -146,7 +145,7 @@ export function ListTreeConnectors() {
               ? normalEdgeColor(baseEdge)
               : parentAccent);
             const trunkWidth = Math.max(...group.branches.map((branch) => edgeWidth(branch.edge)));
-            const sharedPath = smoothListSharedPath(group.sharedSegments);
+            const sharedPath = branchPath({ segments: group.sharedSegments });
             return (
               <g key={group.parentId}>
                 <ConnectorSvgPath

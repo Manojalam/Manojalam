@@ -12,7 +12,6 @@ import {
   diagnoseListLayout,
   getPreorderTraversal,
 } from "./list-layout";
-import { smoothListSharedPath } from "./list-connector-path";
 
 type TreeSpec = {
   id: string;
@@ -396,7 +395,12 @@ test("List connectors use one vertical trunk per parent with short child stubs",
   const model = buildListConnectorModel(positionedNodes(tree.nodes, placements), tree.edges);
 
   assert.ok(model.groups.every((group) => group.orientation === "vertical"));
-  assert.ok(model.groups.every((group) => group.sharedSegments.length === 3));
+  assert.ok(model.groups.every((group) => group.sharedSegments.length === 1));
+  assert.ok(model.groups.every((group) => {
+    const trunk = group.sharedSegments[0];
+    return trunk.x1 === trunk.x2
+      && group.branches.every((branch) => branch.segments[0].x1 === trunk.x1);
+  }));
   assert.ok(model.groups.every((group) => new Set(
     group.branches.map((branch) => branch.segments[0].x1)
   ).size === 1));
@@ -435,7 +439,7 @@ test("Matrix-root siblings share one List trunk despite different left edges and
 
   assert.ok(rootGroup);
   assert.equal(rootGroup!.branches.length, 3);
-  assert.equal(rootGroup!.sharedSegments.length, 3);
+  assert.equal(rootGroup!.sharedSegments.length, 1);
   assert.equal(new Set(rootGroup!.branches.map((branch) => branch.segments[0].x1)).size, 1);
   assert.deepEqual(model.duplicateVisibleConnectorSegments, []);
 });
@@ -507,15 +511,13 @@ test("List buses start and end on irregular shape silhouettes", () => {
   const group = buildListConnectorModel(nodes, tree.edges).groups[0];
 
   assert.ok(group);
-  assert.deepEqual(
-    { x: group.sharedSegments[0].x1, y: group.sharedSegments[0].y1 },
-    { x: 350, y: 450 }
-  );
+  assert.ok(Math.abs(group.sharedSegments[0].x1 - 312) < 0.001);
+  assert.ok(group.sharedSegments[0].y1 > 450);
   assert.ok(Math.abs(group.branches[0].segments[0].x2 - 404.909091) < 0.001);
   assert.equal(group.branches[0].segments[0].y2, 860);
 });
 
-test("List buses use the same side-center contract for rounded shapes", () => {
+test("List buses meet rounded parents directly on the shared trunk axis", () => {
   const tree = buildTree([
     { id: "root", parentId: null, width: 500, height: 200 },
     { id: "child", parentId: "root", width: 200, height: 100 },
@@ -536,8 +538,10 @@ test("List buses use the same side-center contract for rounded shapes", () => {
   assert.ok(group);
   assert.deepEqual(
     { x: group.sharedSegments[0].x1, y: group.sharedSegments[0].y1 },
-    { x: 350, y: 300 }
+    { x: 312, y: 300 }
   );
+  assert.equal(group.sharedSegments[0].x1, group.sharedSegments[0].x2);
+  assert.equal(group.sharedSegments[0].x1, group.branches[0].segments[0].x1);
   assert.deepEqual(
     {
       x: group.branches[0].segments[0].x2,
@@ -595,25 +599,4 @@ test("growing a row moves every later outline row by the growth amount", () => {
     assert.equal(after[nodeId].y - before[nodeId].y, 120, `${nodeId} should move with the later rows`);
   }
   assertNoOverlap(positionedNodes(resizedNodes, after));
-});
-
-test("List shared trunks curve smoothly out of offset parent anchors", () => {
-  const path = smoothListSharedPath([
-    { x1: 100, y1: 20, x2: 100, y2: 40 },
-    { x1: 100, y1: 40, x2: 84, y2: 40 },
-    { x1: 84, y1: 40, x2: 84, y2: 180 },
-  ]);
-
-  assert.equal(path, "M 100 20 C 100 30 84 30 84 40 L 84 180");
-  assert.equal(path.includes("L 100 40 L 84 40"), false);
-});
-
-test("aligned List shared trunks remain one clean straight segment", () => {
-  const path = smoothListSharedPath([
-    { x1: 84, y1: 20, x2: 84, y2: 40 },
-    { x1: 84, y1: 40, x2: 84, y2: 40 },
-    { x1: 84, y1: 40, x2: 84, y2: 180 },
-  ]);
-
-  assert.equal(path, "M 84 20 L 84 180");
 });
