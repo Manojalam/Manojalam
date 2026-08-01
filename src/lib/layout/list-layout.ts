@@ -408,9 +408,10 @@ export function computeListLayout(
 
 /**
  * Widths for the default List Fold presentation. Fold roots keep their left
- * edge as the stable layout anchor and stretch far enough to own every section
- * beneath them. Descendant Fold widths are included bottom-up so an outer Fold
- * reserves their complete visible span in the same reflow.
+ * edge as the stable layout anchor and stretch only across their direct section
+ * headers. Deep descendants belong to those headers' outlines and must never
+ * turn the Fold root itself into a full-canvas bar. Nested expanded headers are
+ * included bottom-up when they are direct children of another Fold.
  */
 export function computeListFoldRootSizes(
   rootId: string,
@@ -435,19 +436,18 @@ export function computeListFoldRootSizes(
     ) continue;
 
     const rect = rectAt(node, placements[nodeId]);
-    let visibleRight = rect.right;
-    for (const descendantId of getSubtree(nodeId, hierarchy)) {
-      if (descendantId === nodeId) continue;
-      const descendant = byId.get(descendantId);
-      const placement = placements[descendantId];
-      if (!descendant || !placement) continue;
-      const descendantRect = rectAt(descendant, placement);
+    let visibleRight = rect.left;
+    for (const childId of childIds) {
+      const child = byId.get(childId);
+      const placement = placements[childId];
+      if (!child || !placement) continue;
+      const childRect = rectAt(child, placement);
       visibleRight = Math.max(
         visibleRight,
-        descendantRect.left + (virtualWidths.get(descendantId) ?? descendantRect.width)
+        childRect.left + (virtualWidths.get(childId) ?? childRect.width)
       );
     }
-    const width = Math.ceil(Math.max(rect.width, visibleRight - rect.left + LIST_OUTER_PADDING));
+    const width = Math.ceil(visibleRight - rect.left + LIST_OUTER_PADDING);
     sizes.set(nodeId, { width, height: rect.height });
     virtualWidths.set(nodeId, width);
   }
