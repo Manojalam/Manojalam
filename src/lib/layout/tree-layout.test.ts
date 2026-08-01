@@ -212,6 +212,74 @@ test("subtree packing uses compact gaps without collapsing branch boundaries", (
   }
 });
 
+test("Horizontal root branches use adjacent descendant bounds instead of uniform header gaps", () => {
+  const branchSpecs = [
+    { id: "large", leafCount: 4 },
+    { id: "small", leafCount: 1 },
+    { id: "medium", leafCount: 2 },
+  ];
+  const nodes: Node[] = [{
+    id: "root",
+    type: "shape",
+    position: { x: 200, y: 400 },
+    measured: { width: 220, height: 70 },
+    data: { parentId: null, childOrder: branchSpecs.map(({ id }) => id) },
+  }];
+  const edges: Edge[] = [];
+
+  for (const { id, leafCount } of branchSpecs) {
+    const leafIds = Array.from({ length: leafCount }, (_, index) => `${id}-leaf-${index}`);
+    nodes.push({
+      id,
+      type: "shape",
+      position: { x: 0, y: 0 },
+      measured: { width: 150, height: 60 },
+      data: { parentId: "root", childOrder: leafIds },
+    });
+    edges.push({
+      id: `root-${id}`,
+      source: "root",
+      target: id,
+      type: "branch",
+      data: { layoutMode: "horizontal", edgeType: "branch" },
+    });
+    for (const leafId of leafIds) {
+      nodes.push({
+        id: leafId,
+        type: "shape",
+        position: { x: 0, y: 0 },
+        measured: { width: 110, height: 40 },
+        data: { parentId: id, childOrder: [] },
+      });
+      edges.push({
+        id: `${id}-${leafId}`,
+        source: id,
+        target: leafId,
+        type: "branch",
+        data: { layoutMode: "horizontal", edgeType: "branch" },
+      });
+    }
+  }
+
+  const hierarchy = buildHierarchy(nodes, edges);
+  const placed = applyLayout(nodes, edges, "horizontal");
+  const subtreeBounds = branchSpecs.map(({ id }) => (
+    crossBounds(placed, getSubtree(id, hierarchy), "horizontal")
+  ));
+  for (let index = 1; index < subtreeBounds.length; index += 1) {
+    assert.equal(
+      subtreeBounds[index].start - subtreeBounds[index - 1].end,
+      ORTHOGONAL_TREE_SPACING.horizontal.rootBranchGap
+    );
+  }
+
+  const headers = branchSpecs.map(({ id }) => getNodeRect(placed.find((node) => node.id === id)!));
+  const firstHeaderGap = headers[1].top - headers[0].bottom;
+  const secondHeaderGap = headers[2].top - headers[1].bottom;
+  assert.notEqual(firstHeaderGap, secondHeaderGap);
+  assertNoOverlap(placed, "horizontal");
+});
+
 test("nested Fold compacts the next root branch from the visible subtree bounds", () => {
   const fixture = nestedFoldTree();
   const hierarchy = buildHierarchy(fixture.nodes, fixture.edges);
@@ -442,7 +510,7 @@ test("a folded nested List resolves the surrounding Vertical root for repacking"
   );
 });
 
-test("Vertical root headers keep one uniform gap across differently sized nested Lists", () => {
+test("Vertical root branches pack according to differently sized nested List bounds", () => {
   const specs: Array<{
     id: string;
     parentId: string | null;
@@ -488,16 +556,17 @@ test("Vertical root headers keep one uniform gap across differently sized nested
     "vertical"
   );
   const placed = nodes.map((node) => ({ ...node, position: placements[node.id] ?? node.position }));
-  const headers = ["wide", "narrow", "medium"].map((id) => getNodeRect(placed.find((node) => node.id === id)!));
-  const firstGap = headers[1].left - headers[0].right;
-  const secondGap = headers[2].left - headers[1].right;
-
-  assert.ok(Math.abs(firstGap - secondGap) < 0.001);
   const subtreeBounds = ["wide", "narrow", "medium"].map((id) => (
     crossBounds(placed, getSubtree(id, hierarchy), "vertical")
   ));
-  assert.ok(subtreeBounds[1].start - subtreeBounds[0].end >= ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
-  assert.ok(subtreeBounds[2].start - subtreeBounds[1].end >= ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap);
+  assert.equal(
+    subtreeBounds[1].start - subtreeBounds[0].end,
+    ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap
+  );
+  assert.equal(
+    subtreeBounds[2].start - subtreeBounds[1].end,
+    ORTHOGONAL_TREE_SPACING.vertical.rootBranchGap
+  );
   assertNoOverlap(placed, "vertical");
 });
 
