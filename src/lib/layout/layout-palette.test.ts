@@ -762,6 +762,38 @@ test("manual surface overrides survive palette changes and can be reset", () => 
   assert.equal(resetData.layoutAutoTypography, false);
 });
 
+test("a chart border setting reclaims descendant borders without resetting fill or text", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const overriddenNodes = nodes.map((node) => ["branch-a", "a-1", "a-1-child"].includes(node.id)
+    ? {
+        ...node,
+        data: {
+          ...node.data,
+          layoutAutoBorder: false,
+          layoutAutoFill: false,
+          layoutAutoText: false,
+        },
+      }
+    : node);
+  const hierarchy = buildHierarchy(overriddenNodes, edges);
+  const styled = applyLayoutPalette(
+    overriddenNodes,
+    edges,
+    hierarchy,
+    "root",
+    "list",
+    "forest",
+    { resetBorderOverrides: true }
+  );
+
+  for (const nodeId of ["branch-a", "a-1", "a-1-child"]) {
+    const data = styled.nodes.find((node) => node.id === nodeId)!.data as Record<string, unknown>;
+    assert.equal(data.layoutAutoBorder, undefined, `${nodeId} should return to automatic borders`);
+    assert.equal(data.layoutAutoFill, false, `${nodeId} fill should remain manual`);
+    assert.equal(data.layoutAutoText, false, `${nodeId} text should remain manual`);
+  }
+});
+
 test("a manual parent fill anchors one automatic shade per descendant depth", () => {
   const { nodes, edges } = hierarchyFixture();
   const branchIndex = nodes.findIndex((node) => node.id === "branch-a");

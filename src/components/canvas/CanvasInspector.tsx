@@ -1091,7 +1091,7 @@ function LayoutBorderControls({
         </div>
       )}
       <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
-        Borders changed directly on an item remain manual until reset to automatic.
+        Applying a setting here updates automatic borders throughout this hierarchy. You can still edit an individual item afterward.
       </p>
     </div>
   );
