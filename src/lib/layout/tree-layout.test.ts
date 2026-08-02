@@ -160,6 +160,31 @@ test("dense Horizontal and Vertical trees stay collision-free and keep the root 
   }
 });
 
+test("Horizontal tree columns left-align boxes with different widths", () => {
+  const fixture = denseTree();
+  const placed = applyLayout(fixture.nodes, fixture.edges, "horizontal");
+  const hierarchy = buildHierarchy(placed, fixture.edges);
+
+  for (const depth of [1, 2]) {
+    const rects = placed
+      .filter((node) => hierarchy.get(node.id)?.depth === depth)
+      .map(getNodeRect);
+    assert.ok(rects.length > 1);
+    assert.ok(Math.max(...rects.map((rect) => rect.left))
+      - Math.min(...rects.map((rect) => rect.left)) < 0.001);
+  }
+
+  const rootRect = getNodeRect(placed.find((node) => node.id === "root")!);
+  const branchRects = placed
+    .filter((node) => hierarchy.get(node.id)?.depth === 1)
+    .map(getNodeRect);
+  assert.equal(
+    Math.min(...branchRects.map((rect) => rect.left)) - rootRect.right,
+    ORTHOGONAL_TREE_SPACING.horizontal.levelGap
+  );
+  assertNoOverlap(placed, "horizontal");
+});
+
 test("parents remain centered over complete child subtree bands", () => {
   const fixture = denseTree();
   const hierarchy = buildHierarchy(fixture.nodes, fixture.edges);
