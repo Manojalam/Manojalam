@@ -274,10 +274,12 @@ export function computeOrthogonalTreeLayout(
   collect(rootId, 0);
 
   const maxDepth = Math.max(0, ...depthById.values());
+  const levelStart = new Map<number, number>();
   const levelCenter = new Map<number, number>();
   let mainCursor = 0;
   for (let depth = 0; depth <= maxDepth; depth += 1) {
     const bandSize = levelMaxMain.get(depth) ?? 0;
+    levelStart.set(depth, mainCursor);
     levelCenter.set(depth, mainCursor + bandSize / 2);
     mainCursor += bandSize + spacing.levelGap;
   }
@@ -321,7 +323,12 @@ export function computeOrthogonalTreeLayout(
     if (!nodeMetrics) return;
     const depth = depthById.get(nodeId) ?? 0;
     const crossCenter = crossStart + nodeMetrics.span / 2;
-    const mainCenter = levelCenter.get(depth) ?? 0;
+    const size = getNodeDimensions(byId.get(nodeId)!);
+    // Horizontal trees read as columns. Keep unequal boxes flush-left inside
+    // each depth band instead of centering them and creating a ragged edge.
+    const mainCenter = horizontal
+      ? (levelStart.get(depth) ?? 0) + size.width / 2
+      : levelCenter.get(depth) ?? 0;
     centers[nodeId] = horizontal
       ? { x: mainCenter, y: crossCenter }
       : { x: crossCenter, y: mainCenter };
