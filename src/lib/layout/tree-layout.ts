@@ -128,66 +128,6 @@ function moveTreePlacements(
   }
 }
 
-function packRootChildrenWithUniformHeaderGaps(
-  children: string[],
-  placements: TreePlacements,
-  subtreeIds: ReadonlyMap<string, string[]>,
-  byId: Map<string, Node>,
-  orientation: OrthogonalTreeOrientation,
-  minimumGap: number,
-  parentCrossCenter: number
-): boolean {
-  if (children.length < 2) return false;
-  const horizontal = orientation === "horizontal";
-  const metrics = children.map((childId) => {
-    const child = byId.get(childId);
-    const placement = placements[childId];
-    const bounds = treePlacementBounds(subtreeIds.get(childId) ?? [], placements, byId);
-    if (!child || !placement || !bounds) return null;
-    const header = treePlacementRect(child, placement);
-    return {
-      childId,
-      headerStart: horizontal ? header.top : header.left,
-      headerEnd: horizontal ? header.bottom : header.right,
-      subtreeStart: horizontal ? bounds.top : bounds.left,
-      subtreeEnd: horizontal ? bounds.bottom : bounds.right,
-    };
-  });
-  if (metrics.some((metric) => !metric)) return false;
-  const resolved = metrics.filter((metric): metric is NonNullable<typeof metric> => !!metric);
-  const headerGap = resolved.slice(0, -1).reduce((requiredGap, metric, index) => {
-    const next = resolved[index + 1];
-    const trailingExtent = metric.subtreeEnd - metric.headerEnd;
-    const leadingExtent = next.headerStart - next.subtreeStart;
-    return Math.max(requiredGap, trailingExtent + minimumGap + leadingExtent);
-  }, minimumGap);
-
-  let nextHeaderStart = resolved[0].headerStart;
-  for (const metric of resolved) {
-    const crossDelta = nextHeaderStart - metric.headerStart;
-    moveTreePlacements(
-      subtreeIds.get(metric.childId) ?? [],
-      placements,
-      horizontal ? 0 : crossDelta,
-      horizontal ? crossDelta : 0
-    );
-    nextHeaderStart += metric.headerEnd - metric.headerStart + headerGap;
-  }
-
-  const allNodeIds = [...new Set(children.flatMap((childId) => subtreeIds.get(childId) ?? []))];
-  const groupBounds = treePlacementBounds(allNodeIds, placements, byId);
-  if (!groupBounds) return true;
-  const groupCrossCenter = horizontal ? groupBounds.centerY : groupBounds.centerX;
-  const centerDelta = parentCrossCenter - groupCrossCenter;
-  moveTreePlacements(
-    allNodeIds,
-    placements,
-    horizontal ? 0 : centerDelta,
-    horizontal ? centerDelta : 0
-  );
-  return true;
-}
-
 /**
  * Repack child subtrees after nested Fold sections have reached their final
  * visual size. This prevents ancestors from retaining the space that the
@@ -199,8 +139,7 @@ function compactFoldedTreePlacements(
   byId: Map<string, Node>,
   orientation: OrthogonalTreeOrientation,
   spacing: OrthogonalTreeSpacing,
-  ownedParentIds: ReadonlySet<string>,
-  layoutRootId: string
+  ownedParentIds: ReadonlySet<string>
 ): TreePlacements {
   const next = Object.fromEntries(
     Object.entries(placements).map(([nodeId, placement]) => [nodeId, { ...placement }])
@@ -236,19 +175,6 @@ function compactFoldedTreePlacements(
     }, 0));
     const parentRect = treePlacementRect(parent, parentPlacement);
     const parentCrossCenter = horizontal ? parentRect.centerY : parentRect.centerX;
-    if (
-      parentEntry.id === layoutRootId
-      && sections.length === 1
-      && packRootChildrenWithUniformHeaderGaps(
-        children,
-        next,
-        subtreeIds,
-        byId,
-        orientation,
-        childGap,
-        parentCrossCenter
-      )
-    ) continue;
     const groupCrossStart = parentCrossCenter - Math.max(...sectionSpans) / 2;
 
     for (const section of sections) {
@@ -454,8 +380,7 @@ export function computeOrthogonalTreeLayout(
     byId,
     orientation,
     spacing,
-    ownedNodeIds,
-    rootId
+    ownedNodeIds
   );
 }
 
