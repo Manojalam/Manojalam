@@ -4532,6 +4532,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const resetBorderOverrides = "layoutBorderTreatment" in patch
       || "layoutBorderStyle" in patch
       || "layoutBorderWidth" in patch;
+    const resetTextOverrides = "layoutTextTreatment" in patch;
     const hierarchy = buildHierarchy(hierarchyNodes, edges);
     get().pushHistory();
     const styled = applyLayoutPalette(
@@ -4541,7 +4542,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       rootId,
       mode,
       layoutSchemeValue(preparedNodes, rootId),
-      { resetBorderOverrides }
+      { resetBorderOverrides, resetTextOverrides }
     );
     const scopeIds = new Set(getSubtree(rootId, hierarchy));
     const nextNodes = mode === "matrix"

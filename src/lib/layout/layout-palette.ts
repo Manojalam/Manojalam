@@ -24,6 +24,7 @@ import {
   layoutTextTreatment,
   radialColorScheme,
   radialSectorColors,
+  uniformLayoutTextColor,
 } from "../radial-layout";
 import { getLayoutOwnedSubtree, getSubtree, type Hierarchy } from "./hierarchy";
 import { layoutFontSizeFor } from "./layout-presentation";
@@ -42,6 +43,7 @@ const AUTOMATIC_COLOR_MODES = new Set<LayoutMode>([
 export interface ApplyLayoutPaletteOptions {
   resetOverrides?: boolean;
   resetBorderOverrides?: boolean;
+  resetTextOverrides?: boolean;
 }
 
 export interface LayoutPaletteResult {
@@ -339,6 +341,24 @@ export function buildLayoutVisualStyles(
     });
   }
 
+  if (textTreatment === "uniform-level") {
+    const stylesByDepth = new Map<number, LayoutVisualStyle[]>();
+    for (const style of styles.values()) {
+      if (style.depth <= 0) continue;
+      stylesByDepth.set(style.depth, [
+        ...(stylesByDepth.get(style.depth) ?? []),
+        style,
+      ]);
+    }
+    for (const levelStyles of stylesByDepth.values()) {
+      const textColor = uniformLayoutTextColor(
+        levelStyles.map((style) => style.fillColor),
+        levelStyles[0]?.textColor
+      );
+      for (const style of levelStyles) style.textColor = textColor;
+    }
+  }
+
   return styles;
 }
 
@@ -398,6 +418,7 @@ export function applyLayoutPalette(
   const scheme = selectedLayoutColorScheme(schemeValue);
   const resetOverrides = options.resetOverrides === true;
   const resetBorderOverrides = options.resetBorderOverrides === true;
+  const resetTextOverrides = options.resetTextOverrides === true;
   const visualStyles = buildLayoutVisualStyles(
     rootId,
     hierarchy,
@@ -415,9 +436,10 @@ export function applyLayoutPalette(
             layoutAutoBorder: undefined,
             layoutAutoText: undefined,
           }
-        : resetBorderOverrides
-          ? { layoutAutoBorder: undefined }
-          : {};
+        : {
+            ...(resetBorderOverrides ? { layoutAutoBorder: undefined } : {}),
+            ...(resetTextOverrides ? { layoutAutoText: undefined } : {}),
+          };
       return {
         ...node,
         data: {

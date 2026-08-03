@@ -18,6 +18,7 @@ import {
   layoutTextTreatment,
   matrixRowAnchorColor,
   radialSectorColors,
+  uniformLayoutTextColor,
 } from "../radial-layout";
 
 function hierarchyFixture(): { nodes: Node[]; edges: Edge[] } {
@@ -71,6 +72,9 @@ test("hierarchy colors keep descendants related while separating root branches",
   assert.equal(styles.get("branch-a")?.branchIndex, 0);
   assert.equal(styles.get("a-1")?.branchIndex, 0);
   assert.equal(styles.get("branch-b")?.branchIndex, 1);
+  assert.equal(styles.get("branch-a")?.textColor, styles.get("branch-b")?.textColor);
+  assert.equal(styles.get("a-1")?.textColor, styles.get("a-2")?.textColor);
+  assert.equal(styles.get("a-1")?.textColor, styles.get("b-1")?.textColor);
   assert.notEqual(styles.get("branch-a")?.fillColor, styles.get("branch-b")?.fillColor);
   assert.notEqual(styles.get("a-1")?.fillColor, styles.get("a-2")?.fillColor);
   assert.equal(styles.get("a-1")?.depth, 2);
@@ -80,9 +84,10 @@ test("hierarchy colors keep descendants related while separating root branches",
   assert.ok((styles.get("root")?.borderWidth ?? 0) > (styles.get("a-1")?.borderWidth ?? 0));
 });
 
-test("automatic text treatment defaults to fill contrast and supports hierarchy colors", () => {
-  assert.equal(layoutTextTreatment(undefined), "contrast");
-  assert.equal(layoutTextTreatment("unsupported"), "contrast");
+test("automatic text treatment defaults to uniform levels and supports explicit treatments", () => {
+  assert.equal(layoutTextTreatment(undefined), "uniform-level");
+  assert.equal(layoutTextTreatment("unsupported"), "uniform-level");
+  assert.equal(layoutTextTreatment("uniform-level"), "uniform-level");
   assert.equal(layoutTextTreatment("hierarchy"), "hierarchy");
   assert.equal(layoutTextTreatment("uniform-dark"), "uniform-dark");
   assert.equal(layoutTextTreatment("uniform-light"), "uniform-light");
@@ -109,6 +114,17 @@ test("automatic text treatment defaults to fill contrast and supports hierarchy 
   assert.equal(
     automaticLayoutTextColor("#fffaf2", "#bf4059", "uniform-dark", 0),
     "#fffaf2"
+  );
+});
+
+test("uniform level text chooses one foreground against the weakest fill contrast", () => {
+  assert.equal(
+    uniformLayoutTextColor(["hsl(42, 50%, 70%)", "hsl(164, 50%, 70%)"]),
+    "#020617"
+  );
+  assert.equal(
+    uniformLayoutTextColor(["hsl(246, 50%, 35%)", "hsl(330, 50%, 35%)"]),
+    "#ffffff"
   );
 });
 
@@ -164,6 +180,36 @@ test("uniform text treatments keep the root contrasting and make every descendan
     assert.equal(darkStyles.get(nodeId)?.textColor, "#020617");
     assert.equal(lightStyles.get(nodeId)?.textColor, "#ffffff");
   }
+});
+
+test("choosing a chart text treatment reclaims descendant manual text overrides", () => {
+  const { nodes, edges } = hierarchyFixture();
+  const configuredNodes = nodes.map((node) => {
+    if (node.id === "root") {
+      return { ...node, data: { ...node.data, layoutTextTreatment: "uniform-level" } };
+    }
+    if (node.id === "a-1") {
+      return { ...node, data: { ...node.data, layoutAutoText: false, textColor: "#ff0000" } };
+    }
+    return node;
+  });
+  const hierarchy = buildHierarchy(configuredNodes, edges);
+  const result = applyLayoutPalette(
+    configuredNodes,
+    edges,
+    hierarchy,
+    "root",
+    "list",
+    "spectrum",
+    { resetTextOverrides: true }
+  );
+  const childData = result.nodes.find((node) => node.id === "a-1")!.data as Record<string, unknown>;
+
+  assert.equal(childData.layoutAutoText, undefined);
+  assert.notEqual(
+    (childData.layoutVisualStyle as { textColor: string }).textColor,
+    "#ff0000"
+  );
 });
 
 test("a manual empty fill remains independent from automatic hierarchy text", () => {

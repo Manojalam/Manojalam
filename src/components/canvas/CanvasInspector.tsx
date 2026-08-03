@@ -84,6 +84,7 @@ import {
   layoutTextTreatment,
   radialColorScheme,
   radialSectorColors,
+  uniformLayoutTextColor,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
 import {
@@ -759,6 +760,7 @@ const LAYOUT_TEXT_TREATMENT_OPTIONS: Array<{
   value: LayoutTextTreatment;
   label: string;
 }> = [
+  { value: "uniform-level", label: "Uniform by level" },
   { value: "contrast", label: "Fill contrast" },
   { value: "hierarchy", label: "Hierarchy colors" },
   { value: "uniform-dark", label: "Uniform dark" },
@@ -927,7 +929,7 @@ function LayoutTextControls({
     <div className="rounded-md border border-border bg-muted/20 p-2">
       <Label className="text-[10px] font-medium">Automatic text colors</Label>
       <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-        Fill contrast follows each fill. Uniform modes use one descendant text color while keeping the root readable.
+        Uniform by level keeps each row or ring consistent. The root remains independently readable.
       </p>
       <div
         className="mt-2 grid grid-cols-2 gap-1.5"
@@ -953,6 +955,13 @@ function LayoutTextControls({
               ),
             };
           });
+          if (option.value === "uniform-level") {
+            const sharedText = uniformLayoutTextColor(
+              preview.map((item) => item.fill),
+              preview[0]?.text
+            );
+            preview.forEach((item) => { item.text = sharedText; });
+          }
           return (
             <button
               key={option.value}
@@ -989,7 +998,7 @@ function LayoutTextControls({
         })}
       </div>
       <p className="mt-2 text-[9px] leading-snug text-muted-foreground">
-        Text changed directly on an item remains manual until reset to automatic.
+        Choosing a treatment applies it to the whole chart. Later item edits remain manual until a treatment is chosen again.
       </p>
     </div>
   );
@@ -2290,6 +2299,31 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     if (!radialRootId) return;
     pushHistory();
     updateNodeData(radialRootId, patch);
+  };
+  const applyRadialTextTreatment = (layoutTextTreatment: LayoutTextTreatment) => {
+    if (!radialRootId) return;
+    const scopeIds = new Set(getSubtree(radialRootId, hierarchy));
+    pushHistory();
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((node) => {
+        if (node.id === radialRootId) {
+          return {
+            ...node,
+            data: { ...(node.data ?? {}), layoutTextTreatment },
+          };
+        }
+        if (node.id === radialChartNode?.id) {
+          const { textColor: _textColor, ...data } = (node.data ?? {}) as Record<string, unknown>;
+          void _textColor;
+          return { ...node, data };
+        }
+        if (!scopeIds.has(node.id)) return node;
+        const { radialTextColor: _radialTextColor, ...data } = (node.data ?? {}) as Record<string, unknown>;
+        void _radialTextColor;
+        return { ...node, data };
+      }),
+      saveStatus: "unsaved",
+    }));
   };
 
   const selectNodesById = (ids: string[]) => {
@@ -6744,7 +6778,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               scheme={activeRadialColorScheme}
               treatment={activeRadialTextTreatment}
               onTreatmentChange={(layoutTextTreatment) => {
-                applyRadialPalettePatch({ layoutTextTreatment });
+                applyRadialTextTreatment(layoutTextTreatment);
                 const label = LAYOUT_TEXT_TREATMENT_OPTIONS.find(
                   (option) => option.value === layoutTextTreatment
                 )?.label ?? "Fill contrast";
