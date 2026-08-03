@@ -39,10 +39,12 @@ import {
   layoutBranchAnchorColor,
   layoutBorderLineStyle,
   layoutColorPattern,
+  layoutTextTreatment,
   radialColorScheme,
   radialHierarchyWeight,
   radialOutermostCommonFontSize,
   radialSectorColors,
+  uniformLayoutTextColor,
   type RadialColorSchemeDefinition,
 } from "@/lib/radial-layout";
 import {
@@ -89,6 +91,7 @@ type SunburstSegment = SunburstTreeNode & {
   fill: string;
   fillEnd: string;
   textColor: string;
+  automaticTextColor: boolean;
   borderColor: string;
   borderWidth: number;
   borderStyle: "solid" | "dashed" | "dotted";
@@ -881,6 +884,9 @@ function collectSegments(
         borderTreatment,
         candidate.depth
       );
+      const manualTextColor = (chartStyle.textColor as string | undefined)
+        ?? (data.radialTextColor as string | undefined)
+        ?? (data.textColor as string | undefined);
       segments.push({
         ...candidate,
         label,
@@ -890,15 +896,13 @@ function collectSegments(
           : undefined,
         fill: (chartStyle.fillColor as string | undefined) ?? paletteColors.fill,
         fillEnd: (chartStyle.fillColor as string | undefined) ?? paletteColors.fillEnd,
-        textColor: (chartStyle.textColor as string | undefined)
-          ?? (data.radialTextColor as string | undefined)
-          ?? (data.textColor as string | undefined)
-          ?? automaticLayoutTextColor(
+        textColor: manualTextColor ?? automaticLayoutTextColor(
             paletteColors.text,
             branchBaseColor,
             textTreatment,
             candidate.depth
           ),
+        automaticTextColor: manualTextColor === undefined,
         borderColor: (chartStyle.borderColor as string | undefined) ?? (data.radialBorderColor as string | undefined) ?? generatedBorderColor,
         borderWidth: clamp(dimension(chartStyle.borderWidth ?? data.radialBorderWidth, 1.4), 0, 16),
         borderStyle: (
@@ -932,6 +936,23 @@ function collectSegments(
     candidate.children.forEach(walk);
   };
   walk(node);
+  if (layoutTextTreatment(textTreatment) === "uniform-level") {
+    const segmentsByDepth = new Map<number, SunburstSegment[]>();
+    for (const segment of segments) {
+      if (!segment.automaticTextColor) continue;
+      segmentsByDepth.set(segment.depth, [
+        ...(segmentsByDepth.get(segment.depth) ?? []),
+        segment,
+      ]);
+    }
+    for (const levelSegments of segmentsByDepth.values()) {
+      const textColor = uniformLayoutTextColor(
+        levelSegments.map((segment) => segment.fill),
+        levelSegments[0]?.textColor
+      );
+      for (const segment of levelSegments) segment.textColor = textColor;
+    }
+  }
   return segments;
 }
 

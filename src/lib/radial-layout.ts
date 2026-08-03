@@ -29,7 +29,7 @@ export const DEFAULT_RADIAL_COLOR_SCHEME: RadialColorScheme = "spectrum";
 export const DEFAULT_LAYOUT_COLOR_PATTERN: LayoutColorPattern = "flow";
 export const DEFAULT_LAYOUT_BORDER_TREATMENT: LayoutBorderTreatment = "coordinated";
 export const DEFAULT_LAYOUT_BORDER_STYLE: LayoutBorderLineStyle = "solid";
-export const DEFAULT_LAYOUT_TEXT_TREATMENT: LayoutTextTreatment = "contrast";
+export const DEFAULT_LAYOUT_TEXT_TREATMENT: LayoutTextTreatment = "uniform-level";
 /** @deprecated Use DEFAULT_LAYOUT_COLOR_PATTERN. */
 export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern =
   DEFAULT_LAYOUT_COLOR_PATTERN;
@@ -209,7 +209,8 @@ export function layoutBorderLineStyle(value: unknown): LayoutBorderLineStyle {
 }
 
 export function layoutTextTreatment(value: unknown): LayoutTextTreatment {
-  return value === "hierarchy"
+  return value === "uniform-level"
+    || value === "hierarchy"
     || value === "uniform-dark"
     || value === "uniform-light"
     ? value
@@ -219,11 +220,12 @@ export function layoutTextTreatment(value: unknown): LayoutTextTreatment {
 /**
  * Resolves automatic chart text independently from its fill.
  *
- * Contrast preserves the established per-fill black/white behavior. Uniform
- * modes keep the chart root contrasting, then use one exact color for every
- * descendant. Hierarchy keeps each top-level branch in one hue family, while
- * mixing that hue toward the active theme foreground so transparent items
- * remain readable.
+ * Uniform-by-level is normalized after all fills at that hierarchy depth are
+ * known. Contrast preserves the established per-fill black/white behavior.
+ * Uniform modes keep the chart root contrasting, then use one exact color for
+ * every descendant. Hierarchy keeps each top-level branch in one hue family,
+ * while mixing that hue toward the active theme foreground so transparent
+ * items remain readable.
  */
 export function automaticLayoutTextColor(
   contrastTextColor: string,
@@ -232,7 +234,9 @@ export function automaticLayoutTextColor(
   depth = 0
 ): string {
   const treatment = layoutTextTreatment(treatmentValue);
-  if (treatment === "contrast") return contrastTextColor;
+  if (treatment === "contrast" || treatment === "uniform-level") {
+    return contrastTextColor;
+  }
   if (treatment === "uniform-dark") {
     return depth <= 0 ? contrastTextColor : "#020617";
   }
@@ -249,6 +253,37 @@ export function automaticLayoutTextColor(
     l: 50,
   });
   return `color-mix(in srgb, ${color} 62%, var(--foreground))`;
+}
+
+/**
+ * Chooses one black/white foreground for a complete hierarchy level.
+ * Maximizing the weakest contrast keeps the shared color usable on the most
+ * difficult fill instead of letting the most common hue dominate the result.
+ */
+export function uniformLayoutTextColor(
+  fillColors: readonly string[],
+  fallback = "#020617"
+): string {
+  const backgrounds = fillColors
+    .map((color) => parseColor(color))
+    .filter((color): color is HslColor => color !== null)
+    .map(relativeLuminance);
+  if (!backgrounds.length) return fallback;
+
+  const dark = "#020617";
+  const light = "#ffffff";
+  const darkLuminance = relativeLuminance(parseColor(dark)!);
+  const lightLuminance = relativeLuminance(parseColor(light)!);
+  const weakestDarkContrast = Math.min(
+    ...backgrounds.map((background) => contrastRatio(background, darkLuminance))
+  );
+  const weakestLightContrast = Math.min(
+    ...backgrounds.map((background) => contrastRatio(background, lightLuminance))
+  );
+  if (Math.abs(weakestDarkContrast - weakestLightContrast) < 0.01) {
+    return fallback === light ? light : dark;
+  }
+  return weakestDarkContrast > weakestLightContrast ? dark : light;
 }
 
 /**

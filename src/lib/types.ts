@@ -118,6 +118,7 @@ export type LayoutBorderTreatment =
 export type LayoutBorderLineStyle = "solid" | "dashed" | "dotted";
 
 export type LayoutTextTreatment =
+  | "uniform-level"
   | "contrast"
   | "hierarchy"
   | "uniform-dark"
