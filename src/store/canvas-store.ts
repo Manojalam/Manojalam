@@ -116,6 +116,7 @@ import {
   viewportsEqual,
 } from "@/lib/canvas/hydration";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
+import { migrateLegacyShlokaStudyTemplate } from "@/lib/canvas/shloka-study-migration";
 import { resolveChartNodeResize } from "@/lib/canvas/chart-sizing";
 import {
   manualizeFlowchartBranch,
@@ -2090,10 +2091,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     cancelPendingLayoutReflows();
     const rawSettings = board.content.settings ?? DEFAULT_BOARD_SETTINGS;
     const persistedNodes = normalizePersistedNodes(board.content.nodes);
-    const migrated = nodesWithoutStandaloneFrameHierarchy(migrateNodes(persistedNodes));
+    const normalizedPersistedEdges = normalizePersistedEdges(board.content.edges);
+    const shlokaStudyMigration = migrateLegacyShlokaStudyTemplate(
+      persistedNodes,
+      normalizedPersistedEdges
+    );
+    const migrated = nodesWithoutStandaloneFrameHierarchy(
+      migrateNodes(shlokaStudyMigration.nodes)
+    );
     const persistedEdges = edgesWithoutStandaloneFrameEndpoints(
       migrated,
-      normalizePersistedEdges(board.content.edges)
+      normalizedPersistedEdges
     );
     // Infer + persist parentId from directed edges (for old boards).
     const hierarchy = buildHierarchy(migrated, persistedEdges);
