@@ -7,6 +7,7 @@ import {
   hierarchyDeletionNodeIds,
   reconnectChangesEndpointNodes,
   reparentHierarchy,
+  rerouteStructuredHierarchyEdges,
   unselectedHierarchyDescendants,
 } from "./hierarchy-mutations";
 import {
@@ -192,4 +193,48 @@ test("moving a connector handle on the same shapes does not rewrite hierarchy", 
     source: "parent",
     target: "new-child",
   }), true);
+});
+
+test("structured reflow reroutes automatic connectors from settled node positions", () => {
+  const nodes: Node[] = [
+    { id: "root", type: "shape", position: { x: 500, y: 200 }, measured: { width: 160, height: 60 }, data: { parentId: null, childOrder: ["branch"] } },
+    { id: "branch", type: "shape", position: { x: 180, y: 200 }, measured: { width: 160, height: 60 }, data: { parentId: "root", childOrder: [] } },
+  ];
+  const stale: Edge = {
+    id: "root-branch",
+    source: "root",
+    target: "branch",
+    sourceHandle: "right",
+    targetHandle: "left",
+    data: { edgeType: "branch", curveStyle: "smooth", layoutMode: "mindMap" },
+  };
+  const [rerouted] = rerouteStructuredHierarchyEdges(nodes, [stale], "root", "mindMap");
+
+  assert.equal(rerouted.sourceHandle, "left");
+  assert.equal(rerouted.targetHandle, "right");
+});
+
+test("structured reflow preserves a manually anchored connector endpoint", () => {
+  const nodes: Node[] = [
+    { id: "root", type: "shape", position: { x: 500, y: 200 }, measured: { width: 160, height: 60 }, data: { parentId: null, childOrder: ["branch"] } },
+    { id: "branch", type: "shape", position: { x: 180, y: 200 }, measured: { width: 160, height: 60 }, data: { parentId: "root", childOrder: [] } },
+  ];
+  const anchored: Edge = {
+    id: "root-branch",
+    source: "root",
+    target: "branch",
+    sourceHandle: "right",
+    targetHandle: "connector-anchor:root-branch:target",
+    data: {
+      edgeType: "branch",
+      curveStyle: "smooth",
+      layoutMode: "mindMap",
+      targetAnchor: { x: 25, y: 0, side: "top" },
+      preserveHandles: true,
+    },
+  };
+  const [rerouted] = rerouteStructuredHierarchyEdges(nodes, [anchored], "root", "mindMap");
+
+  assert.equal(rerouted.sourceHandle, "left");
+  assert.equal(rerouted.targetHandle, "connector-anchor:root-branch:target");
 });

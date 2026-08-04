@@ -139,6 +139,8 @@ import {
 import { normalizeBoardTexture } from "@/lib/canvas/board-textures";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import {
+  clearChangedConnectorEndpointAnchors,
+  connectorEndpointAnchor,
   edgeHasConnectorAnchor,
   rebindConnectorAnchorHandles,
 } from "@/lib/canvas/connector-anchors";
@@ -150,6 +152,7 @@ import {
   deleteNodesPreservingHierarchy,
   hierarchyDeletionNodeIds,
   reparentHierarchy,
+  rerouteStructuredHierarchyEdges,
   unselectedHierarchyDescendants,
 } from "@/lib/canvas/hierarchy-mutations";
 import {
@@ -1511,17 +1514,27 @@ function createStructuralEdge(nodes: Node[], edges: Edge[], sourceId: string, ta
   };
 }
 
-function refreshStructuralEdge(edge: Edge, nodes: Node[], edges: Edge[]): Edge {
-  const created = createStructuralEdge(nodes, edges, edge.source, edge.target);
-  const anchored = edgeHasConnectorAnchor(edge);
+function refreshStructuralEdge(
+  edge: Edge,
+  nodes: Node[],
+  edges: Edge[],
+  previousEdge?: Edge
+): Edge {
+  const prepared = previousEdge
+    ? clearChangedConnectorEndpointAnchors(previousEdge, edge)
+    : edge;
+  const created = createStructuralEdge(nodes, edges, prepared.source, prepared.target);
+  const sourceAnchored = !!connectorEndpointAnchor(prepared, "source");
+  const targetAnchored = !!connectorEndpointAnchor(prepared, "target");
+  const anchored = sourceAnchored || targetAnchored;
   return rebindConnectorAnchorHandles({
-    ...edge,
+    ...prepared,
     hidden: created.hidden,
-    sourceHandle: anchored ? edge.sourceHandle : created.sourceHandle,
-    targetHandle: anchored ? edge.targetHandle : created.targetHandle,
-    markerEnd: edge.markerEnd ?? created.markerEnd,
+    sourceHandle: sourceAnchored ? prepared.sourceHandle : created.sourceHandle,
+    targetHandle: targetAnchored ? prepared.targetHandle : created.targetHandle,
+    markerEnd: prepared.markerEnd ?? created.markerEnd,
     data: {
-      ...(edge.data ?? {}),
+      ...(prepared.data ?? {}),
       ...(created.data ?? {}),
       ...(anchored ? { manualRoute: true, preserveHandles: true } : {}),
     },
@@ -2842,7 +2855,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       });
     const changedHierarchyEdges = new Set(hierarchyMutation.changedEdgeIds);
     nextEdges = nextEdges.map((edge) => changedHierarchyEdges.has(edge.id)
-      ? refreshStructuralEdge(edge, nextNodes, nextEdges)
+      ? refreshStructuralEdge(
+          edge,
+          nextNodes,
+          nextEdges,
+          edges.find((previous) => previous.id === edge.id)
+        )
       : edge);
     set({
       nodes: nextNodes,
@@ -2876,7 +2894,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!result.changed) return false;
     const changedEdges = new Set(result.changedEdgeIds);
     const nextEdges = result.edges.map((edge) => changedEdges.has(edge.id)
-      ? refreshStructuralEdge(edge, result.nodes, result.edges)
+      ? refreshStructuralEdge(
+          edge,
+          result.nodes,
+          result.edges,
+          state.edges.find((previous) => previous.id === edge.id)
+        )
       : edge);
     set({ nodes: result.nodes, edges: nextEdges, saveStatus: "unsaved" });
     result.affectedParentIds.forEach((parentId) => {
@@ -4245,6 +4268,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           if (nextNode !== node) changed = true;
           return nextNode;
         });
+        const reroutedEdges = rerouteStructuredHierarchyEdges(
+          nodes,
+          nextEdges,
+          rootId,
+          mode
+        );
+        if (reroutedEdges !== nextEdges) changed = true;
+        nextEdges = reroutedEdges;
       }
       if (changed || roots.size) {
         set({
