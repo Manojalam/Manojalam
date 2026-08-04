@@ -75,6 +75,7 @@ import {
   preserveAttachedExternalNoteOffsets,
 } from "@/lib/canvas/node-note";
 import { planNodeDragMovement } from "@/lib/canvas/drag-movement";
+import { resolveFrameDropCollisions } from "@/lib/canvas/frame-collision";
 import { findReparentDropTarget } from "@/lib/canvas/reparent-drop-target";
 import { reconnectChangesEndpointNodes } from "@/lib/canvas/hierarchy-mutations";
 import {
@@ -882,6 +883,31 @@ function VidyaCanvasInner({
       state = useCanvasStore.getState();
     }
     setReparentTargetId(null);
+    const draggedStart = drag?.positions.get(draggedNode.id);
+    const droppedNode = state.nodes.find((node) => node.id === draggedNode.id);
+    if (draggedStart && droppedNode) {
+      const placements = resolveFrameDropCollisions(
+        state.nodes,
+        movedIds,
+        {
+          x: droppedNode.position.x - draggedStart.x,
+          y: droppedNode.position.y - draggedStart.y,
+        }
+      );
+      const displacedIds = Object.keys(placements);
+      if (displacedIds.length) {
+        displacedIds.forEach((nodeId) => movedIds.add(nodeId));
+        useCanvasStore.setState((current) => {
+          const nextNodes = current.nodes.map((node) => placements[node.id]
+            ? { ...node, position: placements[node.id] }
+            : node);
+          return {
+            nodes: preserveAttachedExternalNoteOffsets(current.nodes, nextNodes),
+          };
+        });
+        state = useCanvasStore.getState();
+      }
+    }
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
     const reroutedEdges = state.edges.map((edge) => {
       if (!movedIds.has(edge.source) && !movedIds.has(edge.target)) return edge;

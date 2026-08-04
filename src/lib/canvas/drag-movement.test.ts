@@ -11,6 +11,18 @@ function edge(id: string, source: string, target: string): Edge {
   return { id, source, target, data: {} };
 }
 
+function positionedNode(
+  id: string,
+  type: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  data: Record<string, unknown> = {}
+): Node {
+  return { id, type, position: { x, y }, style: { width, height }, data };
+}
+
 test("a normal parent drag moves its branch and attached notes", () => {
   const nodes = [
     node("parent"),
@@ -104,5 +116,18 @@ test("a matrix cell can move its branch without dragging the generated frame", (
 
   assert.deepEqual(new Set(plan.movingIds), new Set(["cell", "leaf"]));
   assert.equal(plan.matrixRootId, "matrix");
+  assert.equal(plan.moveAsGroup, true);
+});
+
+test("dragging a standalone frame carries the cards owned by that frame", () => {
+  const nodes = [
+    positionedNode("lane", "frame", 0, 0, 400, 600),
+    positionedNode("card", "sticky", 100, 100, 180, 120),
+    positionedNode("outside", "sticky", 500, 100, 180, 120),
+  ];
+
+  const plan = planNodeDragMovement(nodes, [], "lane", ["lane"]);
+
+  assert.deepEqual(new Set(plan.movingIds), new Set(["lane", "card"]));
   assert.equal(plan.moveAsGroup, true);
 });

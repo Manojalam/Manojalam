@@ -240,11 +240,15 @@ function FrameNodeComponent({
         {d.title !== "" && (
           <div
             data-canvas-label-box="true"
-            className="nodrag nopan absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm"
-            title={isMatrixFrame ? undefined : "Double-click to rename"}
-            onDoubleClick={(event) => {
+            className={cn(
+              "nodrag nopan absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm",
+              !isMatrixFrame && !d.locked && "cursor-text"
+            )}
+            title={isMatrixFrame ? undefined : "Click to rename"}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
               event.stopPropagation();
-              beginTitleEdit();
+              if (!editingTitle) beginTitleEdit();
             }}
             style={{
               backgroundColor: d.color ?? "#6366f1",
@@ -262,6 +266,7 @@ function FrameNodeComponent({
                 onChange={(event) => setTitleDraft(event.target.value)}
                 onBlur={commitTitleEdit}
                 onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => {
                   event.stopPropagation();
                   if (event.key === "Enter") event.currentTarget.blur();

@@ -172,6 +172,11 @@ import {
   textFrameShapeType,
   translateTextCalloutAnchor,
 } from "@/lib/canvas/text-callout";
+import {
+  FRAME_COLLISION_GAP,
+  isStandaloneFrameNode,
+  resolveFrameDropCollisions,
+} from "@/lib/canvas/frame-collision";
 
 interface HistoryEntry {
   nodes: Node[];
@@ -1912,6 +1917,10 @@ function prepareDuplicatedEdgeData(
 
 function findFreeDuplicateOffset(selectedNodes: Node[], allNodes: Node[]) {
   if (!selectedNodes.length) return { x: 40, y: 40 };
+  if (selectedNodes.every(isStandaloneFrameNode)) {
+    const bounds = groupBounds(selectedNodes);
+    return { x: bounds.width + FRAME_COLLISION_GAP, y: 0 };
+  }
   const selectedIds = new Set(selectedNodes.map((node) => node.id));
   const obstacles = allNodes
     .filter((node) => !selectedIds.has(node.id) && !isAutoMatrixFrame(node))
@@ -2017,6 +2026,26 @@ function buildDuplicateSelection(
     }));
 
   return { nodes, edges };
+}
+
+function placeDuplicatedFrames(existingNodes: Node[], duplicatedNodes: Node[]) {
+  const combined = [...existingNodes, ...duplicatedNodes];
+  const duplicatedIds = new Set(duplicatedNodes.map((node) => node.id));
+  const placements = resolveFrameDropCollisions(
+    combined,
+    duplicatedIds,
+    { x: 1, y: 0 }
+  );
+  if (!Object.keys(placements).length) {
+    return { existingNodes, duplicatedNodes };
+  }
+  const place = (node: Node): Node => placements[node.id]
+    ? { ...node, position: placements[node.id] }
+    : node;
+  return {
+    existingNodes: existingNodes.map(place),
+    duplicatedNodes: duplicatedNodes.map(place),
+  };
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
@@ -2546,10 +2575,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selection.edges,
       nodes
     );
+    const placed = placeDuplicatedFrames(nodes, newNodes);
     set({
-      nodes: [...nodes.map((node) => ({ ...node, selected: false })), ...newNodes],
+      nodes: [
+        ...placed.existingNodes.map((node) => ({ ...node, selected: false })),
+        ...placed.duplicatedNodes,
+      ],
       edges: [...edges.map((edge) => ({ ...edge, selected: false })), ...newEdges],
-      selectedNodeIds: newNodes.map((node) => node.id),
+      selectedNodeIds: placed.duplicatedNodes.map((node) => node.id),
       selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
@@ -2569,10 +2602,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selection.edges,
       nodes
     );
+    const placed = placeDuplicatedFrames(nodes, newNodes);
     set({
-      nodes: [...nodes.map((node) => ({ ...node, selected: false })), ...newNodes],
+      nodes: [
+        ...placed.existingNodes.map((node) => ({ ...node, selected: false })),
+        ...placed.duplicatedNodes,
+      ],
       edges: [...edges.map((edge) => ({ ...edge, selected: false })), ...newEdges],
-      selectedNodeIds: newNodes.map((node) => node.id),
+      selectedNodeIds: placed.duplicatedNodes.map((node) => node.id),
       selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
