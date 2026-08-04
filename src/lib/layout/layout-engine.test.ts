@@ -65,13 +65,51 @@ function bounds(nodes: Node[]) {
 test("structured layouts remain collision-free with variable node dimensions", () => {
   const tree = buildVariableTree();
   const modes: LayoutMode[] = [
-    "horizontal", "vertical", "topDown", "linear", "radial", "fromParentFreeForm",
+    "horizontal", "vertical", "topDown", "linear", "radial", "fromParentFreeForm", "mindMap",
   ];
   for (const mode of modes) {
     const positions = computeLayout(tree.nodes, tree.edges, mode, { rootId: "n0" });
     assert.equal(Object.keys(positions).length, tree.nodes.length, `${mode} should place every node`);
     assertNoOverlap(applyPositions(tree.nodes, positions), mode);
   }
+});
+
+test("Mind Map keeps the root centered and grows both sides outward", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 400, y: 300 }, measured: { width: 200, height: 80 }, data: { layoutMode: "mindMap", parentId: null, childOrder: ["left", "right"] } },
+    { id: "left", position: { x: 100, y: 300 }, measured: { width: 180, height: 70 }, data: { parentId: "root", childOrder: ["left-child"], mindMapSide: "left" } },
+    { id: "left-child", position: { x: 0, y: 300 }, measured: { width: 160, height: 60 }, data: { parentId: "left", childOrder: [] } },
+    { id: "right", position: { x: 700, y: 300 }, measured: { width: 180, height: 70 }, data: { parentId: "root", childOrder: ["right-child"], mindMapSide: "right" } },
+    { id: "right-child", position: { x: 900, y: 300 }, measured: { width: 160, height: 60 }, data: { parentId: "right", childOrder: [] } },
+  ];
+  const edges: Edge[] = [
+    ["root", "left"],
+    ["left", "left-child"],
+    ["root", "right"],
+    ["right", "right-child"],
+  ].map(([source, target]) => ({ id: `${source}-${target}`, source, target, data: { edgeType: "branch" } }));
+  const placed = applyPositions(nodes, computeLayout(nodes, edges, "mindMap", { rootId: "root" }));
+  const rects = new Map(placed.map((node) => [node.id, getNodeRect(node)]));
+
+  assert.equal(rects.get("root")!.centerX, 500);
+  assert.ok(rects.get("left")!.right < rects.get("root")!.left);
+  assert.ok(rects.get("left-child")!.right < rects.get("left")!.left);
+  assert.ok(rects.get("right")!.left > rects.get("root")!.right);
+  assert.ok(rects.get("right-child")!.left > rects.get("right")!.right);
+  assert.equal(rects.get("left")!.centerY, rects.get("left-child")!.centerY);
+  assert.equal(rects.get("right")!.centerY, rects.get("right-child")!.centerY);
+  assertNoOverlap(placed, "mindMap");
+
+  assert.deepEqual(routeForMode("mindMap", placed[0], placed[1]), {
+    sourceHandle: "left",
+    targetHandle: "right",
+    curveStyle: "smooth",
+  });
+  assert.deepEqual(routeForMode("mindMap", placed[0], placed[3]), {
+    sourceHandle: "right",
+    targetHandle: "left",
+    curveStyle: "smooth",
+  });
 });
 
 test("Fold continues a Linear branch on the next row", () => {
@@ -149,6 +187,9 @@ test("Top Down is hidden from the chooser while legacy boards retain Vertical ge
   const legacyTopDown = computeLayout(tree.nodes, tree.edges, "topDown", { rootId: "n0" });
 
   assert.equal(LAYOUT_OPTIONS.some((option) => option.mode === "topDown"), false);
+  assert.equal(LAYOUT_OPTIONS.find((option) => option.mode === "mindMap")?.label, "Mind Map");
+  assert.equal(LAYOUT_OPTIONS.find((option) => option.mode === "fromParentFreeForm")?.label, "Radial Branches");
+  assert.equal(LAYOUT_OPTIONS.find((option) => option.mode === "radial")?.label, "Sunburst");
   assert.deepEqual(legacyTopDown, vertical);
 });
 

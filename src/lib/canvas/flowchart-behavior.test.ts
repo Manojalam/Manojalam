@@ -36,6 +36,7 @@ test("ordinary shape additions are manual-first but specialized layouts remain s
   assert.equal(usesManualFlowchartPlacement(parent, "horizontal"), true);
   assert.equal(usesManualFlowchartPlacement(parent, "vertical"), true);
   assert.equal(usesManualFlowchartPlacement(parent, "freeForm"), true);
+  assert.equal(usesManualFlowchartPlacement(parent, "mindMap"), false);
   assert.equal(usesManualFlowchartPlacement(parent, "list"), false);
   assert.equal(usesManualFlowchartPlacement(parent, "matrix"), false);
   assert.equal(usesManualFlowchartPlacement(parent, "radial"), false);

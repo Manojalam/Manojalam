@@ -9,7 +9,7 @@ import {
 } from "../layout";
 import { buildHierarchy, getSubtree, type Hierarchy } from "../layout/hierarchy";
 
-const FLOWCHART_STRUCTURED_MODES = new Set<LayoutMode>(["list", "matrix", "radial"]);
+const FLOWCHART_STRUCTURED_MODES = new Set<LayoutMode>(["mindMap", "list", "matrix", "radial"]);
 const LEGACY_IMPLICIT_FLOWCHART_MODES = new Set<LayoutMode>(["horizontal", "vertical", "topDown"]);
 const FLOWCHART_CHILD_GAP_X = 104;
 const FLOWCHART_CHILD_GAP_Y = 64;

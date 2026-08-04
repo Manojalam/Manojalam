@@ -194,6 +194,7 @@ export interface InlineTextFormatDetail {
 export type LayoutMode =
   | "freeForm"
   | "fromParentFreeForm"
+  | "mindMap"
   | "horizontal"
   | "vertical"
   | "list"
@@ -589,6 +590,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutWrapAfter?: number;
   /** Layout mode last applied to this node's branch (set on the branch root). */
   layoutMode?: LayoutMode;
+  /** Fixed side for a first-level branch in a two-sided Mind Map. */
+  mindMapSide?: "left" | "right";
   /** Palette selected for non-radial hierarchy layouts. */
   layoutColorScheme?: RadialColorScheme;
   /** Optional user-selected hue anchor for the first automatic layout branch. */
