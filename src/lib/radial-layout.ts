@@ -30,6 +30,7 @@ export const DEFAULT_LAYOUT_COLOR_PATTERN: LayoutColorPattern = "flow";
 export const DEFAULT_LAYOUT_BORDER_TREATMENT: LayoutBorderTreatment = "coordinated";
 export const DEFAULT_LAYOUT_BORDER_STYLE: LayoutBorderLineStyle = "solid";
 export const DEFAULT_LAYOUT_TEXT_TREATMENT: LayoutTextTreatment = "uniform-level";
+export const LAYOUT_TEXT_COLOR_VERSION = 1;
 /** @deprecated Use DEFAULT_LAYOUT_COLOR_PATTERN. */
 export const DEFAULT_MATRIX_ROW_COLOR_PATTERN: MatrixRowColorPattern =
   DEFAULT_LAYOUT_COLOR_PATTERN;
@@ -210,11 +211,20 @@ export function layoutBorderLineStyle(value: unknown): LayoutBorderLineStyle {
 
 export function layoutTextTreatment(value: unknown): LayoutTextTreatment {
   return value === "uniform-level"
+    || value === "contrast"
     || value === "hierarchy"
     || value === "uniform-dark"
     || value === "uniform-light"
     ? value
     : DEFAULT_LAYOUT_TEXT_TREATMENT;
+}
+
+export function requiresAutomaticTextColorMigration(
+  treatmentValue: unknown,
+  versionValue: unknown
+): boolean {
+  return versionValue !== LAYOUT_TEXT_COLOR_VERSION
+    && layoutTextTreatment(treatmentValue) === "uniform-level";
 }
 
 /**

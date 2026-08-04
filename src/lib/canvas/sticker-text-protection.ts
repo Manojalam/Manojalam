@@ -108,6 +108,58 @@ export function protectEnclosedStickerTextStyles(
   return container.innerHTML;
 }
 
+function stripInlineTextColors(html: string): string {
+  return html
+    .replace(/\sstyle\s*=\s*(["'])([\s\S]*?)\1/gi, (_attribute, quote: string, style: string) => {
+      const declarations = style
+        .split(";")
+        .map((declaration) => declaration.trim())
+        .filter((declaration) => {
+          const separator = declaration.indexOf(":");
+          return separator < 0
+            || declaration.slice(0, separator).trim().toLowerCase() !== "color";
+        });
+      return declarations.length
+        ? ` style=${quote}${declarations.join("; ")}${quote}`
+        : "";
+    })
+    .replace(/\scolor\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+}
+
+/**
+ * Return node data to chart-owned automatic text color. Whole-node colors and
+ * inline rich-text colors are removed, while enclosed symbols retain the
+ * explicit foreground needed to remain readable inside their enclosure.
+ */
+export function reclaimAutomaticTextColor(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const reclaimed = { ...data };
+  delete reclaimed.layoutAutoText;
+  delete reclaimed.textColor;
+  delete reclaimed.radialTextColor;
+
+  if (typeof data.richText !== "string") return reclaimed;
+  if (typeof document === "undefined") {
+    reclaimed.richText = stripInlineTextColors(data.richText);
+    return reclaimed;
+  }
+
+  const container = document.createElement("div");
+  container.innerHTML = protectEnclosedStickerTextStyles(data) ?? data.richText;
+  container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
+    if (isInsideEnclosedSticker(element)) return;
+    element.style.removeProperty("color");
+    if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
+  });
+  container.querySelectorAll<HTMLElement>("[color]").forEach((element) => {
+    if (!isInsideEnclosedSticker(element)) element.removeAttribute("color");
+  });
+  container.normalize();
+  reclaimed.richText = container.innerHTML;
+  return reclaimed;
+}
+
 export function normalizeWholeTextHighlight(
   data: Record<string, unknown>,
   value: unknown
