@@ -12,6 +12,7 @@ import type { VidyaEdgeData } from "@/lib/types";
 import { themeAwareLayoutConnectorColor } from "@/lib/style-utils";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorPath } from "./ConnectorPath";
+import { ConnectorEndpointHandles } from "./ConnectorEndpointHandles";
 import { SmartBranchEdge } from "./SmartBranchEdge";
 
 function VidyaEdgeComponent(props: EdgeProps) {
@@ -81,6 +82,15 @@ function VidyaEdgeComponent(props: EdgeProps) {
       />
       {(selected || d.label) && (
         <EdgeLabelRenderer>
+          {selected && (
+            <ConnectorEndpointHandles
+              edgeId={id}
+              sourceNodeId={source}
+              targetNodeId={target}
+              sourcePoint={{ x: sourceX, y: sourceY }}
+              targetPoint={{ x: targetX, y: targetY }}
+            />
+          )}
           <ConnectionLabelEditor
             edgeId={id}
             x={labelX}

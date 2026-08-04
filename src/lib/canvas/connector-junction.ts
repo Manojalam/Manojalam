@@ -504,7 +504,7 @@ export function clearConnectorJunctionGraph(
     markerStart: incoming.markerStart,
     markerEnd: outgoing.markerEnd,
     selected: true,
-    reconnectable: true,
+    reconnectable: false,
     data,
   };
 

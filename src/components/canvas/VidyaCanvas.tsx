@@ -88,6 +88,7 @@ import {
   setConnectorEndpointAnchor,
   type ConnectorEndpoint,
 } from "@/lib/canvas/connector-anchors";
+import { suppressAutomaticEdgeReconnect } from "@/lib/canvas/connector-handle-interaction";
 import {
   findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
@@ -402,16 +403,17 @@ function VidyaCanvasInner({
   }, [canEdit, numberedNodes, relationshipSelection, reparentTargetId]);
 
   const displayEdges = useMemo(() => {
+    const shapeBoundEdges = suppressAutomaticEdgeReconnect(edges);
     if (!canEdit) {
-      return edges.map((edge) => ({
+      return shapeBoundEdges.map((edge) => ({
         ...edge,
         selectable: false,
         reconnectable: false,
         style: { ...(edge.style ?? {}), pointerEvents: "none" as const },
       }));
     }
-    if (!relationshipSelection) return edges;
-    return edges.map((edge) => ({
+    if (!relationshipSelection) return shapeBoundEdges;
+    return shapeBoundEdges.map((edge) => ({
       ...edge,
       animated: false,
       style: { ...(edge.style ?? {}), opacity: 0.12 },
@@ -1041,7 +1043,7 @@ function VidyaCanvasInner({
         targetHandle: connection.targetHandle ?? route?.targetHandle ?? undefined,
         type: "branch",
         hidden: hiddenInMatrix || hiddenInSunburst,
-        reconnectable: true,
+        reconnectable: false,
         markerEnd: terminatesAtJunction
           ? undefined
           : { type: MarkerType.ArrowClosed, color: "#6366f1" },
@@ -1259,7 +1261,7 @@ function VidyaCanvasInner({
         sourceHandle: connection.sourceHandle ?? route.sourceHandle,
         targetHandle: connection.targetHandle ?? route.targetHandle,
         hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
-        reconnectable: true,
+        reconnectable: false,
         markerEnd: terminatesAtJunction
           ? undefined
           : edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
@@ -1805,8 +1807,7 @@ function VidyaCanvasInner({
       nodesDraggable={canEdit && !relationshipSelection}
       nodesConnectable={canEdit && !relationshipSelection}
       elementsSelectable={canEdit && !relationshipSelection}
-      edgesReconnectable={canEdit && !relationshipSelection}
-      reconnectRadius={isTouchDevice ? 36 : 24}
+      edgesReconnectable={false}
       minZoom={MIN_CANVAS_ZOOM}
       maxZoom={MAX_CANVAS_ZOOM}
       onlyRenderVisibleElements={!boardExportRequest}
