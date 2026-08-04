@@ -14,6 +14,8 @@ import {
 } from "@/lib/templates";
 import { createBoard } from "@/lib/storage/board-store";
 import { SupabaseSetupNotice } from "@/components/layout/SupabaseSetupNotice";
+import { TemplatePreview } from "@/components/templates/TemplatePreview";
+import { useCanvasStore } from "@/store/canvas-store";
 import { toast } from "sonner";
 
 const CATEGORIES = [
@@ -40,8 +42,11 @@ export default function TemplatesPage() {
     setCreatingTemplateId(templateId);
     try {
       const board = await createBoard(templateId);
+      // Prime the editor with the exact verified row returned by creation.
+      // The board route still supports a normal database load on refresh.
+      useCanvasStore.getState().setBoard(board);
       toast.success("Board created from template");
-      router.push(`/app/boards/${board.id}`);
+      router.push(`/app/boards/${board.id}?fromTemplate=1`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create board");
       setCreatingTemplateId(null);
@@ -76,6 +81,9 @@ export default function TemplatesPage() {
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
             <div key={t.id} className="rounded-xl border bg-card p-5 transition-shadow hover:shadow-md">
+              <div className="mb-4">
+                <TemplatePreview content={t.content} name={t.name} />
+              </div>
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="font-semibold">{t.name}</h3>
                 <Badge variant="outline" className="text-[10px] capitalize">{t.category}</Badge>
