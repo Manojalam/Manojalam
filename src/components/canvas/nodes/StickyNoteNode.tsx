@@ -138,7 +138,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd} />
       <div className="group relative h-full w-full">
-        <NodeHandles color={border} selected={selected} />
+        <NodeHandles nodeId={id} color={border} selected={selected} />
         <NodeQuickActions nodeId={id} color={border} selected={selected} />
 
         {/* Add connected child */}

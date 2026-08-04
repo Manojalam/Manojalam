@@ -870,6 +870,18 @@ export interface VidyaEdgeData extends Record<string, unknown> {
   manualRoute?: boolean;
   /** Keep the exact user-selected source and target handles when nodes move. */
   preserveHandles?: boolean;
+  /** User-selected point on the source shape's visible perimeter, in node percentages. */
+  sourceAnchor?: {
+    x: number;
+    y: number;
+    side: "top" | "right" | "bottom" | "left";
+  };
+  /** User-selected point on the target shape's visible perimeter, in node percentages. */
+  targetAnchor?: {
+    x: number;
+    y: number;
+    side: "top" | "right" | "bottom" | "left";
+  };
   /** User-positioned anchors that turn the automatic route into an editable path. */
   waypoints?: Array<{ x: number; y: number }>;
   /** Distinguishes explicit bend controls from internal anchors created by segment dragging. */

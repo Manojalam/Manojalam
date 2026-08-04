@@ -10,6 +10,7 @@ import {
   reverseLogicalConnectors,
   splitConnectorAtJunction,
 } from "./connector-junction";
+import { connectorAnchorHandleId } from "./connector-anchors";
 
 test("reversing a connection swaps endpoints, handles, and stored bend order", () => {
   const markerEnd = { type: MarkerType.ArrowClosed, color: "#123456" };
@@ -25,6 +26,8 @@ test("reversing a connection swaps endpoints, handles, and stored bend order", (
       labelPosition: 0.2,
       arrowEnd: true,
       waypoints: [{ x: 100, y: 20 }, { x: 400, y: 20 }],
+      sourceAnchor: { x: 100, y: 30, side: "right" },
+      targetAnchor: { x: 0, y: 70, side: "left" },
     },
   };
 
@@ -32,8 +35,10 @@ test("reversing a connection swaps endpoints, handles, and stored bend order", (
 
   assert.equal(reversed.source, "target");
   assert.equal(reversed.target, "source");
-  assert.equal(reversed.sourceHandle, "left");
-  assert.equal(reversed.targetHandle, "right");
+  assert.equal(reversed.sourceHandle, connectorAnchorHandleId("edge", "source"));
+  assert.equal(reversed.targetHandle, connectorAnchorHandleId("edge", "target"));
+  assert.deepEqual(reversed.data?.sourceAnchor, edge.data?.targetAnchor);
+  assert.deepEqual(reversed.data?.targetAnchor, edge.data?.sourceAnchor);
   assert.deepEqual(reversed.markerEnd, markerEnd);
   assert.equal(reversed.markerStart, undefined);
   assert.equal(reversed.data?.label, "Approved");
@@ -105,7 +110,13 @@ test("a connector junction preserves the line endpoints and terminal arrow", () 
     sourceHandle: "right",
     targetHandle: "left",
     markerEnd: { type: MarkerType.ArrowClosed },
-    data: { label: "Approved", color: "#123456", waypoints: [{ x: 50, y: 50 }] },
+    data: {
+      label: "Approved",
+      color: "#123456",
+      waypoints: [{ x: 50, y: 50 }],
+      sourceAnchor: { x: 100, y: 35, side: "right" },
+      targetAnchor: { x: 0, y: 65, side: "left" },
+    },
   };
   const result = splitConnectorAtJunction(
     edge,
@@ -126,6 +137,12 @@ test("a connector junction preserves the line endpoints and terminal arrow", () 
   assert.equal(result.edges[1].data?.waypoints, undefined);
   assert.equal(result.edges[0].data?.connectorGroupId, "edge");
   assert.equal(result.edges[1].data?.connectorGroupId, "edge");
+  assert.equal(result.edges[0].sourceHandle, connectorAnchorHandleId("first", "source"));
+  assert.deepEqual(result.edges[0].data?.sourceAnchor, edge.data?.sourceAnchor);
+  assert.equal(result.edges[0].data?.targetAnchor, undefined);
+  assert.equal(result.edges[1].targetHandle, connectorAnchorHandleId("second", "target"));
+  assert.deepEqual(result.edges[1].data?.targetAnchor, edge.data?.targetAnchor);
+  assert.equal(result.edges[1].data?.sourceAnchor, undefined);
 });
 
 test("clearing a junction restores the original through-connection", () => {

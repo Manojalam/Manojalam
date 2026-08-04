@@ -7,6 +7,10 @@ import {
   nodePositionFromTopLeft,
   type NodeRect,
 } from "../layout";
+import {
+  edgeHasConnectorAnchor,
+  rebindConnectorAnchorHandles,
+} from "./connector-anchors";
 
 export type FlowchartTidyDirection = "auto" | "vertical" | "horizontal";
 export type ResolvedFlowchartTidyDirection = Exclude<FlowchartTidyDirection, "auto">;
@@ -993,6 +997,15 @@ export function routeTidiedFlowchartEdges(
     if (data.labelOffset !== undefined) {
       delete data.labelOffset;
       resetLabelOffsetCount++;
+    }
+    if (edgeHasConnectorAnchor(edge)) {
+      delete data.waypoints;
+      delete data.waypointOrigin;
+      data.curveStyle = "step";
+      data.layoutMode = "freeForm";
+      data.manualRoute = true;
+      data.preserveHandles = true;
+      return rebindConnectorAnchorHandles({ ...edge, data });
     }
     delete data.waypoints;
     delete data.waypointOrigin;

@@ -1301,6 +1301,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         }}
       >
         <NodeHandles
+          nodeId={id}
           color={borderColor}
           selected={selected}
           shapeType={renderedShapeType}

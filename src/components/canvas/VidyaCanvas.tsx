@@ -18,6 +18,8 @@ import {
   type OnNodesChange,
   type NodeChange,
   type OnEdgesChange,
+  type FinalConnectionState,
+  type OnConnectStartParams,
   applyNodeChanges,
   applyEdgeChanges,
   ConnectionMode,
@@ -78,6 +80,13 @@ import {
   isConnectorConnectionAllowed,
   usesManualFlowchartPlacement,
 } from "@/lib/canvas/flowchart-behavior";
+import {
+  clearConnectorEndpointAnchor,
+  connectorAnchorAtCanvasPoint,
+  PERIMETER_HANDLE_ID,
+  setConnectorEndpointAnchor,
+  type ConnectorEndpoint,
+} from "@/lib/canvas/connector-anchors";
 import {
   findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
@@ -966,6 +975,33 @@ function VidyaCanvasInner({
     });
   }, [screenToFlowPosition]);
 
+  const connectionStartRef = useRef<{
+    nodeId: string;
+    handleId: string | null;
+    point: { x: number; y: number };
+  } | null>(null);
+  const lastCreatedEdgeIdRef = useRef<string | null>(null);
+  const pendingReconnectRef = useRef<{
+    edgeId: string;
+    endpoint: ConnectorEndpoint;
+    nodeId: string;
+    handleId: string | null;
+  } | null>(null);
+
+  const onConnectStart = useCallback((
+    event: MouseEvent | TouchEvent,
+    params: OnConnectStartParams
+  ) => {
+    const clientPoint = dragEventClientPoint(event);
+    connectionStartRef.current = clientPoint && params.nodeId
+      ? {
+          nodeId: params.nodeId,
+          handleId: params.handleId,
+          point: screenToFlowPosition(clientPoint),
+        }
+      : null;
+  }, [screenToFlowPosition]);
+
   const onConnect = useCallback(
     (connection: {
       source: string; target: string;
@@ -1022,6 +1058,7 @@ function VidyaCanvasInner({
           layoutMode: mode,
         },
       };
+      lastCreatedEdgeIdRef.current = newEdge.id;
       // Record a new hierarchy relation atomically and select the connection so
       // its direct label editor is immediately available.
       useCanvasStore.setState((state) => ({
@@ -1055,12 +1092,57 @@ function VidyaCanvasInner({
     []
   );
 
+  const onConnectEnd = useCallback((
+    event: MouseEvent | TouchEvent,
+    connectionState: FinalConnectionState
+  ) => {
+    const edgeId = lastCreatedEdgeIdRef.current;
+    const start = connectionStartRef.current;
+    lastCreatedEdgeIdRef.current = null;
+    connectionStartRef.current = null;
+    if (!edgeId || connectionState.isValid !== true) return;
+
+    const clientPoint = dragEventClientPoint(event);
+    const endPoint = clientPoint ? screenToFlowPosition(clientPoint) : null;
+    const targetNodeId = connectionState.toNode?.id;
+    useCanvasStore.setState((state) => ({
+      edges: state.edges.map((edge) => {
+        if (edge.id !== edgeId) return edge;
+        let anchored = edge;
+        if (start?.handleId === PERIMETER_HANDLE_ID) {
+          const sourceNode = state.nodes.find((node) => node.id === start.nodeId);
+          if (sourceNode) {
+            anchored = setConnectorEndpointAnchor(
+              anchored,
+              "source",
+              connectorAnchorAtCanvasPoint(sourceNode, getNodeRect(sourceNode), start.point)
+            );
+          }
+        }
+        if (
+          endPoint
+          && targetNodeId
+          && connectionState.toHandle?.id === PERIMETER_HANDLE_ID
+        ) {
+          const targetNode = state.nodes.find((node) => node.id === targetNodeId);
+          if (targetNode) {
+            anchored = setConnectorEndpointAnchor(
+              anchored,
+              "target",
+              connectorAnchorAtCanvasPoint(targetNode, getNodeRect(targetNode), endPoint)
+            );
+          }
+        }
+        return anchored;
+      }),
+      saveStatus: "unsaved",
+    }));
+  }, [screenToFlowPosition]);
+
   const reconnectingEdgeIdRef = useRef<string | null>(null);
   const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
     reconnectingEdgeIdRef.current = edge.id;
-  }, []);
-  const onReconnectEnd = useCallback(() => {
-    reconnectingEdgeIdRef.current = null;
+    pendingReconnectRef.current = null;
   }, []);
 
   const isValidConnection = useCallback((connection: Connection | Edge) => {
@@ -1077,6 +1159,26 @@ function VidyaCanvasInner({
     const source = cs.nodes.find((n) => n.id === connection.source);
     const target = cs.nodes.find((n) => n.id === connection.target);
     if (!source || !target || source.id === target.id) return;
+
+    const sourceChanged = oldEdge.source !== connection.source
+      || oldEdge.sourceHandle !== connection.sourceHandle;
+    const targetChanged = oldEdge.target !== connection.target
+      || oldEdge.targetHandle !== connection.targetHandle;
+    const movedEndpoint: ConnectorEndpoint | null = sourceChanged && !targetChanged
+      ? "source"
+      : targetChanged ? "target" : null;
+    const movedNodeId = movedEndpoint === "source" ? connection.source : connection.target;
+    const movedHandleId = movedEndpoint === "source"
+      ? connection.sourceHandle
+      : movedEndpoint === "target" ? connection.targetHandle : null;
+    pendingReconnectRef.current = movedEndpoint
+      ? {
+          edgeId: oldEdge.id,
+          endpoint: movedEndpoint,
+          nodeId: movedNodeId,
+          handleId: movedHandleId,
+        }
+      : null;
 
     cs.pushHistory();
     const currentHierarchy = buildHierarchy(cs.nodes, cs.edges);
@@ -1142,7 +1244,7 @@ function VidyaCanvasInner({
       const baseHidden = !!edge.hidden
         && edgeData.hiddenInMatrix !== true
         && edgeData.hiddenInSunburst !== true;
-      return {
+      let reconnected: Edge = {
         ...edge,
         source: connection.source,
         target: connection.target,
@@ -1159,8 +1261,10 @@ function VidyaCanvasInner({
           waypointOrigin: undefined,
           edgeType: "branch",
           curveStyle: flowchartConnection ? "step" : route.curveStyle,
-          manualRoute: flowchartConnection || edgeData.manualRoute === true,
-          preserveHandles: flowchartConnection || edgeData.preserveHandles === true,
+          manualRoute: flowchartConnection
+            || movedHandleId === PERIMETER_HANDLE_ID
+            || edgeData.manualRoute === true,
+          preserveHandles: true,
           arrowEnd: !terminatesAtJunction,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? matrixRoot?.id : undefined,
@@ -1169,6 +1273,10 @@ function VidyaCanvasInner({
           layoutMode: mode,
         },
       };
+      if (movedEndpoint) {
+        reconnected = clearConnectorEndpointAnchor(reconnected, movedEndpoint);
+      }
+      return reconnected;
     });
 
     useCanvasStore.setState({ nodes: nextNodes, edges: nextEdges, saveStatus: "unsaved" });
@@ -1177,6 +1285,38 @@ function VidyaCanvasInner({
       cs.scheduleMatrixReflow(connection.source);
     });
   }, []);
+
+  const onReconnectEnd = useCallback((
+    event: MouseEvent | TouchEvent,
+    _edge: Edge,
+    _handleType: "source" | "target",
+    connectionState: FinalConnectionState
+  ) => {
+    const pending = pendingReconnectRef.current;
+    reconnectingEdgeIdRef.current = null;
+    pendingReconnectRef.current = null;
+    if (
+      !pending
+      || pending.handleId !== PERIMETER_HANDLE_ID
+      || connectionState.isValid !== true
+    ) return;
+    const clientPoint = dragEventClientPoint(event);
+    if (!clientPoint) return;
+    const flowPoint = screenToFlowPosition(clientPoint);
+    useCanvasStore.setState((state) => ({
+      edges: state.edges.map((edge) => {
+        if (edge.id !== pending.edgeId) return edge;
+        const node = state.nodes.find((candidate) => candidate.id === pending.nodeId);
+        if (!node) return edge;
+        return setConnectorEndpointAnchor(
+          edge,
+          pending.endpoint,
+          connectorAnchorAtCanvasPoint(node, getNodeRect(node), flowPoint)
+        );
+      }),
+      saveStatus: "unsaved",
+    }));
+  }, [screenToFlowPosition]);
 
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
@@ -1630,6 +1770,10 @@ function VidyaCanvasInner({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      onConnectStart={onConnectStart}
+      onConnectEnd={onConnectEnd}
+      onClickConnectStart={onConnectStart}
+      onClickConnectEnd={onConnectEnd}
       isValidConnection={isValidConnection}
       onReconnect={onReconnect}
       onReconnectStart={onReconnectStart}
