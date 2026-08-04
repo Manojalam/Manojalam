@@ -5513,6 +5513,60 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isEditableFrame && (
+          <Section label="Frame fill" visible={singleNodeTab === "style"} defaultOpen>
+            <ColorSwatchPicker
+              value={typeof d.background === "string" ? d.background : ""}
+              extra={settings.customColors}
+              onCustomColor={(color) => setSettings({
+                customColors: rememberCustomColor(settings.customColors, color),
+              })}
+              onChange={(value) => setField("background", value || undefined)}
+              onClear={() => setField("background", undefined)}
+            />
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Changes the color inside the swim lane without changing its label or outline.
+            </p>
+          </Section>
+        )}
+
+        {isEditableFrame && (
+          <Section label="Frame border" visible={singleNodeTab === "style"} defaultOpen>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Color
+              </p>
+              <ColorSwatchPicker
+                value={typeof d.color === "string" ? d.color : "#6366f1"}
+                extra={settings.customColors}
+                onCustomColor={(color) => setSettings({
+                  customColors: rememberCustomColor(settings.customColors, color),
+                })}
+                onChange={(value) => setField("color", value || undefined)}
+                onClear={() => setField("color", undefined)}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Thickness
+              </p>
+              <ThicknessControl
+                value={typeof d.borderWidth === "number" ? d.borderWidth : 2}
+                onChange={(value) => setField("borderWidth", value)}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Style
+              </p>
+              <BorderStylePicker
+                value={d.borderStyle === "solid" || d.borderStyle === "dotted" ? d.borderStyle : "dashed"}
+                onChange={(value) => setField("borderStyle", value)}
+              />
+            </div>
+          </Section>
+        )}
+
+        {isEditableFrame && (
           <Section label="Swim lane" visible={singleNodeTab === "text"} defaultOpen>
             <div>
               <Label htmlFor="frame-title" className="text-xs">Label</Label>

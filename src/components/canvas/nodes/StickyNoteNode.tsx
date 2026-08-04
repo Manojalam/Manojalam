@@ -15,6 +15,7 @@ import {
   resolveLayoutVisualStyle,
   resolveNodeBorderRadius,
   resolveSurfaceEffectData,
+  stickyNoteFoldColor,
   textMeasurementKey,
   themeAwareNodeFillColor,
 } from "@/lib/style-utils";
@@ -69,6 +70,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
     : (dd.fillColor as string) ?? palette.bg;
   const surfaceEffectData = resolveSurfaceEffectData(dd);
   const border   = resolveBorderColor(dd) ?? palette.border;
+  const foldColor = stickyNoteFoldColor(bg, palette.bg, palette.shadow);
   const matrixCell   = dd.matrixCell === true;
   const matrixRole   = dd.matrixCellRole as string | undefined;
   const resolvedBorderWidth = resolveBorderWidth(dd);
@@ -208,7 +210,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
 
         {/* Folded-corner decoration */}
         {!matrixCell && <div className="pointer-events-none absolute bottom-0 right-0 h-5 w-5"
-          style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${palette.shadow} 45%, transparent 45%)` }} />
+          style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${foldColor} 45%, transparent 45%)` }} />
         }
 
         <div

@@ -17,6 +17,7 @@ import {
   resolveFillSourceColor,
   resolveLayoutFillGradient,
   resolveSurfaceEffectData,
+  stickyNoteFoldColor,
   themeAwareLayoutConnectorColor,
   themeAwareNodeFillColor,
 } from "./style-utils";
@@ -197,6 +198,17 @@ test("generated hierarchy connectors mix toward the active theme foreground", ()
 test("lightens a border color into a pale matching fill", () => {
   assert.equal(lightenColor("#4262ff"), "#d5dcff");
   assert.equal(lightenColor("transparent"), "transparent");
+});
+
+test("a sticky note fold follows a custom fill while preserving palette defaults", () => {
+  assert.equal(
+    stickyNoteFoldColor("#fef9c3", "#fef9c3", "#fef08a"),
+    "#fef08a"
+  );
+  assert.equal(
+    stickyNoteFoldColor("#3b82f6", "#fef9c3", "#fef08a"),
+    "#8db7fa"
+  );
 });
 
 test("derives a valid lighter fill from a border color", () => {

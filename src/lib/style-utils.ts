@@ -403,6 +403,19 @@ export function lightenColor(color: string, amount = 0.78): string {
     .join("")}`;
 }
 
+/** Keep a sticky note's folded corner related to its authored fill color. */
+export function stickyNoteFoldColor(
+  fillColor: string,
+  paletteFill: string,
+  paletteFold: string
+): string {
+  const normalizedFill = fillColor.trim();
+  if (!normalizedFill || normalizedFill.toLowerCase() === paletteFill.trim().toLowerCase()) {
+    return paletteFold;
+  }
+  return lightenColor(normalizedFill, 0.42);
+}
+
 /** Return the pale fill color used when matching a fill to its border. */
 export function borderMatchedFillColor(borderColor: unknown): string | undefined {
   if (typeof borderColor !== "string") return undefined;
