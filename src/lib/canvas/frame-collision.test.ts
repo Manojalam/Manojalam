@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Node } from "@xyflow/react";
 import {
+  edgesWithoutStandaloneFrameEndpoints,
   frameOwnedNodeIds,
+  nodesWithoutStandaloneFrameHierarchy,
   resolveFrameDropCollisions,
 } from "./frame-collision";
 
@@ -77,6 +79,42 @@ test("inserting to the right leaves the lane behind the gesture in place", () =>
   assert.deepEqual(placements.right, { x: 842, y: 0 });
 });
 
+test("the drop pointer chooses a side even when the overall drag went mostly upward", () => {
+  const nodes = [
+    frame("inserted", 250, 180),
+    card("inserted-card", 300, 280),
+    frame("neighbor", 500, 0),
+  ];
+
+  const placements = resolveFrameDropCollisions(
+    nodes,
+    new Set(["inserted", "inserted-card"]),
+    { x: 5, y: -500 },
+    { x: 850, y: 300 }
+  );
+
+  assert.deepEqual(placements.inserted, { x: 250, y: 0 });
+  assert.deepEqual(placements["inserted-card"], { x: 300, y: 100 });
+  assert.deepEqual(placements.neighbor, { x: 682, y: 0 });
+});
+
+test("a pointer above the collided lane intentionally chooses the upper slot", () => {
+  const nodes = [
+    frame("inserted", 500, 200),
+    frame("neighbor", 500, 0),
+  ];
+
+  const placements = resolveFrameDropCollisions(
+    nodes,
+    new Set(["inserted"]),
+    { x: 400, y: 5 },
+    { x: 700, y: -40 }
+  );
+
+  assert.equal(placements.inserted, undefined);
+  assert.deepEqual(placements.neighbor, { x: 500, y: -432 });
+});
+
 test("dragging a lane left pushes the covered lane left", () => {
   const nodes = [frame("first", 100), frame("inserted", 250)];
 
@@ -109,4 +147,35 @@ test("cards belong to the closest containing lane when frames overlap", () => {
 
   assert.deepEqual(frameOwnedNodeIds(nodes, new Set(["right"])), ["shared"]);
   assert.deepEqual(frameOwnedNodeIds(nodes, new Set(["left"])), []);
+});
+
+test("persisted connector edges to standalone frames are removed", () => {
+  const nodes = [frame("lane", 0), card("a", 100), card("b", 500)];
+  const edges = [
+    { id: "valid", source: "a", target: "b" },
+    { id: "to-frame", source: "a", target: "lane" },
+    { id: "from-frame", source: "lane", target: "b" },
+  ];
+
+  assert.deepEqual(
+    edgesWithoutStandaloneFrameEndpoints(nodes, edges).map((edge) => edge.id),
+    ["valid"]
+  );
+});
+
+test("hierarchy metadata left by a Frame connector is removed", () => {
+  const lane = frame("lane", 0);
+  lane.data = { ...lane.data, parentId: "a", childOrder: ["b"] };
+  const a = card("a", 100);
+  a.data = { ...a.data, childOrder: ["lane", "b"] };
+  const b = card("b", 500);
+  b.data = { ...b.data, parentId: "lane" };
+
+  const normalized = nodesWithoutStandaloneFrameHierarchy([lane, a, b]);
+  const byId = new Map(normalized.map((node) => [node.id, node]));
+
+  assert.equal(byId.get("lane")?.data.parentId, null);
+  assert.deepEqual(byId.get("lane")?.data.childOrder, []);
+  assert.deepEqual(byId.get("a")?.data.childOrder, ["b"]);
+  assert.equal(byId.get("b")?.data.parentId, null);
 });
