@@ -202,6 +202,22 @@ export function surfaceEffectStyle(
   };
 }
 
+/**
+ * Surface-local paint that can be reused by small decorations without
+ * duplicating the node's outer or inset shadow treatment.
+ */
+export function surfaceEffectFillStyle(
+  data: Record<string, unknown>,
+  accentColor?: string
+): SurfaceEffectStyle {
+  const style = surfaceEffectStyle(data, accentColor);
+  return {
+    ...(style.backgroundImage ? { backgroundImage: style.backgroundImage } : {}),
+    ...(style.backgroundBlendMode ? { backgroundBlendMode: style.backgroundBlendMode } : {}),
+    ...(style.backdropFilter ? { backdropFilter: style.backdropFilter } : {}),
+  };
+}
+
 export function surfaceEffectFilter(
   data: Record<string, unknown>,
   accentColor?: string
