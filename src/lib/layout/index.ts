@@ -441,12 +441,12 @@ export interface LayoutOption { mode: LayoutMode; label: string; description: st
 
 export const LAYOUT_OPTIONS: LayoutOption[] = [
   { mode: "freeForm",   label: "Free Form",  description: "Leave nodes where they are" },
-  { mode: "mindMap",    label: "Mind Map",   description: "Two-sided branches around a central idea" },
-  { mode: "fromParentFreeForm", label: "Radial Branches", description: "Radial spread from the selected node" },
+  { mode: "mindMap",    label: "Mind Map",   description: "Two-sided hierarchy growing left and right" },
+  { mode: "fromParentFreeForm", label: "Radial Branches", description: "Node-and-connector hierarchy spreading around a center" },
   { mode: "horizontal", label: "Horizontal", description: "Tree grows left to right" },
   { mode: "vertical",   label: "Vertical",   description: "Balanced tree fanning down" },
   { mode: "list",       label: "List",       description: "Indented outline" },
   { mode: "linear",     label: "Linear",     description: "Single connected line" },
-  { mode: "radial",     label: "Sunburst",   description: "Hierarchy-aware radial chart" },
+  { mode: "radial",     label: "Sunburst",   description: "Concentric hierarchy rendered as filled sectors" },
   { mode: "matrix",     label: "Matrix",     description: "Structured chart / table" },
 ];

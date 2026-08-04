@@ -687,6 +687,10 @@ test("the Import layout chooser accepts Cards as a presentation", () => {
     IMPORT_LAYOUT_OPTIONS.find((option) => option.mode === "cards")?.label,
     "Cards"
   );
+  assert.equal(
+    IMPORT_LAYOUT_OPTIONS.find((option) => option.mode === "radial")?.label,
+    "Sunburst"
+  );
 });
 
 test("remaps a reviewed hierarchy for collision-free current-board insertion", () => {
