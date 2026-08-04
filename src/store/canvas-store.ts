@@ -173,8 +173,10 @@ import {
   translateTextCalloutAnchor,
 } from "@/lib/canvas/text-callout";
 import {
+  edgesWithoutStandaloneFrameEndpoints,
   FRAME_COLLISION_GAP,
   isStandaloneFrameNode,
+  nodesWithoutStandaloneFrameHierarchy,
   resolveFrameDropCollisions,
 } from "@/lib/canvas/frame-collision";
 
@@ -2088,8 +2090,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     cancelPendingLayoutReflows();
     const rawSettings = board.content.settings ?? DEFAULT_BOARD_SETTINGS;
     const persistedNodes = normalizePersistedNodes(board.content.nodes);
-    const persistedEdges = normalizePersistedEdges(board.content.edges);
-    const migrated = migrateNodes(persistedNodes);
+    const migrated = nodesWithoutStandaloneFrameHierarchy(migrateNodes(persistedNodes));
+    const persistedEdges = edgesWithoutStandaloneFrameEndpoints(
+      migrated,
+      normalizePersistedEdges(board.content.edges)
+    );
     // Infer + persist parentId from directed edges (for old boards).
     const hierarchy = buildHierarchy(migrated, persistedEdges);
     const parentedNodes = migrated.map((n) => {

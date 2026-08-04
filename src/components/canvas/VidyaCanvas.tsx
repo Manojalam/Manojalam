@@ -75,7 +75,10 @@ import {
   preserveAttachedExternalNoteOffsets,
 } from "@/lib/canvas/node-note";
 import { planNodeDragMovement } from "@/lib/canvas/drag-movement";
-import { resolveFrameDropCollisions } from "@/lib/canvas/frame-collision";
+import {
+  isStandaloneFrameNode,
+  resolveFrameDropCollisions,
+} from "@/lib/canvas/frame-collision";
 import { findReparentDropTarget } from "@/lib/canvas/reparent-drop-target";
 import { reconnectChangesEndpointNodes } from "@/lib/canvas/hierarchy-mutations";
 import {
@@ -869,13 +872,14 @@ function VidyaCanvasInner({
     const movedIds = new Set(drag?.positions.keys() ?? []);
     let state = useCanvasStore.getState();
     const pointer = dragEventClientPoint(event);
-    const dropTargetId = pointer
+    const dropPoint = pointer ? screenToFlowPosition(pointer) : null;
+    const dropTargetId = dropPoint
       ? findReparentDropTarget(
           state.nodes,
           state.edges,
           draggedNode.id,
           movedIds,
-          screenToFlowPosition(pointer)
+          dropPoint
         )
       : reparentTargetId;
     if (dropTargetId) {
@@ -892,7 +896,8 @@ function VidyaCanvasInner({
         {
           x: droppedNode.position.x - draggedStart.x,
           y: droppedNode.position.y - draggedStart.y,
-        }
+        },
+        dropPoint ?? undefined
       );
       const displacedIds = Object.keys(placements);
       if (displacedIds.length) {
@@ -1038,9 +1043,13 @@ function VidyaCanvasInner({
     }) => {
       if (useUIStore.getState().relationshipSelection) return;
       const cs = useCanvasStore.getState();
-      cs.pushHistory();
       const source = cs.nodes.find((n) => n.id === connection.source);
       const targetNode = cs.nodes.find((n) => n.id === connection.target);
+      if (isStandaloneFrameNode(source) || isStandaloneFrameNode(targetNode)) {
+        toast.info("Frames are containers and cannot be connected.");
+        return;
+      }
+      cs.pushHistory();
       const sourceData = (source?.data ?? {}) as Record<string, unknown>;
       const matrixRoot = typeof sourceData.matrixRootId === "string"
         ? cs.nodes.find((node) => node.id === sourceData.matrixRootId)

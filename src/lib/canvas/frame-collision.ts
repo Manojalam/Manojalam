@@ -1,7 +1,8 @@
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import {
   createNodeRect,
   getNodeRect,
+  rectsOverlap,
   type NodeRect,
   type Point,
 } from "../layout/geometry";
@@ -85,6 +86,72 @@ function overlapsCrossAxis(
     : rect.left < movedBounds.right && rect.right > movedBounds.left;
 }
 
+/** Frames are visual containers, not relationship or hierarchy endpoints. */
+export function edgesWithoutStandaloneFrameEndpoints(
+  nodes: readonly Node[],
+  edges: readonly Edge[]
+): Edge[] {
+  const frameIds = new Set(nodes.filter(isStandaloneFrameNode).map((node) => node.id));
+  if (!frameIds.size) return [...edges];
+  return edges.filter((edge) => !frameIds.has(edge.source) && !frameIds.has(edge.target));
+}
+
+/** Remove hierarchy metadata left behind by an invalid Frame connector. */
+export function nodesWithoutStandaloneFrameHierarchy(nodes: readonly Node[]): Node[] {
+  const frameIds = new Set(nodes.filter(isStandaloneFrameNode).map((node) => node.id));
+  if (!frameIds.size) return [...nodes];
+  return nodes.map((node) => {
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const parentId = typeof data.parentId === "string" ? data.parentId : null;
+    const originalChildOrder = Array.isArray(data.childOrder)
+      ? data.childOrder as unknown[]
+      : undefined;
+    const childOrder = originalChildOrder
+      ? frameIds.has(node.id)
+        ? []
+        : originalChildOrder.filter((id): id is string =>
+            typeof id === "string" && !frameIds.has(id)
+          )
+      : undefined;
+    const nextParentId = frameIds.has(node.id) || (parentId && frameIds.has(parentId))
+      ? null
+      : parentId;
+    if (
+      nextParentId === parentId
+      && (childOrder === undefined || childOrder.length === originalChildOrder?.length)
+    ) return node;
+    return {
+      ...node,
+      data: {
+        ...data,
+        parentId: nextParentId,
+        ...(childOrder ? { childOrder } : {}),
+      },
+    };
+  });
+}
+
+function overlapsMainAxisWithGap(
+  rect: NodeRect,
+  movedBounds: NodeRect,
+  axis: "x" | "y",
+  gap: number
+): boolean {
+  return axis === "x"
+    ? rect.left < movedBounds.right + gap && rect.right + gap > movedBounds.left
+    : rect.top < movedBounds.bottom + gap && rect.bottom + gap > movedBounds.top;
+}
+
+function mainAxisCenterDistance(
+  rect: NodeRect,
+  movedBounds: NodeRect,
+  axis: "x" | "y"
+): number {
+  return axis === "x"
+    ? Math.abs(rect.centerX - movedBounds.centerX)
+    : Math.abs(rect.centerY - movedBounds.centerY);
+}
+
 /**
  * Keep dropped/duplicated standalone frames fixed and push colliding neighbor
  * frames away along the gesture's primary axis. Any canvas objects owned by a
@@ -94,6 +161,7 @@ export function resolveFrameDropCollisions(
   nodes: readonly Node[],
   movedNodeIds: ReadonlySet<string>,
   movement: Point,
+  dropPoint?: Point,
   gap = FRAME_COLLISION_GAP
 ): FrameCollisionPlacements {
   const movedFrames = nodes.filter((node) =>
@@ -101,20 +169,78 @@ export function resolveFrameDropCollisions(
   );
   if (!movedFrames.length) return {};
 
-  const movedBounds = combinedBounds(movedFrames.map(getNodeRect));
-  const axis: "x" | "y" = Math.abs(movement.x) >= Math.abs(movement.y) ? "x" : "y";
-  const axisMovement = axis === "x" ? movement.x : movement.y;
-  const direction = axisMovement < 0 ? -1 : 1;
-  const stationaryFrames = nodes
+  let movedBounds = combinedBounds(movedFrames.map(getNodeRect));
+  const allStationaryFrames = nodes
     .filter((node) =>
       !movedNodeIds.has(node.id)
       && isStandaloneFrameNode(node)
       && !isLocked(node)
     )
-    .map((node) => ({ node, rect: getNodeRect(node) }))
-    .filter(({ rect }) => overlapsCrossAxis(rect, movedBounds, axis));
+    .map((node) => ({ node, rect: getNodeRect(node) }));
   const placements: FrameCollisionPlacements = {};
   const frameDeltas = new Map<string, Point>();
+
+  const directCollisionAnchor = allStationaryFrames
+    .filter(({ rect }) => rectsOverlap(rect, movedBounds, gap))
+    .sort((first, second) => {
+      const reference = dropPoint ?? {
+        x: movedBounds.centerX,
+        y: movedBounds.centerY,
+      };
+      return Math.hypot(
+        first.rect.centerX - reference.x,
+        first.rect.centerY - reference.y
+      ) - Math.hypot(
+        second.rect.centerX - reference.x,
+        second.rect.centerY - reference.y
+      );
+    })[0]?.rect;
+  const pointerIntent = dropPoint && directCollisionAnchor
+    ? {
+        x: dropPoint.x - directCollisionAnchor.centerX,
+        y: dropPoint.y - directCollisionAnchor.centerY,
+      }
+    : movement;
+  const intent = Math.hypot(pointerIntent.x, pointerIntent.y) >= 8
+    ? pointerIntent
+    : movement;
+  const axis: "x" | "y" = Math.abs(intent.x) >= Math.abs(intent.y) ? "x" : "y";
+  const axisMovement = axis === "x" ? intent.x : intent.y;
+  const direction = axisMovement < 0 ? -1 : 1;
+
+  // Use the pointer's location around the collided frame to choose the side,
+  // then align the dropped group on the cross axis before making room there.
+  const alignmentAnchor = directCollisionAnchor ?? allStationaryFrames
+    .filter(({ rect }) => overlapsCrossAxis(rect, movedBounds, axis))
+    .filter(({ rect }) => overlapsMainAxisWithGap(rect, movedBounds, axis, gap))
+    .sort((first, second) =>
+      mainAxisCenterDistance(first.rect, movedBounds, axis)
+      - mainAxisCenterDistance(second.rect, movedBounds, axis)
+    )[0]?.rect;
+  const crossDelta = alignmentAnchor
+    ? axis === "x"
+      ? { x: 0, y: alignmentAnchor.top - movedBounds.top }
+      : { x: alignmentAnchor.left - movedBounds.left, y: 0 }
+    : { x: 0, y: 0 };
+  if (Math.abs(crossDelta.x) >= 0.5 || Math.abs(crossDelta.y) >= 0.5) {
+    for (const node of nodes) {
+      if (!movedNodeIds.has(node.id)) continue;
+      placements[node.id] = {
+        x: node.position.x + crossDelta.x,
+        y: node.position.y + crossDelta.y,
+      };
+    }
+    movedBounds = createNodeRect(
+      movedBounds.id,
+      movedBounds.left + crossDelta.x,
+      movedBounds.top + crossDelta.y,
+      movedBounds.width,
+      movedBounds.height
+    );
+  }
+
+  const stationaryFrames = allStationaryFrames
+    .filter(({ rect }) => overlapsCrossAxis(rect, movedBounds, axis));
 
   if (axis === "x" && direction > 0) {
     let cursor = movedBounds.right + gap;
