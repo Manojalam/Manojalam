@@ -9,8 +9,10 @@ export interface ShlokaCardEditorDraft {
   anvaya: string;
   padartha: string;
   translation: string;
+  grammar: string;
   chandas: string;
   notes: string;
+  memorizationNotes: string;
   memorizationStatus: MemorizationStatus;
   tagsText: string;
 }
@@ -29,8 +31,10 @@ export function shlokaCardEditorDraft(data: ShlokaCardNodeData): ShlokaCardEdito
     anvaya: data.anvaya ?? "",
     padartha: data.padartha ?? "",
     translation: data.translation ?? "",
+    grammar: data.grammar ?? "",
     chandas: data.chandas ?? "",
     notes: data.notes ?? "",
+    memorizationNotes: data.memorizationNotes ?? "",
     memorizationStatus: data.memorizationStatus ?? "new",
     tagsText: (data.tags ?? []).join(", "),
   };
@@ -53,8 +57,10 @@ export function shlokaCardEditorPatch(
     anvaya: optionalText(draft.anvaya),
     padartha: optionalText(draft.padartha),
     translation: optionalText(draft.translation),
+    grammar: optionalText(draft.grammar),
     chandas: optionalText(draft.chandas),
     notes: optionalText(draft.notes),
+    memorizationNotes: optionalText(draft.memorizationNotes),
     memorizationStatus: draft.memorizationStatus,
     tags: [...new Set(tags)],
   };

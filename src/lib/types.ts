@@ -743,6 +743,17 @@ export interface SanskritCardNodeData extends BaseNodeData {
   displayMode: SanskritDisplayMode;
 }
 
+export type ShlokaStudySection =
+  | "verse"
+  | "padaccheda"
+  | "anvaya"
+  | "padartha"
+  | "translation"
+  | "grammar"
+  | "chandas"
+  | "notes"
+  | "memorization";
+
 export interface ShlokaCardNodeData extends BaseNodeData {
   title: string;
   sourceText?: string;
@@ -752,9 +763,12 @@ export interface ShlokaCardNodeData extends BaseNodeData {
   anvaya?: string;
   padartha?: string;
   translation?: string;
+  grammar?: string;
   chandas?: string;
+  memorizationNotes?: string;
   memorizationStatus: MemorizationStatus;
   collapsedSections?: string[];
+  studySection?: ShlokaStudySection;
 }
 
 export interface GrammarCardNodeData extends BaseNodeData {

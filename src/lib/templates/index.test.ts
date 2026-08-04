@@ -178,6 +178,37 @@ test("the Mind Map template declares a stable two-sided layout", () => {
   assert.ok(template.content.edges.every((edge) => edge.data?.curveStyle === "step"));
 });
 
+test("the Śloka Study template gives every study card its own content", () => {
+  const template = getTemplateById("shloka-study");
+  assert.ok(template);
+
+  const shlokaCards = template.content.nodes.filter((node) => node.type === "shloka");
+  assert.equal(shlokaCards.length, 9);
+
+  const contentFields = {
+    verse: "devanagari",
+    padaccheda: "padaccheda",
+    anvaya: "anvaya",
+    padartha: "padartha",
+    translation: "translation",
+    grammar: "grammar",
+    chandas: "chandas",
+    notes: "notes",
+    memorization: "memorizationNotes",
+  } as const;
+
+  for (const [section, field] of Object.entries(contentFields)) {
+    const card = shlokaCards.find((node) => node.data.studySection === section);
+    assert.ok(card, `missing ${section} study card`);
+    assert.ok(String(card.data[field] ?? "").trim(), `${section} card has no content`);
+  }
+
+  const verse = shlokaCards.find((node) => node.data.studySection === "verse");
+  assert.ok(verse);
+  assert.ok(String(verse.data.iast ?? "").trim());
+  assert.equal(template.content.edges.filter((edge) => edge.source === verse.id).length, 8);
+});
+
 test("an empty persisted template is repaired before navigation", async () => {
   const template = instantiateTemplate("basic-mindmap");
   assert.ok(template);
