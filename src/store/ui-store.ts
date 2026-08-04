@@ -93,6 +93,11 @@ interface UIState {
   setCommandPaletteOpen: (open: boolean) => void;
   aiPanelOpen: boolean;
   setAiPanelOpen: (open: boolean) => void;
+  presentationMode: boolean;
+  presentationStep: number;
+  startPresentation: () => void;
+  stopPresentation: () => void;
+  setPresentationStep: (step: number) => void;
   appSettings: AppSettings;
   updateAppSettings: (partial: Partial<AppSettings>) => void;
   loadAppSettings: () => void;
@@ -222,6 +227,25 @@ export const useUIStore = create<UIState>((set, get) => ({
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   aiPanelOpen: false,
   setAiPanelOpen: (open) => set({ aiPanelOpen: open }),
+  presentationMode: false,
+  presentationStep: 0,
+  startPresentation: () => set({
+    presentationMode: true,
+    presentationStep: 0,
+    activeTool: "pan",
+    touchSelectionMode: false,
+    relationshipSelection: null,
+    relationshipDiagramItemSelection: null,
+    connectorClickPoint: null,
+    drawingModeNodeId: null,
+    layoutPanelOpen: false,
+    sanskritPanelOpen: false,
+    searchPanelOpen: false,
+    commandPaletteOpen: false,
+    aiPanelOpen: false,
+  }),
+  stopPresentation: () => set({ presentationMode: false, presentationStep: 0 }),
+  setPresentationStep: (step) => set({ presentationStep: Math.max(0, Math.floor(step)) }),
   appSettings: { ...DEFAULT_APP_SETTINGS },
   updateAppSettings: (partial) => {
     const settings = normalizeAppSettings({ ...get().appSettings, ...partial });

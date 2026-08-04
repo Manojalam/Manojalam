@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Undo2, Redo2, Download, Upload, Search,
   ChevronDown, Eye, Share2,
-  Languages, Sun, Moon,
+  Languages, Sun, Moon, Presentation,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -111,9 +111,10 @@ export function CanvasTopbar() {
   const undo            = useCanvasStore((s) => s.undo);
   const redo            = useCanvasStore((s) => s.redo);
   const updateBoardTitle = useCanvasStore((s) => s.updateBoardTitle);
+  const hasPresentableContent = useCanvasStore((s) => s.nodes.some((node) => !node.hidden));
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const openBoardExport = useUIStore((s) => s.openBoardExport);
-  const { setSanskritPanelOpen, setSearchPanelOpen } = useUIStore();
+  const { setSanskritPanelOpen, setSearchPanelOpen, startPresentation } = useUIStore();
   const canEdit = board?.accessRole !== "viewer";
 
   const currentBoardSnapshot = (): VidyaBoard | null => {
@@ -265,6 +266,25 @@ export function CanvasTopbar() {
         <div className="max-sm:hidden"><ThemeToggle /></div>
 
         <div className="h-5 w-px bg-border mx-1 max-sm:hidden" />
+
+        <button
+          type="button"
+          title="Present this board"
+          onClick={() => {
+            useCanvasStore.setState((state) => ({
+              nodes: state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
+              edges: state.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge),
+              selectedNodeIds: [],
+              selectedEdgeIds: [],
+            }));
+            startPresentation();
+          }}
+          disabled={!hasPresentableContent}
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-[13px] font-semibold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200 dark:hover:bg-indigo-900/60 max-sm:w-8 max-sm:justify-center max-sm:px-0"
+        >
+          <Presentation className="h-3.5 w-3.5" />
+          <span className="max-sm:hidden">Present</span>
+        </button>
 
         {/* Share button */}
         <button

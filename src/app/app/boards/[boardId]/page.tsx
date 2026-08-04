@@ -42,6 +42,7 @@ export default function BoardEditorPage() {
   const board = useCanvasStore((s) => s.board);
   const layoutPanelOpen = useUIStore((s) => s.layoutPanelOpen);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
+  const presentationMode = useUIStore((s) => s.presentationMode);
   const device = useDeviceProfile();
   const isPhone = device.kind === "phone";
   const canEdit = board?.accessRole !== "viewer";
@@ -198,8 +199,9 @@ export default function BoardEditorPage() {
       data-device-kind={device.kind}
       data-platform={device.platform}
       data-input={device.input}
+      data-presentation-mode={presentationMode ? "true" : undefined}
     >
-      <CanvasTopbar />
+      {!presentationMode && <CanvasTopbar />}
 
       {/* Canvas + floating overlays */}
       <div className="relative flex-1 overflow-hidden">
@@ -207,7 +209,7 @@ export default function BoardEditorPage() {
         <VidyaCanvas boardId={boardId} canEdit={canEdit} />
 
         {/* Floating left toolbar */}
-        {canEdit && <div
+        {canEdit && !presentationMode && <div
           className={cn(
             "pointer-events-none absolute z-30 flex",
             isPhone
@@ -223,7 +225,7 @@ export default function BoardEditorPage() {
         </div>}
 
         {/* Floating layout panel (left, next to toolbar) */}
-        {canEdit && <div
+        {canEdit && !presentationMode && <div
           className={cn(
             "pointer-events-none absolute z-40 flex",
             isPhone
@@ -239,7 +241,7 @@ export default function BoardEditorPage() {
         </div>}
 
         {/* Floating right inspector */}
-        {canEdit && <div
+        {canEdit && !presentationMode && <div
           className={cn(
             "pointer-events-none absolute z-40 flex",
             isPhone
@@ -254,7 +256,7 @@ export default function BoardEditorPage() {
           )}
         </div>}
 
-        {!canEdit && (
+        {!canEdit && !presentationMode && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
             <div className="rounded-full border border-sky-200 bg-background/95 px-3 py-1.5 text-xs font-medium text-sky-700 shadow-sm backdrop-blur dark:border-sky-900 dark:text-sky-300">
               View-only access · pan and zoom are available
@@ -263,7 +265,7 @@ export default function BoardEditorPage() {
         )}
 
         {/* Status bar inside canvas area */}
-        <div
+        {!presentationMode && <div
           className={cn(
             "pointer-events-none absolute inset-x-0 flex justify-center",
             isPhone ? "bottom-[calc(env(safe-area-inset-bottom)+0.5rem)]" : "bottom-0 pb-3"
@@ -272,12 +274,12 @@ export default function BoardEditorPage() {
           <div className="pointer-events-auto">
             <CanvasStatusBar />
           </div>
-        </div>
+        </div>}
       </div>
 
-      {canEdit && <SanskritToolsPanel />}
-      {canEdit && <CommandPalette />}
-      <SearchPanel />
+      {canEdit && !presentationMode && <SanskritToolsPanel />}
+      {canEdit && !presentationMode && <CommandPalette />}
+      {!presentationMode && <SearchPanel />}
     </div>
   );
 }

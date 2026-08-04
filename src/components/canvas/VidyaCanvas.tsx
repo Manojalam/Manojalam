@@ -116,6 +116,8 @@ import {
 } from "@/lib/canvas/text-callout";
 import { useBoardRealtime } from "@/lib/collaboration/use-board-realtime";
 import { NodeMediaLayer } from "./NodeMediaLayer";
+import { PresentationControls } from "./PresentationControls";
+import { buildPresentationStops } from "@/lib/canvas/presentation";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -301,6 +303,8 @@ function VidyaCanvasInner({
   const touchSelectionMode = useUIStore((s) => s.touchSelectionMode);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const boardExportRequest = useUIStore((s) => s.boardExportRequest);
+  const presentationMode = useUIStore((s) => s.presentationMode);
+  const presentationStep = useUIStore((s) => s.presentationStep);
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
 
@@ -356,9 +360,21 @@ function VidyaCanvasInner({
     });
   }, [edges, nodes]);
 
+  const presentationStops = useMemo(
+    () => buildPresentationStops(numberedNodes, edges),
+    [edges, numberedNodes]
+  );
+  const activePresentationStop = presentationStops[
+    Math.min(presentationStep, Math.max(0, presentationStops.length - 1))
+  ];
+  const activePresentationNodeIds = useMemo(
+    () => new Set(activePresentationStop?.nodeIds ?? []),
+    [activePresentationStop]
+  );
+
   const displayNodes = useMemo(() => {
-    if (!canEdit) {
-      return numberedNodes.map((node) => ({
+    let resolvedNodes = (!canEdit || presentationMode)
+      ? numberedNodes.map((node) => ({
         ...node,
         draggable: false,
         connectable: false,
@@ -367,9 +383,8 @@ function VidyaCanvasInner({
           ...(node.style ?? {}),
           pointerEvents: "none" as const,
         },
-      }));
-    }
-    const matrixAwareNodes = numberedNodes.map((node) => {
+      }))
+      : numberedNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const locked = data.locked === true;
       if (data.matrixCell !== true) {
@@ -381,24 +396,41 @@ function VidyaCanvasInner({
         resizable: true,
       };
     });
-    const dropAwareNodes = matrixAwareNodes.map((node) => node.id === reparentTargetId
-      ? {
-          ...node,
-          style: {
-            ...(node.style ?? {}),
-            outline: "4px solid rgba(16, 185, 129, 0.9)",
-            outlineOffset: 4,
-          },
-        }
-      : node);
-    const layerAwareNodes = dropAwareNodes.map((node) => keepsFrameBehindOnSelection(node)
+
+    if (!presentationMode) {
+      resolvedNodes = resolvedNodes.map((node) => node.id === reparentTargetId
+        ? {
+            ...node,
+            style: {
+              ...(node.style ?? {}),
+              outline: "4px solid rgba(16, 185, 129, 0.9)",
+              outlineOffset: 4,
+            },
+          }
+        : node);
+    }
+
+    resolvedNodes = resolvedNodes.map((node) => keepsFrameBehindOnSelection(node)
       ? {
           ...node,
           className: [node.className, "frame-selection-keeps-layer"].filter(Boolean).join(" "),
         }
       : node);
-    if (!relationshipSelection) return layerAwareNodes;
-    return layerAwareNodes.map((node) => {
+
+    if (presentationMode && activePresentationStop?.kind !== "overview") {
+      resolvedNodes = resolvedNodes.map((node) => ({
+        ...node,
+        style: {
+          ...(node.style ?? {}),
+          opacity: activePresentationNodeIds.has(node.id) ? 1 : 0.055,
+          transition: "opacity 260ms ease",
+          pointerEvents: "none" as const,
+        },
+      }));
+    }
+
+    if (!relationshipSelection || presentationMode) return resolvedNodes;
+    return resolvedNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const isActiveChart = node.type === "sunburst" && data.rootId === relationshipSelection.chartRootNodeId;
       if (isActiveChart || node.hidden) return node;
@@ -411,25 +443,58 @@ function VidyaCanvasInner({
         },
       };
     });
-  }, [canEdit, numberedNodes, relationshipSelection, reparentTargetId]);
+  }, [
+    activePresentationNodeIds,
+    activePresentationStop?.kind,
+    canEdit,
+    numberedNodes,
+    presentationMode,
+    relationshipSelection,
+    reparentTargetId,
+  ]);
 
   const displayEdges = useMemo(() => {
     const shapeBoundEdges = suppressAutomaticEdgeReconnect(edges);
-    if (!canEdit) {
-      return shapeBoundEdges.map((edge) => ({
+    let resolvedEdges = (!canEdit || presentationMode)
+      ? shapeBoundEdges.map((edge) => ({
         ...edge,
         selectable: false,
         reconnectable: false,
         style: { ...(edge.style ?? {}), pointerEvents: "none" as const },
-      }));
+      }))
+      : shapeBoundEdges;
+
+    if (presentationMode && activePresentationStop?.kind !== "overview") {
+      resolvedEdges = resolvedEdges.map((edge) => {
+        const active = activePresentationNodeIds.has(edge.source)
+          && activePresentationNodeIds.has(edge.target);
+        return {
+          ...edge,
+          animated: false,
+          style: {
+            ...(edge.style ?? {}),
+            opacity: active ? 1 : 0.04,
+            transition: "opacity 260ms ease",
+            pointerEvents: "none" as const,
+          },
+        };
+      });
     }
-    if (!relationshipSelection) return shapeBoundEdges;
-    return shapeBoundEdges.map((edge) => ({
+
+    if (!relationshipSelection || presentationMode) return resolvedEdges;
+    return resolvedEdges.map((edge) => ({
       ...edge,
       animated: false,
       style: { ...(edge.style ?? {}), opacity: 0.12 },
     }));
-  }, [canEdit, edges, relationshipSelection]);
+  }, [
+    activePresentationNodeIds,
+    activePresentationStop?.kind,
+    canEdit,
+    edges,
+    presentationMode,
+    relationshipSelection,
+  ]);
 
   // Serialize saves so an edit made during an in-flight request cannot be
   // overwritten by an older response. Every queued job verifies its board id
@@ -943,6 +1008,7 @@ function VidyaCanvasInner({
   }, [reparentTargetId, screenToFlowPosition]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (useUIStore.getState().presentationMode) return;
     if (useUIStore.getState().relationshipSelection) {
       event.preventDefault();
       event.stopPropagation();
@@ -991,6 +1057,7 @@ function VidyaCanvasInner({
   );
 
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    if (useUIStore.getState().presentationMode) return;
     if (useUIStore.getState().relationshipSelection) return;
     event.stopPropagation();
     const clickPoint = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -1377,6 +1444,7 @@ function VidyaCanvasInner({
 
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
+      if (useUIStore.getState().presentationMode) return;
       if (useUIStore.getState().relationshipSelection) return;
       const tool = useUIStore.getState().activeTool;
       if (tool === "select" || tool === "pan") {
@@ -1509,6 +1577,7 @@ function VidyaCanvasInner({
 
   useEffect(() => {
     const handleCopy = (event: ClipboardEvent) => {
+      if (useUIStore.getState().presentationMode) return;
       if (!shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
       const store = useCanvasStore.getState();
       if (!event.clipboardData || !store.selectedNodeIds.length) return;
@@ -1537,6 +1606,7 @@ function VidyaCanvasInner({
 
     const handlePaste = (event: ClipboardEvent) => {
       if (!canEdit) return;
+      if (useUIStore.getState().presentationMode) return;
       if (!shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
       const clipboard = event.clipboardData;
       if (!clipboard) return;
@@ -1572,6 +1642,7 @@ function VidyaCanvasInner({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!shouldHandleCanvasClipboard(e.target, document.activeElement)) return;
+      if (useUIStore.getState().presentationMode) return;
 
       if (e.code === "Space") { setSpacePressed(true); e.preventDefault(); return; }
 
@@ -1765,9 +1836,9 @@ function VidyaCanvasInner({
   const onPointerEndCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const pan = longPressPanRef.current;
     if (!pan || pan.pointerId !== event.pointerId) return;
-    if (pan.active && canEdit) setStoredViewport(pan.lastViewport);
+    if (pan.active && canEdit && !presentationMode) setStoredViewport(pan.lastViewport);
     clearLongPressPan();
-  }, [canEdit, clearLongPressPan, setStoredViewport]);
+  }, [canEdit, clearLongPressPan, presentationMode, setStoredViewport]);
 
   const onContextMenuCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!suppressNextContextMenuRef.current) return;
@@ -1814,14 +1885,14 @@ function VidyaCanvasInner({
   const onTouchEndCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (!pinchRef.current || event.touches.length >= 2) return;
     pinchRef.current = null;
-    if (canEdit) setStoredViewport(getViewport());
-  }, [canEdit, getViewport, setStoredViewport]);
+    if (canEdit && !presentationMode) setStoredViewport(getViewport());
+  }, [canEdit, getViewport, presentationMode, setStoredViewport]);
 
   return (
     <>
     <ReactFlow
       data-board-export-root
-      data-board-label-box-guides={settings.showLabelBoxGuides === true ? "true" : undefined}
+      data-board-label-box-guides={!presentationMode && settings.showLabelBoxGuides === true ? "true" : undefined}
       nodes={displayNodes}
       edges={displayEdges}
       onNodesChange={onNodesChange}
@@ -1846,9 +1917,9 @@ function VidyaCanvasInner({
       connectionMode={ConnectionMode.Loose}
       connectOnClick
       connectionLineStyle={{ stroke: "#4f46e5", strokeWidth: 2 }}
-      nodesDraggable={canEdit && !relationshipSelection}
-      nodesConnectable={canEdit && !relationshipSelection}
-      elementsSelectable={canEdit && !relationshipSelection}
+      nodesDraggable={canEdit && !presentationMode && !relationshipSelection}
+      nodesConnectable={canEdit && !presentationMode && !relationshipSelection}
+      elementsSelectable={canEdit && !presentationMode && !relationshipSelection}
       edgesReconnectable={false}
       minZoom={MIN_CANVAS_ZOOM}
       maxZoom={MAX_CANVAS_ZOOM}
@@ -1856,14 +1927,16 @@ function VidyaCanvasInner({
       defaultViewport={initialViewport}
       fitViewOptions={{ padding: 0.2, maxZoom: 2 }}
       snapToGrid={false}
-      panOnDrag={!canEdit
+      panOnDrag={presentationMode
+        ? [0, 1, 2]
+        : !canEdit
         ? [0, 1, 2]
         : relationshipSelection
         ? [0, 1, 2]
         : isTouchDevice
           ? !touchSelectionMode
           : activeTool === "pan" || spacePressed ? [0, 1, 2] : [1, 2]}
-      selectionOnDrag={canEdit && !relationshipSelection && (touchSelectionMode || (!isTouchDevice && activeTool === "select"))}
+      selectionOnDrag={canEdit && !presentationMode && !relationshipSelection && (touchSelectionMode || (!isTouchDevice && activeTool === "select"))}
       selectionMode={SelectionMode.Partial}
       multiSelectionKeyCode={["Meta", "Control", "Shift"]}
       panOnScroll
@@ -1891,7 +1964,7 @@ function VidyaCanvasInner({
         markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
       }}
       onMoveEnd={(_, viewport) => {
-        if (canEdit) setStoredViewport(viewport);
+        if (canEdit && !presentationMode) setStoredViewport(viewport);
       }}
       className="vidya-canvas-bg"
       style={{
@@ -1902,7 +1975,7 @@ function VidyaCanvasInner({
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
       )}
-      {canEdit && activeTool === "connector" && (
+      {canEdit && !presentationMode && activeTool === "connector" && (
         <Panel position="top-center" className="pointer-events-none !mt-3">
           <div className="rounded-full border bg-background/95 px-3 py-1.5 text-[11px] font-medium text-foreground shadow-md backdrop-blur">
             Click or drag from a blue connection point to another shape
@@ -1911,17 +1984,20 @@ function VidyaCanvasInner({
       )}
       <ListTreeConnectors />
       <StructuredTreeConnectors />
-      {canEdit && !relationshipSelection && <SelectionToolbar />}
+      {canEdit && !presentationMode && !relationshipSelection && <SelectionToolbar />}
       <NodeMediaLayer nodes={displayNodes} />
-      {canEdit && <RelationshipSelectionToolbar />}
-      {canEdit && <AlignmentGuides guides={guides} />}
-      <CanvasZoomControls />
-      <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}
-        maskColor="rgba(0,0,0,0.06)" position="bottom-right" pannable zoomable />
+      {canEdit && !presentationMode && <RelationshipSelectionToolbar />}
+      {canEdit && !presentationMode && <AlignmentGuides guides={guides} />}
+      {!presentationMode && <CanvasZoomControls />}
+      {!presentationMode && <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}
+        maskColor="rgba(0,0,0,0.06)" position="bottom-right" pannable zoomable />}
+      {presentationMode && (
+        <PresentationControls nodes={numberedNodes} stops={presentationStops} />
+      )}
     </ReactFlow>
-    <RelationshipDiagramDialog />
-    <ExportDialog />
-    <HierarchyDeleteDialog />
+    {!presentationMode && <RelationshipDiagramDialog />}
+    {!presentationMode && <ExportDialog />}
+    {!presentationMode && <HierarchyDeleteDialog />}
     </>
   );
 }
