@@ -11,6 +11,7 @@ import {
   supportsAutomaticLayoutColors,
 } from "./layout-palette";
 import {
+  LAYOUT_TEXT_COLOR_VERSION,
   RADIAL_COLOR_SCHEMES,
   automaticLayoutBorderColor,
   automaticLayoutTextColor,
@@ -18,6 +19,7 @@ import {
   layoutTextTreatment,
   matrixRowAnchorColor,
   radialSectorColors,
+  requiresAutomaticTextColorMigration,
   uniformLayoutTextColor,
 } from "../radial-layout";
 
@@ -88,6 +90,7 @@ test("automatic text treatment defaults to uniform levels and supports explicit 
   assert.equal(layoutTextTreatment(undefined), "uniform-level");
   assert.equal(layoutTextTreatment("unsupported"), "uniform-level");
   assert.equal(layoutTextTreatment("uniform-level"), "uniform-level");
+  assert.equal(layoutTextTreatment("contrast"), "contrast");
   assert.equal(layoutTextTreatment("hierarchy"), "hierarchy");
   assert.equal(layoutTextTreatment("uniform-dark"), "uniform-dark");
   assert.equal(layoutTextTreatment("uniform-light"), "uniform-light");
@@ -114,6 +117,13 @@ test("automatic text treatment defaults to uniform levels and supports explicit 
   assert.equal(
     automaticLayoutTextColor("#fffaf2", "#bf4059", "uniform-dark", 0),
     "#fffaf2"
+  );
+  assert.equal(requiresAutomaticTextColorMigration(undefined, undefined), true);
+  assert.equal(requiresAutomaticTextColorMigration("uniform-level", 0), true);
+  assert.equal(requiresAutomaticTextColorMigration("contrast", undefined), false);
+  assert.equal(
+    requiresAutomaticTextColorMigration("uniform-level", LAYOUT_TEXT_COLOR_VERSION),
+    false
   );
 });
 
@@ -189,7 +199,15 @@ test("choosing a chart text treatment reclaims descendant manual text overrides"
       return { ...node, data: { ...node.data, layoutTextTreatment: "uniform-level" } };
     }
     if (node.id === "a-1") {
-      return { ...node, data: { ...node.data, layoutAutoText: false, textColor: "#ff0000" } };
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          layoutAutoText: false,
+          textColor: "#ff0000",
+          richText: '<p style="color: #ff0000; background-color: #fef3c7"><font color="#00ff00">a-1</font></p>',
+        },
+      };
     }
     return node;
   });
@@ -206,6 +224,10 @@ test("choosing a chart text treatment reclaims descendant manual text overrides"
   const childData = result.nodes.find((node) => node.id === "a-1")!.data as Record<string, unknown>;
 
   assert.equal(childData.layoutAutoText, undefined);
+  assert.equal(childData.textColor, undefined);
+  assert.match(String(childData.richText), /background-color:\s*#fef3c7/i);
+  assert.doesNotMatch(String(childData.richText), /(?:^|[;"'])\s*color\s*:/i);
+  assert.doesNotMatch(String(childData.richText), /\scolor\s*=/i);
   assert.notEqual(
     (childData.layoutVisualStyle as { textColor: string }).textColor,
     "#ff0000"
@@ -373,6 +395,7 @@ test("applying a palette preserves original style fields and colors hierarchy ed
 
   assert.equal(rootData.fillColor, "#ffffff");
   assert.equal(rootData.layoutColorScheme, "ocean");
+  assert.equal(rootData.layoutTextColorVersion, LAYOUT_TEXT_COLOR_VERSION);
   assert.equal((rootData.layoutVisualStyle as { fillColor: string }).fillColor, "#243f56");
   assert.equal((childData.layoutVisualStyle as { rootId: string }).rootId, "root");
   assert.equal(firstEdgeData.layoutColorRootId, "root");

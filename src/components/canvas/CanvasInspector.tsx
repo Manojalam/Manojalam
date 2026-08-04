@@ -75,6 +75,7 @@ import {
   automaticLayoutBorderColor,
   automaticLayoutTextColor,
   DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
+  LAYOUT_TEXT_COLOR_VERSION,
   RADIAL_COLOR_SCHEMES,
   layoutBranchAnchorColor,
   layoutBorderLineStyle,
@@ -167,6 +168,7 @@ import {
   isInsideEnclosedSticker,
   normalizeWholeTextHighlight,
   protectEnclosedStickerTextStyles,
+  reclaimAutomaticTextColor,
 } from "@/lib/canvas/sticker-text-protection";
 import {
   borderMatchedFillColor,
@@ -2309,18 +2311,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         if (node.id === radialRootId) {
           return {
             ...node,
-            data: { ...(node.data ?? {}), layoutTextTreatment },
+            data: {
+              ...reclaimAutomaticTextColor((node.data ?? {}) as Record<string, unknown>),
+              layoutTextTreatment,
+              layoutTextColorVersion: LAYOUT_TEXT_COLOR_VERSION,
+            },
           };
         }
         if (node.id === radialChartNode?.id) {
-          const { textColor: _textColor, ...data } = (node.data ?? {}) as Record<string, unknown>;
-          void _textColor;
-          return { ...node, data };
+          return {
+            ...node,
+            data: reclaimAutomaticTextColor((node.data ?? {}) as Record<string, unknown>),
+          };
         }
         if (!scopeIds.has(node.id)) return node;
-        const { radialTextColor: _radialTextColor, ...data } = (node.data ?? {}) as Record<string, unknown>;
-        void _radialTextColor;
-        return { ...node, data };
+        return {
+          ...node,
+          data: reclaimAutomaticTextColor((node.data ?? {}) as Record<string, unknown>),
+        };
       }),
       saveStatus: "unsaved",
     }));

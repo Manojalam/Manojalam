@@ -103,7 +103,12 @@ import {
   type ManojalamClipboardPayload,
 } from "@/lib/canvas/clipboard";
 import { mergeCustomColors, normalizeCustomColors } from "@/lib/canvas/custom-colors";
+import { reclaimAutomaticTextColor } from "@/lib/canvas/sticker-text-protection";
 import { migrateLegacyHierarchyNumberingScopes } from "@/lib/canvas/hierarchy-numbering";
+import {
+  LAYOUT_TEXT_COLOR_VERSION,
+  requiresAutomaticTextColorMigration,
+} from "@/lib/radial-layout";
 import {
   resolveHydratedSunburstGeometry,
   viewportsEqual,
@@ -797,7 +802,10 @@ function layoutSchemeValue(nodes: Node[], rootId: string): unknown {
   return data.layoutColorScheme ?? data.radialColorScheme;
 }
 
-function applyPersistedLayoutPalettes(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
+function applyPersistedLayoutPalettes(
+  nodes: Node[],
+  edges: Edge[]
+): { nodes: Node[]; edges: Edge[]; migrationRequired: boolean } {
   const hierarchyNodes = nodes.filter((node) =>
     !isAutoMatrixFrame(node)
     && !isAutoSunburstNode(node)
@@ -806,9 +814,38 @@ function applyPersistedLayoutPalettes(nodes: Node[], edges: Edge[]): { nodes: No
   const hierarchy = buildHierarchy(hierarchyNodes, edges);
   let nextNodes = nodes;
   let nextEdges = edges;
+  let migrationRequired = false;
   for (const node of hierarchyNodes) {
     const data = (node.data ?? {}) as Record<string, unknown>;
     const mode = data.layoutMode as LayoutMode | undefined;
+    const textVersionMissing = data.layoutTextColorVersion !== LAYOUT_TEXT_COLOR_VERSION;
+    const resetTextOverrides = requiresAutomaticTextColorMigration(
+      data.layoutTextTreatment,
+      data.layoutTextColorVersion
+    );
+    if (mode === "radial") {
+      if (!textVersionMissing) continue;
+      const scopeIds = new Set(getSubtree(node.id, hierarchy));
+      nextNodes = nextNodes.map((candidate) => {
+        const candidateData = (candidate.data ?? {}) as Record<string, unknown>;
+        const isRoot = candidate.id === node.id;
+        const isGeneratedChart = candidate.type === "sunburst"
+          && candidateData.rootId === node.id;
+        if (!isRoot && !isGeneratedChart && !scopeIds.has(candidate.id)) return candidate;
+        const preparedData = resetTextOverrides
+          ? reclaimAutomaticTextColor(candidateData)
+          : candidateData;
+        return {
+          ...candidate,
+          data: {
+            ...preparedData,
+            ...(isRoot ? { layoutTextColorVersion: LAYOUT_TEXT_COLOR_VERSION } : {}),
+          },
+        };
+      });
+      migrationRequired = true;
+      continue;
+    }
     if (!supportsAutomaticLayoutColors(mode)) continue;
     const styled = applyLayoutPalette(
       nextNodes,
@@ -816,12 +853,14 @@ function applyPersistedLayoutPalettes(nodes: Node[], edges: Edge[]): { nodes: No
       hierarchy,
       node.id,
       mode,
-      data.layoutColorScheme ?? data.radialColorScheme
+      data.layoutColorScheme ?? data.radialColorScheme,
+      { resetTextOverrides }
     );
     nextNodes = styled.nodes;
     nextEdges = styled.edges;
+    if (textVersionMissing) migrationRequired = true;
   }
-  return { nodes: nextNodes, edges: nextEdges };
+  return { nodes: nextNodes, edges: nextEdges, migrationRequired };
 }
 
 const BOARD_MATRIX_FRAME_KEY = "__board__";
@@ -2113,6 +2152,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const migrationRequired = relationshipMigrationRequired
       || structuralMigrationRequired
       || hierarchyMigrationRequired
+      || styledBoard.migrationRequired
       || settingsMigrationRequired;
     set({
       board: normalizedBoard,
@@ -4400,6 +4440,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           };
           if (node.id === rootId) {
             data.layoutMode = mode;
+            if (mode === "radial") {
+              data.layoutTextColorVersion = LAYOUT_TEXT_COLOR_VERSION;
+            }
           } else if (mode === "list" && data.layoutMode !== undefined) {
             const { layoutMode: _layoutMode, ...rest } = data;
             void _layoutMode;

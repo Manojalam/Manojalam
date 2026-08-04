@@ -7,6 +7,7 @@ import type {
   VidyaEdgeData,
 } from "../types";
 import { isMetallicColor } from "../canvas/custom-colors";
+import { reclaimAutomaticTextColor } from "../canvas/sticker-text-protection";
 import {
   normalizeSurfaceEffect,
   surfaceEffectPresetPatch,
@@ -16,6 +17,7 @@ import {
   automaticLayoutTextColor,
   DEFAULT_LAYOUT_BRANCH_LIGHTNESS,
   DEFAULT_RADIAL_COLOR_SCHEME,
+  LAYOUT_TEXT_COLOR_VERSION,
   layoutBranchAnchorColor,
   layoutBorderLineStyle,
   layoutColorPattern,
@@ -430,6 +432,9 @@ export function applyLayoutPalette(
     const visualStyle = visualStyles.get(node.id);
     if (visualStyle) {
       const data = (node.data ?? {}) as Record<string, unknown>;
+      const preparedData = resetOverrides || resetTextOverrides
+        ? reclaimAutomaticTextColor(data)
+        : data;
       const overridePatch = resetOverrides
         ? {
             layoutAutoFill: undefined,
@@ -443,9 +448,14 @@ export function applyLayoutPalette(
       return {
         ...node,
         data: {
-          ...data,
+          ...preparedData,
           ...overridePatch,
-          ...(node.id === rootId ? { layoutColorScheme: scheme } : {}),
+          ...(node.id === rootId
+            ? {
+                layoutColorScheme: scheme,
+                layoutTextColorVersion: LAYOUT_TEXT_COLOR_VERSION,
+              }
+            : {}),
           layoutVisualStyle: visualStyle,
         },
       };

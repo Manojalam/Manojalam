@@ -605,6 +605,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   layoutBorderWidth?: number;
   /** Chart-wide automatic text color strategy. Fill colors remain independent. */
   layoutTextTreatment?: LayoutTextTreatment;
+  /** One-time migration marker for persisted automatic chart text colors. */
+  layoutTextColorVersion?: number;
   /** @deprecated Legacy Matrix field read when layoutColorPattern is absent. */
   matrixRowColorPattern?: MatrixRowColorPattern;
   /** @deprecated Legacy Matrix field read when layoutEndColor is absent. */
