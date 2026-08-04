@@ -2,7 +2,7 @@
 
 import { memo, useState } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ShlokaCardNodeData } from "@/lib/types";
@@ -21,6 +21,7 @@ import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
+import { ShlokaCardEditorDialog } from "./ShlokaCardEditorDialog";
 
 const SECTIONS = [
   { key: "verse", label: "Verse" },
@@ -57,6 +58,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(
     new Set(d.collapsedSections ?? [])
   );
+  const [editorOpen, setEditorOpen] = useState(false);
   const resizeControls = useNodeManualResize(id);
 
   const toggle = (key: string) => {
@@ -75,8 +77,25 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
       />
-      <div className="relative h-full w-full">
+      <div className="group relative h-full w-full">
         <NodeQuickActions nodeId={id} color={accentColor} selected={selected} />
+        <button
+          type="button"
+          data-export-ignore
+          className={cn(
+            "nodrag nopan absolute -right-3.5 top-6 z-30 flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-background text-foreground shadow-md transition-all hover:scale-110 hover:bg-accent focus:opacity-100",
+            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+          title="Edit Śloka card"
+          aria-label="Edit Śloka card"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setEditorOpen(true);
+          }}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
         <div
@@ -97,6 +116,10 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
           ...generatedStyle,
           ...(matrixCell ? { borderRadius: matrixRadius } : {}),
           ...objectRotationStyle("shloka", dd),
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          setEditorOpen(true);
         }}
       >
         <div className="mb-3 flex items-center justify-between">
@@ -129,6 +152,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
           return (
             <div key={key} className="mt-2 border-t border-border/50 pt-2">
               <button
+                type="button"
                 className="flex w-full items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
                 style={authoredTextStyle}
                 onClick={() => toggle(key)}
@@ -156,6 +180,14 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
           </div>
         )}
         </div>
+        {editorOpen && (
+          <ShlokaCardEditorDialog
+            nodeId={id}
+            data={d}
+            open
+            onOpenChange={setEditorOpen}
+          />
+        )}
       </div>
     </>
   );
