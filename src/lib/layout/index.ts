@@ -4,6 +4,7 @@ import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarch
 import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
 import { computeOrthogonalTreeLayout } from "./tree-layout";
+import { computeMindMapLayout } from "./mind-map-layout";
 import { wrapChildGroups } from "./child-group-wrap";
 import {
   createNodeRect,
@@ -33,6 +34,7 @@ export {
   type TreeConnectorGroup,
   type TreeConnectorModel,
 } from "./tree-layout";
+export { computeMindMapLayout, type MindMapSide } from "./mind-map-layout";
 
 export type { LayoutMode };
 export {
@@ -313,6 +315,8 @@ export function computeLayout(
         mode === "horizontal" ? "horizontal" : "vertical"
       );
       Object.assign(result, pos);
+    } else if (mode === "mindMap") {
+      Object.assign(result, computeMindMapLayout(root, hierarchy, byId));
     } else if (mode === "radial" || mode === "fromParentFreeForm") {
       if (lone) continue;
       const centers = radialTree(root, hierarchy, byId);
@@ -401,6 +405,12 @@ export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeR
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "smooth" };
     }
+    case "mindMap": {
+      const parentCenter = centerOf(parent);
+      const childCenter = centerOf(child);
+      const source: Side = childCenter.x >= parentCenter.x ? "right" : "left";
+      return { sourceHandle: source, targetHandle: opposite(source), curveStyle: "smooth" };
+    }
     case "fromParentFreeForm":
     case "freeForm":
     default: {
@@ -430,12 +440,13 @@ export function assignDefaultHandles(nodes: Node[], edges: Edge[]): Edge[] {
 export interface LayoutOption { mode: LayoutMode; label: string; description: string }
 
 export const LAYOUT_OPTIONS: LayoutOption[] = [
-  { mode: "fromParentFreeForm", label: "From Parent (Free Form)", description: "Radial spread from the selected node" },
   { mode: "freeForm",   label: "Free Form",  description: "Leave nodes where they are" },
+  { mode: "mindMap",    label: "Mind Map",   description: "Two-sided branches around a central idea" },
+  { mode: "fromParentFreeForm", label: "Radial Branches", description: "Radial spread from the selected node" },
   { mode: "horizontal", label: "Horizontal", description: "Tree grows left to right" },
   { mode: "vertical",   label: "Vertical",   description: "Balanced tree fanning down" },
   { mode: "list",       label: "List",       description: "Indented outline" },
   { mode: "linear",     label: "Linear",     description: "Single connected line" },
-  { mode: "radial",     label: "Radial",     description: "Hierarchy-aware sunburst" },
+  { mode: "radial",     label: "Sunburst",   description: "Hierarchy-aware radial chart" },
   { mode: "matrix",     label: "Matrix",     description: "Structured chart / table" },
 ];

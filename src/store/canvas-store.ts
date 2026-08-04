@@ -4173,6 +4173,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const forcedRootIds = new Set<string>();
       const supportedModes = new Set<LayoutMode>([
         "fromParentFreeForm",
+        "mindMap",
         "horizontal",
         "vertical",
         "topDown",

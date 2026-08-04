@@ -130,6 +130,20 @@ test("template instantiation returns an isolated board payload", () => {
   assert.equal(instantiateTemplate("removed-template"), undefined);
 });
 
+test("the Mind Map template declares a stable two-sided layout", () => {
+  const template = getTemplateById("basic-mindmap");
+  assert.ok(template);
+  const root = template.content.nodes.find((node) =>
+    ((node.data ?? {}) as Record<string, unknown>).layoutMode === "mindMap"
+  );
+  assert.ok(root);
+
+  const sides = template.content.nodes
+    .filter((node) => node.id !== root.id)
+    .map((node) => ((node.data ?? {}) as Record<string, unknown>).mindMapSide);
+  assert.deepEqual(sides, ["left", "right", "left", "right"]);
+});
+
 test("an empty persisted template is repaired before navigation", async () => {
   const template = instantiateTemplate("basic-mindmap");
   assert.ok(template);

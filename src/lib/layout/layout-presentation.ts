@@ -14,6 +14,7 @@ import { nodePlainText } from "../canvas/node-text";
 
 const SIZED_LAYOUT_MODES = new Set<LayoutMode>([
   "fromParentFreeForm",
+  "mindMap",
   "horizontal",
   "vertical",
   "list",

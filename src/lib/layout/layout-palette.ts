@@ -34,6 +34,7 @@ import { layoutFontSizeFor } from "./layout-presentation";
 const AUTOMATIC_COLOR_MODES = new Set<LayoutMode>([
   "freeForm",
   "fromParentFreeForm",
+  "mindMap",
   "horizontal",
   "vertical",
   "list",
