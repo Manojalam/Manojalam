@@ -523,6 +523,7 @@ test("a folded nested List resolves the surrounding Vertical root for repacking"
   const hierarchy = buildHierarchy(nodes, edges);
   const structuredModes = new Set<LayoutMode>([
     "fromParentFreeForm",
+    "mindMap",
     "horizontal",
     "vertical",
     "topDown",

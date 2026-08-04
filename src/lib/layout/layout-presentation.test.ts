@@ -243,6 +243,7 @@ test("every layout presents the selected authored shape", () => {
     "matrix",
     "freeForm",
     "fromParentFreeForm",
+    "mindMap",
     "radial",
   ] as const;
 

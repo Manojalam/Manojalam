@@ -2,6 +2,7 @@ import type { LayoutMode } from "../types";
 
 const NODE_LAYOUT_GEOMETRY_FIELDS = [
   "layoutMode",
+  "mindMapSide",
   "layoutFoldCount",
   "layoutFoldBreakAfter",
   "layoutWrapAfter",
@@ -129,6 +130,7 @@ export function clearMatrixLayoutOverrides(
 }
 
 const ROUNDED_SHAPE_DEFAULT_LAYOUTS = new Set<LayoutMode>([
+  "mindMap",
   "horizontal",
   "vertical",
   "list",

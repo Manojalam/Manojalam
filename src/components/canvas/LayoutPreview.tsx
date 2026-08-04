@@ -59,6 +59,9 @@ export function LayoutPreview({
     case "fromParentFreeForm":
       content = <>{line(28, 20, 12, 10)}{line(28, 20, 46, 14)}{line(28, 20, 20, 33)}{line(28, 20, 44, 32)}{dot(28, 20, 4.2, "#ef4444")}{dot(12, 10)}{dot(46, 14)}{dot(20, 33)}{dot(44, 32)}</>;
       break;
+    case "mindMap":
+      content = <>{line(28, 20, 12, 11)}{line(28, 20, 12, 29)}{line(28, 20, 44, 11)}{line(28, 20, 44, 29)}{line(12, 11, 5, 7)}{line(44, 29, 51, 33)}{dot(28, 20, 4.2, "#ef4444")}{dot(12, 11)}{dot(12, 29)}{dot(44, 11)}{dot(44, 29)}{dot(5, 7, 2.5)}{dot(51, 33, 2.5)}</>;
+      break;
     default:
       content = <>{dot(12, 12)}{dot(40, 10)}{dot(22, 28)}{dot(46, 30)}{dot(10, 32)}</>;
   }

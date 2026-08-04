@@ -122,18 +122,25 @@ const templates: TemplateDefinition[] = [
   {
     id: "basic-mindmap",
     name: "Mind Map",
-    description: "Explore one idea through four editable branches.",
+    description: "Grow two-sided branches outward from one central idea.",
     category: "general",
     content: (() => {
       const root = generateId();
       const branches = [
-        { id: generateId(), label: "What", x: 100, y: 120 },
-        { id: generateId(), label: "Why", x: 700, y: 120 },
-        { id: generateId(), label: "How", x: 100, y: 500 },
-        { id: generateId(), label: "Next steps", x: 700, y: 500 },
+        { id: generateId(), label: "What", x: 116, y: 243, side: "left" as const },
+        { id: generateId(), label: "Why", x: 704, y: 243, side: "right" as const },
+        { id: generateId(), label: "How", x: 116, y: 357, side: "left" as const },
+        { id: generateId(), label: "Next steps", x: 704, y: 357, side: "right" as const },
       ];
+      const rootNode = center(root, "Main idea");
       return makeContent(
-        [center(root, "Main idea"), ...branches.map((item) => branch(item.id, item.label, item.x, item.y))],
+        [
+          { ...rootNode, data: { ...rootNode.data, layoutMode: "mindMap" as const } },
+          ...branches.map((item) => {
+            const node = branch(item.id, item.label, item.x, item.y);
+            return { ...node, data: { ...node.data, mindMapSide: item.side } };
+          }),
+        ],
         branches.map((item) => edge(root, item.id))
       );
     })(),

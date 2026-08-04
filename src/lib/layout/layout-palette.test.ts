@@ -642,6 +642,7 @@ test("every node-based layout supports the same branch color patterns", () => {
   const modes: LayoutMode[] = [
     "freeForm",
     "fromParentFreeForm",
+    "mindMap",
     "horizontal",
     "vertical",
     "list",
