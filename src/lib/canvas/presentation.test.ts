@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
-import { buildPresentationStops, presentationNodeTitle } from "./presentation";
+import {
+  buildPresentationStops,
+  orderPresentationNodes,
+  presentationNodeTitle,
+} from "./presentation";
 
 function makeNode(
   id: string,
@@ -57,6 +61,28 @@ test("turns a hierarchy into a chart stop and focused branch stops", () => {
     "Clouds",
   ]);
   assert.deepEqual(stops[2].nodeIds, ["root", "rain", "drops"]);
+});
+
+test("supports row-by-row and column-by-column teaching paths", () => {
+  const nodes = [
+    makeNode("lower-left", 0, 200, { text: "Lower left" }),
+    makeNode("upper-right", 300, 30, { text: "Upper right" }),
+    makeNode("lower-right", 300, 230, { text: "Lower right" }),
+    makeNode("upper-left", 0, 0, { text: "Upper left" }),
+  ];
+
+  assert.deepEqual(
+    orderPresentationNodes(nodes, "rows").map((node) => node.id),
+    ["upper-left", "upper-right", "lower-left", "lower-right"]
+  );
+  assert.deepEqual(
+    orderPresentationNodes(nodes, "columns").map((node) => node.id),
+    ["upper-left", "lower-left", "upper-right", "lower-right"]
+  );
+  assert.deepEqual(
+    buildPresentationStops(nodes, [], "columns").slice(1).map((stop) => stop.title),
+    ["Upper left", "Lower left", "Upper right", "Lower right"]
+  );
 });
 
 test("creates clean, concise presenter labels from rich text", () => {

@@ -305,6 +305,7 @@ function VidyaCanvasInner({
   const boardExportRequest = useUIStore((s) => s.boardExportRequest);
   const presentationMode = useUIStore((s) => s.presentationMode);
   const presentationStep = useUIStore((s) => s.presentationStep);
+  const presentationOrder = useUIStore((s) => s.presentationOrder);
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
 
@@ -361,8 +362,8 @@ function VidyaCanvasInner({
   }, [edges, nodes]);
 
   const presentationStops = useMemo(
-    () => buildPresentationStops(numberedNodes, edges),
-    [edges, numberedNodes]
+    () => buildPresentationStops(numberedNodes, edges, presentationOrder),
+    [edges, numberedNodes, presentationOrder]
   );
   const activePresentationStop = presentationStops[
     Math.min(presentationStep, Math.max(0, presentationStops.length - 1))
