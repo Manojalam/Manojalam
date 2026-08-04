@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2021",
+    "rootDir": "../src",
+    "outDir": "../.powerpoint-smoke-test",
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "../src/lib/export/powerpoint.ts"
+  ]
+}
