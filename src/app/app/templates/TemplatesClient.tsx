@@ -1,39 +1,50 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getAllTemplates, getTemplatesByCategory } from "@/lib/templates";
+import {
+  getAllTemplates,
+  getTemplatesByCategory,
+  isTemplateCategory,
+  TEMPLATE_CATEGORIES,
+} from "@/lib/templates";
 import { createBoard } from "@/lib/storage/board-store";
+import { SupabaseSetupNotice } from "@/components/layout/SupabaseSetupNotice";
 import { toast } from "sonner";
 
 const CATEGORIES = [
   { id: "all", label: "All" },
-  { id: "general", label: "General" },
-  { id: "study", label: "Study" },
-  { id: "planning", label: "Planning" },
-  { id: "sanskrit", label: "Sanskrit" },
+  ...TEMPLATE_CATEGORIES,
 ] as const;
 
 export default function TemplatesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const category = searchParams.get("category") ?? "all";
+  const requestedCategory = searchParams.get("category") ?? "all";
+  const category = requestedCategory === "all" || isTemplateCategory(requestedCategory)
+    ? requestedCategory
+    : "all";
+  const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
 
   const templates =
     category === "all"
       ? getAllTemplates()
-      : getTemplatesByCategory(category as "general" | "study" | "planning" | "sanskrit");
+      : getTemplatesByCategory(category);
 
   const handleUse = async (templateId: string) => {
+    if (creatingTemplateId) return;
+    setCreatingTemplateId(templateId);
     try {
       const board = await createBoard(templateId);
       toast.success("Board created from template");
       router.push(`/app/boards/${board.id}`);
-    } catch {
-      toast.error("Failed to create board");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create board");
+      setCreatingTemplateId(null);
     }
   };
 
@@ -41,7 +52,11 @@ export default function TemplatesPage() {
     <AppShell>
       <div className="mx-auto max-w-5xl p-6">
         <h1 className="text-2xl font-bold">Template Gallery</h1>
-        <p className="mt-1 text-muted-foreground">Start with a structured layout</p>
+        <p className="mt-1 text-muted-foreground">
+          A small set of tested starting points for common board structures
+        </p>
+
+        <SupabaseSetupNotice className="mt-5" />
 
         <div className="mt-4 flex flex-wrap gap-2">
           {CATEGORIES.map(({ id, label }) => (
@@ -69,7 +84,13 @@ export default function TemplatesPage() {
               <p className="mb-3 text-xs text-muted-foreground">
                 {t.content.nodes.length} nodes · {t.content.edges.length} edges
               </p>
-              <Button size="sm" onClick={() => handleUse(t.id)}>Use template</Button>
+              <Button
+                size="sm"
+                disabled={creatingTemplateId !== null}
+                onClick={() => handleUse(t.id)}
+              >
+                {creatingTemplateId === t.id ? "Creating…" : "Use template"}
+              </Button>
             </div>
           ))}
         </div>
