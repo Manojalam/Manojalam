@@ -1,8 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 import { frameOwnedNodeIds, isStandaloneFrameNode } from "./frame-collision";
 import { buildHierarchy, getRoots, getSubtree } from "../layout/hierarchy";
+import { getNodeRect } from "../layout/geometry";
 
 export type PresentationStopKind = "overview" | "frame" | "chart" | "branch";
+export type PresentationOrder = "rows" | "columns";
 
 export interface PresentationStop {
   id: string;
@@ -39,9 +41,53 @@ export function presentationNodeTitle(node: Node | undefined, fallback: string):
   return title.length > 54 ? `${title.slice(0, 51).trimEnd()}…` : title;
 }
 
-function spatialOrder(first: Node, second: Node): number {
-  const yDelta = first.position.y - second.position.y;
-  return Math.abs(yDelta) > 48 ? yDelta : first.position.x - second.position.x;
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((first, second) => first - second);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+/**
+ * Arrange objects in visual bands, tolerating the small alignment differences
+ * common on a free-form canvas. Pairwise comparators are not sufficient here:
+ * they can split one slightly uneven row into several apparent columns.
+ */
+export function orderPresentationNodes(
+  nodes: readonly Node[],
+  order: PresentationOrder
+): Node[] {
+  if (nodes.length < 2) return [...nodes];
+  const items = nodes.map((node) => {
+    const rect = getNodeRect(node);
+    return {
+      node,
+      primary: order === "rows" ? rect.centerY : rect.centerX,
+      secondary: order === "rows" ? rect.centerX : rect.centerY,
+      primarySize: order === "rows" ? rect.height : rect.width,
+    };
+  });
+  const bandTolerance = Math.max(
+    32,
+    Math.min(180, median(items.map((item) => item.primarySize)) * 0.75)
+  );
+  items.sort((first, second) => first.primary - second.primary || first.secondary - second.secondary);
+
+  const bands: Array<{ center: number; items: typeof items }> = [];
+  for (const item of items) {
+    const band = bands[bands.length - 1];
+    if (!band || Math.abs(item.primary - band.center) > bandTolerance) {
+      bands.push({ center: item.primary, items: [item] });
+      continue;
+    }
+    band.items.push(item);
+    band.center = band.items.reduce((sum, current) => sum + current.primary, 0) / band.items.length;
+  }
+
+  return bands.flatMap((band) =>
+    band.items.sort((first, second) => first.secondary - second.secondary).map((item) => item.node)
+  );
 }
 
 /**
@@ -50,7 +96,11 @@ function spatialOrder(first: Node, second: Node): number {
  * otherwise each hierarchy root becomes a chart stop followed by its main
  * branches. The first stop is always a safe whole-board overview.
  */
-export function buildPresentationStops(nodes: readonly Node[], edges: readonly Edge[]): PresentationStop[] {
+export function buildPresentationStops(
+  nodes: readonly Node[],
+  edges: readonly Edge[],
+  order: PresentationOrder = "rows"
+): PresentationStop[] {
   const visibleNodes = nodes.filter((node) => !node.hidden);
   if (!visibleNodes.length) return [];
 
@@ -62,7 +112,7 @@ export function buildPresentationStops(nodes: readonly Node[], edges: readonly E
     nodeIds: visibleNodes.map((node) => node.id),
   };
 
-  const frames = visibleNodes.filter(isStandaloneFrameNode).sort(spatialOrder);
+  const frames = orderPresentationNodes(visibleNodes.filter(isStandaloneFrameNode), order);
   if (frames.length) {
     const frameIds = new Set(frames.map((frame) => frame.id));
     const ownedIds = frameOwnedNodeIds(nodes, frameIds);
@@ -103,10 +153,9 @@ export function buildPresentationStops(nodes: readonly Node[], edges: readonly E
     edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   );
   const byId = new Map(visibleNodes.map((node) => [node.id, node]));
-  const roots = getRoots(hierarchy)
+  const roots = orderPresentationNodes(getRoots(hierarchy)
     .map((id) => byId.get(id))
-    .filter((node): node is Node => Boolean(node) && node?.type !== "frame")
-    .sort(spatialOrder);
+    .filter((node): node is Node => Boolean(node) && node?.type !== "frame"), order);
   const stops: PresentationStop[] = [overview];
 
   roots.forEach((root, rootIndex) => {
@@ -118,10 +167,9 @@ export function buildPresentationStops(nodes: readonly Node[], edges: readonly E
       nodeIds: rootSubtree,
     });
 
-    const children = (hierarchy.get(root.id)?.childIds ?? [])
+    const children = orderPresentationNodes((hierarchy.get(root.id)?.childIds ?? [])
       .map((id) => byId.get(id))
-      .filter((node): node is Node => Boolean(node))
-      .sort(spatialOrder);
+      .filter((node): node is Node => Boolean(node)), order);
     if (children.length < 2) return;
 
     children.forEach((child, childIndex) => {

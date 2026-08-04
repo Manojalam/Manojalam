@@ -4,18 +4,28 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Node } from "@xyflow/react";
 import { Panel, useReactFlow } from "@xyflow/react";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   Grid2X2,
   Maximize2,
   Minimize2,
   MousePointer2,
   Presentation,
+  Rows3,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { PresentationStop } from "@/lib/canvas/presentation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/ui-store";
 
@@ -61,7 +71,9 @@ export function PresentationControls({
 }) {
   const { fitView } = useReactFlow();
   const presentationStep = useUIStore((state) => state.presentationStep);
+  const presentationOrder = useUIStore((state) => state.presentationOrder);
   const setPresentationStep = useUIStore((state) => state.setPresentationStep);
+  const setPresentationOrder = useUIStore((state) => state.setPresentationOrder);
   const stopPresentation = useUIStore((state) => state.stopPresentation);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [laserEnabled, setLaserEnabled] = useState(false);
@@ -126,6 +138,8 @@ export function PresentationControls({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-presentation-controls]")) return;
       const key = event.key.toLowerCase();
       if (["arrowright", "arrowdown", "pagedown", " "].includes(key)) {
         event.preventDefault();
@@ -142,6 +156,9 @@ export function PresentationControls({
       } else if (key === "l") {
         event.preventDefault();
         setLaserEnabled((enabled) => !enabled);
+      } else if (key === "r") {
+        event.preventDefault();
+        setPresentationOrder(presentationOrder === "rows" ? "columns" : "rows");
       } else if (key === "f") {
         event.preventDefault();
         void toggleFullscreen();
@@ -152,7 +169,15 @@ export function PresentationControls({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [exitPresentation, goTo, safeStep, stops.length, toggleFullscreen]);
+  }, [
+    exitPresentation,
+    goTo,
+    presentationOrder,
+    safeStep,
+    setPresentationOrder,
+    stops.length,
+    toggleFullscreen,
+  ]);
 
   useEffect(() => {
     if (!laserEnabled) return;
@@ -211,6 +236,53 @@ export function PresentationControls({
             <ChevronRight className="h-5 w-5" />
           </ControlButton>
           <div className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Teaching path: ${presentationOrder === "rows" ? "row by row" : "column by column"}`}
+                title="Change teaching path (R)"
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-indigo-700 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-950"
+              >
+                {presentationOrder === "rows"
+                  ? <Rows3 className="h-4 w-4" />
+                  : <Columns3 className="h-4 w-4" />}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              data-presentation-controls
+              side="top"
+              align="center"
+              sideOffset={12}
+              className="w-64 rounded-xl p-1.5 shadow-xl"
+            >
+              <DropdownMenuLabel className="px-2 pb-1 pt-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                Teaching path
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={() => setPresentationOrder("rows")}
+                className="items-start rounded-lg py-2"
+              >
+                <Rows3 className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">Row by row</span>
+                  <span className="block text-[11px] text-muted-foreground">Left to right, then move down</span>
+                </span>
+                {presentationOrder === "rows" && <Check className="mt-0.5 text-primary" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setPresentationOrder("columns")}
+                className="items-start rounded-lg py-2"
+              >
+                <Columns3 className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">Column by column</span>
+                  <span className="block text-[11px] text-muted-foreground">Top to bottom, then move right</span>
+                </span>
+                {presentationOrder === "columns" && <Check className="mt-0.5 text-primary" />}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ControlButton label="Laser pointer (L)" onClick={() => setLaserEnabled((enabled) => !enabled)} active={laserEnabled}>
             <MousePointer2 className="h-4 w-4" />
           </ControlButton>
@@ -222,7 +294,7 @@ export function PresentationControls({
           </ControlButton>
         </div>
         <p className="mt-2 text-center text-[10px] font-medium text-slate-500 drop-shadow-sm dark:text-slate-300">
-          Arrow keys or Space to move · drag to pan
+          Arrow keys or Space to move · R changes path · drag to pan
         </p>
       </Panel>
 

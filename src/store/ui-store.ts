@@ -14,6 +14,7 @@ import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 import { normalizeAppSettings } from "@/lib/app-settings";
 import type { ShapeFormatSnapshot } from "@/lib/canvas/shape-format";
 import type { ExportFormat } from "@/lib/export/types";
+import type { PresentationOrder } from "@/lib/canvas/presentation";
 
 export type ShapeVariant = ShapeType;
 
@@ -95,9 +96,11 @@ interface UIState {
   setAiPanelOpen: (open: boolean) => void;
   presentationMode: boolean;
   presentationStep: number;
+  presentationOrder: PresentationOrder;
   startPresentation: () => void;
   stopPresentation: () => void;
   setPresentationStep: (step: number) => void;
+  setPresentationOrder: (order: PresentationOrder) => void;
   appSettings: AppSettings;
   updateAppSettings: (partial: Partial<AppSettings>) => void;
   loadAppSettings: () => void;
@@ -229,6 +232,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setAiPanelOpen: (open) => set({ aiPanelOpen: open }),
   presentationMode: false,
   presentationStep: 0,
+  presentationOrder: "rows",
   startPresentation: () => set({
     presentationMode: true,
     presentationStep: 0,
@@ -246,6 +250,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   stopPresentation: () => set({ presentationMode: false, presentationStep: 0 }),
   setPresentationStep: (step) => set({ presentationStep: Math.max(0, Math.floor(step)) }),
+  setPresentationOrder: (presentationOrder) => set((state) =>
+    state.presentationOrder === presentationOrder
+      ? state
+      : { presentationOrder, presentationStep: 0 }
+  ),
   appSettings: { ...DEFAULT_APP_SETTINGS },
   updateAppSettings: (partial) => {
     const settings = normalizeAppSettings({ ...get().appSettings, ...partial });
