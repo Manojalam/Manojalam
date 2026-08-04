@@ -142,6 +142,7 @@ test("the Mind Map template declares a stable two-sided layout", () => {
     .filter((node) => node.id !== root.id)
     .map((node) => ((node.data ?? {}) as Record<string, unknown>).mindMapSide);
   assert.deepEqual(sides, ["left", "right", "left", "right"]);
+  assert.ok(template.content.edges.every((edge) => edge.data?.curveStyle === "step"));
 });
 
 test("an empty persisted template is repaired before navigation", async () => {

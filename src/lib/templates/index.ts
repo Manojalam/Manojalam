@@ -86,8 +86,8 @@ function edge(source: string, target: string, label?: string) {
     target,
     type: "branch",
     data: label
-      ? { label, edgeType: "branch" as const }
-      : { edgeType: "branch" as const },
+      ? { label, edgeType: "branch" as const, curveStyle: "step" as const }
+      : { edgeType: "branch" as const, curveStyle: "step" as const },
   };
 }
 

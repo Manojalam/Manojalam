@@ -44,6 +44,8 @@ interface UIState {
   setTouchSelectionMode: (active: boolean) => void;
   canvasDragging: boolean;
   setCanvasDragging: (active: boolean) => void;
+  connectorReconnectActive: boolean;
+  setConnectorReconnectActive: (active: boolean) => void;
   /** One-shot override: move this node without its descendants or attached notes. */
   moveOnlyNodeId: string | null;
   setMoveOnlyNodeId: (nodeId: string | null) => void;
@@ -126,6 +128,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   canvasDragging: false,
   setCanvasDragging: (active) => set({ canvasDragging: active }),
+  connectorReconnectActive: false,
+  setConnectorReconnectActive: (active) => set({ connectorReconnectActive: active }),
   moveOnlyNodeId: null,
   setMoveOnlyNodeId: (nodeId) => set({ moveOnlyNodeId: nodeId }),
   connectorClickPoint: null,
