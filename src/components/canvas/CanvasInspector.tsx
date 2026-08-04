@@ -5287,6 +5287,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ?? ((isRadialLayoutSector ? d.radialTextColor : d.textColor) as string | undefined)
     ?? "";
   const activeHighlightColor = selectedTextRange?.highlightColor ?? ((d.textHighlightColor as string) || "");
+  const activeFrameLabelFill = isEditableFrame
+    ? activeHighlightColor || (typeof d.color === "string" ? d.color : "#6366f1")
+    : "";
   const surfaceEffectSettings = normalizeSurfaceEffect(d);
   const setRadialChart = (chart: RadialChartData) => setField("radialChart", chart);
   const enableRadialChart = (chart: RadialChartData) => {
@@ -5481,6 +5484,33 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       )}
 
       <div className="flex-1 divide-y overflow-y-auto">
+
+        {isEditableFrame && (
+          <Section label="Label fill" visible={singleNodeTab === "style"} defaultOpen>
+            <ColorSwatchPicker
+              value={activeFrameLabelFill}
+              extra={settings.customHighlightColors}
+              onCustomColor={(color) => setSettings({
+                customHighlightColors: rememberCustomColor(settings.customHighlightColors, color),
+              })}
+              onChange={(value) => setField("textHighlightColor", value || undefined)}
+              onClear={() => setField("textHighlightColor", undefined)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-full text-[10px]"
+              disabled={!activeHighlightColor}
+              onClick={() => setField("textHighlightColor", undefined)}
+            >
+              Use lane color
+            </Button>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Changes only the label pill. Use lane color restores the label to the frame&apos;s border color.
+            </p>
+          </Section>
+        )}
 
         {isEditableFrame && (
           <Section label="Swim lane" visible={singleNodeTab === "text"} defaultOpen>
@@ -6125,7 +6155,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 {isEditableFrame ? "Label background" : "Highlight"}
               </p>
               <ColorSwatchPicker
-                value={activeHighlightColor}
+                value={isEditableFrame ? activeFrameLabelFill : activeHighlightColor}
                 extra={settings.customHighlightColors}
                 selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
