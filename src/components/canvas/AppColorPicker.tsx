@@ -321,7 +321,8 @@ export function ColorPickerPanel({
       {usedColors.length > 0 && (
         <CollapsibleColorSection
           label="Used colors"
-          hint="This board · HEX"
+          hint={`${usedColors.length} on this board`}
+          defaultOpen={false}
           preserveCurrentFocus={selectionSafe}
         >
           <div className="grid grid-cols-2 gap-1">
