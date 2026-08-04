@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent, VidyaBoard } from "@/lib/types";
+import { buildPresentationStops } from "@/lib/canvas/presentation";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { BoardShareDialog } from "@/components/canvas/BoardShareDialog";
 import { ImportDialog } from "@/components/canvas/ImportDialog";
@@ -105,6 +106,7 @@ function ThemeToggle() {
 export function CanvasTopbar() {
   const [shareOpen, setShareOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [powerPointExporting, setPowerPointExporting] = useState(false);
   // Targeted selectors — each only re-renders when its own slice changes
   const board           = useCanvasStore((s) => s.board);
   const saveStatus      = useCanvasStore((s) => s.saveStatus);
@@ -133,6 +135,51 @@ export function CanvasTopbar() {
         settings: state.settings,
       } as BoardContent,
     };
+  };
+
+  const exportEditablePowerPoint = async () => {
+    const state = useCanvasStore.getState();
+    if (!state.board || powerPointExporting) return;
+    const stops = buildPresentationStops(
+      state.nodes,
+      state.edges,
+      useUIStore.getState().presentationOrder
+    );
+    if (!stops.length) {
+      toast.error("Add a visible chart before exporting a PowerPoint presentation.");
+      return;
+    }
+    setPowerPointExporting(true);
+    const toastId = toast.loading("Building an editable PowerPoint presentation…");
+    try {
+      const { downloadEditablePowerPoint } = await import("@/lib/export/powerpoint");
+      const result = await downloadEditablePowerPoint({
+        boardTitle: state.board.title || "Teaching chart",
+        nodes: state.nodes,
+        edges: state.edges,
+        relationships: state.relationships,
+        stops,
+        onProgress: (completed, total) => {
+          toast.loading(`Building editable PowerPoint slide ${completed} of ${total}…`, {
+            id: toastId,
+          });
+        },
+      });
+      const warningText = result.warnings.length
+        ? ` ${result.warnings.length} chart${result.warnings.length === 1 ? "" : "s"} used an editable fallback.`
+        : "";
+      toast.success(
+        `PowerPoint downloaded: ${result.slideCount} slide${result.slideCount === 1 ? "" : "s"}, ${result.editableObjectCount} editable objects.${warningText}`,
+        { id: toastId, duration: 6000 }
+      );
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to export the editable PowerPoint presentation.",
+        { id: toastId }
+      );
+    } finally {
+      setPowerPointExporting(false);
+    }
   };
 
   return (
@@ -199,6 +246,12 @@ export function CanvasTopbar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52 rounded-xl shadow-xl">
             <DropdownMenuLabel className="text-xs text-muted-foreground">Export as</DropdownMenuLabel>
+            <DropdownMenuItem
+              disabled={!board || !hasPresentableContent || powerPointExporting || Boolean(relationshipSelection)}
+              onClick={() => void exportEditablePowerPoint()}
+            >
+              {powerPointExporting ? "Building PowerPoint…" : "Editable PowerPoint (.pptx)"}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const snapshot = currentBoardSnapshot();
               if (snapshot) downloadJson(snapshot);
