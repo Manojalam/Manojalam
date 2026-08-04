@@ -5494,7 +5494,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
             <p className="text-[9px] leading-relaxed text-muted-foreground">
-              You can also double-click the label on the canvas to rename it. Add another lane with the Frame / swim lane tool, then click the canvas.
+              You can also click or tap the label on the canvas to rename it. Add another lane with the Frame / swim lane tool, then click the canvas.
             </p>
           </Section>
         )}

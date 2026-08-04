@@ -1,6 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "../layout/hierarchy";
 import { includeAttachedExternalNoteIds } from "./node-note";
+import {
+  frameOwnedNodeIds,
+  isStandaloneFrameNode,
+} from "./frame-collision";
 
 export interface DragMovementPlan {
   movingIds: string[];
@@ -51,6 +55,11 @@ export function planNodeDragMovement(
     movingIds = [draggedNode.id];
   } else if (selectedGroup) {
     movingIds = selectedNodeIds.filter((nodeId) => !isLocked(byId.get(nodeId)));
+  } else if (isStandaloneFrameNode(draggedNode)) {
+    const frameIds = new Set([draggedNode.id]);
+    movingIds = [draggedNode.id, ...frameOwnedNodeIds(nodes, frameIds)]
+      .filter((nodeId) => !isLocked(byId.get(nodeId)));
+    moveAsGroup = movingIds.length > 1;
   } else if (draggedData.layoutMode === "list") {
     movingIds = [draggedNode.id];
   } else {
