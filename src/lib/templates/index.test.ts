@@ -114,6 +114,39 @@ test("every template is a current, renderable board payload", () => {
   }
 });
 
+test("template connectors that are nearly on an axis are exactly straight", () => {
+  const nearAxisTolerance = 40;
+
+  for (const template of getAllTemplates()) {
+    const nodesById = new Map(template.content.nodes.map((node) => [node.id, node]));
+    for (const edge of template.content.edges) {
+      const source = nodesById.get(edge.source);
+      const target = nodesById.get(edge.target);
+      assert.ok(source);
+      assert.ok(target);
+
+      const sourceWidth = Number.parseFloat(String(source.style?.width));
+      const sourceHeight = Number.parseFloat(String(source.style?.height));
+      const targetWidth = Number.parseFloat(String(target.style?.width));
+      const targetHeight = Number.parseFloat(String(target.style?.height));
+      const sourceCenter = {
+        x: source.position.x + sourceWidth / 2,
+        y: source.position.y + sourceHeight / 2,
+      };
+      const targetCenter = {
+        x: target.position.x + targetWidth / 2,
+        y: target.position.y + targetHeight / 2,
+      };
+      const dx = Math.abs(sourceCenter.x - targetCenter.x);
+      const dy = Math.abs(sourceCenter.y - targetCenter.y);
+      const message = `${template.id}/${edge.id} leaves a slightly slanted connector`;
+
+      if (dy > dx && dx <= nearAxisTolerance) assert.equal(dx, 0, message);
+      if (dx > dy && dy <= nearAxisTolerance) assert.equal(dy, 0, message);
+    }
+  }
+});
+
 test("template instantiation returns an isolated board payload", () => {
   const first = instantiateTemplate("basic-mindmap");
   const second = instantiateTemplate("basic-mindmap");

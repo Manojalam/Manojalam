@@ -55,8 +55,20 @@ function shape(
   };
 }
 
-function center(id: string, text: string, x = 400, y = 300) {
-  return shape(id, text, x, y, "#6366f1", "rounded", 200);
+function shapeAtCenterX(
+  id: string,
+  text: string,
+  centerX: number,
+  y: number,
+  color = "#818cf8",
+  shapeType: ShapeType = "rounded",
+  width = 180
+) {
+  return shape(id, text, centerX - width / 2, y, color, shapeType, width);
+}
+
+function center(id: string, text: string, centerX = 500, y = 300) {
+  return shapeAtCenterX(id, text, centerX, y, "#6366f1", "rounded", 200);
 }
 
 function branch(
@@ -96,7 +108,9 @@ function groupedTreeContent(
   groups: Array<{ label: string; children: string[]; color?: string }>
 ): BoardContent {
   const rootId = generateId();
-  const rootNode = center(rootId, rootLabel, 420, 80);
+  const firstGroupCenterX = 80 + 180 / 2;
+  const lastGroupCenterX = firstGroupCenterX + Math.max(0, groups.length - 1) * 320;
+  const rootNode = center(rootId, rootLabel, (firstGroupCenterX + lastGroupCenterX) / 2, 80);
   const nodes: BoardContent["nodes"] = [{
     ...rootNode,
     data: { ...rootNode.data, layoutMode: "vertical" as const },
@@ -159,12 +173,12 @@ const templates: TemplateDefinition[] = [
       const end = generateId();
       return makeContent(
         [
-          shape(start, "Start", 400, 60, "#6366f1", "capsule"),
-          shape(process, "Process", 400, 210, "#0284c7", "rectangle"),
-          shape(decision, "Decision?", 400, 360, "#d97706", "diamond", 200),
+          shapeAtCenterX(start, "Start", 490, 60, "#6366f1", "capsule"),
+          shapeAtCenterX(process, "Process", 490, 210, "#0284c7", "rectangle"),
+          shapeAtCenterX(decision, "Decision?", 490, 360, "#d97706", "diamond", 200),
           shape(yes, "Continue", 150, 540, "#059669", "rectangle"),
           shape(no, "Revise", 650, 540, "#dc2626", "rectangle"),
-          shape(end, "Complete", 400, 720, "#6366f1", "capsule"),
+          shapeAtCenterX(end, "Complete", 490, 720, "#6366f1", "capsule"),
         ],
         [
           edge(start, process),
@@ -189,9 +203,9 @@ const templates: TemplateDefinition[] = [
       const summary = generateId();
       return makeContent(
         [
-          center(topic, "Topic", 400, 80),
+          center(topic, "Topic", 500, 80),
           branch(cues, "Cues / questions", 100, 280, "#d97706"),
-          branch(notes, "Notes", 400, 280, "#6366f1"),
+          shapeAtCenterX(notes, "Notes", 500, 280, "#6366f1"),
           branch(summary, "Summary", 700, 500, "#059669"),
         ],
         [edge(topic, cues), edge(topic, notes), edge(notes, summary)]
@@ -213,7 +227,7 @@ const templates: TemplateDefinition[] = [
           center(core, "Core concept"),
           branch(definition, "Definition", 100, 120, "#4f46e5"),
           branch(evidence, "Evidence", 700, 120, "#0284c7"),
-          branch(examples, "Examples", 400, 540, "#d97706"),
+          shapeAtCenterX(examples, "Examples", 500, 540, "#d97706"),
         ],
         [
           edge(core, definition),
@@ -320,7 +334,7 @@ const templates: TemplateDefinition[] = [
       ].map((section) => ({ ...section, id: generateId() }));
       return makeContent(
         [
-          center(topic, "Śloka title", 390, 60),
+          center(topic, "Śloka title", 490, 60),
           {
             id: shloka,
             type: "shloka",
@@ -354,7 +368,7 @@ const templates: TemplateDefinition[] = [
       const practice = generateId();
       return makeContent(
         [
-          center(topic, "Grammar topic", 400, 60),
+          center(topic, "Grammar topic", 500, 60),
           {
             id: rule,
             type: "grammar",
