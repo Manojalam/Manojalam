@@ -11,8 +11,11 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   AlignVerticalDistributeCenter,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  BringToFront,
   Copy,
   CopyPlus,
   ChevronDown,
@@ -23,6 +26,7 @@ import {
   Group,
   Lock,
   Link2,
+  Layers3,
   Maximize2,
   MessageSquarePlus,
   Move,
@@ -35,6 +39,7 @@ import {
   Scissors,
   Settings2,
   Share2,
+  SendToBack,
   Trash2,
   Ungroup,
   Unlock,
@@ -80,6 +85,10 @@ import {
   buildRelationshipGroupsForSpec,
   normalizeRelationshipDiagramSpec,
 } from "@/lib/relationship-diagram";
+import {
+  reorderSelectedNodeLayers,
+  type LayerOrderAction,
+} from "@/lib/canvas/layer-order";
 
 function ActionButton({
   label,
@@ -499,6 +508,78 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
             onRotateBy={rotateTextBy}
           />
         )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function LayerOrderMenu({
+  selectedIds,
+}: {
+  selectedIds: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const applyOrder = (action: LayerOrderAction) => {
+    const store = useCanvasStore.getState();
+    store.pushHistory();
+    const selected = new Set(selectedIds);
+    useCanvasStore.setState((state) => ({
+      nodes: reorderSelectedNodeLayers(state.nodes, selected, action),
+      saveStatus: "unsaved",
+    }));
+    setOpen(false);
+  };
+  const actions: Array<{
+    action: LayerOrderAction;
+    label: string;
+    icon: React.ReactNode;
+  }> = [
+    { action: "front", label: "Bring to front", icon: <BringToFront className="h-4 w-4" /> },
+    { action: "forward", label: "Bring forward", icon: <ArrowUp className="h-4 w-4" /> },
+    { action: "backward", label: "Send backward", icon: <ArrowDown className="h-4 w-4" /> },
+    { action: "back", label: "Send to back", icon: <SendToBack className="h-4 w-4" /> },
+  ];
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Layer order"
+          aria-label="Change layer order"
+          aria-expanded={open}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Layers3 className="h-4 w-4" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        data-export-ignore
+        side="top"
+        align="center"
+        sideOffset={10}
+        className="nodrag nopan w-48 p-1.5"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Layer order
+        </p>
+        {actions.map(({ action, label, icon }) => (
+          <button
+            key={action}
+            type="button"
+            className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={(event) => {
+              event.stopPropagation();
+              applyOrder(action);
+            }}
+          >
+            {icon}
+            {label}
+          </button>
+        ))}
       </PopoverContent>
     </Popover>
   );
@@ -963,6 +1044,10 @@ export function SelectionToolbar() {
       )}
 
       {!selectedRelationshipDiagramItem && <RotationPicker nodes={selected} />}
+
+      {!selectedRelationshipDiagramItem && (
+        <LayerOrderMenu selectedIds={selected.map((node) => node.id)} />
+      )}
 
       {singleId && (
         <ActionButton

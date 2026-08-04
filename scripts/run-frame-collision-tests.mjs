@@ -12,8 +12,10 @@ const sources = [
   "src/lib/types.ts",
   "src/lib/layout/geometry.ts",
   "src/lib/canvas/frame-collision.ts",
+  "src/lib/canvas/layer-order.ts",
   "src/lib/canvas/drag-movement.ts",
   "src/lib/canvas/frame-collision.test.ts",
+  "src/lib/canvas/layer-order.test.ts",
   "src/lib/canvas/drag-movement.test.ts",
 ];
 
@@ -45,6 +47,7 @@ if (status === 0) {
     [
       "--test",
       join(output, "canvas", "frame-collision.test.js"),
+      join(output, "canvas", "layer-order.test.js"),
       join(output, "canvas", "drag-movement.test.js"),
     ],
     { cwd: workspace, stdio: "inherit" }

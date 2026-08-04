@@ -2167,7 +2167,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       updateNodeData(selectedNode.id, { radialTextColor: value });
       return;
     }
-    const patch = fieldPatch(d, key, value);
+    const patch = selectedNode.type === "frame" && key === "textHighlightColor"
+      ? { textHighlightColor: value }
+      : fieldPatch(d, key, value);
     if (key === "fillColor" && isMetallicColor(value)) {
       Object.assign(patch, surfaceEffectPresetPatch("metallic"));
     }
@@ -5278,7 +5280,8 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const isDrawing     = drawingModeNodeId === selectedNode.id;
   const fontGroups    = groupFontsByCategory(FONT_OPTIONS);
   const activeTextAlign = selectedTextRange?.textAlign ?? d.textAlign;
-  const activeFontSize = selectedTextRange?.fontSize ?? ((d.fontSize as number) || 14);
+  const activeFontSize = selectedTextRange?.fontSize
+    ?? ((d.fontSize as number) || (isEditableFrame ? 12 : 14));
   const activeFontFamily = selectedTextRange?.fontFamily ?? ((d.fontFamily as string) || "");
   const activeTextColor = selectedTextRange?.textColor
     ?? ((isRadialLayoutSector ? d.radialTextColor : d.textColor) as string | undefined)
@@ -5926,7 +5929,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {/* ── Text ── */}
-        {(isContentNode || isRadialLayoutSector) && (
+        {(isContentNode || isEditableFrame || isRadialLayoutSector) && (
           <Section
             label="Text"
             visible={singleNodeTab === "text"}
@@ -5934,7 +5937,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           >
             <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <span className="text-[10px] font-medium text-foreground">
-                {selectedTextRange ? "Selected text" : isRadialLayoutSector ? "Whole sector" : "Whole object"}
+                {selectedTextRange
+                  ? "Selected text"
+                  : isRadialLayoutSector
+                    ? "Whole sector"
+                    : isEditableFrame ? "Swim lane label" : "Whole object"}
               </span>
               <span className="text-[9px] text-muted-foreground">
                 {selectedTextRange ? "Inline" : "All text"}
@@ -5951,7 +5958,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 <IconBtn key={val} active={activeTextAlign === val} onClick={() => setField("textAlign", val)} title={title}>{icon}</IconBtn>
               ))}
             </Row>
-            {!isRadialLayoutSector && (
+            {!isRadialLayoutSector && !isEditableFrame && (
               <Row label="Vertical">
                 {([
                   ["top",    <AlignStartHorizontal  key="t" className="h-3.5 w-3.5" />, "Top"],
@@ -6028,7 +6035,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               />
             </div>
 
-            {!selectedTextRange && !matrixRootNode && (
+            {!selectedTextRange && !matrixRootNode && !isEditableFrame && (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Auto-fit text</p>
@@ -6114,7 +6121,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             </div>
 
             <div>
-              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Highlight</p>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                {isEditableFrame ? "Label background" : "Highlight"}
+              </p>
               <ColorSwatchPicker
                 value={activeHighlightColor}
                 extra={settings.customHighlightColors}

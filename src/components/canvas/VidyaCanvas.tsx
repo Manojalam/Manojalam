@@ -93,6 +93,7 @@ import {
   type ConnectorEndpoint,
 } from "@/lib/canvas/connector-anchors";
 import { suppressAutomaticEdgeReconnect } from "@/lib/canvas/connector-handle-interaction";
+import { keepsFrameBehindOnSelection } from "@/lib/canvas/layer-order";
 import {
   findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
@@ -390,8 +391,14 @@ function VidyaCanvasInner({
           },
         }
       : node);
-    if (!relationshipSelection) return dropAwareNodes;
-    return dropAwareNodes.map((node) => {
+    const layerAwareNodes = dropAwareNodes.map((node) => keepsFrameBehindOnSelection(node)
+      ? {
+          ...node,
+          className: [node.className, "frame-selection-keeps-layer"].filter(Boolean).join(" "),
+        }
+      : node);
+    if (!relationshipSelection) return layerAwareNodes;
+    return layerAwareNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const isActiveChart = node.type === "sunburst" && data.rootId === relationshipSelection.chartRootNodeId;
       if (isActiveChart || node.hidden) return node;

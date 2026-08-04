@@ -173,6 +173,12 @@ body {
   touch-action: none;
 }
 
+/* React Flow normally raises every selected node. A background swim lane must
+   remain behind its cards until the user explicitly changes its layer. */
+.react-flow__node-frame.frame-selection-keeps-layer.selected {
+  z-index: -1 !important;
+}
+
 [data-input="touch"] .react-flow__node,
 [data-input="touch"] .react-flow__node *,
 [data-input="hybrid"] .react-flow__node,
