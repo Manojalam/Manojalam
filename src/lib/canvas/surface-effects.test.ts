@@ -5,6 +5,7 @@ import {
   normalizeSurfaceEffect,
   surfaceEffectExportShadowLayers,
   surfaceEffectExportStyle,
+  surfaceEffectFillStyle,
   surfaceEffectFilter,
   surfaceEffectPresetPatch,
   surfaceEffectStyle,
@@ -72,6 +73,14 @@ test("metallic surfaces use alternating specular bands and sculpted edges", () =
   assert.match(style.boxShadow ?? "", /inset 0 -1px 0/);
 });
 
+test("decorations can reuse surface paint without duplicating node shadows", () => {
+  const style = surfaceEffectFillStyle(surfaceEffectPresetPatch("metallic"));
+
+  assert.equal((style.backgroundImage ?? "").split("linear-gradient").length - 1, 2);
+  assert.equal(style.backgroundBlendMode, "overlay,soft-light");
+  assert.equal(style.boxShadow, undefined);
+});
+
 test("glow uses the node accent and SVG shapes receive a drop shadow filter", () => {
   const data = surfaceEffectPresetPatch("glow");
   const style = surfaceEffectStyle(data, "#22c55e");
@@ -137,6 +146,7 @@ test("native glow exports retain two accent-colored halos", () => {
 
 test("flat surfaces add no paint and preserve legacy boards", () => {
   assert.deepEqual(surfaceEffectStyle({}), {});
+  assert.deepEqual(surfaceEffectFillStyle({}), {});
   assert.equal(surfaceEffectFilter({}), undefined);
   assert.deepEqual(surfaceEffectExportStyle({}), {});
   assert.deepEqual(surfaceEffectExportShadowLayers({}), []);

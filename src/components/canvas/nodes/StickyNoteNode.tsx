@@ -39,6 +39,7 @@ import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import {
   surfaceEffectExportShadowLayers,
   surfaceEffectExportStyle,
+  surfaceEffectFillStyle,
   surfaceEffectStyle,
 } from "@/lib/canvas/surface-effects";
 
@@ -89,6 +90,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const hasSurfaceEffect = typeof surfaceEffectData.surfaceEffect === "string";
   const exportEffectStyle = surfaceEffectExportStyle(surfaceEffectData, border);
   const exportShadowLayers = surfaceEffectExportShadowLayers(surfaceEffectData, border);
+  const foldEffectStyle = surfaceEffectFillStyle(surfaceEffectData, border);
 
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
@@ -210,7 +212,15 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
 
         {/* Folded-corner decoration */}
         {!matrixCell && <div className="pointer-events-none absolute bottom-0 right-0 h-5 w-5"
-          style={{ borderRadius: `0 0 ${bRadius}px 0`, background: `linear-gradient(225deg, ${foldColor} 45%, transparent 45%)` }} />
+          style={{
+            backgroundColor: themeAwareNodeFillColor(foldColor),
+            backgroundPosition: "bottom right",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: `${nodeSize.width}px ${nodeSize.height}px`,
+            borderRadius: `0 0 ${bRadius}px 0`,
+            clipPath: "polygon(100% 0, 100% 100%, 0 100%)",
+            ...foldEffectStyle,
+          }} />
         }
 
         <div
