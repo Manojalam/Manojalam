@@ -1144,6 +1144,11 @@ function VidyaCanvasInner({
   const onReconnectStart = useCallback((_event: React.MouseEvent, edge: Edge) => {
     reconnectingEdgeIdRef.current = edge.id;
     pendingReconnectRef.current = null;
+    useUIStore.getState().setConnectorReconnectActive(true);
+  }, []);
+
+  useEffect(() => () => {
+    useUIStore.getState().setConnectorReconnectActive(false);
   }, []);
 
   const isValidConnection = useCallback((connection: Connection | Edge) => {
@@ -1263,7 +1268,7 @@ function VidyaCanvasInner({
           waypoints: undefined,
           waypointOrigin: undefined,
           edgeType: "branch",
-          curveStyle: flowchartConnection ? "step" : route.curveStyle,
+          curveStyle: edgeData.curveStyle ?? (flowchartConnection ? "step" : route.curveStyle),
           manualRoute: flowchartConnection
             || movedHandleId === PERIMETER_HANDLE_ID
             || edgeData.manualRoute === true,
@@ -1302,6 +1307,7 @@ function VidyaCanvasInner({
     const pending = pendingReconnectRef.current;
     reconnectingEdgeIdRef.current = null;
     pendingReconnectRef.current = null;
+    useUIStore.getState().setConnectorReconnectActive(false);
     if (
       !pending
       || pending.handleId !== PERIMETER_HANDLE_ID
@@ -1800,7 +1806,7 @@ function VidyaCanvasInner({
       nodesConnectable={canEdit && !relationshipSelection}
       elementsSelectable={canEdit && !relationshipSelection}
       edgesReconnectable={canEdit && !relationshipSelection}
-      reconnectRadius={isTouchDevice ? 28 : 14}
+      reconnectRadius={isTouchDevice ? 36 : 24}
       minZoom={MIN_CANVAS_ZOOM}
       maxZoom={MAX_CANVAS_ZOOM}
       onlyRenderVisibleElements={!boardExportRequest}

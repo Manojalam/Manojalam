@@ -1436,6 +1436,12 @@ function ConnectionInspectorSections({
   const pathStyle = pathStyles.every((value) => value === pathStyles[0])
     ? pathStyles[0]
     : undefined;
+  const curveStyles = connectionEdges.map((edge) => (
+    ((edge.data ?? {}) as VidyaEdgeData).curveStyle ?? "step"
+  ));
+  const curveStyle = curveStyles.every((value) => value === curveStyles[0])
+    ? curveStyles[0]
+    : undefined;
   const label = typeof commonLabelValue("label") === "string" ? commonLabelValue("label") as string : "";
   const labelColor = typeof commonLabelValue("labelColor") === "string"
     ? commonLabelValue("labelColor") as string
@@ -1461,10 +1467,11 @@ function ConnectionInspectorSections({
             <button
               key={value}
               type="button"
+              aria-pressed={curveStyle === value}
               onClick={() => onChange("curveStyle", value)}
               className={cn(
                 "rounded-md border px-2 py-1.5 text-[10px] transition-colors",
-                (commonValue("curveStyle") ?? "step") === value
+                curveStyle === value
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border hover:bg-muted"
               )}

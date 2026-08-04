@@ -4476,6 +4476,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const hierarchyEdge = hierarchy.get(edge.target)?.parentId === edge.source;
       const hiddenInMatrix = mode === "matrix" && isMatrixHierarchyEdge(edge, hierarchy, scopeIds);
       const hiddenInSunburst = !!sunburstEnabled && hierarchyEdge;
+      const curveStyle = edgeData.curveStyle ?? route.curveStyle;
       return rebindConnectorAnchorHandles({
         ...edge,
         ...(hierarchyEdge ? { type: "branch", reconnectable: true } : {}),
@@ -4486,7 +4487,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         data: {
           ...(edge.data ?? {}),
           edgeType: "branch",
-          curveStyle: route.curveStyle,
+          curveStyle,
           hiddenInMatrix,
           hiddenInMatrixFor: hiddenInMatrix ? rootId : undefined,
           hiddenInSunburst,

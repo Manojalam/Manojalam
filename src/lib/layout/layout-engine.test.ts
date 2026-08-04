@@ -105,12 +105,12 @@ test("Mind Map keeps the root centered and grows both sides outward", () => {
   assert.deepEqual(routeForMode("mindMap", placed[0], placed[1]), {
     sourceHandle: "left",
     targetHandle: "right",
-    curveStyle: "smooth",
+    curveStyle: "step",
   });
   assert.deepEqual(routeForMode("mindMap", placed[0], placed[3]), {
     sourceHandle: "right",
     targetHandle: "left",
-    curveStyle: "smooth",
+    curveStyle: "step",
   });
 });
 

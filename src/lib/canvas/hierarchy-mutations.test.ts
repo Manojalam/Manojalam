@@ -212,6 +212,7 @@ test("structured reflow reroutes automatic connectors from settled node position
 
   assert.equal(rerouted.sourceHandle, "left");
   assert.equal(rerouted.targetHandle, "right");
+  assert.equal((rerouted.data as Record<string, unknown>).curveStyle, "smooth");
 });
 
 test("structured reflow preserves a manually anchored connector endpoint", () => {

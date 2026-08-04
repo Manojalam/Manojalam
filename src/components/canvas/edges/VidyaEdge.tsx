@@ -35,7 +35,7 @@ function VidyaEdgeComponent(props: EdgeProps) {
   const edgeColor = d.color
     ?? (d.layoutColor ? themeAwareLayoutConnectorColor(d.layoutColor) : normalEdgeColor);
   const endpointData = useNodesData([source, target]);
-  const curveStyle = d.curveStyle ?? "smooth";
+  const curveStyle = d.curveStyle ?? "step";
   const targetData = (endpointData.find((node) => node.id === target)?.data ?? {}) as Record<string, unknown>;
   if (curveStyle === "step") return <SmartBranchEdge {...props} />;
   if (

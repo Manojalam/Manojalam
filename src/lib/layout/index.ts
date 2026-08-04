@@ -414,7 +414,7 @@ export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeR
       const parentCenter = centerOf(parent);
       const childCenter = centerOf(child);
       const source: Side = childCenter.x >= parentCenter.x ? "right" : "left";
-      return { sourceHandle: source, targetHandle: opposite(source), curveStyle: "smooth" };
+      return { sourceHandle: source, targetHandle: opposite(source), curveStyle: "step" };
     }
     case "fromParentFreeForm":
     case "freeForm":

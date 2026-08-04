@@ -15,6 +15,7 @@ import {
 } from "@/lib/canvas/connector-anchors";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
+import { connectorHandleInteractionState } from "@/lib/canvas/connector-handle-interaction";
 
 /**
  * Renders one loose-mode handle on each side. In React Flow's loose connection
@@ -78,12 +79,17 @@ export function NodeHandles({
   rotation?: number;
 }) {
   const activeTool = useUIStore((s) => s.activeTool);
+  const reconnectInProgress = useUIStore((s) => s.connectorReconnectActive);
   const connectionInProgress = useConnection((connection) => connection.inProgress);
   const edges = useCanvasStore((state) => state.edges);
   const updateNodeInternals = useUpdateNodeInternals();
   const connectorActive = activeTool === "connector";
-  const visible = connectorActive || selected;
-  const perimeterActive = connectorActive || connectionInProgress;
+  const { perimeterActive, fixedHandlesActive } = connectorHandleInteractionState({
+    connectorToolActive: connectorActive,
+    connectionInProgress,
+    reconnectInProgress,
+    selected,
+  });
   const anchoredEndpoints = useMemo(() => edges.flatMap((edge) => {
     const endpoints: Array<{
       edgeId: string;
@@ -118,22 +124,18 @@ export function NodeHandles({
           type="source"
           id={id}
           position={pos}
-          isConnectableStart
-          isConnectableEnd
-          className={visible
-            ? connectorActive
-              ? compact
-                ? "!h-3 !w-3 !border-2 !border-background !opacity-100 !shadow-md"
-                : "!h-4 !w-4 !border-2 !border-background !opacity-100 !shadow-md"
-              : compact
-                ? "!h-2.5 !w-2.5 !border-2 !border-background !opacity-100 !shadow-sm"
-                : "!h-3 !w-3 !border-2 !border-background !opacity-100 !shadow-sm"
+          isConnectableStart={fixedHandlesActive}
+          isConnectableEnd={fixedHandlesActive}
+          className={fixedHandlesActive
+            ? compact
+              ? "!h-2.5 !w-2.5 !border-2 !border-background !opacity-100 !shadow-sm"
+              : "!h-3 !w-3 !border-2 !border-background !opacity-100 !shadow-sm"
             : compact
               ? "!h-2 !w-2 !border !border-background !opacity-0"
               : "!h-2.5 !w-2.5 !border !border-background !opacity-0"}
           style={{
             background: color,
-            pointerEvents: "all",
+            pointerEvents: fixedHandlesActive ? "all" : "none",
             ...connectionPointStyle(id, shapeConnectionPoint(shapeType, id, {
               width,
               height,
@@ -170,7 +172,7 @@ export function NodeHandles({
         isConnectableStart={perimeterActive}
         isConnectableEnd={perimeterActive}
         aria-label="Connect anywhere on shape"
-        className="!absolute !m-0 !h-full !w-full !border-0 !bg-transparent !opacity-0"
+        className="!absolute !m-0 !h-full !w-full !cursor-crosshair !border-0 !bg-transparent !opacity-0"
         style={{
           left: 0,
           top: 0,

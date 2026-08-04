@@ -55,10 +55,11 @@ export function rerouteStructuredHierarchyEdges(
     const route = routeForMode(mode, source, target);
     const sourceHandle = sourceAnchor ? edge.sourceHandle : route.sourceHandle;
     const targetHandle = targetAnchor ? edge.targetHandle : route.targetHandle;
+    const curveStyle = data.curveStyle ?? route.curveStyle;
     if (
       sourceHandle === edge.sourceHandle
       && targetHandle === edge.targetHandle
-      && data.curveStyle === route.curveStyle
+      && data.curveStyle === curveStyle
       && data.layoutMode === mode
     ) return edge;
 
@@ -69,7 +70,7 @@ export function rerouteStructuredHierarchyEdges(
       targetHandle,
       data: {
         ...data,
-        curveStyle: route.curveStyle,
+        curveStyle,
         layoutMode: mode,
       },
     });
