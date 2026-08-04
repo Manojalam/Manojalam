@@ -95,6 +95,7 @@ import {
   resolveAutoSizeMode,
   type ContentResizeReason,
 } from "@/lib/canvas/node-sizing";
+import { placeNewChild } from "@/lib/canvas/child-placement";
 import {
   clearSelectedNodeContents,
   prepareDuplicatedNodeData,
@@ -2943,25 +2944,32 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const mode = manualFlowchart ? "freeForm" : inheritedMode ?? "horizontal";
     const hiddenInMatrix = mode === "matrix";
     const hiddenInSunburst = mode === "radial";
-    const parentRect = getNodeRect(parent);
     const parentSize = getNodeDimensions(parent);
-    const newNodes = childIds.map<Node>((childId, index) => ({
-      id: childId,
-      type: childType,
-      position: {
-        x: parentRect.right + 104,
-        y: parentRect.centerY - parentSize.height / 2 + (existingChildCount + index) * (parentSize.height + 28),
-      },
-      data: {
+    const newNodes = childIds.map<Node>((childId, index) => {
+      const data = {
         ...inheritStyle(parentData),
         fontSize: typeof parentData.fontSize === "number" ? parentData.fontSize : settings.defaultFontSize,
         text: "New Idea",
         tags: [],
         parentId,
         ...(childType === "shape" && { shapeType: (parentData.shapeType as string) ?? "rounded" }),
-      },
-      style: { ...(parent.style ?? {}), width: parentSize.width, height: parentSize.height },
-    }));
+      };
+      const draft: Node = {
+        id: childId,
+        type: childType,
+        position: { x: 0, y: 0 },
+        data,
+        style: { ...(parent.style ?? {}), width: parentSize.width, height: parentSize.height },
+      };
+      // A new label can settle to a shorter box than its parent. Resolve that
+      // size before positioning so side handles start on one horizontal axis.
+      const sized = fitNodeAfterContentChange(
+        draft,
+        measuredOrEstimatedContent(data),
+        "fit"
+      );
+      return placeNewChild(parent, sized, existingChildCount + index);
+    });
     const newEdges = newNodes.map<Edge>((newNode) => {
       const route = routeForMode(mode, parent, newNode);
       return {
