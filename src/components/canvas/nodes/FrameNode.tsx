@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { NodeResizer, ViewportPortal, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import type { FrameNodeData } from "@/lib/types";
@@ -106,6 +106,22 @@ function FrameNodeComponent({
   const resizeControls = useNodeManualResize(id);
   const authoredTextStyle = getAuthoredTextStyle(d as Record<string, unknown>);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+
+  const beginTitleEdit = () => {
+    if (d.locked || isMatrixFrame) return;
+    setTitleDraft(d.title ?? "");
+    setEditingTitle(true);
+  };
+
+  const commitTitleEdit = () => {
+    setEditingTitle(false);
+    if (titleDraft === (d.title ?? "")) return;
+    const store = useCanvasStore.getState();
+    store.pushHistory();
+    store.updateNodeData(id, { title: titleDraft });
+  };
 
   return (
     <>
@@ -224,14 +240,44 @@ function FrameNodeComponent({
         {d.title !== "" && (
           <div
             data-canvas-label-box="true"
-            className="absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm"
+            className="nodrag nopan absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm"
+            title={isMatrixFrame ? undefined : "Double-click to rename"}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              beginTitleEdit();
+            }}
             style={{
               backgroundColor: d.color ?? "#6366f1",
               color: "white",
               ...authoredTextStyle,
             }}
           >
-            {d.title || "Frame"}
+            {editingTitle ? (
+              <input
+                autoFocus
+                aria-label="Swim lane label"
+                className="nodrag nopan min-w-16 border-0 bg-transparent p-0 text-inherit outline-none"
+                value={titleDraft}
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={commitTitleEdit}
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    setTitleDraft(d.title ?? "");
+                    setEditingTitle(false);
+                  }
+                }}
+                style={{
+                  width: `${Math.max(8, titleDraft.length + 1)}ch`,
+                  ...authoredTextStyle,
+                }}
+              />
+            ) : (
+              d.title || "Frame"
+            )}
           </div>
         )}
         </div>

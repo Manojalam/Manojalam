@@ -281,7 +281,7 @@ export function CanvasToolbar() {
           onClick={() => setActiveTool("connector")}
           tool="connector"
         />
-        <ToolBtn tool="frame"  icon={<Frame className="h-[18px] w-[18px] stroke-[1.5]" />}         label="Frame" />
+        <ToolBtn tool="frame"  icon={<Frame className="h-[18px] w-[18px] stroke-[1.5]" />}         label="Frame / swim lane" />
 
         <Divider />
 
