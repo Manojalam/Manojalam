@@ -1,5 +1,12 @@
 import { BOARD_CONTENT_VERSION } from "../config";
-import { DEFAULT_BOARD_SETTINGS, type BoardContent, type ShapeType, type TemplateDefinition } from "../types";
+import {
+  DEFAULT_BOARD_SETTINGS,
+  type BoardContent,
+  type ShapeType,
+  type ShlokaCardNodeData,
+  type ShlokaStudySection,
+  type TemplateDefinition,
+} from "../types";
 import { generateId } from "../utils";
 
 export const TEMPLATE_CATEGORIES = [
@@ -88,6 +95,33 @@ function sticky(id: string, text: string, x: number, y: number, color: string) {
     position: { x, y },
     style: { width: 220, height: 120 },
     data: { text, scriptMode: "plain" as const, color, tags: [] },
+  };
+}
+
+function shlokaStudyCard(
+  id: string,
+  studySection: ShlokaStudySection,
+  title: string,
+  content: Partial<ShlokaCardNodeData>,
+  x: number,
+  y: number,
+  width = 270,
+  height = 180
+) {
+  return {
+    id,
+    type: "shloka" as const,
+    position: { x, y },
+    style: { width, height },
+    data: {
+      title,
+      devanagari: "",
+      iast: "",
+      memorizationStatus: "new" as const,
+      tags: [],
+      studySection,
+      ...content,
+    },
   };
 }
 
@@ -321,36 +355,93 @@ const templates: TemplateDefinition[] = [
     category: "sanskrit",
     content: (() => {
       const topic = generateId();
-      const shloka = generateId();
+      const verse = generateId();
       const sections = [
-        { label: "Padaccheda", x: 40, y: 500 },
-        { label: "Anvaya", x: 280, y: 500 },
-        { label: "Padārtha", x: 520, y: 500 },
-        { label: "Translation", x: 760, y: 500 },
-        { label: "Grammar", x: 40, y: 680 },
-        { label: "Chandas", x: 280, y: 680 },
-        { label: "Notes", x: 520, y: 680 },
-        { label: "Memorization", x: 760, y: 680 },
+        {
+          section: "padaccheda" as const,
+          title: "Padaccheda",
+          content: { padaccheda: "धर्म-क्षेत्रे, कुरु-क्षेत्रे, समवेताः, युयुत्सवः, मामकाः, पाण्डवाः, च, एव, किम्, अकुर्वत, सञ्जय" },
+          x: 20,
+          y: 500,
+        },
+        {
+          section: "anvaya" as const,
+          title: "Anvaya",
+          content: { anvaya: "सञ्जय! धर्मक्षेत्रे कुरुक्षेत्रे समवेताः युयुत्सवः मामकाः पाण्डवाः च एव किम् अकुर्वत?" },
+          x: 310,
+          y: 500,
+        },
+        {
+          section: "padartha" as const,
+          title: "Padārtha",
+          content: { padartha: "समवेताः — assembled; युयुत्सवः — wishing to fight; मामकाः — my sons; पाण्डवाः — the sons of Pāṇḍu" },
+          x: 600,
+          y: 500,
+        },
+        {
+          section: "translation" as const,
+          title: "Translation",
+          content: { translation: "Dhṛtarāṣṭra asked: O Sañjaya, what did my sons and the sons of Pāṇḍu do when they assembled at sacred Kurukṣetra, eager to fight?" },
+          x: 890,
+          y: 500,
+        },
+        {
+          section: "grammar" as const,
+          title: "Grammar",
+          content: { grammar: "धर्मक्षेत्रे / कुरुक्षेत्रे: locative singular. समवेताः / युयुत्सवः: nominative plural. अकुर्वत: imperfect, 3rd-person plural." },
+          x: 20,
+          y: 720,
+        },
+        {
+          section: "chandas" as const,
+          title: "Chandas",
+          content: { chandas: "Anuṣṭubh (śloka): four pādas of eight syllables each." },
+          x: 310,
+          y: 720,
+        },
+        {
+          section: "notes" as const,
+          title: "Notes",
+          content: { notes: "Opening verse of the Bhagavad Gītā. Dhṛtarāṣṭra addresses Sañjaya and contrasts ‘my sons’ with the Pāṇḍavas." },
+          x: 600,
+          y: 720,
+        },
+        {
+          section: "memorization" as const,
+          title: "Memorization",
+          content: { memorizationStatus: "new" as const, memorizationNotes: "Recite one pāda at a time, then join all four without looking." },
+          x: 890,
+          y: 720,
+        },
       ].map((section) => ({ ...section, id: generateId() }));
       return makeContent(
         [
-          center(topic, "Śloka title", 490, 60),
-          {
-            id: shloka,
-            type: "shloka",
-            position: { x: 310, y: 210 },
-            style: { width: 360, height: 190 },
-            data: {
-              title: "Verse",
-              devanagari: "धर्मक्षेत्रे कुरुक्षेत्रे",
-              iast: "dharmakṣetre kurukṣetre",
-              memorizationStatus: "new",
-              tags: ["स्मरणम्"],
+          center(topic, "Bhagavad Gītā 1.1", 600, 50),
+          shlokaStudyCard(
+            verse,
+            "verse",
+            "Verse",
+            {
+              sourceText: "Bhagavad Gītā 1.1",
+              devanagari: "धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।\nमामकाः पाण्डवाश्चैव किमकुर्वत सञ्जय ॥",
+              iast: "dharmakṣetre kurukṣetre samavetā yuyutsavaḥ |\nmāmakāḥ pāṇḍavāścaiva kimakurvata sañjaya ||",
+              tags: ["भगवद्गीता"],
             },
-          },
-          ...sections.map((section) => branch(section.id, section.label, section.x, section.y, "#d97706")),
+            390,
+            190,
+            420,
+            230
+          ),
+          ...sections.map((section) => shlokaStudyCard(
+            section.id,
+            section.section,
+            section.title,
+            section.content,
+            section.x,
+            section.y
+          )),
         ],
-        [edge(topic, shloka), ...sections.map((section) => edge(shloka, section.id))]
+        [edge(topic, verse), ...sections.map((section) => edge(verse, section.id))]
       );
     })(),
   },

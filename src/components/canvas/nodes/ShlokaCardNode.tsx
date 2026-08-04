@@ -5,7 +5,7 @@ import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
 import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type { ShlokaCardNodeData } from "@/lib/types";
+import type { ShlokaCardNodeData, ShlokaStudySection } from "@/lib/types";
 import { NodeQuickActions } from "./NodeQuickActions";
 import {
   getAuthoredTextStyle,
@@ -29,9 +29,25 @@ const SECTIONS = [
   { key: "anvaya", label: "Anvaya", field: "anvaya" },
   { key: "padartha", label: "Padārtha", field: "padartha" },
   { key: "translation", label: "Meaning", field: "translation" },
+  { key: "grammar", label: "Grammar", field: "grammar" },
   { key: "chandas", label: "Chandas", field: "chandas" },
   { key: "notes", label: "Notes", field: "notes" },
+  { key: "memorization", label: "Memorization", field: "memorizationNotes" },
 ] as const;
+
+const STUDY_SECTION_FIELDS: Record<
+  Exclude<ShlokaStudySection, "verse">,
+  keyof ShlokaCardNodeData
+> = {
+  padaccheda: "padaccheda",
+  anvaya: "anvaya",
+  padartha: "padartha",
+  translation: "translation",
+  grammar: "grammar",
+  chandas: "chandas",
+  notes: "notes",
+  memorization: "memorizationNotes",
+};
 
 const STATUS_COLORS = {
   new: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
@@ -55,6 +71,12 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
     color: getTextStyle(dd).color,
   } : {};
   const authoredTextStyle = getAuthoredTextStyle(dd);
+  const compactStudySection = d.studySection && d.studySection !== "verse"
+    ? d.studySection
+    : undefined;
+  const compactStudyValue = compactStudySection
+    ? String(d[STUDY_SECTION_FIELDS[compactStudySection]] ?? "")
+    : "";
   const [collapsed, setCollapsed] = useState<Set<string>>(
     new Set(d.collapsedSections ?? [])
   );
@@ -71,8 +93,8 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   return (
     <>
       <NodeResizer
-        minWidth={300}
-        minHeight={200}
+        minWidth={compactStudySection ? 240 : 300}
+        minHeight={compactStudySection ? 140 : 200}
         isVisible={selected && !matrixCell}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}
@@ -124,26 +146,44 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
       >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-semibold" style={authoredTextStyle}>{d.title || "Śloka"}</h3>
-          <Badge
-            className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}
-            style={authoredTextStyle}
-          >
-            {d.memorizationStatus ?? "new"}
-          </Badge>
+          {(!d.studySection || d.studySection === "memorization") && (
+            <Badge
+              className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}
+              style={authoredTextStyle}
+            >
+              {d.memorizationStatus ?? "new"}
+            </Badge>
+          )}
         </div>
 
-        {d.sourceText && (
-          <p className="mb-2 text-xs text-muted-foreground" style={authoredTextStyle}>{d.sourceText}</p>
+        {compactStudySection ? (
+          <div className="overflow-hidden rounded-lg bg-amber-50/80 p-3 dark:bg-amber-950/30">
+            <p
+              className={cn(
+                "whitespace-pre-wrap text-sm leading-relaxed",
+                ["padaccheda", "anvaya"].includes(compactStudySection) && "font-devanagari"
+              )}
+              style={authoredTextStyle}
+            >
+              {compactStudyValue || "Double-click to add content"}
+            </p>
+          </div>
+        ) : (
+          <>
+            {d.sourceText && (
+              <p className="mb-2 text-xs text-muted-foreground" style={authoredTextStyle}>{d.sourceText}</p>
+            )}
+
+            <div className="rounded-lg bg-amber-50/80 p-3 dark:bg-amber-950/30">
+              {d.devanagari && (
+                <p className="whitespace-pre-wrap font-devanagari text-xl leading-relaxed" style={authoredTextStyle}>{d.devanagari}</p>
+              )}
+              {d.iast && <p className="mt-1 whitespace-pre-wrap font-iast text-sm italic text-muted-foreground" style={authoredTextStyle}>{d.iast}</p>}
+            </div>
+          </>
         )}
 
-        <div className="rounded-lg bg-amber-50/80 p-3 dark:bg-amber-950/30">
-          {d.devanagari && (
-            <p className="font-devanagari text-xl leading-relaxed" style={authoredTextStyle}>{d.devanagari}</p>
-          )}
-          {d.iast && <p className="font-iast mt-1 text-sm italic text-muted-foreground" style={authoredTextStyle}>{d.iast}</p>}
-        </div>
-
-        {SECTIONS.slice(1).map((section) => {
+        {!d.studySection && SECTIONS.slice(1).map((section) => {
           const { key, label } = section;
           const field = "field" in section ? section.field : undefined;
           const value = field ? (d as Record<string, unknown>)[field] as string : "";

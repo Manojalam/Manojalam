@@ -14,8 +14,10 @@ test("the Śloka editor exposes every verse-study field", () => {
     anvaya: "धर्मक्षेत्रे कुरुक्षेत्रे च",
     padartha: "धर्मक्षेत्रे — in the field of dharma",
     translation: "In the field of dharma…",
+    grammar: "Locative singular compound.",
     chandas: "Anuṣṭubh",
     notes: "Review the compound.",
+    memorizationNotes: "Recite one pāda at a time.",
     memorizationStatus: "learning",
     tags: ["गीता", "स्मरणम्"],
   };
@@ -29,8 +31,10 @@ test("the Śloka editor exposes every verse-study field", () => {
     anvaya: "धर्मक्षेत्रे कुरुक्षेत्रे च",
     padartha: "धर्मक्षेत्रे — in the field of dharma",
     translation: "In the field of dharma…",
+    grammar: "Locative singular compound.",
     chandas: "Anuṣṭubh",
     notes: "Review the compound.",
+    memorizationNotes: "Recite one pāda at a time.",
     memorizationStatus: "learning",
     tagsText: "गीता, स्मरणम्",
   });
@@ -59,8 +63,10 @@ test("saving a Śloka edit clears empty optional fields and normalizes tags", ()
     anvaya: undefined,
     padartha: undefined,
     translation: undefined,
+    grammar: undefined,
     chandas: undefined,
     notes: undefined,
+    memorizationNotes: undefined,
     memorizationStatus: "memorized",
     tags: ["गीता", "स्मरणम्"],
   });
