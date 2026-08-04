@@ -35,7 +35,7 @@ interface ColorSwatchPickerProps {
   /** Additional colors relevant to this control. */
   extra?: string[];
   size?: "sm" | "md";
-  /** Initial state for the General, Saved, and Used palette sections. */
+  /** Initial state for the General and Saved palette sections. */
   defaultSectionsOpen?: boolean;
   /** Prevents implying that Clear is selected when a multi-selection has mixed colors. */
   mixed?: boolean;
@@ -268,12 +268,12 @@ export function ColorSwatchPicker({
 
       <PaletteSection
         label="Used colors"
-        hint="This board"
+        hint={`${hueSortedUsedColors.length} on this board`}
         colors={hueSortedUsedColors}
         value={value}
         mixed={mixed}
         compact={compact}
-        defaultOpen={defaultSectionsOpen}
+        defaultOpen={false}
         selectionSafe={selectionSafe}
         onChange={onChange}
       />
