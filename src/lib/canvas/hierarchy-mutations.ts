@@ -1,6 +1,12 @@
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
+import { routeForMode } from "../layout";
+import type { LayoutMode, VidyaEdgeData } from "../types";
 import { includeAttachedExternalNoteIds } from "./node-note";
+import {
+  connectorEndpointAnchor,
+  rebindConnectorAnchorHandles,
+} from "./connector-anchors";
 
 export interface HierarchyMutationResult {
   nodes: Node[];
@@ -18,6 +24,57 @@ export function reconnectChangesEndpointNodes(
   connection: Pick<Edge, "source" | "target">
 ): boolean {
   return edge.source !== connection.source || edge.target !== connection.target;
+}
+
+/** Recalculate automatic hierarchy-edge handles from settled layout geometry. */
+export function rerouteStructuredHierarchyEdges(
+  nodes: Node[],
+  edges: Edge[],
+  rootId: string,
+  mode: LayoutMode
+): Edge[] {
+  const hierarchy = buildHierarchy(nodes, edges);
+  const scopeIds = new Set(getSubtree(rootId, hierarchy));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let changed = false;
+  const nextEdges = edges.map((edge) => {
+    if (
+      !scopeIds.has(edge.source)
+      || !scopeIds.has(edge.target)
+      || hierarchy.get(edge.target)?.parentId !== edge.source
+    ) return edge;
+
+    const data = (edge.data ?? {}) as VidyaEdgeData;
+    const sourceAnchor = connectorEndpointAnchor(edge, "source");
+    const targetAnchor = connectorEndpointAnchor(edge, "target");
+    if (data.preserveHandles === true && !sourceAnchor && !targetAnchor) return edge;
+
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) return edge;
+    const route = routeForMode(mode, source, target);
+    const sourceHandle = sourceAnchor ? edge.sourceHandle : route.sourceHandle;
+    const targetHandle = targetAnchor ? edge.targetHandle : route.targetHandle;
+    if (
+      sourceHandle === edge.sourceHandle
+      && targetHandle === edge.targetHandle
+      && data.curveStyle === route.curveStyle
+      && data.layoutMode === mode
+    ) return edge;
+
+    changed = true;
+    return rebindConnectorAnchorHandles({
+      ...edge,
+      sourceHandle,
+      targetHandle,
+      data: {
+        ...data,
+        curveStyle: route.curveStyle,
+        layoutMode: mode,
+      },
+    });
+  });
+  return changed ? nextEdges : edges;
 }
 
 function dataOf(node: Node): Record<string, unknown> {

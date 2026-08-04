@@ -72,6 +72,21 @@ export function clearConnectorEndpointAnchor(
   return { ...edge, data };
 }
 
+/** Drop only anchors whose attached shape changed during a reconnect/reparent. */
+export function clearChangedConnectorEndpointAnchors(
+  previous: Pick<Edge, "source" | "target">,
+  next: Edge
+): Edge {
+  let result = next;
+  if (previous.source !== next.source) {
+    result = clearConnectorEndpointAnchor(result, "source");
+  }
+  if (previous.target !== next.target) {
+    result = clearConnectorEndpointAnchor(result, "target");
+  }
+  return result;
+}
+
 /** Rebuild dynamic handle ids after an edge id or direction changes. */
 export function rebindConnectorAnchorHandles(edge: Edge): Edge {
   const sourceAnchor = connectorEndpointAnchor(edge, "source");
