@@ -5,9 +5,12 @@ import {
   POWERPOINT_SLIDE,
   buildPowerPointTransform,
   editableNodeText,
+  fittedPowerPointFontSize,
+  overviewNodeText,
   plainPowerPointText,
   powerPointColor,
   powerPointShapeName,
+  powerPointTextRuns,
   safePowerPointFilename,
   transformNodeRect,
 } from "./powerpoint-layout";
@@ -54,6 +57,43 @@ test("turns rich board text into editable PowerPoint text", () => {
       examples: ["a + i", "ā + i"],
     }, "grammar")),
     "Sandhi\nGrammar\nCombine adjacent sounds\na + i • ā + i"
+  );
+});
+
+test("preserves authored rich-text styles and hyperlinks", () => {
+  assert.deepEqual(
+    powerPointTextRuns('<p><strong>Rule</strong><br><a href="https://example.com/rule">Reference</a></p>'),
+    [
+      { text: "Rule", bold: true },
+      { text: "\n" },
+      { text: "Reference", underline: true, hyperlink: "https://example.com/rule" },
+    ]
+  );
+  assert.deepEqual(powerPointTextRuns("Read https://example.com/docs."), [
+    { text: "Read " },
+    { text: "https://example.com/docs", underline: true, hyperlink: "https://example.com/docs" },
+    { text: "." },
+  ]);
+  assert.deepEqual(powerPointTextRuns("<ul><li>First</li><li>Second</li></ul>"), [
+    { text: "• First\n• Second" },
+  ]);
+});
+
+test("uses concise labels on dense overview slides", () => {
+  const longNode = node("long", 0, 0, 180, 80, {
+    richText: "<p>1. छे तुगागमः</p><p>This complete explanation belongs on the detail slide.</p>",
+  });
+  assert.equal(overviewNodeText(longNode), "1. छे तुगागमः");
+});
+
+test("chooses an explicit readable font size for the available shape", () => {
+  assert.equal(
+    fittedPowerPointFontSize("A concise overview label", { x: 0, y: 0, width: 3, height: 1 }, 18),
+    18
+  );
+  assert.equal(
+    fittedPowerPointFontSize("A ".repeat(500), { x: 0, y: 0, width: 3, height: 1 }, 24),
+    16
   );
 });
 
