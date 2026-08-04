@@ -150,6 +150,7 @@ function FrameNodeComponent({
         )}
         style={{
           ...(isMatrixFrame && !isMatrixGrid ? { borderWidth: d.borderWidth } : {}),
+          ...(!isMatrixFrame ? { borderWidth: typeof d.borderWidth === "number" ? d.borderWidth : 2 } : {}),
           borderColor: d.color ?? "#6366f1",
           borderStyle: d.borderStyle ?? "dashed",
           backgroundColor: d.background ?? `${d.color ?? "#6366f1"}08`,

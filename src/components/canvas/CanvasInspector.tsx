@@ -5287,6 +5287,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ?? ((isRadialLayoutSector ? d.radialTextColor : d.textColor) as string | undefined)
     ?? "";
   const activeHighlightColor = selectedTextRange?.highlightColor ?? ((d.textHighlightColor as string) || "");
+  const activeFrameLabelFill = isEditableFrame
+    ? activeHighlightColor || (typeof d.color === "string" ? d.color : "#6366f1")
+    : "";
   const surfaceEffectSettings = normalizeSurfaceEffect(d);
   const setRadialChart = (chart: RadialChartData) => setField("radialChart", chart);
   const enableRadialChart = (chart: RadialChartData) => {
@@ -5481,6 +5484,87 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       )}
 
       <div className="flex-1 divide-y overflow-y-auto">
+
+        {isEditableFrame && (
+          <Section label="Label fill" visible={singleNodeTab === "style"} defaultOpen>
+            <ColorSwatchPicker
+              value={activeFrameLabelFill}
+              extra={settings.customHighlightColors}
+              onCustomColor={(color) => setSettings({
+                customHighlightColors: rememberCustomColor(settings.customHighlightColors, color),
+              })}
+              onChange={(value) => setField("textHighlightColor", value || undefined)}
+              onClear={() => setField("textHighlightColor", undefined)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-full text-[10px]"
+              disabled={!activeHighlightColor}
+              onClick={() => setField("textHighlightColor", undefined)}
+            >
+              Use lane color
+            </Button>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Changes only the label pill. Use lane color restores the label to the frame&apos;s border color.
+            </p>
+          </Section>
+        )}
+
+        {isEditableFrame && (
+          <Section label="Frame fill" visible={singleNodeTab === "style"} defaultOpen>
+            <ColorSwatchPicker
+              value={typeof d.background === "string" ? d.background : ""}
+              extra={settings.customColors}
+              onCustomColor={(color) => setSettings({
+                customColors: rememberCustomColor(settings.customColors, color),
+              })}
+              onChange={(value) => setField("background", value || undefined)}
+              onClear={() => setField("background", undefined)}
+            />
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              Changes the color inside the swim lane without changing its label or outline.
+            </p>
+          </Section>
+        )}
+
+        {isEditableFrame && (
+          <Section label="Frame border" visible={singleNodeTab === "style"} defaultOpen>
+            <div>
+              <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Color
+              </p>
+              <ColorSwatchPicker
+                value={typeof d.color === "string" ? d.color : "#6366f1"}
+                extra={settings.customColors}
+                onCustomColor={(color) => setSettings({
+                  customColors: rememberCustomColor(settings.customColors, color),
+                })}
+                onChange={(value) => setField("color", value || undefined)}
+                onClear={() => setField("color", undefined)}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Thickness
+              </p>
+              <ThicknessControl
+                value={typeof d.borderWidth === "number" ? d.borderWidth : 2}
+                onChange={(value) => setField("borderWidth", value)}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Style
+              </p>
+              <BorderStylePicker
+                value={d.borderStyle === "solid" || d.borderStyle === "dotted" ? d.borderStyle : "dashed"}
+                onChange={(value) => setField("borderStyle", value)}
+              />
+            </div>
+          </Section>
+        )}
 
         {isEditableFrame && (
           <Section label="Swim lane" visible={singleNodeTab === "text"} defaultOpen>
@@ -6125,7 +6209,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 {isEditableFrame ? "Label background" : "Highlight"}
               </p>
               <ColorSwatchPicker
-                value={activeHighlightColor}
+                value={isEditableFrame ? activeFrameLabelFill : activeHighlightColor}
                 extra={settings.customHighlightColors}
                 selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
