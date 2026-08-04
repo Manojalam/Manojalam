@@ -105,6 +105,12 @@ function FrameNodeComponent({
   const gridStrokeDasharray = matrixGridDashArray(d.borderStyle, gridStrokeWidth);
   const resizeControls = useNodeManualResize(id);
   const authoredTextStyle = getAuthoredTextStyle(d as Record<string, unknown>);
+  const labelBackground = typeof d.textHighlightColor === "string" && d.textHighlightColor
+    ? d.textHighlightColor
+    : d.color ?? "#6366f1";
+  const labelTextAlign = ["left", "center", "right", "justify"].includes(d.textAlign ?? "")
+    ? d.textAlign
+    : undefined;
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -251,9 +257,10 @@ function FrameNodeComponent({
               if (!editingTitle) beginTitleEdit();
             }}
             style={{
-              backgroundColor: d.color ?? "#6366f1",
+              backgroundColor: labelBackground,
               color: "white",
               ...authoredTextStyle,
+              textAlign: labelTextAlign,
             }}
           >
             {editingTitle ? (
@@ -278,6 +285,7 @@ function FrameNodeComponent({
                 style={{
                   width: `${Math.max(8, titleDraft.length + 1)}ch`,
                   ...authoredTextStyle,
+                  textAlign: labelTextAlign,
                 }}
               />
             ) : (
