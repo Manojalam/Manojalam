@@ -24,6 +24,7 @@ import {
   getNodeRect,
   getNodeDimensions,
   nodePositionFromTopLeft,
+  persistMindMapRootSides,
   rectsOverlap,
   resizeAroundAnchor,
   resetNodeDimensions,
@@ -3072,6 +3073,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const layoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const placementMode = layoutRoot.mode ?? mode;
     const useSunburst = placementMode === "radial";
+    if (!manualFlowchart && placementMode === "mindMap") {
+      nextNodes = persistMindMapRootSides(nextNodes, layoutRoot.id, nextHierarchy, {
+        balanceUnassigned: new Set(childIds),
+      });
+    }
     let placedNodes = manualFlowchart
       ? placeFlowchartInsertions(nextNodes, nextEdges, childIds)
       : nextNodes;
@@ -3218,6 +3224,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const nextLayoutRoot = findLayoutRoot(parentId, nextNodes, nextHierarchy);
     const placementMode = nextLayoutRoot.mode ?? edgeMode;
     const useSunburst = placementMode === "radial";
+    if (!manualFlowchart && placementMode === "mindMap") {
+      nextNodes = persistMindMapRootSides(nextNodes, nextLayoutRoot.id, nextHierarchy, {
+        balanceUnassigned: new Set([siblingId]),
+      });
+    }
     const placedNodes = manualFlowchart
       ? placeFlowchartInsertions(nextNodes, nextEdges, [siblingId])
       : placementMode === "matrix"
@@ -4203,6 +4214,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       let nextEdges = state.edges;
       for (const [rootId, mode] of roots) {
         const forceRootLayout = forcedRootIds.has(rootId);
+        if (mode === "mindMap") {
+          const stabilizedNodes = persistMindMapRootSides(nodes, rootId, hierarchy);
+          if (stabilizedNodes !== nodes) changed = true;
+          nodes = stabilizedNodes;
+        }
         const styled = applyLayoutPalette(
           nodes,
           nextEdges,
@@ -4375,6 +4391,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         positions = computeLayout(preparedLayoutNodes, layoutEdges, mode, { rootId });
       }
     }
+    const sideStableLayoutNodes = mode === "mindMap"
+      ? persistMindMapRootSides(preparedLayoutNodes, rootId, hierarchy, { placements: positions })
+      : preparedLayoutNodes;
 
     if (options?.recordHistory !== false) get().pushHistory();
 
@@ -4448,8 +4467,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
 
     const laidOutNodes = matrixResult
-      ? applyMatrixResultToNodes(preparedLayoutNodes, matrixResult, hierarchy, scopeIds)
-      : preparedLayoutNodes.map((node) => {
+      ? applyMatrixResultToNodes(sideStableLayoutNodes, matrixResult, hierarchy, scopeIds)
+      : sideStableLayoutNodes.map((node) => {
           if (!scopeIds.has(node.id)) return node;
           const placement = positions[node.id];
           const h = hierarchy.get(node.id);

@@ -5,6 +5,7 @@ import { buildHierarchy } from "../layout/hierarchy";
 import {
   deleteNodesPreservingHierarchy,
   hierarchyDeletionNodeIds,
+  reconnectChangesEndpointNodes,
   reparentHierarchy,
   unselectedHierarchyDescendants,
 } from "./hierarchy-mutations";
@@ -174,4 +175,21 @@ test("drag reparenting moves the canonical edge and rejects descendant cycles", 
 
   const cycle = reparentHierarchy(nodes, edges, "left", "leaf", createEdge);
   assert.equal(cycle.changed, false);
+});
+
+test("moving a connector handle on the same shapes does not rewrite hierarchy", () => {
+  const structural = edge("parent", "child");
+
+  assert.equal(reconnectChangesEndpointNodes(structural, {
+    source: "parent",
+    target: "child",
+  }), false);
+  assert.equal(reconnectChangesEndpointNodes(structural, {
+    source: "new-parent",
+    target: "child",
+  }), true);
+  assert.equal(reconnectChangesEndpointNodes(structural, {
+    source: "parent",
+    target: "new-child",
+  }), true);
 });

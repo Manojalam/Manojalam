@@ -76,6 +76,7 @@ import {
 } from "@/lib/canvas/node-note";
 import { planNodeDragMovement } from "@/lib/canvas/drag-movement";
 import { findReparentDropTarget } from "@/lib/canvas/reparent-drop-target";
+import { reconnectChangesEndpointNodes } from "@/lib/canvas/hierarchy-mutations";
 import {
   isConnectorConnectionAllowed,
   usesManualFlowchartPlacement,
@@ -1199,8 +1200,10 @@ function VidyaCanvasInner({
     const route = routeForMode(mode, source, target);
     // Reconnecting a cross-link must not silently rewrite the canonical tree.
     // Only an edge that was already structural transfers parent metadata.
-    const transferHierarchy = wasHierarchyEdge && !junctionConnection;
-    const nextNodes = wasHierarchyEdge ? cs.nodes.map((node) => {
+    const hierarchyChanged = wasHierarchyEdge
+      && reconnectChangesEndpointNodes(oldEdge, connection);
+    const transferHierarchy = hierarchyChanged && !junctionConnection;
+    const nextNodes = hierarchyChanged ? cs.nodes.map((node) => {
       const data = node.data as Record<string, unknown>;
       let nextData = data;
       if (node.id === oldEdge.target && data.parentId === oldEdge.source) {
@@ -1283,6 +1286,10 @@ function VidyaCanvasInner({
     requestAnimationFrame(() => {
       cs.scheduleMatrixReflow(oldEdge.source);
       cs.scheduleMatrixReflow(connection.source);
+      if (hierarchyChanged) {
+        cs.scheduleStructuredReflow(oldEdge.source);
+        cs.scheduleStructuredReflow(connection.source);
+      }
     });
   }, []);
 
