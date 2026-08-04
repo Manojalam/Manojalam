@@ -2,6 +2,7 @@ import { BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import type { BoardAccessRole, BoardContent, VidyaBoard } from "@/lib/types";
 import { instantiateTemplate } from "@/lib/templates";
+import { ensureTemplateBoardContent } from "@/lib/templates/persistence";
 import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
@@ -178,7 +179,20 @@ export async function createBoard(
     .single();
 
   if (error) throw error;
-  return rowToBoard(data as BoardRow, "owner");
+  const board = rowToBoard(data as BoardRow, "owner");
+
+  // A template must never navigate to a silently empty board. If an insert
+  // response ever loses its JSON payload, repair it once and verify the row.
+  return ensureTemplateBoardContent(templateId, content, board, async () => {
+    const { data: repairedData, error: repairError } = await supabase
+      .from("boards")
+      .update({ content: normalizeBoardContent(content) })
+      .eq("id", board.id)
+      .select()
+      .single();
+    if (repairError) throw repairError;
+    return rowToBoard(repairedData as BoardRow, "owner");
+  });
 }
 
 /** Create a board with complete content in one insert (used by reviewed imports). */

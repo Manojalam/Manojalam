@@ -9,6 +9,8 @@ import {
   isTemplateCategory,
   TEMPLATE_CATEGORIES,
 } from "./index";
+import { ensureTemplateBoardContent } from "./persistence";
+import type { BoardContent } from "../types";
 
 const EXPECTED_TEMPLATE_IDS = [
   "basic-mindmap",
@@ -72,6 +74,8 @@ test("every template is a current, renderable board payload", () => {
 
       assert.ok(Number.isFinite(node.position.x), `${template.id}/${node.id} has an invalid x position`);
       assert.ok(Number.isFinite(node.position.y), `${template.id}/${node.id} has an invalid y position`);
+      assert.ok(Number.parseFloat(String(node.style?.width)) > 0, `${template.id}/${node.id} has no initial width`);
+      assert.ok(Number.parseFloat(String(node.style?.height)) > 0, `${template.id}/${node.id} has no initial height`);
       assert.notEqual(node.type, "mindmap", `${template.id}/${node.id} uses the legacy mindmap type`);
       assert.ok(
         node.type && SUPPORTED_TEMPLATE_NODE_TYPES.has(node.type),
@@ -124,4 +128,40 @@ test("template instantiation returns an isolated board payload", () => {
   assert.notEqual(second.content.nodes[0].position.x, -999);
   assert.notEqual(getTemplateById("basic-mindmap")?.content.nodes[0].position.x, -999);
   assert.equal(instantiateTemplate("removed-template"), undefined);
+});
+
+test("an empty persisted template is repaired before navigation", async () => {
+  const template = instantiateTemplate("basic-mindmap");
+  assert.ok(template);
+  const emptyContent: BoardContent = {
+    ...structuredClone(template.content),
+    nodes: [],
+    edges: [],
+  };
+  const emptyBoard = { id: "board-1", content: emptyContent };
+  const repairedBoard = { id: "board-1", content: structuredClone(template.content) };
+  let repairCount = 0;
+
+  const result = await ensureTemplateBoardContent(
+    "basic-mindmap",
+    template.content,
+    emptyBoard,
+    async () => {
+      repairCount += 1;
+      return repairedBoard;
+    }
+  );
+
+  assert.equal(result.content.nodes.length, template.content.nodes.length);
+  assert.equal(repairCount, 1);
+
+  await assert.rejects(
+    ensureTemplateBoardContent(
+      "basic-mindmap",
+      template.content,
+      emptyBoard,
+      async () => emptyBoard
+    ),
+    /could not be saved/
+  );
 });

@@ -28,6 +28,7 @@ try {
       "src/lib/types.ts",
       "src/lib/utils.ts",
       "src/lib/templates/index.ts",
+      "src/lib/templates/persistence.ts",
       "src/lib/templates/index.test.ts",
     ],
     { cwd: workspace, stdio: "inherit" }

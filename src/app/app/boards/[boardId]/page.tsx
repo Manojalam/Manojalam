@@ -26,7 +26,15 @@ export default function BoardEditorPage() {
   const searchParams = useSearchParams();
   const boardId = params.boardId as string;
   const consumedImportRef = useRef<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const fittedTemplateBoardRef = useRef<string | null>(null);
+  const fromTemplate = searchParams.get("fromTemplate") === "1";
+  const hasPrefetchedTemplateBoard = (() => {
+    const prefetchedBoard = useCanvasStore.getState().board;
+    return fromTemplate
+      && prefetchedBoard?.id === boardId
+      && prefetchedBoard.content.nodes.length > 0;
+  })();
+  const [loading, setLoading] = useState(!hasPrefetchedTemplateBoard);
   const [notFound, setNotFound] = useState(false);
   const beginBoardHydration = useCanvasStore((s) => s.beginBoardHydration);
   const setBoard = useCanvasStore((s) => s.setBoard);
@@ -40,8 +48,22 @@ export default function BoardEditorPage() {
 
   useEffect(() => {
     let active = true;
-    beginBoardHydration();
     useUIStore.getState().cancelRelationshipSelection();
+
+    const prefetchedBoard = useCanvasStore.getState().board;
+    if (
+      fromTemplate
+      && prefetchedBoard?.id === boardId
+      && prefetchedBoard.content.nodes.length > 0
+    ) {
+      pushHistory();
+      return () => {
+        active = false;
+        useUIStore.getState().cancelRelationshipSelection();
+      };
+    }
+
+    beginBoardHydration();
     getBoard(boardId)
       .then((board) => {
         if (!active) return;
@@ -62,7 +84,35 @@ export default function BoardEditorPage() {
       active = false;
       useUIStore.getState().cancelRelationshipSelection();
     };
-  }, [beginBoardHydration, boardId, setBoard, pushHistory]);
+  }, [beginBoardHydration, boardId, fromTemplate, setBoard, pushHistory]);
+
+  useEffect(() => {
+    if (
+      !fromTemplate
+      || loading
+      || !board
+      || board.id !== boardId
+      || fittedTemplateBoardRef.current === boardId
+    ) return;
+
+    const state = useCanvasStore.getState();
+    const nodeIds = state.nodes.filter((node) => !node.hidden).map((node) => node.id);
+    if (!nodeIds.length) return;
+    fittedTemplateBoardRef.current = boardId;
+
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent("vidya:fitview", {
+          detail: { nodeIds, forceFit: true },
+        }));
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [board, boardId, fromTemplate, loading]);
 
   useEffect(() => {
     if (loading || !board || board.id !== boardId) return;

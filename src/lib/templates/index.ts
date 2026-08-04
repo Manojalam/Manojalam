@@ -44,7 +44,7 @@ function shape(
     id,
     type: "shape" as const,
     position: { x, y },
-    style: { width },
+    style: { width, height: shapeType === "diamond" ? 160 : 80 },
     data: {
       shapeType,
       text,
@@ -74,7 +74,7 @@ function sticky(id: string, text: string, x: number, y: number, color: string) {
     id,
     type: "sticky" as const,
     position: { x, y },
-    style: { width: 220 },
+    style: { width: 220, height: 120 },
     data: { text, scriptMode: "plain" as const, color, tags: [] },
   };
 }
@@ -318,7 +318,7 @@ const templates: TemplateDefinition[] = [
             id: shloka,
             type: "shloka",
             position: { x: 310, y: 210 },
-            style: { width: 360 },
+            style: { width: 360, height: 190 },
             data: {
               title: "Verse",
               devanagari: "धर्मक्षेत्रे कुरुक्षेत्रे",
@@ -352,7 +352,7 @@ const templates: TemplateDefinition[] = [
             id: rule,
             type: "grammar",
             position: { x: 350, y: 220 },
-            style: { width: 300 },
+            style: { width: 300, height: 190 },
             data: {
               topic: "Rule name",
               category: "sandhi",
