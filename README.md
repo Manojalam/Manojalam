@@ -33,7 +33,7 @@ Vercel deployment will be configured later.
 - Sticky notes, text blocks, shapes, frames, and image/audio attachments with in-app recording
 - Sanskrit cards, śloka cards, grammar cards
 - Transliteration helper (IAST, ITRANS, HK, Devanāgarī)
-- 19+ templates including Sanskrit study maps
+- 11 curated templates, including Sanskrit study maps
 - Export JSON backups plus complete hierarchical Markdown, TXT, HTML, and PDF outlines; import JSON backup
 - Undo/redo, search, command palette (⌘/Ctrl+K)
 - Board sharing with owner, editor, and viewer roles

@@ -1,7 +1,7 @@
 import { BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import type { BoardAccessRole, BoardContent, VidyaBoard } from "@/lib/types";
-import { getTemplateById } from "@/lib/templates";
+import { instantiateTemplate } from "@/lib/templates";
 import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
@@ -157,10 +157,10 @@ export async function createBoard(
   let boardTitle = title ?? "Untitled Board";
 
   if (templateId) {
-    const template = getTemplateById(templateId);
+    const template = instantiateTemplate(templateId);
     if (template) {
-      content = structuredClone(template.content);
-      boardTitle = title ?? template.name;
+      content = template.content;
+      boardTitle = title ?? template.title;
     } else {
       content = createEmptyContent(boardTitle);
     }

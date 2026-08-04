@@ -42,7 +42,8 @@
     "test:export-pdf": "rm -rf .export-pdf-test && tsc --rootDir src/lib --outDir .export-pdf-test --module commonjs --moduleResolution node --target ES2021 --esModuleInterop --skipLibCheck src/lib/canvas/rich-text-link.ts src/lib/export/types.ts src/lib/export/errors.ts src/lib/export/bounds.ts src/lib/export/pdf.ts src/lib/export/pdf.test.ts && node --test .export-pdf-test/export/pdf.test.js; status=$?; rm -rf .export-pdf-test; exit $status",
     "test:outline-export": "node scripts/run-outline-export-tests.mjs",
     "test:chart-selection": "rm -rf .chart-selection-test && tsc --outDir .chart-selection-test --module commonjs --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck src/lib/canvas/chart-selection.ts src/lib/canvas/chart-selection.test.ts && node --test .chart-selection-test/chart-selection.test.js; status=$?; rm -rf .chart-selection-test; exit $status",
-    "test:hierarchy-import": "node scripts/run-hierarchy-import-tests.mjs"
+    "test:hierarchy-import": "node scripts/run-hierarchy-import-tests.mjs",
+    "test:templates": "node scripts/run-template-tests.mjs"
   },
   "dependencies": {
     "@indic-transliteration/sanscript": "^1.3.3",
