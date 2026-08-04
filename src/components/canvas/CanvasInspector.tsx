@@ -408,13 +408,14 @@ const CONVERT_TYPES = [
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
-function Section({ label, children, visible = true, preserveTextSelection = false }: {
+function Section({ label, children, visible = true, preserveTextSelection = false, defaultOpen = false }: {
   label: string;
   children: React.ReactNode;
   visible?: boolean;
   preserveTextSelection?: boolean;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   if (!visible) return null;
   return (
     <div>
@@ -5216,6 +5217,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const nodeType      = selectedNode.type ?? "";
   const isTextNode    = ["mindmap", "sticky", "text"].includes(nodeType);
   const isShapeNode   = nodeType === "shape";
+  const isEditableFrame = nodeType === "frame" && typeof d.matrixFrameFor !== "string";
   const isAttachedExternalNote = nodeType === "text"
     && d.externalNote === true
     && typeof d.noteForNodeId === "string";
@@ -5476,6 +5478,26 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       )}
 
       <div className="flex-1 divide-y overflow-y-auto">
+
+        {isEditableFrame && (
+          <Section label="Swim lane" visible={singleNodeTab === "text"} defaultOpen>
+            <div>
+              <Label htmlFor="frame-title" className="text-xs">Label</Label>
+              <Input
+                id="frame-title"
+                aria-label="Swim lane label"
+                name="frame-title"
+                value={(d.title as string) ?? ""}
+                onChange={(event) => setField("title", event.target.value)}
+                placeholder="Swim lane label"
+                className="mt-1 h-8 text-sm"
+              />
+            </div>
+            <p className="text-[9px] leading-relaxed text-muted-foreground">
+              You can also double-click the label on the canvas to rename it. Add another lane with the Frame / swim lane tool, then click the canvas.
+            </p>
+          </Section>
+        )}
 
         {isRadialLayoutSector && (
           <Section label="Children" visible={singleNodeTab === "layout"}>
