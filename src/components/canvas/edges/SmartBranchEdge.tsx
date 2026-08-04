@@ -34,6 +34,7 @@ import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connect
 import { isConnectorRoutingObstacle } from "@/lib/canvas/connector-obstacles";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
+import { ConnectorEndpointHandles } from "./ConnectorEndpointHandles";
 import { ConnectorPath } from "./ConnectorPath";
 import { ConnectorSegmentHandles } from "./ConnectorSegmentHandles";
 
@@ -282,6 +283,15 @@ function RoutedSmartBranchEdge({
       )}
       {(logicalSelected || (labelRendersOnThisEdge && connectionLabel)) && (
         <EdgeLabelRenderer>
+          {editorSelected && (
+            <ConnectorEndpointHandles
+              edgeId={id}
+              sourceNodeId={source}
+              targetNodeId={target}
+              sourcePoint={{ x: sourceX, y: sourceY }}
+              targetPoint={{ x: targetX, y: targetY }}
+            />
+          )}
           <ConnectionLabelEditor
             edgeId={labelOwnerId}
             toolbarEdgeId={id}

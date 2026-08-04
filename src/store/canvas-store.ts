@@ -4479,7 +4479,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const curveStyle = edgeData.curveStyle ?? route.curveStyle;
       return rebindConnectorAnchorHandles({
         ...edge,
-        ...(hierarchyEdge ? { type: "branch", reconnectable: true } : {}),
+        ...(hierarchyEdge ? { type: "branch", reconnectable: false } : {}),
         hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
         sourceHandle: anchored ? edge.sourceHandle : route.sourceHandle,
         targetHandle: anchored ? edge.targetHandle : route.targetHandle,

@@ -9,7 +9,10 @@ import {
   rebindConnectorAnchorHandles,
   setConnectorEndpointAnchor,
 } from "./connector-anchors";
-import { connectorHandleInteractionState } from "./connector-handle-interaction";
+import {
+  connectorHandleInteractionState,
+  suppressAutomaticEdgeReconnect,
+} from "./connector-handle-interaction";
 
 test("a connector drag uses the whole shape without competing fixed handles", () => {
   assert.deepEqual(connectorHandleInteractionState({
@@ -31,6 +34,19 @@ test("a connector drag uses the whole shape without competing fixed handles", ()
     perimeterActive: false,
     fixedHandlesActive: true,
   });
+});
+
+test("selected edges use shape-bound controls instead of automatic reconnection", () => {
+  const reconnectable: Edge = {
+    id: "edge-1",
+    source: "a",
+    target: "b",
+    reconnectable: true,
+  };
+  const [displayEdge] = suppressAutomaticEdgeReconnect([reconnectable]);
+
+  assert.equal(displayEdge.reconnectable, false);
+  assert.equal(reconnectable.reconnectable, true);
 });
 
 test("a manual perimeter point receives a stable edge-specific handle", () => {
