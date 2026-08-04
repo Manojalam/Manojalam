@@ -29,6 +29,8 @@ try {
       "src/lib/utils.ts",
       "src/lib/canvas/shloka-card-editor.ts",
       "src/lib/canvas/shloka-card-editor.test.ts",
+      "src/lib/canvas/shloka-study-migration.ts",
+      "src/lib/canvas/shloka-study-migration.test.ts",
       "src/lib/templates/index.ts",
       "src/lib/templates/persistence.ts",
       "src/lib/templates/index.test.ts",
@@ -42,6 +44,7 @@ try {
     [
       "--test",
       join(outputDirectory, "canvas", "shloka-card-editor.test.js"),
+      join(outputDirectory, "canvas", "shloka-study-migration.test.js"),
       join(outputDirectory, "templates", "index.test.js"),
     ],
     { cwd: workspace, stdio: "inherit" }
