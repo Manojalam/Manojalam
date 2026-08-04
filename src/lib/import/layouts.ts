@@ -15,7 +15,7 @@ export const IMPORT_LAYOUT_OPTIONS = [
   { mode: "vertical", label: "Vertical", description: "Balanced tree fanning down" },
   { mode: "list", label: "List", description: "Indented editable outline" },
   { mode: "cards", label: "Cards", description: "Independent editable shapes in a compact grid" },
-  { mode: "radial", label: "Radial", description: "Hierarchy-aware sunburst" },
+  { mode: "radial", label: "Sunburst", description: "Concentric hierarchy rendered as filled sectors" },
   { mode: "matrix", label: "Matrix", description: "Structured chart or table" },
 ] as const satisfies readonly ImportLayoutOption[];
 

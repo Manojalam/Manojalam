@@ -32,7 +32,15 @@ export function LayoutPreview({
       content = <>{line(8, 20, 48, 20)}{dot(10, 20)}{dot(23, 20)}{dot(36, 20)}{dot(48, 20)}</>;
       break;
     case "radial":
-      content = <>{line(28, 20, 12, 12)}{line(28, 20, 44, 12)}{line(28, 20, 14, 30)}{line(28, 20, 42, 30)}{dot(28, 20, 4)}{dot(12, 12)}{dot(44, 12)}{dot(14, 30)}{dot(42, 30)}</>;
+      content = <>
+        <path d="M 28 2 A 18 18 0 0 1 46 20 L 39 20 A 11 11 0 0 0 28 9 Z" fill="#4262ff" />
+        <path d="M 46 20 A 18 18 0 0 1 28 38 L 28 31 A 11 11 0 0 0 39 20 Z" fill="#818cf8" />
+        <path d="M 28 38 A 18 18 0 0 1 10 20 L 17 20 A 11 11 0 0 0 28 31 Z" fill="#a5b4fc" />
+        <path d="M 10 20 A 18 18 0 0 1 28 2 L 28 9 A 11 11 0 0 0 17 20 Z" fill="#c7d2fe" />
+        <path d="M 28 9 A 11 11 0 0 1 28 31 L 28 25 A 5 5 0 0 0 28 15 Z" fill="#6366f1" />
+        <path d="M 28 31 A 11 11 0 0 1 28 9 L 28 15 A 5 5 0 0 0 28 25 Z" fill="#93c5fd" />
+        <circle cx="28" cy="20" r="5" fill="#3730a3" />
+      </>;
       break;
     case "matrix":
       content = <>
@@ -57,10 +65,46 @@ export function LayoutPreview({
       </>;
       break;
     case "fromParentFreeForm":
-      content = <>{line(28, 20, 12, 10)}{line(28, 20, 46, 14)}{line(28, 20, 20, 33)}{line(28, 20, 44, 32)}{dot(28, 20, 4.2, "#ef4444")}{dot(12, 10)}{dot(46, 14)}{dot(20, 33)}{dot(44, 32)}</>;
+      content = <>
+        {line(28, 20, 12, 9)}
+        {line(28, 20, 43, 8)}
+        {line(28, 20, 48, 24)}
+        {line(28, 20, 38, 34)}
+        {line(28, 20, 15, 33)}
+        {line(28, 20, 7, 21)}
+        {line(43, 8, 51, 5)}
+        {line(15, 33, 7, 36)}
+        {dot(28, 20, 4.2)}
+        {dot(12, 9)}
+        {dot(43, 8)}
+        {dot(48, 24)}
+        {dot(38, 34)}
+        {dot(15, 33)}
+        {dot(7, 21)}
+        {dot(51, 5, 2.4, "#a5b4fc")}
+        {dot(7, 36, 2.4, "#a5b4fc")}
+      </>;
       break;
     case "mindMap":
-      content = <>{line(28, 20, 12, 11)}{line(28, 20, 12, 29)}{line(28, 20, 44, 11)}{line(28, 20, 44, 29)}{line(12, 11, 5, 7)}{line(44, 29, 51, 33)}{dot(28, 20, 4.2, "#ef4444")}{dot(12, 11)}{dot(12, 29)}{dot(44, 11)}{dot(44, 29)}{dot(5, 7, 2.5)}{dot(51, 33, 2.5)}</>;
+      content = <>
+        {line(22, 20, 17, 10)}
+        {line(22, 20, 17, 30)}
+        {line(34, 20, 39, 10)}
+        {line(34, 20, 39, 30)}
+        {line(8, 10, 4, 5)}
+        {line(8, 10, 4, 16)}
+        {line(48, 30, 52, 25)}
+        {line(48, 30, 52, 35)}
+        <rect x="22" y="16" width="12" height="8" rx="3" fill="#4262ff" />
+        <rect x="8" y="7" width="9" height="6" rx="2" fill="#818cf8" />
+        <rect x="8" y="27" width="9" height="6" rx="2" fill="#818cf8" />
+        <rect x="39" y="7" width="9" height="6" rx="2" fill="#818cf8" />
+        <rect x="39" y="27" width="9" height="6" rx="2" fill="#818cf8" />
+        <rect x="1" y="3" width="6" height="4" rx="1.5" fill="#c7d2fe" />
+        <rect x="1" y="14" width="6" height="4" rx="1.5" fill="#c7d2fe" />
+        <rect x="49" y="23" width="6" height="4" rx="1.5" fill="#c7d2fe" />
+        <rect x="49" y="33" width="6" height="4" rx="1.5" fill="#c7d2fe" />
+      </>;
       break;
     default:
       content = <>{dot(12, 12)}{dot(40, 10)}{dot(22, 28)}{dot(46, 30)}{dot(10, 32)}</>;

@@ -188,8 +188,20 @@ test("Top Down is hidden from the chooser while legacy boards retain Vertical ge
 
   assert.equal(LAYOUT_OPTIONS.some((option) => option.mode === "topDown"), false);
   assert.equal(LAYOUT_OPTIONS.find((option) => option.mode === "mindMap")?.label, "Mind Map");
+  assert.match(
+    LAYOUT_OPTIONS.find((option) => option.mode === "mindMap")?.description ?? "",
+    /left and right/
+  );
   assert.equal(LAYOUT_OPTIONS.find((option) => option.mode === "fromParentFreeForm")?.label, "Radial Branches");
+  assert.match(
+    LAYOUT_OPTIONS.find((option) => option.mode === "fromParentFreeForm")?.description ?? "",
+    /Node-and-connector/
+  );
   assert.equal(LAYOUT_OPTIONS.find((option) => option.mode === "radial")?.label, "Sunburst");
+  assert.match(
+    LAYOUT_OPTIONS.find((option) => option.mode === "radial")?.description ?? "",
+    /filled sectors/
+  );
   assert.deepEqual(legacyTopDown, vertical);
 });
 
