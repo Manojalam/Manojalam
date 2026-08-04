@@ -12,6 +12,14 @@ export interface HierarchyMutationResult {
 
 type EdgeFactory = (source: string, target: string) => Edge;
 
+/** A connector handle move on the same shapes must not rewrite tree metadata. */
+export function reconnectChangesEndpointNodes(
+  edge: Pick<Edge, "source" | "target">,
+  connection: Pick<Edge, "source" | "target">
+): boolean {
+  return edge.source !== connection.source || edge.target !== connection.target;
+}
+
 function dataOf(node: Node): Record<string, unknown> {
   return (node.data ?? {}) as Record<string, unknown>;
 }

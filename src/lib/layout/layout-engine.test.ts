@@ -3,8 +3,10 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import type { LayoutMode } from "../types";
 import { getNodeRect, inflateRect, rectsOverlap, segmentIntersectsRect } from "./geometry";
+import { buildHierarchy } from "./hierarchy";
 import { EDGE_OBSTACLE_PADDING, routeLayoutEdge } from "./edge-routing";
 import { computeLayout, LAYOUT_OPTIONS, routeForMode } from "./index";
+import { persistMindMapRootSides } from "./mind-map-layout";
 
 function buildVariableTree(count = 31): { nodes: Node[]; edges: Edge[] } {
   const childOrder = new Map<string, string[]>();
@@ -203,6 +205,37 @@ test("Top Down is hidden from the chooser while legacy boards retain Vertical ge
     /filled sectors/
   );
   assert.deepEqual(legacyTopDown, vertical);
+});
+
+test("Mind Map preserves established branch sides after a child is reparented", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 400, y: 300 }, measured: { width: 200, height: 80 }, data: { layoutMode: "mindMap", parentId: null, childOrder: ["left-a", "left-b", "right"] } },
+    { id: "left-a", position: { x: 80, y: 180 }, measured: { width: 160, height: 60 }, data: { parentId: "root", childOrder: [] } },
+    { id: "left-b", position: { x: 80, y: 360 }, measured: { width: 160, height: 60 }, data: { parentId: "root", childOrder: [] } },
+    { id: "right", position: { x: 760, y: 260 }, measured: { width: 160, height: 60 }, data: { parentId: "root", childOrder: ["moved"] } },
+    { id: "moved", position: { x: 980, y: 260 }, measured: { width: 140, height: 54 }, data: { parentId: "right", childOrder: [] } },
+  ];
+  const edges: Edge[] = [
+    ["root", "left-a"],
+    ["root", "left-b"],
+    ["root", "right"],
+    ["right", "moved"],
+  ].map(([source, target]) => ({ id: `${source}-${target}`, source, target, data: { edgeType: "branch" } }));
+  const hierarchy = buildHierarchy(nodes, edges);
+  const stabilized = persistMindMapRootSides(nodes, "root", hierarchy);
+  const placed = applyPositions(
+    stabilized,
+    computeLayout(stabilized, edges, "mindMap", { rootId: "root" })
+  );
+  const byId = new Map(placed.map((node) => [node.id, node]));
+  const rootRect = getNodeRect(byId.get("root")!);
+
+  assert.equal((byId.get("left-a")!.data as Record<string, unknown>).mindMapSide, "left");
+  assert.equal((byId.get("left-b")!.data as Record<string, unknown>).mindMapSide, "left");
+  assert.equal((byId.get("right")!.data as Record<string, unknown>).mindMapSide, "right");
+  assert.ok(getNodeRect(byId.get("left-a")!).right < rootRect.left);
+  assert.ok(getNodeRect(byId.get("left-b")!).right < rootRect.left);
+  assert.ok(getNodeRect(byId.get("right")!).left > rootRect.right);
 });
 
 test("free-form child connectors keep meaningful levels but follow predominant lateral moves", () => {

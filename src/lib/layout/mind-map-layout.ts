@@ -13,9 +13,71 @@ import {
 
 export type MindMapSide = "left" | "right";
 
+export interface PersistMindMapRootSidesOptions {
+  placements?: TreePlacements;
+  balanceUnassigned?: ReadonlySet<string>;
+}
+
 function storedSide(node: Node): MindMapSide | null {
   const side = ((node.data ?? {}) as Record<string, unknown>).mindMapSide;
   return side === "left" || side === "right" ? side : null;
+}
+
+/**
+ * Persist the visual side of every direct Mind Map branch. Older boards and
+ * branches created after the initial conversion may not have `mindMapSide`.
+ * Capturing it before an ordinary reflow prevents an unrelated hierarchy edit
+ * from balancing established branches onto the opposite side.
+ */
+export function persistMindMapRootSides(
+  nodes: Node[],
+  rootId: string,
+  hierarchy: Hierarchy,
+  options: PersistMindMapRootSidesOptions = {}
+): Node[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const root = byId.get(rootId);
+  if (!root) return nodes;
+
+  const placedNode = (node: Node): Node => {
+    const placement = options.placements?.[node.id];
+    return placement ? { ...node, position: placement } : node;
+  };
+  const rootCenterX = getNodeRect(placedNode(root)).centerX;
+  const assignments = new Map<string, MindMapSide>();
+  const counts: Record<MindMapSide, number> = { left: 0, right: 0 };
+  const childIds = hierarchy.get(rootId)?.childIds ?? [];
+
+  for (const childId of childIds) {
+    const child = byId.get(childId);
+    if (!child) continue;
+    const explicit = storedSide(child);
+    if (!explicit) continue;
+    assignments.set(childId, explicit);
+    counts[explicit] += 1;
+  }
+
+  for (const childId of childIds) {
+    if (assignments.has(childId)) continue;
+    const child = byId.get(childId);
+    if (!child) continue;
+    const deltaX = getNodeRect(placedNode(child)).centerX - rootCenterX;
+    const geometric: MindMapSide = deltaX < 0 ? "left" : "right";
+    const opposite: MindMapSide = geometric === "left" ? "right" : "left";
+    const balance = options.balanceUnassigned?.has(childId) || Math.abs(deltaX) < 0.75;
+    const side = balance && counts[geometric] > counts[opposite] ? opposite : geometric;
+    assignments.set(childId, side);
+    counts[side] += 1;
+  }
+
+  let changed = false;
+  const nextNodes = nodes.map((node) => {
+    const side = assignments.get(node.id);
+    if (!side || storedSide(node) === side) return node;
+    changed = true;
+    return { ...node, data: { ...(node.data ?? {}), mindMapSide: side } };
+  });
+  return changed ? nextNodes : nodes;
 }
 
 function sideHierarchy(

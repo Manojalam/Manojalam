@@ -34,7 +34,12 @@ export {
   type TreeConnectorGroup,
   type TreeConnectorModel,
 } from "./tree-layout";
-export { computeMindMapLayout, type MindMapSide } from "./mind-map-layout";
+export {
+  computeMindMapLayout,
+  persistMindMapRootSides,
+  type MindMapSide,
+  type PersistMindMapRootSidesOptions,
+} from "./mind-map-layout";
 
 export type { LayoutMode };
 export {
