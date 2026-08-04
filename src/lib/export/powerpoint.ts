@@ -17,9 +17,12 @@ import {
 import {
   buildPowerPointTransform,
   editableNodeText,
+  fittedPowerPointFontSize,
+  overviewNodeText,
   plainPowerPointText,
   powerPointColor,
   powerPointShapeName,
+  powerPointTextRuns,
   safePowerPointFilename,
   scaledFontSize,
   transformNodeRect,
@@ -60,6 +63,7 @@ interface RenderContext {
   nodeById: ReadonlyMap<string, Node>;
   warnings: string[];
   objectCount: number;
+  summarizeNodeText: boolean;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -118,7 +122,13 @@ function nodeLine(node: Node): PptxGenJS.ShapeLineProps {
   };
 }
 
-function nodeTextOptions(node: Node, transform: PowerPointTransform): Pick<
+function nodeTextOptions(
+  node: Node,
+  transform: PowerPointTransform,
+  rect: PowerPointRect,
+  text: string,
+  summary: boolean
+): Pick<
   PptxGenJS.TextPropsOptions,
   "fontFace" | "fontSize" | "color" | "bold" | "italic" | "align" | "valign" | "rotate"
 > {
@@ -126,20 +136,71 @@ function nodeTextOptions(node: Node, transform: PowerPointTransform): Pick<
   const color = powerPointColor(data.textColor ?? data.radialTextColor, INK);
   const align = data.textAlign === "left" || data.textAlign === "right" || data.textAlign === "justify"
     ? data.textAlign
-    : "center";
+    : summary ? "center" : text.length > 150 ? "left" : "center";
   const valign = data.textVerticalAlign === "top" || data.textVerticalAlign === "bottom"
     ? data.textVerticalAlign
-    : "middle";
+    : summary ? "middle" : text.length > 150 ? "top" : "middle";
+  const preferredFontSize = summary
+    ? 18
+    : Math.max(18, scaledFontSize(data.fontSize, transform.scale));
   return {
     fontFace: nodeFontFace(node),
-    fontSize: scaledFontSize(data.fontSize, transform.scale),
+    fontSize: fittedPowerPointFontSize(
+      text,
+      rect,
+      preferredFontSize,
+      16,
+      summary ? 18 : 28
+    ),
     color: color.color,
-    bold: data.fontWeight === "bold",
+    bold: summary || data.fontWeight === "bold",
     italic: data.fontStyle === "italic",
     align,
     valign,
     rotate: finiteNumber(data.textRotation, 0),
   };
+}
+
+function editableNodeRuns(
+  node: Node,
+  text: string,
+  summary: boolean,
+  fontSize: number
+): PptxGenJS.TextProps[] {
+  if (summary) {
+    return [{ text, options: { bold: true, fontSize } }];
+  }
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  const authoredRichSource = [data.richText, data.text, data.label, data.title]
+    .find((value): value is string =>
+      typeof value === "string"
+      && (/<[a-z][\s\S]*>/i.test(value) || /https?:\/\//i.test(value))
+    );
+  const source = authoredRichSource ?? text;
+  let runs = powerPointTextRuns(source);
+  if (!authoredRichSource && runs.length === 1 && runs[0].text.includes("\n")) {
+    const [heading, ...body] = runs[0].text.split("\n");
+    runs = body.length
+      ? [{ text: heading }, { text: "\n" }, { text: body.join("\n") }]
+      : runs;
+  }
+  let firstContentRun = true;
+  return (runs.length ? runs : [{ text }]).map((run) => {
+    const hasContent = run.text.trim().length > 0;
+    const makeHeading = firstContentRun && hasContent;
+    if (hasContent) firstContentRun = false;
+    return {
+      text: run.text,
+      options: {
+        bold: run.bold ?? makeHeading,
+        italic: run.italic,
+        underline: run.underline ? { style: "sng" } : undefined,
+        color: run.color,
+        hyperlink: run.hyperlink ? { url: run.hyperlink } : undefined,
+        fontSize: makeHeading ? Math.min(28, fontSize + 2) : fontSize,
+      },
+    };
+  });
 }
 
 function addEditableLine(
@@ -156,13 +217,23 @@ function addEditableLine(
   const width = Math.max(0.001, Math.abs(x2 - x1));
   const height = Math.max(0.001, Math.abs(y2 - y1));
   const negativeSlope = (x2 - x1) * (y2 - y1) < 0;
+  const nativeDirectionMatchesRequested = Math.abs(x2 - x1) > 0.001
+    ? x1 <= x2
+    : y1 <= y2;
+  const directedLine = nativeDirectionMatchesRequested
+    ? line
+    : {
+        ...line,
+        beginArrowType: line.endArrowType,
+        endArrowType: line.beginArrowType,
+      };
   context.slide.addShape(context.pptx.ShapeType.line, {
     x,
     y,
     w: width,
     h: height,
     flipV: negativeSlope,
-    line,
+    line: directedLine,
     objectName,
   });
   context.objectCount += 1;
@@ -252,9 +323,16 @@ function renderGenericNode(context: RenderContext, node: Node, rect: PowerPointR
   const isTextOnly = node.type === "text" && !data.textFrameStyle;
   const fill = nodeFill(node);
   const line = nodeLine(node);
-  const text = editableNodeText(node);
-  const textOptions = nodeTextOptions(node, context.transform);
-  context.slide.addText(text, {
+  const completeText = editableNodeText(node);
+  const text = context.summarizeNodeText ? overviewNodeText(node) : completeText;
+  const textOptions = nodeTextOptions(node, context.transform, rect, text, context.summarizeNodeText);
+  const runs = editableNodeRuns(
+    node,
+    text,
+    context.summarizeNodeText,
+    textOptions.fontSize ?? 18
+  );
+  context.slide.addText(runs, {
     shape: isTextOnly
       ? context.pptx.ShapeType.rect
       : nativeShape(context.pptx, powerPointShapeName(shapeType)),
@@ -264,7 +342,7 @@ function renderGenericNode(context: RenderContext, node: Node, rect: PowerPointR
     h: rect.height,
     fill: isTextOnly ? { color: "FFFFFF", transparency: 100 } : fill,
     line: isTextOnly ? { color: "FFFFFF", transparency: 100, width: 0.5 } : line,
-    margin: clamp(finiteNumber(data.textPadding, 6), 0, 18),
+    margin: context.summarizeNodeText ? 5 : clamp(finiteNumber(data.textPadding, 6), 4, 18),
     fit: "shrink",
     wrap: true,
     rotate: finiteNumber(data.objectRotation ?? data.rotation, 0),
@@ -288,36 +366,95 @@ function renderBoardEdge(
   const data = (edge.data ?? {}) as VidyaEdgeData;
   const color = powerPointColor(data.color ?? data.layoutColor, "64748B");
   const pathStyle = data.pathStyle ?? (data.dashed ? "dashed" : "solid");
-  const dx = target.x + target.width / 2 - (source.x + source.width / 2);
-  const dy = target.y + target.height / 2 - (source.y + source.height / 2);
+  const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+  const targetCenter = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+  const dx = targetCenter.x - sourceCenter.x;
+  const dy = targetCenter.y - sourceCenter.y;
   const horizontal = Math.abs(dx) >= Math.abs(dy);
-  const sourcePoint = horizontal
+  const anchoredPoint = (
+    rect: PowerPointRect,
+    anchor: VidyaEdgeData["sourceAnchor"] | VidyaEdgeData["targetAnchor"]
+  ): { x: number; y: number } | undefined => {
+    if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) return undefined;
+    return {
+      x: rect.x + clamp(anchor.x, 0, 100) / 100 * rect.width,
+      y: rect.y + clamp(anchor.y, 0, 100) / 100 * rect.height,
+    };
+  };
+  let sourcePoint = horizontal
     ? { x: source.x + (dx >= 0 ? source.width : 0), y: source.y + source.height / 2 }
     : { x: source.x + source.width / 2, y: source.y + (dy >= 0 ? source.height : 0) };
-  const targetPoint = horizontal
+  let targetPoint = horizontal
     ? { x: target.x + (dx >= 0 ? 0 : target.width), y: target.y + target.height / 2 }
     : { x: target.x + target.width / 2, y: target.y + (dy >= 0 ? 0 : target.height) };
-  addEditableLine(context, sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y, {
+  sourcePoint = anchoredPoint(source, data.sourceAnchor) ?? sourcePoint;
+  targetPoint = anchoredPoint(target, data.targetAnchor) ?? targetPoint;
+  const authoredWaypoints = (data.waypoints ?? [])
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .map((point) => ({
+      x: point.x * context.transform.scale + context.transform.offsetX,
+      y: point.y * context.transform.scale + context.transform.offsetY,
+    }));
+  const hasAuthoredRoute = !!data.sourceAnchor || !!data.targetAnchor || authoredWaypoints.length > 0;
+  const route: Array<{ x: number; y: number }> = [sourcePoint, ...authoredWaypoints, targetPoint];
+
+  // Dense teaching overviews often place one root above columns of children.
+  // Route through the column gutters so links remain visible without crossing labels.
+  if (
+    context.summarizeNodeText
+    && !hasAuthoredRoute
+    && Math.abs(dy) > Math.max(source.height, target.height) / 2
+  ) {
+    if (targetCenter.x < source.x) {
+      sourcePoint = { x: source.x, y: sourceCenter.y };
+      targetPoint = { x: target.x + target.width, y: targetCenter.y };
+      const gutterX = (source.x + targetPoint.x) / 2;
+      route.splice(0, route.length, sourcePoint, { x: gutterX, y: sourcePoint.y }, { x: gutterX, y: targetPoint.y }, targetPoint);
+    } else if (targetCenter.x > source.x + source.width) {
+      sourcePoint = { x: source.x + source.width, y: sourceCenter.y };
+      targetPoint = { x: target.x, y: targetCenter.y };
+      const gutterX = (sourcePoint.x + target.x) / 2;
+      route.splice(0, route.length, sourcePoint, { x: gutterX, y: sourcePoint.y }, { x: gutterX, y: targetPoint.y }, targetPoint);
+    } else {
+      sourcePoint = { x: sourceCenter.x, y: source.y + (dy >= 0 ? source.height : 0) };
+      targetPoint = { x: targetCenter.x, y: target.y + (dy >= 0 ? 0 : target.height) };
+      route.splice(0, route.length, sourcePoint, targetPoint);
+    }
+  }
+
+  const baseLine: PptxGenJS.ShapeLineProps = {
     color: color.color,
-    transparency: color.transparency,
-    width: clamp(finiteNumber(data.width, 1.5), 0.5, 8),
+    transparency: context.summarizeNodeText ? Math.max(color.transparency, 35) : color.transparency,
+    width: context.summarizeNodeText
+      ? clamp(finiteNumber(data.width, 1.15), 0.7, 1.5)
+      : clamp(finiteNumber(data.width, 1.5), 0.5, 8),
     dashType: pathStyle === "dotted" ? "sysDot" : pathStyle === "dashed" ? "dash" : "solid",
-    beginArrowType: data.arrowStart ? "triangle" : "none",
-    endArrowType: data.arrowEnd ? "triangle" : "none",
-  }, `Editable connector: ${edge.id}`);
+  };
+  for (let index = 0; index < route.length - 1; index += 1) {
+    const start = route[index];
+    const end = route[index + 1];
+    addEditableLine(context, start.x, start.y, end.x, end.y, {
+      ...baseLine,
+      beginArrowType: index === 0 && data.arrowStart ? "triangle" : "none",
+      endArrowType: index === route.length - 2 && data.arrowEnd ? "triangle" : "none",
+    }, `Editable connector: ${edge.id}${route.length > 2 ? ` segment ${index + 1}` : ""}`);
+  }
 
   const label = plainPowerPointText(data.label);
   if (!label) return;
-  const x = (sourcePoint.x + targetPoint.x) / 2;
-  const y = (sourcePoint.y + targetPoint.y) / 2;
+  const labelSegmentIndex = route.length > 2 ? 1 : 0;
+  const labelStart = route[labelSegmentIndex];
+  const labelEnd = route[labelSegmentIndex + 1];
+  const x = (labelStart.x + labelEnd.x) / 2;
+  const y = (labelStart.y + labelEnd.y) / 2;
   context.slide.addText(label, {
-    x: x - 0.65,
-    y: y - 0.15,
-    w: 1.3,
-    h: 0.3,
+    x: x + (Math.abs(labelEnd.x - labelStart.x) < 0.05 ? 0.08 : -1),
+    y: y - 0.17,
+    w: 2,
+    h: 0.34,
     color: powerPointColor(data.labelColor, color.color).color,
     fontFace: data.labelFontFamily || DEFAULT_FONT,
-    fontSize: clamp(finiteNumber(data.labelFontSize, 12), 8, 20),
+    fontSize: clamp(finiteNumber(data.labelFontSize, 16), 16, 20),
     bold: data.labelFontWeight === "bold",
     italic: data.labelFontStyle === "italic",
     align: "center",
@@ -340,6 +477,69 @@ interface RadialPosition {
   node?: Node;
   label: string;
   depth: number;
+}
+
+function presentationStopUsesSummaries(
+  stop: PresentationStop,
+  nodeById: ReadonlyMap<string, Node>
+): boolean {
+  if (stop.kind === "overview") return true;
+  const contentNodes = stop.nodeIds
+    .map((nodeId) => nodeById.get(nodeId))
+    .filter((node): node is Node => !!node && !node.hidden && node.type !== "frame");
+  if (contentNodes.length > 6) return true;
+  if (contentNodes.length <= 3) return false;
+  const averageTextLength = contentNodes.reduce(
+    (total, node) => total + editableNodeText(node).length,
+    0
+  ) / contentNodes.length;
+  return averageTextLength > 140;
+}
+
+function canCreateAutomaticDetail(node: Node | undefined): node is Node {
+  if (!node || node.hidden || node.type === "frame" || node.type === "sunburst" || node.type === "relationshipDiagram") {
+    return false;
+  }
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  return !(node.type === "shape" && (data.radialChart as RadialChartData | undefined)?.enabled);
+}
+
+/**
+ * Map slides stay concise, but the complete authored content must still appear
+ * somewhere in the deck. Add one editable detail slide only for nodes that no
+ * existing low-density teaching stop already covers.
+ */
+export function expandEditablePowerPointStops(
+  stops: readonly PresentationStop[],
+  nodes: readonly Node[]
+): PresentationStop[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const fullCoverage = new Set<string>();
+  for (const stop of stops) {
+    if (presentationStopUsesSummaries(stop, nodeById)) continue;
+    stop.nodeIds.forEach((nodeId) => fullCoverage.add(nodeId));
+  }
+
+  const automaticDetails: PresentationStop[] = [];
+  const scheduled = new Set<string>();
+  for (const stop of stops) {
+    if (!presentationStopUsesSummaries(stop, nodeById)) continue;
+    for (const nodeId of stop.nodeIds) {
+      if (fullCoverage.has(nodeId) || scheduled.has(nodeId)) continue;
+      const node = nodeById.get(nodeId);
+      if (!canCreateAutomaticDetail(node)) continue;
+      const completeText = editableNodeText(node);
+      if (completeText === overviewNodeText(node)) continue;
+      scheduled.add(nodeId);
+      automaticDetails.push({
+        id: `pptx-detail:${nodeId}`,
+        kind: "branch",
+        title: overviewNodeText(node),
+        nodeIds: [nodeId],
+      });
+    }
+  }
+  return [...stops, ...automaticDetails];
 }
 
 function renderRingGuide(context: RenderContext, rect: PowerPointRect, radiusRatio: number, name: string): void {
@@ -453,7 +653,9 @@ function renderSunburst(context: RenderContext, node: Node, rect: PowerPointRect
     width: centerSize,
     height: centerSize,
     node: context.nodeById.get(rootId),
-    label: editableNodeText(context.nodeById.get(rootId) ?? node),
+    label: context.summarizeNodeText
+      ? overviewNodeText(context.nodeById.get(rootId) ?? node)
+      : editableNodeText(context.nodeById.get(rootId) ?? node),
     depth: 0,
   });
   for (let depth = 1; depth <= maxDepth; depth += 1) {
@@ -471,7 +673,7 @@ function renderSunburst(context: RenderContext, node: Node, rect: PowerPointRect
         width: itemWidth,
         height: itemHeight,
         node: source,
-        label: editableNodeText(source),
+        label: context.summarizeNodeText ? overviewNodeText(source) : editableNodeText(source),
         depth,
       });
     });
@@ -696,16 +898,17 @@ function addSlideChrome(
   });
   context.slide.addText(title, {
     x: 0.52,
-    y: 0.25,
+    y: 0.16,
     w: 11.75,
-    h: 0.55,
+    h: 0.68,
     color: INK,
     fontFace: DEFAULT_FONT,
     fontSize: 36,
     bold: true,
     margin: 0,
     fit: "shrink",
-    breakLine: false,
+    wrap: false,
+    valign: "middle",
     objectName: `Editable slide title: ${title}`,
   });
   context.slide.addText(`${boardTitle}  •  Editable teaching slide  •  ${slideNumber}/${slideCount}`, {
@@ -735,6 +938,7 @@ function renderTeachingStop(
   if (!stopNodes.length) return 0;
   const transform = buildPowerPointTransform(stopNodes);
   const slide = pptx.addSlide();
+  const nodeById = new Map(options.nodes.map((node) => [node.id, node]));
   const context: RenderContext = {
     pptx,
     slide,
@@ -742,9 +946,10 @@ function renderTeachingStop(
     allEdges: options.edges,
     relationships: options.relationships,
     transform,
-    nodeById: new Map(options.nodes.map((node) => [node.id, node])),
+    nodeById,
     warnings,
     objectCount: 0,
+    summarizeNodeText: presentationStopUsesSummaries(stop, nodeById),
   };
   addSlideChrome(context, stop.title, options.boardTitle, slideNumber, options.stops.length);
   const rectByNodeId = new Map(stopNodes.map((node) => [node.id, transformNodeRect(node, transform)]));
@@ -755,7 +960,7 @@ function renderTeachingStop(
     renderFrame(context, node, rectByNodeId.get(node.id)!);
   }
   for (const edge of options.edges) {
-    if (edge.hidden || !stopIds.has(edge.source) || !stopIds.has(edge.target)) continue;
+    if (!stopIds.has(edge.source) || !stopIds.has(edge.target)) continue;
     renderBoardEdge(context, edge, rectByNodeId);
   }
   for (const node of stopNodes.filter((candidate) => candidate.type !== "frame")) {
@@ -770,6 +975,8 @@ export async function downloadEditablePowerPoint(
   options: EditablePowerPointOptions
 ): Promise<EditablePowerPointResult> {
   if (!options.stops.length) throw new Error("There is no visible board content to export to PowerPoint.");
+  const expandedStops = expandEditablePowerPointStops(options.stops, options.nodes);
+  const renderOptions: EditablePowerPointOptions = { ...options, stops: expandedStops };
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Manojalam";
@@ -784,12 +991,12 @@ export async function downloadEditablePowerPoint(
   const warnings: string[] = [];
   let editableObjectCount = 0;
   let renderedSlides = 0;
-  for (const stop of options.stops) {
-    const objects = renderTeachingStop(pptx, stop, options, renderedSlides + 1, warnings);
+  for (const stop of expandedStops) {
+    const objects = renderTeachingStop(pptx, stop, renderOptions, renderedSlides + 1, warnings);
     if (!objects) continue;
     editableObjectCount += objects;
     renderedSlides += 1;
-    options.onProgress?.(renderedSlides, options.stops.length);
+    options.onProgress?.(renderedSlides, expandedStops.length);
   }
   if (!renderedSlides) throw new Error("There is no visible board content to export to PowerPoint.");
   await pptx.writeFile({

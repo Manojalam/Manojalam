@@ -33,6 +33,15 @@ export interface PowerPointColor {
   transparency: number;
 }
 
+export interface PowerPointTextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: string;
+  hyperlink?: string;
+}
+
 const NAMED_COLORS: Readonly<Record<string, string>> = {
   black: "000000",
   white: "FFFFFF",
@@ -120,6 +129,140 @@ export function plainPowerPointText(value: unknown): string {
     .trim();
 }
 
+function decodeHtmlText(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
+}
+
+function hyperlinkFromTag(tag: string): string | undefined {
+  const match = tag.match(/\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
+  const value = decodeHtmlText(match?.[1] ?? match?.[2] ?? match?.[3] ?? "").trim();
+  return /^(?:https?:\/\/|mailto:)/i.test(value) ? value : undefined;
+}
+
+function colorFromTag(tag: string): string | undefined {
+  const style = tag.match(/\bstyle\s*=\s*(?:"([^"]+)"|'([^']+)')/i);
+  const declaration = (style?.[1] ?? style?.[2] ?? "").match(/(?:^|;)\s*color\s*:\s*([^;]+)/i)?.[1];
+  const attribute = tag.match(/\bcolor\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
+  const value = declaration ?? attribute?.[1] ?? attribute?.[2] ?? attribute?.[3];
+  return value ? powerPointColor(value, "172033").color : undefined;
+}
+
+function sameRunStyle(first: PowerPointTextRun, second: PowerPointTextRun): boolean {
+  return first.bold === second.bold
+    && first.italic === second.italic
+    && first.underline === second.underline
+    && first.color === second.color
+    && first.hyperlink === second.hyperlink;
+}
+
+function pushPowerPointRun(runs: PowerPointTextRun[], run: PowerPointTextRun): void {
+  if (!run.text) return;
+  const previous = runs[runs.length - 1];
+  if (previous && sameRunStyle(previous, run)) {
+    previous.text += run.text;
+  } else {
+    runs.push(run);
+  }
+}
+
+function pushTextWithAutomaticLinks(
+  runs: PowerPointTextRun[],
+  text: string,
+  style: Omit<PowerPointTextRun, "text">
+): void {
+  if (style.hyperlink) {
+    pushPowerPointRun(runs, { text, ...style });
+    return;
+  }
+  const urlPattern = /https?:\/\/[^\s<>]+/gi;
+  let cursor = 0;
+  for (const match of text.matchAll(urlPattern)) {
+    const index = match.index ?? 0;
+    if (index > cursor) pushPowerPointRun(runs, { text: text.slice(cursor, index), ...style });
+    const rawUrl = match[0];
+    const trailing = rawUrl.match(/[),.;:!?]+$/)?.[0] ?? "";
+    const url = trailing ? rawUrl.slice(0, -trailing.length) : rawUrl;
+    pushPowerPointRun(runs, { text: url, ...style, underline: true, hyperlink: url });
+    if (trailing) pushPowerPointRun(runs, { text: trailing, ...style });
+    cursor = index + rawUrl.length;
+  }
+  if (cursor < text.length) pushPowerPointRun(runs, { text: text.slice(cursor), ...style });
+}
+
+/** Preserve the common rich-text styles and links that PowerPoint can edit natively. */
+export function powerPointTextRuns(value: unknown): PowerPointTextRun[] {
+  if (typeof value !== "string" || !value) return [];
+  if (!/<[a-z][\s\S]*>/i.test(value)) {
+    const runs: PowerPointTextRun[] = [];
+    pushTextWithAutomaticLinks(runs, decodeHtmlText(value), {});
+    return runs;
+  }
+
+  type TextStyle = Omit<PowerPointTextRun, "text"> & { tag?: string };
+  const stack: TextStyle[] = [{}];
+  const runs: PowerPointTextRun[] = [];
+  const tokens = value.match(/<[^>]+>|[^<]+/g) ?? [];
+  for (const token of tokens) {
+    if (!token.startsWith("<")) {
+      const { tag: _tag, ...style } = stack[stack.length - 1];
+      void _tag;
+      pushTextWithAutomaticLinks(runs, decodeHtmlText(token), style);
+      continue;
+    }
+    const close = token.match(/^<\/\s*([a-z0-9]+)/i)?.[1]?.toLowerCase();
+    if (close) {
+      for (let index = stack.length - 1; index > 0; index -= 1) {
+        if (stack[index].tag !== close) continue;
+        stack.splice(index);
+        break;
+      }
+      if ((close === "p" || close === "li" || /^h[1-6]$/.test(close)) && !runs[runs.length - 1]?.text.endsWith("\n")) {
+        const { tag: _tag, ...style } = stack[stack.length - 1];
+        void _tag;
+        pushPowerPointRun(runs, { text: "\n", ...style });
+      }
+      continue;
+    }
+    const open = token.match(/^<\s*([a-z0-9]+)/i)?.[1]?.toLowerCase();
+    if (!open) continue;
+    if (open === "br") {
+      const { tag: _tag, ...style } = stack[stack.length - 1];
+      void _tag;
+      pushPowerPointRun(runs, { text: "\n", ...style });
+      continue;
+    }
+    if (!["a", "b", "strong", "i", "em", "u", "span", "font", "p", "li", "h1", "h2", "h3", "h4", "h5", "h6"].includes(open)) continue;
+    const next: TextStyle = { ...stack[stack.length - 1], tag: open };
+    if (open === "b" || open === "strong") next.bold = true;
+    if (/^h[1-6]$/.test(open)) next.bold = true;
+    if (open === "i" || open === "em") next.italic = true;
+    if (open === "u") next.underline = true;
+    if (open === "a") {
+      next.hyperlink = hyperlinkFromTag(token);
+      if (next.hyperlink) next.underline = true;
+    }
+    const color = colorFromTag(token);
+    if (color) next.color = color;
+    stack.push(next);
+    if (open === "li") {
+      const { tag: _tag, ...style } = next;
+      void _tag;
+      pushPowerPointRun(runs, { text: "• ", ...style });
+    }
+  }
+  if (runs.length) runs[runs.length - 1].text = runs[runs.length - 1].text.replace(/\n+$/g, "");
+  while (runs.length && !runs[runs.length - 1].text) runs.pop();
+  return runs;
+}
+
 function textPart(value: unknown): string | null {
   const text = plainPowerPointText(value);
   return text || null;
@@ -163,6 +306,42 @@ export function editableNodeText(node: Node): string {
         data.translation,
       ])[0] ?? "Untitled";
   }
+}
+
+/** Dense overview slides show labels; detail slides retain the complete editable copy. */
+export function overviewNodeText(node: Node, maximumLength = 46): string {
+  const text = editableNodeText(node);
+  const firstLine = text.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "Untitled";
+  return firstLine.length > maximumLength
+    ? `${firstLine.slice(0, maximumLength - 1).trimEnd()}…`
+    : firstLine;
+}
+
+/**
+ * PptxGenJS cannot calculate PowerPoint's eventual shrink-to-fit result.
+ * Choose an explicit font size so exported text is readable immediately.
+ */
+export function fittedPowerPointFontSize(
+  text: string,
+  rect: PowerPointRect,
+  preferred: number,
+  minimum = 16,
+  maximum = 28
+): number {
+  const usableWidth = Math.max(0.2, rect.width - 0.22);
+  const usableHeight = Math.max(0.12, rect.height - 0.16);
+  const paragraphs = text.split(/\r?\n/);
+  for (let size = Math.min(maximum, preferred); size >= minimum; size -= 0.5) {
+    const devanagariFactor = /[\u0900-\u097f]/u.test(text) ? 0.68 : 0.56;
+    const charactersPerLine = Math.max(1, Math.floor(usableWidth * 72 / (size * devanagariFactor)));
+    const lineCount = paragraphs.reduce(
+      (total, paragraph) => total + Math.max(1, Math.ceil(paragraph.length / charactersPerLine)),
+      0
+    );
+    const neededHeight = lineCount * size * 1.24 / 72;
+    if (neededHeight <= usableHeight) return Math.round(size * 10) / 10;
+  }
+  return minimum;
 }
 
 /** Native PowerPoint shape names used by PptxGenJS. */
