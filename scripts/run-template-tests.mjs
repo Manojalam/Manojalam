@@ -27,6 +27,8 @@ try {
       "src/lib/config.ts",
       "src/lib/types.ts",
       "src/lib/utils.ts",
+      "src/lib/canvas/shloka-card-editor.ts",
+      "src/lib/canvas/shloka-card-editor.test.ts",
       "src/lib/templates/index.ts",
       "src/lib/templates/persistence.ts",
       "src/lib/templates/index.test.ts",
@@ -37,7 +39,11 @@ try {
 
   const tests = spawnSync(
     process.execPath,
-    ["--test", join(outputDirectory, "templates", "index.test.js")],
+    [
+      "--test",
+      join(outputDirectory, "canvas", "shloka-card-editor.test.js"),
+      join(outputDirectory, "templates", "index.test.js"),
+    ],
     { cwd: workspace, stdio: "inherit" }
   );
   if (tests.status !== 0) process.exit(tests.status ?? 1);
