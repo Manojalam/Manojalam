@@ -182,7 +182,7 @@ function TextBlockNodeComponent({
         onResizeEnd={resizeControls.onResizeEnd}
       />
       <div className="group relative h-full w-full">
-        <NodeHandles color={borderColor ?? "#6366f1"} selected={selected} />
+        <NodeHandles nodeId={id} color={borderColor ?? "#6366f1"} selected={selected} />
         <NodeQuickActions nodeId={id} color={borderColor ?? "#6366f1"} selected={selected} />
 
         {/* Add connected child */}

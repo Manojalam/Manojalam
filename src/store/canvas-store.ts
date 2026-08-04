@@ -138,6 +138,10 @@ import {
 import { normalizeBoardTexture } from "@/lib/canvas/board-textures";
 import { clearConnectorJunctionGraph } from "@/lib/canvas/connector-junction";
 import {
+  edgeHasConnectorAnchor,
+  rebindConnectorAnchorHandles,
+} from "@/lib/canvas/connector-anchors";
+import {
   createExternalNoteNode,
   preserveAttachedExternalNoteOffsets,
 } from "@/lib/canvas/node-note";
@@ -1508,14 +1512,19 @@ function createStructuralEdge(nodes: Node[], edges: Edge[], sourceId: string, ta
 
 function refreshStructuralEdge(edge: Edge, nodes: Node[], edges: Edge[]): Edge {
   const created = createStructuralEdge(nodes, edges, edge.source, edge.target);
-  return {
+  const anchored = edgeHasConnectorAnchor(edge);
+  return rebindConnectorAnchorHandles({
     ...edge,
     hidden: created.hidden,
-    sourceHandle: created.sourceHandle,
-    targetHandle: created.targetHandle,
+    sourceHandle: anchored ? edge.sourceHandle : created.sourceHandle,
+    targetHandle: anchored ? edge.targetHandle : created.targetHandle,
     markerEnd: edge.markerEnd ?? created.markerEnd,
-    data: { ...(edge.data ?? {}), ...(created.data ?? {}) },
-  };
+    data: {
+      ...(edge.data ?? {}),
+      ...(created.data ?? {}),
+      ...(anchored ? { manualRoute: true, preserveHandles: true } : {}),
+    },
+  });
 }
 
 function contentMeasurementChanged(
@@ -1978,7 +1987,7 @@ function buildDuplicateSelection(
     };
   });
 
-  const edges = internalEdges.map((edge) => ({
+  const edges = internalEdges.map((edge) => rebindConnectorAnchorHandles({
       ...structuredClone(edge),
       id: edgeIdMap.get(edge.id)!,
       source: idMap.get(edge.source)!,
@@ -4413,15 +4422,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const pParent = positions[edge.source] ? { ...parent, position: positions[edge.source] } : parent;
       const pChild = positions[edge.target] ? { ...child, position: positions[edge.target] } : child;
       const route = routeForMode(mode, pParent, pChild);
+      const anchored = edgeHasConnectorAnchor(edge);
       const hierarchyEdge = hierarchy.get(edge.target)?.parentId === edge.source;
       const hiddenInMatrix = mode === "matrix" && isMatrixHierarchyEdge(edge, hierarchy, scopeIds);
       const hiddenInSunburst = !!sunburstEnabled && hierarchyEdge;
-      return {
+      return rebindConnectorAnchorHandles({
         ...edge,
         ...(hierarchyEdge ? { type: "branch", reconnectable: true } : {}),
         hidden: baseHidden || hiddenInMatrix || hiddenInSunburst,
-        sourceHandle: route.sourceHandle,
-        targetHandle: route.targetHandle,
+        sourceHandle: anchored ? edge.sourceHandle : route.sourceHandle,
+        targetHandle: anchored ? edge.targetHandle : route.targetHandle,
         markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed, color: "#6366f1" },
         data: {
           ...(edge.data ?? {}),
@@ -4432,8 +4442,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           hiddenInSunburst,
           hiddenInSunburstFor: hiddenInSunburst ? sunburstKey : undefined,
           layoutMode: mode,
+          ...(anchored ? { manualRoute: true, preserveHandles: true } : {}),
         },
-      };
+      });
     });
 
     const laidOutNodes = matrixResult

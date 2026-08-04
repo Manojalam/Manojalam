@@ -3,7 +3,9 @@ import test from "node:test";
 import { SHAPE_TYPES } from "../types";
 import {
   nodeShapeConnectionPoint,
+  nodeShapeConnectionAnchorAtPoint,
   nodeShapeConnectionPointAtAxis,
+  shapeConnectionAnchorAtPoint,
   shapeConnectionPoint,
   type ConnectionSide,
   type ShapeConnectionPoint,
@@ -138,4 +140,38 @@ test("node outline points include persisted object rotation", () => {
 
   assert.ok(Math.abs(bottom.x - 250) < 0.001);
   assert.ok(bottom.y > rect.y + rect.height);
+});
+
+test("arbitrary connector points snap to the nearest visible perimeter", () => {
+  const rounded = shapeConnectionAnchorAtPoint(
+    "rounded",
+    { x: 50, y: 96 },
+    { width: 200, height: 100, borderRadius: 20 }
+  );
+  assertPointClose(rounded, { x: 25, y: 100 }, "rounded arbitrary bottom");
+  assert.equal(rounded.side, "bottom");
+
+  const circle = shapeConnectionAnchorAtPoint(
+    "circle",
+    { x: 85, y: 15 },
+    { width: 100, height: 100 }
+  );
+  assert.ok(Math.abs(Math.hypot(circle.x - 50, circle.y - 50) - 50) < 0.1);
+  assert.ok(circle.x > 80 && circle.y < 20, "circle keeps the requested diagonal location");
+});
+
+test("node perimeter anchors stay normalized so they follow movement and resize", () => {
+  const node = { type: "shape", data: { shapeType: "diamond" } };
+  const firstRect = { x: 100, y: 200, width: 200, height: 100 };
+  const anchor = nodeShapeConnectionAnchorAtPoint(node, firstRect, { x: 250, y: 215 });
+
+  assert.ok(anchor.x > 50 && anchor.x < 100);
+  assert.ok(anchor.y >= 0 && anchor.y < 50);
+  const movedAndResized = { x: 500, y: 700, width: 400, height: 200 };
+  const attachedPoint = {
+    x: movedAndResized.x + movedAndResized.width * anchor.x / 100,
+    y: movedAndResized.y + movedAndResized.height * anchor.y / 100,
+  };
+  assert.ok(attachedPoint.x >= movedAndResized.x && attachedPoint.x <= movedAndResized.x + movedAndResized.width);
+  assert.ok(attachedPoint.y >= movedAndResized.y && attachedPoint.y <= movedAndResized.y + movedAndResized.height);
 });

@@ -5,7 +5,7 @@ import type { NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { NodeHandles } from "./NodeHandles";
 
-function ConnectorJunctionNodeComponent({ data, selected }: NodeProps) {
+function ConnectorJunctionNodeComponent({ id, data, selected }: NodeProps) {
   const color = typeof data.color === "string" ? data.color : "#6366f1";
   return (
     <div
@@ -17,7 +17,7 @@ function ConnectorJunctionNodeComponent({ data, selected }: NodeProps) {
       )}
       style={{ backgroundColor: color }}
     >
-      <NodeHandles color={color} selected={selected} compact />
+      <NodeHandles nodeId={id} color={color} selected={selected} compact />
     </div>
   );
 }

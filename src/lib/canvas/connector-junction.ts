@@ -1,6 +1,11 @@
 import type { Edge, Node } from "@xyflow/react";
 import { getNodeRect } from "../layout/geometry";
 import type { RoutePoint, Side } from "../layout/edge-routing";
+import {
+  connectorAnchorHandleId,
+  connectorEndpointAnchor,
+  rebindConnectorAnchorHandles,
+} from "./connector-anchors";
 
 export const CONNECTOR_JUNCTION_SIZE = 28;
 
@@ -147,41 +152,45 @@ export function splitConnectorAtJunction(
     storedRoutePoints(data.waypoints)
   );
   const junctionCenter = { x: point.x, y: point.y };
-  const first: Edge = {
+  const firstData: Record<string, unknown> = {
+    ...commonData,
+    label: undefined,
+    arrowEnd: false,
+    waypoints: firstWaypoints.length ? firstWaypoints : undefined,
+    waypointOrigin: firstWaypoints.length ? data.waypointOrigin : undefined,
+    junctionPreservedWaypoints: firstWaypoints.length > 0 || undefined,
+    junctionUserWaypoints: firstUserWaypoints.length ? firstUserWaypoints : undefined,
+    connectorJunctionSegment: "incoming",
+  };
+  delete firstData.targetAnchor;
+  const first: Edge = rebindConnectorAnchorHandles({
     ...edge,
     id: ids.firstEdgeId,
     target: ids.junctionId,
     targetHandle: sideToward(junctionCenter, sourcePoint),
     markerEnd: undefined,
     selected: false,
-    data: {
-      ...commonData,
-      label: undefined,
-      arrowEnd: false,
-      waypoints: firstWaypoints.length ? firstWaypoints : undefined,
-      waypointOrigin: firstWaypoints.length ? data.waypointOrigin : undefined,
-      junctionPreservedWaypoints: firstWaypoints.length > 0 || undefined,
-      junctionUserWaypoints: firstUserWaypoints.length ? firstUserWaypoints : undefined,
-      connectorJunctionSegment: "incoming",
-    },
+    data: firstData,
+  });
+  const secondData: Record<string, unknown> = {
+    ...commonData,
+    arrowStart: false,
+    waypoints: secondWaypoints.length ? secondWaypoints : undefined,
+    waypointOrigin: secondWaypoints.length ? data.waypointOrigin : undefined,
+    junctionPreservedWaypoints: secondWaypoints.length > 0 || undefined,
+    junctionUserWaypoints: secondUserWaypoints.length ? secondUserWaypoints : undefined,
+    connectorJunctionSegment: "outgoing",
   };
-  const second: Edge = {
+  delete secondData.sourceAnchor;
+  const second: Edge = rebindConnectorAnchorHandles({
     ...edge,
     id: ids.secondEdgeId,
     source: ids.junctionId,
     sourceHandle: sideToward(junctionCenter, targetPoint),
     markerStart: undefined,
     selected: false,
-    data: {
-      ...commonData,
-      arrowStart: false,
-      waypoints: secondWaypoints.length ? secondWaypoints : undefined,
-      waypointOrigin: secondWaypoints.length ? data.waypointOrigin : undefined,
-      junctionPreservedWaypoints: secondWaypoints.length > 0 || undefined,
-      junctionUserWaypoints: secondUserWaypoints.length ? secondUserWaypoints : undefined,
-      connectorJunctionSegment: "outgoing",
-    },
-  };
+    data: secondData,
+  });
   const junction: Node = {
     id: ids.junctionId,
     type: "junction",
@@ -353,6 +362,12 @@ function reverseLogicalConnector(edges: Edge[], logicalEdgeIds: readonly string[
     }
     if (data.connectorJunctionSegment === "incoming") data.connectorJunctionSegment = "outgoing";
     else if (data.connectorJunctionSegment === "outgoing") data.connectorJunctionSegment = "incoming";
+    const oldSourceAnchor = connectorEndpointAnchor(edge, "source");
+    const oldTargetAnchor = connectorEndpointAnchor(edge, "target");
+    if (oldTargetAnchor) data.sourceAnchor = oldTargetAnchor;
+    else delete data.sourceAnchor;
+    if (oldSourceAnchor) data.targetAnchor = oldSourceAnchor;
+    else delete data.targetAnchor;
 
     // An old terminal end becomes a new start, and an old start becomes a new end.
     const newStart = oldEndIds.has(edge.id);
@@ -364,8 +379,12 @@ function reverseLogicalConnector(edges: Edge[], logicalEdgeIds: readonly string[
       ...edge,
       source: edge.target,
       target: edge.source,
-      sourceHandle: edge.targetHandle,
-      targetHandle: edge.sourceHandle,
+      sourceHandle: oldTargetAnchor
+        ? connectorAnchorHandleId(edge.id, "source")
+        : edge.targetHandle,
+      targetHandle: oldSourceAnchor
+        ? connectorAnchorHandleId(edge.id, "target")
+        : edge.sourceHandle,
       markerStart: newStart && startArrowEnabled ? startMarker : undefined,
       markerEnd: newEnd && endArrowEnabled ? endMarker : undefined,
       data,

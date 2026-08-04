@@ -4,6 +4,7 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 
 import { getNodeRect } from "../layout/geometry";
+import { connectorAnchorHandleId } from "./connector-anchors";
 import {
   flowchartBranchKind,
   routeTidiedFlowchartEdges,
@@ -314,6 +315,29 @@ test("moves feedback connectors into distinct outer lanes and reanchors their la
     (feedback[1].data?.waypoints as Array<{ x: number }>)[0].x
       < (feedback[0].data?.waypoints as Array<{ x: number }>)[0].x
   );
+});
+
+test("tidy keeps explicitly positioned perimeter endpoints attached", () => {
+  const nodes = [shape("a", 0, 0), shape("b", 300, 180)];
+  const anchored = edge("anchored", "a", "b", {
+    sourceHandle: connectorAnchorHandleId("anchored", "source"),
+    targetHandle: connectorAnchorHandleId("anchored", "target"),
+    data: {
+      sourceAnchor: { x: 100, y: 30, side: "right" },
+      targetAnchor: { x: 0, y: 70, side: "left" },
+      preserveHandles: true,
+      manualRoute: true,
+    },
+  });
+  const layout = tidyFlowchart(nodes, [anchored], { direction: "vertical" });
+  const [routed] = routeTidiedFlowchartEdges(layout.nodes, [anchored], layout).edges;
+
+  assert.equal(routed.sourceHandle, connectorAnchorHandleId("anchored", "source"));
+  assert.equal(routed.targetHandle, connectorAnchorHandleId("anchored", "target"));
+  assert.deepEqual(routed.data?.sourceAnchor, anchored.data?.sourceAnchor);
+  assert.deepEqual(routed.data?.targetAnchor, anchored.data?.targetAnchor);
+  assert.equal(routed.data?.preserveHandles, true);
+  assert.equal(routed.data?.manualRoute, true);
 });
 
 test("recognizes localized affirmative and negative connector labels", () => {

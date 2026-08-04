@@ -1,12 +1,19 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { Handle, Position } from "@xyflow/react";
+import { useEffect, useMemo, type CSSProperties } from "react";
+import { Handle, Position, useConnection, useUpdateNodeInternals } from "@xyflow/react";
 import {
   shapeConnectionPoint,
   type ConnectionSide,
   type ShapeConnectionPoint,
 } from "@/lib/canvas/shape-connection-geometry";
+import {
+  connectorAnchorHandleId,
+  connectorEndpointAnchor,
+  PERIMETER_HANDLE_ID,
+  type ConnectorEndpoint,
+} from "@/lib/canvas/connector-anchors";
+import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
 /**
@@ -21,6 +28,15 @@ const SIDES: Array<{ id: ConnectionSide; pos: Position }> = [
   { id: "bottom", pos: Position.Bottom },
   { id: "left", pos: Position.Left },
 ];
+
+function sidePosition(side: ConnectionSide): Position {
+  switch (side) {
+    case "top": return Position.Top;
+    case "right": return Position.Right;
+    case "bottom": return Position.Bottom;
+    case "left": return Position.Left;
+  }
+}
 
 function connectionPointStyle(
   side: ConnectionSide,
@@ -39,6 +55,7 @@ function connectionPointStyle(
 }
 
 export function NodeHandles({
+  nodeId,
   color = "#6366f1",
   selected = false,
   compact = false,
@@ -49,6 +66,7 @@ export function NodeHandles({
   petalCount,
   rotation,
 }: {
+  nodeId: string;
   color?: string;
   selected?: boolean;
   compact?: boolean;
@@ -60,8 +78,35 @@ export function NodeHandles({
   rotation?: number;
 }) {
   const activeTool = useUIStore((s) => s.activeTool);
+  const connectionInProgress = useConnection((connection) => connection.inProgress);
+  const edges = useCanvasStore((state) => state.edges);
+  const updateNodeInternals = useUpdateNodeInternals();
   const connectorActive = activeTool === "connector";
   const visible = connectorActive || selected;
+  const perimeterActive = connectorActive || connectionInProgress;
+  const anchoredEndpoints = useMemo(() => edges.flatMap((edge) => {
+    const endpoints: Array<{
+      edgeId: string;
+      endpoint: ConnectorEndpoint;
+      point: ShapeConnectionPoint & { side: ConnectionSide };
+    }> = [];
+    if (!edge.hidden && edge.source === nodeId) {
+      const point = connectorEndpointAnchor(edge, "source");
+      if (point) endpoints.push({ edgeId: edge.id, endpoint: "source", point });
+    }
+    if (!edge.hidden && edge.target === nodeId) {
+      const point = connectorEndpointAnchor(edge, "target");
+      if (point) endpoints.push({ edgeId: edge.id, endpoint: "target", point });
+    }
+    return endpoints;
+  }), [edges, nodeId]);
+  const anchorKey = anchoredEndpoints.map(({ edgeId, endpoint, point }) => (
+    `${edgeId}:${endpoint}:${point.x}:${point.y}:${point.side}`
+  )).join("|");
+
+  useEffect(() => {
+    updateNodeInternals(nodeId);
+  }, [anchorKey, nodeId, updateNodeInternals]);
 
   return (
     <>
@@ -99,6 +144,44 @@ export function NodeHandles({
           }}
         />
       ))}
+      {anchoredEndpoints.map(({ edgeId, endpoint, point }) => (
+        <Handle
+          key={`${edgeId}:${endpoint}`}
+          data-export-ignore
+          data-connector-anchor={endpoint}
+          type="source"
+          id={connectorAnchorHandleId(edgeId, endpoint)}
+          position={sidePosition(point.side)}
+          isConnectableStart={false}
+          isConnectableEnd={false}
+          className="!h-1 !w-1 !border-0 !bg-transparent !opacity-0"
+          style={{
+            pointerEvents: "none",
+            ...connectionPointStyle(point.side, point),
+          }}
+        />
+      ))}
+      <Handle
+        data-export-ignore
+        data-connector-handle="perimeter"
+        type="source"
+        id={PERIMETER_HANDLE_ID}
+        position={Position.Top}
+        isConnectableStart={perimeterActive}
+        isConnectableEnd={perimeterActive}
+        aria-label="Connect anywhere on shape"
+        className="!absolute !m-0 !h-full !w-full !border-0 !bg-transparent !opacity-0"
+        style={{
+          left: 0,
+          top: 0,
+          right: "auto",
+          bottom: "auto",
+          transform: "none",
+          borderRadius: "inherit",
+          pointerEvents: perimeterActive ? "all" : "none",
+          zIndex: perimeterActive ? 20 : -1,
+        }}
+      />
     </>
   );
 }

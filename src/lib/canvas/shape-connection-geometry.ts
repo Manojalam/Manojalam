@@ -10,6 +10,10 @@ export type ShapeConnectionPoint = {
   y: number;
 };
 
+export type ShapeConnectionAnchor = ShapeConnectionPoint & {
+  side: ConnectionSide;
+};
+
 export type ShapeConnectionRect = {
   x: number;
   y: number;
@@ -566,6 +570,61 @@ function contourAxisConnectionPoint(
   });
 }
 
+function closestPointOnSegment(
+  point: ShapeConnectionPoint,
+  start: ShapeConnectionPoint,
+  end: ShapeConnectionPoint
+): ShapeConnectionPoint {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= INTERSECTION_EPSILON) return start;
+  const progress = Math.max(0, Math.min(1, (
+    (point.x - start.x) * dx + (point.y - start.y) * dy
+  ) / lengthSquared));
+  return {
+    x: start.x + dx * progress,
+    y: start.y + dy * progress,
+  };
+}
+
+function nearestContourPoint(
+  contours: readonly ShapeContour[],
+  point: ShapeConnectionPoint
+): ShapeConnectionPoint | null {
+  let nearest: { distanceSquared: number; point: ShapeConnectionPoint } | null = null;
+  for (const contour of contours) {
+    for (let index = 0; index < contour.length; index += 1) {
+      const candidate = closestPointOnSegment(
+        point,
+        contour[index],
+        contour[(index + 1) % contour.length]
+      );
+      const dx = candidate.x - point.x;
+      const dy = candidate.y - point.y;
+      const distanceSquared = dx * dx + dy * dy;
+      if (!nearest || distanceSquared < nearest.distanceSquared) {
+        nearest = { distanceSquared, point: candidate };
+      }
+    }
+  }
+  return nearest?.point ?? null;
+}
+
+function sideForPoint(
+  point: ShapeConnectionPoint,
+  center: ShapeConnectionPoint,
+  width: number,
+  height: number
+): ConnectionSide {
+  const horizontal = (point.x - center.x) / width;
+  const vertical = (point.y - center.y) / height;
+  if (Math.abs(horizontal) >= Math.abs(vertical)) {
+    return horizontal >= 0 ? "right" : "left";
+  }
+  return vertical >= 0 ? "bottom" : "top";
+}
+
 export function isSvgShapeType(shapeType: string): boolean {
   const kind = SHAPE_OUTLINE_KINDS[shapeType as ShapeType];
   return kind === "polygon"
@@ -645,6 +704,37 @@ export function shapeConnectionPointAtAxis(
   };
 }
 
+/** Snap an arbitrary local point to the nearest point on the rendered silhouette. */
+export function shapeConnectionAnchorAtPoint(
+  shapeType: string | undefined,
+  point: ShapeConnectionPoint,
+  options: ShapeConnectionOptions = {}
+): ShapeConnectionAnchor {
+  const width = finitePositive(options.width, 100);
+  const height = finitePositive(options.height, 100);
+  const center = { x: width / 2, y: height / 2 };
+  const outline = shapeContours(shapeType, width, height, options);
+  const rotation = typeof options.rotation === "number" && Number.isFinite(options.rotation)
+    ? options.rotation
+    : 0;
+  const rotatedContours = rotation
+    ? outline.contours.map((contour) => (
+        contour.map((contourPoint) => rotatePoint(contourPoint, center, rotation))
+      ))
+    : outline.contours;
+  const requested = {
+    x: Number.isFinite(point.x) ? point.x : center.x,
+    y: Number.isFinite(point.y) ? point.y : center.y,
+  };
+  const snapped = nearestContourPoint(rotatedContours, requested)
+    ?? { x: center.x, y: 0 };
+  return {
+    x: snapped.x / width * 100,
+    y: snapped.y / height * 100,
+    side: sideForPoint(snapped, center, width, height),
+  };
+}
+
 function nodeShapeConnectionOptions(
   node: ShapeConnectionNode,
   rect: ShapeConnectionRect,
@@ -675,16 +765,22 @@ function nodeShapeConnectionOptions(
   };
 }
 
+function nodeConnectionShapeType(node: ShapeConnectionNode): string {
+  const data = (node.data ?? {}) as Record<string, unknown>;
+  if (node.type === "shape" || node.type === "mindmap") {
+    return typeof data.shapeType === "string" ? data.shapeType : "rounded";
+  }
+  if (node.type === "junction") return "circle";
+  return "rounded";
+}
+
 /** Resolve a node's visible authored-shape outline point in canvas coordinates. */
 export function nodeShapeConnectionPoint(
   node: ShapeConnectionNode,
   rect: ShapeConnectionRect,
   side: ConnectionSide
 ): ShapeConnectionPoint {
-  const data = (node.data ?? {}) as Record<string, unknown>;
-  const shapeType = node.type === "shape"
-    ? typeof data.shapeType === "string" ? data.shapeType : "rounded"
-    : "rectangle";
+  const shapeType = nodeConnectionShapeType(node);
   const normalized = shapeConnectionPoint(
     shapeType,
     side,
@@ -703,10 +799,7 @@ export function nodeShapeConnectionPointAtAxis(
   side: ConnectionSide,
   axisCoordinate: number
 ): ShapeConnectionPoint {
-  const data = (node.data ?? {}) as Record<string, unknown>;
-  const shapeType = node.type === "shape"
-    ? typeof data.shapeType === "string" ? data.shapeType : "rounded"
-    : "rectangle";
+  const shapeType = nodeConnectionShapeType(node);
   const vertical = side === "top" || side === "bottom";
   const axisPercent = vertical
     ? (axisCoordinate - rect.x) / rect.width * 100
@@ -721,4 +814,19 @@ export function nodeShapeConnectionPointAtAxis(
     x: rect.x + rect.width * normalized.x / 100,
     y: rect.y + rect.height * normalized.y / 100,
   };
+}
+
+
+/** Resolve an arbitrary canvas point to a normalized anchor on a node silhouette. */
+export function nodeShapeConnectionAnchorAtPoint(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  point: ShapeConnectionPoint
+): ShapeConnectionAnchor {
+  const shapeType = nodeConnectionShapeType(node);
+  return shapeConnectionAnchorAtPoint(
+    shapeType,
+    { x: point.x - rect.x, y: point.y - rect.y },
+    nodeShapeConnectionOptions(node, rect, shapeType)
+  );
 }

@@ -251,7 +251,7 @@ function AudioNodeComponent({ id, data, selected }: NodeProps) {
         onResizeEnd={resizeControls.onResizeEnd}
       />
       <div className="group relative h-full w-full">
-        <NodeHandles color={color} selected={selected} />
+        <NodeHandles nodeId={id} color={color} selected={selected} />
         <NodeQuickActions nodeId={id} color={color} selected={selected} />
         <div
           className={cn(
