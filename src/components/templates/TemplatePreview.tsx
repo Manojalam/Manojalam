@@ -23,11 +23,41 @@ function positiveDimension(value: unknown, fallback: number): number {
 function fallbackSize(node: VidyaNode): { width: number; height: number } {
   switch (node.type) {
     case "frame": return { width: 280, height: 540 };
+    case "sunburst": return { width: 800, height: 800 };
     case "shloka": return { width: 360, height: 190 };
     case "grammar": return { width: 300, height: 190 };
     case "sticky": return { width: 220, height: 120 };
     default: return { width: 180, height: 80 };
   }
+}
+
+function polarPoint(centerX: number, centerY: number, radius: number, angle: number) {
+  const radians = (angle * Math.PI) / 180;
+  return {
+    x: centerX + Math.cos(radians) * radius,
+    y: centerY + Math.sin(radians) * radius,
+  };
+}
+
+function sectorPath(
+  centerX: number,
+  centerY: number,
+  innerRadius: number,
+  outerRadius: number,
+  startAngle: number,
+  endAngle: number
+): string {
+  const outerStart = polarPoint(centerX, centerY, outerRadius, startAngle);
+  const outerEnd = polarPoint(centerX, centerY, outerRadius, endAngle);
+  const innerEnd = polarPoint(centerX, centerY, innerRadius, endAngle);
+  const innerStart = polarPoint(centerX, centerY, innerRadius, startAngle);
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 0 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${innerRadius} ${innerRadius} 0 0 0 ${innerStart.x} ${innerStart.y}`,
+    "Z",
+  ].join(" ");
 }
 
 function previewNode(node: VidyaNode): PreviewNode {
@@ -62,6 +92,50 @@ function NodeShape({ item, fontSize }: { item: PreviewNode; fontSize: number }) 
   const data = (node.data ?? {}) as Record<string, unknown>;
   const color = nodeColor(node);
   const shapeType = data.shapeType;
+  if (node.type === "sunburst") {
+    const outerRadius = Math.min(width, height) / 2;
+    const middleRadius = outerRadius * 0.56;
+    const innerRadius = outerRadius * 0.22;
+    const colors = ["#4f46e5", "#7c3aed", "#d97706", "#059669"];
+    return (
+      <g>
+        {colors.map((fill, index) => (
+          <path
+            key={fill}
+            d={sectorPath(centerX, centerY, middleRadius, outerRadius, -90 + index * 90, index * 90)}
+            fill={fill}
+            fillOpacity="0.72"
+            stroke="white"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {colors.map((fill, index) => (
+          <path
+            key={`inner-${fill}`}
+            d={sectorPath(centerX, centerY, innerRadius, middleRadius, -90 + index * 90, index * 90)}
+            fill={fill}
+            fillOpacity="0.46"
+            stroke="white"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        <circle cx={centerX} cy={centerY} r={innerRadius} fill="#3730a3" />
+        <text
+          x={centerX}
+          y={centerY}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill="white"
+          className="font-semibold"
+          fontSize={fontSize * 0.76}
+        >
+          {nodeLabel(node)}
+        </text>
+      </g>
+    );
+  }
   const common = {
     fill: color,
     fillOpacity: node.type === "frame" ? 0.05 : 0.16,

@@ -954,7 +954,7 @@ export interface TemplateDefinition {
   id: string;
   name: string;
   description: string;
-  category: "general" | "sanskrit" | "study" | "planning";
+  category: "layouts" | "general" | "sanskrit" | "study" | "planning";
   content: BoardContent;
 }
 

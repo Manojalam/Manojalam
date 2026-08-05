@@ -13,13 +13,20 @@ import { ensureTemplateBoardContent } from "./persistence";
 import type { BoardContent } from "../types";
 
 const EXPECTED_TEMPLATE_IDS = [
+  "layout-free-form",
   "basic-mindmap",
+  "layout-radial-branches",
+  "layout-horizontal-tree",
+  "layout-vertical-tree",
+  "layout-list",
+  "timeline",
+  "layout-sunburst",
+  "layout-matrix",
   "flowchart",
   "cornell-notes",
   "concept-map",
   "study-plan",
   "project-planning",
-  "timeline",
   "kanban-lite",
   "shloka-study",
   "vyakarana-rule",
@@ -32,6 +39,7 @@ const SUPPORTED_TEMPLATE_NODE_TYPES = new Set([
   "frame",
   "shloka",
   "grammar",
+  "sunburst",
 ]);
 
 test("the gallery exposes only the curated templates", () => {
@@ -43,7 +51,7 @@ test("the gallery exposes only the curated templates", () => {
 
   assert.deepEqual(
     TEMPLATE_CATEGORIES.map((category) => category.id),
-    ["general", "study", "planning", "sanskrit"]
+    ["layouts", "general", "study", "planning", "sanskrit"]
   );
   assert.equal(isTemplateCategory("study"), true);
   assert.equal(isTemplateCategory("unknown"), false);
@@ -101,6 +109,10 @@ test("every template is a current, renderable board payload", () => {
         assert.equal(typeof data.rule, "string", `${template.id}/${node.id} has no grammar rule`);
         assert.ok(Array.isArray(data.examples), `${template.id}/${node.id} has no grammar examples`);
       }
+      if (node.type === "sunburst") {
+        assert.equal(typeof data.rootId, "string", `${template.id}/${node.id} has no Sunburst root`);
+        assert.equal(typeof data.sunburstFor, "string", `${template.id}/${node.id} has no Sunburst owner`);
+      }
     }
 
     for (const edge of content.edges) {
@@ -112,6 +124,27 @@ test("every template is a current, renderable board payload", () => {
       assert.notEqual(edge.source, edge.target, `${template.id} has a self-referencing edge`);
     }
   }
+});
+
+test("the Layouts category demonstrates every selectable layout", () => {
+  const layoutModes = getTemplatesByCategory("layouts").map((template) => {
+    const root = template.content.nodes.find((node) =>
+      typeof ((node.data ?? {}) as Record<string, unknown>).layoutMode === "string"
+    );
+    return ((root?.data ?? {}) as Record<string, unknown>).layoutMode;
+  });
+
+  assert.deepEqual(layoutModes, [
+    "freeForm",
+    "mindMap",
+    "fromParentFreeForm",
+    "horizontal",
+    "vertical",
+    "list",
+    "linear",
+    "radial",
+    "matrix",
+  ]);
 });
 
 test("template connectors that are nearly on an axis are exactly straight", () => {
