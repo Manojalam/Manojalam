@@ -5,6 +5,7 @@ import {
   nodeShapeConnectionPoint,
   nodeShapeConnectionAnchorAtPoint,
   nodeShapeConnectionPointAtAxis,
+  nodeShapeConnectionPointAtFraction,
   shapeConnectionAnchorAtPoint,
   shapeConnectionPoint,
   type ConnectionSide,
@@ -63,6 +64,23 @@ test("box-filling curved shapes keep their cardinal side centers", () => {
   assert.deepEqual(shapeConnectionPoint("circle", "right"), { x: 100, y: 50 });
   assert.deepEqual(shapeConnectionPoint(undefined, "bottom"), { x: 50, y: 100 });
   assert.deepEqual(shapeConnectionPoint("rectangle", "left"), { x: 0, y: 50 });
+});
+
+test("fractional node anchors keep sibling connectors independent on one side", () => {
+  const node = {
+    id: "parent",
+    type: "shape",
+    data: { shapeType: "rounded" },
+  };
+  const rect = { x: 100, y: 200, width: 240, height: 120 };
+  const anchors = [0.16, 0.5, 0.84].map((fraction) => (
+    nodeShapeConnectionPointAtFraction(node, rect, "right", fraction)
+  ));
+
+  assert.deepEqual(anchors.map((point) => point.y), [219.2, 260, 300.8]);
+  assert.ok(anchors.every((point) => point.x > 220 && point.x <= 340));
+  assert.equal(anchors[1].x, 340);
+  assert.equal(new Set(anchors.map((point) => `${point.x}:${point.y}`)).size, anchors.length);
 });
 
 test("custom SVG shapes attach to their inset visible paths", () => {

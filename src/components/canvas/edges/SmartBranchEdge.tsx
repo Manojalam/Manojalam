@@ -32,6 +32,7 @@ import {
 } from "@/lib/canvas/connector-junction";
 import { closestPointOnRoute, insertWaypointOnRoute } from "@/lib/canvas/connector-waypoints";
 import { isConnectorRoutingObstacle } from "@/lib/canvas/connector-obstacles";
+import { nodeShapeConnectionPointAtFraction } from "@/lib/canvas/shape-connection-geometry";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorBendHandles } from "./ConnectorBendHandles";
 import { ConnectorEndpointHandles } from "./ConnectorEndpointHandles";
@@ -184,26 +185,74 @@ function RoutedSmartBranchEdge({
     ? connectorClickPoint.edgeId
     : labelOwnerId;
   const editorSelected = logicalSelected && activeSegmentId === id;
+  const automaticRouteOptions = sourceNode && targetNode
+    ? routeOptionsForEdge(id, source, target, d.layoutMode, nodes, edges)
+    : {};
+  const independentLinearRoute = d.layoutMode === "linear"
+    && !manualRoute
+    && !waypoints.length
+    && sourceNode
+    && targetNode;
+  const sourceSide = positionSide(sourcePosition);
+  const targetSide = positionSide(targetPosition);
+  const sourceRect = sourceNode ? getNodeRect(sourceNode) : null;
+  const targetRect = targetNode ? getNodeRect(targetNode) : null;
+  const routedSourcePoint = independentLinearRoute && sourceRect
+    ? nodeShapeConnectionPointAtFraction(
+        sourceNode,
+        sourceRect,
+        sourceSide,
+        automaticRouteOptions.sourceFraction ?? 0.5
+      )
+    : { x: sourceX, y: sourceY };
+  const routedTargetPoint = independentLinearRoute && targetRect
+    ? nodeShapeConnectionPointAtFraction(
+        targetNode,
+        targetRect,
+        targetSide,
+        automaticRouteOptions.targetFraction ?? 0.5
+      )
+    : { x: targetX, y: targetY };
 
   // Keep every connector inexpensive while nodes are moving. The obstacle-aware
   // route is recalculated from the final node geometry as soon as dragging ends.
   if (curveStyle !== "step" || (canvasDragging && !waypoints.length && !junctionEndpoint)) {
     const routed = curveStyle === "straight"
-      ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+      ? getStraightPath({
+          sourceX: routedSourcePoint.x,
+          sourceY: routedSourcePoint.y,
+          targetX: routedTargetPoint.x,
+          targetY: routedTargetPoint.y,
+        })
       : curveStyle === "smooth"
-        ? getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
-        : getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 8 });
+        ? getBezierPath({
+            sourceX: routedSourcePoint.x,
+            sourceY: routedSourcePoint.y,
+            targetX: routedTargetPoint.x,
+            targetY: routedTargetPoint.y,
+            sourcePosition,
+            targetPosition,
+          })
+        : getSmoothStepPath({
+            sourceX: routedSourcePoint.x,
+            sourceY: routedSourcePoint.y,
+            targetX: routedTargetPoint.x,
+            targetY: routedTargetPoint.y,
+            sourcePosition,
+            targetPosition,
+            borderRadius: 8,
+          });
     [path, labelX, labelY] = routed;
-    routePoints = [{ x: sourceX, y: sourceY }, { x: targetX, y: targetY }];
+    routePoints = [routedSourcePoint, routedTargetPoint];
   } else if (sourceNode && targetNode) {
-    const sourceRect = getNodeRect(sourceNode);
-    const targetRect = getNodeRect(targetNode);
+    const currentSourceRect = sourceRect ?? getNodeRect(sourceNode);
+    const currentTargetRect = targetRect ?? getNodeRect(targetNode);
     const obstacles: NodeRect[] = [];
     for (const n of nodes) {
       if (n.id === source || n.id === target) continue;
       if (!isConnectorRoutingObstacle(n)) continue;
       const rect = getNodeRect(n);
-      if (!nearRouteCorridor(rect, sourceRect, targetRect)) continue;
+      if (!nearRouteCorridor(rect, currentSourceRect, currentTargetRect)) continue;
       obstacles.push(rect);
       if (obstacles.length >= MAX_ROUTING_OBSTACLES) break;
     }
@@ -212,35 +261,35 @@ function RoutedSmartBranchEdge({
       ? routeManualOrthogonalEdge(
           { x: sourceX, y: sourceY },
           { x: targetX, y: targetY },
-          positionSide(sourcePosition),
-          positionSide(targetPosition),
+          sourceSide,
+          targetSide,
           waypoints,
           endpointOptions
         )
       : manualRoute
         ? routeOrthogonalEdge(
-            { x: sourceX, y: sourceY },
-            { x: targetX, y: targetY },
-            positionSide(sourcePosition),
-            positionSide(targetPosition),
+            routedSourcePoint,
+            routedTargetPoint,
+            sourceSide,
+            targetSide,
             obstacles,
             [],
             endpointOptions
           )
         : routeLayoutEdge(
-            sourceRect,
-            targetRect,
+            currentSourceRect,
+            currentTargetRect,
             d.layoutMode,
             obstacles,
             {
-              ...routeOptionsForEdge(id, source, target, d.layoutMode, nodes, edges),
+              ...automaticRouteOptions,
               sourceEndpoint: {
-                point: { x: sourceX, y: sourceY },
-                side: positionSide(sourcePosition),
+                point: routedSourcePoint,
+                side: sourceSide,
               },
               targetEndpoint: {
-                point: { x: targetX, y: targetY },
-                side: positionSide(targetPosition),
+                point: routedTargetPoint,
+                side: targetSide,
               },
             }
           );
@@ -250,10 +299,10 @@ function RoutedSmartBranchEdge({
     labelY = routed.labelY;
     routePoints = routed.points;
   } else {
-    path = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    labelX = (sourceX + targetX) / 2;
-    labelY = (sourceY + targetY) / 2;
-    routePoints = [{ x: sourceX, y: sourceY }, { x: targetX, y: targetY }];
+    path = `M ${routedSourcePoint.x} ${routedSourcePoint.y} L ${routedTargetPoint.x} ${routedTargetPoint.y}`;
+    labelX = (routedSourcePoint.x + routedTargetPoint.x) / 2;
+    labelY = (routedSourcePoint.y + routedTargetPoint.y) / 2;
+    routePoints = [routedSourcePoint, routedTargetPoint];
   }
 
   return (
@@ -288,8 +337,8 @@ function RoutedSmartBranchEdge({
               edgeId={id}
               sourceNodeId={source}
               targetNodeId={target}
-              sourcePoint={{ x: sourceX, y: sourceY }}
-              targetPoint={{ x: targetX, y: targetY }}
+              sourcePoint={routedSourcePoint}
+              targetPoint={routedTargetPoint}
             />
           )}
           <ConnectionLabelEditor
@@ -321,8 +370,8 @@ function RoutedSmartBranchEdge({
               const split = splitConnectorAtJunction(
                 edge,
                 junctionPoint,
-                { x: sourceX, y: sourceY },
-                { x: targetX, y: targetY },
+                routedSourcePoint,
+                routedTargetPoint,
                 {
                   junctionId: generateId(),
                   firstEdgeId: generateId(),

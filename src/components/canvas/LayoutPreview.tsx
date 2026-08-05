@@ -29,7 +29,15 @@ export function LayoutPreview({
       content = <>{dot(10, 8, 2.6)}{dot(18, 16, 2.6)}{dot(26, 24, 2.6)}{dot(18, 32, 2.6)}{line(10, 8, 10, 34)}</>;
       break;
     case "linear":
-      content = <>{line(8, 20, 48, 20)}{dot(10, 20)}{dot(23, 20)}{dot(36, 20)}{dot(48, 20)}</>;
+      content = <>
+        {line(18, 15, 42, 8)}
+        {line(18, 20, 42, 20)}
+        {line(18, 25, 42, 32)}
+        <rect x="6" y="13" width="12" height="14" rx="4" fill="#4262ff" />
+        {dot(44, 8)}
+        {dot(44, 20)}
+        {dot(44, 32)}
+      </>;
       break;
     case "radial":
       content = <>

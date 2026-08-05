@@ -816,6 +816,23 @@ export function nodeShapeConnectionPointAtAxis(
   };
 }
 
+/** Resolve a point along one side of a node's visible silhouette. */
+export function nodeShapeConnectionPointAtFraction(
+  node: ShapeConnectionNode,
+  rect: ShapeConnectionRect,
+  side: ConnectionSide,
+  fraction: number
+): ShapeConnectionPoint {
+  const boundedFraction = Number.isFinite(fraction)
+    ? Math.max(0, Math.min(1, fraction))
+    : 0.5;
+  const vertical = side === "top" || side === "bottom";
+  const axisCoordinate = vertical
+    ? rect.x + rect.width * boundedFraction
+    : rect.y + rect.height * boundedFraction;
+  return nodeShapeConnectionPointAtAxis(node, rect, side, axisCoordinate);
+}
+
 
 /** Resolve an arbitrary canvas point to a normalized anchor on a node silhouette. */
 export function nodeShapeConnectionAnchorAtPoint(
