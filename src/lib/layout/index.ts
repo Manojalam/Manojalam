@@ -5,7 +5,6 @@ import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
 import { computeOrthogonalTreeLayout } from "./tree-layout";
 import { computeMindMapLayout } from "./mind-map-layout";
-import { wrapChildGroups } from "./child-group-wrap";
 import {
   createNodeRect,
   getNodeRect,
@@ -68,7 +67,6 @@ type Side = "top" | "right" | "bottom" | "left";
 const MIN_NODE_PADDING_X = 64;
 const MIN_NODE_PADDING_Y = 40;
 const RADIAL_LEVEL_GAP = 230;
-const LINEAR_GAP = 84;
 
 const DEFAULT_W = 180;
 
@@ -308,16 +306,13 @@ export function computeLayout(
   for (const root of roots) {
     const subtree = getSubtree(root, hierarchy);
     const lone = subtree.length === 1;
-    const rootNode = byId.get(root)!;
-    const rootCenter = centerOf(rootNode);
-
-    if (mode === "horizontal" || mode === "vertical" || mode === "topDown") {
+    if (mode === "horizontal" || mode === "vertical" || mode === "topDown" || mode === "linear") {
       if (lone) continue;
       const pos = computeOrthogonalTreeLayout(
         root,
         hierarchy,
         byId,
-        mode === "horizontal" ? "horizontal" : "vertical"
+        mode === "horizontal" || mode === "linear" ? "horizontal" : "vertical"
       );
       Object.assign(result, pos);
     } else if (mode === "mindMap") {
@@ -330,17 +325,6 @@ export function computeLayout(
       Object.assign(result, pos);
     } else if (mode === "list") {
       Object.assign(result, computeListLayout(root, hierarchy, byId));
-    } else if (mode === "linear") {
-      const order = getSubtree(root, hierarchy);
-      let x = rootNode.position.x;
-      const linearPositions: Positions = {};
-      for (const id of order) {
-        const { w, h } = sizeOf(byId.get(id)!);
-        linearPositions[id] = { x, y: rootCenter.y - h / 2 };
-        x += w + LINEAR_GAP;
-      }
-      resolveCollisions(linearPositions, byId, "x");
-      Object.assign(result, wrapChildGroups(linearPositions, hierarchy, byId, () => "vertical"));
     } else if (mode === "matrix") {
       Object.assign(result, computeMatrixLayout(root, hierarchy, byId).placements);
     }
@@ -402,10 +386,8 @@ export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeR
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "step" };
     }
-    case "linear": {
-      const { source, target } = nearestSides(parent, child);
-      return { sourceHandle: source, targetHandle: target, curveStyle: "step" };
-    }
+    case "linear":
+      return { sourceHandle: "right", targetHandle: "left", curveStyle: "step" };
     case "radial": {
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "smooth" };
@@ -451,7 +433,7 @@ export const LAYOUT_OPTIONS: LayoutOption[] = [
   { mode: "horizontal", label: "Horizontal", description: "Tree grows left to right" },
   { mode: "vertical",   label: "Vertical",   description: "Balanced tree fanning down" },
   { mode: "list",       label: "List",       description: "Indented outline" },
-  { mode: "linear",     label: "Linear",     description: "Single connected line" },
+  { mode: "linear",     label: "Linear",     description: "Independent parent-to-child lines" },
   { mode: "radial",     label: "Sunburst",   description: "Concentric hierarchy rendered as filled sectors" },
   { mode: "matrix",     label: "Matrix",     description: "Structured chart / table" },
 ];

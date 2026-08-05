@@ -128,6 +128,38 @@ test("Fold continues a Linear branch on the next row", () => {
   assertNoOverlap(placed, "linear");
 });
 
+test("Linear preserves a single-row chain and gives siblings independent lanes", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 500, y: 360 }, measured: { width: 200, height: 80 }, data: { parentId: null, childOrder: ["first", "second", "third"] } },
+    { id: "first", position: { x: 0, y: 0 }, measured: { width: 160, height: 64 }, data: { parentId: "root", childOrder: ["first-child"] } },
+    { id: "first-child", position: { x: 0, y: 0 }, measured: { width: 150, height: 60 }, data: { parentId: "first", childOrder: [] } },
+    { id: "second", position: { x: 0, y: 0 }, measured: { width: 180, height: 70 }, data: { parentId: "root", childOrder: [] } },
+    { id: "third", position: { x: 0, y: 0 }, measured: { width: 170, height: 68 }, data: { parentId: "root", childOrder: [] } },
+  ];
+  const edges: Edge[] = [
+    ["root", "first"],
+    ["first", "first-child"],
+    ["root", "second"],
+    ["root", "third"],
+  ].map(([source, target]) => ({ id: `${source}-${target}`, source, target, data: { edgeType: "branch" } }));
+  const placed = applyPositions(nodes, computeLayout(nodes, edges, "linear", { rootId: "root" }));
+  const rects = new Map(placed.map((node) => [node.id, getNodeRect(node)]));
+  const childCenters = ["first", "second", "third"].map((id) => rects.get(id)!.centerY);
+
+  assert.ok(rects.get("first")!.left > rects.get("root")!.right);
+  assert.ok(rects.get("second")!.left > rects.get("root")!.right);
+  assert.ok(rects.get("third")!.left > rects.get("root")!.right);
+  assert.equal(new Set(childCenters).size, childCenters.length);
+  assert.equal(rects.get("first")!.centerY, rects.get("first-child")!.centerY);
+  assert.ok(rects.get("first-child")!.left > rects.get("first")!.right);
+  assert.deepEqual(routeForMode("linear", placed[0], placed[1]), {
+    sourceHandle: "right",
+    targetHandle: "left",
+    curveStyle: "step",
+  });
+  assertNoOverlap(placed, "linear");
+});
+
 test("tree levels keep clear routing corridors without oversized empty bands", () => {
   const tree = buildVariableTree(13);
   const horizontal = applyPositions(
