@@ -2,6 +2,7 @@ import { BOARD_CONTENT_VERSION } from "../config";
 import {
   DEFAULT_BOARD_SETTINGS,
   type BoardContent,
+  type LayoutMode,
   type ShapeType,
   type ShlokaCardNodeData,
   type ShlokaStudySection,
@@ -10,6 +11,7 @@ import {
 import { generateId } from "../utils";
 
 export const TEMPLATE_CATEGORIES = [
+  { id: "layouts", label: "Layouts" },
   { id: "general", label: "General" },
   { id: "study", label: "Study" },
   { id: "planning", label: "Planning" },
@@ -137,6 +139,122 @@ function edge(source: string, target: string, label?: string) {
   };
 }
 
+type LayoutTemplateNode = {
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+  parentKey?: string;
+  color?: string;
+  shapeType?: ShapeType;
+  width?: number;
+  mindMapSide?: "left" | "right";
+};
+
+/**
+ * Build a persisted hierarchy using the same layout metadata as the editor.
+ * The authored positions make the gallery preview useful before hydration;
+ * the metadata keeps every example editable by its corresponding layout.
+ */
+function layoutTemplateContent(
+  mode: LayoutMode,
+  rootKey: string,
+  specs: LayoutTemplateNode[]
+): BoardContent {
+  const ids = new Map(specs.map((spec) => [spec.key, generateId()]));
+  const childrenByKey = new Map<string, string[]>();
+  for (const spec of specs) {
+    if (!spec.parentKey) continue;
+    childrenByKey.set(spec.parentKey, [
+      ...(childrenByKey.get(spec.parentKey) ?? []),
+      spec.key,
+    ]);
+  }
+
+  const rootId = ids.get(rootKey);
+  const rootSpec = specs.find((spec) => spec.key === rootKey);
+  if (!rootId || !rootSpec) throw new Error(`Missing layout template root: ${rootKey}`);
+
+  const sunburstEnabled = mode === "radial";
+  const nodes = specs.map((spec) => {
+    const id = ids.get(spec.key)!;
+    const parentId = spec.parentKey ? ids.get(spec.parentKey) ?? null : null;
+    const node = shape(
+      id,
+      spec.label,
+      spec.x,
+      spec.y,
+      spec.color ?? (spec.key === rootKey ? "#4f46e5" : "#818cf8"),
+      spec.shapeType ?? "rounded",
+      spec.width ?? (spec.key === rootKey ? 200 : 180)
+    );
+    return {
+      ...node,
+      hidden: sunburstEnabled,
+      data: {
+        ...node.data,
+        parentId,
+        childOrder: (childrenByKey.get(spec.key) ?? []).map((key) => ids.get(key)!),
+        ...(spec.key === rootKey ? { layoutMode: mode } : {}),
+        ...(spec.mindMapSide ? { mindMapSide: spec.mindMapSide } : {}),
+        ...(sunburstEnabled ? { sunburstHiddenFor: rootId } : {}),
+      },
+    };
+  });
+
+  const edges = specs.flatMap((spec) => {
+    if (!spec.parentKey) return [];
+    const parentId = ids.get(spec.parentKey);
+    const id = ids.get(spec.key);
+    if (!parentId || !id) return [];
+    const item = edge(parentId, id);
+    const hiddenInMatrix = mode === "matrix";
+    const hiddenInSunburst = sunburstEnabled;
+    return [{
+      ...item,
+      hidden: hiddenInMatrix || hiddenInSunburst,
+      data: {
+        ...item.data,
+        layoutMode: mode,
+        curveStyle: mode === "radial" || mode === "fromParentFreeForm" ? "smooth" as const : "step" as const,
+        hiddenInMatrix,
+        hiddenInMatrixFor: hiddenInMatrix ? rootId : undefined,
+        hiddenInSunburst,
+        hiddenInSunburstFor: hiddenInSunburst ? rootId : undefined,
+      },
+    }];
+  });
+
+  if (!sunburstEnabled) return makeContent(nodes, edges);
+
+  const chartSize = 800;
+  const rootNode = nodes.find((node) => node.id === rootId)!;
+  const rootCenter = {
+    x: rootNode.position.x + Number(rootNode.style?.width) / 2,
+    y: rootNode.position.y + Number(rootNode.style?.height) / 2,
+  };
+  return makeContent([
+    ...nodes,
+    {
+      id: `sunburst-${rootId}`,
+      type: "sunburst",
+      position: {
+        x: rootCenter.x - chartSize / 2,
+        y: rootCenter.y - chartSize / 2,
+      },
+      style: { width: chartSize, height: chartSize },
+      data: {
+        rootId,
+        sunburstFor: rootId,
+        chartSize,
+        title: rootSpec.label,
+        locked: false,
+        tags: [],
+      },
+    },
+  ], edges);
+}
+
 function groupedTreeContent(
   rootLabel: string,
   groups: Array<{ label: string; children: string[]; color?: string }>
@@ -166,33 +284,158 @@ function groupedTreeContent(
   return makeContent(nodes, edges);
 }
 
-const templates: TemplateDefinition[] = [
+const layoutTemplates: TemplateDefinition[] = [
+  {
+    id: "layout-free-form",
+    name: "Free Form Canvas",
+    description: "Arrange connected ideas freely without automatic alignment.",
+    category: "layouts",
+    content: layoutTemplateContent("freeForm", "root", [
+      { key: "root", label: "Research question", x: 430, y: 270 },
+      { key: "notes", label: "Source notes", parentKey: "root", x: 60, y: 80, color: "#0ea5e9" },
+      { key: "insights", label: "Key insight", parentKey: "root", x: 720, y: 70, color: "#8b5cf6" },
+      { key: "quotes", label: "Useful quotes", parentKey: "root", x: 100, y: 500, color: "#d97706" },
+      { key: "questions", label: "Open questions", parentKey: "root", x: 760, y: 480, color: "#059669" },
+      { key: "follow-up", label: "Follow-up", parentKey: "questions", x: 480, y: 680, color: "#14b8a6" },
+    ]),
+  },
   {
     id: "basic-mindmap",
     name: "Mind Map",
     description: "Grow two-sided branches outward from one central idea.",
-    category: "general",
-    content: (() => {
-      const root = generateId();
-      const branches = [
-        { id: generateId(), label: "What", x: 116, y: 243, side: "left" as const },
-        { id: generateId(), label: "Why", x: 704, y: 243, side: "right" as const },
-        { id: generateId(), label: "How", x: 116, y: 357, side: "left" as const },
-        { id: generateId(), label: "Next steps", x: 704, y: 357, side: "right" as const },
-      ];
-      const rootNode = center(root, "Main idea");
-      return makeContent(
-        [
-          { ...rootNode, data: { ...rootNode.data, layoutMode: "mindMap" as const } },
-          ...branches.map((item) => {
-            const node = branch(item.id, item.label, item.x, item.y);
-            return { ...node, data: { ...node.data, mindMapSide: item.side } };
-          }),
-        ],
-        branches.map((item) => edge(root, item.id))
-      );
-    })(),
+    category: "layouts",
+    content: layoutTemplateContent("mindMap", "root", [
+      { key: "root", label: "Main idea", x: 400, y: 300 },
+      { key: "what", label: "What", parentKey: "root", x: 116, y: 243, mindMapSide: "left" },
+      { key: "why", label: "Why", parentKey: "root", x: 704, y: 243, mindMapSide: "right" },
+      { key: "how", label: "How", parentKey: "root", x: 116, y: 357, mindMapSide: "left" },
+      { key: "next", label: "Next steps", parentKey: "root", x: 704, y: 357, mindMapSide: "right" },
+    ]),
   },
+  {
+    id: "layout-radial-branches",
+    name: "Radial Branches",
+    description: "Spread a connected hierarchy around one central topic.",
+    category: "layouts",
+    content: layoutTemplateContent("fromParentFreeForm", "root", [
+      { key: "root", label: "Brainstorm", x: 410, y: 310 },
+      { key: "audience", label: "Audience", parentKey: "root", x: 420, y: 40, color: "#0ea5e9" },
+      { key: "needs", label: "Needs", parentKey: "root", x: 730, y: 130, color: "#8b5cf6" },
+      { key: "ideas", label: "Ideas", parentKey: "root", x: 800, y: 310, color: "#ec4899" },
+      { key: "risks", label: "Risks", parentKey: "root", x: 730, y: 490, color: "#d97706" },
+      { key: "actions", label: "Actions", parentKey: "root", x: 420, y: 600, color: "#059669" },
+      { key: "evidence", label: "Evidence", parentKey: "root", x: 40, y: 310, color: "#14b8a6" },
+      { key: "interviews", label: "Interviews", parentKey: "needs", x: 920, y: 20, color: "#a78bfa" },
+      { key: "prototype", label: "Prototype", parentKey: "actions", x: 650, y: 730, color: "#34d399" },
+    ]),
+  },
+  {
+    id: "layout-horizontal-tree",
+    name: "Horizontal Tree",
+    description: "Show levels of a hierarchy growing from left to right.",
+    category: "layouts",
+    content: layoutTemplateContent("horizontal", "root", [
+      { key: "root", label: "Organization", x: 40, y: 300 },
+      { key: "product", label: "Product", parentKey: "root", x: 360, y: 80, color: "#2563eb" },
+      { key: "operations", label: "Operations", parentKey: "root", x: 360, y: 300, color: "#7c3aed" },
+      { key: "growth", label: "Growth", parentKey: "root", x: 360, y: 520, color: "#059669" },
+      { key: "design", label: "Design", parentKey: "product", x: 680, y: 20, color: "#60a5fa" },
+      { key: "engineering", label: "Engineering", parentKey: "product", x: 680, y: 150, color: "#60a5fa" },
+      { key: "finance", label: "Finance", parentKey: "operations", x: 680, y: 300, color: "#a78bfa" },
+      { key: "people", label: "People", parentKey: "operations", x: 680, y: 390, color: "#a78bfa" },
+      { key: "marketing", label: "Marketing", parentKey: "growth", x: 680, y: 520, color: "#34d399" },
+      { key: "sales", label: "Sales", parentKey: "growth", x: 680, y: 630, color: "#34d399" },
+    ]),
+  },
+  {
+    id: "layout-vertical-tree",
+    name: "Vertical Tree",
+    description: "Fan a balanced hierarchy downward from a single root.",
+    category: "layouts",
+    content: layoutTemplateContent("vertical", "root", [
+      { key: "root", label: "Course", x: 430, y: 40 },
+      { key: "foundation", label: "Foundations", parentKey: "root", x: 90, y: 250, color: "#2563eb" },
+      { key: "practice", label: "Practice", parentKey: "root", x: 440, y: 250, color: "#7c3aed" },
+      { key: "mastery", label: "Mastery", parentKey: "root", x: 790, y: 250, color: "#059669" },
+      { key: "read", label: "Read", parentKey: "foundation", x: 20, y: 450, color: "#60a5fa" },
+      { key: "review", label: "Review", parentKey: "foundation", x: 200, y: 450, color: "#60a5fa" },
+      { key: "exercise", label: "Exercises", parentKey: "practice", x: 370, y: 450, color: "#a78bfa" },
+      { key: "project", label: "Project", parentKey: "practice", x: 550, y: 450, color: "#a78bfa" },
+      { key: "assess", label: "Assessment", parentKey: "mastery", x: 720, y: 450, color: "#34d399" },
+      { key: "reflect", label: "Reflection", parentKey: "mastery", x: 900, y: 450, color: "#34d399" },
+    ]),
+  },
+  {
+    id: "layout-list",
+    name: "Outline List",
+    description: "Turn a hierarchy into a compact, indented outline.",
+    category: "layouts",
+    content: layoutTemplateContent("list", "root", [
+      { key: "root", label: "Meeting notes", x: 100, y: 40, width: 240 },
+      { key: "context", label: "1. Context", parentKey: "root", x: 210, y: 180, color: "#2563eb", width: 220 },
+      { key: "goal", label: "Goal and background", parentKey: "context", x: 320, y: 290, color: "#60a5fa", width: 240 },
+      { key: "discussion", label: "2. Discussion", parentKey: "root", x: 210, y: 420, color: "#7c3aed", width: 220 },
+      { key: "option-a", label: "Option A", parentKey: "discussion", x: 320, y: 530, color: "#a78bfa" },
+      { key: "option-b", label: "Option B", parentKey: "discussion", x: 320, y: 640, color: "#a78bfa" },
+      { key: "actions", label: "3. Actions", parentKey: "root", x: 210, y: 770, color: "#059669", width: 220 },
+      { key: "owner", label: "Owner and due date", parentKey: "actions", x: 320, y: 880, color: "#34d399", width: 240 },
+    ]),
+  },
+  {
+    id: "timeline",
+    name: "Timeline",
+    description: "Place sequential events on one connected line.",
+    category: "layouts",
+    content: layoutTemplateContent("linear", "start", [
+      { key: "start", label: "Discover", x: 60, y: 300, shapeType: "capsule" },
+      { key: "define", label: "Define", parentKey: "start", x: 310, y: 300, color: "#2563eb", shapeType: "capsule" },
+      { key: "build", label: "Build", parentKey: "define", x: 560, y: 300, color: "#7c3aed", shapeType: "capsule" },
+      { key: "launch", label: "Launch", parentKey: "build", x: 810, y: 300, color: "#059669", shapeType: "capsule" },
+    ]),
+  },
+  {
+    id: "layout-sunburst",
+    name: "Topic Sunburst",
+    description: "Explore a hierarchy as concentric, color-coded sectors.",
+    category: "layouts",
+    content: layoutTemplateContent("radial", "root", [
+      { key: "root", label: "Knowledge map", x: 400, y: 460 },
+      { key: "people", label: "People", parentKey: "root", x: 150, y: 250, color: "#2563eb" },
+      { key: "process", label: "Process", parentKey: "root", x: 650, y: 250, color: "#7c3aed" },
+      { key: "tools", label: "Tools", parentKey: "root", x: 150, y: 650, color: "#d97706" },
+      { key: "outcomes", label: "Outcomes", parentKey: "root", x: 650, y: 650, color: "#059669" },
+      { key: "roles", label: "Roles", parentKey: "people", x: 40, y: 100, color: "#60a5fa" },
+      { key: "skills", label: "Skills", parentKey: "people", x: 250, y: 100, color: "#93c5fd" },
+      { key: "inputs", label: "Inputs", parentKey: "process", x: 570, y: 100, color: "#a78bfa" },
+      { key: "steps", label: "Steps", parentKey: "process", x: 780, y: 100, color: "#c4b5fd" },
+      { key: "systems", label: "Systems", parentKey: "tools", x: 40, y: 800, color: "#fbbf24" },
+      { key: "methods", label: "Methods", parentKey: "tools", x: 250, y: 800, color: "#fcd34d" },
+      { key: "metrics", label: "Metrics", parentKey: "outcomes", x: 570, y: 800, color: "#34d399" },
+      { key: "impact", label: "Impact", parentKey: "outcomes", x: 780, y: 800, color: "#6ee7b7" },
+    ]),
+  },
+  {
+    id: "layout-matrix",
+    name: "Comparison Matrix",
+    description: "Compare grouped topics in a structured table layout.",
+    category: "layouts",
+    content: layoutTemplateContent("matrix", "root", [
+      { key: "root", label: "Options comparison", x: 120, y: 60, width: 720, shapeType: "rectangle" },
+      { key: "option-a", label: "Option A", parentKey: "root", x: 120, y: 190, color: "#2563eb", width: 210, shapeType: "rectangle" },
+      { key: "a-strength", label: "Strength", parentKey: "option-a", x: 360, y: 190, color: "#60a5fa", width: 220, shapeType: "rectangle" },
+      { key: "a-tradeoff", label: "Trade-off", parentKey: "option-a", x: 600, y: 190, color: "#93c5fd", width: 220, shapeType: "rectangle" },
+      { key: "option-b", label: "Option B", parentKey: "root", x: 120, y: 310, color: "#7c3aed", width: 210, shapeType: "rectangle" },
+      { key: "b-strength", label: "Strength", parentKey: "option-b", x: 360, y: 310, color: "#a78bfa", width: 220, shapeType: "rectangle" },
+      { key: "b-tradeoff", label: "Trade-off", parentKey: "option-b", x: 600, y: 310, color: "#c4b5fd", width: 220, shapeType: "rectangle" },
+      { key: "option-c", label: "Option C", parentKey: "root", x: 120, y: 430, color: "#059669", width: 210, shapeType: "rectangle" },
+      { key: "c-strength", label: "Strength", parentKey: "option-c", x: 360, y: 430, color: "#34d399", width: 220, shapeType: "rectangle" },
+      { key: "c-tradeoff", label: "Trade-off", parentKey: "option-c", x: 600, y: 430, color: "#6ee7b7", width: 220, shapeType: "rectangle" },
+    ]),
+  },
+];
+
+const templates: TemplateDefinition[] = [
+  ...layoutTemplates,
   {
     id: "flowchart",
     name: "Flowchart",
@@ -293,23 +536,6 @@ const templates: TemplateDefinition[] = [
       { label: "Delivery", children: ["Milestones", "Owners", "Resources"], color: "#7c3aed" },
       { label: "Readiness", children: ["Risks", "Dependencies", "Next action"], color: "#d97706" },
     ]),
-  },
-  {
-    id: "timeline",
-    name: "Timeline",
-    description: "Lay out four sequential events or milestones.",
-    category: "planning",
-    content: (() => {
-      const events = ["Event 1", "Event 2", "Event 3", "Event 4"].map((label, index) => ({
-        id: generateId(),
-        label,
-        x: 80 + index * 240,
-      }));
-      return makeContent(
-        events.map((event) => shape(event.id, event.label, event.x, 300, "#6366f1", "capsule")),
-        events.slice(0, -1).map((event, index) => edge(event.id, events[index + 1].id))
-      );
-    })(),
   },
   {
     id: "kanban-lite",

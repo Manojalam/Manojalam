@@ -58,7 +58,7 @@ export default function TemplatesPage() {
       <div className="mx-auto max-w-5xl p-6">
         <h1 className="text-2xl font-bold">Template Gallery</h1>
         <p className="mt-1 text-muted-foreground">
-          A small set of tested starting points for common board structures
+          Tested starting points for every layout and common board structure
         </p>
 
         <SupabaseSetupNotice className="mt-5" />
