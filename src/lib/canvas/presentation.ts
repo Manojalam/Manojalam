@@ -1,16 +1,24 @@
 import type { Edge, Node } from "@xyflow/react";
 import { frameOwnedNodeIds, isStandaloneFrameNode } from "./frame-collision";
 import { buildHierarchy, getRoots, getSubtree } from "../layout/hierarchy";
-import { getNodeRect } from "../layout/geometry";
+import { getNodeRect, nodePositionFromTopLeft } from "../layout/geometry";
 
-export type PresentationStopKind = "overview" | "frame" | "chart" | "branch";
+export type PresentationStopKind = "overview" | "frame" | "chart" | "branch" | "matrix-fold";
 export type PresentationOrder = "rows" | "columns";
+
+export interface MatrixFoldPresentation {
+  rootId: string;
+  bodyFrameId: string;
+  /** A continuous header spans every fold on the board and is localized while presenting. */
+  localizeContinuousHeader: boolean;
+}
 
 export interface PresentationStop {
   id: string;
   kind: PresentationStopKind;
   title: string;
   nodeIds: string[];
+  matrixFold?: MatrixFoldPresentation;
 }
 
 function plainText(value: unknown): string {
@@ -90,6 +98,106 @@ export function orderPresentationNodes(
   );
 }
 
+function uniqueNodeIds(nodeIds: readonly string[]): string[] {
+  return [...new Set(nodeIds)];
+}
+
+function matrixFoldPresentationStops(
+  root: Node,
+  nodes: readonly Node[],
+  order: PresentationOrder
+): PresentationStop[] | null {
+  const rootData = (root.data ?? {}) as Record<string, unknown>;
+  if (rootData.layoutMode !== "matrix") return null;
+  const sections = Array.isArray(rootData.matrixFoldSections)
+    ? rootData.matrixFoldSections
+    : [];
+  if (sections.length < 2) return null;
+
+  const sectionFrames = nodes.filter((node) => {
+    if (node.hidden || node.type !== "frame") return false;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    return data.matrixFrameFor === root.id
+      && typeof data.matrixFoldSectionIndex === "number";
+  });
+  const dividedRoot = rootData.matrixFoldRootMode === "divided";
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const stops = sections.map((_section, sectionIndex): PresentationStop | null => {
+    const frames = sectionFrames.filter((frame) =>
+      (frame.data as Record<string, unknown>).matrixFoldSectionIndex === sectionIndex);
+    const bodyFrame = frames.find((frame) =>
+      Array.isArray((frame.data as Record<string, unknown>).matrixFoldSectionNodeIds));
+    if (!bodyFrame) return null;
+    const bodyData = (bodyFrame.data ?? {}) as Record<string, unknown>;
+    const authoredNodeIds = (bodyData.matrixFoldSectionNodeIds as unknown[])
+      .filter((nodeId): nodeId is string =>
+        typeof nodeId === "string" && nodeById.get(nodeId)?.hidden !== true);
+    const sectionRoots = orderPresentationNodes(authoredNodeIds
+      .map((nodeId) => nodeById.get(nodeId))
+      .filter((node): node is Node =>
+        node !== undefined
+        && (node.data as Record<string, unknown>)?.parentId === root.id), order);
+    const firstTitle = presentationNodeTitle(sectionRoots[0], `Fold ${sectionIndex + 1}`);
+    const lastTitle = presentationNodeTitle(sectionRoots.at(-1), firstTitle);
+    const sectionTitle = sectionRoots.length > 1
+      ? `${firstTitle} – ${lastTitle}`
+      : firstTitle;
+    const localizeContinuousHeader = !dividedRoot;
+    return {
+      id: `matrix-fold:${root.id}:${sectionIndex}`,
+      kind: "matrix-fold",
+      title: `Fold ${sectionIndex + 1} · ${sectionTitle}`,
+      nodeIds: uniqueNodeIds([
+        ...frames.map((frame) => frame.id),
+        ...authoredNodeIds,
+        ...(localizeContinuousHeader ? [root.id] : []),
+      ]),
+      matrixFold: {
+        rootId: root.id,
+        bodyFrameId: bodyFrame.id,
+        localizeContinuousHeader,
+      },
+    };
+  });
+  return stops.every((stop): stop is PresentationStop => stop !== null)
+    ? stops
+    : null;
+}
+
+/**
+ * Fold sections reuse a wide root header on the board. While teaching one fold,
+ * clone that root geometry above the active body so viewport fitting does not
+ * include every folded section. The saved board nodes are never mutated.
+ */
+export function applyPresentationStopGeometry(
+  nodes: readonly Node[],
+  stop: PresentationStop | undefined
+): Node[] {
+  const fold = stop?.matrixFold;
+  if (!fold?.localizeContinuousHeader) return [...nodes];
+  const root = nodes.find((node) => node.id === fold.rootId);
+  const bodyFrame = nodes.find((node) => node.id === fold.bodyFrameId);
+  if (!root || !bodyFrame) return [...nodes];
+  const rootRect = getNodeRect(root);
+  const bodyRect = getNodeRect(bodyFrame);
+  const size = { width: bodyRect.width, height: rootRect.height };
+  return nodes.map((node) => node.id !== root.id ? node : {
+    ...node,
+    position: nodePositionFromTopLeft(node, {
+      x: bodyRect.left,
+      y: bodyRect.top - rootRect.height,
+    }, size),
+    width: undefined,
+    height: undefined,
+    measured: undefined,
+    style: {
+      ...(node.style ?? {}),
+      width: size.width,
+      height: size.height,
+    },
+  });
+}
+
 /**
  * Turn an existing board into a useful teaching sequence without asking the
  * author to maintain a second slide model. Authored frames become sections;
@@ -111,6 +219,12 @@ export function buildPresentationStops(
     title: "Board overview",
     nodeIds: visibleNodes.map((node) => node.id),
   };
+  const matrixFoldStopsByRoot = new Map<string, PresentationStop[]>();
+  for (const node of visibleNodes) {
+    if (node.type === "frame") continue;
+    const foldStops = matrixFoldPresentationStops(node, visibleNodes, order);
+    if (foldStops) matrixFoldStopsByRoot.set(node.id, foldStops);
+  }
 
   const frames = orderPresentationNodes(visibleNodes.filter(isStandaloneFrameNode), order);
   if (frames.length) {
@@ -138,14 +252,15 @@ export function buildPresentationStops(
       .filter((node) => !presentedIds.has(node.id) && node.type !== "frame")
       .map((node) => node.id);
 
+    const matrixFoldStops = [...matrixFoldStopsByRoot.values()].flat();
     return additionalIds.length
-      ? [overview, ...frameStops, {
+      ? [overview, ...frameStops, ...matrixFoldStops, {
           id: "additional-ideas",
           kind: "chart",
           title: "Additional ideas",
           nodeIds: additionalIds,
         }]
-      : [overview, ...frameStops];
+      : [overview, ...frameStops, ...matrixFoldStops];
   }
 
   const hierarchy = buildHierarchy(
@@ -157,8 +272,15 @@ export function buildPresentationStops(
     .map((id) => byId.get(id))
     .filter((node): node is Node => Boolean(node) && node?.type !== "frame"), order);
   const stops: PresentationStop[] = [overview];
+  const presentedMatrixRootIds = new Set<string>();
 
   roots.forEach((root, rootIndex) => {
+    const matrixFolds = matrixFoldStopsByRoot.get(root.id);
+    if (matrixFolds) {
+      presentedMatrixRootIds.add(root.id);
+      stops.push(...matrixFolds);
+      return;
+    }
     const rootSubtree = getSubtree(root.id, hierarchy).filter((id) => visibleIds.has(id));
     stops.push({
       id: `chart:${root.id}`,
@@ -181,6 +303,10 @@ export function buildPresentationStops(
       });
     });
   });
+
+  for (const [rootId, matrixFolds] of matrixFoldStopsByRoot) {
+    if (!presentedMatrixRootIds.has(rootId)) stops.push(...matrixFolds);
+  }
 
   return stops;
 }

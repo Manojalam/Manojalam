@@ -511,6 +511,11 @@ mark { border-radius: 2px; padding: 0 2px; }
   cursor: grabbing;
 }
 
+[data-presentation-mode="true"] [data-matrix-fold-selector],
+[data-presentation-mode="true"] [data-matrix-repeated-cell] {
+  display: none;
+}
+
 .presentation-laser-pointer {
   position: fixed;
   z-index: 10000;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import {
+  applyPresentationStopGeometry,
   buildPresentationStops,
   orderPresentationNodes,
   presentationNodeTitle,
@@ -94,4 +95,133 @@ test("creates clean, concise presenter labels from rich text", () => {
     presentationNodeTitle(node, "Topic"),
     "Plants & sunlight make a wonderfully long lesson ti…"
   );
+});
+
+test("uses authored Matrix Fold sections instead of generic hierarchy branches", () => {
+  const nodes = [
+    makeNode("root", 0, 0, {
+      text: "Matrix title",
+      layoutMode: "matrix",
+      matrixFoldRootMode: "continuous",
+      matrixFoldSections: [
+        { x: 0, y: 48, width: 240, height: 200, repeatedCells: [] },
+        { x: 300, y: 48, width: 240, height: 200, repeatedCells: [] },
+      ],
+    }, "shape", 540, 48),
+    makeNode("branch-a", 0, 48, { text: "First branch", parentId: "root" }, "shape", 240, 200),
+    makeNode("branch-b", 300, 48, { text: "Second branch", parentId: "root" }, "shape", 240, 200),
+    makeNode("frame-a", 0, 48, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 0,
+      matrixFoldSectionNodeIds: ["branch-a"],
+    }, "frame", 240, 200),
+    makeNode("frame-b", 300, 48, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 1,
+      matrixFoldSectionNodeIds: ["branch-b"],
+    }, "frame", 240, 200),
+  ];
+  const edges: Edge[] = [
+    { id: "root-a", source: "root", target: "branch-a" },
+    { id: "root-b", source: "root", target: "branch-b" },
+  ];
+
+  const stops = buildPresentationStops(nodes, edges);
+
+  assert.deepEqual(stops.map((stop) => stop.kind), [
+    "overview",
+    "matrix-fold",
+    "matrix-fold",
+  ]);
+  assert.deepEqual(stops.slice(1).map((stop) => stop.title), [
+    "Fold 1 · First branch",
+    "Fold 2 · Second branch",
+  ]);
+  assert.deepEqual(stops[1].nodeIds, ["frame-a", "branch-a", "root"]);
+  assert.deepEqual(stops[2].nodeIds, ["frame-b", "branch-b", "root"]);
+
+  const focused = applyPresentationStopGeometry(nodes, stops[2]);
+  const focusedRoot = focused.find((node) => node.id === "root");
+  assert.deepEqual(focusedRoot?.position, { x: 300, y: 0 });
+  assert.equal(focusedRoot?.style?.width, 240);
+  assert.equal(focusedRoot?.style?.height, 48);
+  assert.equal(nodes[0].style?.width, 540, "presentation geometry must not mutate the board");
+});
+
+test("uses generated repeated headers for divided Matrix Fold sections", () => {
+  const nodes = [
+    makeNode("root", 0, 0, {
+      text: "Divided Matrix",
+      layoutMode: "matrix",
+      matrixFoldRootMode: "divided",
+      matrixFoldSections: [
+        { x: 0, y: 48, width: 240, height: 200, repeatedCells: [] },
+        { x: 300, y: 48, width: 240, height: 200, repeatedCells: [] },
+      ],
+    }, "shape", 240, 48),
+    makeNode("branch-a", 0, 48, { text: "First", parentId: "root" }, "shape", 240, 200),
+    makeNode("branch-b", 300, 48, { text: "Second", parentId: "root" }, "shape", 240, 200),
+    makeNode("frame-a", 0, 48, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 0,
+      matrixFoldSectionNodeIds: ["root", "branch-a"],
+    }, "frame", 240, 200),
+    makeNode("frame-b", 300, 48, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 1,
+      matrixFoldSectionNodeIds: ["branch-b"],
+    }, "frame", 240, 200),
+    makeNode("header-b", 300, 0, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 1,
+      matrixRepeatedCells: [{ role: "header", sourceNodeId: "root" }],
+    }, "frame", 240, 48),
+  ];
+  const edges: Edge[] = [
+    { id: "root-a", source: "root", target: "branch-a" },
+    { id: "root-b", source: "root", target: "branch-b" },
+  ];
+
+  const stops = buildPresentationStops(nodes, edges);
+
+  assert.deepEqual(stops[1].nodeIds, ["frame-a", "root", "branch-a"]);
+  assert.deepEqual(stops[2].nodeIds, ["frame-b", "header-b", "branch-b"]);
+  assert.equal(stops[2].matrixFold?.localizeContinuousHeader, false);
+});
+
+test("keeps Matrix Fold stops when the chart sits inside an authored frame", () => {
+  const nodes = [
+    makeNode("lesson-frame", -20, -20, { title: "Lesson" }, "frame", 600, 300),
+    makeNode("root", 0, 0, {
+      text: "Framed Matrix",
+      layoutMode: "matrix",
+      matrixFoldSections: [
+        { x: 0, y: 48, width: 240, height: 200, repeatedCells: [] },
+        { x: 300, y: 48, width: 240, height: 200, repeatedCells: [] },
+      ],
+    }, "shape", 540, 48),
+    makeNode("branch-a", 0, 48, { text: "First", parentId: "root" }, "shape", 240, 200),
+    makeNode("branch-b", 300, 48, { text: "Second", parentId: "root" }, "shape", 240, 200),
+    makeNode("matrix-frame-a", 0, 48, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 0,
+      matrixFoldSectionNodeIds: ["branch-a"],
+    }, "frame", 240, 200),
+    makeNode("matrix-frame-b", 300, 48, {
+      matrixFrameFor: "root",
+      matrixFoldSectionIndex: 1,
+      matrixFoldSectionNodeIds: ["branch-b"],
+    }, "frame", 240, 200),
+  ];
+  const edges: Edge[] = [
+    { id: "root-a", source: "root", target: "branch-a" },
+    { id: "root-b", source: "root", target: "branch-b" },
+  ];
+
+  assert.deepEqual(buildPresentationStops(nodes, edges).map((stop) => stop.kind), [
+    "overview",
+    "frame",
+    "matrix-fold",
+    "matrix-fold",
+  ]);
 });

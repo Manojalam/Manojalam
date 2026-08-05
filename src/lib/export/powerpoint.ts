@@ -8,7 +8,10 @@ import type {
   ShapeType,
   VidyaEdgeData,
 } from "../types";
-import type { PresentationStop } from "../canvas/presentation";
+import {
+  applyPresentationStopGeometry,
+  type PresentationStop,
+} from "../canvas/presentation";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 import {
   buildRelationshipGroupsForSpec,
@@ -241,6 +244,7 @@ function addEditableLine(
 
 function renderFrame(context: RenderContext, node: Node, rect: PowerPointRect): void {
   const data = (node.data ?? {}) as unknown as FrameNodeData;
+  const isGeneratedMatrixFrame = typeof (node.data as Record<string, unknown>)?.matrixFrameFor === "string";
   const line = nodeLine(node);
   context.slide.addShape(context.pptx.ShapeType.roundRect, {
     x: rect.x,
@@ -300,21 +304,23 @@ function renderFrame(context: RenderContext, node: Node, rect: PowerPointRect): 
     context.objectCount += 1;
   }
 
-  context.slide.addText(editableNodeText(node), {
-    x: rect.x + 0.08,
-    y: rect.y + 0.02,
-    w: Math.max(0.25, rect.width - 0.16),
-    h: Math.min(0.32, Math.max(0.12, rect.height * 0.16)),
-    fontFace: nodeFontFace(node),
-    fontSize: clamp(scaledFontSize((node.data as Record<string, unknown>)?.fontSize, context.transform.scale), 9, 17),
-    color: powerPointColor((node.data as Record<string, unknown>)?.textColor, String(line.color ?? ACCENT)).color,
-    bold: true,
-    margin: 0,
-    fit: "shrink",
-    valign: "middle",
-    objectName: `Editable frame title: ${editableNodeText(node)}`,
-  });
-  context.objectCount += 1;
+  if (!isGeneratedMatrixFrame) {
+    context.slide.addText(editableNodeText(node), {
+      x: rect.x + 0.08,
+      y: rect.y + 0.02,
+      w: Math.max(0.25, rect.width - 0.16),
+      h: Math.min(0.32, Math.max(0.12, rect.height * 0.16)),
+      fontFace: nodeFontFace(node),
+      fontSize: clamp(scaledFontSize((node.data as Record<string, unknown>)?.fontSize, context.transform.scale), 9, 17),
+      color: powerPointColor((node.data as Record<string, unknown>)?.textColor, String(line.color ?? ACCENT)).color,
+      bold: true,
+      margin: 0,
+      fit: "shrink",
+      valign: "middle",
+      objectName: `Editable frame title: ${editableNodeText(node)}`,
+    });
+    context.objectCount += 1;
+  }
 }
 
 function renderGenericNode(context: RenderContext, node: Node, rect: PowerPointRect): void {
@@ -934,15 +940,16 @@ function renderTeachingStop(
   warnings: string[]
 ): number {
   const stopIds = new Set(stop.nodeIds);
-  const stopNodes = options.nodes.filter((node) => stopIds.has(node.id) && !node.hidden);
+  const presentationNodes = applyPresentationStopGeometry(options.nodes, stop);
+  const stopNodes = presentationNodes.filter((node) => stopIds.has(node.id) && !node.hidden);
   if (!stopNodes.length) return 0;
   const transform = buildPowerPointTransform(stopNodes);
   const slide = pptx.addSlide();
-  const nodeById = new Map(options.nodes.map((node) => [node.id, node]));
+  const nodeById = new Map(presentationNodes.map((node) => [node.id, node]));
   const context: RenderContext = {
     pptx,
     slide,
-    allNodes: options.nodes,
+    allNodes: presentationNodes,
     allEdges: options.edges,
     relationships: options.relationships,
     transform,

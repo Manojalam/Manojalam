@@ -117,7 +117,10 @@ import {
 import { useBoardRealtime } from "@/lib/collaboration/use-board-realtime";
 import { NodeMediaLayer } from "./NodeMediaLayer";
 import { PresentationControls } from "./PresentationControls";
-import { buildPresentationStops } from "@/lib/canvas/presentation";
+import {
+  applyPresentationStopGeometry,
+  buildPresentationStops,
+} from "@/lib/canvas/presentation";
 
 // ── Alignment guide types ──────────────────────────────────────────────────
 interface Guides { h: number[]; v: number[] }
@@ -374,8 +377,11 @@ function VidyaCanvasInner({
   );
 
   const displayNodes = useMemo(() => {
+    const presentationNodes = presentationMode
+      ? applyPresentationStopGeometry(numberedNodes, activePresentationStop)
+      : numberedNodes;
     let resolvedNodes = (!canEdit || presentationMode)
-      ? numberedNodes.map((node) => ({
+      ? presentationNodes.map((node) => ({
         ...node,
         draggable: false,
         connectable: false,
@@ -385,7 +391,7 @@ function VidyaCanvasInner({
           pointerEvents: "none" as const,
         },
       }))
-      : numberedNodes.map((node) => {
+      : presentationNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
       const locked = data.locked === true;
       if (data.matrixCell !== true) {
@@ -446,7 +452,7 @@ function VidyaCanvasInner({
     });
   }, [
     activePresentationNodeIds,
-    activePresentationStop?.kind,
+    activePresentationStop,
     canEdit,
     numberedNodes,
     presentationMode,
@@ -1993,7 +1999,7 @@ function VidyaCanvasInner({
       {!presentationMode && <MiniMap nodeColor={(n) => (n.data as { color?: string })?.color ?? "#6366f1"}
         maskColor="rgba(0,0,0,0.06)" position="bottom-right" pannable zoomable />}
       {presentationMode && (
-        <PresentationControls nodes={numberedNodes} stops={presentationStops} />
+        <PresentationControls nodes={displayNodes} stops={presentationStops} />
       )}
     </ReactFlow>
     {!presentationMode && <RelationshipDiagramDialog />}
