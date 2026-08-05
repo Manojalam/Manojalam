@@ -35,7 +35,7 @@ try {
     return originalResolveFilename.call(this, mapped, parent, isMain, options);
   };
 
-  const { downloadEditablePowerPoint } = require(join(outputDirectory, "lib", "export", "powerpoint.js"));
+  const { downloadEditablePowerPoint, expandEditablePowerPointStops } = require(join(outputDirectory, "lib", "export", "powerpoint.js"));
   const { buildPresentationStops } = require(join(outputDirectory, "lib", "canvas", "presentation.js"));
   const root = {
     id: "root",
@@ -211,8 +211,18 @@ try {
   const matrixSlidePaths = Object.keys(matrixArchive.files)
     .filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path));
   assert.equal(matrixSlidePaths.length, 3, "the folded Matrix should export as overview plus two folds");
+  const matrixOverviewXml = await matrixArchive.file("ppt/slides/slide1.xml").async("string");
   const firstFoldXml = await matrixArchive.file("ppt/slides/slide2.xml").async("string");
   const secondFoldXml = await matrixArchive.file("ppt/slides/slide3.xml").async("string");
+  assert.match(matrixOverviewXml, /Editable Matrix overview root/);
+  assert.match(matrixOverviewXml, /Editable Matrix fold summary 1/);
+  assert.match(matrixOverviewXml, /Editable Matrix fold summary 2/);
+  assert.match(matrixOverviewXml, /Fold 1/);
+  assert.match(matrixOverviewXml, /Fold 2/);
+  assert.match(matrixOverviewXml, /First fold/);
+  assert.match(matrixOverviewXml, /Second fold/);
+  assert.doesNotMatch(matrixOverviewXml, /Editable shape: First fold/);
+  assert.doesNotMatch(matrixOverviewXml, /Editable frame:/);
   assert.match(firstFoldXml, /Fold 1 · First fold/);
   assert.match(firstFoldXml, /Folded Matrix/);
   assert.match(firstFoldXml, /First fold/);
@@ -221,7 +231,36 @@ try {
   assert.match(secondFoldXml, /Folded Matrix/);
   assert.match(secondFoldXml, /Second fold/);
   assert.doesNotMatch(secondFoldXml, /First fold/);
-  console.log("Verified authored Matrix Fold sections export as compact editable teaching slides.");
+  const paginationStops = expandEditablePowerPointStops([
+    {
+      id: "overview",
+      kind: "overview",
+      title: "Board overview",
+      nodeIds: ["pagination-root"],
+    },
+    ...Array.from({ length: 7 }, (_, index) => ({
+      id: `matrix-fold:pagination-root:${index}`,
+      kind: "matrix-fold",
+      title: `Fold ${index + 1}`,
+      nodeIds: ["pagination-root"],
+      matrixFold: {
+        rootId: "pagination-root",
+        bodyFrameId: `pagination-frame-${index}`,
+        localizeContinuousHeader: false,
+      },
+    })),
+  ], [{
+    id: "pagination-root",
+    type: "shape",
+    position: { x: 0, y: 0 },
+    data: { text: "Paginated Matrix" },
+  }]);
+  assert.equal(
+    paginationStops.filter((stop) => stop.kind === "overview").length,
+    2,
+    "more than six authored folds should paginate instead of shrinking the overview"
+  );
+  console.log("Verified folded Matrix overviews use editable fold maps, preserve focused teaching slides, and paginate after six folds.");
   if (keepArtifacts) console.log(`Kept verification deck at ${outputFile}`);
   if (keepArtifacts) console.log(`Kept folded Matrix verification deck at ${foldedOutputFile}`);
 } finally {
