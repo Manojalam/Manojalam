@@ -18,6 +18,7 @@ import {
   normalizeRelationshipDiagramSpec,
 } from "../relationship-diagram";
 import {
+  POWERPOINT_SLIDE,
   buildPowerPointTransform,
   editableNodeText,
   fittedPowerPointFontSize,
@@ -68,6 +69,20 @@ interface RenderContext {
   objectCount: number;
   summarizeNodeText: boolean;
 }
+
+interface PowerPointMatrixOverviewPage {
+  rootId: string;
+  foldStopIds: string[];
+  includeOtherTopics: boolean;
+  pageNumber: number;
+  pageCount: number;
+}
+
+type PowerPointPresentationStop = PresentationStop & {
+  powerPointMatrixOverview?: PowerPointMatrixOverviewPage;
+};
+
+const MATRIX_OVERVIEW_FOLDS_PER_PAGE = 6;
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
@@ -510,6 +525,59 @@ function canCreateAutomaticDetail(node: Node | undefined): node is Node {
   return !(node.type === "shape" && (data.radialChart as RadialChartData | undefined)?.enabled);
 }
 
+function expandMatrixOverviewStops(
+  stops: readonly PresentationStop[],
+  nodes: readonly Node[]
+): PowerPointPresentationStop[] {
+  const overviewIndex = stops.findIndex((stop) => stop.kind === "overview");
+  if (overviewIndex < 0) return [...stops];
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const foldsByRoot = new Map<string, PresentationStop[]>();
+  for (const stop of stops) {
+    const rootId = stop.kind === "matrix-fold" ? stop.matrixFold?.rootId : undefined;
+    if (!rootId || nodeById.get(rootId)?.hidden) continue;
+    const folds = foldsByRoot.get(rootId) ?? [];
+    folds.push(stop);
+    foldsByRoot.set(rootId, folds);
+  }
+  if (!foldsByRoot.size) return [...stops];
+
+  const overview = stops[overviewIndex];
+  const pages: PowerPointPresentationStop[] = [];
+  for (const [rootId, folds] of foldsByRoot) {
+    for (let start = 0; start < folds.length; start += MATRIX_OVERVIEW_FOLDS_PER_PAGE) {
+      pages.push({
+        ...overview,
+        id: `${overview.id}:matrix:${rootId}:${start / MATRIX_OVERVIEW_FOLDS_PER_PAGE}`,
+        nodeIds: [...overview.nodeIds],
+        powerPointMatrixOverview: {
+          rootId,
+          foldStopIds: folds
+            .slice(start, start + MATRIX_OVERVIEW_FOLDS_PER_PAGE)
+            .map((stop) => stop.id),
+          includeOtherTopics: pages.length === 0,
+          pageNumber: 0,
+          pageCount: 0,
+        },
+      });
+    }
+  }
+  const pageCount = pages.length;
+  pages.forEach((page, index) => {
+    const metadata = page.powerPointMatrixOverview!;
+    metadata.pageNumber = index + 1;
+    metadata.pageCount = pageCount;
+    if (pageCount > 1) page.title = `${overview.title} · ${index + 1}/${pageCount}`;
+  });
+
+  return [
+    ...stops.slice(0, overviewIndex),
+    ...pages,
+    ...stops.slice(overviewIndex + 1),
+  ];
+}
+
 /**
  * Map slides stay concise, but the complete authored content must still appear
  * somewhere in the deck. Add one editable detail slide only for nodes that no
@@ -519,16 +587,17 @@ export function expandEditablePowerPointStops(
   stops: readonly PresentationStop[],
   nodes: readonly Node[]
 ): PresentationStop[] {
+  const presentationStops = expandMatrixOverviewStops(stops, nodes);
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const fullCoverage = new Set<string>();
-  for (const stop of stops) {
+  for (const stop of presentationStops) {
     if (presentationStopUsesSummaries(stop, nodeById)) continue;
     stop.nodeIds.forEach((nodeId) => fullCoverage.add(nodeId));
   }
 
   const automaticDetails: PresentationStop[] = [];
   const scheduled = new Set<string>();
-  for (const stop of stops) {
+  for (const stop of presentationStops) {
     if (!presentationStopUsesSummaries(stop, nodeById)) continue;
     for (const nodeId of stop.nodeIds) {
       if (fullCoverage.has(nodeId) || scheduled.has(nodeId)) continue;
@@ -545,7 +614,7 @@ export function expandEditablePowerPointStops(
       });
     }
   }
-  return [...stops, ...automaticDetails];
+  return [...presentationStops, ...automaticDetails];
 }
 
 function renderRingGuide(context: RenderContext, rect: PowerPointRect, radiusRatio: number, name: string): void {
@@ -932,9 +1001,273 @@ function addSlideChrome(
   context.objectCount += 3;
 }
 
+interface MatrixFoldOverviewCard {
+  foldNumber: number;
+  title: string;
+  itemCount: number;
+  styleNode?: Node;
+}
+
+function matrixFoldOverviewCard(
+  context: RenderContext,
+  foldStop: PresentationStop,
+  allFoldStops: readonly PresentationStop[]
+): MatrixFoldOverviewCard {
+  const rootId = foldStop.matrixFold?.rootId ?? "";
+  const contentNodes = foldStop.nodeIds
+    .map((nodeId) => context.nodeById.get(nodeId))
+    .filter((node): node is Node => node !== undefined && node.type !== "frame" && node.id !== rootId);
+  const sectionRoots = contentNodes.filter((node) =>
+    (node.data as Record<string, unknown> | undefined)?.parentId === rootId);
+  const styleNode = sectionRoots[0] ?? contentNodes[0];
+  const separatorIndex = foldStop.title.indexOf("·");
+  const authoredTitle = separatorIndex >= 0
+    ? foldStop.title.slice(separatorIndex + 1).trim()
+    : "";
+  const firstNode = sectionRoots[0] ?? styleNode;
+  const lastNode = sectionRoots.at(-1) ?? styleNode;
+  const firstTitle = firstNode ? overviewNodeText(firstNode, 32) : "";
+  const lastTitle = lastNode ? overviewNodeText(lastNode, 32) : "";
+  const derivedTitle = firstTitle && lastTitle && firstTitle !== lastTitle
+    ? `${firstTitle} – ${lastTitle}`
+    : firstTitle || `Fold ${allFoldStops.indexOf(foldStop) + 1}`;
+  const bodyFrame = foldStop.matrixFold?.bodyFrameId
+    ? context.nodeById.get(foldStop.matrixFold.bodyFrameId)
+    : undefined;
+  const storedIds = (bodyFrame?.data as Record<string, unknown> | undefined)?.matrixFoldSectionNodeIds;
+  const itemIds = Array.isArray(storedIds)
+    ? storedIds.filter((nodeId): nodeId is string => typeof nodeId === "string" && nodeId !== rootId)
+    : contentNodes.map((node) => node.id);
+
+  return {
+    foldNumber: allFoldStops.indexOf(foldStop) + 1,
+    title: plainPowerPointText(authoredTitle) || derivedTitle,
+    itemCount: new Set(itemIds).size,
+    styleNode,
+  };
+}
+
+function renderMatrixOverview(
+  context: RenderContext,
+  stop: PowerPointPresentationStop,
+  stopNodes: readonly Node[],
+  options: EditablePowerPointOptions
+): boolean {
+  const page = stop.powerPointMatrixOverview;
+  if (stop.kind !== "overview" || !page) return false;
+
+  const root = context.nodeById.get(page.rootId);
+  const allFoldStops = options.stops.filter((candidate) =>
+    candidate.kind === "matrix-fold" && candidate.matrixFold?.rootId === page.rootId);
+  const selectedStopIds = new Set(page.foldStopIds);
+  const selectedFoldStops = allFoldStops.filter((candidate) => selectedStopIds.has(candidate.id));
+  if (!root || !selectedFoldStops.length) return false;
+
+  const cards = selectedFoldStops.map((foldStop) =>
+    matrixFoldOverviewCard(context, foldStop, allFoldStops));
+  const content = POWERPOINT_SLIDE.content;
+  const rootRect: PowerPointRect = {
+    x: content.x + 1.45,
+    y: content.y + 0.06,
+    width: content.width - 2.9,
+    height: 0.82,
+  };
+  const columns = Math.min(3, cards.length);
+  const rows = Math.ceil(cards.length / columns);
+  const gapX = 0.36;
+  const gapY = 0.34;
+
+  const matrixCoveredIds = new Set<string>();
+  const matrixRootIds = new Set<string>();
+  for (const candidate of options.stops) {
+    if (candidate.kind !== "matrix-fold" || !candidate.matrixFold) continue;
+    matrixRootIds.add(candidate.matrixFold.rootId);
+    matrixCoveredIds.add(candidate.matrixFold.rootId);
+    candidate.nodeIds.forEach((nodeId) => matrixCoveredIds.add(nodeId));
+  }
+  const otherNodes = page.includeOtherTopics
+    ? stopNodes.filter((node) =>
+        node.type !== "frame"
+        && !matrixRootIds.has(node.id)
+        && !matrixCoveredIds.has(node.id))
+    : [];
+  const hasOtherTopics = otherNodes.length > 0;
+  const cardAreaTop = content.y + 1.48;
+  const cardAreaBottom = content.y + content.height - (hasOtherTopics ? 0.9 : 0.28);
+  const cardAreaHeight = cardAreaBottom - cardAreaTop;
+  const cardHeight = Math.min(
+    rows === 1 ? 2.12 : 1.72,
+    (cardAreaHeight - gapY * (rows - 1)) / rows
+  );
+  const gridWidth = cards.length === 1 ? Math.min(6.4, content.width) : content.width;
+  const cardWidth = (gridWidth - gapX * (columns - 1)) / columns;
+  const gridHeight = cardHeight * rows + gapY * (rows - 1);
+  const gridX = content.x + (content.width - gridWidth) / 2;
+  const gridY = cardAreaTop + Math.max(0, (cardAreaHeight - gridHeight) * 0.18);
+  const cardRects = cards.map((_card, index): PowerPointRect => ({
+    x: gridX + (index % columns) * (cardWidth + gapX),
+    y: gridY + Math.floor(index / columns) * (cardHeight + gapY),
+    width: cardWidth,
+    height: cardHeight,
+  }));
+
+  // Draw connections first so every editable line remains behind its fold card.
+  for (const [index, rect] of cardRects.entries()) {
+    addEditableLine(
+      context,
+      rootRect.x + rootRect.width / 2,
+      rootRect.y + rootRect.height,
+      rect.x + rect.width / 2,
+      rect.y,
+      { color: "94A3B8", transparency: 38, width: 1.35 },
+      `Editable Matrix overview connector ${cards[index].foldNumber}`
+    );
+  }
+
+  const rootFill = nodeFill(root);
+  context.slide.addText(overviewNodeText(root, 72), {
+    shape: context.pptx.ShapeType.roundRect,
+    x: rootRect.x,
+    y: rootRect.y,
+    w: rootRect.width,
+    h: rootRect.height,
+    fill: rootFill,
+    line: nodeLine(root),
+    color: powerPointColor((root.data as Record<string, unknown>)?.textColor, INK).color,
+    fontFace: nodeFontFace(root),
+    fontSize: 28,
+    bold: true,
+    align: "center",
+    valign: "middle",
+    margin: 8,
+    fit: "shrink",
+    wrap: false,
+    objectName: `Editable Matrix overview root: ${overviewNodeText(root, 42)}`,
+  });
+  context.objectCount += 1;
+
+  const firstFoldNumber = cards[0].foldNumber;
+  const lastFoldNumber = cards.at(-1)!.foldNumber;
+  const rangeLabel = page.pageCount > 1
+    ? `${allFoldStops.length} folds · showing ${firstFoldNumber}–${lastFoldNumber}`
+    : `${allFoldStops.length} fold${allFoldStops.length === 1 ? "" : "s"}`;
+  context.slide.addText(rangeLabel, {
+    x: content.x,
+    y: rootRect.y + rootRect.height + 0.08,
+    w: content.width,
+    h: 0.28,
+    color: MUTED_INK,
+    fontFace: DEFAULT_FONT,
+    fontSize: 16,
+    align: "center",
+    margin: 0,
+    objectName: "Editable Matrix overview fold range",
+  });
+  context.objectCount += 1;
+
+  for (const [index, card] of cards.entries()) {
+    const rect = cardRects[index];
+    const fill = card.styleNode ? nodeFill(card.styleNode) : { color: "EEF2FF", transparency: 0 };
+    const line = card.styleNode ? nodeLine(card.styleNode) : { color: ACCENT, width: 1.4 };
+    const textColor = card.styleNode
+      ? powerPointColor((card.styleNode.data as Record<string, unknown>)?.textColor, INK).color
+      : INK;
+    const fontFace = card.styleNode ? nodeFontFace(card.styleNode) : nodeFontFace(root);
+    context.slide.addShape(context.pptx.ShapeType.roundRect, {
+      x: rect.x,
+      y: rect.y,
+      w: rect.width,
+      h: rect.height,
+      fill,
+      line,
+      rectRadius: 0.035,
+      objectName: `Editable Matrix fold summary ${card.foldNumber}`,
+    });
+    context.slide.addText(`Fold ${card.foldNumber}`, {
+      x: rect.x + 0.16,
+      y: rect.y + 0.13,
+      w: rect.width - 0.32,
+      h: 0.42,
+      color: textColor,
+      fontFace,
+      fontSize: 24,
+      bold: true,
+      align: "center",
+      valign: "middle",
+      margin: 0,
+      fit: "shrink",
+      wrap: false,
+      objectName: `Editable Matrix fold heading ${card.foldNumber}`,
+    });
+    const summaryRect: PowerPointRect = {
+      x: rect.x + 0.18,
+      y: rect.y + 0.62,
+      width: rect.width - 0.36,
+      height: Math.max(0.38, rect.height - 1.02),
+    };
+    context.slide.addText(card.title, {
+      x: summaryRect.x,
+      y: summaryRect.y,
+      w: summaryRect.width,
+      h: summaryRect.height,
+      color: textColor,
+      fontFace,
+      fontSize: fittedPowerPointFontSize(card.title, summaryRect, 19, 16, 20),
+      bold: false,
+      align: "center",
+      valign: "middle",
+      margin: 1,
+      fit: "shrink",
+      wrap: true,
+      objectName: `Editable Matrix fold label ${card.foldNumber}: ${card.title.slice(0, 42)}`,
+    });
+    context.slide.addText(`${card.itemCount} chart item${card.itemCount === 1 ? "" : "s"}`, {
+      x: rect.x + 0.16,
+      y: rect.y + rect.height - 0.3,
+      w: rect.width - 0.32,
+      h: 0.2,
+      color: MUTED_INK,
+      fontFace: DEFAULT_FONT,
+      fontSize: 16,
+      align: "center",
+      margin: 0,
+      fit: "shrink",
+      wrap: false,
+      objectName: `Editable Matrix fold count ${card.foldNumber}`,
+    });
+    context.objectCount += 4;
+  }
+
+  if (hasOtherTopics) {
+    const firstTitle = overviewNodeText(otherNodes[0]!, 34);
+    const lastTitle = overviewNodeText(otherNodes[otherNodes.length - 1]!, 34);
+    const otherSummary = firstTitle === lastTitle ? firstTitle : `${firstTitle} – ${lastTitle}`;
+    context.slide.addText(`Other topics · ${otherSummary} · ${otherNodes.length} item${otherNodes.length === 1 ? "" : "s"}`, {
+      shape: context.pptx.ShapeType.roundRect,
+      x: content.x,
+      y: content.y + content.height - 0.62,
+      w: content.width,
+      h: 0.5,
+      fill: { color: "E2E8F0", transparency: 12 },
+      line: { color: "94A3B8", transparency: 20, width: 1 },
+      color: INK,
+      fontFace: nodeFontFace(otherNodes[0]),
+      fontSize: 16,
+      align: "center",
+      valign: "middle",
+      margin: 5,
+      fit: "shrink",
+      wrap: false,
+      objectName: "Editable Matrix overview other topics",
+    });
+    context.objectCount += 1;
+  }
+  return true;
+}
+
 function renderTeachingStop(
   pptx: PptxGenJS,
-  stop: PresentationStop,
+  stop: PowerPointPresentationStop,
   options: EditablePowerPointOptions,
   slideNumber: number,
   warnings: string[]
@@ -959,6 +1292,10 @@ function renderTeachingStop(
     summarizeNodeText: presentationStopUsesSummaries(stop, nodeById),
   };
   addSlideChrome(context, stop.title, options.boardTitle, slideNumber, options.stops.length);
+  if (renderMatrixOverview(context, stop, stopNodes, options)) {
+    slide.addNotes(`Teaching map: ${stop.title}. Each fold summary is an editable PowerPoint shape; complete fold content follows on its own teaching slide.`);
+    return context.objectCount;
+  }
   const rectByNodeId = new Map(stopNodes.map((node) => [node.id, transformNodeRect(node, transform)]));
 
   // Frames are editable backgrounds. Connectors are added before entity nodes,
