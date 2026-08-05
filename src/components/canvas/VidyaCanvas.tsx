@@ -37,7 +37,7 @@ import { useUIStore } from "@/store/ui-store";
 import { generateId } from "@/lib/utils";
 import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
-import { DEFAULT_BOARD_SETTINGS, type BoardContent } from "@/lib/types";
+import { DEFAULT_BOARD_SETTINGS, type BoardContent, type VidyaEdgeData } from "@/lib/types";
 import {
   getNodeDimensions,
   getNodeRect,
@@ -1206,7 +1206,25 @@ function VidyaCanvasInner({
         selectedEdgeIds: [newEdge.id],
         saveStatus: "unsaved",
       }));
-      if (mode === "matrix") requestAnimationFrame(() => cs.scheduleMatrixReflow(connection.source));
+      if (recordHierarchy) {
+        requestAnimationFrame(() => {
+          const nextState = useCanvasStore.getState();
+          if (mode === "matrix") {
+            nextState.scheduleMatrixReflow(connection.source);
+          } else if (mode === "list") {
+            nextState.scheduleListReflow(connection.source);
+          } else if (
+            mode === "fromParentFreeForm"
+            || mode === "mindMap"
+            || mode === "horizontal"
+            || mode === "vertical"
+            || mode === "topDown"
+            || mode === "linear"
+          ) {
+            nextState.scheduleStructuredReflow(connection.source);
+          }
+        });
+      }
     },
     []
   );
@@ -1224,13 +1242,16 @@ function VidyaCanvasInner({
     const clientPoint = dragEventClientPoint(event);
     const endPoint = clientPoint ? screenToFlowPosition(clientPoint) : null;
     const targetNodeId = connectionState.toNode?.id;
-    useCanvasStore.setState((state) => ({
-      edges: state.edges.map((edge) => {
-        if (edge.id !== edgeId) return edge;
-        let anchored = edge;
-        if (start?.handleId === PERIMETER_HANDLE_ID) {
-          const sourceNode = state.nodes.find((node) => node.id === start.nodeId);
-          if (sourceNode) {
+      useCanvasStore.setState((state) => ({
+        edges: state.edges.map((edge) => {
+          if (edge.id !== edgeId) return edge;
+          const edgeData = (edge.data ?? {}) as VidyaEdgeData;
+          const automaticLinearConnection = edgeData.layoutMode === "linear"
+            && edgeData.manualRoute !== true;
+          let anchored = edge;
+          if (!automaticLinearConnection && start?.handleId === PERIMETER_HANDLE_ID) {
+            const sourceNode = state.nodes.find((node) => node.id === start.nodeId);
+            if (sourceNode) {
             anchored = setConnectorEndpointAnchor(
               anchored,
               "source",
@@ -1238,9 +1259,11 @@ function VidyaCanvasInner({
             );
           }
         }
-        if (
-          endPoint
-          && targetNodeId
+          if (
+            !automaticLinearConnection
+            &&
+            endPoint
+            && targetNodeId
           && connectionState.toHandle?.id === PERIMETER_HANDLE_ID
         ) {
           const targetNode = state.nodes.find((node) => node.id === targetNodeId);

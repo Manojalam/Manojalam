@@ -30,13 +30,13 @@ export function LayoutPreview({
       break;
     case "linear":
       content = <>
-        {line(18, 15, 42, 8)}
-        {line(18, 20, 42, 20)}
-        {line(18, 25, 42, 32)}
-        <rect x="6" y="13" width="12" height="14" rx="4" fill="#4262ff" />
-        {dot(44, 8)}
-        {dot(44, 20)}
-        {dot(44, 32)}
+        {line(16, 17, 30, 17)}
+        {line(34, 17, 46, 17)}
+        <path d="M 10 24 L 10 31 L 30 31" fill="none" stroke="#94a3b8" strokeWidth="1" />
+        <rect x="4" y="10" width="12" height="14" rx="4" fill="#4262ff" />
+        {dot(32, 17)}
+        {dot(48, 17)}
+        {dot(32, 31)}
       </>;
       break;
     case "radial":

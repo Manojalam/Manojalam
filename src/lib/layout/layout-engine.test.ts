@@ -128,7 +128,7 @@ test("Fold continues a Linear branch on the next row", () => {
   assertNoOverlap(placed, "linear");
 });
 
-test("Linear preserves a single-row chain and gives siblings independent lanes", () => {
+test("Linear keeps a primary chain and gives every secondary child an independent lane", () => {
   const nodes: Node[] = [
     { id: "root", position: { x: 500, y: 360 }, measured: { width: 200, height: 80 }, data: { parentId: null, childOrder: ["first", "second", "third"] } },
     { id: "first", position: { x: 0, y: 0 }, measured: { width: 160, height: 64 }, data: { parentId: "root", childOrder: ["first-child"] } },
@@ -150,13 +150,28 @@ test("Linear preserves a single-row chain and gives siblings independent lanes",
   assert.ok(rects.get("second")!.left > rects.get("root")!.right);
   assert.ok(rects.get("third")!.left > rects.get("root")!.right);
   assert.equal(new Set(childCenters).size, childCenters.length);
+  assert.equal(rects.get("root")!.centerY, rects.get("first")!.centerY);
   assert.equal(rects.get("first")!.centerY, rects.get("first-child")!.centerY);
   assert.ok(rects.get("first-child")!.left > rects.get("first")!.right);
+  assert.ok(rects.get("second")!.top > rects.get("first-child")!.bottom);
+  assert.ok(rects.get("third")!.top > rects.get("second")!.bottom);
   assert.deepEqual(routeForMode("linear", placed[0], placed[1]), {
     sourceHandle: "right",
     targetHandle: "left",
     curveStyle: "step",
   });
+  assert.deepEqual(
+    routeForMode(
+      "linear",
+      placed.find((node) => node.id === "root")!,
+      placed.find((node) => node.id === "second")!
+    ),
+    {
+      sourceHandle: "bottom",
+      targetHandle: "left",
+      curveStyle: "step",
+    }
+  );
   assertNoOverlap(placed, "linear");
 });
 
