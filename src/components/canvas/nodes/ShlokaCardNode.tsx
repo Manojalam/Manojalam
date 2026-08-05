@@ -22,6 +22,7 @@ import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { matrixCellBorderRadius } from "@/lib/layout/matrix-presentation";
 import { HierarchyNumberBadge } from "./HierarchyNumberBadge";
 import { ShlokaCardEditorDialog } from "./ShlokaCardEditorDialog";
+import { SHLOKA_STUDY_PALETTES } from "@/lib/canvas/shloka-study-palette";
 
 const SECTIONS = [
   { key: "verse", label: "Verse" },
@@ -61,8 +62,9 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
   const matrixRadius = matrixCellBorderRadius(d.matrixCellRole);
   const dd = d as Record<string, unknown>;
   const hierarchyNumber = typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined;
+  const studyPalette = d.studySection ? SHLOKA_STUDY_PALETTES[d.studySection] : undefined;
   const layoutStyle = resolveLayoutVisualStyle(dd);
-  const accentColor = resolveBorderColor(dd) ?? "#d97706";
+  const accentColor = resolveBorderColor(dd) ?? studyPalette?.accent ?? "#d97706";
   const generatedStyle = layoutStyle ? {
     background: themeAwareNodeFillColor(resolveFillColor(dd)),
     borderColor: resolveBorderColor(dd),
@@ -118,8 +120,16 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={studyPalette ? { backgroundColor: studyPalette.accent, borderColor: "white" } : undefined}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={studyPalette ? { backgroundColor: studyPalette.accent, borderColor: "white" } : undefined}
+        />
         <div
           className="pointer-events-none absolute inset-0 z-20"
           style={objectRotationStyle("shloka", dd)}
@@ -129,9 +139,9 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         <div
         data-node-content-layer="true"
         className={cn(
-          "absolute inset-0 rounded-xl border border-amber-300/50 bg-card p-4 shadow-lg dark:border-amber-700/30",
+          "absolute inset-0 h-full w-full overflow-hidden rounded-2xl border-2 border-amber-300/60 bg-card p-4 shadow-lg transition-shadow dark:border-amber-700/40",
+          studyPalette?.card,
           matrixCell ? "overflow-hidden rounded-md shadow-none" : "",
-          "h-full w-full",
           selected && "ring-2 ring-primary ring-offset-2"
         )}
         style={{
@@ -144,8 +154,33 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
           setEditorOpen(true);
         }}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-semibold" style={authoredTextStyle}>{d.title || "Śloka"}</h3>
+        {studyPalette && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-y-0 left-0 w-1.5"
+            style={{ backgroundColor: studyPalette.accent }}
+          />
+        )}
+        <div className={cn("relative mb-3 flex items-center justify-between", studyPalette && "pl-1")}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            {studyPalette && (
+              <span
+                aria-hidden="true"
+                className="h-2.5 w-2.5 shrink-0 rounded-full shadow-sm"
+                style={{ backgroundColor: studyPalette.accent }}
+              />
+            )}
+            <h3
+              className={cn(
+                "truncate font-semibold",
+                studyPalette && "text-lg font-bold tracking-tight",
+                studyPalette?.title
+              )}
+              style={authoredTextStyle}
+            >
+              {d.title || "Śloka"}
+            </h3>
+          </div>
           {(!d.studySection || d.studySection === "memorization") && (
             <Badge
               className={cn("text-[10px]", STATUS_COLORS[d.memorizationStatus ?? "new"])}
@@ -157,11 +192,14 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         </div>
 
         {compactStudySection ? (
-          <div className="overflow-hidden rounded-lg bg-amber-50/80 p-3 dark:bg-amber-950/30">
+          <div className={cn(
+            "overflow-hidden rounded-xl border p-4 shadow-sm",
+            studyPalette?.content ?? "border-amber-200/70 bg-amber-50/80 dark:border-amber-800/60 dark:bg-amber-950/30"
+          )}>
             <p
               className={cn(
-                "whitespace-pre-wrap text-sm leading-relaxed",
-                ["padaccheda", "anvaya"].includes(compactStudySection) && "font-devanagari"
+                "whitespace-pre-wrap text-[15px] font-medium leading-6 text-slate-900 dark:text-slate-50",
+                ["padaccheda", "anvaya"].includes(compactStudySection) && "font-devanagari text-base leading-7"
               )}
               style={authoredTextStyle}
             >
@@ -171,14 +209,32 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         ) : (
           <>
             {d.sourceText && (
-              <p className="mb-2 text-xs text-muted-foreground" style={authoredTextStyle}>{d.sourceText}</p>
+              <p
+                className={cn(
+                  "mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground",
+                  studyPalette?.meta
+                )}
+                style={authoredTextStyle}
+              >
+                {d.sourceText}
+              </p>
             )}
 
-            <div className="rounded-lg bg-amber-50/80 p-3 dark:bg-amber-950/30">
+            <div className={cn(
+              "rounded-xl border p-4 shadow-sm",
+              studyPalette?.content ?? "border-amber-200/70 bg-amber-50/80 dark:border-amber-800/60 dark:bg-amber-950/30"
+            )}>
               {d.devanagari && (
-                <p className="whitespace-pre-wrap font-devanagari text-xl leading-relaxed" style={authoredTextStyle}>{d.devanagari}</p>
+                <p className="whitespace-pre-wrap font-devanagari text-2xl font-medium leading-10 text-slate-950 dark:text-white" style={authoredTextStyle}>{d.devanagari}</p>
               )}
-              {d.iast && <p className="mt-1 whitespace-pre-wrap font-iast text-sm italic text-muted-foreground" style={authoredTextStyle}>{d.iast}</p>}
+              {d.iast && (
+                <p
+                  className={cn("mt-2 whitespace-pre-wrap font-iast text-base italic leading-7 text-muted-foreground", studyPalette?.meta)}
+                  style={authoredTextStyle}
+                >
+                  {d.iast}
+                </p>
+              )}
             </div>
           </>
         )}
@@ -215,7 +271,14 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         {d.tags && d.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {d.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-[10px]" style={authoredTextStyle}>{tag}</Badge>
+              <Badge
+                key={tag}
+                variant="outline"
+                className={cn("text-[10px]", studyPalette?.tag)}
+                style={authoredTextStyle}
+              >
+                {tag}
+              </Badge>
             ))}
           </div>
         )}

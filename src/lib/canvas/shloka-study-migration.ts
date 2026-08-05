@@ -1,6 +1,10 @@
 import type { Edge, Node } from "@xyflow/react";
 
 import type { ShlokaCardNodeData, ShlokaStudySection } from "../types";
+import {
+  devanagariToIast,
+  shouldRefreshAutomaticIast,
+} from "../sanskrit/transliterate";
 
 type DetailSection = Exclude<ShlokaStudySection, "verse">;
 
@@ -75,7 +79,36 @@ export function migrateLegacyShlokaStudyTemplate(
   for (const verseNode of nodes) {
     if (verseNode.type !== "shloka") continue;
     const verseData = verseNode.data as ShlokaCardNodeData;
-    if (verseData.studySection) continue;
+    if (verseData.studySection) {
+      if (verseData.studySection === "verse") {
+        const automaticIast = devanagariToIast(verseData.devanagari);
+        if (
+          automaticIast !== verseData.iast
+          && shouldRefreshAutomaticIast(verseData.devanagari, verseData.iast)
+        ) {
+          replacements.set(verseNode.id, {
+            ...verseNode,
+            data: { ...verseData, iast: automaticIast },
+          });
+        }
+
+        const parentEdge = edges.find((edge) => edge.target === verseNode.id);
+        const parentNode = parentEdge ? nodesById.get(parentEdge.source) : undefined;
+        if (
+          parentNode?.type === "shape"
+          && String(parentNode.data?.text ?? "").trim() === "Śloka title"
+        ) {
+          replacements.set(parentNode.id, {
+            ...parentNode,
+            data: {
+              ...parentNode.data,
+              text: verseData.sourceText?.trim() || "Śloka Study",
+            },
+          });
+        }
+      }
+      continue;
+    }
 
     const sectionTargets = new Map<DetailSection, Node>();
     for (const edge of edges) {
@@ -113,6 +146,9 @@ export function migrateLegacyShlokaStudyTemplate(
     delete verseOnlyData.notes;
     delete verseOnlyData.memorizationNotes;
     delete verseOnlyData.collapsedSections;
+    if (shouldRefreshAutomaticIast(verseData.devanagari, verseData.iast)) {
+      verseOnlyData.iast = devanagariToIast(verseData.devanagari);
+    }
 
     replacements.set(verseNode.id, {
       ...verseNode,
@@ -164,6 +200,12 @@ export function migrateLegacyShlokaStudyTemplate(
       replacements.set(parentNode.id, {
         ...parentNode,
         position: { ...parentNode.position, x: gridCenterX - parentWidth / 2 },
+        data: String(parentNode.data?.text ?? "").trim() === "Śloka title"
+          ? {
+              ...parentNode.data,
+              text: verseData.sourceText?.trim() || "Śloka Study",
+            }
+          : parentNode.data,
       });
     }
   }
