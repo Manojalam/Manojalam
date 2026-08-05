@@ -340,6 +340,7 @@ function FrameNodeComponent({
           <button
             type="button"
             data-export-ignore
+            data-matrix-fold-selector
             aria-label={`Select Fold ${matrixFoldSectionIndex + 1}`}
             aria-pressed={selected}
             className={cn(

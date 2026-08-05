@@ -9,6 +9,7 @@ import JSZip from "jszip";
 const workspace = dirname(dirname(fileURLToPath(import.meta.url)));
 const outputDirectory = join(workspace, ".powerpoint-smoke-test");
 const outputFile = join(outputDirectory, "editable-teaching-smoke-test.pptx");
+const foldedOutputFile = join(outputDirectory, "editable-folded-matrix-smoke-test.pptx");
 const typeScriptCli = join(workspace, "node_modules", "typescript", "bin", "tsc");
 const keepArtifacts = process.env.KEEP_POWERPOINT_SMOKE === "1";
 
@@ -35,6 +36,7 @@ try {
   };
 
   const { downloadEditablePowerPoint } = require(join(outputDirectory, "lib", "export", "powerpoint.js"));
+  const { buildPresentationStops } = require(join(outputDirectory, "lib", "canvas", "presentation.js"));
   const root = {
     id: "root",
     type: "shape",
@@ -137,7 +139,91 @@ try {
   assert.match(detailRelationships, /https:\/\/example\.com\/rule/);
   assert.match(automaticDetailXml, /deliberately long explanation/);
   console.log(`Verified ${nativeShapeCount} native editable shapes, ${connectorShapeCount} connectors, readable dense-overview labels, automatic detail slides, hyperlinks, and no flattened images.`);
+
+  const matrixRoot = {
+    id: "matrix-root",
+    type: "shape",
+    position: { x: 0, y: 0 },
+    style: { width: 540, height: 48 },
+    data: {
+      text: "Folded Matrix",
+      layoutMode: "matrix",
+      matrixCell: true,
+      matrixFoldRootMode: "continuous",
+      matrixFoldSections: [
+        { x: 0, y: 48, width: 240, height: 200, repeatedCells: [] },
+        { x: 300, y: 48, width: 240, height: 200, repeatedCells: [] },
+      ],
+      fillColor: "#f9a8d4",
+    },
+  };
+  const matrixBranches = [
+    {
+      id: "matrix-a",
+      type: "shape",
+      position: { x: 0, y: 48 },
+      style: { width: 240, height: 200 },
+      data: { text: "First fold", parentId: "matrix-root", fillColor: "#dbeafe" },
+    },
+    {
+      id: "matrix-b",
+      type: "shape",
+      position: { x: 300, y: 48 },
+      style: { width: 240, height: 200 },
+      data: { text: "Second fold", parentId: "matrix-root", fillColor: "#dcfce7" },
+    },
+  ];
+  const matrixFrames = matrixBranches.map((branch, index) => ({
+    id: `matrix-frame-${index}`,
+    type: "frame",
+    position: { x: index * 300, y: 48 },
+    style: { width: 240, height: 200 },
+    data: {
+      title: "",
+      matrixFrameFor: "matrix-root",
+      matrixFoldSectionIndex: index,
+      matrixFoldSectionNodeIds: [branch.id],
+    },
+  }));
+  const matrixEdges = matrixBranches.map((branch, index) => ({
+    id: `matrix-edge-${index}`,
+    source: "matrix-root",
+    target: branch.id,
+    hidden: true,
+    data: { hiddenInMatrix: true, hiddenInMatrixFor: "matrix-root" },
+  }));
+  const matrixNodes = [matrixRoot, ...matrixBranches, ...matrixFrames];
+  const matrixStops = buildPresentationStops(matrixNodes, matrixEdges);
+  assert.deepEqual(matrixStops.map((stop) => stop.kind), [
+    "overview",
+    "matrix-fold",
+    "matrix-fold",
+  ]);
+  await downloadEditablePowerPoint({
+    boardTitle: "Folded Matrix smoke test",
+    nodes: matrixNodes,
+    edges: matrixEdges,
+    relationships: [],
+    stops: matrixStops,
+    filename: foldedOutputFile,
+  });
+  const matrixArchive = await JSZip.loadAsync(await readFile(foldedOutputFile));
+  const matrixSlidePaths = Object.keys(matrixArchive.files)
+    .filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path));
+  assert.equal(matrixSlidePaths.length, 3, "the folded Matrix should export as overview plus two folds");
+  const firstFoldXml = await matrixArchive.file("ppt/slides/slide2.xml").async("string");
+  const secondFoldXml = await matrixArchive.file("ppt/slides/slide3.xml").async("string");
+  assert.match(firstFoldXml, /Fold 1 · First fold/);
+  assert.match(firstFoldXml, /Folded Matrix/);
+  assert.match(firstFoldXml, /First fold/);
+  assert.doesNotMatch(firstFoldXml, /Second fold/);
+  assert.match(secondFoldXml, /Fold 2 · Second fold/);
+  assert.match(secondFoldXml, /Folded Matrix/);
+  assert.match(secondFoldXml, /Second fold/);
+  assert.doesNotMatch(secondFoldXml, /First fold/);
+  console.log("Verified authored Matrix Fold sections export as compact editable teaching slides.");
   if (keepArtifacts) console.log(`Kept verification deck at ${outputFile}`);
+  if (keepArtifacts) console.log(`Kept folded Matrix verification deck at ${foldedOutputFile}`);
 } finally {
   if (!keepArtifacts) await rm(outputDirectory, { recursive: true, force: true });
 }
