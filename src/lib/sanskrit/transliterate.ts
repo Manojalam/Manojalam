@@ -38,6 +38,27 @@ export function transliterate(
   }
 }
 
+export function devanagariToIast(text: string): string {
+  return transliterate(text, "devanagari", "iast");
+}
+
+function normalizedIast(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+/**
+ * A blank or truncated prefix is safe to repair automatically. A divergent
+ * value is treated as an intentional manual correction and left untouched.
+ */
+export function shouldRefreshAutomaticIast(
+  devanagari: string,
+  currentIast: string | undefined
+): boolean {
+  const automatic = normalizedIast(devanagariToIast(devanagari));
+  const current = normalizedIast(currentIast ?? "");
+  return automatic.length > 0 && (current.length === 0 || automatic.startsWith(current));
+}
+
 export {
   DEVANAGARI_CONSONANTS,
   DEVANAGARI_NUMERALS,
@@ -46,7 +67,7 @@ export {
   DEVANAGARI_VOWELS,
   IAST_QUICK_INSERT,
   PHONETIC_SYMBOLS,
-} from "@/lib/text-tools";
+} from "../text-tools";
 
 export const GRAMMAR_CATEGORY_LABELS: Record<string, string> = {
   sandhi: "Sandhi",

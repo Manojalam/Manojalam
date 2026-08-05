@@ -30,7 +30,8 @@ function legacyBoard(): { nodes: Node[]; edges: Edge[] } {
       style: { width: 360, height: 190 },
       data: {
         title: "Verse",
-        devanagari: "धर्मक्षेत्रे कुरुक्षेत्रे",
+        sourceText: "Bhagavad Gītā 1.1",
+        devanagari: "धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः ।\nमामकाः पाण्डवाश्चैव किमकुर्वत सञ्जय ॥",
         iast: "dharmakṣetre kurukṣetre",
         padaccheda: "धर्म-क्षेत्रे कुरु-क्षेत्रे",
         anvaya: "धर्मक्षेत्रे कुरुक्षेत्रे च",
@@ -69,6 +70,10 @@ test("legacy Śloka Study boards move each field into its own card", () => {
   const verse = result.nodes.find((node) => node.id === "verse")!;
   assert.equal(verse.data.studySection, "verse");
   assert.equal(verse.data.padaccheda, undefined);
+  assert.equal(
+    verse.data.iast,
+    "dharmakṣetre kurukṣetre samavetā yuyutsavaḥ |\nmāmakāḥ pāṇḍavāścaiva kimakurvata sañjaya ||"
+  );
   assert.equal(verse.style?.width, 420);
   assert.equal(verse.style?.height, 230);
 
@@ -82,7 +87,9 @@ test("legacy Śloka Study boards move each field into its own card", () => {
   assert.equal(grammar.data.grammar, "Add grammar notes for this verse.");
   const memorization = result.nodes.find((node) => node.data.studySection === "memorization")!;
   assert.equal(memorization.data.memorizationStatus, "learning");
-  assert.equal(result.nodes.find((node) => node.id === "topic")!.position.x, 510);
+  const topic = result.nodes.find((node) => node.id === "topic")!;
+  assert.equal(topic.position.x, 510);
+  assert.equal(topic.data.text, "Bhagavad Gītā 1.1");
 });
 
 test("standalone or incomplete Śloka layouts are not migrated", () => {
@@ -93,4 +100,35 @@ test("standalone or incomplete Śloka layouts are not migrated", () => {
   assert.equal(result.migrated, false);
   assert.equal(result.nodes, legacy.nodes);
   assert.equal(result.nodes.find((node) => node.id === "verse")!.data.studySection, undefined);
+});
+
+test("already-split Verse cards repair truncated IAST without replacing manual readings", () => {
+  const devanagari = "धर्मक्षेत्रे कुरुक्षेत्रे समवेता युयुत्सवः";
+  const baseNode: Node = {
+    id: "verse",
+    type: "shloka",
+    position: { x: 0, y: 0 },
+    data: {
+      title: "Verse",
+      studySection: "verse",
+      devanagari,
+      iast: "dharmakṣetre kurukṣetre",
+      memorizationStatus: "new",
+    },
+  };
+
+  const repaired = migrateLegacyShlokaStudyTemplate([baseNode], []);
+  assert.equal(repaired.migrated, true);
+  assert.equal(
+    repaired.nodes[0].data.iast,
+    "dharmakṣetre kurukṣetre samavetā yuyutsavaḥ"
+  );
+
+  const manualNode = {
+    ...baseNode,
+    data: { ...baseNode.data, iast: "intentional manual reading" },
+  };
+  const preserved = migrateLegacyShlokaStudyTemplate([manualNode], []);
+  assert.equal(preserved.migrated, false);
+  assert.equal(preserved.nodes[0].data.iast, "intentional manual reading");
 });

@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { devanagariToIast } from "@/lib/sanskrit/transliterate";
 
 interface ShlokaCardEditorDialogProps {
   nodeId: string;
@@ -48,6 +49,12 @@ export function ShlokaCardEditorDialog({
     key: Key,
     value: ShlokaCardEditorDraft[Key]
   ) => setDraft((current) => ({ ...current, [key]: value }));
+
+  const setDevanagari = (value: string) => setDraft((current) => ({
+    ...current,
+    devanagari: value,
+    iast: devanagariToIast(value),
+  }));
 
   const save = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -127,20 +134,33 @@ export function ShlokaCardEditorDialog({
                   className="font-devanagari text-base"
                   rows={3}
                   value={draft.devanagari}
-                  onChange={(event) => setField("devanagari", event.target.value)}
+                  onChange={(event) => setDevanagari(event.target.value)}
                   placeholder="श्लोकः"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor={fieldId("iast")}>IAST</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor={fieldId("iast")}>IAST</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px] text-muted-foreground"
+                    onClick={() => setField("iast", devanagariToIast(draft.devanagari))}
+                  >
+                    Regenerate
+                  </Button>
+                </div>
                 <Textarea
                   id={fieldId("iast")}
-                  className="font-iast italic"
+                  className="font-iast text-base italic"
                   rows={3}
                   value={draft.iast}
                   onChange={(event) => setField("iast", event.target.value)}
                   placeholder="ślokaḥ"
                 />
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Updates automatically from Devanāgarī. You can still fine-tune it here.
+                </p>
               </div>
             </div>
           )}
