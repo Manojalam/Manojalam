@@ -12,6 +12,7 @@ import type {
   BoardContent,
   VidyaBoard,
   AutoSizeMode,
+  CanvasLayer,
 } from "@/lib/types";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import { BOARD_CONTENT_VERSION, HISTORY_LIMIT } from "@/lib/config";
@@ -116,6 +117,17 @@ import {
   viewportsEqual,
 } from "@/lib/canvas/hydration";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
+import {
+  applyCanvasLayerOrder,
+  assignCanvasItemsToLayer,
+  canvasItemLayerId,
+  canvasLayerMemberIds,
+  moveCanvasLayer,
+  nextCanvasLayerName,
+  normalizeCanvasLayerMembership,
+  normalizeCanvasLayers,
+  type CanvasLayerMove,
+} from "@/lib/canvas/layers";
 import { migrateLegacyShlokaStudyTemplate } from "@/lib/canvas/shloka-study-migration";
 import { resolveChartNodeResize } from "@/lib/canvas/chart-sizing";
 import {
@@ -186,6 +198,7 @@ interface HistoryEntry {
   edges: Edge[];
   relationships: NodeRelationship[];
   relationshipFans: RelationshipFanState[];
+  layers: CanvasLayer[];
   settings: BoardSettings;
 }
 
@@ -206,6 +219,7 @@ interface CanvasState {
   edges: Edge[];
   relationships: NodeRelationship[];
   relationshipFans: RelationshipFanState[];
+  layers: CanvasLayer[];
   viewport: Viewport;
   settings: BoardSettings;
   selectedNodeIds: string[];
@@ -232,6 +246,15 @@ interface CanvasState {
   setSaveStatus: (status: SaveStatus) => void;
   setSelectedNodeIds: (ids: string[]) => void;
   setSelectedEdgeIds: (ids: string[]) => void;
+  createLayer: (fromSelection?: boolean) => string | null;
+  renameLayer: (layerId: string, name: string) => void;
+  setLayerVisibility: (layerId: string, visible: boolean) => void;
+  setLayerLocked: (layerId: string, locked: boolean) => void;
+  moveLayer: (layerId: string, direction: CanvasLayerMove) => void;
+  assignSelectionToLayer: (layerId: string) => number;
+  removeSelectionFromLayer: (layerId: string) => number;
+  deleteLayer: (layerId: string) => void;
+  selectLayer: (layerId: string | null) => void;
   setSearchQuery: (query: string) => void;
   replaceRelationships: (
     sourceNodeId: string,
@@ -359,6 +382,7 @@ function cloneState(
   edges: Edge[],
   relationships: NodeRelationship[],
   relationshipFans: RelationshipFanState[],
+  layers: CanvasLayer[],
   settings: BoardSettings
 ): HistoryEntry {
   return {
@@ -366,6 +390,7 @@ function cloneState(
     edges: structuredClone(edges),
     relationships: structuredClone(relationships),
     relationshipFans: structuredClone(relationshipFans),
+    layers: structuredClone(layers),
     settings: structuredClone(settings),
   };
 }
@@ -2057,6 +2082,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   edges: [],
   relationships: [],
   relationshipFans: [],
+  layers: [],
   viewport: { x: 0, y: 0, zoom: 1 },
   settings: { ...DEFAULT_BOARD_SETTINGS },
   selectedNodeIds: [],
@@ -2083,6 +2109,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       saveStatus: "saved",
       selectedNodeIds: [],
       selectedEdgeIds: [],
+      layers: [],
       pendingHierarchyDelete: null,
     });
   },
@@ -2090,6 +2117,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setBoard: (board) => {
     cancelPendingLayoutReflows();
     const rawSettings = board.content.settings ?? DEFAULT_BOARD_SETTINGS;
+    const layers = normalizeCanvasLayers(board.content.layers);
     const persistedNodes = normalizePersistedNodes(board.content.nodes);
     const normalizedPersistedEdges = normalizePersistedEdges(board.content.edges);
     const shlokaStudyMigration = migrateLegacyShlokaStudyTemplate(
@@ -2141,13 +2169,19 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       buildHierarchy(listRootPositionedNodes, normalizedHierarchyEdges)
     );
     const styledBoard = applyPersistedLayoutPalettes(normalizedNodes, normalizedHierarchyEdges);
-    const edges = styledBoard.edges;
-    const nodes = migrateLegacyHierarchyNumberingScopes(
+    const numberedNodes = migrateLegacyHierarchyNumberingScopes(
       styledBoard.nodes,
-      edges,
+      styledBoard.edges,
       rawSettings.hierarchicalNumbering === true,
       rawSettings.hierarchicalNumberingFormat === "sibling" ? "sibling" : "outline"
     );
+    const layerMembership = normalizeCanvasLayerMembership(
+      numberedNodes,
+      styledBoard.edges,
+      layers
+    );
+    const nodes = layerMembership.nodes;
+    const edges = layerMembership.edges;
     const { relationships, relationshipFans } = normalizeRelationshipState(
       nodes,
       board.content.relationships,
@@ -2203,6 +2237,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       hierarchicalNumberingFormat: "outline",
     };
     const settingsMigrationRequired = JSON.stringify(rawSettings) !== JSON.stringify(settings);
+    const layerMigrationRequired = JSON.stringify(board.content.layers ?? []) !== JSON.stringify(layers);
     const normalizedBoard: VidyaBoard = {
       ...board,
       content: {
@@ -2212,6 +2247,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         edges,
         relationships,
         relationshipFans,
+        layers,
         settings,
       },
     };
@@ -2219,13 +2255,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       || structuralMigrationRequired
       || hierarchyMigrationRequired
       || styledBoard.migrationRequired
-      || settingsMigrationRequired;
+      || settingsMigrationRequired
+      || layerMigrationRequired;
     set({
       board: normalizedBoard,
       nodes,
       edges,
       relationships,
       relationshipFans,
+      layers,
       selectedNodeIds: [],
       selectedEdgeIds: [],
       pendingHierarchyDelete: null,
@@ -2296,6 +2334,197 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setSelectedNodeIds: (ids) => set({ selectedNodeIds: ids }),
   setSelectedEdgeIds: (ids) => set({ selectedEdgeIds: ids }),
+
+  createLayer: (fromSelection = false) => {
+    const state = get();
+    if (fromSelection && !state.selectedNodeIds.length && !state.selectedEdgeIds.length) {
+      return null;
+    }
+    const id = generateId();
+    const layers = normalizeCanvasLayers([
+      ...state.layers,
+      {
+        id,
+        name: nextCanvasLayerName(state.layers),
+        order: state.layers.length,
+        visible: true,
+        locked: false,
+      },
+    ]);
+    state.pushHistory();
+    const assignment = fromSelection
+      ? assignCanvasItemsToLayer(
+          state.nodes,
+          state.edges,
+          new Set(state.selectedNodeIds),
+          new Set(state.selectedEdgeIds),
+          id
+        )
+      : { nodes: state.nodes, edges: state.edges };
+    set({
+      layers,
+      nodes: assignment.nodes,
+      edges: assignment.edges,
+      saveStatus: "unsaved",
+    });
+    return id;
+  },
+
+  renameLayer: (layerId, rawName) => {
+    const name = rawName.trim().slice(0, 80);
+    const state = get();
+    const existing = state.layers.find((layer) => layer.id === layerId);
+    if (!existing || !name || existing.name === name) return;
+    state.pushHistory();
+    set({
+      layers: state.layers.map((layer) => layer.id === layerId ? { ...layer, name } : layer),
+      saveStatus: "unsaved",
+    });
+  },
+
+  setLayerVisibility: (layerId, visible) => {
+    const state = get();
+    const existing = state.layers.find((layer) => layer.id === layerId);
+    if (!existing || existing.visible === visible) return;
+    state.pushHistory();
+    const members = canvasLayerMemberIds(state.nodes, state.edges, layerId);
+    const hiddenNodeIds = new Set(visible ? [] : members.nodeIds);
+    const hiddenEdgeIds = new Set(visible ? [] : members.edgeIds);
+    set({
+      layers: state.layers.map((layer) => layer.id === layerId ? { ...layer, visible } : layer),
+      nodes: state.nodes.map((node) => hiddenNodeIds.has(node.id)
+        ? { ...node, selected: false }
+        : node),
+      edges: state.edges.map((edge) => hiddenEdgeIds.has(edge.id)
+        ? { ...edge, selected: false }
+        : edge),
+      selectedNodeIds: state.selectedNodeIds.filter((id) => !hiddenNodeIds.has(id)),
+      selectedEdgeIds: state.selectedEdgeIds.filter((id) => !hiddenEdgeIds.has(id)),
+      saveStatus: "unsaved",
+    });
+  },
+
+  setLayerLocked: (layerId, locked) => {
+    const state = get();
+    const existing = state.layers.find((layer) => layer.id === layerId);
+    if (!existing || existing.locked === locked) return;
+    state.pushHistory();
+    const members = canvasLayerMemberIds(state.nodes, state.edges, layerId);
+    const lockedNodeIds = new Set(locked ? members.nodeIds : []);
+    const lockedEdgeIds = new Set(locked ? members.edgeIds : []);
+    set({
+      layers: state.layers.map((layer) => layer.id === layerId ? { ...layer, locked } : layer),
+      nodes: state.nodes.map((node) => lockedNodeIds.has(node.id)
+        ? { ...node, selected: false }
+        : node),
+      edges: state.edges.map((edge) => lockedEdgeIds.has(edge.id)
+        ? { ...edge, selected: false }
+        : edge),
+      selectedNodeIds: state.selectedNodeIds.filter((id) => !lockedNodeIds.has(id)),
+      selectedEdgeIds: state.selectedEdgeIds.filter((id) => !lockedEdgeIds.has(id)),
+      saveStatus: "unsaved",
+    });
+  },
+
+  moveLayer: (layerId, direction) => {
+    const state = get();
+    const layers = moveCanvasLayer(state.layers, layerId, direction);
+    if (layers.every((layer, index) => layer.id === state.layers[index]?.id)) return;
+    state.pushHistory();
+    set({
+      layers,
+      nodes: applyCanvasLayerOrder(state.nodes, layers),
+      edges: applyCanvasLayerOrder(state.edges, layers),
+      saveStatus: "unsaved",
+    });
+  },
+
+  assignSelectionToLayer: (layerId) => {
+    const state = get();
+    if (!state.layers.some((layer) => layer.id === layerId)) return 0;
+    const assignment = assignCanvasItemsToLayer(
+      state.nodes,
+      state.edges,
+      new Set(state.selectedNodeIds),
+      new Set(state.selectedEdgeIds),
+      layerId
+    );
+    if (!assignment.changedCount) return 0;
+    state.pushHistory();
+    set({
+      nodes: assignment.nodes,
+      edges: assignment.edges,
+      saveStatus: "unsaved",
+    });
+    return assignment.changedCount;
+  },
+
+  removeSelectionFromLayer: (layerId) => {
+    const state = get();
+    const nodeIds = new Set(state.selectedNodeIds.filter((id) => {
+      const node = state.nodes.find((candidate) => candidate.id === id);
+      return node && ((node.data ?? {}) as Record<string, unknown>).layerId === layerId;
+    }));
+    const edgeIds = new Set(state.selectedEdgeIds.filter((id) => {
+      const edge = state.edges.find((candidate) => candidate.id === id);
+      return edge && ((edge.data ?? {}) as Record<string, unknown>).layerId === layerId;
+    }));
+    const assignment = assignCanvasItemsToLayer(
+      state.nodes,
+      state.edges,
+      nodeIds,
+      edgeIds
+    );
+    if (!assignment.changedCount) return 0;
+    state.pushHistory();
+    set({
+      nodes: assignment.nodes,
+      edges: assignment.edges,
+      saveStatus: "unsaved",
+    });
+    return assignment.changedCount;
+  },
+
+  deleteLayer: (layerId) => {
+    const state = get();
+    if (!state.layers.some((layer) => layer.id === layerId)) return;
+    state.pushHistory();
+    const members = canvasLayerMemberIds(state.nodes, state.edges, layerId);
+    const assignment = assignCanvasItemsToLayer(
+      state.nodes,
+      state.edges,
+      new Set(members.nodeIds),
+      new Set(members.edgeIds)
+    );
+    set({
+      layers: normalizeCanvasLayers(state.layers.filter((layer) => layer.id !== layerId)),
+      nodes: assignment.nodes,
+      edges: assignment.edges,
+      saveStatus: "unsaved",
+    });
+  },
+
+  selectLayer: (layerId) => {
+    const state = get();
+    const layer = layerId
+      ? state.layers.find((candidate) => candidate.id === layerId)
+      : null;
+    if (layerId && (!layer || !layer.visible || layer.locked)) return;
+    const members = layerId
+      ? canvasLayerMemberIds(state.nodes, state.edges, layerId)
+      : {
+          nodeIds: state.nodes.filter((node) => canvasItemLayerId(node) === null).map((node) => node.id),
+          edgeIds: state.edges.filter((edge) => canvasItemLayerId(edge) === null).map((edge) => edge.id),
+        };
+    const nodeIds = new Set(members.nodeIds);
+    const edgeIds = new Set(members.edgeIds);
+    set({
+      nodes: state.nodes.map((node) => ({ ...node, selected: nodeIds.has(node.id) })),
+      edges: state.edges.map((edge) => ({ ...edge, selected: edgeIds.has(edge.id) })),
+      selectedNodeIds: members.nodeIds,
+      selectedEdgeIds: members.edgeIds,
+    });
+  },
 
   setSearchQuery: (query) => set({ searchQuery: query }),
 
@@ -2443,8 +2672,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   pushHistory: () => {
-    const { nodes, edges, relationships, relationshipFans, settings, history, historyIndex } = get();
-    const entry = cloneState(nodes, edges, relationships, relationshipFans, settings);
+    const { nodes, edges, relationships, relationshipFans, layers, settings, history, historyIndex } = get();
+    const entry = cloneState(nodes, edges, relationships, relationshipFans, layers, settings);
     const newHistory = history.slice(0, historyIndex + 1);
     if (!newHistory.length || !sameHistoryEntry(newHistory[newHistory.length - 1], entry)) {
       newHistory.push(entry);
@@ -2455,9 +2684,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   undo: () => {
     cancelPendingLayoutReflows();
-    const { history, historyIndex, nodes, edges, relationships, relationshipFans, settings } = get();
+    const { history, historyIndex, nodes, edges, relationships, relationshipFans, layers, settings } = get();
     if (historyIndex < 0) return;
-    const current = cloneState(nodes, edges, relationships, relationshipFans, settings);
+    const current = cloneState(nodes, edges, relationships, relationshipFans, layers, settings);
     let targetIndex = historyIndex;
     if (history[targetIndex] && sameHistoryEntry(history[targetIndex], current)) targetIndex -= 1;
     if (targetIndex < 0) return;
@@ -2471,6 +2700,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: restoredEdges,
       relationships: structuredClone(entry.relationships),
       relationshipFans: structuredClone(entry.relationshipFans),
+      layers: structuredClone(entry.layers),
       settings: structuredClone(entry.settings),
       selectedNodeIds: restoredNodes.filter((node) => node.selected).map((node) => node.id),
       selectedEdgeIds: restoredEdges.filter((edge) => edge.selected).map((edge) => edge.id),
@@ -2493,6 +2723,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: restoredEdges,
       relationships: structuredClone(entry.relationships),
       relationshipFans: structuredClone(entry.relationshipFans),
+      layers: structuredClone(entry.layers),
       settings: structuredClone(entry.settings),
       selectedNodeIds: restoredNodes.filter((node) => node.selected).map((node) => node.id),
       selectedEdgeIds: restoredEdges.filter((edge) => edge.selected).map((edge) => edge.id),

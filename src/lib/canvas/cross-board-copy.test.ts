@@ -66,6 +66,7 @@ test("copies a selected hierarchy with its descendants and attached notes", () =
         position: { x: 100, y: 100 },
         data: {
           text: "Root",
+          layerId: "source-layer",
           childOrder: ["child"],
           mediaAttachments: [{
             id: "image-1",
@@ -101,7 +102,13 @@ test("copies a selected hierarchy with its descendants and attached notes", () =
       },
     ],
     edges: [
-      { id: "edge", source: "root", target: "child", type: "branch" },
+      {
+        id: "edge",
+        source: "root",
+        target: "child",
+        type: "branch",
+        data: { layerId: "source-layer" },
+      },
     ],
   });
 
@@ -139,6 +146,8 @@ test("copies a selected hierarchy with its descendants and attached notes", () =
   assert.equal(copiedNote.data.noteForNodeId, copiedChild.id);
   assert.equal(inserted.edges[0].source, copiedRoot.id);
   assert.equal(inserted.edges[0].target, copiedChild.id);
+  assert.equal(copiedRoot.data.layerId, undefined);
+  assert.equal(inserted.edges[0].data?.layerId, undefined);
   assert.ok(copiedRoot.position.x >= 296);
 });
 

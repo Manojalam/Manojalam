@@ -6,6 +6,7 @@ import {
   Undo2, Redo2, Download, Upload, Search,
   ChevronDown, Eye, Share2,
   Languages, Sun, Moon, Presentation,
+  Layers3,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { APP_NAME, BOARD_CONTENT_VERSION } from "@/lib/config";
 import type { BoardContent, VidyaBoard } from "@/lib/types";
 import { buildPresentationStops } from "@/lib/canvas/presentation";
+import { canvasLayerById, isCanvasItemLayerVisible } from "@/lib/canvas/layers";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { BoardShareDialog } from "@/components/canvas/BoardShareDialog";
 import { ImportDialog } from "@/components/canvas/ImportDialog";
@@ -113,8 +115,13 @@ export function CanvasTopbar() {
   const undo            = useCanvasStore((s) => s.undo);
   const redo            = useCanvasStore((s) => s.redo);
   const updateBoardTitle = useCanvasStore((s) => s.updateBoardTitle);
-  const hasPresentableContent = useCanvasStore((s) => s.nodes.some((node) => !node.hidden));
+  const hasPresentableContent = useCanvasStore((s) => {
+    const layersById = canvasLayerById(s.layers);
+    return s.nodes.some((node) => !node.hidden && isCanvasItemLayerVisible(node, layersById));
+  });
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
+  const layersPanelOpen = useUIStore((s) => s.layersPanelOpen);
+  const setLayersPanelOpen = useUIStore((s) => s.setLayersPanelOpen);
   const openBoardExport = useUIStore((s) => s.openBoardExport);
   const { setSanskritPanelOpen, setSearchPanelOpen, startPresentation } = useUIStore();
   const canEdit = board?.accessRole !== "viewer";
@@ -131,6 +138,7 @@ export function CanvasTopbar() {
         edges: state.edges,
         relationships: state.relationships,
         relationshipFans: state.relationshipFans,
+        layers: state.layers,
         viewport: state.viewport,
         settings: state.settings,
       } as BoardContent,
@@ -224,6 +232,12 @@ export function CanvasTopbar() {
           icon={<Search className="h-4 w-4" />}
           label="Search (⌘F)"
           onClick={() => setSearchPanelOpen(true)}
+        />
+        <IconBtn
+          icon={<Layers3 className="h-4 w-4" />}
+          label="Layers"
+          onClick={() => setLayersPanelOpen(!layersPanelOpen)}
+          disabled={!canEdit || Boolean(relationshipSelection)}
         />
         <IconBtn
           icon={<Languages className="h-4 w-4" />}

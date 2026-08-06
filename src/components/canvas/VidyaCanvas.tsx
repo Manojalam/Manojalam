@@ -37,7 +37,7 @@ import { useUIStore } from "@/store/ui-store";
 import { generateId } from "@/lib/utils";
 import { updateBoard } from "@/lib/storage/board-store";
 import { AUTOSAVE_DELAY_MS, BOARD_CONTENT_VERSION } from "@/lib/config";
-import { DEFAULT_BOARD_SETTINGS, type BoardContent } from "@/lib/types";
+import { DEFAULT_BOARD_SETTINGS, type BoardContent, type VidyaEdgeData } from "@/lib/types";
 import {
   getNodeDimensions,
   getNodeRect,
@@ -95,6 +95,11 @@ import {
 import { suppressAutomaticEdgeReconnect } from "@/lib/canvas/connector-handle-interaction";
 import { keepsFrameBehindOnSelection } from "@/lib/canvas/layer-order";
 import {
+  canvasLayerById,
+  isCanvasItemLayerLocked,
+  isCanvasItemLayerVisible,
+} from "@/lib/canvas/layers";
+import {
   findLogicalConnectorEdgeIds,
   refreshConnectorJunctionHandles,
   releaseConnectorJunctionRouteAnchors,
@@ -146,8 +151,14 @@ function initialShapeSize(shapeType: string): { width: number; height: number } 
   return { width: 140, height: 80 };
 }
 
-function isNodeLocked(node: Node | undefined): boolean {
-  return (node?.data as Record<string, unknown> | undefined)?.locked === true;
+function isNodeLocked(
+  node: Node | undefined,
+  layersById: ReturnType<typeof canvasLayerById> = new Map()
+): boolean {
+  return !!node && (
+    (node.data as Record<string, unknown> | undefined)?.locked === true
+    || isCanvasItemLayerLocked(node, layersById)
+  );
 }
 
 function dragEventClientPoint(event: MouseEvent | TouchEvent): { x: number; y: number } | null {
@@ -295,6 +306,7 @@ function VidyaCanvasInner({
   // Targeted selectors — each only re-renders when its slice changes
   const nodes       = useCanvasStore((s) => s.nodes);
   const edges       = useCanvasStore((s) => s.edges);
+  const layers      = useCanvasStore((s) => s.layers);
   const settings    = useCanvasStore((s) => s.settings);
   const saveStatus  = useCanvasStore((s) => s.saveStatus);
   const hasHydratedBoard = useCanvasStore((s) => s.hasHydratedBoard);
@@ -311,6 +323,7 @@ function VidyaCanvasInner({
   const presentationOrder = useUIStore((s) => s.presentationOrder);
   const device = useDeviceProfile();
   const isTouchDevice = device.input !== "mouse";
+  const layersById = useMemo(() => canvasLayerById(layers), [layers]);
 
   const { screenToFlowPosition, fitView, zoomTo, getViewport, setViewport: setFlowViewport } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -364,9 +377,20 @@ function VidyaCanvasInner({
     });
   }, [edges, nodes]);
 
+  const layerResolvedNodes = useMemo(() => numberedNodes.map((node) =>
+    isCanvasItemLayerVisible(node, layersById)
+      ? node
+      : { ...node, hidden: true, selected: false }
+  ), [layersById, numberedNodes]);
+  const layerResolvedEdges = useMemo(() => edges.map((edge) =>
+    isCanvasItemLayerVisible(edge, layersById)
+      ? edge
+      : { ...edge, hidden: true, selected: false }
+  ), [edges, layersById]);
+
   const presentationStops = useMemo(
-    () => buildPresentationStops(numberedNodes, edges, presentationOrder),
-    [edges, numberedNodes, presentationOrder]
+    () => buildPresentationStops(layerResolvedNodes, layerResolvedEdges, presentationOrder),
+    [layerResolvedEdges, layerResolvedNodes, presentationOrder]
   );
   const activePresentationStop = presentationStops[
     Math.min(presentationStep, Math.max(0, presentationStops.length - 1))
@@ -378,8 +402,8 @@ function VidyaCanvasInner({
 
   const displayNodes = useMemo(() => {
     const presentationNodes = presentationMode
-      ? applyPresentationStopGeometry(numberedNodes, activePresentationStop)
-      : numberedNodes;
+      ? applyPresentationStopGeometry(layerResolvedNodes, activePresentationStop)
+      : layerResolvedNodes;
     let resolvedNodes = (!canEdit || presentationMode)
       ? presentationNodes.map((node) => ({
         ...node,
@@ -393,13 +417,21 @@ function VidyaCanvasInner({
       }))
       : presentationNodes.map((node) => {
       const data = (node.data ?? {}) as Record<string, unknown>;
-      const locked = data.locked === true;
+      const layerLocked = isCanvasItemLayerLocked(node, layersById);
+      const locked = data.locked === true || layerLocked;
       if (data.matrixCell !== true) {
-        return locked ? { ...node, draggable: false } : node;
+        return locked
+          ? {
+              ...node,
+              draggable: false,
+              ...(layerLocked ? { selectable: false, connectable: false } : {}),
+            }
+          : node;
       }
       return {
         ...node,
         draggable: !locked,
+        ...(layerLocked ? { selectable: false, connectable: false } : {}),
         resizable: true,
       };
     });
@@ -454,14 +486,15 @@ function VidyaCanvasInner({
     activePresentationNodeIds,
     activePresentationStop,
     canEdit,
-    numberedNodes,
+    layerResolvedNodes,
+    layersById,
     presentationMode,
     relationshipSelection,
     reparentTargetId,
   ]);
 
   const displayEdges = useMemo(() => {
-    const shapeBoundEdges = suppressAutomaticEdgeReconnect(edges);
+    const shapeBoundEdges = suppressAutomaticEdgeReconnect(layerResolvedEdges);
     let resolvedEdges = (!canEdit || presentationMode)
       ? shapeBoundEdges.map((edge) => ({
         ...edge,
@@ -470,6 +503,10 @@ function VidyaCanvasInner({
         style: { ...(edge.style ?? {}), pointerEvents: "none" as const },
       }))
       : shapeBoundEdges;
+
+    resolvedEdges = resolvedEdges.map((edge) => isCanvasItemLayerLocked(edge, layersById)
+      ? { ...edge, selectable: false, reconnectable: false }
+      : edge);
 
     if (presentationMode && activePresentationStop?.kind !== "overview") {
       resolvedEdges = resolvedEdges.map((edge) => {
@@ -498,7 +535,8 @@ function VidyaCanvasInner({
     activePresentationNodeIds,
     activePresentationStop?.kind,
     canEdit,
-    edges,
+    layerResolvedEdges,
+    layersById,
     presentationMode,
     relationshipSelection,
   ]);
@@ -529,6 +567,7 @@ function VidyaCanvasInner({
           edges: state.edges,
           relationships: state.relationships,
           relationshipFans: state.relationshipFans,
+          layers: state.layers,
           viewport: state.viewport,
           settings: state.settings,
         } as BoardContent;
@@ -643,8 +682,14 @@ function VidyaCanvasInner({
         forceFit?: boolean;
       }>).detail;
       const nodeIds = detail?.nodeIds;
+      const state = useCanvasStore.getState();
+      const currentLayersById = canvasLayerById(state.layers);
       const targetNodes = nodeIds?.length
-        ? useCanvasStore.getState().nodes.filter((node) => nodeIds.includes(node.id) && !node.hidden)
+        ? state.nodes.filter((node) =>
+            nodeIds.includes(node.id)
+            && !node.hidden
+            && isCanvasItemLayerVisible(node, currentLayersById)
+          )
         : undefined;
       const radialFit = detail?.mode === "radial";
       void fitView({
@@ -691,8 +736,10 @@ function VidyaCanvasInner({
       }
       const activeDragIds = new Set(dragStartRef.current?.positions.keys() ?? []);
       const releaseSafeChanges = preserveSnappedDragEndPositions(changes, activeDragIds);
-      const lockedIds = new Set(useCanvasStore.getState().nodes
-        .filter((node) => isNodeLocked(node))
+      const currentState = useCanvasStore.getState();
+      const currentLayersById = canvasLayerById(currentState.layers);
+      const lockedIds = new Set(currentState.nodes
+        .filter((node) => isNodeLocked(node, currentLayersById))
         .map((node) => node.id));
       const acceptedChanges = releaseSafeChanges.filter((change) =>
         change.type !== "position" || !lockedIds.has(change.id)
@@ -750,7 +797,7 @@ function VidyaCanvasInner({
     if (useUIStore.getState().relationshipSelection) return;
     const state = useCanvasStore.getState();
     const storedDraggedNode = state.nodes.find((node) => node.id === draggedNode.id);
-    if (isNodeLocked(storedDraggedNode)) return;
+    if (isNodeLocked(storedDraggedNode, canvasLayerById(state.layers))) return;
     state.pushHistory();
     const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
@@ -832,19 +879,25 @@ function VidyaCanvasInner({
       ? { x: draggedStart.x + moveX, y: draggedStart.y + moveY }
       : draggedNode.position;
     const movingIds = new Set(drag?.positions.keys() ?? [draggedNode.id]);
+    const currentLayersById = canvasLayerById(state.layers);
     const movingJunctionIds = new Set(Array.from(movingIds).filter((nodeId) => (
       state.nodes.find((node) => node.id === nodeId)?.type === "junction"
     )));
     const draggedRect = getNodeRect({ ...storedDragged, position: unsnappedPosition });
     const alignmentCandidates = state.nodes.filter((node) => {
-      if (movingIds.has(node.id) || node.hidden || node.type === "frame") return false;
+      if (
+        movingIds.has(node.id)
+        || node.hidden
+        || !isCanvasItemLayerVisible(node, currentLayersById)
+        || node.type === "frame"
+      ) return false;
       if (!drag?.matrixRootId) return true;
       const data = (node.data ?? {}) as Record<string, unknown>;
       return data.matrixRootId !== drag.matrixRootId && data.matrixFrameFor !== drag.matrixRootId;
     });
     const connectedIds = new Set<string>();
     for (const edge of state.edges) {
-      if (edge.hidden) continue;
+      if (edge.hidden || !isCanvasItemLayerVisible(edge, currentLayersById)) continue;
       if (movingIds.has(edge.source) && !movingIds.has(edge.target)) connectedIds.add(edge.target);
       if (movingIds.has(edge.target) && !movingIds.has(edge.source)) connectedIds.add(edge.source);
     }
@@ -1024,8 +1077,13 @@ function VidyaCanvasInner({
     const groupId = (node.data as Record<string, unknown> | undefined)?.groupId;
     if (typeof groupId !== "string" || event.metaKey || event.ctrlKey || event.shiftKey) return;
     useCanvasStore.setState((state) => {
+      const currentLayersById = canvasLayerById(state.layers);
       const groupIds = state.nodes
-        .filter((candidate) => (candidate.data as Record<string, unknown> | undefined)?.groupId === groupId)
+        .filter((candidate) =>
+          (candidate.data as Record<string, unknown> | undefined)?.groupId === groupId
+          && isCanvasItemLayerVisible(candidate, currentLayersById)
+          && !isNodeLocked(candidate, currentLayersById)
+        )
         .map((candidate) => candidate.id);
       if (groupIds.length < 2) return {};
       const selected = new Set(groupIds);
@@ -1206,7 +1264,25 @@ function VidyaCanvasInner({
         selectedEdgeIds: [newEdge.id],
         saveStatus: "unsaved",
       }));
-      if (mode === "matrix") requestAnimationFrame(() => cs.scheduleMatrixReflow(connection.source));
+      if (recordHierarchy) {
+        requestAnimationFrame(() => {
+          const nextState = useCanvasStore.getState();
+          if (mode === "matrix") {
+            nextState.scheduleMatrixReflow(connection.source);
+          } else if (mode === "list") {
+            nextState.scheduleListReflow(connection.source);
+          } else if (
+            mode === "fromParentFreeForm"
+            || mode === "mindMap"
+            || mode === "horizontal"
+            || mode === "vertical"
+            || mode === "topDown"
+            || mode === "linear"
+          ) {
+            nextState.scheduleStructuredReflow(connection.source);
+          }
+        });
+      }
     },
     []
   );
@@ -1224,13 +1300,16 @@ function VidyaCanvasInner({
     const clientPoint = dragEventClientPoint(event);
     const endPoint = clientPoint ? screenToFlowPosition(clientPoint) : null;
     const targetNodeId = connectionState.toNode?.id;
-    useCanvasStore.setState((state) => ({
-      edges: state.edges.map((edge) => {
-        if (edge.id !== edgeId) return edge;
-        let anchored = edge;
-        if (start?.handleId === PERIMETER_HANDLE_ID) {
-          const sourceNode = state.nodes.find((node) => node.id === start.nodeId);
-          if (sourceNode) {
+      useCanvasStore.setState((state) => ({
+        edges: state.edges.map((edge) => {
+          if (edge.id !== edgeId) return edge;
+          const edgeData = (edge.data ?? {}) as VidyaEdgeData;
+          const automaticLinearConnection = edgeData.layoutMode === "linear"
+            && edgeData.manualRoute !== true;
+          let anchored = edge;
+          if (!automaticLinearConnection && start?.handleId === PERIMETER_HANDLE_ID) {
+            const sourceNode = state.nodes.find((node) => node.id === start.nodeId);
+            if (sourceNode) {
             anchored = setConnectorEndpointAnchor(
               anchored,
               "source",
@@ -1238,9 +1317,11 @@ function VidyaCanvasInner({
             );
           }
         }
-        if (
-          endPoint
-          && targetNodeId
+          if (
+            !automaticLinearConnection
+            &&
+            endPoint
+            && targetNodeId
           && connectionState.toHandle?.id === PERIMETER_HANDLE_ID
         ) {
           const targetNode = state.nodes.find((node) => node.id === targetNodeId);
@@ -1697,7 +1778,17 @@ function VidyaCanvasInner({
         // editors were filtered above, so their native select-all remains
         // untouched. Select visible nodes and connectors as one board set.
         e.preventDefault();
-        const { nodeIds: selectableNodeIds, edgeIds: selectableEdgeIds } = visibleBoardSelection(cs.nodes, cs.edges);
+        const currentLayersById = canvasLayerById(cs.layers);
+        const { nodeIds: selectableNodeIds, edgeIds: selectableEdgeIds } = visibleBoardSelection(
+          cs.nodes.filter((node) =>
+            isCanvasItemLayerVisible(node, currentLayersById)
+            && !isCanvasItemLayerLocked(node, currentLayersById)
+          ),
+          cs.edges.filter((edge) =>
+            isCanvasItemLayerVisible(edge, currentLayersById)
+            && !isCanvasItemLayerLocked(edge, currentLayersById)
+          )
+        );
         const nodeIds = new Set(selectableNodeIds);
         const edgeIds = new Set(selectableEdgeIds);
         useCanvasStore.setState((state) => ({

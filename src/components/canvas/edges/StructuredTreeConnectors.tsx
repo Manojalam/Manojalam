@@ -13,6 +13,11 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { ConnectionLabelEditor } from "./ConnectionLabelEditor";
 import { ConnectorSvgPath } from "./ConnectorPath";
+import {
+  canvasLayerById,
+  isCanvasItemLayerLocked,
+  isCanvasItemLayerVisible,
+} from "@/lib/canvas/layers";
 
 function edgeData(edge: Edge): VidyaEdgeData {
   return (edge.data ?? {}) as VidyaEdgeData;
@@ -58,10 +63,16 @@ function branchPath(segments: Array<{ x1: number; y1: number; x2: number; y2: nu
 
 function selectEdges(edgeIds: string[], additive: boolean): void {
   useCanvasStore.setState((state) => {
+    const layersById = canvasLayerById(state.layers);
+    const editableEdgeIds = edgeIds.filter((edgeId) => {
+      const edge = state.edges.find((candidate) => candidate.id === edgeId);
+      return edge && !isCanvasItemLayerLocked(edge, layersById);
+    });
+    if (!editableEdgeIds.length) return {};
     const selectedIds = new Set(additive ? state.selectedEdgeIds : []);
-    const wholeGroupSelected = edgeIds.every((edgeId) => selectedIds.has(edgeId));
-    if (additive && wholeGroupSelected) edgeIds.forEach((edgeId) => selectedIds.delete(edgeId));
-    else edgeIds.forEach((edgeId) => selectedIds.add(edgeId));
+    const wholeGroupSelected = editableEdgeIds.every((edgeId) => selectedIds.has(edgeId));
+    if (additive && wholeGroupSelected) editableEdgeIds.forEach((edgeId) => selectedIds.delete(edgeId));
+    else editableEdgeIds.forEach((edgeId) => selectedIds.add(edgeId));
     return {
       nodes: additive ? state.nodes : state.nodes.map((node) => node.selected ? { ...node, selected: false } : node),
       edges: state.edges.map((edge) => ({ ...edge, selected: selectedIds.has(edge.id) })),
@@ -86,16 +97,33 @@ function sharedGroupExplicitColor(edges: Edge[]): string | undefined {
 export function StructuredTreeConnectors() {
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const layers = useCanvasStore((state) => state.layers);
   const relationshipSelection = useUIStore((state) => state.relationshipSelection);
-  const [model, setModel] = useState<TreeConnectorModel>(() => buildTreeConnectorModel(nodes, edges));
+  const layersById = useMemo(() => canvasLayerById(layers), [layers]);
+  const visibleNodes = useMemo(
+    () => nodes.filter((node) => !node.hidden && isCanvasItemLayerVisible(node, layersById)),
+    [layersById, nodes]
+  );
+  const visibleEdges = useMemo(
+    () => edges.filter((edge) => !edge.hidden && isCanvasItemLayerVisible(edge, layersById)),
+    [edges, layersById]
+  );
+  const [model, setModel] = useState<TreeConnectorModel>(() =>
+    buildTreeConnectorModel(visibleNodes, visibleEdges)
+  );
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setModel(buildTreeConnectorModel(nodes, edges)));
+    const frame = requestAnimationFrame(() =>
+      setModel(buildTreeConnectorModel(visibleNodes, visibleEdges))
+    );
     return () => cancelAnimationFrame(frame);
-  }, [edges, nodes]);
+  }, [visibleEdges, visibleNodes]);
 
   const groups = model.groups;
-  const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const nodesById = useMemo(
+    () => new Map(visibleNodes.map((node) => [node.id, node])),
+    [visibleNodes]
+  );
 
   if (relationshipSelection || !groups.length) return null;
 
