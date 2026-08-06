@@ -373,8 +373,19 @@ export interface BoardContent {
   edges: VidyaEdge[];
   relationships: NodeRelationship[];
   relationshipFans: RelationshipFanState[];
+  /** Named board-wide object sets, ordered from back to front. */
+  layers?: CanvasLayer[];
   viewport?: Viewport;
   settings: BoardSettings;
+}
+
+export interface CanvasLayer {
+  id: string;
+  name: string;
+  /** Lower values render behind higher values. */
+  order: number;
+  visible: boolean;
+  locked: boolean;
 }
 
 export interface VidyaBoard {
@@ -678,6 +689,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixOuterBorderVisible?: boolean;
   matrixGridVisible?: boolean;
   groupId?: string;
+  /** Optional membership in one named canvas layer. */
+  layerId?: string;
   /** Radial-layout-only presentation overrides. */
   radialFillColor?: string;
   radialTextColor?: string;
@@ -861,6 +874,8 @@ export interface ConnectorJunctionNodeData extends BaseNodeData {
 }
 
 export interface VidyaEdgeData extends Record<string, unknown> {
+  /** Optional membership in one named canvas layer. */
+  layerId?: string;
   label?: string;
   color?: string;
   /** Generated hierarchy color. Explicit `color` continues to take precedence. */
