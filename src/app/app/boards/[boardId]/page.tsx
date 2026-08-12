@@ -9,6 +9,7 @@ import { CanvasTopbar } from "@/components/canvas/CanvasTopbar";
 import { CanvasToolbar } from "@/components/canvas/CanvasToolbar";
 import { CanvasInspector } from "@/components/canvas/CanvasInspector";
 import { LayoutPanel } from "@/components/canvas/LayoutPanel";
+import { CanvasLayersPanel } from "@/components/canvas/CanvasLayersPanel";
 import { CanvasStatusBar } from "@/components/canvas/CanvasStatusBar";
 import { VidyaCanvas } from "@/components/canvas/VidyaCanvas";
 import { SanskritToolsPanel } from "@/components/sanskrit/SanskritToolsPanel";
@@ -236,6 +237,7 @@ export default function BoardEditorPage() {
           {!relationshipSelection && (
             <div className="pointer-events-auto">
               <LayoutPanel />
+              <CanvasLayersPanel />
             </div>
           )}
         </div>}

@@ -13,7 +13,7 @@ import {
   type EdgeProps,
 } from "@xyflow/react";
 import type { VidyaEdgeData } from "@/lib/types";
-import { getNodeRect, type NodeRect } from "@/lib/layout";
+import { getNodeRect, routeForMode, type NodeRect } from "@/lib/layout";
 import {
   routeLayoutEdge,
   routeManualOrthogonalEdge,
@@ -48,6 +48,15 @@ function positionSide(position: Position): Side {
     case Position.Bottom: return "bottom";
     case Position.Left: return "left";
     case Position.Right: return "right";
+  }
+}
+
+function sidePosition(side: Side): Position {
+  switch (side) {
+    case "top": return Position.Top;
+    case "bottom": return Position.Bottom;
+    case "left": return Position.Left;
+    case "right": return Position.Right;
   }
 }
 
@@ -191,10 +200,19 @@ function RoutedSmartBranchEdge({
   const independentLinearRoute = d.layoutMode === "linear"
     && !manualRoute
     && !waypoints.length
-    && sourceNode
-    && targetNode;
-  const sourceSide = positionSide(sourcePosition);
-  const targetSide = positionSide(targetPosition);
+    && !!sourceNode
+    && !!targetNode;
+  const linearRoute = independentLinearRoute && sourceNode && targetNode
+    ? routeForMode("linear", sourceNode, targetNode)
+    : null;
+  const routedSourcePosition = linearRoute
+    ? sidePosition(linearRoute.sourceHandle)
+    : sourcePosition;
+  const routedTargetPosition = linearRoute
+    ? sidePosition(linearRoute.targetHandle)
+    : targetPosition;
+  const sourceSide = positionSide(routedSourcePosition);
+  const targetSide = positionSide(routedTargetPosition);
   const sourceRect = sourceNode ? getNodeRect(sourceNode) : null;
   const targetRect = targetNode ? getNodeRect(targetNode) : null;
   const routedSourcePoint = independentLinearRoute && sourceRect
@@ -202,7 +220,7 @@ function RoutedSmartBranchEdge({
         sourceNode,
         sourceRect,
         sourceSide,
-        automaticRouteOptions.sourceFraction ?? 0.5
+        sourceSide === "right" ? 0.5 : automaticRouteOptions.sourceFraction ?? 0.5
       )
     : { x: sourceX, y: sourceY };
   const routedTargetPoint = independentLinearRoute && targetRect
@@ -210,7 +228,7 @@ function RoutedSmartBranchEdge({
         targetNode,
         targetRect,
         targetSide,
-        automaticRouteOptions.targetFraction ?? 0.5
+        0.5
       )
     : { x: targetX, y: targetY };
 
@@ -230,16 +248,16 @@ function RoutedSmartBranchEdge({
             sourceY: routedSourcePoint.y,
             targetX: routedTargetPoint.x,
             targetY: routedTargetPoint.y,
-            sourcePosition,
-            targetPosition,
+            sourcePosition: routedSourcePosition,
+            targetPosition: routedTargetPosition,
           })
         : getSmoothStepPath({
             sourceX: routedSourcePoint.x,
             sourceY: routedSourcePoint.y,
             targetX: routedTargetPoint.x,
             targetY: routedTargetPoint.y,
-            sourcePosition,
-            targetPosition,
+            sourcePosition: routedSourcePosition,
+            targetPosition: routedTargetPosition,
             borderRadius: 8,
           });
     [path, labelX, labelY] = routed;

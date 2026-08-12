@@ -1,6 +1,13 @@
 import type { Node, Edge } from "@xyflow/react";
 import type { LayoutMode } from "../types";
-import { buildHierarchy, getSubtree, getRoots, type Hierarchy } from "./hierarchy";
+import {
+  buildHierarchy,
+  getLayoutOwnedSubtree,
+  getSubtree,
+  getRoots,
+  type Hierarchy,
+} from "./hierarchy";
+import { DEFAULT_CHILD_GROUP_GAP } from "./child-group-wrap";
 import { computeListLayout } from "./list-layout";
 import { computeMatrixLayout } from "./matrix-layout";
 import { computeOrthogonalTreeLayout } from "./tree-layout";
@@ -285,6 +292,99 @@ function centersToPositions(centers: Positions, rootId: string, byId: Map<string
   return out;
 }
 
+function linearPlacementRect(
+  nodeId: string,
+  placements: Positions,
+  byId: Map<string, Node>
+): NodeRect | null {
+  const node = byId.get(nodeId);
+  const placement = placements[nodeId];
+  if (!node || !placement) return null;
+  const { w, h } = sizeOf(node);
+  const origin = node.origin ?? [0, 0];
+  return createNodeRect(
+    nodeId,
+    placement.x - w * origin[0],
+    placement.y - h * origin[1],
+    w,
+    h
+  );
+}
+
+function linearPlacementBounds(
+  nodeIds: string[],
+  placements: Positions,
+  byId: Map<string, Node>
+): NodeRect | null {
+  const rects = nodeIds.flatMap((nodeId) => {
+    const rect = linearPlacementRect(nodeId, placements, byId);
+    return rect ? [rect] : [];
+  });
+  if (!rects.length) return null;
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return createNodeRect("linear-subtree", left, top, right - left, bottom - top);
+}
+
+function translateLinearPlacements(
+  nodeIds: string[],
+  placements: Positions,
+  deltaY: number
+): void {
+  if (Math.abs(deltaY) <= Number.EPSILON) return;
+  for (const nodeId of nodeIds) {
+    const placement = placements[nodeId];
+    if (placement) placement.y += deltaY;
+  }
+}
+
+/**
+ * Linear is a primary sequence, not a balanced tree. The first child continues
+ * the parent's row; every additional child owns a separate lane below the
+ * complete primary subtree. Moving whole subtrees preserves nested layouts.
+ */
+function alignLinearPrimaryBranches(
+  rootId: string,
+  placements: Positions,
+  hierarchy: Hierarchy,
+  byId: Map<string, Node>
+): void {
+  const ownedNodeIds = new Set(getLayoutOwnedSubtree(rootId, hierarchy, [...byId.values()]));
+  const parents = [...ownedNodeIds]
+    .filter((nodeId) => (hierarchy.get(nodeId)?.childIds.length ?? 0) > 0)
+    .sort((a, b) => (hierarchy.get(b)?.depth ?? 0) - (hierarchy.get(a)?.depth ?? 0));
+
+  for (const parentId of parents) {
+    const parentRect = linearPlacementRect(parentId, placements, byId);
+    const childIds = (hierarchy.get(parentId)?.childIds ?? [])
+      .filter((childId) => !!placements[childId]);
+    if (!parentRect || !childIds.length) continue;
+
+    const primaryId = childIds[0];
+    const primaryRect = linearPlacementRect(primaryId, placements, byId);
+    if (!primaryRect) continue;
+    const primarySubtree = getSubtree(primaryId, hierarchy);
+    translateLinearPlacements(
+      primarySubtree,
+      placements,
+      parentRect.centerY - primaryRect.centerY
+    );
+
+    const primaryBounds = linearPlacementBounds(primarySubtree, placements, byId);
+    let laneBottom = Math.max(parentRect.bottom, primaryBounds?.bottom ?? parentRect.bottom);
+    for (const childId of childIds.slice(1)) {
+      const childSubtree = getSubtree(childId, hierarchy);
+      const childBounds = linearPlacementBounds(childSubtree, placements, byId);
+      if (!childBounds) continue;
+      const deltaY = laneBottom + DEFAULT_CHILD_GROUP_GAP - childBounds.top;
+      translateLinearPlacements(childSubtree, placements, deltaY);
+      laneBottom = childBounds.bottom + deltaY;
+    }
+  }
+}
+
 // -- Public: compute positions ------------------------------------------------
 
 export function computeLayout(
@@ -314,6 +414,7 @@ export function computeLayout(
         byId,
         mode === "horizontal" || mode === "linear" ? "horizontal" : "vertical"
       );
+      if (mode === "linear") alignLinearPrimaryBranches(root, pos, hierarchy, byId);
       Object.assign(result, pos);
     } else if (mode === "mindMap") {
       Object.assign(result, computeMindMapLayout(root, hierarchy, byId));
@@ -386,8 +487,27 @@ export function routeForMode(mode: LayoutMode, parent: Node, child: Node): EdgeR
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "step" };
     }
-    case "linear":
-      return { sourceHandle: "right", targetHandle: "left", curveStyle: "step" };
+    case "linear": {
+      const parentData = (parent.data ?? {}) as { childOrder?: unknown };
+      const childOrder = Array.isArray(parentData.childOrder)
+        ? parentData.childOrder.filter((id): id is string => typeof id === "string")
+        : [];
+      const childIndex = childOrder.indexOf(child.id);
+      const parentCenter = centerOf(parent);
+      const childCenter = centerOf(child);
+      const sameLaneTolerance = Math.max(16, Math.min(sizeOf(parent).h, sizeOf(child).h) * 0.25);
+      const isPrimary = childIndex === 0
+        || (childIndex < 0 && childOrder.length === 0
+          && Math.abs(childCenter.y - parentCenter.y) <= sameLaneTolerance);
+      if (isPrimary) {
+        return { sourceHandle: "right", targetHandle: "left", curveStyle: "step" };
+      }
+      return {
+        sourceHandle: childCenter.y >= parentCenter.y ? "bottom" : "top",
+        targetHandle: "left",
+        curveStyle: "step",
+      };
+    }
     case "radial": {
       const { source, target } = nearestSides(parent, child);
       return { sourceHandle: source, targetHandle: target, curveStyle: "smooth" };
@@ -433,7 +553,7 @@ export const LAYOUT_OPTIONS: LayoutOption[] = [
   { mode: "horizontal", label: "Horizontal", description: "Tree grows left to right" },
   { mode: "vertical",   label: "Vertical",   description: "Balanced tree fanning down" },
   { mode: "list",       label: "List",       description: "Indented outline" },
-  { mode: "linear",     label: "Linear",     description: "Independent parent-to-child lines" },
+  { mode: "linear",     label: "Linear",     description: "Primary chain with separate child lanes" },
   { mode: "radial",     label: "Sunburst",   description: "Concentric hierarchy rendered as filled sectors" },
   { mode: "matrix",     label: "Matrix",     description: "Structured chart / table" },
 ];

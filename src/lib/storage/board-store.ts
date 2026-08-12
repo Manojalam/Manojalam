@@ -7,6 +7,10 @@ import { requireSupabaseClient } from "@/lib/supabase/client";
 import { generateId } from "@/lib/utils";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 import {
+  normalizeCanvasLayerMembership,
+  normalizeCanvasLayers,
+} from "@/lib/canvas/layers";
+import {
   insertCrossBoardDiagram,
   type CrossBoardDiagramPayload,
 } from "@/lib/canvas/cross-board-copy";
@@ -23,13 +27,20 @@ export interface BoardRow {
 }
 
 function normalizeBoardContent(content: BoardContent): BoardContent {
+  const layers = normalizeCanvasLayers(content.layers);
+  const membership = normalizeCanvasLayerMembership(
+    normalizePersistedNodes(content.nodes),
+    normalizePersistedEdges(content.edges),
+    layers
+  );
   return {
     ...content,
     version: BOARD_CONTENT_VERSION,
-    nodes: normalizePersistedNodes(content.nodes),
-    edges: normalizePersistedEdges(content.edges),
+    nodes: membership.nodes as BoardContent["nodes"],
+    edges: membership.edges as BoardContent["edges"],
     relationships: Array.isArray(content.relationships) ? content.relationships : [],
     relationshipFans: Array.isArray(content.relationshipFans) ? content.relationshipFans : [],
+    layers,
   };
 }
 
@@ -72,6 +83,7 @@ function createEmptyContent(title = "Untitled Board"): BoardContent {
     edges: [],
     relationships: [],
     relationshipFans: [],
+    layers: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     settings: { ...DEFAULT_BOARD_SETTINGS },
   };

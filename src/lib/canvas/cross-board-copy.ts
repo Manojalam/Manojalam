@@ -327,6 +327,9 @@ function remapNodeData(
   );
   const groupId = typeof data.groupId === "string" ? data.groupId : null;
   if (groupId) data.groupId = groupIdMap.get(groupId) ?? groupId;
+  // A destination board does not receive the source board's layer metadata.
+  // Leaving the id behind would create an invisible orphan membership.
+  delete data.layerId;
 
   const remappedSpec = remapRelationshipDiagramSpec(
     data.relationshipDiagramSpec,
@@ -350,6 +353,7 @@ function remapEdgeData(
   offset: { x: number; y: number }
 ): Record<string, unknown> {
   const data = structuredClone((edge.data ?? {}) as Record<string, unknown>);
+  delete data.layerId;
   data.waypoints = translatedPoints(data.waypoints, offset);
   data.junctionUserWaypoints = translatedPoints(data.junctionUserWaypoints, offset);
 

@@ -88,6 +88,8 @@ interface UIState {
   setSanskritPanelOpen: (open: boolean) => void;
   layoutPanelOpen: boolean;
   setLayoutPanelOpen: (open: boolean) => void;
+  layersPanelOpen: boolean;
+  setLayersPanelOpen: (open: boolean) => void;
   searchPanelOpen: boolean;
   setSearchPanelOpen: (open: boolean) => void;
   commandPaletteOpen: boolean;
@@ -223,7 +225,15 @@ export const useUIStore = create<UIState>((set, get) => ({
   sanskritPanelOpen: false,
   setSanskritPanelOpen: (open) => set({ sanskritPanelOpen: open }),
   layoutPanelOpen: false,
-  setLayoutPanelOpen: (open) => set({ layoutPanelOpen: open }),
+  setLayoutPanelOpen: (open) => set({
+    layoutPanelOpen: open,
+    ...(open ? { layersPanelOpen: false } : {}),
+  }),
+  layersPanelOpen: false,
+  setLayersPanelOpen: (open) => set({
+    layersPanelOpen: open,
+    ...(open ? { layoutPanelOpen: false } : {}),
+  }),
   searchPanelOpen: false,
   setSearchPanelOpen: (open) => set({ searchPanelOpen: open }),
   commandPaletteOpen: false,
@@ -243,6 +253,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     connectorClickPoint: null,
     drawingModeNodeId: null,
     layoutPanelOpen: false,
+    layersPanelOpen: false,
     sanskritPanelOpen: false,
     searchPanelOpen: false,
     commandPaletteOpen: false,
