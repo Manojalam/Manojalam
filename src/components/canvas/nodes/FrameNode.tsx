@@ -157,6 +157,22 @@ function FrameNodeComponent({
           ...objectRotationStyle("frame", d as Record<string, unknown>),
         }}
       >
+        {isMatrixGrid && d.matrixEmptyCells?.map((cell) => (
+          <div
+            key={cell.key}
+            data-matrix-empty-cell="true"
+            aria-hidden="true"
+            className="pointer-events-none absolute"
+            style={{
+              left: cell.x,
+              top: cell.y,
+              width: cell.width,
+              height: cell.height,
+              backgroundColor: cell.background,
+              backgroundImage: cell.backgroundImage,
+            }}
+          />
+        ))}
         {isMatrixGrid && matrixRepeatedCells.map((cell) => (
           <div
             key={`${cell.key}-background`}

@@ -753,6 +753,7 @@ function applyMatrixResultToNodes(
       data.matrixDensity = result.density;
       data.matrixEmptySlots = result.emptyCells.length
         ? result.emptyCells.map((cell) => ({
+          sourceNodeId: cell.sourceNodeId,
           x: cell.x - result.bounds.left,
           y: cell.y - result.bounds.top,
           width: cell.width,
@@ -814,6 +815,7 @@ function matrixGeometryChanged(before: Node[], after: Node[], rootId: string): b
       || previousData.matrixRowSpan !== data.matrixRowSpan
       || previousData.matrixOuterBorderVisible !== data.matrixOuterBorderVisible
       || previousData.matrixGridVisible !== data.matrixGridVisible
+      || JSON.stringify(previousData.matrixEmptyCells) !== JSON.stringify(data.matrixEmptyCells)
     ) return true;
   }
   return before.filter(relevant).length !== after.filter(relevant).length;

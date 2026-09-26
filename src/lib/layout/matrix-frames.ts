@@ -93,7 +93,8 @@ function visualColors(node: Node | undefined): {
 
 function generatedEmptySlotNodes(
   root: Node | undefined,
-  slots: readonly MatrixGeneratedEmptySlot[]
+  slots: readonly MatrixGeneratedEmptySlot[],
+  scopedNodes: readonly Node[]
 ): Node[] {
   if (!root || !slots.length) return [];
   const rootRect = matrixPresentationRect(root);
@@ -103,6 +104,21 @@ function generatedEmptySlotNodes(
       || slot.width <= 0
       || slot.height <= 0
     ) return [];
+    const slotRect = createNodeRect("slot", rootRect.left + slot.x, rootRect.top + slot.y, slot.width, slot.height);
+    // Old saved boards lack source IDs. Prefer a peer aligned with this row,
+    // then the nearest body cell; never borrow a different table's palette.
+    const peers = scopedNodes.filter((node) => node.id !== root.id && node.data.matrixCell === true);
+    const source = peers.find((node) => node.id === slot.sourceNodeId)
+      ?? [...peers].sort((a, b) => {
+        const score = (node: Node) => {
+          const rect = matrixPresentationRect(node);
+          const sameRow = Math.abs(rect.centerY - slotRect.centerY) <= GRID_ALIGNMENT_TOLERANCE;
+          return (sameRow ? 0 : 1e9) + Math.hypot(rect.centerX - slotRect.centerX, rect.centerY - slotRect.centerY);
+        };
+        return score(a) - score(b);
+      })[0]
+      ?? root;
+    const sourceData = source.data as Record<string, unknown>;
     return [{
       id: `matrix-empty-slot-${root.id}-${index}`,
       type: "frame",
@@ -110,7 +126,11 @@ function generatedEmptySlotNodes(
         x: rootRect.left + slot.x,
         y: rootRect.top + slot.y,
       },
-      data: {},
+      data: {
+        matrixEmptySlot: true,
+        background: resolveFillColor(sourceData),
+        backgroundImage: resolveLayoutFillGradient(sourceData),
+      },
       style: { width: slot.width, height: slot.height },
       selectable: false,
       draggable: false,
@@ -506,6 +526,18 @@ function buildMatrixFrameNode(
       matrixOuterBorderVisible: outerBorderVisible,
       matrixGridVisible: gridVisible,
       matrixGridLines: lines,
+      matrixEmptyCells: presentationNodes.filter((node) => node.data.matrixEmptySlot === true).map((node) => {
+        const rect = matrixPresentationRect(node);
+        return {
+          key: node.id,
+          x: rect.left - outerBounds.left,
+          y: rect.top - outerBounds.top,
+          width: rect.width,
+          height: rect.height,
+          background: node.data.background,
+          backgroundImage: node.data.backgroundImage,
+        };
+      }),
       matrixRepeatedCells: repeatedNodes.map((repeated) =>
         repeatedCellRenderData(repeated, outerBounds)),
       tags: [],
@@ -532,7 +564,7 @@ export function buildMatrixFrameNodes(
   const storedEmptySlots = Array.isArray(rootData.matrixEmptySlots)
     ? rootData.matrixEmptySlots as MatrixGeneratedEmptySlot[]
     : [];
-  const emptySlotNodes = generatedEmptySlotNodes(root, storedEmptySlots);
+  const emptySlotNodes = generatedEmptySlotNodes(root, storedEmptySlots, scopedNodes);
   const storedFoldSections = Array.isArray(rootData.matrixFoldSections)
     ? rootData.matrixFoldSections as MatrixFoldSectionPresentation[]
     : [];
