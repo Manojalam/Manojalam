@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { textEditingSessions } from "@/lib/canvas/text-editing-session";
 import { MarkerType } from "@xyflow/react";
 import type { Node, Edge, Viewport } from "@xyflow/react";
 import type {
@@ -4402,6 +4403,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       let nextEdges = state.edges;
       let siblingSpacingChanged = false;
       for (const rootId of rootIds) {
+        if (textEditingSessions.defer(
+          rootId,
+          getSubtree(rootId, hierarchy),
+          () => get().scheduleMatrixReflow(rootId)
+        )) continue;
         const previouslyOwnedNodeIds = new Set(nextNodes
           .filter((node) => {
             const data = (node.data ?? {}) as Record<string, unknown>;

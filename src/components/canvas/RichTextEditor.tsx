@@ -18,6 +18,7 @@ import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
 import type { InlineTextFormatDetail, InlineTextFormatSnapshot } from "@/lib/types";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
+import { RichTextContentSync, textEditingSessions } from "@/lib/canvas/text-editing-session";
 import {
   measureRichTextElement,
   textMeasurementFontsReady,
@@ -592,6 +593,12 @@ export function RichTextEditor({
   const updateAppSettings = useUIStore((state) => state.updateAppSettings);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const setSettings = useCanvasStore((state) => state.setSettings);
+  const contentSyncRef = useRef(new RichTextContentSync(initialContent || ""));
+  useLayoutEffect(() => {
+    if (!editable || !nodeId) return;
+    return textEditingSessions.begin(nodeId);
+  }, [editable, nodeId]);
+
   const alignRef = useRef<RichTextEditorProps["blockAlign"]>(blockAlign);
   const alignFirstRun = useRef(true);
   // Anchor = topmost point of the current selection (used to place the bar above it).
@@ -786,7 +793,9 @@ export function RichTextEditor({
     editable,
     immediatelyRender: false,
     onUpdate({ editor }) {
-      onChange(editor.getHTML());
+      const html = editor.getHTML();
+      contentSyncRef.current.emitted(html);
+      onChange(html);
       const reason = pendingReportReasonRef.current;
       pendingReportReasonRef.current = "input";
       scheduleContentReport(editor, reason);
@@ -891,7 +900,7 @@ export function RichTextEditor({
     hasShapeTextFlow ? "flow" : "rectangular",
   ].join("|");
   const reconcileShapeGuide = useCallback(() => {
-    if (!constrainToShapeGuide) return;
+    if (!constrainToShapeGuide || editor?.isEditable) return;
     const root = richTextRootRef.current;
     const content = editor?.view.dom as HTMLElement | undefined;
     const guide = root?.closest<HTMLElement>('[data-shape-label-content="true"]');
@@ -1039,6 +1048,8 @@ export function RichTextEditor({
   ]);
 
   useLayoutEffect(() => {
+    // Keep the caret scale and alignment steady while a keyboard owns the text.
+    if (editable) return;
     const guideChanged = guidePresentationRef.current !== guidePresentation;
     const flowChanged = flowPresentationRef.current !== flowPresentation;
     const guideAlignmentChanged = guideAlignmentPresentationRef.current !== guideAlignmentPresentation;
@@ -1062,6 +1073,7 @@ export function RichTextEditor({
     if (guideChanged || flowChanged || guideAlignmentChanged) shapeGuideCorrectionCountRef.current = 0;
     scheduleShapeGuideReconciliation();
   }, [
+    editable,
     contentScale,
     flowPresentation,
     guideAlignmentPresentation,
@@ -1170,20 +1182,31 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (!editor) return;
-    const nextContent = initialContent || "";
-    if (editor.getHTML() === nextContent) return;
-    const previousSelection = editor.state.selection;
-    const hadFocus = editor.isFocused;
-    editor.commands.setContent(nextContent, { emitUpdate: false });
-    if (editable) {
-      const maximumPosition = Math.max(1, editor.state.doc.content.size);
-      editor.commands.setTextSelection({
-        from: Math.min(previousSelection.from, maximumPosition),
-        to: Math.min(previousSelection.to, maximumPosition),
-      });
-      if (hadFocus) requestAnimationFrame(() => editor.commands.focus(undefined, { scrollIntoView: false }));
-    }
-    scheduleContentReport(editor, "layout");
+    const syncContent = () => {
+      if (editor.isDestroyed) return;
+      const nextContent = initialContent || "";
+      if (!contentSyncRef.current.shouldApply(nextContent, editor.getHTML(), editor.view.composing)) return;
+      const previousSelection = editor.state.selection;
+      editor.commands.setContent(nextContent, { emitUpdate: false });
+      if (editable) {
+        const maximumPosition = Math.max(1, editor.state.doc.content.size);
+        editor.commands.setTextSelection({
+          from: Math.min(previousSelection.from, maximumPosition),
+          to: Math.min(previousSelection.to, maximumPosition),
+        });
+      }
+      scheduleContentReport(editor, "layout");
+    };
+    syncContent();
+    // Allow the keyboard's final composition event to reach ProseMirror first.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const compositionEnded = () => { timer = setTimeout(syncContent, 0); };
+    const element = editor.view.dom;
+    element.addEventListener("compositionend", compositionEnded);
+    return () => {
+      clearTimeout(timer);
+      element.removeEventListener("compositionend", compositionEnded);
+    };
   }, [editor, editable, initialContent, scheduleContentReport]);
 
   useEffect(() => {
@@ -1485,7 +1508,8 @@ export function RichTextEditor({
     previousEditableRef.current = editable;
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
     if (editable) {
-      requestAnimationFrame(() => {
+      const frame = requestAnimationFrame(() => {
+        if (editor.isDestroyed) return;
         const position = initialFocusPoint
           ? editor.view.posAtCoords({ left: initialFocusPoint.clientX, top: initialFocusPoint.clientY })
           : null;
@@ -1499,13 +1523,16 @@ export function RichTextEditor({
         }
         scheduleContentReport(editor, "layout");
       });
+      return () => cancelAnimationFrame(frame);
     } else {
-      requestAnimationFrame(() => {
+      const frame = requestAnimationFrame(() => {
+        if (editor.isDestroyed) return;
         // The first non-editable render is board hydration, not a user blur.
         // Only a true editable -> non-editable transition may settle/shrink.
         reportContentSize(editor, wasEditable ? "blur" : "layout");
         hideToolbar();
       });
+      return () => cancelAnimationFrame(frame);
     }
   }, [editor, editable, hideToolbar, initialFocusPoint, reportContentSize, scheduleContentReport]);
 
