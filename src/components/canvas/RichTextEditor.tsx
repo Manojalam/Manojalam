@@ -665,6 +665,15 @@ export function RichTextEditor({
   const contentReportFrameRef = useRef(0);
   const lastReportedContentSizeRef = useRef<ContentMeasurement | null>(null);
   const savedSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const selectAllOnEntryRef = useRef(false);
+  useLayoutEffect(() => {
+    const requestSelection = (event: Event) => {
+      const detail = (event as CustomEvent<{ nodeId?: string; selectAll?: boolean }>).detail;
+      if (detail?.nodeId === nodeId) selectAllOnEntryRef.current = detail.selectAll === true;
+    };
+    window.addEventListener("vidya:edit-node", requestSelection);
+    return () => window.removeEventListener("vidya:edit-node", requestSelection);
+  }, [nodeId]);
   const previousEditableRef = useRef(editable);
   const previousMeasurementKeyRef = useRef(measurementKey);
   const previousMeasurementWidthRef = useRef(measurementWidth);
@@ -1513,7 +1522,10 @@ export function RichTextEditor({
         const position = initialFocusPoint
           ? editor.view.posAtCoords({ left: initialFocusPoint.clientX, top: initialFocusPoint.clientY })
           : null;
-        if (position) {
+        if (selectAllOnEntryRef.current) {
+          selectAllOnEntryRef.current = false;
+          editor.chain().selectAll().focus(undefined, { scrollIntoView: false }).run();
+        } else if (position) {
           editor.chain()
             .setTextSelection(position.pos)
             .focus(undefined, { scrollIntoView: false })

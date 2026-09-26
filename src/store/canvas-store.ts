@@ -358,10 +358,10 @@ function requestNodeInternalsRefresh(nodeIds: string[]): void {
   });
 }
 
-function requestNodeTextEdit(nodeId: string): void {
+function requestNodeTextEdit(nodeId: string, selectAll = false): void {
   if (typeof window === "undefined") return;
   requestAnimationFrame(() => {
-    window.dispatchEvent(new CustomEvent("vidya:edit-node", { detail: { nodeId } }));
+    window.dispatchEvent(new CustomEvent("vidya:edit-node", { detail: { nodeId, selectAll } }));
   });
 }
 
@@ -3436,13 +3436,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : matrixNodes;
 
     set({
-      nodes: finalNodes,
-      edges: styledLayout.edges,
+      nodes: finalNodes.map((node) => ({
+        ...node,
+        selected: node.id === (keepParentSelected ? parentId : childIds[childIds.length - 1]),
+      })),
+      edges: styledLayout.edges.map((edge) => ({ ...edge, selected: false })),
+      selectedEdgeIds: [],
       selectedNodeIds: keepParentSelected ? [parentId] : [childIds[childIds.length - 1]],
       saveStatus: "unsaved",
     });
     requestNodeInternalsRefresh(childIds);
-    if (!keepParentSelected && childIds.length === 1) requestNodeTextEdit(childIds[0]);
+    if (!keepParentSelected && childIds.length === 1) requestNodeTextEdit(childIds[0], true);
   },
 
   createSiblingNode: (nodeId) => {
@@ -3584,15 +3588,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : matrixNodes;
 
     set({
-      nodes: finalNodes,
-      edges: styledLayout.edges,
+      nodes: finalNodes.map((node) => ({ ...node, selected: node.id === siblingId })),
+      edges: styledLayout.edges.map((edge) => ({ ...edge, selected: false })),
+      selectedEdgeIds: [],
       selectedNodeIds: [siblingId],
       saveStatus: "unsaved",
     });
     get().scheduleListReflow(nodeId);
     get().scheduleMatrixReflow(nodeId);
     requestNodeInternalsRefresh([siblingId]);
-    requestNodeTextEdit(siblingId);
+    requestNodeTextEdit(siblingId, true);
     return siblingId;
   },
 
