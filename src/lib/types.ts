@@ -653,6 +653,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixPackCompactGroups?: boolean;
   /** Visual treatment for rows with fewer terminal cells than their peers. */
   matrixIncompleteRowMode?: MatrixIncompleteRowMode;
+  /** Fill empty slots with their row colors; false leaves them transparent. */
+  matrixEmptySlotFill?: boolean;
   /** Generated empty-cell geometry retained while Matrix presentation is active. */
   matrixEmptySlots?: MatrixGeneratedEmptySlot[];
   /** Generated top-level Fold sections and presentation-only repeated ancestor cells. */

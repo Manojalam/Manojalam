@@ -6331,6 +6331,24 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   );
                 })}
               </div>
+              {matrixRootData.matrixIncompleteRowMode === "empty" && (
+                <div className="mt-2 flex items-center justify-between gap-3 border-t border-border/70 pt-2">
+                  <div>
+                    <p className="text-[10px] font-medium text-foreground">Fill empty slots</p>
+                    <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
+                      Match the row color. Turn off to leave empty slots transparent.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={matrixRootData.matrixEmptySlotFill !== false}
+                    onCheckedChange={(checked) => {
+                      pushHistory();
+                      updateNodeData(matrixRootNode.id, { matrixEmptySlotFill: checked });
+                    }}
+                    aria-label="Fill empty slots"
+                  />
+                </div>
+              )}
             </div>
             <div className="mb-2 rounded-md border border-border/70 bg-muted/35 p-2">
               <p className="text-[10px] font-medium text-foreground">Text size</p>

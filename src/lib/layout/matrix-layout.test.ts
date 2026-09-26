@@ -1247,6 +1247,14 @@ test("generated Matrix empty slots inherit row fill without adding editable shap
   assert.equal(fills[0].width, 100);
   assert.equal(fills[0].height, 50);
   assert.deepEqual(frameData.matrixRepeatedCells, []);
+  const unfilledNodes = nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, matrixEmptySlotFill: false } }
+    : node);
+  const unfilledFrame = buildMatrixFrameNodes(unfilledNodes, "root")[0];
+  assert.deepEqual(unfilledFrame.data.matrixEmptyCells, []);
+  assert.deepEqual(unfilledFrame.data.matrixGridLines, frameData.matrixGridLines);
+  assert.deepEqual(unfilledFrame.position, frames[0].position);
+  assert.deepEqual(unfilledFrame.style, frames[0].style);
   // Source overrides and opacity remain authoritative, including grid-off mode.
   const customNodes = nodes.map((node) => node.id === "leaf"
     ? { ...node, data: { ...node.data, layoutAutoFill: false, fillColor: "#ff0000", fillOpacity: 0.5 } }

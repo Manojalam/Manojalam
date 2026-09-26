@@ -526,7 +526,9 @@ function buildMatrixFrameNode(
       matrixOuterBorderVisible: outerBorderVisible,
       matrixGridVisible: gridVisible,
       matrixGridLines: lines,
-      matrixEmptyCells: presentationNodes.filter((node) => node.data.matrixEmptySlot === true).map((node) => {
+      matrixEmptyCells: presentationNodes.filter((node) =>
+        rootData.matrixEmptySlotFill !== false && node.data.matrixEmptySlot === true
+      ).map((node) => {
         const rect = matrixPresentationRect(node);
         return {
           key: node.id,
