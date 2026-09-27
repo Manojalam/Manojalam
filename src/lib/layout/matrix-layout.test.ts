@@ -613,6 +613,7 @@ test("folded sibling groups share the Matrix-wide five-column template", () => {
     [5, 5, 5, 5, 5]
   );
   assert.equal(result.emptyCells.length, 3);
+  assert.ok(result.emptyCells.every((slot) => nodes.some((node) => node.id === slot.sourceNodeId)));
   const fifthColumnX = Math.max(
     ...leafCells
       .filter((cell) => cell.nodeId.startsWith("short-"))
@@ -1186,7 +1187,7 @@ test("hiding the overall Matrix border keeps internal cell divisions", () => {
   assert.notDeepEqual(frameData.matrixGridLines, []);
 });
 
-test("generated Matrix empty slots extend the flat grid without a filled placeholder shape", () => {
+test("generated Matrix empty slots inherit row fill without adding editable shapes", () => {
   const nodes: Node[] = [
     {
       id: "root",
@@ -1203,6 +1204,8 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
           height: 50,
         }],
         layoutVisualStyle: {
+          rootId: "root",
+          textColor: "#0f172a",
           fillColor: "#2563eb",
           borderColor: "#1e40af",
           depth: 0,
@@ -1218,6 +1221,8 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
         parentId: "root",
         matrixCell: true,
         layoutVisualStyle: {
+          rootId: "root",
+          textColor: "#0f172a",
           fillColor: "#bfdbfe",
           borderColor: "#3b82f6",
           depth: 1,
@@ -1235,7 +1240,29 @@ test("generated Matrix empty slots extend the flat grid without a filled placeho
     y2: number;
   }>;
 
-  assert.equal(frameData.matrixEmptyCells, undefined);
+  const fills = frameData.matrixEmptyCells as Array<{ background: string; width: number; height: number }>;
+  assert.equal(frames.length, 1);
+  assert.equal(fills.length, 1);
+  assert.equal(fills[0].background, "#bfdbfe");
+  assert.equal(fills[0].width, 100);
+  assert.equal(fills[0].height, 50);
+  assert.deepEqual(frameData.matrixRepeatedCells, []);
+  const unfilledNodes = nodes.map((node) => node.id === "root"
+    ? { ...node, data: { ...node.data, matrixEmptySlotFill: false } }
+    : node);
+  const unfilledFrame = buildMatrixFrameNodes(unfilledNodes, "root")[0];
+  assert.deepEqual(unfilledFrame.data.matrixEmptyCells, []);
+  assert.deepEqual(unfilledFrame.data.matrixGridLines, frameData.matrixGridLines);
+  assert.deepEqual(unfilledFrame.position, frames[0].position);
+  assert.deepEqual(unfilledFrame.style, frames[0].style);
+  // Source overrides and opacity remain authoritative, including grid-off mode.
+  const customNodes = nodes.map((node) => node.id === "leaf"
+    ? { ...node, data: { ...node.data, layoutAutoFill: false, fillColor: "#ff0000", fillOpacity: 0.5 } }
+    : { ...node, data: { ...node.data, matrixGridVisible: false } });
+  const customFrame = buildMatrixFrameNodes(customNodes, "root")[0];
+  assert.deepEqual(customFrame.data.matrixGridLines, []);
+  assert.equal((customFrame.data.matrixEmptyCells as Array<{ background: string }>)[0].background,
+    "rgba(255, 0, 0, 0.5)");
   assert.deepEqual(lines, [
     { x1: 0, y1: 69, x2: 308, y2: 69, color: "#1e40af" },
     { x1: 104, y1: 69, x2: 104, y2: 128, color: "#3b82f6" },

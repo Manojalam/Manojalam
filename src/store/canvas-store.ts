@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { textEditingSessions } from "@/lib/canvas/text-editing-session";
 import { MarkerType } from "@xyflow/react";
 import type { Node, Edge, Viewport } from "@xyflow/react";
 import type {
@@ -357,10 +358,10 @@ function requestNodeInternalsRefresh(nodeIds: string[]): void {
   });
 }
 
-function requestNodeTextEdit(nodeId: string): void {
+function requestNodeTextEdit(nodeId: string, selectAll = false): void {
   if (typeof window === "undefined") return;
   requestAnimationFrame(() => {
-    window.dispatchEvent(new CustomEvent("vidya:edit-node", { detail: { nodeId } }));
+    window.dispatchEvent(new CustomEvent("vidya:edit-node", { detail: { nodeId, selectAll } }));
   });
 }
 
@@ -752,6 +753,7 @@ function applyMatrixResultToNodes(
       data.matrixDensity = result.density;
       data.matrixEmptySlots = result.emptyCells.length
         ? result.emptyCells.map((cell) => ({
+          sourceNodeId: cell.sourceNodeId,
           x: cell.x - result.bounds.left,
           y: cell.y - result.bounds.top,
           width: cell.width,
@@ -813,6 +815,7 @@ function matrixGeometryChanged(before: Node[], after: Node[], rootId: string): b
       || previousData.matrixRowSpan !== data.matrixRowSpan
       || previousData.matrixOuterBorderVisible !== data.matrixOuterBorderVisible
       || previousData.matrixGridVisible !== data.matrixGridVisible
+      || JSON.stringify(previousData.matrixEmptyCells) !== JSON.stringify(data.matrixEmptyCells)
     ) return true;
   }
   return before.filter(relevant).length !== after.filter(relevant).length;
@@ -3433,13 +3436,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : matrixNodes;
 
     set({
-      nodes: finalNodes,
-      edges: styledLayout.edges,
+      nodes: finalNodes.map((node) => ({
+        ...node,
+        selected: node.id === (keepParentSelected ? parentId : childIds[childIds.length - 1]),
+      })),
+      edges: styledLayout.edges.map((edge) => ({ ...edge, selected: false })),
+      selectedEdgeIds: [],
       selectedNodeIds: keepParentSelected ? [parentId] : [childIds[childIds.length - 1]],
       saveStatus: "unsaved",
     });
     requestNodeInternalsRefresh(childIds);
-    if (!keepParentSelected && childIds.length === 1) requestNodeTextEdit(childIds[0]);
+    if (!keepParentSelected && childIds.length === 1) requestNodeTextEdit(childIds[0], true);
   },
 
   createSiblingNode: (nodeId) => {
@@ -3581,15 +3588,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       : matrixNodes;
 
     set({
-      nodes: finalNodes,
-      edges: styledLayout.edges,
+      nodes: finalNodes.map((node) => ({ ...node, selected: node.id === siblingId })),
+      edges: styledLayout.edges.map((edge) => ({ ...edge, selected: false })),
+      selectedEdgeIds: [],
       selectedNodeIds: [siblingId],
       saveStatus: "unsaved",
     });
     get().scheduleListReflow(nodeId);
     get().scheduleMatrixReflow(nodeId);
     requestNodeInternalsRefresh([siblingId]);
-    requestNodeTextEdit(siblingId);
+    requestNodeTextEdit(siblingId, true);
     return siblingId;
   },
 
@@ -4402,6 +4410,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       let nextEdges = state.edges;
       let siblingSpacingChanged = false;
       for (const rootId of rootIds) {
+        if (textEditingSessions.defer(
+          rootId,
+          getSubtree(rootId, hierarchy),
+          () => get().scheduleMatrixReflow(rootId)
+        )) continue;
         const previouslyOwnedNodeIds = new Set(nextNodes
           .filter((node) => {
             const data = (node.data ?? {}) as Record<string, unknown>;

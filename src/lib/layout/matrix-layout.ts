@@ -40,6 +40,7 @@ export interface MatrixCellGeometry {
 }
 
 export interface MatrixEmptyCellGeometry {
+  sourceNodeId?: string;
   x: number;
   y: number;
   width: number;
@@ -665,6 +666,7 @@ type OrientedBranchCell = {
   widthLocked?: boolean;
   heightLocked?: boolean;
   placeholder?: boolean;
+  fillSourceNodeId?: string;
   /** Direct sibling flow for a real terminal cell. */
   terminalPeerFlow?: MatrixChildFlow;
   /** A generated slot for a missing same-level row peer, not Fold allocation. */
@@ -1408,6 +1410,7 @@ function alignSiblingRowBands(
               const trackIndex = band.cells.length + index;
               return {
                 nodeId: `__matrix-empty-${child.nodeId}-${bandIndex}-${trackIndex}`,
+                fillSourceNodeId: band.cells.at(-1)?.nodeId,
                 x: trackX[trackIndex],
                 y: band.y,
                 width: widths[trackIndex],
@@ -1567,6 +1570,7 @@ function alignFoldedTerminalRows(
               horizontalTerminal: true,
               verticalTerminal: true,
               placeholder: true,
+              fillSourceNodeId: sourceId,
               missingPeerSlot: true,
             }],
           },
@@ -1884,6 +1888,7 @@ function computeOrientedMatrixLayout(
   const emptyCells = orientedCells
     .filter((cell) => cell.placeholder)
     .map<MatrixEmptyCellGeometry>((cell) => ({
+      sourceNodeId: cell.fillSourceNodeId,
       x: cell.x,
       y: cell.y,
       width: cell.width,

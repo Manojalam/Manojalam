@@ -205,7 +205,7 @@ function TextBlockNodeComponent({
           className={cn(
             "absolute inset-0",
             !hasTextFrame && "p-1",
-            matrixCell && "overflow-hidden",
+            matrixCell && (editing ? "overflow-y-auto overscroll-contain nowheel" : "overflow-hidden"),
             selected && !hasTextFrame && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
           data-export-surface-effect-shadow-layers={

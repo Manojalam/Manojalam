@@ -82,6 +82,8 @@ export interface MatrixFoldSectionPresentation {
   repeatedCells: MatrixFoldRepeatedCell[];
 }
 export interface MatrixGeneratedEmptySlot {
+  /** Real row peer whose fill continues into this empty position. */
+  sourceNodeId?: string;
   /** Position relative to the Matrix root's top-left presentation bounds. */
   x: number;
   y: number;
@@ -651,6 +653,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixPackCompactGroups?: boolean;
   /** Visual treatment for rows with fewer terminal cells than their peers. */
   matrixIncompleteRowMode?: MatrixIncompleteRowMode;
+  /** Fill empty slots with their row colors; false leaves them transparent. */
+  matrixEmptySlotFill?: boolean;
   /** Generated empty-cell geometry retained while Matrix presentation is active. */
   matrixEmptySlots?: MatrixGeneratedEmptySlot[];
   /** Generated top-level Fold sections and presentation-only repeated ancestor cells. */
@@ -811,6 +815,16 @@ export interface FrameNodeData extends BaseNodeData {
     y2: number;
     /** Automatic border color for this grid segment. */
     color?: string;
+  }>;
+  /** Non-interactive background fills for missing Matrix row positions. */
+  matrixEmptyCells?: Array<{
+    key: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    background?: string;
+    backgroundImage?: string;
   }>;
   /** Presentation-only labels for ancestors repeated across Matrix Fold sections. */
   matrixRepeatedCells?: Array<{

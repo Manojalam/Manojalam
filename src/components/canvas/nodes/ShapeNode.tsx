@@ -1513,7 +1513,11 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       : textVerticalAlign === "bottom" ? "flex-end" : "center",
                   }}
                 >
-                  <div className={cn("w-full max-h-full", renderContourTextFlow && "h-full max-h-none")}>
+                  <div className={cn(
+                    "w-full max-h-full",
+                    matrixCell && editing && "overflow-y-auto overscroll-contain nowheel",
+                    renderContourTextFlow && "h-full max-h-none"
+                  )}>
                     <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
