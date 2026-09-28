@@ -61,6 +61,11 @@ export type ConnectorPathStyle = "solid" | "dashed" | "dotted" | "double";
 export type MatrixDensity = "compact" | "comfortable" | "presentation";
 export type MatrixOrientation = "horizontal" | "vertical";
 export type MatrixChildFlow = "row" | "column";
+export interface MatrixLevelLayout {
+  orientation?: MatrixOrientation;
+  childFlow?: MatrixChildFlow;
+}
+export type MatrixLevelLayouts = Record<string, MatrixLevelLayout>;
 export type MatrixIncompleteRowMode = "stretch" | "empty";
 export type MatrixFoldRootMode = "continuous" | "divided";
 export type ListFoldRootMode = "expanded" | "divided";
@@ -649,6 +654,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   matrixOrientation?: MatrixOrientation;
   /** Arrangement of this Matrix cell's direct children. Defaults perpendicular to branch direction. */
   matrixChildFlow?: MatrixChildFlow;
+  /** Root-owned defaults keyed by relative parent depth, plus all. */
+  matrixLevelLayouts?: MatrixLevelLayouts;
   /** Packs compact terminal Devanagari groups into rows for this Matrix only. */
   matrixPackCompactGroups?: boolean;
   /** Visual treatment for rows with fewer terminal cells than their peers. */

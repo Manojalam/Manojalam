@@ -4858,8 +4858,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       sunburstEnabled
     );
 
+    // Reflowing an existing table must not move the user back to its root.
+    const matrixSelection = convertingLayout
+      ? [rootId]
+      : selectedNodeIds.filter((id) => newNodes.some((node) => node.id === id && !node.hidden));
     const selectedNodes = mode === "matrix"
-      ? newNodes.map((node) => ({ ...node, selected: node.id === rootId }))
+      ? newNodes.map((node) => ({ ...node, selected: matrixSelection.includes(node.id) }))
       : newNodes;
     const spacedNodes = mode === "matrix"
       ? packSiblingsAfterNestedMatrix(selectedNodes, hierarchy, rootId)
@@ -4869,7 +4873,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: mode === "matrix"
         ? paletteResult.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
         : paletteResult.edges,
-      ...(mode === "matrix" ? { selectedNodeIds: [rootId], selectedEdgeIds: [] } : {}),
+      ...(mode === "matrix" ? { selectedNodeIds: matrixSelection, selectedEdgeIds: [] } : {}),
       saveStatus: "unsaved",
     });
   },

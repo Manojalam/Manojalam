@@ -18,7 +18,7 @@ const MATRIX_TYPOGRAPHY_FIELDS = new Set([
 const MATRIX_REFLOW_FIELDS = new Set([
   ...AUTOFIT_REFLOW_FIELDS,
   "fillColor", "fillOpacity", "color", "layoutAutoFill",
-  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixFoldRootMode", "matrixDensity", "matrixCompositionMode", "matrixOuterBorderVisible", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixPackCompactGroups", "matrixIncompleteRowMode", "matrixEmptySlotFill", "matrixFillCellLabels",
+  "collapsed", "parentId", "childOrder", "layoutFoldCount", "layoutFoldBreakAfter", "layoutWrapAfter", "matrixFoldRootMode", "matrixDensity", "matrixCompositionMode", "matrixOuterBorderVisible", "matrixGridVisible", "matrixOrientation", "matrixChildFlow", "matrixLevelLayouts", "matrixPackCompactGroups", "matrixIncompleteRowMode", "matrixEmptySlotFill", "matrixFillCellLabels",
   "matrixSiblingGap", "matrixWidthOverride", "matrixHeightOverride", "matrixTableWidthOverride", "matrixTableHeightOverride",
 ]);
 
@@ -28,6 +28,7 @@ const LIST_REFLOW_FIELDS = new Set([
 ]);
 
 const ORIENTED_MATRIX_COMPOSITION_FIELDS = new Set([
+  "matrixLevelLayouts",
   "layoutFoldCount",
   "layoutFoldBreakAfter",
   "layoutWrapAfter",
