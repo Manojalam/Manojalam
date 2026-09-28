@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import {
+  clipboardSelection,
   clearSelectedNodeContents,
   createManojalamClipboardPayload,
   isTextEditingTarget,
@@ -332,4 +333,27 @@ test("malformed or unsupported clipboard payloads are rejected", () => {
   assert.equal(parseManojalamClipboard("not-json"), null);
   assert.equal(parseManojalamClipboard('{"version":99,"nodes":[],"edges":[]}'), null);
   assert.equal(parseManojalamClipboard('{"version":1,"nodes":[{}],"edges":[]}'), null);
+});
+
+
+test("paste scope remembers explicitly selected objects and retains their owned notes", () => {
+  const nodes: Node[] = [
+    { id: "root", position: {x: 0, y: 0}, data: {childOrder: ["child"], richText: '<p><a href="https://example.com">Link</a></p>'} },
+    { id: "child", position: {x: 0, y: 100}, data: {parentId: "root", childOrder: ["grandchild"]} },
+    { id: "grandchild", position: {x: 0, y: 200}, data: {parentId: "child"} },
+    { id: "note", position: {x: 200, y: 0}, data: {externalNote: true, noteForNodeId: "root"} },
+  ];
+  const edges: Edge[] = [{id: "rc", source: "root", target: "child"}, {id: "cg", source: "child", target: "grandchild"}];
+  const payload = createManojalamClipboardPayload(nodes, edges, ["root"]);
+  const restored = parseManojalamClipboard(serializeManojalamClipboard(payload))!;
+  assert.deepEqual(clipboardSelection(restored, false).nodes.map(n => n.id), ["root", "note"]);
+  assert.equal(clipboardSelection(restored, false).edges.length, 0);
+  assert.equal(clipboardSelection(restored, false).nodes[0].data.richText, nodes[0].data.richText);
+  assert.deepEqual(clipboardSelection(restored, true).nodes, nodes);
+  restored.selectedNodeIds = ["root", "child"];
+  assert.deepEqual(clipboardSelection(restored, false).nodes.map(n => n.id), ["root", "child", "note"]);
+  assert.deepEqual(clipboardSelection(restored, false).edges.map(e => e.id), ["rc"]);
+  delete restored.selectedNodeIds;
+  assert.deepEqual(clipboardSelection(restored, false).nodes.map(n => n.id), ["root", "note"]);
+  assert.equal(parseManojalamClipboard(JSON.stringify({...payload, selectedNodeIds: [42]})), null);
 });

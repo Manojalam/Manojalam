@@ -74,6 +74,7 @@ import {
   MovableToolbarHandle,
   useMovableToolbar,
 } from "@/components/canvas/MovableToolbar";
+import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { CopyToBoardDialog } from "@/components/canvas/CopyToBoardDialog";
 import {
   createCrossBoardDiagramPayload,
@@ -587,6 +588,7 @@ function LayerOrderMenu({
 
 export function SelectionToolbar() {
   const [copyToBoardOpen, setCopyToBoardOpen] = useState(false);
+  const [objectOnlyPayload, setObjectOnlyPayload] = useState<CrossBoardDiagramPayload | null>(null);
   const [copyPayload, setCopyPayload] =
     useState<CrossBoardDiagramPayload | null>(null);
   const board = useCanvasStore((state) => state.board);
@@ -799,6 +801,10 @@ export function SelectionToolbar() {
         relationships: state.relationships,
         relationshipFans: state.relationshipFans,
       }, selectedNodeIds));
+      setObjectOnlyPayload(createCrossBoardDiagramPayload({
+        nodes: state.nodes, edges: state.edges,
+        relationships: state.relationships, relationshipFans: state.relationshipFans,
+      }, selectedNodeIds, false));
       setCopyToBoardOpen(true);
     } catch (error) {
       toast.error("Could not prepare diagram copy", {
@@ -1105,6 +1111,7 @@ export function SelectionToolbar() {
       >
         <Copy className="h-4 w-4" />
       </ActionButton>
+      <ObjectClipboardMenu />
       <ActionButton
         label="Copy diagram to another board"
         disabled={!board}
@@ -1141,6 +1148,7 @@ export function SelectionToolbar() {
         onOpenChange={setCopyToBoardOpen}
         currentBoardId={board.id}
         payload={copyPayload}
+        objectOnlyPayload={objectOnlyPayload}
       />
     )}
     </>

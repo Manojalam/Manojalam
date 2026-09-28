@@ -5429,7 +5429,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           size="sm"
           className="h-7 min-w-0 gap-1 px-1 text-[10px]"
           title="Copy with style and content"
-          onClick={() => duplicateSelected()}
+          onClick={() => {
+            useCanvasStore.getState().copySelected();
+            toast.success("Object copied. Select a destination and open Copy and paste objects.");
+          }}
         >
           <Copy className="h-3 w-3" /> Copy
         </Button>

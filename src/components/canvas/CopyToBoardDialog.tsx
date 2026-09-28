@@ -30,6 +30,7 @@ interface CopyToBoardDialogProps {
   onOpenChange: (open: boolean) => void;
   currentBoardId: string;
   payload: CrossBoardDiagramPayload | null;
+  objectOnlyPayload?: CrossBoardDiagramPayload | null;
 }
 
 function errorMessage(error: unknown): string {
@@ -43,7 +44,9 @@ export function CopyToBoardDialog({
   onOpenChange,
   currentBoardId,
   payload,
+  objectOnlyPayload,
 }: CopyToBoardDialogProps) {
+  const [includeDescendants, setIncludeDescendants] = useState(true);
   const [boards, setBoards] = useState<VidyaBoard[]>([]);
   const [destinationId, setDestinationId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,7 +84,7 @@ export function CopyToBoardDialog({
     const destination = destinations.find((board) => board.id === destinationId);
     setCopying(true);
     try {
-      const updated = await copyDiagramToBoard(destinationId, payload);
+      const updated = await copyDiagramToBoard(destinationId, !includeDescendants && objectOnlyPayload ? objectOnlyPayload : payload);
       onOpenChange(false);
       toast.success(`Copied to ${destination?.title ?? updated.title}.`, {
         description: "The copy was placed beside the board's existing content.",
@@ -122,6 +125,13 @@ export function CopyToBoardDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {objectOnlyPayload && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={includeDescendants} disabled={copying}
+              onChange={(event) => setIncludeDescendants(event.target.checked)} />
+            Include descendants
+          </label>
+        )}
         {loading ? (
           <div className="flex min-h-28 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

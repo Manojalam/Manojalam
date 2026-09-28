@@ -1,5 +1,6 @@
 "use client";
 
+import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { useState } from "react";
 import {
   MousePointer2, Hand, StickyNote, Type, Spline, Frame,
@@ -265,6 +266,7 @@ export function CanvasToolbar() {
         <ToolBtn tool="select" icon={<MousePointer2 className="h-[18px] w-[18px] stroke-[1.5]" />} label="Select" shortcut="V" />
         <ToolBtn tool="pan"    icon={<Hand className="h-[18px] w-[18px] stroke-[1.5]" />}          label="Hand / Pan" shortcut="H" />
         <TouchMultiSelectBtn />
+        <ObjectClipboardMenu />
 
         <Divider />
 
