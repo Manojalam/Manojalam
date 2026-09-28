@@ -319,3 +319,11 @@ export function clipboardSelection(
   const ids = source.selectedNodeIds ?? source.nodes.filter((node) => !hierarchy.get(node.id)?.parentId).map((node) => node.id);
   return selectionWithHierarchyDescendants(source.nodes, source.edges, ids, false);
 }
+
+/** A single editable hierarchy object is the default paste destination. */
+export function objectPasteParent(nodes: readonly Node[], selectedNodeIds: readonly string[]): Node | undefined {
+  if (selectedNodeIds.length !== 1) return undefined;
+  return nodes.find((node) => node.id === selectedNodeIds[0]
+    && !node.hidden && !node.data.locked && !node.data.externalNote
+    && !["frame", "sunburst", "relationshipDiagram", "junction"].includes(node.type ?? ""));
+}

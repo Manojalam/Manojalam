@@ -101,6 +101,7 @@ import {
 import { placeNewChild } from "@/lib/canvas/child-placement";
 import {
   clipboardSelection,
+  objectPasteParent,
   clearSelectedNodeContents,
   prepareDuplicatedNodeData,
   selectionWithHierarchyDescendants,
@@ -271,7 +272,7 @@ interface CanvasState {
   undo: () => void;
   redo: () => void;
   copySelected: () => void;
-  paste: (payload?: Pick<ManojalamClipboardPayload, "nodes" | "edges" | "selectedNodeIds">, options?: { includeDescendants?: boolean; parentId?: string }) => void;
+  paste: (payload?: Pick<ManojalamClipboardPayload, "nodes" | "edges" | "selectedNodeIds">, options?: { includeDescendants?: boolean; parentId?: string | null }) => void;
   insertImportedHierarchy: (
     nodes: BoardContent["nodes"],
     edges: BoardContent["edges"],
@@ -2754,10 +2755,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   paste: (payload, options) => {
-    const { clipboard, nodes, edges } = get();
+    const { clipboard, nodes, edges, selectedNodeIds } = get();
     const source = payload ?? clipboard;
     if (!source) return;
-    if (options?.parentId && !nodes.some((node) => node.id === options.parentId && !node.data.locked)) return;
+    // Omitted destination follows selection; null explicitly means the board.
+    const parentId = options?.parentId === undefined
+      ? objectPasteParent(nodes, selectedNodeIds)?.id
+      : options.parentId;
+    if (parentId && !objectPasteParent(nodes, [parentId])) return;
     const selection = clipboardSelection(source, options?.includeDescendants ?? true);
     if (!selection.nodes.length) return;
     get().pushHistory();
@@ -2773,11 +2778,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
-    if (options?.parentId) {
+    if (parentId) {
       const hierarchy = buildHierarchy(newNodes, newEdges);
       for (const node of newNodes) {
         if (!hierarchy.get(node.id)?.parentId && !node.data.externalNote) {
-          get().reparentNode(node.id, options.parentId);
+          get().reparentNode(node.id, parentId);
         }
       }
     }

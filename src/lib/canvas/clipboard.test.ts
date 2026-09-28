@@ -3,6 +3,7 @@ import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
 import {
   clipboardSelection,
+  objectPasteParent,
   clearSelectedNodeContents,
   createManojalamClipboardPayload,
   isTextEditingTarget,
@@ -356,4 +357,20 @@ test("paste scope remembers explicitly selected objects and retains their owned 
   delete restored.selectedNodeIds;
   assert.deepEqual(clipboardSelection(restored, false).nodes.map(n => n.id), ["root", "note"]);
   assert.equal(parseManojalamClipboard(JSON.stringify({...payload, selectedNodeIds: [42]})), null);
+});
+
+
+test("object paste targets one editable selected cell, never an ambiguous or generated selection", () => {
+  const cell: Node = {id:"cell",type:"shape",position:{x:0,y:0},data:{matrixRootId:"root"}};
+  assert.equal(objectPasteParent([cell],["cell"]),cell);
+  assert.equal(objectPasteParent([cell],[]),undefined);
+  assert.equal(objectPasteParent([cell],["cell","other"]),undefined);
+  assert.equal(objectPasteParent([cell],["missing"]),undefined);
+  for (const data of [{locked:true},{externalNote:true}]) {
+    assert.equal(objectPasteParent([{...cell,data}],["cell"]),undefined);
+  }
+  assert.equal(objectPasteParent([{...cell,hidden:true}],["cell"]),undefined);
+  for (const type of ["frame","sunburst","relationshipDiagram","junction"]) {
+    assert.equal(objectPasteParent([{...cell,type}],["cell"]),undefined);
+  }
 });
