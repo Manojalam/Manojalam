@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { objectPasteParent } from "@/lib/canvas/clipboard";
 import { Clipboard } from "lucide-react";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,12 +13,11 @@ export function ObjectClipboardMenu() {
   const clipboard = useCanvasStore((state) => state.clipboard);
   const selectedIds = useCanvasStore((state) => state.selectedNodeIds);
   const nodes = useCanvasStore((state) => state.nodes);
-  const parent = selectedIds.length === 1 ? nodes.find((node) => node.id === selectedIds[0]) : undefined;
-  const canPasteInto = Boolean(parent && !parent.data.locked && !parent.data.externalNote
-    && !["frame", "sunburst", "relationshipDiagram", "junction"].includes(parent.type ?? ""));
+  const parent = objectPasteParent(nodes, selectedIds);
+  const canPasteInto = Boolean(parent);
   const paste = (includeDescendants: boolean, into: boolean) => {
     useCanvasStore.getState().paste(undefined, {
-      includeDescendants, parentId: into ? parent?.id : undefined,
+      includeDescendants, parentId: into ? parent?.id : null,
     });
     setOpen(false);
     toast.success(into ? "Pasted as a child of the selected object." : "Pasted onto the board.", {
@@ -40,12 +40,16 @@ export function ObjectClipboardMenu() {
           toast.success("Object copied. Select a destination and open Copy and paste objects.");
         }}>Copy selected object{selectedIds.length > 1 ? "s" : ""}</button>
         <div className="px-3 pb-2 text-xs text-muted-foreground">Keeps content, links and formatting. Choose descendants when pasting.</div>
-        <div className="border-t px-3 pt-2 text-xs font-medium">Paste onto board</div>
-        <button type="button" className={itemClass} disabled={!clipboard} onClick={() => paste(false, false)}>Object only</button>
-        <button type="button" className={itemClass} disabled={!clipboard} onClick={() => paste(true, false)}>With descendants</button>
-        <div className="border-t px-3 pt-2 text-xs font-medium">Paste into selected object</div>
-        <button type="button" className={itemClass} disabled={!clipboard || !canPasteInto} onClick={() => paste(false, true)}>Object only as child</button>
-        <button type="button" className={itemClass} disabled={!clipboard || !canPasteInto} onClick={() => paste(true, true)}>With descendants as child</button>
+        <div className="border-t px-3 pt-2 text-xs font-medium">
+          {canPasteInto ? "Paste into selected cell / object" : "Paste onto board"}
+        </div>
+        <button type="button" className={itemClass} disabled={!clipboard} onClick={() => paste(false, canPasteInto)}>Object only</button>
+        <button type="button" className={itemClass} disabled={!clipboard} onClick={() => paste(true, canPasteInto)}>With descendants</button>
+        {canPasteInto && <>
+          <div className="border-t px-3 pt-2 text-xs font-medium">Paste separately onto board</div>
+          <button type="button" className={itemClass} disabled={!clipboard} onClick={() => paste(false, false)}>Object only onto board</button>
+          <button type="button" className={itemClass} disabled={!clipboard} onClick={() => paste(true, false)}>With descendants onto board</button>
+        </>}
         {!clipboard && <p className="px-3 py-2 text-xs text-muted-foreground">Copy an object first.</p>}
       </PopoverContent>
     </Popover>
