@@ -35,7 +35,7 @@ import { ImportDialog } from "@/components/canvas/ImportDialog";
 import { toast } from "sonner";
 
 /* ── Save status dot ── */
-function SaveStatus({ status, readOnly }: { status: string; readOnly: boolean }) {
+function SaveStatus({ status, readOnly, local }: { status: string; readOnly: boolean; local: boolean }) {
   return (
     <span
       className={cn(
@@ -59,7 +59,7 @@ function SaveStatus({ status, readOnly }: { status: string; readOnly: boolean })
       />
       {readOnly
         ? "View only"
-        : { saved: "Saved", saving: "Saving…", unsaved: "Unsaved", error: "Error" }[status]}
+        : { saved: local ? "Saved on this device" : "Saved to cloud", saving: "Saving…", unsaved: "Unsaved", error: "Error" }[status]}
     </span>
   );
 }
@@ -223,7 +223,7 @@ export function CanvasTopbar() {
           aria-label="Board title"
           name="board-title"
         />
-        <SaveStatus status={saveStatus} readOnly={!canEdit} />
+        <SaveStatus status={saveStatus} readOnly={!canEdit} local={board?.storageMode === "local"} />
       </div>
 
       {/* Right actions */}
@@ -367,6 +367,15 @@ export function CanvasTopbar() {
         </button>
       </div>
     </header>
+    {board?.storageMode === "local" && (
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100" role="status">
+        <span>{saveStatus === "saved" ? "Saved on this device." : saveStatus === "error" ? "Saving failed - download a backup before leaving." : "Changes are not yet saved."} Only in this browser; clearing browser data can erase this board.</span>
+        <span className="flex gap-3">
+          <button className="font-medium underline" onClick={() => { const snapshot = currentBoardSnapshot(); if (snapshot) downloadJson(snapshot); }}>Download backup</button>
+          <Link className="font-medium underline" href="/app/boards">Save to account</Link>
+        </span>
+      </div>
+    )}
     {board && (
       <BoardShareDialog
         board={board}

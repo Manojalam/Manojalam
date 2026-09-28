@@ -51,7 +51,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). No environment variables needed — boards save to `localStorage`.
 
-You'll see a **Demo Mode: local save only** badge when Supabase is not configured.
+You can use the app without an account, whether or not Supabase is configured. Guest boards display **Saved on this device**.
 
 ## Environment variables
 
@@ -62,7 +62,7 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
-Leave empty for demo mode. Once both are set, the app automatically uses Supabase for board storage.
+Leave empty for browser-only guest mode. With Supabase configured, new boards use cloud storage after sign-in; existing guest boards stay on the device until explicitly transferred.
 
 ## Supabase setup
 
@@ -87,20 +87,11 @@ Leave empty for demo mode. Once both are set, the app automatically uses Supabas
 
 Without env vars, the Vercel deployment still works in demo mode.
 
-## Demo mode behavior
+## Storage behavior
 
-When Supabase env vars are missing:
+Without an account, boards persist in this browser's IndexedDB and are labeled **Saved on this device**, even when Supabase is configured. Auth pages offer **Continue without an account**. Sign in for cloud saving, sharing, and cloud snapshots. Existing guest boards are transferred only when the user chooses **Save to account**.
 
-- Boards persist in browser `localStorage` under `vidyamap.boards`
-- Auth pages show a helpful message with "Continue in local demo mode"
-- Cloud-only features (auth, snapshots to Supabase, asset storage) are disabled
-- A demo badge appears in the UI
-
-When Supabase is configured:
-
-- Board CRUD uses the `boards` table
-- Auth callback route handles OAuth/magic link sessions
-- RLS ensures users only access boards they own or have been invited to
+Signed-in users create new boards in the Supabase `boards` table. RLS restricts cloud boards to owners and invited collaborators.
 
 ## Tech stack
 
@@ -152,3 +143,13 @@ See `/help/shortcuts` for the full list.
 ## License
 
 Private / family use. Not affiliated with Miro or any third-party whiteboard product.
+
+## Guest boards
+
+Guests can create boards, use templates, edit, duplicate, import, and download exports without signing in. Boards are stored in IndexedDB in the current browser profile. Clearing site data, private browsing, or browser storage eviction can erase them. The editor offers a JSON backup download and labels device-only saving explicitly.
+
+After signing in, the dashboard offers a link to device boards. On **Boards**, choose **Save to account** for each board to upload it. The upload uses a stable ID, verifies ownership and content, and removes the device copy only after verification. Failed uploads keep the local copy. If another tab edits during upload, newer local edits remain; duplicate that board to upload a separate copy if it differs from the existing cloud copy.
+
+Cloud database permissions and collaborator access remain enforced by Supabase. Sharing and cloud snapshots require an account. The remote-asset export proxy still requires authentication when Supabase is configured; guest exports can use embedded assets and directly accessible resources, with the existing export warnings/fallbacks for inaccessible remote assets.
+
+Run guest storage regression tests with `npm run test:guest-storage`.

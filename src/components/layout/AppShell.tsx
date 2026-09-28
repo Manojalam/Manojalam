@@ -6,6 +6,7 @@ import { LayoutDashboard, Layout, BookTemplate, Settings, HelpCircle } from "luc
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/config";
 import { UserMenu } from "@/components/layout/UserMenu";
+import { GuestNotice } from "@/components/layout/GuestNotice";
 
 const NAV = [
   { href: "/app", label: "Dashboard", icon: LayoutDashboard },
@@ -61,6 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <UserMenu compact align="end" side="bottom" />
         </header>
+        <GuestNotice />
         <div className="min-h-0 flex-1 overflow-auto">{children}</div>
       </main>
     </div>

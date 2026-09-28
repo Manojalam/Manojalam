@@ -1,32 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/app"];
-
-const PUBLIC_PATHS = new Set([
-  "/",
-  "/auth/sign-in",
-  "/auth/sign-up",
-  "/auth/callback",
-  "/auth/sign-out",
-  "/auth/reset-password",
-  "/auth/update-password",
-]);
-
-function isProtected(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
-  );
-}
-
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If Supabase isn't configured, don't try to auth-guard — let pages render
-  // their developer setup notices instead of redirect-looping.
+  // Guest boards also work when cloud saving is not configured.
   if (!supabaseUrl || !supabaseKey) {
     return NextResponse.next();
   }
@@ -51,18 +30,7 @@ export async function middleware(request: NextRequest) {
   });
 
   // Refreshes the session and keeps cookies in sync.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user && isProtected(pathname) && !PUBLIC_PATHS.has(pathname)) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/auth/sign-in";
-    redirectUrl.search = "";
-    redirectUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(redirectUrl);
-  }
-
+  await supabase.auth.getUser();
   return response;
 }
 

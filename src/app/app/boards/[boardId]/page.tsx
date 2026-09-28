@@ -184,11 +184,12 @@ export default function BoardEditorPage() {
         <div className="max-w-sm rounded-2xl border bg-card p-8 text-center shadow-sm">
           <h1 className="text-lg font-semibold">Board not found</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Board not found or you do not have access.
+            Board not found or you do not have access. Device boards are available only in the browser where they were created.
           </p>
           <Link href="/app/boards" className="mt-4 inline-block text-sm text-primary hover:underline">
             Back to your boards
           </Link>
+          <Link href={`/auth/sign-in?next=${encodeURIComponent(`/app/boards/${boardId}`)}`} className="mt-3 block text-sm text-primary underline">Sign in to access a cloud board</Link>
         </div>
       </div>
     );

@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
@@ -88,7 +90,7 @@ export function BoardShareDialog({
   const isOwner = board.accessRole === "owner";
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || board.storageMode === "local") return;
     let active = true;
     listBoardMembers(board.id)
       .then((nextMembers) => {
@@ -103,7 +105,7 @@ export function BoardShareDialog({
     return () => {
       active = false;
     };
-  }, [board.id, open]);
+  }, [board.id, board.storageMode, open]);
 
   const orderedMembers = useMemo(
     () => [...members].sort((a, b) => {
@@ -177,6 +179,17 @@ export function BoardShareDialog({
       toast.error("Could not copy the board link.");
     }
   };
+
+  if (board.storageMode === "local") return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Save to your account to share</DialogTitle>
+          <DialogDescription>This board is saved only in this browser. Sign in and save it to your account from the Boards page before inviting collaborators.</DialogDescription>
+        </DialogHeader>
+        <Button asChild><Link href="/app/boards">Go to boards</Link></Button>
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
