@@ -90,12 +90,14 @@ function diagramSourceIds(
  */
 export function createCrossBoardDiagramPayload(
   content: CrossBoardSourceContent,
-  selectedNodeIds: readonly string[]
+  selectedNodeIds: readonly string[],
+  includeDescendants = true
 ): CrossBoardDiagramPayload {
   const initial = selectionWithHierarchyDescendants(
     content.nodes,
     content.edges,
-    selectedNodeIds
+    selectedNodeIds,
+    includeDescendants
   );
   const includedNodeIds = new Set(initial.nodes.map((node) => node.id));
   const nodesById = new Map(content.nodes.map((node) => [node.id, node]));

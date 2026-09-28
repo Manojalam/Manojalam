@@ -17,6 +17,7 @@ import {
   matrixCellBorderRadius,
   matrixGridStrokeWidth,
 } from "./matrix-presentation";
+import { withMatrixLevelDefaults, matrixLevelDepths } from "./matrix-level-layout";
 import { buildMatrixFrameNodes } from "./matrix-frames";
 import {
   MATRIX_DENSITY_SETTINGS,
@@ -3585,4 +3586,68 @@ test("a shrunken nested Matrix closes a stale outer-layout gap exactly once", ()
     packedOther.position.x - originalOther.position.x
   );
   assert.strictEqual(packSiblingsAfterNestedMatrix(packed, hierarchy, "matrix"), packed);
+});
+
+test("Matrix level defaults match explicit layouts without becoming cell overrides", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "a", parentId: "root" }, { id: "b", parentId: "root" },
+    { id: "a1", parentId: "a" }, { id: "a2", parentId: "a" },
+    { id: "b1", parentId: "b" }, { id: "b2", parentId: "b" },
+  ]);
+  const hierarchy = buildHierarchy(fixture.nodes, fixture.edges);
+  const defaults = fixture.nodes.map((node) => node.id === "root" ? {
+    ...node, data: { ...node.data, matrixLevelLayouts: {
+      all: { orientation: "horizontal", childFlow: "column" },
+      "0": { orientation: "vertical", childFlow: "row" },
+      "1": { childFlow: "row" },
+    } },
+  } : node);
+  const byId = new Map(defaults.map((node) => [node.id, node]));
+  const effective = withMatrixLevelDefaults("root", hierarchy, byId);
+  assert.equal(effective.get("a")!.data.matrixChildFlow, "row");
+  assert.equal(byId.get("a")!.data.matrixChildFlow, undefined);
+  const explicit = defaults.map((node) => ({ ...node, data: { ...node.data,
+    matrixLevelLayouts: undefined,
+    matrixOrientation: node.id === "root" ? "vertical" : "horizontal",
+    matrixChildFlow: ["root", "a", "b"].includes(node.id) ? "row" : "column",
+  } }));
+  const result = computeMatrixLayout("root", hierarchy, byId);
+  const expected = computeMatrixLayout("root", hierarchy, new Map(explicit.map((node) => [node.id, node])));
+  assert.deepEqual(result.placements, expected.placements);
+  assertClean(result);
+});
+
+test("new Matrix cells inherit level settings while explicit exceptions survive default changes", () => {
+  const fixture = buildTree([
+    { id: "root", parentId: null },
+    { id: "existing", parentId: "root", childFlow: "column" },
+    { id: "new", parentId: "root" },
+    { id: "grandchild", parentId: "new" },
+  ]);
+  const hierarchy = buildHierarchy(fixture.nodes, fixture.edges);
+  const byId = new Map(fixture.nodes.map((node) => [node.id, node]));
+  byId.get("root")!.data.matrixLevelLayouts = { all: { childFlow: "column" }, "1": { childFlow: "row" } };
+  let effective = withMatrixLevelDefaults("root", hierarchy, byId);
+  assert.equal(effective.get("existing")!.data.matrixChildFlow, "column");
+  assert.equal(effective.get("new")!.data.matrixChildFlow, "row");
+  assert.equal(effective.get("grandchild")!.data.matrixChildFlow, "column");
+  byId.get("root")!.data.matrixLevelLayouts = { all: { childFlow: "row" }, "1": { childFlow: "column" } };
+  effective = withMatrixLevelDefaults("root", hierarchy, byId);
+  assert.equal(effective.get("existing")!.data.matrixChildFlow, "column");
+  assert.equal(effective.get("new")!.data.matrixChildFlow, "column");
+  assert.equal(effective.get("grandchild")!.data.matrixChildFlow, "row");
+  assert.equal(byId.get("new")!.data.matrixChildFlow, undefined);
+});
+
+test("Matrix defaults use depth relative to a nested Matrix root", () => {
+  const fixture = buildTree([{ id: "outer", parentId: null }, { id: "matrix", parentId: "outer" }, { id: "child", parentId: "matrix" }]);
+  const hierarchy = buildHierarchy(fixture.nodes, fixture.edges);
+  assert.deepEqual([...matrixLevelDepths("matrix", hierarchy)], [["matrix", 0], ["child", 1]]);
+  const byId = new Map(fixture.nodes.map((node) => [node.id, node]));
+  byId.get("matrix")!.data.matrixLevelLayouts = { "0": { childFlow: "row" }, "1": { childFlow: "column" } };
+  const effective = withMatrixLevelDefaults("matrix", hierarchy, byId);
+  assert.equal(effective.get("outer"), byId.get("outer"));
+  assert.equal(effective.get("matrix")!.data.matrixChildFlow, "row");
+  assert.equal(effective.get("child")!.data.matrixChildFlow, "column");
 });

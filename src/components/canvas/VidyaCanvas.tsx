@@ -1678,7 +1678,7 @@ function VidyaCanvasInner({
         store.selectedNodeIds
       );
       if (!selectedNodes.length) return;
-      const payload = createManojalamClipboardPayload(selectedNodes, selectedEdges);
+      const payload = createManojalamClipboardPayload(selectedNodes, selectedEdges, store.selectedNodeIds);
       try {
         event.clipboardData.setData(MANOJALAM_NODES_MIME, serializeManojalamClipboard(payload));
       } catch {

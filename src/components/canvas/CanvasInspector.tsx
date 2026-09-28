@@ -35,6 +35,8 @@ import {
   type LayoutMode,
 } from "@/lib/layout";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
+import { MatrixLevelLayoutControls } from "./MatrixLevelLayoutControls";
+import { withMatrixLevelDefaults } from "@/lib/layout/matrix-level-layout";
 import { buildMatrixLeafRows } from "@/lib/layout/matrix-layout";
 import {
   layoutBorderWidthFor,
@@ -1907,6 +1909,9 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const matrixTableHeight = hasPositiveDimensionOverride(matrixRootData.matrixTableHeightOverride)
     ? Number(matrixRootData.matrixTableHeightOverride)
     : matrixRenderedHeight;
+  const resolvedMatrixNodes = matrixRootNode
+    ? withMatrixLevelDefaults(matrixRootNode.id, hierarchy, new Map(nodes.map((node) => [node.id, node])))
+    : new Map();
   const explicitMatrixOrientation = d.matrixOrientation === "horizontal" || d.matrixOrientation === "vertical"
     ? d.matrixOrientation
     : null;
@@ -1922,7 +1927,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       cursor = hierarchy.get(cursor)?.parentId ?? null;
     }
     for (const nodeId of lineage) {
-      const orientation = (nodes.find((node) => node.id === nodeId)?.data as Record<string, unknown> | undefined)?.matrixOrientation;
+      const orientation = resolvedMatrixNodes.get(nodeId)?.data.matrixOrientation;
       if (orientation === "horizontal" || orientation === "vertical") effectiveMatrixOrientation = orientation;
     }
   }
@@ -1930,6 +1935,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     ? d.matrixChildFlow
     : null;
   const effectiveMatrixChildFlow = explicitMatrixChildFlow
+    ?? (selectedNode ? resolvedMatrixNodes.get(selectedNode.id)?.data.matrixChildFlow : undefined)
     ?? (effectiveMatrixOrientation === "horizontal" ? "column" : "row");
   const resetSelectedMatrixBranchSize = (axis: "height" | "width") => {
     if (!matrixRootNode || !selectedMatrixBranchNodes.length) return;
@@ -5423,7 +5429,10 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           size="sm"
           className="h-7 min-w-0 gap-1 px-1 text-[10px]"
           title="Copy with style and content"
-          onClick={() => duplicateSelected()}
+          onClick={() => {
+            useCanvasStore.getState().copySelected();
+            toast.success("Object copied. Select a destination and open Copy and paste objects.");
+          }}
         >
           <Copy className="h-3 w-3" /> Copy
         </Button>
@@ -6235,6 +6244,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
 
         {matrixRootNode && selectedNode && (
           <Section label="Matrix table" visible={singleNodeTab === "layout"}>
+            <MatrixLevelLayoutControls rootId={matrixRootNode.id} />
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
                 <p className="text-[10px] font-medium text-foreground">Overall border</p>
@@ -6398,7 +6408,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   ? "Sets whether the child group sits right of or below the Matrix root."
                   : "Sets whether this cell's child group sits to its right or below it."}
               </p>
-              <div className={cn("grid gap-1", selectedNode.id === matrixRootNode.id ? "grid-cols-2" : "grid-cols-3")}>
+              <div className="grid grid-cols-3 gap-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -6410,7 +6420,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   }}
                   className={cn(
                     "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
-                    effectiveMatrixOrientation === "horizontal" && (selectedNode.id === matrixRootNode.id || explicitMatrixOrientation === "horizontal")
+                    effectiveMatrixOrientation === "horizontal" && explicitMatrixOrientation === "horizontal"
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
@@ -6428,33 +6438,31 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   }}
                   className={cn(
                     "flex items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[9px]",
-                    effectiveMatrixOrientation === "vertical" && (selectedNode.id === matrixRootNode.id || explicitMatrixOrientation === "vertical")
+                    effectiveMatrixOrientation === "vertical" && explicitMatrixOrientation === "vertical"
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border hover:bg-muted"
                   )}
                 >
                   <ArrowDown className="h-3 w-3" /> Below
                 </button>
-                {selectedNode.id !== matrixRootNode.id && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      pushHistory();
-                      updateNodeData(selectedNode.id, { matrixOrientation: undefined });
-                      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
-                        detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
-                      })));
-                    }}
-                    className={cn(
-                      "rounded-md border px-1 py-1.5 text-[9px]",
-                      explicitMatrixOrientation === null
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:bg-muted"
-                    )}
-                  >
-                    Inherit
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushHistory();
+                    updateNodeData(selectedNode.id, { matrixOrientation: undefined });
+                    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("vidya:apply-measured-layout", {
+                      detail: { mode: "matrix", rootId: matrixRootNode.id, nodeIds: matrixBranchIds },
+                    })));
+                  }}
+                  className={cn(
+                    "rounded-md border px-1 py-1.5 text-[9px]",
+                    explicitMatrixOrientation === null
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-muted"
+                  )}
+                >
+                  Default
+                </button>
               </div>
             </div>
 
@@ -6507,7 +6515,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                   </button>
                   <button
                     type="button"
-                    title={`Use the automatic ${effectiveMatrixOrientation === "horizontal" ? "column" : "row"} arrangement`}
+                    title="Use the level default or automatic arrangement"
                     onClick={() => {
                       pushHistory();
                       updateNodeData(selectedNode.id, { matrixChildFlow: undefined });

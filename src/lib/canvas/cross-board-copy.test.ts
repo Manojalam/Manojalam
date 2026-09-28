@@ -236,3 +236,16 @@ test("copies generated relationship diagrams with remapped source data", () => {
   assert.equal(inserted.relationships[0].targetNodeId, copiedTarget.id);
   assert.equal(inserted.relationshipFans[0].sourceNodeId, copiedSource.id);
 });
+
+
+test("copying to another board can omit descendants while retaining selected content", () => {
+  const source = content({nodes: [
+    {id: "a", type: "shape", position: {x:0,y:0}, data: {text: "Parent", childOrder:["b"]}},
+    {id: "b", type: "shape", position: {x:0,y:100}, data: {text: "Child", parentId:"a"}},
+  ], edges: [{id:"ab", source:"a", target:"b"}]});
+  const payload = createCrossBoardDiagramPayload(source, ["a"], false);
+  assert.deepEqual(payload.nodes.map(node => node.id), ["a"]);
+  assert.deepEqual(payload.edges, []);
+  assert.equal(payload.nodes[0].data.text, "Parent");
+  assert.equal(createCrossBoardDiagramPayload(source, ["a"]).nodes.length, 2);
+});

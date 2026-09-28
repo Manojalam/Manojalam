@@ -100,6 +100,7 @@ import {
 } from "@/lib/canvas/node-sizing";
 import { placeNewChild } from "@/lib/canvas/child-placement";
 import {
+  clipboardSelection,
   clearSelectedNodeContents,
   prepareDuplicatedNodeData,
   selectionWithHierarchyDescendants,
@@ -232,7 +233,7 @@ interface CanvasState {
   pendingMigration: boolean;
   history: HistoryEntry[];
   historyIndex: number;
-  clipboard: { nodes: Node[]; edges: Edge[] } | null;
+  clipboard: Pick<ManojalamClipboardPayload, "nodes" | "edges" | "selectedNodeIds"> | null;
   searchQuery: string;
   searchResults: string[];
   pendingHierarchyDelete: PendingHierarchyDelete | null;
@@ -270,7 +271,7 @@ interface CanvasState {
   undo: () => void;
   redo: () => void;
   copySelected: () => void;
-  paste: (payload?: Pick<ManojalamClipboardPayload, "nodes" | "edges">) => void;
+  paste: (payload?: Pick<ManojalamClipboardPayload, "nodes" | "edges" | "selectedNodeIds">, options?: { includeDescendants?: boolean; parentId?: string }) => void;
   insertImportedHierarchy: (
     nodes: BoardContent["nodes"],
     edges: BoardContent["edges"],
@@ -2745,20 +2746,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     );
     set({
       clipboard: {
+        selectedNodeIds: [...selectedNodeIds],
         nodes: structuredClone(selection.nodes),
         edges: structuredClone(selection.edges),
       },
     });
   },
 
-  paste: (payload) => {
+  paste: (payload, options) => {
     const { clipboard, nodes, edges } = get();
     const source = payload ?? clipboard;
     if (!source) return;
+    if (options?.parentId && !nodes.some((node) => node.id === options.parentId && !node.data.locked)) return;
+    const selection = clipboardSelection(source, options?.includeDescendants ?? true);
+    if (!selection.nodes.length) return;
     get().pushHistory();
     const { nodes: newNodes, edges: newEdges } = buildDuplicateSelection(
-      source.nodes,
-      source.edges,
+      selection.nodes,
+      selection.edges,
       nodes
     );
     set({
@@ -2768,6 +2773,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
+    if (options?.parentId) {
+      const hierarchy = buildHierarchy(newNodes, newEdges);
+      for (const node of newNodes) {
+        if (!hierarchy.get(node.id)?.parentId && !node.data.externalNote) {
+          get().reparentNode(node.id, options.parentId);
+        }
+      }
+    }
   },
 
   insertImportedHierarchy: (sourceNodes, sourceEdges, sourceRootId) => {
@@ -4858,8 +4871,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       sunburstEnabled
     );
 
+    // Reflowing an existing table must not move the user back to its root.
+    const matrixSelection = convertingLayout
+      ? [rootId]
+      : selectedNodeIds.filter((id) => newNodes.some((node) => node.id === id && !node.hidden));
     const selectedNodes = mode === "matrix"
-      ? newNodes.map((node) => ({ ...node, selected: node.id === rootId }))
+      ? newNodes.map((node) => ({ ...node, selected: matrixSelection.includes(node.id) }))
       : newNodes;
     const spacedNodes = mode === "matrix"
       ? packSiblingsAfterNestedMatrix(selectedNodes, hierarchy, rootId)
@@ -4869,7 +4886,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       edges: mode === "matrix"
         ? paletteResult.edges.map((edge) => edge.selected ? { ...edge, selected: false } : edge)
         : paletteResult.edges,
-      ...(mode === "matrix" ? { selectedNodeIds: [rootId], selectedEdgeIds: [] } : {}),
+      ...(mode === "matrix" ? { selectedNodeIds: matrixSelection, selectedEdgeIds: [] } : {}),
       saveStatus: "unsaved",
     });
   },

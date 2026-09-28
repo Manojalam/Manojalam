@@ -8,6 +8,7 @@ export const MANOJALAM_CLIPBOARD_VERSION = 1;
 
 export interface ManojalamClipboardPayload {
   version: typeof MANOJALAM_CLIPBOARD_VERSION;
+  selectedNodeIds?: string[];
   nodes: Node[];
   edges: Edge[];
 }
@@ -92,15 +93,16 @@ export function visibleBoardSelection(nodes: readonly Node[], edges: readonly Ed
 }
 
 /**
- * Expand selected hierarchy parents to their complete descendant branches and
- * include every external text box owned by any copied shape.
+ * Optionally expand selected hierarchy parents to their descendant branches.
+ * Always include external text boxes owned by the copied shapes.
  * Connections are copied only when both endpoints belong to the copied branch,
  * so the duplicate never remains attached to an object outside the selection.
  */
 export function selectionWithHierarchyDescendants(
   nodes: Node[],
   edges: Edge[],
-  selectedNodeIds: readonly string[]
+  selectedNodeIds: readonly string[],
+  includeDescendants = true
 ): CanvasObjectSelection {
   const existingNodeIds = new Set(nodes.map((node) => node.id));
   const copiedNodeIds = new Set(
@@ -109,7 +111,7 @@ export function selectionWithHierarchyDescendants(
   if (!copiedNodeIds.size) return { nodes: [], edges: [] };
 
   const hierarchy = buildHierarchy(nodes, edges);
-  for (const selectedNodeId of [...copiedNodeIds]) {
+  for (const selectedNodeId of includeDescendants ? [...copiedNodeIds] : []) {
     for (const descendantId of getSubtree(selectedNodeId, hierarchy)) {
       copiedNodeIds.add(descendantId);
     }
@@ -128,10 +130,12 @@ export function selectionWithHierarchyDescendants(
 
 export function createManojalamClipboardPayload(
   nodes: Node[],
-  edges: Edge[]
+  edges: Edge[],
+  selectedNodeIds?: string[]
 ): ManojalamClipboardPayload {
   return {
     version: MANOJALAM_CLIPBOARD_VERSION,
+    ...(selectedNodeIds ? { selectedNodeIds: [...selectedNodeIds] } : {}),
     nodes: structuredClone(nodes),
     edges: structuredClone(edges),
   };
@@ -295,6 +299,7 @@ export function parseManojalamClipboard(value: string): ManojalamClipboardPayloa
       parsed.version !== MANOJALAM_CLIPBOARD_VERSION
       || !Array.isArray(parsed.nodes)
       || !Array.isArray(parsed.edges)
+      || (parsed.selectedNodeIds !== undefined && (!Array.isArray(parsed.selectedNodeIds) || parsed.selectedNodeIds.some((id) => typeof id !== "string")))
       || parsed.nodes.some((node) => !node || typeof node.id !== "string" || !node.position)
       || parsed.edges.some((edge) => !edge || typeof edge.id !== "string")
     ) return null;
@@ -302,4 +307,15 @@ export function parseManojalamClipboard(value: string): ManojalamClipboardPayloa
   } catch {
     return null;
   }
+}
+
+/** Choose the original objects without silently copying their descendants. */
+export function clipboardSelection(
+  source: Pick<ManojalamClipboardPayload, "nodes" | "edges" | "selectedNodeIds">,
+  includeDescendants = true
+): CanvasObjectSelection {
+  if (includeDescendants) return { nodes: source.nodes, edges: source.edges };
+  const hierarchy = buildHierarchy(source.nodes, source.edges);
+  const ids = source.selectedNodeIds ?? source.nodes.filter((node) => !hierarchy.get(node.id)?.parentId).map((node) => node.id);
+  return selectionWithHierarchyDescendants(source.nodes, source.edges, ids, false);
 }

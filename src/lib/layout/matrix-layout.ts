@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import { withMatrixLevelDefaults } from "./matrix-level-layout";
 import { nodePlainText } from "../canvas/node-text";
 import type { Hierarchy } from "./hierarchy";
 import { resolveLayoutFontSize } from "./layout-presentation";
@@ -2612,6 +2613,7 @@ export function computeMatrixLayout(
   byId: Map<string, Node>,
   options: { density?: MatrixTableDensity } = {}
 ): MatrixLayoutResult {
+  byId = withMatrixLevelDefaults(rootId, hierarchy, byId);
   const root = byId.get(rootId);
   if (!root) throw new Error(`Matrix root ${rootId} does not exist.`);
   const rootData = (root.data ?? {}) as Record<string, unknown>;
