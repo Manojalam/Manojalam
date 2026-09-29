@@ -1172,13 +1172,13 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
     : undefined;
   const shapeTextAlignClass = wholeTextAlign
     ? wholeTextAlign === "left"
-      ? "[&_.ProseMirror>*]:!text-left"
+      ? "[&_.ProseMirror]:text-left"
       : wholeTextAlign === "right"
-        ? "[&_.ProseMirror>*]:!text-right"
+        ? "[&_.ProseMirror]:text-right"
         : wholeTextAlign === "justify"
-          ? "[&_.ProseMirror>*]:!text-justify"
-          : "[&_.ProseMirror>*]:!text-center"
-    : undefined;
+          ? "[&_.ProseMirror]:text-justify"
+          : "[&_.ProseMirror]:text-center"
+    : "[&_.ProseMirror]:text-center";
   const measuredFlowContent = currentIntrinsicContentSize
     && typeof currentIntrinsicContentSize.measurementWidth === "number"
     && Math.abs(currentIntrinsicContentSize.measurementWidth - availableTextSize.width) <= 1
@@ -1548,7 +1548,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       } : undefined}
                       placeholder="Double-click…"
                       className={cn(
-                        "[&_.ProseMirror]:text-center",
                         shapeTextAlignClass,
                         textPresentation.singleWord && "single-word-fit",
                         textPresentation.constrained && !textPresentation.singleWord && "bounded-text-fit"

@@ -983,12 +983,19 @@ export function RichTextEditor({
           setRenderedFlowOffset(corrected);
         }
 
+        // Paragraph alignment can override the shape default (inline toolbar).
+        // Use the rendered value so optical correction does not recenter it.
+        const firstBlock = root.querySelector("p, h1, h2, h3, li");
+        const renderedAlign = firstBlock ? window.getComputedStyle(firstBlock).textAlign : undefined;
+        const horizontalAlign = renderedAlign === "left" || renderedAlign === "right"
+          ? renderedAlign
+          : renderedAlign === "center" ? "center" : flowHorizontalAlign;
         const currentHorizontalOffset = renderedFlowHorizontalOffsetRef.current;
         const correctedHorizontal = correctedShapeFlowHorizontalOffset(
           currentHorizontalOffset,
           contentBounds,
           guideRect,
-          flowHorizontalAlign,
+          horizontalAlign,
           {
             inset: flowVerticalInset,
             localToScreenScale,
