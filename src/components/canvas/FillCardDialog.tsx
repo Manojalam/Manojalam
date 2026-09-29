@@ -25,6 +25,7 @@ export function FillCardDialog({ nodeId, onClose }: { nodeId: string; onClose: (
   const savedTemplate = useCanvasStore(state => state.settings.cardTemplates?.find(item => item.id === node?.data.cardTemplateId));
   const template = savedTemplate ?? normalizeCardTemplates([node?.data.cardTemplateSnapshot])[0];
   if (!node || !template) return null;
+  if (node.data.freeCardLayout) return <Dialog open modal={false} onOpenChange={open => { if (!open) onClose(); }}><DialogContent onCloseAutoFocus={event => event.preventDefault()}><DialogHeader><DialogTitle>Edit this card directly</DialogTitle><DialogDescription>This card has its own layout. Cut and paste its text on the board; labels and styling stay attached.</DialogDescription></DialogHeader><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit on card</Button></DialogContent></Dialog>;
   return <CardForm key={currentId} nodeId={currentId} template={template} initialValues={(node.data.cardFieldValues ?? {}) as CardFieldValues} locked={!!node.data.locked} onClose={onClose} onNext={setCurrentId} />;
 }
 
@@ -37,7 +38,7 @@ function CardForm({ nodeId, template, initialValues, locked, onClose, onNext }: 
   const available = useCanvasStore(state => !!state.settings.cardTemplates?.some(item => item.id === template.id));
   const patch = (id: string, value: Partial<CardFieldValues[string]>) => setValues(current => ({ ...current, [id]: { ...(current[id] ?? { text: "" }), ...value } }));
   return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
-    <DialogContent data-card-fill-panel
+    <DialogContent data-card-fill-panel onCloseAutoFocus={event => event.preventDefault()}
       className="top-4 bottom-4 w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
       style={{ left: side === "left" ? 16 : "auto", right: side === "right" ? 16 : "auto" }}
       onInteractOutside={event => event.preventDefault()}
@@ -70,6 +71,7 @@ function CardForm({ nodeId, template, initialValues, locked, onClose, onNext }: 
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={savingNext} onClick={onClose}>Cancel</Button>
+          <Button type="button" disabled={locked || savingNext} onClick={() => { update(nodeId, values); onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
           <Button type="submit" disabled={locked || savingNext}>Save card</Button>
           <Button type="button" disabled={locked || !available || savingNext} onClick={async () => {
             setSavingNext(true);

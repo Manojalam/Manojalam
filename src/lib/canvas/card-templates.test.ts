@@ -29,7 +29,7 @@ test("redesign preserves independent field values by ID, including removed field
   template.rows[0].fields[0].label = "New label";
   template.rows = template.rows.slice(0, 1);
   const updated = cardTemplateNodeData(template, first.cardFieldValues);
-  assert.doesNotMatch(updated.richText, /New label/);
+  assert.doesNotMatch(updated.text, /New label/);
   assert.equal(updated.cardTemplateSnapshot.rows[0].fields[0].label, "New label");
   assert.match(updated.richText, /Original question/);
   assert.equal(updated.cardFieldValues.answer.text, "My answer");

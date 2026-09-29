@@ -1217,8 +1217,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   }, [pushHistory]);
 
   const beginRequestedEdit = useCallback(() => {
-    if (d.sampleTemplateId) return;
-    if (d.cardTemplateId) {
+    if (d.sampleTemplateId && !d.freeCardLayout) return;
+    if (d.cardTemplateId && !d.freeCardLayout) {
       if (!d.locked) setFillingCardNodeId(id);
       return;
     }
@@ -1226,7 +1226,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       setEditFocusPoint(null);
       setEditing(true);
     }
-  }, [isDrawing, setEditing, setFillingCardNodeId, id, d.cardTemplateId, d.locked, d.sampleTemplateId]);
+  }, [isDrawing, setEditing, setFillingCardNodeId, id, d.cardTemplateId, d.locked, d.sampleTemplateId, d.freeCardLayout]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -1300,8 +1300,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         className="group relative flex h-full w-full items-center justify-center"
         onDoubleClick={(event) => {
           event.stopPropagation();
-          if (d.sampleTemplateId) return;
-          if (d.cardTemplateId) {
+          if (d.sampleTemplateId && !d.freeCardLayout) return;
+          if (d.cardTemplateId && !d.freeCardLayout) {
             if (!d.locked) setFillingCardNodeId(id);
             return;
           }
@@ -1530,10 +1530,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     matrixCell && editing && "overflow-y-auto overscroll-contain nowheel",
                     renderContourTextFlow && "h-full max-h-none"
                   )}>
-                    {d.sampleTemplateId ? <SampleCardContent nodeId={id} /> : <RichTextEditor
+                    {d.sampleTemplateId && !d.freeCardLayout ? <SampleCardContent nodeId={id} /> : <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
-                      editable={editing && !d.cardTemplateId}
+                      editable={editing && (!d.cardTemplateId || !!d.freeCardLayout)}
                       initialFocusPoint={editFocusPoint}
                       measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}

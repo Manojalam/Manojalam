@@ -6,6 +6,8 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
 import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
 import { TemplateTextRole } from "@/lib/canvas/template-text-role";
+import { FieldLabel } from "@/lib/canvas/field-label";
+import { flexibleCardLabels } from "@/lib/canvas/flexible-card";
 import { SampleField } from "@/lib/canvas/sample-field";
 import { SampleTagDialog } from "./SampleTagDialog";
 import StarterKit from "@tiptap/starter-kit";
@@ -313,6 +315,7 @@ const EXTENSIONS = [
   }),
   ParagraphLayout,
   TemplateTextRole,
+  FieldLabel,
   SampleField,
   // Keep color and font spans outside links so their underline inherits the glyph style.
   TextStyle.extend({ priority: 1001 }),
@@ -599,6 +602,9 @@ export function RichTextEditor({
     const id = state.nodes.find(node => node.id === nodeId)?.data.styleTemplateId;
     return state.settings.styleTemplates?.find(template => template.id === id);
   });
+  const fieldNode = useCanvasStore(state => state.nodes.find(node => node.id === nodeId));
+  const fieldSettings = useCanvasStore(state => state.settings);
+  const fieldLabels = fieldNode?.data.freeCardLayout ? flexibleCardLabels(fieldNode.data, fieldSettings) : [];
   const defaultBoardLinkColor = useCanvasStore((state) => normalizeHexColor(state.settings.linkColor));
   const activeSampleTemplate = useCanvasStore(state => {
     const id = state.nodes.find(node => node.id === nodeId)?.data.sampleDesignId;
@@ -607,7 +613,7 @@ export function RichTextEditor({
   const [sampleTagSelection, setSampleTagSelection] = useState<{ from: number; to: number; width: number; format: Partial<SampleLabel> } | null>(null);
   const sampleTagOpen = useRef(false);
   const nodeLinkColor = useCanvasStore(state => normalizeHexColor(state.nodes.find(node => node.id === nodeId)?.data.linkColor));
-  const isFillableCard = useCanvasStore(state => !!state.nodes.find(node => node.id === nodeId)?.data.cardTemplateId);
+  const isFillableCard = useCanvasStore(state => !!state.nodes.find(node => node.id === nodeId)?.data.cardTemplateId || !!state.nodes.find(node => node.id === nodeId)?.data.sampleTemplateId);
   const boardLinkColor = isFillableCard ? undefined : activeStyleTemplate?.roles.find(role => role.id === "reference")?.color ?? nodeLinkColor ?? defaultBoardLinkColor;
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
@@ -2234,6 +2240,11 @@ export function RichTextEditor({
           onClick={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
+          {!!fieldLabels.length && <div role="group" aria-label="Field labels" className="flex w-full flex-wrap items-center gap-1 border-b pb-2">
+            <span className="text-xs">Label: {editor.getAttributes("textStyle").fieldName || "None"}</span>
+            {fieldLabels.map(label => <button key={label.id} type="button" aria-label={`Apply ${label.name} label`} aria-pressed={editor.getAttributes("textStyle").fieldLabel === label.id} onMouseDown={event => event.preventDefault()} onClick={() => applySelectionCommand(chain => chain.setMark("textStyle", { fieldLabel: label.id, fieldOwner: label.owner, fieldName: label.name, color: label.style.color, ...(label.style.fontSize ? { fontSize: label.style.fontSize } : {}), ...(label.style.fontFamily ? { fontFamily: label.style.fontFamily } : {}) }))} className="rounded border px-2 py-1 text-xs">{label.name}</button>)}
+            <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => applySelectionCommand(chain => chain.setMark("textStyle", { fieldLabel: null, fieldOwner: null, fieldName: null }))} className="px-2 text-xs">Remove label</button>
+          </div>}
           {activeStyleTemplate && (
             <div role="group" aria-label="Assign text role" className="flex w-full flex-wrap items-center gap-1 border-b border-border pb-2">
               <span className="mr-1 text-[11px] font-medium">Apply role to selected text:</span>

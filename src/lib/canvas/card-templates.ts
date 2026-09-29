@@ -64,7 +64,7 @@ export function safeCardLink(href: string | undefined): string | undefined {
   } catch { return undefined; }
 }
 
-/** Render only escaped field values and validated links; IDs never enter the HTML. */
+/** Escape values and label metadata, and validate link destinations. */
 export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}) {
   const richText = template.rows.map(row => {
     const fields = row.fields.map(field => {
@@ -77,7 +77,7 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       const content = href && parts
         ? `${escapeHtml(parts[1]).replace(/\r?\n/g, "<br>")}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(parts[2]).replace(/\r?\n/g, "<br>")}</a>${escapeHtml(parts[3]).replace(/\r?\n/g, "<br>")}`
         : text;
-      return `<span style="color: ${field.color}">${content}</span>`;
+      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color}">${content}</span>`;
     }).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
   }).join("");

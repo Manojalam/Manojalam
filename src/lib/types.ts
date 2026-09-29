@@ -622,6 +622,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   cardTemplateId?: string;
   cardTemplateSnapshot?: BoardCardTemplate;
   cardFieldValues?: CardFieldValues;
+  /** Instance-owned rich text with portable field labels; template rows are only a starting layout. */
+  freeCardLayout?: boolean;
   /** Board-local live style template; text and geometry remain instance-owned. */
   styleTemplateId?: string;
   /** Materialized link style from a template, retained when detached. */

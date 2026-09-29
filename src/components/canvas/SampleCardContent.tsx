@@ -68,6 +68,7 @@ export function SampleCardContent({ nodeId }: { nodeId: string }) {
   const template = saved ?? normalizeSampleTemplates([node?.data.sampleTemplateSnapshot])[0];
   const entries = (node?.data.sampleEntries ?? []) as SampleCardEntry[];
   const update = useCanvasStore(state => state.updateSampleEntries);
+  const arrange = useCanvasStore(state => state.arrangeCard);
   const fit = useCanvasStore(state => state.fitNodeToContent);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -93,6 +94,7 @@ export function SampleCardContent({ nodeId }: { nodeId: string }) {
         <button type="button" onClick={() => update(nodeId, entries.filter(item => item.id !== entry.id), true)}>Remove section</button>
       </div>}
     </section>)}
+    {!locked && <button type="button" data-export-ignore className="nodrag nopan mr-2 rounded border px-2 py-1 text-xs" onPointerDown={event => event.stopPropagation()} onClick={() => arrange(nodeId)}>Arrange / edit on card</button>}
     {!locked && <button type="button" data-export-ignore className="nodrag nopan rounded border bg-background px-2 py-1 text-xs text-foreground" onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onClick={() => update(nodeId, [...entries, { id: crypto.randomUUID(), values: {} }], true)}>Add another</button>}
   </div>;
 }
