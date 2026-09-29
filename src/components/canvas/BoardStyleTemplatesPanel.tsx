@@ -59,13 +59,14 @@ export function BoardStyleTemplatesPanel() {
         </div>
         <details key={template.id} className="space-y-2">
           <summary className="cursor-pointer text-xs font-medium">Edit template</summary>
-          <p className="text-[10px] text-muted-foreground">Changes here update all {linkedCount} linked {linkedCount === 1 ? "box" : "boxes"}. Text stays independent. Select words and use Text role in the floating toolbar to assign a role.</p>
+          <p className="text-[10px] text-muted-foreground">Changes here update all {linkedCount} linked {linkedCount === 1 ? "box" : "boxes"}. Text stays independent.</p>
           <label className="block text-[10px]">Template name<Input key={`${template.id}-${template.name}`} aria-label="Template name" defaultValue={template.name} className="h-7 text-xs" onBlur={event => { const value = event.target.value.trim();if (value && value !== template.name) patch({ name: value }); }} /></label>
           <div className="flex flex-wrap gap-1">
             {([['fillColor', 'Fill'], ['borderColor', 'Border'], ['textColor', 'Unassigned text']] as const).map(([key, label]) => <ColorControl key={key} label={`Template ${label.toLowerCase()} color`} value={typeof template.style[key] === "string" ? template.style[key] as string : undefined} onChange={color => patch({ style: { [key]: color } })} />)}
           </div>
           <label className="block text-[10px]">Font size<Input key={`${template.id}-${template.style.fontSize}`} type="number" min={6} max={200} aria-label="Template font size" defaultValue={Number(template.style.fontSize) || 14} className="h-7 text-xs" onBlur={event => { const size = Number(event.target.value);if (size >= 6 && size <= 200 && size !== template.style.fontSize) patch({ style: { fontSize: size } }); }} /></label>
-          <p className="text-xs font-medium">Text roles</p>
+          <p className="text-xs font-medium">Text role names and colors</p>
+          <p className="text-[10px] text-muted-foreground">To assign a role: double-click the box text, select the words, then click a role button under “Apply role to selected text” in the text toolbar. The fields below only rename roles.</p>
           {template.roles.map(role => <div key={role.id} className="flex items-center gap-1">
             <Input key={`${role.id}-${role.name}`} aria-label={`Role name: ${role.name}`} defaultValue={role.name} className="h-7 min-w-0 text-xs" onBlur={event => {const value=event.target.value.trim();if(value && value !== role.name) patch({roles:template.roles.map(item=>item.id===role.id?{...item,name:value}:item)});}} />
             <ColorControl compact label={`${role.name} color`} value={role.color} onChange={color => patch({ roles: template.roles.map(item => item.id === role.id ? { ...item, color } : item) })} />

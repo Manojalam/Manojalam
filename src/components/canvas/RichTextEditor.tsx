@@ -2212,7 +2212,7 @@ export function RichTextEditor({
       {mounted && anchor && editor && createPortal(
         <div
           ref={toolbarRef}
-          className="nodrag nopan nowheel fixed z-[9999] flex max-w-[min(94vw,920px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-2xl"
+          className="nodrag nopan nowheel fixed z-[9999] flex w-max max-w-[min(94vw,920px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-2xl"
           style={
             drag
               ? { top: drag.top, left: drag.left }
@@ -2222,6 +2222,36 @@ export function RichTextEditor({
           onClick={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
+          {activeStyleTemplate && (
+            <div role="group" aria-label="Assign text role" className="flex w-full flex-wrap items-center gap-1 border-b border-border pb-2">
+              <span className="mr-1 text-[11px] font-medium">Apply role to selected text:</span>
+              {activeStyleTemplate.roles.map(role => (
+                <button
+                  key={role.id}
+                  type="button"
+                  aria-label={`Assign ${role.name} role`}
+                  aria-pressed={editor.getAttributes("textStyle").templateRole === role.id}
+                  disabled={editor.state.selection.empty && !additiveSelectionRanges.length}
+                  // Keep the editor selection alive while clicking a role.
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => applySelectionCommand(chain => chain.setMark("textStyle", { templateRole: role.id, color: role.color }))}
+                  className={cn("flex min-h-8 max-w-52 items-center gap-1.5 rounded-md border border-border px-2 text-[11px] hover:bg-muted disabled:opacity-50", editor.getAttributes("textStyle").templateRole === role.id && "bg-primary/15 ring-1 ring-primary")}
+                  title={`Apply ${role.name} from ${activeStyleTemplate.name} to the selected text`}
+                >
+                  <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border" style={{ backgroundColor: role.color }} />
+                  <span className="truncate">{role.name}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={editor.state.selection.empty && !additiveSelectionRanges.length}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => applySelectionCommand(chain => chain.setMark("textStyle", { templateRole: null }))}
+                className="min-h-8 rounded-md px-2 text-[11px] hover:bg-muted disabled:opacity-50"
+                title="Remove the shared role and keep the current color"
+              >Remove role</button>
+            </div>
+          )}
           {/* Drag grip */}
           <div
             title="Drag to move"
@@ -2301,18 +2331,6 @@ export function RichTextEditor({
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(-1)))} title="Decrease indent (Ctrl/Cmd+[)"><IndentDecrease className="h-4 w-4" /></FormatButton>
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(1)))} title="Increase indent (Ctrl/Cmd+])"><IndentIncrease className="h-4 w-4" /></FormatButton>
 
-          {activeStyleTemplate && <select aria-label="Text role" title="Text role from the linked template"
-            className="h-8 max-w-36 rounded-md border border-border bg-background px-1 text-[11px]"
-            value={editor.getAttributes("textStyle").templateRole ?? ""}
-            onChange={event => {
-              const role = activeStyleTemplate.roles.find(item => item.id === event.target.value);
-              applySelectionCommand(chain => role
-                ? chain.setMark("textStyle", { templateRole: role.id, color: role.color })
-                : chain.setMark("textStyle", { templateRole: null }));
-            }}>
-            <option value="">No text role</option>
-            {activeStyleTemplate.roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-          </select>}
           {/* Font family */}
           <div className="relative">
             <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowSizes(false); setShowLink(false); }}
