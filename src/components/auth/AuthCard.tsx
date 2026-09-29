@@ -1,4 +1,5 @@
 import { APP_NAME } from "@/lib/config";
+import Link from "next/link";
 
 export function AuthCard({
   title,
@@ -21,6 +22,7 @@ export function AuthCard({
           {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
         </div>
         {children}
+        <p className="text-center text-sm"><Link className="text-primary underline" href="/app">Continue without an account</Link></p>
       </div>
     </div>
   );

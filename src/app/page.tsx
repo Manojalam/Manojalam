@@ -19,8 +19,8 @@ const FEATURES = [
   { icon: Scroll, title: "Śloka study cards", desc: "Padaccheda, anvaya, padārtha, chandas sections." },
   { icon: LayoutTemplate, title: "Templates", desc: "Study maps, grammar rules, project planning, and more." },
   { icon: Download, title: "Export / import", desc: "JSON backups and complete hierarchical outlines in Markdown, TXT, HTML, and PDF." },
-  { icon: HardDrive, title: "Local-first demo mode", desc: "Works immediately without any backend setup." },
-  { icon: Cloud, title: "Supabase-ready", desc: "Add env vars later for cloud sync and auth." },
+  { icon: HardDrive, title: "Start without an account", desc: "Create boards and save them in this browser. Download backups to keep your work." },
+  { icon: Cloud, title: "Optional cloud saving", desc: "Sign in to save boards across devices and share with collaborators." },
 ];
 
 export default function LandingPage() {

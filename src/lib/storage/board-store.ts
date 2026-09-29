@@ -3,7 +3,8 @@ import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import type { BoardAccessRole, BoardContent, VidyaBoard } from "@/lib/types";
 import { instantiateTemplate } from "@/lib/templates";
 import { ensureTemplateBoardContent } from "@/lib/templates/persistence";
-import { requireSupabaseClient } from "@/lib/supabase/client";
+import { createClient, requireSupabaseClient } from "@/lib/supabase/client";
+import { addLocalBoard, getLocalBoard, listLocalBoards, updateLocalBoard, deleteLocalBoard, isLocalBoardId } from "./local-boards";
 import { generateId } from "@/lib/utils";
 import { normalizePersistedEdges, normalizePersistedNodes } from "@/lib/canvas/node-persistence";
 import {
@@ -89,6 +90,28 @@ function createEmptyContent(title = "Untitled Board"): BoardContent {
   };
 }
 
+/** Verification errors must not silently switch cloud accounts to device storage. */
+export async function getStorageUserId(): Promise<string | null> {
+  const client = createClient();
+  if (!client) return null;
+  const { data: { session }, error } = await client.auth.getSession();
+  if (error) throw error;
+  if (!session) return null;
+  const { data: { user }, error: userError } = await client.auth.getUser();
+  if (userError) throw userError;
+  if (!user) throw new Error("Please sign in again to access your cloud boards.");
+  return user.id;
+}
+
+async function createLocalBoard(title: string, content: BoardContent): Promise<VidyaBoard> {
+  const now = new Date().toISOString();
+  return addLocalBoard({
+    id: `guest-${generateId()}`, userId: null, accessRole: "owner", title,
+    description: null, thumbnailUrl: null, content: normalizeBoardContent(content),
+    createdAt: now, updatedAt: now, storageMode: "local",
+  });
+}
+
 async function getCurrentUserId(): Promise<string> {
   const supabase = requireSupabaseClient();
   const {
@@ -132,8 +155,10 @@ async function rolesForBoards(
 
 /** All owned and shared boards for the current user, newest first. */
 export async function listBoards(): Promise<VidyaBoard[]> {
+  const currentUserId = await getStorageUserId();
+  const local = await listLocalBoards();
+  if (!currentUserId) return local.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const supabase = requireSupabaseClient();
-  const currentUserId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("boards")
     .select("*")
@@ -143,11 +168,16 @@ export async function listBoards(): Promise<VidyaBoard[]> {
   if (error) throw error;
   const rows = (data ?? []) as BoardRow[];
   const roles = await rolesForBoards(rows, currentUserId);
-  return rows.map((row) => rowToBoard(row, roles.get(row.id) ?? "viewer"));
+  return [...local, ...rows.map((row) => rowToBoard(row, roles.get(row.id) ?? "viewer"))]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /** Returns null when the board doesn't exist OR the user has no access (RLS). */
 export async function getBoard(id: string): Promise<VidyaBoard | null> {
+  if (isLocalBoardId(id)) {
+    const board = await getLocalBoard(id);
+    return board ? { ...board, content: normalizeBoardContent(board.content) } : null;
+  }
   const supabase = requireSupabaseClient();
   const currentUserId = await getCurrentUserId();
   const { data, error } = await supabase
@@ -181,8 +211,9 @@ export async function createBoard(
     content = createEmptyContent(boardTitle);
   }
 
+  const userId = await getStorageUserId();
+  if (!userId) return createLocalBoard(boardTitle, content);
   const supabase = requireSupabaseClient();
-  const userId = await getCurrentUserId();
 
   const { data, error } = await supabase
     .from("boards")
@@ -212,9 +243,10 @@ export async function createBoardFromContent(
   title: string,
   content: BoardContent
 ): Promise<VidyaBoard> {
-  const supabase = requireSupabaseClient();
-  const userId = await getCurrentUserId();
   const boardTitle = title.trim() || "Imported Board";
+  const userId = await getStorageUserId();
+  if (!userId) return createLocalBoard(boardTitle, content);
+  const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from("boards")
     .insert({
@@ -233,6 +265,10 @@ export async function updateBoard(
   id: string,
   partial: Partial<Pick<VidyaBoard, "title" | "description" | "content">>
 ): Promise<VidyaBoard | null> {
+  if (isLocalBoardId(id)) return updateLocalBoard(id, {
+    ...partial,
+    ...(partial.content && { content: normalizeBoardContent(partial.content) }),
+  });
   const supabase = requireSupabaseClient();
   const { data, error } = await supabase
     .from("boards")
@@ -284,6 +320,7 @@ export async function copyDiagramToBoard(
 }
 
 export async function deleteBoard(id: string): Promise<boolean> {
+  if (isLocalBoardId(id)) return deleteLocalBoard(id);
   const supabase = requireSupabaseClient();
   const { error } = await supabase.from("boards").delete().eq("id", id);
   if (error) throw error;
@@ -293,6 +330,7 @@ export async function deleteBoard(id: string): Promise<boolean> {
 export async function duplicateBoard(id: string): Promise<VidyaBoard | null> {
   const original = await getBoard(id);
   if (!original) return null;
+  if (original.storageMode === "local") return createLocalBoard(`${original.title} (Copy)`, structuredClone(original.content));
   const copy = await createBoard(undefined, `${original.title} (Copy)`);
   return updateBoard(copy.id, { content: structuredClone(original.content) });
 }
@@ -325,6 +363,9 @@ export async function importBoard(json: string): Promise<VidyaBoard> {
 export async function saveSnapshot(boardId: string, name?: string): Promise<void> {
   const board = await getBoard(boardId);
   if (!board) return;
+  if (board.storageMode === "local") {
+    throw new Error("Download a JSON backup for this device board. Cloud snapshots require an account.");
+  }
 
   const supabase = requireSupabaseClient();
   const userId = await getCurrentUserId();
@@ -335,4 +376,42 @@ export async function saveSnapshot(boardId: string, name?: string): Promise<void
     content: board.content,
     snapshot_name: name ?? `Snapshot ${new Date().toLocaleString()}`,
   });
+}
+
+/** Stable upload IDs make retries safe without overwriting existing cloud boards. */
+export async function moveGuestBoardToAccount(id: string): Promise<VidyaBoard> {
+  if (!isLocalBoardId(id)) throw new Error("This board is already in the cloud.");
+  const userId = await getCurrentUserId();
+  const local = await getLocalBoard(id);
+  if (!local) throw new Error("This device board was already moved or deleted. Refresh your boards.");
+  const supabase = requireSupabaseClient();
+  const cloudId = id.slice("guest-".length);
+  const { error } = await supabase.from("boards").upsert({
+    id: cloudId, user_id: userId, title: local.title, description: local.description,
+    content: local.content, created_at: local.createdAt,
+  }, { onConflict: "id", ignoreDuplicates: true });
+  if (error) throw error;
+  const cloud = await getBoard(cloudId);
+  if (!cloud || cloud.userId !== userId || !sameBoardData(local, cloud)) {
+    throw new Error("The cloud copy differs from this device board. Your device copy is safe; duplicate it to upload a separate copy.");
+  }
+  if (!(await deleteLocalBoard(id, local))) {
+    throw new Error("The cloud copy was saved, but this device board changed during upload. Its newer edits are still on this device.");
+  }
+  return cloud;
+}
+
+function sameBoardData(a: VidyaBoard, b: VidyaBoard): boolean {
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b));
+      return "{" + entries.map(([key, item]) => JSON.stringify(key) + ":" + canonical(item)).join(",") + "}";
+    }
+    return JSON.stringify(value);
+  };
+  return a.title === b.title && a.description === b.description
+    && canonical(normalizeBoardContent(a.content)) === canonical(normalizeBoardContent(b.content));
 }

@@ -548,44 +548,33 @@ function VidyaCanvasInner({
   const saveTimerRef = useRef<number | null>(null);
   const enqueueSave = useCallback(() => {
     if (!canEdit) return;
-    const requestedBoardId = boardId;
-    saveQueueRef.current = saveQueueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        const state = useCanvasStore.getState();
-        if (
-          state.board?.id !== requestedBoardId
-          || !state.hasHydratedBoard
-          || !state.hasUserChangedBoard
-          || state.saveStatus === "saved"
-        ) return;
-
-        const title = state.board.title;
-        const content = {
-          version: BOARD_CONTENT_VERSION,
-          nodes: state.nodes,
-          edges: state.edges,
-          relationships: state.relationships,
-          relationshipFans: state.relationshipFans,
-          layers: state.layers,
-          viewport: state.viewport,
-          settings: state.settings,
-        } as BoardContent;
-        state.setSaveStatus("saving");
-
-        try {
-          await updateBoard(requestedBoardId, { title, content });
-          const current = useCanvasStore.getState();
-          if (current.board?.id === requestedBoardId && current.saveStatus === "saving") {
-            current.setSaveStatus("saved");
-          }
-        } catch {
-          const current = useCanvasStore.getState();
-          if (current.board?.id === requestedBoardId && current.saveStatus !== "unsaved") {
-            current.setSaveStatus("error");
-          }
-        }
-      });
+    const state = useCanvasStore.getState();
+    if (state.board?.id !== boardId || !state.hasHydratedBoard || !state.hasUserChangedBoard || state.saveStatus === "saved") return;
+    // Keep a snapshot for unmount, but use the latest state if this board is still open.
+    // Selection/measurement updates can replace arrays without making the board dirty.
+    const captured = state;
+    saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
+      const current = useCanvasStore.getState();
+      const snapshot = current.board?.id === boardId ? current : captured;
+      if (snapshot.saveStatus === "saved") return;
+      const title = snapshot.board!.title;
+      const content = {
+        version: BOARD_CONTENT_VERSION,
+        nodes: snapshot.nodes, edges: snapshot.edges, relationships: snapshot.relationships,
+        relationshipFans: snapshot.relationshipFans, layers: snapshot.layers,
+        viewport: snapshot.viewport, settings: snapshot.settings,
+      } as BoardContent;
+      if (current.board?.id === boardId) current.setSaveStatus("saving");
+      try {
+        const saved = await updateBoard(boardId, { title, content });
+        if (!saved) throw new Error("Board could not be saved.");
+        const latest = useCanvasStore.getState();
+        if (latest.board?.id === boardId && latest.saveStatus === "saving") latest.setSaveStatus("saved");
+      } catch {
+        const latest = useCanvasStore.getState();
+        if (latest.board?.id === boardId && latest.saveStatus !== "unsaved") latest.setSaveStatus("error");
+      }
+    });
   }, [boardId, canEdit]);
 
   const flushSave = useCallback(() => {
@@ -612,6 +601,25 @@ function VidyaCanvasInner({
       }
     };
   }, [canEdit, saveStatus, hasHydratedBoard, hasUserChangedBoard, enqueueSave]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === "hidden") flushSave(); };
+    const onUnload = (event: BeforeUnloadEvent) => {
+      const state = useCanvasStore.getState();
+      if (canEdit && state.board?.id === boardId && state.saveStatus !== "saved") {
+        flushSave();
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("beforeunload", onUnload);
+      flushSave();
+    };
+  }, [boardId, canEdit, flushSave]);
 
   // Measured table/outline layouts wait for React Flow to refresh rendered
   // dimensions before the store performs one atomic placement transaction.

@@ -21,8 +21,8 @@ export default function NewBoardPage() {
       const board = await createBoard(undefined, title || "Untitled Board");
       toast.success("Board created");
       router.push(`/app/boards/${board.id}`);
-    } catch {
-      toast.error("Failed to create board");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create board");
       setLoading(false);
     }
   };

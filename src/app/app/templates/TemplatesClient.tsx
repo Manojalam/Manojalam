@@ -13,7 +13,6 @@ import {
   TEMPLATE_CATEGORIES,
 } from "@/lib/templates";
 import { createBoard } from "@/lib/storage/board-store";
-import { SupabaseSetupNotice } from "@/components/layout/SupabaseSetupNotice";
 import { TemplatePreview } from "@/components/templates/TemplatePreview";
 import { useCanvasStore } from "@/store/canvas-store";
 import { toast } from "sonner";
@@ -60,8 +59,6 @@ export default function TemplatesPage() {
         <p className="mt-1 text-muted-foreground">
           Tested starting points for every layout and common board structure
         </p>
-
-        <SupabaseSetupNotice className="mt-5" />
 
         <div className="mt-4 flex flex-wrap gap-2">
           {CATEGORIES.map(({ id, label }) => (

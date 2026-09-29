@@ -8,16 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { listBoards } from "@/lib/storage/board-store";
 import { formatRelativeDate } from "@/lib/utils";
 import type { VidyaBoard } from "@/lib/types";
-import { SupabaseSetupNotice } from "@/components/layout/SupabaseSetupNotice";
 
 export function DashboardContent() {
   const [boards, setBoards] = useState<VidyaBoard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listBoards()
       .then(setBoards)
-      .catch(() => setBoards([]))
+      .catch((error) => setError(error instanceof Error ? error.message : "Could not load boards."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -30,8 +30,6 @@ export function DashboardContent() {
         <p className="text-muted-foreground">Your visual knowledge workspace</p>
       </div>
 
-      <SupabaseSetupNotice className="mb-6" />
-
       <div className="mb-8 flex flex-wrap gap-3">
         <Button asChild>
           <Link href="/app/boards/new"><Plus className="mr-2 h-4 w-4" /> New blank board</Link>
@@ -41,6 +39,7 @@ export function DashboardContent() {
         </Button>
       </div>
 
+      {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
       <section className="mb-10">
         <h2 className="mb-4 text-lg font-semibold">Recent boards</h2>
         {loading ? (
@@ -66,6 +65,7 @@ export function DashboardContent() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-medium group-hover:text-primary">{board.title}</h3>
+                  {board.storageMode === "local" && <Badge variant="outline">On this device</Badge>}
                   {board.accessRole !== "owner" && (
                     <Badge variant="secondary" className="shrink-0 gap-1 font-normal">
                       <Users className="h-3 w-3" />
