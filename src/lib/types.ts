@@ -157,6 +157,7 @@ export interface LayoutVisualStyle {
 }
 
 export interface ActiveTextSelection {
+  textColorMixed?: boolean;
   lineSpacing?: number;
   paragraphIndent?: number;
   firstLineIndent?: number;
@@ -251,6 +252,8 @@ export interface BoardSettings {
   /** Whether dots/grid follow the app theme, use a fixed color, or are transparent. */
   gridColorMode?: BoardColorMode;
   gridColor?: string;
+  /** Shared rich-text link color; unset retains authored/inherited text colors. */
+  linkColor?: string;
   gridSpacing?: number;
   /** Reusable connector-label shortcuts and their default styles, saved with this board. */
   connectorLabelPresets?: Array<string | ConnectorLabelPreset>;

@@ -108,7 +108,7 @@ import {
   trimSelectedNodeContents,
   type ManojalamClipboardPayload,
 } from "@/lib/canvas/clipboard";
-import { mergeCustomColors, normalizeCustomColors } from "@/lib/canvas/custom-colors";
+import { mergeCustomColors, normalizeCustomColors, normalizeHexColor } from "@/lib/canvas/custom-colors";
 import { reclaimAutomaticTextColor } from "@/lib/canvas/sticker-text-protection";
 import { migrateLegacyHierarchyNumberingScopes } from "@/lib/canvas/hierarchy-numbering";
 import {
@@ -2221,6 +2221,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           : DEFAULT_BOARD_SETTINGS.defaultFontSize
       ),
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
+      linkColor: normalizeHexColor(rawSettings.linkColor) ?? undefined,
       customTextColors: normalizeCustomColors(rawSettings.customTextColors),
       customHighlightColors: normalizeCustomColors(rawSettings.customHighlightColors),
       customColors: mergeCustomColors(

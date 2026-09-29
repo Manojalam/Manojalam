@@ -37,6 +37,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
 interface ColorPickerPanelProps {
+  mixed?: boolean;
   value?: string;
   onChange: (color: string) => void;
   extraColors?: string[];
@@ -80,6 +81,7 @@ function ColorSwatch({
       type="button"
       title={title}
       aria-label={title}
+      aria-pressed={selected}
       onPointerDown={(event) => {
         if (!selectionSafe || !event.isPrimary || event.button !== 0) return;
         event.preventDefault();
@@ -198,6 +200,7 @@ function LabeledPaletteColor({
 /** The shared palette body used by popovers and rich-text toolbar color menus. */
 export function ColorPickerPanel({
   value,
+  mixed = false,
   onChange,
   extraColors = [],
   savedColors = [],
@@ -210,7 +213,7 @@ export function ColorPickerPanel({
   selectionSafe = false,
 }: ColorPickerPanelProps) {
   const exactColorInputId = useId();
-  const normalizedValue = normalizeHexColor(value);
+  const normalizedValue = colorSwatchHex(value);
   const initialColor = normalizedValue ?? "#2878ff";
   const initialHsv = hexToHsv(initialColor) ?? { h: 220, s: 84, v: 100 };
   const [hue, setHue] = useState(initialHsv.h);
@@ -233,9 +236,9 @@ export function ColorPickerPanel({
     const extras = extraColors
       .map(colorSwatchHex)
       .filter((color): color is string => !!color);
-    return arrangeColorPalette([...boardUsedColors, ...extras])
+    return arrangeColorPalette([...boardUsedColors, ...extras, ...(normalizedValue ? [normalizedValue] : [])])
       .filter((color) => !saved.has(color));
-  }, [boardUsedColors, extraColors, normalizedSavedColors]);
+  }, [boardUsedColors, extraColors, normalizedSavedColors, normalizedValue]);
   const draftIsSaved = normalizedSavedColors.includes(draftColor);
 
   const setHsvColor = (nextColor: HsvColor) => {
@@ -282,6 +285,13 @@ export function ColorPickerPanel({
 
   return (
     <div className={cn("space-y-3", className)}>
+      {mixed ? <p className="text-xs text-muted-foreground">Mixed text colors</p> : normalizedValue && (
+        <div className="flex items-center gap-2 rounded-md border p-2 text-xs" aria-label={`Current color ${normalizedValue}`}>
+          <span className="h-5 w-5 rounded border border-black/15" style={{ backgroundColor: normalizedValue }} />
+          <span>Current color</span>
+          <span className="ml-auto font-mono uppercase">{normalizedValue}</span>
+        </div>
+      )}
       {showHeading && (
         <div>
           <p className="text-[11px] font-semibold text-foreground">Choose color</p>
@@ -307,7 +317,7 @@ export function ColorPickerPanel({
                 <ColorSwatch
                   key={color}
                   color={color}
-                  selected={draftColor === color}
+                  selected={!mixed && draftColor === color}
                   title={`${group.name} · ${color}`}
                   onSelect={() => selectSwatch(color)}
                   selectionSafe={selectionSafe}
@@ -330,7 +340,7 @@ export function ColorPickerPanel({
               <LabeledPaletteColor
                 key={color}
                 color={color}
-                selected={draftColor === color}
+                selected={!mixed && draftColor === color}
                 onSelect={() => selectSwatch(color)}
                 selectionSafe={selectionSafe}
               />

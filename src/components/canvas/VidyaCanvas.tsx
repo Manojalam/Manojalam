@@ -67,6 +67,7 @@ import {
   hierarchyNumberForNode,
   hierarchyNumberMap,
 } from "@/lib/canvas/hierarchy-numbering";
+import { normalizeHexColor } from "@/lib/canvas/custom-colors";
 import { boardColorCssValue } from "@/lib/canvas/board-colors";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
@@ -2073,8 +2074,10 @@ function VidyaCanvasInner({
         if (canEdit && !presentationMode) setStoredViewport(viewport);
       }}
       className="vidya-canvas-bg"
+      data-board-link-color={normalizeHexColor(settings.linkColor) ?? undefined}
       style={{
         "--board-canvas-bg": canvasBackgroundColor,
+        "--board-link-color": normalizeHexColor(settings.linkColor) ?? undefined,
         ...canvasTextureStyle,
       } as React.CSSProperties}
     >

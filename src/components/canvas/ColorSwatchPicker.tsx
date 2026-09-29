@@ -241,6 +241,13 @@ export function ColorSwatchPicker({
 
   return (
     <div data-app-color-picker="true" className="space-y-2" aria-label="Colors">
+      {mixed ? <p className="text-[10px] text-muted-foreground">Mixed colors</p> : normalizedValue && (
+        <div className="flex items-center gap-2 text-[10px]" aria-label={`Current color ${normalizedValue}`}>
+          <span className="h-4 w-4 rounded border border-black/15" style={{ backgroundColor: normalizedValue }} />
+          <span>Current color</span>
+          <span className="ml-auto font-mono uppercase">{normalizedValue}</span>
+        </div>
+      )}
       <PaletteSection
         label="General colors"
         hint="Distinct + metallic"

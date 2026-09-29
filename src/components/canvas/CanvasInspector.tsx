@@ -3976,6 +3976,21 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           <Section label="Typography">
             <div>
               <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Link color</p>
+                <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setBoardSettings({ linkColor: undefined })}>
+                  Use text color
+                </button>
+              </div>
+              <ColorSwatchPicker value={settings.linkColor}
+                onChange={(linkColor) => setBoardSettings({ linkColor })}
+                onClear={() => setBoardSettings({ linkColor: undefined })} />
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {settings.linkColor ? "One color for all text links on this board." : "Links use their existing text colors."}
+              </p>
+            </div>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   Board font size
                 </p>
@@ -6228,6 +6243,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
               <ColorSwatchPicker
                 value={activeTextColor}
+                mixed={selectedTextRange?.textColorMixed}
                 extra={settings.customTextColors}
                 selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
