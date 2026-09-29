@@ -289,6 +289,7 @@ body {
 .ProseMirror {
   outline: none;
   white-space: pre-wrap;
+  tab-size: 4;
   word-break: keep-all;
   overflow-wrap: normal;
   hyphens: none;
@@ -346,8 +347,10 @@ body {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-color: currentColor;
-  text-decoration-thickness: max(1px, 0.08em);
-  text-underline-offset: 0.14em;
+  text-decoration-thickness: max(1px, 0.045em);
+  text-underline-position: under;
+  text-underline-offset: 0.1em;
+  text-decoration-skip-ink: none;
 }
 /* Retained Ctrl/Cmd-additive ranges are decorations, not persisted marks. */
 .ProseMirror .vidya-additive-text-selection {

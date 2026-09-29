@@ -162,7 +162,7 @@ function isEmptyBoundaryElement(element: Element): boolean {
     && !element.querySelector("img,video,audio,table,hr");
 }
 
-function trimPastedDomBoundaries(body: HTMLElement): void {
+function trimPastedDomBoundaries(body: HTMLElement, preserveTextSpacing = false): void {
   while (body.firstChild) {
     const first = body.firstChild;
     const removable = first.nodeType === globalThis.Node.TEXT_NODE
@@ -181,8 +181,8 @@ function trimPastedDomBoundaries(body: HTMLElement): void {
   }
   const first = firstTextNode(body);
   const last = lastTextNode(body);
-  if (first) first.data = first.data.replace(/^[\s\u00a0]+/, "");
-  if (last) last.data = last.data.replace(/[\s\u00a0]+$/, "");
+  if (first && !preserveTextSpacing) first.data = first.data.replace(/^[\s\u00a0]+/, "");
+  if (last && !preserveTextSpacing) last.data = last.data.replace(/[\s\u00a0]+$/, "");
 }
 
 /**
@@ -206,7 +206,7 @@ function unwrapElement(element: Element): void {
  * stripped in both cases.
  */
 export function sanitizePastedHtml(html: string): string {
-  const boundedHtml = trimPastedHtmlBoundaries(html);
+  const boundedHtml = /\bdata-pm-slice\s*=/.test(html) ? html : trimPastedHtmlBoundaries(html);
   if (typeof DOMParser === "undefined") return fallbackSanitizePastedHtml(boundedHtml);
 
   const parsed = new DOMParser().parseFromString(boundedHtml, "text/html");
@@ -221,7 +221,10 @@ export function sanitizePastedHtml(html: string): string {
       && element.tagName === "SPAN"
       && element.getAttribute("data-vidya-symbol") === "true";
 
+    const paragraphIndent = internalTipTapCopy && /^(P|H[1-6])$/.test(element.tagName)
+      ? element.style.paddingLeft : "";
     for (const property of LAYOUT_STYLE_PROPERTIES) element.style.removeProperty(property);
+    if (paragraphIndent) element.style.paddingLeft = paragraphIndent;
     if (!internalTipTapCopy) {
       for (const property of EXTERNAL_TYPOGRAPHY_PROPERTIES) element.style.removeProperty(property);
       const keepItalic = fontStyle === "italic" || fontStyle === "oblique";
@@ -270,9 +273,9 @@ export function sanitizePastedHtml(html: string): string {
   // Those are layout sentinels, not authored blank lines, so trim them for both
   // internal and external clipboard content while retaining internal marks.
   parsed.body.querySelectorAll<HTMLElement>("[data-pm-slice]").forEach((element) => {
-    trimPastedDomBoundaries(element);
+    trimPastedDomBoundaries(element, internalTipTapCopy);
   });
-  trimPastedDomBoundaries(parsed.body);
+  trimPastedDomBoundaries(parsed.body, internalTipTapCopy);
 
   return parsed.body.innerHTML;
 }

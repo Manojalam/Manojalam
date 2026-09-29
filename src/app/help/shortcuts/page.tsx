@@ -3,7 +3,11 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 
 const SHORTCUTS = [
-  { keys: ["Tab"], desc: "Create child node from selected" },
+  { keys: ["Tab"], desc: "Create child node from selected (outside text editing)" },
+  { keys: ["Tab"], desc: "While editing: insert a tab, indent selected paragraphs, or nest a list item" },
+  { keys: ["Shift", "Tab"], desc: "While editing: remove a preceding tab or reduce indentation" },
+  { keys: ["Ctrl/Cmd", "]"], desc: "While editing: increase paragraph indent" },
+  { keys: ["Ctrl/Cmd", "["], desc: "While editing: decrease paragraph indent" },
   { keys: ["Enter"], desc: "Create sibling node" },
   { keys: ["Shift", "Enter"], desc: "Edit multiline text in node" },
   { keys: ["Delete", "Backspace"], desc: "Delete selected" },

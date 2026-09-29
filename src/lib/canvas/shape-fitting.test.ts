@@ -173,7 +173,8 @@ test("shape text flow uses the full silhouette instead of one inscribed rectangl
       cornerRadius: shapeType === "rounded" ? 36 : undefined,
       petalCount: 8,
     });
-    assert.deepEqual(flow.box, { x: 4, y: 4, width: 352, height: 232 }, `${shapeType} full inset box`);
+    const inset = shapeType === "rounded" ? 36 * (1 - Math.SQRT1_2) : 4;
+    assert.deepEqual(flow.box, { x: inset, y: inset, width: 360 - inset * 2, height: 240 - inset * 2 }, `${shapeType} inset box`);
     assert.ok(flow.areaRatio >= 0.08 && flow.areaRatio <= 1, `${shapeType} finite area`);
     assert.ok(flow.lineWidthRatio >= flow.areaRatio && flow.lineWidthRatio <= 1, `${shapeType} broad line width`);
     assert.equal(flow.capacity.height, flow.box.height, `${shapeType} full height`);
@@ -756,4 +757,21 @@ test("fixed-box fitting respects a readable minimum scale", () => {
     8 / 14
   );
   assert.equal(scale, 8 / 14);
+});
+
+test("rounded labels keep a straight edge inside large corners", () => {
+  for (const cornerRadius of [0, 36, 120, 1000]) {
+    const size = { width: 700, height: 380 };
+    const flow = shapeTextFlowLayout("rounded", size, { cornerRadius, padding: 8 });
+    const rectangle = shapeTextFlowLayout("rectangle", size, { padding: flow.box.x });
+    assert.equal(flow.leftExclusion, rectangle.leftExclusion);
+    assert.equal(flow.rightExclusion, rectangle.rightExclusion);
+    assert.equal(flow.capacity.width, flow.box.width);
+    assert.ok(flow.box.x >= 8);
+    const radius = Math.min(cornerRadius, size.width / 2, size.height / 2);
+    if (flow.box.x < radius) {
+      assert.ok(Math.hypot(radius - flow.box.x, radius - flow.box.y) <= radius + 1e-8,
+        "the text rectangle's corner stays inside the rounded border");
+    }
+  }
 });

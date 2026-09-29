@@ -283,12 +283,18 @@ export function shapeTextFlowLayout(
 ): ShapeTextFlowLayout {
   const renderedWidth = finitePositive(renderedSize.width, MIN_AUTOFIT_WIDTH);
   const renderedHeight = finitePositive(renderedSize.height, MIN_AUTOFIT_HEIGHT);
-  const padding = resolveShapeTextPadding(options.padding, renderedSize);
+  const authoredPadding = resolveShapeTextPadding(options.padding, renderedSize);
+  // Rounded rectangles need a straight text edge. Inscribe a rectangle at
+  // the corner's 45-degree point instead of indenting each line differently.
+  const radius = shapeType === "rounded"
+    ? Math.max(0, Math.min(options.cornerRadius ?? 0, renderedWidth / 2, renderedHeight / 2))
+    : 0;
+  const padding = Math.max(authoredPadding, radius * (1 - Math.SQRT1_2));
   const width = Math.max(8, renderedWidth - padding * 2);
   const height = Math.max(8, renderedHeight - padding * 2);
   const insetSize = { width, height };
   const ranges = Array.from({ length: SHAPE_FLOW_SAMPLES + 1 }, (_, index) => (
-    shapeHorizontalRange(shapeType, index / SHAPE_FLOW_SAMPLES, insetSize, {
+    shapeHorizontalRange(shapeType === "rounded" ? "rectangle" : shapeType, index / SHAPE_FLOW_SAMPLES, insetSize, {
       ...options,
       cornerRadius: Math.max(0, (options.cornerRadius ?? 0) - padding),
     })
