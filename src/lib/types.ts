@@ -157,6 +157,7 @@ export interface LayoutVisualStyle {
 }
 
 export interface ActiveTextSelection {
+  textColorMixed?: boolean;
   lineSpacing?: number;
   paragraphIndent?: number;
   firstLineIndent?: number;

@@ -38,6 +38,7 @@ import {
   type ShapeTextVerticalAlign,
 } from "@/lib/canvas/rich-text-guide-fit";
 import { getRichTextScaleStyle } from "@/lib/canvas/rich-text-scale";
+import { renderedSelectionTextColor } from "@/lib/canvas/rich-text-color";
 import { normalizeLinkDisplayText, normalizeLinkHref } from "@/lib/canvas/rich-text-link";
 import {
   applyRichTextCommandAcrossRanges,
@@ -851,7 +852,7 @@ export function RichTextEditor({
     );
     if (!ranges.length) return;
     pickerSelectionRangesRef.current = ranges;
-    setPickerTextColorSnapshot(selectedMarkValue(editor, "textStyle", "color", ranges));
+    setPickerTextColorSnapshot(renderedSelectionTextColor(editor, ranges));
     setPickerHighlightSnapshot(selectedMarkValue(editor, "highlight", "color", ranges));
   }, [currentTextSelectionRanges, editor]);
 
@@ -1135,6 +1136,7 @@ export function RichTextEditor({
     if (!editor || !nodeId) return;
     const fontSizeValue = editor.getAttributes("textStyle").fontSize;
     const parsedFontSize = typeof fontSizeValue === "string" ? Number.parseFloat(fontSizeValue) : undefined;
+    const visibleColor = renderedSelectionTextColor(editor, additiveSelectionRangesRef.current);
     setActiveTextSelection({
       ...Object.fromEntries(PARAGRAPH_KEYS.map(key => [key, paragraphValue(key, editor.state.selection.$from.parent.attrs[key])])),
       nodeId,
@@ -1143,7 +1145,8 @@ export function RichTextEditor({
       italic: editor.isActive("italic"),
       fontSize: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
       fontFamily: editor.getAttributes("textStyle").fontFamily as string | undefined,
-      textColor: editor.getAttributes("textStyle").color as string | undefined,
+      textColor: visibleColor && visibleColor !== "mixed" ? visibleColor : undefined,
+      textColorMixed: visibleColor === "mixed",
       highlightColor: editor.getAttributes("highlight").color as string | undefined,
       textAlign: (["left", "center", "right", "justify"] as const).find((align) => editor.isActive({ textAlign: align })),
     });
@@ -2129,7 +2132,7 @@ export function RichTextEditor({
     ? selectedMarkValue(editor, "textStyle", "fontFamily", effectiveSelectionRanges)
     : null;
   const selectedColor = editor
-    ? selectedMarkValue(editor, "textStyle", "color", effectiveSelectionRanges)
+    ? renderedSelectionTextColor(editor, effectiveSelectionRanges)
     : null;
   const selectedHighlight = editor
     ? selectedMarkValue(editor, "highlight", "color", effectiveSelectionRanges)
@@ -2437,7 +2440,8 @@ export function RichTextEditor({
                   </div>
                 </div>
                 <ColorPickerPanel
-                  value={textColorPickerValue ?? "#111827"}
+                  value={textColorPickerValue ?? undefined}
+                  mixed={capturedPickerTextColor === "mixed"}
                   extraColors={textColorSwatches}
                   savedColors={customColors}
                   onSaveColor={saveSiteColor}

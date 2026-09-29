@@ -6243,6 +6243,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
               <ColorSwatchPicker
                 value={activeTextColor}
+                mixed={selectedTextRange?.textColorMixed}
                 extra={settings.customTextColors}
                 selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
