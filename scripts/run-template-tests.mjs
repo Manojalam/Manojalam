@@ -39,6 +39,7 @@ try {
       "src/lib/templates/index.ts",
       "src/lib/templates/persistence.ts",
       "src/lib/templates/index.test.ts",
+      "src/lib/canvas/board-style-templates.test.ts",
     ],
     { cwd: workspace, stdio: "inherit" }
   );
@@ -53,6 +54,7 @@ try {
       join(outputDirectory, "canvas", "shloka-study-migration.test.js"),
       join(outputDirectory, "canvas", "shloka-study-palette.test.js"),
       join(outputDirectory, "templates", "index.test.js"),
+      join(outputDirectory, "canvas", "board-style-templates.test.js"),
     ],
     { cwd: workspace, stdio: "inherit" }
   );

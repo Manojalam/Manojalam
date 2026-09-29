@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
 import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
+import { TemplateTextRole } from "@/lib/canvas/template-text-role";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -309,6 +310,7 @@ const EXTENSIONS = [
     },
   }),
   ParagraphLayout,
+  TemplateTextRole,
   TextStyle,
   Color,
   FontFamily,
@@ -589,7 +591,13 @@ export function RichTextEditor({
   const setActiveTextSelection = useUIStore((state) => state.setActiveTextSelection);
   const inlineFormatPainter = useUIStore((state) => state.inlineFormatPainter);
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
-  const boardLinkColor = useCanvasStore((state) => normalizeHexColor(state.settings.linkColor));
+  const activeStyleTemplate = useCanvasStore(state => {
+    const id = state.nodes.find(node => node.id === nodeId)?.data.styleTemplateId;
+    return state.settings.styleTemplates?.find(template => template.id === id);
+  });
+  const defaultBoardLinkColor = useCanvasStore((state) => normalizeHexColor(state.settings.linkColor));
+  const nodeLinkColor = useCanvasStore(state => normalizeHexColor(state.nodes.find(node => node.id === nodeId)?.data.linkColor));
+  const boardLinkColor = activeStyleTemplate?.roles.find(role => role.id === "reference")?.color ?? nodeLinkColor ?? defaultBoardLinkColor;
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const legacyCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
@@ -1180,7 +1188,7 @@ export function RichTextEditor({
               ? chain.setFontFamily(String(detail.value))
               : chain.unsetFontFamily();
           case "textColor":
-            return detail.value ? chain.setColor(String(detail.value)) : chain.unsetColor();
+            return detail.value ? chain.setMark("textStyle", { templateRole: null }).setColor(String(detail.value)) : chain.setMark("textStyle", { templateRole: null }).unsetColor();
           case "textHighlightColor":
             return detail.value
               ? chain.setMark("highlight", {
@@ -1942,7 +1950,7 @@ export function RichTextEditor({
         next = next.setFontFamily(inlineFormatPainter.fontFamily);
       }
       if (inlineFormatPainter.textColor) {
-        next = next.setColor(inlineFormatPainter.textColor);
+        next = next.setMark("textStyle", { templateRole: null }).setColor(inlineFormatPainter.textColor);
       }
       if (inlineFormatPainter.highlightColor) {
         next = next.setMark("highlight", {
@@ -1971,7 +1979,7 @@ export function RichTextEditor({
   }, [editor]);
 
   const chooseCustomTextColor = useCallback((color: string) => {
-    applyPickerSelectionCommand((chain) => chain.setColor(color));
+    applyPickerSelectionCommand((chain) => chain.setMark("textStyle", { templateRole: null }).setColor(color));
     setSettings({
       customTextColors: rememberCustomColor(customTextColors, color),
     });
@@ -2069,7 +2077,7 @@ export function RichTextEditor({
       replacements.push({
         from: position,
         to: position + node.nodeSize,
-        attributes: { ...textStyle.attrs, color: replaceToColor },
+        attributes: { ...textStyle.attrs, templateRole: null, color: replaceToColor },
       });
       characterCount += node.text?.length ?? 0;
     });
@@ -2293,6 +2301,18 @@ export function RichTextEditor({
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(-1)))} title="Decrease indent (Ctrl/Cmd+[)"><IndentDecrease className="h-4 w-4" /></FormatButton>
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(1)))} title="Increase indent (Ctrl/Cmd+])"><IndentIncrease className="h-4 w-4" /></FormatButton>
 
+          {activeStyleTemplate && <select aria-label="Text role" title="Text role from the linked template"
+            className="h-8 max-w-36 rounded-md border border-border bg-background px-1 text-[11px]"
+            value={editor.getAttributes("textStyle").templateRole ?? ""}
+            onChange={event => {
+              const role = activeStyleTemplate.roles.find(item => item.id === event.target.value);
+              applySelectionCommand(chain => role
+                ? chain.setMark("textStyle", { templateRole: role.id, color: role.color })
+                : chain.setMark("textStyle", { templateRole: null }));
+            }}>
+            <option value="">No text role</option>
+            {activeStyleTemplate.roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
+          </select>}
           {/* Font family */}
           <div className="relative">
             <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowSizes(false); setShowLink(false); }}
@@ -2431,7 +2451,7 @@ export function RichTextEditor({
                       className="text-[10px] text-muted-foreground hover:text-foreground"
                       onMouseDown={(event) => {
                         event.preventDefault();
-                        applyPickerSelectionCommand((chain) => chain.unsetColor());
+                        applyPickerSelectionCommand((chain) => chain.setMark("textStyle", { templateRole: null }).unsetColor());
                         setTextColorPickerOpen(false);
                       }}
                     >

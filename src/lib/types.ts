@@ -229,7 +229,17 @@ export interface ConnectorLabelPreset {
   syncConnectorColor?: boolean;
 }
 
+export interface TemplateTextRole { id: string; name: string; color: string }
+export interface BoardStyleTemplate {
+  id: string;
+  name: string;
+  style: Record<string, unknown>;
+  roles: TemplateTextRole[];
+  sample: { type: string; text: string; richText: string; width: number; height: number };
+}
+
 export interface BoardSettings {
+  styleTemplates?: BoardStyleTemplate[];
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
   snapToGrid: boolean;
@@ -550,6 +560,10 @@ export interface MediaAttachment {
 }
 
 export interface BaseNodeData extends Record<string, unknown> {
+  /** Board-local live style template; text and geometry remain instance-owned. */
+  styleTemplateId?: string;
+  /** Materialized link style from a template, retained when detached. */
+  linkColor?: string;
   label?: string;
   /** Images and audio files attached to this canvas object or Matrix cell. */
   mediaAttachments?: MediaAttachment[];

@@ -1,5 +1,10 @@
 "use client";
 
+import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
+import { applyStyleTemplate, captureTemplateStyle, detachTemplateData, normalizeBoardStyleTemplates, supportsStyleTemplate, templateRolesFromHtml, bindTemplateRoles, refreshTemplateRoles } from "@/lib/canvas/board-style-templates";
+import type { BoardStyleTemplate } from "@/lib/types";
+
+
 import { create } from "zustand";
 import { textEditingSessions } from "@/lib/canvas/text-editing-session";
 import { MarkerType } from "@xyflow/react";
@@ -108,7 +113,7 @@ import {
   trimSelectedNodeContents,
   type ManojalamClipboardPayload,
 } from "@/lib/canvas/clipboard";
-import { mergeCustomColors, normalizeCustomColors, normalizeHexColor } from "@/lib/canvas/custom-colors";
+import { mergeCustomColors, normalizeCustomColors, normalizeHexColor, colorSwatchHex } from "@/lib/canvas/custom-colors";
 import { reclaimAutomaticTextColor } from "@/lib/canvas/sticker-text-protection";
 import { migrateLegacyHierarchyNumberingScopes } from "@/lib/canvas/hierarchy-numbering";
 import {
@@ -245,6 +250,12 @@ interface CanvasState {
   setEdges: (edges: Edge[] | ((prev: Edge[]) => Edge[])) => void;
   setViewport: (viewport: Viewport) => void;
   setSettings: (settings: Partial<BoardSettings>) => void;
+  createStyleTemplate: (sourceId: string, name: string) => string | null;
+  updateStyleTemplate: (id: string, patch: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => void;
+  applyStyleTemplate: (id: string, nodeIds: string[]) => void;
+  detachStyleTemplate: (nodeIds: string[]) => void;
+  deleteStyleTemplate: (id: string) => void;
+  createFromStyleTemplate: (id: string) => string | null;
   setBoardFontSize: (fontSize: number) => void;
   setSaveStatus: (status: SaveStatus) => void;
   setSelectedNodeIds: (ids: string[]) => void;
@@ -2222,6 +2233,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ),
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
       linkColor: normalizeHexColor(rawSettings.linkColor) ?? undefined,
+      styleTemplates: normalizeBoardStyleTemplates(rawSettings.styleTemplates),
       customTextColors: normalizeCustomColors(rawSettings.customTextColors),
       customHighlightColors: normalizeCustomColors(rawSettings.customHighlightColors),
       customColors: mergeCustomColors(
@@ -2310,6 +2322,53 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setViewport: (viewport) => set((state) => viewportsEqual(state.viewport, viewport)
     ? {}
     : { viewport, saveStatus: "unsaved" }),
+
+  createStyleTemplate: (sourceId, name) => {
+    const state = get();const source = state.nodes.find(node => node.id === sourceId);
+    if (!source || !supportsStyleTemplate(source) || source.data.locked || !name.trim()) return null;
+    const id = generateId();const style = captureTemplateStyle(source.data);
+    const root = typeof document !== "undefined" ? document.querySelector<HTMLElement>(`[data-id="${CSS.escape(sourceId)}"] .ProseMirror`) : null;
+    const base = normalizeHexColor(style.textColor) ?? (root ? colorSwatchHex(getComputedStyle(root).color) : null) ?? "#111827";
+    style.textColor = base;
+    const html = typeof source.data.richText === "string" && source.data.richText.trim() ? source.data.richText : plainTextToRichText(String(source.data.text ?? ""));
+    const roles = templateRolesFromHtml(html, base);
+    const link = root?.querySelector<HTMLElement>("a");
+    const visibleLinkColor = link ? colorSwatchHex(getComputedStyle(link.querySelector("span") ?? link).color) : null;
+    if (visibleLinkColor) roles.find(role => role.id === "reference")!.color = visibleLinkColor;
+    const rect = getNodeRect(source);
+    const template: BoardStyleTemplate = { id, name: name.trim(), style, roles, sample: { type: source.type ?? "shape", text: String(source.data.text ?? ""), richText: bindTemplateRoles(html, roles, base), width: rect.width, height: rect.height } };
+    state.pushHistory();
+    set({ settings: { ...state.settings, styleTemplates: [...(state.settings.styleTemplates ?? []), template] }, nodes: state.nodes.map(node => node.id === sourceId ? applyStyleTemplate(node, template) : node), saveStatus: "unsaved" });
+    return id;
+  },
+  updateStyleTemplate: (id, patch) => {
+    const state = get();const previous = state.settings.styleTemplates?.find(template => template.id === id);if (!previous) return;
+    const template = { ...previous, ...patch, style: { ...previous.style, ...patch.style } };
+    template.sample = { ...previous.sample, richText: refreshTemplateRoles(previous.sample.richText, template.roles) };
+    state.pushHistory();
+    set({ settings: { ...state.settings, styleTemplates: state.settings.styleTemplates!.map(item => item.id === id ? template : item) }, nodes: state.nodes.map(node => node.data.styleTemplateId === id ? applyStyleTemplate(node, template, false, Object.keys(patch.style ?? {})) : node), saveStatus: "unsaved" });
+  },
+  applyStyleTemplate: (id, nodeIds) => {
+    const state = get();const template = state.settings.styleTemplates?.find(item => item.id === id);if (!template) return;
+    const ids = new Set(nodeIds);state.pushHistory();
+    set({ nodes: state.nodes.map(node => ids.has(node.id) && !node.data.locked ? applyStyleTemplate(node, template) : node), saveStatus: "unsaved" });
+  },
+  detachStyleTemplate: (nodeIds) => {
+    const state = get();const ids = new Set(nodeIds);state.pushHistory();
+    set({ nodes: state.nodes.map(node => ids.has(node.id) && !node.data.locked ? { ...node, data: detachTemplateData(node.data) } : node), saveStatus: "unsaved" });
+  },
+  deleteStyleTemplate: (id) => {
+    const state = get();state.pushHistory();
+    set({ settings: { ...state.settings, styleTemplates: (state.settings.styleTemplates ?? []).filter(item => item.id !== id) }, nodes: state.nodes.map(node => node.data.styleTemplateId === id ? { ...node, data: detachTemplateData(node.data) } : node), saveStatus: "unsaved" });
+  },
+  createFromStyleTemplate: (id) => {
+    const state = get();const template = state.settings.styleTemplates?.find(item => item.id === id);if (!template) return null;
+    const nodeId = generateId();const { sample } = template;
+    const index = state.nodes.filter(node => node.data.styleTemplateId === id).length;
+    const position = { x: (240 - state.viewport.x) / state.viewport.zoom + index * 24, y: (140 - state.viewport.y) / state.viewport.zoom + index * 24 };
+    const node = applyStyleTemplate({ id: nodeId, type: sample.type, position, selected: true, style: { width: sample.width, height: sample.height }, data: { text: sample.text, richText: sample.richText, autoSizeMode: "fixed" } }, template, false);
+    state.pushHistory();set({ nodes: [...state.nodes.map(item => ({ ...item, selected: false })), node], selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });return nodeId;
+  },
 
   setSettings: (partial) =>
     set((state) => ({
@@ -3643,6 +3702,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   updateNodeData: (nodeId, data) => {
+    if (typeof data.richText === "string") {
+      const templateId = get().nodes.find(node => node.id === nodeId)?.data.styleTemplateId;
+      const template = get().settings.styleTemplates?.find(item => item.id === templateId);
+      if (template) data = { ...data, richText: refreshTemplateRoles(data.richText, template.roles) };
+    }
     const reflowSourceData = (get().nodes.find((node) => node.id === nodeId)?.data ?? {}) as Record<string, unknown>;
     set((state) => {
       const sourceNode = state.nodes.find((node) => node.id === nodeId);

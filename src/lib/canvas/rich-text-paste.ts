@@ -242,6 +242,7 @@ export function sanitizePastedHtml(html: string): string {
           name === "style"
           || name === "data-pm-slice"
           || name === "data-pm-node"
+          || (element.tagName === "SPAN" && name === "data-template-role")
           || (internalSymbol && INTERNAL_SYMBOL_ATTRIBUTES.has(name))
         );
       const safeListAttribute = element.tagName === "OL" && name === "start";
