@@ -597,7 +597,8 @@ export function RichTextEditor({
   });
   const defaultBoardLinkColor = useCanvasStore((state) => normalizeHexColor(state.settings.linkColor));
   const nodeLinkColor = useCanvasStore(state => normalizeHexColor(state.nodes.find(node => node.id === nodeId)?.data.linkColor));
-  const boardLinkColor = activeStyleTemplate?.roles.find(role => role.id === "reference")?.color ?? nodeLinkColor ?? defaultBoardLinkColor;
+  const isFillableCard = useCanvasStore(state => !!state.nodes.find(node => node.id === nodeId)?.data.cardTemplateId);
+  const boardLinkColor = isFillableCard ? undefined : activeStyleTemplate?.roles.find(role => role.id === "reference")?.color ?? nodeLinkColor ?? defaultBoardLinkColor;
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const legacyCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
@@ -2755,6 +2756,7 @@ export function RichTextEditor({
       <div
         ref={richTextRootRef}
         data-board-link-color={boardLinkColor ?? undefined}
+        data-fillable-card={isFillableCard ? "" : undefined}
         data-rich-text-editor="true"
         className={cn(shapeTextFlow && "shape-text-flow-editor h-full w-full")}
         style={{ ...editorStyle, "--board-link-color": boardLinkColor ?? undefined } as CSSProperties}

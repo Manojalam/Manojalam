@@ -354,10 +354,11 @@ body {
 }
 /* A board override also covers explicitly colored spans inside links.
    Removing the override restores their authored colors without rewriting text. */
-[data-board-link-color] .ProseMirror a,
-[data-board-link-color] .ProseMirror a *,
-[data-board-link-color] .react-flow__node a,
-[data-board-link-color] .react-flow__node a * {
+/* Fillable cards own per-field colors, including their sūtra links. */
+[data-board-link-color] .ProseMirror a:not([data-fillable-card] *),
+[data-board-link-color] .ProseMirror a *:not([data-fillable-card] *),
+[data-board-link-color] .react-flow__node a:not([data-fillable-card] *),
+[data-board-link-color] .react-flow__node a *:not([data-fillable-card] *) {
   color: var(--board-link-color) !important;
 }
 /* Retained Ctrl/Cmd-additive ranges are decorations, not persisted marks. */

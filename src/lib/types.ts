@@ -238,7 +238,30 @@ export interface BoardStyleTemplate {
   sample: { type: string; text: string; richText: string; width: number; height: number };
 }
 
+export interface CardTemplateField {
+  id: string;
+  label: string;
+  color: string;
+  kind: "text" | "multiline" | "link" | "sutra";
+}
+
+export interface CardTemplateRow {
+  id: string;
+  indent: number;
+  fields: CardTemplateField[];
+}
+
+export interface BoardCardTemplate {
+  id: string;
+  name: string;
+  rows: CardTemplateRow[];
+  style: { fillColor: string; borderColor: string; textColor: string; fontSize: number; lineSpacing: number; width: number };
+}
+
+export type CardFieldValues = Record<string, { text: string; href?: string }>;
+
 export interface BoardSettings {
+  cardTemplates?: BoardCardTemplate[];
   styleTemplates?: BoardStyleTemplate[];
   background: "dots" | "grid" | "plain";
   theme: "light" | "dark" | "system";
@@ -560,6 +583,9 @@ export interface MediaAttachment {
 }
 
 export interface BaseNodeData extends Record<string, unknown> {
+  cardTemplateId?: string;
+  cardTemplateSnapshot?: BoardCardTemplate;
+  cardFieldValues?: CardFieldValues;
   /** Board-local live style template; text and geometry remain instance-owned. */
   styleTemplateId?: string;
   /** Materialized link style from a template, retained when detached. */

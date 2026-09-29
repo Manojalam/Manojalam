@@ -2,7 +2,8 @@
 
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import { applyStyleTemplate, captureTemplateStyle, detachTemplateData, normalizeBoardStyleTemplates, supportsStyleTemplate, templateRolesFromHtml, bindTemplateRoles, refreshTemplateRoles } from "@/lib/canvas/board-style-templates";
-import type { BoardStyleTemplate } from "@/lib/types";
+import type { BoardStyleTemplate, BoardCardTemplate, CardFieldValues } from "@/lib/types";
+import { cardTemplateNodeData, detachCardTemplateData, normalizeCardTemplates } from "@/lib/canvas/card-templates";
 
 
 import { create } from "zustand";
@@ -251,6 +252,11 @@ interface CanvasState {
   setViewport: (viewport: Viewport) => void;
   setSettings: (settings: Partial<BoardSettings>) => void;
   createStyleTemplate: (sourceId: string, name: string) => string | null;
+  saveCardTemplate: (template: BoardCardTemplate) => void;
+  createCardFromTemplate: (id: string) => string | null;
+  updateCardValues: (nodeId: string, values: CardFieldValues) => void;
+  detachCardTemplate: (nodeId: string) => void;
+  deleteCardTemplate: (id: string) => void;
   updateStyleTemplate: (id: string, patch: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => void;
   applyStyleTemplate: (id: string, nodeIds: string[]) => void;
   detachStyleTemplate: (nodeIds: string[]) => void;
@@ -2234,6 +2240,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       connectorLabelPresets: normalizeConnectorLabelPresets(rawSettings.connectorLabelPresets),
       linkColor: normalizeHexColor(rawSettings.linkColor) ?? undefined,
       styleTemplates: normalizeBoardStyleTemplates(rawSettings.styleTemplates),
+      cardTemplates: normalizeCardTemplates(rawSettings.cardTemplates),
       customTextColors: normalizeCustomColors(rawSettings.customTextColors),
       customHighlightColors: normalizeCustomColors(rawSettings.customHighlightColors),
       customColors: mergeCustomColors(
@@ -2322,6 +2329,63 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setViewport: (viewport) => set((state) => viewportsEqual(state.viewport, viewport)
     ? {}
     : { viewport, saveStatus: "unsaved" }),
+
+  saveCardTemplate: (input) => {
+    const template = normalizeCardTemplates([input])[0];
+    if (!template) return;
+    const state = get();
+    const templates = state.settings.cardTemplates ?? [];
+    const previous = templates.find(item => item.id === template.id);
+    state.pushHistory();
+    set({
+      settings: { ...state.settings, cardTemplates: [...templates.filter(item => item.id !== template.id), template] },
+      nodes: state.nodes.map(node => node.data.cardTemplateId === template.id
+        ? { ...node, ...(previous?.style.width !== template.style.width ? { style: { ...node.style, width: template.style.width } } : {}), data: { ...node.data, ...cardTemplateNodeData(template, node.data.cardFieldValues as CardFieldValues) } }
+        : node),
+      saveStatus: "unsaved",
+    });
+  },
+  createCardFromTemplate: (id) => {
+    const state = get();
+    const template = state.settings.cardTemplates?.find(item => item.id === id);
+    if (!template) return null;
+    const nodeId = generateId();
+    const previous = [...state.nodes].reverse().find(node => node.data.cardTemplateId === id);
+    const position = previous
+      ? { x: previous.position.x, y: previous.position.y + getNodeRect(previous).height + 40 }
+      : { x: (240 - state.viewport.x) / state.viewport.zoom, y: (140 - state.viewport.y) / state.viewport.zoom };
+    const node: Node = { id: nodeId, type: "shape", position, selected: true,
+      style: { width: template.style.width, height: Math.max(220, template.rows.length * template.style.fontSize * 2 + 48) },
+      data: { shapeType: "rounded", borderWidth: 2, autoSizeMode: "height-only", ...cardTemplateNodeData(template) },
+    };
+    state.pushHistory();
+    set({ nodes: [...state.nodes.map(item => ({ ...item, selected: false })), node], selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });
+    return nodeId;
+  },
+  updateCardValues: (nodeId, values) => {
+    const state = get();
+    const node = state.nodes.find(item => item.id === nodeId);
+    if (!node || node.data.locked) return;
+    const template = state.settings.cardTemplates?.find(item => item.id === node.data.cardTemplateId)
+      ?? normalizeCardTemplates([node.data.cardTemplateSnapshot])[0];
+    if (!template) return;
+    state.pushHistory();
+    set({ nodes: state.nodes.map(item => item.id === nodeId
+      ? { ...item, data: { ...item.data, ...cardTemplateNodeData(template, values) } }
+      : item), saveStatus: "unsaved" });
+  },
+  detachCardTemplate: (nodeId) => {
+    const state = get();
+    state.pushHistory();
+    set({ nodes: state.nodes.map(node => node.id === nodeId && !node.data.locked
+      ? { ...node, data: detachCardTemplateData(node.data) } : node), saveStatus: "unsaved" });
+  },
+  deleteCardTemplate: (id) => {
+    const state = get();
+    state.pushHistory();
+    set({ settings: { ...state.settings, cardTemplates: (state.settings.cardTemplates ?? []).filter(item => item.id !== id) },
+      nodes: state.nodes.map(node => node.data.cardTemplateId === id ? { ...node, data: detachCardTemplateData(node.data) } : node), saveStatus: "unsaved" });
+  },
 
   createStyleTemplate: (sourceId, name) => {
     const state = get();const source = state.nodes.find(node => node.id === sourceId);
