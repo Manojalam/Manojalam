@@ -314,7 +314,8 @@ const EXTENSIONS = [
   ParagraphLayout,
   TemplateTextRole,
   SampleField,
-  TextStyle,
+  // Keep color and font spans outside links so their underline inherits the glyph style.
+  TextStyle.extend({ priority: 1001 }),
   Color,
   FontFamily,
   FontSize,
