@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues } from "@/lib/types";
 import { normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
@@ -9,6 +10,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SutraLookup } from "./SutraLookup";
+
+/** Keep drafts mounted even when the source card is outside the rendered viewport. */
+export function FillCardPanelHost() {
+  const id = useUIStore(state => state.fillingCardNodeId);
+  const close = useUIStore(state => state.setFillingCardNodeId);
+  useEffect(() => () => close(null), [close]);
+  return id ? <FillCardDialog key={id} nodeId={id} onClose={() => close(null)} /> : null;
+}
 
 export function FillCardDialog({ nodeId, onClose }: { nodeId: string; onClose: () => void }) {
   const [currentId, setCurrentId] = useState(nodeId);
@@ -22,13 +31,20 @@ export function FillCardDialog({ nodeId, onClose }: { nodeId: string; onClose: (
 function CardForm({ nodeId, template, initialValues, locked, onClose, onNext }: { nodeId: string; template: BoardCardTemplate; initialValues: CardFieldValues; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const [values, setValues] = useState<CardFieldValues>(() => structuredClone(initialValues));
   const [savingNext, setSavingNext] = useState(false);
+  const [side, setSide] = useState<"left" | "right">("right");
   const update = useCanvasStore(state => state.updateCardValues);
   const create = useCanvasStore(state => state.createCardFromTemplate);
   const available = useCanvasStore(state => !!state.settings.cardTemplates?.some(item => item.id === template.id));
   const patch = (id: string, value: Partial<CardFieldValues[string]>) => setValues(current => ({ ...current, [id]: { ...(current[id] ?? { text: "" }), ...value } }));
-  return <Dialog open onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
-    <DialogContent className="max-h-[90vh] max-w-2xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden" onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-      <DialogHeader><DialogTitle>Fill card · {template.name}</DialogTitle><DialogDescription>Enter this question’s content. Tab moves to the next input. Colors and layout come from your template.</DialogDescription></DialogHeader>
+  return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
+    <DialogContent data-card-fill-panel
+      className="top-4 bottom-4 w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+      style={{ left: side === "left" ? 16 : "auto", right: side === "right" ? 16 : "auto" }}
+      onInteractOutside={event => event.preventDefault()}
+      onEscapeKeyDown={event => { if (!document.activeElement?.closest("[data-card-fill-panel]")) event.preventDefault(); }}
+      onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
+    >
+      <DialogHeader><DialogTitle>Fill card · {template.name}</DialogTitle><DialogDescription>Keep this panel open while you navigate the board and copy text. Your draft stays here until you save or cancel. Tab moves between inputs.</DialogDescription><Button type="button" size="sm" variant="ghost" className="self-start" onClick={() => setSide(side === "right" ? "left" : "right")}>Move panel to {side === "right" ? "left" : "right"}</Button></DialogHeader>
       <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => { event.preventDefault(); update(nodeId, values); onClose(); }}>
         <div className="space-y-4 overflow-y-auto pr-1">
         <fieldset disabled={locked} className="space-y-4">

@@ -7,7 +7,7 @@ import { newHomeworkTemplate } from "@/lib/canvas/card-templates";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
 import { CardTemplateDesigner } from "./CardTemplateDesigner";
-import { FillCardDialog } from "./FillCardDialog";
+import { useUIStore } from "@/store/ui-store";
 
 export function CardTemplatesPanel() {
   const templates = useCanvasStore(state => state.settings.cardTemplates);
@@ -17,7 +17,7 @@ export function CardTemplatesPanel() {
   const remove = useCanvasStore(state => state.deleteCardTemplate);
   const [chosen, setChosen] = useState("");
   const [design, setDesign] = useState<BoardCardTemplate | null>(null);
-  const [fillId, setFillId] = useState<string | null>(null);
+  const setFillId = useUIStore(state => state.setFillingCardNodeId);
   const [deleting, setDeleting] = useState(false);
   const template = templates?.find(item => item.id === (chosen || selected?.data.cardTemplateId)) ?? templates?.[0];
   const selectedTemplate = templates?.find(item => item.id === selected?.data.cardTemplateId);
@@ -53,6 +53,5 @@ export function CardTemplatesPanel() {
         : <button className="text-[10px] text-muted-foreground underline" onClick={() => setDeleting(true)}>Delete card template…</button>}
     </>}
     {design && <CardTemplateDesigner key={design.id} initial={design} onClose={() => setDesign(null)} onSaved={id => { setChosen(id); setDesign(null); }} />}
-    {fillId && <FillCardDialog key={fillId} nodeId={fillId} onClose={() => setFillId(null)} />}
   </section>;
 }

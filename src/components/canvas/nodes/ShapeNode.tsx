@@ -34,7 +34,6 @@ import type {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
-import { FillCardDialog } from "../FillCardDialog";
 import { SampleCardContent } from "../SampleCardContent";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
@@ -1107,7 +1106,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   );
 
   const [editing, setEditing] = useState(false);
-  const [fillingCard, setFillingCard] = useState(false);
+  const setFillingCardNodeId = useUIStore(state => state.setFillingCardNodeId);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
@@ -1220,14 +1219,14 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   const beginRequestedEdit = useCallback(() => {
     if (d.sampleTemplateId) return;
     if (d.cardTemplateId) {
-      if (!d.locked) setFillingCard(true);
+      if (!d.locked) setFillingCardNodeId(id);
       return;
     }
     if (!isDrawing) {
       setEditFocusPoint(null);
       setEditing(true);
     }
-  }, [isDrawing, setEditing, setFillingCard, d.cardTemplateId, d.locked, d.sampleTemplateId]);
+  }, [isDrawing, setEditing, setFillingCardNodeId, id, d.cardTemplateId, d.locked, d.sampleTemplateId]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -1303,7 +1302,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           event.stopPropagation();
           if (d.sampleTemplateId) return;
           if (d.cardTemplateId) {
-            if (!d.locked) setFillingCard(true);
+            if (!d.locked) setFillingCardNodeId(id);
             return;
           }
           if (isDrawing || radialChart?.enabled) return;
@@ -1597,7 +1596,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           </button>
         )}
       </div>
-      {fillingCard && <FillCardDialog nodeId={id} onClose={() => setFillingCard(false)} />}
     </>
   );
 }
