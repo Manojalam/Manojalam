@@ -43,6 +43,8 @@ import { buildMatrixLeafRows } from "@/lib/layout/matrix-layout";
 import {
   layoutBorderWidthFor,
   supportsAutomaticLayoutColors,
+  automaticLayoutColorMode,
+  automaticLayoutColorRoot,
 } from "@/lib/layout/layout-palette";
 import { resolveLayoutFontSize } from "@/lib/layout/layout-presentation";
 import { matrixGridStrokeWidth } from "@/lib/layout/matrix-presentation";
@@ -1993,25 +1995,13 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
     // use the store queue that batches and reflows every affected root.
     rootIds.forEach((rootId) => useCanvasStore.getState().scheduleMatrixReflow(rootId));
   };
-  const structuredLayoutRootNode = (() => {
-    if (matrixRootNode) return matrixRootNode;
-    if (!selectedNode) return null;
-    const byId = new Map(nodes.map((node) => [node.id, node]));
-    const seen = new Set<string>();
-    let currentId: string | null = selectedNode.id;
-    while (currentId && !seen.has(currentId)) {
-      seen.add(currentId);
-      const candidate = byId.get(currentId) ?? null;
-      const mode = ((candidate?.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
-      if (candidate && supportsAutomaticLayoutColors(mode)) {
-        return candidate;
-      }
-      currentId = hierarchy.get(currentId)?.parentId ?? null;
-    }
-    return null;
-  })();
+  const structuredLayoutRootNode = matrixRootNode ?? (selectedNode
+    ? automaticLayoutColorRoot(nodes, hierarchy, selectedNode.id)
+    : null);
   const structuredLayoutRootData = (structuredLayoutRootNode?.data ?? {}) as Record<string, unknown>;
-  const structuredLayoutMode = structuredLayoutRootData.layoutMode as LayoutMode | undefined;
+  const structuredLayoutMode = automaticLayoutColorMode(structuredLayoutRootNode ?? undefined);
+  const singleShapeColorScope = structuredLayoutRootNode?.type === "shape"
+    && !(hierarchy.get(structuredLayoutRootNode.id)?.childIds.length);
   const listRootNode = structuredLayoutMode === "list" ? structuredLayoutRootNode : null;
   const listBranchIds = listRootNode ? getSubtree(listRootNode.id, hierarchy) : [];
   const activeStructuredColorScheme = radialColorScheme(
@@ -5909,20 +5899,22 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             <div className="rounded-md border border-border bg-muted/30 p-2">
               <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground">
                 <Palette className="h-3.5 w-3.5" />
-                Whole {inspectorLayoutLabel(structuredLayoutMode)} chart
+                {singleShapeColorScope ? "This shape" : `Whole ${inspectorLayoutLabel(structuredLayoutMode)} chart`}
               </div>
               <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                Choose a coordinated palette for the entire hierarchy. Ordinary color and style edits stay local to the objects you select.
+                {singleShapeColorScope
+                  ? "Choose a coordinated fill, border, and text palette for this shape."
+                  : "Choose a coordinated palette for the entire hierarchy. Ordinary color and style edits stay local to the objects you select."}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Automatic chart color palette">
+            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label={singleShapeColorScope ? "Automatic shape color palette" : "Automatic chart color palette"}>
               {RADIAL_COLOR_SCHEMES.map((scheme) => (
                 <button
                   key={scheme.id}
                   type="button"
                   role="radio"
                   aria-checked={activeStructuredColorScheme === scheme.id}
-                  title={`Apply ${scheme.label} to the whole ${inspectorLayoutLabel(structuredLayoutMode)} chart`}
+                  title={singleShapeColorScope ? `Apply ${scheme.label} to this shape` : `Apply ${scheme.label} to the whole ${inspectorLayoutLabel(structuredLayoutMode)} chart`}
                   onClick={() => {
                     applyLayoutColorScheme(structuredLayoutRootNode.id, scheme.id);
                     toast.success(`Applied ${scheme.label} automatic colors to the whole chart.`, {
@@ -6035,7 +6027,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
               }}
             >
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Reset every {structuredLayoutMode === "matrix" ? "cell" : "item"} to automatic
+              {singleShapeColorScope ? "Reset this shape to automatic" : `Reset every ${structuredLayoutMode === "matrix" ? "cell" : "item"} to automatic`}
             </Button>
           </Section>
         )}

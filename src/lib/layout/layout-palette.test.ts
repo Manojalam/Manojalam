@@ -5,6 +5,8 @@ import type { LayoutMode } from "../types";
 import { buildHierarchy } from "./hierarchy";
 import {
   applyLayoutPalette,
+  automaticLayoutColorMode,
+  automaticLayoutColorRoot,
   buildLayoutVisualStyles,
   layoutBorderWidthFor,
   resetDescendantLayoutFillOverrides,
@@ -980,4 +982,27 @@ test("Free Form keeps automatic colors without moving the diagram", () => {
     freeForm.nodes.map((node) => node.position),
     nodes.map((node) => node.position)
   );
+});
+
+
+test("plain boxes and explicit free-form boxes expose the same palette scope", () => {
+  const plain: Node = { id: "plain", type: "shape", position: { x: 10, y: 20 }, data: {} };
+  const explicit: Node = { ...plain, id: "explicit", data: { layoutMode: "freeForm" } };
+  const nodes = [plain, explicit];
+  const hierarchy = buildHierarchy(nodes, []);
+  for (const node of nodes) {
+    assert.equal(automaticLayoutColorMode(node), "freeForm");
+    assert.equal(automaticLayoutColorRoot(nodes, hierarchy, node.id)?.id, node.id);
+  }
+  assert.equal(plain.data.layoutMode, undefined, "inspection does not modify the box");
+  assert.equal(automaticLayoutColorMode({ ...plain, type: "image" }), undefined);
+});
+
+test("implicit shapes retain their existing chart palette owner", () => {
+  const root: Node = { id: "root", type: "shape", position: { x: 0, y: 0 }, data: { layoutMode: "list" } };
+  const child: Node = { id: "child", type: "shape", position: { x: 100, y: 100 }, data: { parentId: "root" } };
+  const nodes = [root, child];
+  assert.equal(automaticLayoutColorRoot(nodes, buildHierarchy(nodes, []), "child")?.id, "root");
+  const radial = { ...root, data: { layoutMode: "radial" } };
+  assert.equal(automaticLayoutColorRoot([radial], buildHierarchy([radial], []), "root"), null);
 });
