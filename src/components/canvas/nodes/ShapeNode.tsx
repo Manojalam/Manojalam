@@ -34,6 +34,7 @@ import type {
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
+import { FillCardDialog } from "../FillCardDialog";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
@@ -1105,6 +1106,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   );
 
   const [editing, setEditing] = useState(false);
+  const [fillingCard, setFillingCard] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
@@ -1215,11 +1217,15 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   }, [pushHistory]);
 
   const beginRequestedEdit = useCallback(() => {
+    if (d.cardTemplateId) {
+      if (!d.locked) setFillingCard(true);
+      return;
+    }
     if (!isDrawing) {
       setEditFocusPoint(null);
       setEditing(true);
     }
-  }, [isDrawing, setEditing]);
+  }, [isDrawing, setEditing, setFillingCard, d.cardTemplateId, d.locked]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -1293,6 +1299,10 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         className="group relative flex h-full w-full items-center justify-center"
         onDoubleClick={(event) => {
           event.stopPropagation();
+          if (d.cardTemplateId) {
+            if (!d.locked) setFillingCard(true);
+            return;
+          }
           if (isDrawing || radialChart?.enabled) return;
           editHistoryCaptured.current = false;
           editDirty.current = false;
@@ -1521,7 +1531,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
-                      editable={editing}
+                      editable={editing && !d.cardTemplateId}
                       initialFocusPoint={editFocusPoint}
                       measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}
@@ -1584,6 +1594,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           </button>
         )}
       </div>
+      {fillingCard && <FillCardDialog nodeId={id} onClose={() => setFillingCard(false)} />}
     </>
   );
 }
