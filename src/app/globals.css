@@ -352,6 +352,14 @@ body {
   text-underline-offset: 0.1em;
   text-decoration-skip-ink: none;
 }
+/* A board override also covers explicitly colored spans inside links.
+   Removing the override restores their authored colors without rewriting text. */
+[data-board-link-color] .ProseMirror a,
+[data-board-link-color] .ProseMirror a *,
+[data-board-link-color] .react-flow__node a,
+[data-board-link-color] .react-flow__node a * {
+  color: var(--board-link-color) !important;
+}
 /* Retained Ctrl/Cmd-additive ranges are decorations, not persisted marks. */
 .ProseMirror .vidya-additive-text-selection {
   background: color-mix(in srgb, Highlight 58%, transparent);

@@ -27,7 +27,7 @@ import {
 import type { ContentMeasurement } from "@/lib/canvas/shape-fitting";
 import type { ContentResizeReason } from "@/lib/canvas/node-sizing";
 import { normalizePastedText, sanitizePastedHtml } from "@/lib/canvas/rich-text-paste";
-import { forgetCustomColor, rememberCustomColor } from "@/lib/canvas/custom-colors";
+import { forgetCustomColor, rememberCustomColor, normalizeHexColor } from "@/lib/canvas/custom-colors";
 import {
   correctedGuideVerticalOffset,
   correctedGuideContentScale,
@@ -588,6 +588,7 @@ export function RichTextEditor({
   const setActiveTextSelection = useUIStore((state) => state.setActiveTextSelection);
   const inlineFormatPainter = useUIStore((state) => state.inlineFormatPainter);
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
+  const boardLinkColor = useCanvasStore((state) => normalizeHexColor(state.settings.linkColor));
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
   const legacyCustomColors = useCanvasStore((state) => state.settings.customColors ?? []);
@@ -2711,9 +2712,10 @@ export function RichTextEditor({
 
       <div
         ref={richTextRootRef}
+        data-board-link-color={boardLinkColor ?? undefined}
         data-rich-text-editor="true"
         className={cn(shapeTextFlow && "shape-text-flow-editor h-full w-full")}
-        style={editorStyle}
+        style={{ ...editorStyle, "--board-link-color": boardLinkColor ?? undefined } as CSSProperties}
       >
         <EditorContent
           editor={editor}
