@@ -1,5 +1,7 @@
 "use client";
 
+import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
+
 import { PARAGRAPH_FIELDS, PARAGRAPH_KEYS, isParagraphField, paragraphFormatPatch, paragraphValue, storedParagraphValue } from "@/lib/canvas/paragraph-layout";
 
 import { useEffect, useRef, useState } from "react";
@@ -3088,6 +3090,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         </div>
 
         <div className="flex-1 divide-y overflow-y-auto">
+          <BoardStyleTemplatesPanel />
           {selectedRelationshipSourceIds.length > 0 && <div className="p-3">
             <Button
               type="button"
@@ -3818,6 +3821,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </button>
         {canvasSettingsOpen && <div className="flex-1 overflow-y-auto">
+          <BoardStyleTemplatesPanel />
           <Section label="Background">
             <Select value={settings.background} onValueChange={(v) => setBoardSettings({ background: v as "dots" | "grid" | "plain" })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
@@ -5875,6 +5879,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
           </Section>
         )}
 
+        {isContentNode && !isRadialLayoutSector && singleNodeTab === "style" && <BoardStyleTemplatesPanel />}
         {isContentNode && !isRadialLayoutSector && (
           <Section label="Presets" visible={singleNodeTab === "style"}>
             <div className="grid grid-cols-2 gap-1.5">
