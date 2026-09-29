@@ -171,9 +171,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const [scaleChoice, setScaleChoice] = useState<ScaleChoice>("2");
   const [customScale, setCustomScale] = useState(2);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
-  const [includeBackground, setIncludeBackground] = useState(
-    () => !exportFormatSupportsTransparency(requestedFormat)
-  );
+  const [includeBackground, setIncludeBackground] = useState(true);
   const [opaqueFallback, setOpaqueFallback] = useState<OpaqueFallback>("black");
   const [hierarchyOutputMode, setHierarchyOutputMode] = useState<HierarchyOutputMode>(
     initialScopeKind === "board"
@@ -396,7 +394,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     return resolveElementExportBackground(root);
   }, [root]);
   const boardIsTransparent = boardBackground.background === null;
-  const includedBoardBackground = boardBackground.background ?? boardBackground.appearanceBackground;
+  // Include the visible matte even when the board paint is translucent, so
+  // image viewers cannot change the appearance of the gaps between objects.
+  const includedBoardBackground = boardBackground.appearanceBackground;
   const formatSupportsTransparency = exportFormatSupportsTransparency(format);
   const opaqueFallbackBackground = opaqueFallback === "black"
     ? OPAQUE_EXPORT_FALLBACK_BACKGROUND
@@ -409,7 +409,6 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
   const selectFormat = (nextFormat: ExportFormat) => {
     setFormat(nextFormat);
-    setIncludeBackground(!exportFormatSupportsTransparency(nextFormat));
   };
 
   const fitToSafeSize = () => {
@@ -979,7 +978,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                   {includeBackground
                     ? boardIsTransparent
                       ? "Using the current theme backdrop."
-                    : "Included in the exported file."
+                    : "Matches the background visible on the board."
                     : formatSupportsTransparency
                       ? "Transparent outer pixels and authored transparent text boxes."
                       : `${opaqueFallback === "black" ? "Black" : "White"} fallback matte; ${format.toUpperCase()} cannot be transparent.`}
