@@ -1,5 +1,7 @@
 "use client";
 
+import { PARAGRAPH_FIELDS, PARAGRAPH_KEYS, isParagraphField, paragraphFormatPatch, paragraphValue, storedParagraphValue } from "@/lib/canvas/paragraph-layout";
+
 import { useEffect, useRef, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Eraser, Lock, Unlock,
@@ -1189,7 +1191,8 @@ function normalizeWholeTextFormat(
 
 function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   let patch: Record<string, unknown>;
-  if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, Number(value));
+  if (isParagraphField(key)) patch = paragraphFormatPatch(data, key, value);
+  else if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, Number(value));
   else if (key === "textHighlightColor") patch = normalizeWholeTextHighlight(data, value);
   else if (key === "textVerticalAlign") patch = {
     textVerticalAlign: value === "top" || value === "bottom" ? value : "middle",
@@ -1218,6 +1221,7 @@ function fieldPatch(data: Record<string, unknown>, key: string, value: unknown):
 }
 
 const INLINE_TEXT_FIELDS = new Set<InlineTextFormatKey>([
+  ...PARAGRAPH_KEYS,
   "fontWeight",
   "fontStyle",
   "fontSize",
@@ -6040,6 +6044,27 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 {selectedTextRange ? "Inline" : "All text"}
               </span>
             </div>
+            {isContentNode && !isRadialLayoutSector && !radialChart?.enabled && (
+              <div className="grid grid-cols-2 gap-2">
+                {PARAGRAPH_KEYS.map(key => {
+                  const spec = PARAGRAPH_FIELDS[key];
+                  return <label key={key} className="space-y-1 text-[10px] text-muted-foreground">
+                    <span>{spec.label}</span>
+                    <Input type="number" aria-label={spec.label} min={spec.min} max={spec.max} step={spec.step}
+                      className="h-7 text-xs"
+                      key={String((selectedTextRange ? paragraphValue(key, selectedTextRange[key]) : storedParagraphValue(d, key)))}
+                      defaultValue={(selectedTextRange ? paragraphValue(key, selectedTextRange[key]) : storedParagraphValue(d, key))}
+                      onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                      onBlur={event => {
+                        const next = paragraphValue(key, event.currentTarget.value);
+                        event.currentTarget.value = String(next);
+                        if (next !== (selectedTextRange ? paragraphValue(key, selectedTextRange[key]) : storedParagraphValue(d, key))) setField(key, next);
+                      }} />
+                  </label>;
+                })}
+                <p className="col-span-2 text-[9px] text-muted-foreground">Tab inserts a tab; Shift+Tab removes it or reduces indent. In lists, Tab nests items.</p>
+              </div>
+            )}
             {/* Alignment */}
             <Row label="Align">
               {([

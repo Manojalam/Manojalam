@@ -157,6 +157,10 @@ export interface LayoutVisualStyle {
 }
 
 export interface ActiveTextSelection {
+  lineSpacing?: number;
+  paragraphIndent?: number;
+  firstLineIndent?: number;
+  tabSize?: number;
   nodeId: string;
   hasSelection: boolean;
   bold: boolean;
@@ -190,7 +194,11 @@ export type InlineTextFormatKey =
   | "fontFamily"
   | "textColor"
   | "textHighlightColor"
-  | "textAlign";
+  | "textAlign"
+  | "lineSpacing"
+  | "paragraphIndent"
+  | "firstLineIndent"
+  | "tabSize";
 
 export interface InlineTextFormatDetail {
   nodeId: string;

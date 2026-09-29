@@ -11,6 +11,7 @@ const tsc = require.resolve("typescript/bin/tsc");
 const sources = [
   "src/lib/canvas/text-editing-session.ts",
   "src/lib/canvas/text-editing-session.test.ts",
+  "src/lib/canvas/paragraph-layout.test.ts",
 ];
 
 await rm(output, { recursive: true, force: true });
@@ -38,7 +39,7 @@ let status = spawnSync(
 if (status === 0) {
   status = spawnSync(
     process.execPath,
-    ["--test", join(output, "canvas", "text-editing-session.test.js")],
+    ["--test", join(output, "canvas", "text-editing-session.test.js"), join(output, "canvas", "paragraph-layout.test.js")],
     { cwd: workspace, stdio: "inherit" }
   ).status ?? 1;
 }

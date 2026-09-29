@@ -289,6 +289,7 @@ body {
 .ProseMirror {
   outline: none;
   white-space: pre-wrap;
+  tab-size: 4;
   word-break: keep-all;
   overflow-wrap: normal;
   hyphens: none;

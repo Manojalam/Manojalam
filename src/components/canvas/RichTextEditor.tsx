@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProp
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
+import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -66,7 +67,7 @@ import {
   UPADHMANIYA_CHARACTER,
   type TextToolAction,
 } from "@/lib/text-tools";
-import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, Link2, Paintbrush, Palette, RefreshCw, Unlink2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, IndentDecrease, IndentIncrease, Link2, Paintbrush, Palette, RefreshCw, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -306,6 +307,7 @@ const EXTENSIONS = [
       },
     },
   }),
+  ParagraphLayout,
   TextStyle,
   Color,
   FontFamily,
@@ -794,6 +796,7 @@ export function RichTextEditor({
 
   const editor = useEditor({
     extensions: EXTENSIONS,
+    parseOptions: { preserveWhitespace: "full" },
     editorProps: {
       transformPastedHTML: sanitizePastedHtml,
       transformPastedText: normalizePastedText,
@@ -991,7 +994,9 @@ export function RichTextEditor({
           ? renderedAlign
           : renderedAlign === "center" ? "center" : flowHorizontalAlign;
         const currentHorizontalOffset = renderedFlowHorizontalOffsetRef.current;
-        const correctedHorizontal = correctedShapeFlowHorizontalOffset(
+        const hasAuthoredIndent = !!root.querySelector('[style*="padding-left"], [style*="text-indent"]')
+          || /^\s/.test(firstBlock?.textContent ?? "");
+        const correctedHorizontal = hasAuthoredIndent ? 0 : correctedShapeFlowHorizontalOffset(
           currentHorizontalOffset,
           contentBounds,
           guideRect,
@@ -1130,6 +1135,7 @@ export function RichTextEditor({
     const fontSizeValue = editor.getAttributes("textStyle").fontSize;
     const parsedFontSize = typeof fontSizeValue === "string" ? Number.parseFloat(fontSizeValue) : undefined;
     setActiveTextSelection({
+      ...Object.fromEntries(PARAGRAPH_KEYS.map(key => [key, paragraphValue(key, editor.state.selection.$from.parent.attrs[key])])),
       nodeId,
       hasSelection: !editor.state.selection.empty || additiveSelectionRangesRef.current.length > 0,
       bold: editor.isActive("bold"),
@@ -1178,6 +1184,12 @@ export function RichTextEditor({
                   vidyaScope: "explicit",
                 })
               : chain.unsetHighlight();
+          case "lineSpacing":
+          case "paragraphIndent":
+          case "firstLineIndent":
+          case "tabSize":
+            return chain.updateAttributes("paragraph", { [detail.key]: paragraphValue(detail.key, detail.value) })
+              .updateAttributes("heading", { [detail.key]: paragraphValue(detail.key, detail.value) });
           case "textAlign":
             return chain.setTextAlign(String(detail.value));
         }
@@ -1203,7 +1215,7 @@ export function RichTextEditor({
       const nextContent = initialContent || "";
       if (!contentSyncRef.current.shouldApply(nextContent, editor.getHTML(), editor.view.composing)) return;
       const previousSelection = editor.state.selection;
-      editor.commands.setContent(nextContent, { emitUpdate: false });
+      editor.commands.setContent(nextContent, { emitUpdate: false, parseOptions: { preserveWhitespace: "full" } });
       if (editable) {
         const maximumPosition = Math.max(1, editor.state.doc.content.size);
         editor.commands.setTextSelection({
@@ -2262,6 +2274,20 @@ export function RichTextEditor({
           <FormatButton active={editor.isActive({ textAlign: "right" })} onAction={alignRight} title="Right"><AlignRight className="h-4 w-4" /></FormatButton>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
+
+          <select
+            aria-label="Line spacing"
+            title="Line spacing"
+            className="h-8 rounded-md border border-border bg-background px-1 text-[11px]"
+            value={String(paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing))}
+            onChange={(event) => applySelectionCommand(chain => chain
+              .updateAttributes("paragraph", { lineSpacing: Number(event.target.value) })
+              .updateAttributes("heading", { lineSpacing: Number(event.target.value) }))}
+          >
+            {[...new Set([1, 1.15, 1.375, 1.5, 2, 2.5, 3, 4, paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing)])].sort((a, b) => a - b).map(value => <option key={value} value={value}>Lines {value === 1.375 ? "Default" : value}</option>)}
+          </select>
+          <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(-1)))} title="Decrease indent (Ctrl/Cmd+[)"><IndentDecrease className="h-4 w-4" /></FormatButton>
+          <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(1)))} title="Increase indent (Ctrl/Cmd+])"><IndentIncrease className="h-4 w-4" /></FormatButton>
 
           {/* Font family */}
           <div className="relative">
