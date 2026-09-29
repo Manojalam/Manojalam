@@ -41,6 +41,7 @@ try {
       "src/lib/templates/index.test.ts",
       "src/lib/canvas/board-style-templates.test.ts",
       "src/lib/canvas/card-templates.test.ts",
+      "src/lib/canvas/sample-templates.test.ts",
     ],
     { cwd: workspace, stdio: "inherit" }
   );
@@ -57,6 +58,7 @@ try {
       join(outputDirectory, "templates", "index.test.js"),
       join(outputDirectory, "canvas", "board-style-templates.test.js"),
       join(outputDirectory, "canvas", "card-templates.test.js"),
+      join(outputDirectory, "canvas", "sample-templates.test.js"),
     ],
     { cwd: workspace, stdio: "inherit" }
   );

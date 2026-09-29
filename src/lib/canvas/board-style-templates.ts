@@ -6,7 +6,7 @@ import { plainTextToRichText } from "./rich-text-paste";
 
 export const TEMPLATE_EXTRA_STYLE_KEYS = ["shapeType", "surfaceEffect", "surfaceEffectDepth", "surfaceEffectStrength", "surfaceEffectAngle", "lineSpacing", "paragraphIndent", "firstLineIndent", "tabSize"] as const;
 export function supportsStyleTemplate(node: Node): boolean {
-  return ["shape", "text", "sticky", "mindmap"].includes(node.type ?? "") && !node.data.cardTemplateId && !(node.data.radialChart as { enabled?: boolean } | undefined)?.enabled;
+  return ["shape", "text", "sticky", "mindmap"].includes(node.type ?? "") && !node.data.cardTemplateId && !node.data.sampleTemplateId && !node.data.sampleDesignId && !(node.data.radialChart as { enabled?: boolean } | undefined)?.enabled;
 }
 export function captureTemplateStyle(data: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries({ ...captureShapeFormat(data), ...Object.fromEntries(TEMPLATE_EXTRA_STYLE_KEYS.map(key => [key, data[key]])) })

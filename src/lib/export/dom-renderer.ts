@@ -499,6 +499,16 @@ function copyLiveElementState(source: Element, target: Element): void {
     return;
   }
   if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) {
+    if (source.hasAttribute("data-sample-input")) {
+      const href = source.getAttribute("data-sample-href");
+      const display = target.ownerDocument.createElement(href ? "a" : "span");
+      display.setAttribute("style", target.getAttribute("style") ?? "");
+      display.style.whiteSpace = "pre-wrap";
+      display.textContent = source.value || "\u00a0";
+      if (href && /^(https?:|mailto:)/i.test(href)) display.setAttribute("href", href);
+      target.replaceWith(display);
+      return;
+    }
     target.value = source.value;
     target.textContent = source.value;
     return;

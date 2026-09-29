@@ -35,6 +35,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { RichTextEditor } from "../RichTextEditor";
 import { FillCardDialog } from "../FillCardDialog";
+import { SampleCardContent } from "../SampleCardContent";
 import { InternalFillLayer } from "../InternalFillLayer";
 import { BorderLayers } from "../BorderLayers";
 import { NodeQuickActions } from "./NodeQuickActions";
@@ -1217,6 +1218,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   }, [pushHistory]);
 
   const beginRequestedEdit = useCallback(() => {
+    if (d.sampleTemplateId) return;
     if (d.cardTemplateId) {
       if (!d.locked) setFillingCard(true);
       return;
@@ -1225,7 +1227,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       setEditFocusPoint(null);
       setEditing(true);
     }
-  }, [isDrawing, setEditing, setFillingCard, d.cardTemplateId, d.locked]);
+  }, [isDrawing, setEditing, setFillingCard, d.cardTemplateId, d.locked, d.sampleTemplateId]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -1299,6 +1301,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         className="group relative flex h-full w-full items-center justify-center"
         onDoubleClick={(event) => {
           event.stopPropagation();
+          if (d.sampleTemplateId) return;
           if (d.cardTemplateId) {
             if (!d.locked) setFillingCard(true);
             return;
@@ -1528,7 +1531,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     matrixCell && editing && "overflow-y-auto overscroll-contain nowheel",
                     renderContourTextFlow && "h-full max-h-none"
                   )}>
-                    <RichTextEditor
+                    {d.sampleTemplateId ? <SampleCardContent nodeId={id} /> : <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
                       editable={editing && !d.cardTemplateId}
@@ -1570,7 +1573,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       }}
                       onContentSizeChange={(size, reason) => fitNodeToContent(id, size, reason)}
                       onBlur={finishEditing}
-                    />
+                    />}
                   </div>
                 </div>
               </div>
