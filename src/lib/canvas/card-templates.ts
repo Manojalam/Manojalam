@@ -72,7 +72,11 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       if (!value?.text) return "";
       const text = escapeHtml(value.text).replace(/\r?\n/g, "<br>");
       const href = field.kind === "link" || field.kind === "sutra" ? safeCardLink(value?.href) : undefined;
-      const content = href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+      // Keep authored edge spaces, but do not include them in the link decoration.
+      const parts = value.text.match(/^(\s*)([\s\S]*?\S)(\s*)$/);
+      const content = href && parts
+        ? `${escapeHtml(parts[1]).replace(/\r?\n/g, "<br>")}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(parts[2]).replace(/\r?\n/g, "<br>")}</a>${escapeHtml(parts[3]).replace(/\r?\n/g, "<br>")}`
+        : text;
       return `<span style="color: ${field.color}">${content}</span>`;
     }).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
