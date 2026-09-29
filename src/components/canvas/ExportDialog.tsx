@@ -488,7 +488,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
       const result = await exportBoardVisual({
         viewport: root,
         bounds: resolved.value.bounds,
-        nodeIds: resolved.value.target.nodeIds,
+        nodeIds: resolved.value.target.renderNodeIds,
         edgeIds: resolved.value.target.edgeIds,
         scopeKind: resolved.value.target.scopeKind,
         format,

@@ -485,7 +485,7 @@ export function resolveHierarchySectionExportPlan(
     const layoutAdjustment = compactPlacement
       ? {
           translations: [{
-            nodeIds: childTarget.nodeIds,
+            nodeIds: childTarget.renderNodeIds,
             edgeIds: childTarget.edgeIds.filter((edgeId) => !replacedEdgeIds.has(edgeId)),
             dx: compactPlacement.dx,
             dy: compactPlacement.dy,
@@ -532,7 +532,7 @@ export function resolveHierarchySectionExportPlan(
       kind,
       label,
       childIds,
-      nodeIds: target.nodeIds,
+      nodeIds: target.renderNodeIds,
       edgeIds: target.edgeIds,
       bounds: {
         x: left - padding,

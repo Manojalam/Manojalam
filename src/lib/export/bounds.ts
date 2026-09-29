@@ -26,6 +26,8 @@ export interface ResolvedExportTarget<
   nodes: NodeType[];
   edges: EdgeType[];
   nodeIds: string[];
+  /** Includes generated Matrix artwork; partial selections keep their own crop. */
+  renderNodeIds: string[];
   edgeIds: string[];
   /** Absolute model rectangles captured before the scope is narrowed. */
   modelNodeRects: ReadonlyMap<string, ExportBounds>;
@@ -282,6 +284,17 @@ export function resolveExportTarget<
     throwEmptyScope(scope, "There is no visible content in the selected export area.");
   }
 
+  // Generated frames are visual parts of a Matrix, not hierarchy children.
+  // A complete subtree must include their empty cells, repeated labels and grid.
+  if (scope.kind === "subtree") {
+    for (const node of visibleNodes) {
+      const owner = node.data?.matrixFrameFor;
+      if (typeof owner === "string" && includedNodeIds.has(owner)) {
+        includedNodeIds.add(node.id);
+      }
+    }
+  }
+
   const resolvedNodes = visibleNodes.filter((node) => includedNodeIds.has(node.id));
   const resolvedEdges = visibleEdges.filter((edge) => {
     if (!includedNodeIds.has(edge.source) || !includedNodeIds.has(edge.target)) return false;
@@ -308,10 +321,40 @@ export function resolveExportTarget<
     nodes: resolvedNodes,
     edges: resolvedEdges,
     nodeIds: resolvedNodes.map((node) => node.id),
+    renderNodeIds: includeMatrixExportArtwork(resolvedNodes.map((node) => node.id), nodes, edges),
     edgeIds: resolvedEdges.map((edge) => edge.id),
     modelNodeRects,
     sourceNodesById: new Map(visibleNodes.map((node) => [node.id, node])),
   };
+}
+
+/** Keep the backing artwork without expanding a partial selection to the full Matrix. */
+export function includeMatrixExportArtwork(
+  nodeIds: readonly string[],
+  nodes: readonly Node[],
+  edges: readonly Edge[]
+): string[] {
+  const included = new Set(nodeIds);
+  const hierarchy = buildHierarchy([...nodes], [...edges]);
+  const owners = new Set<string>();
+  for (const id of nodeIds) {
+    let current: string | null = id;
+    const visited = new Set<string>();
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      owners.add(current);
+      current = hierarchy.get(current)?.parentId ?? null;
+    }
+  }
+  for (const node of nodes) {
+    const owner = node.data?.matrixFrameFor;
+    if (node.hidden || typeof owner !== "string" || !owners.has(owner)) continue;
+    const sectionIds = node.data?.matrixFoldSectionNodeIds;
+    if (Array.isArray(sectionIds) && sectionIds.length > 0
+      && !included.has(owner) && !sectionIds.some((id) => included.has(id))) continue;
+    included.add(node.id);
+  }
+  return [...included];
 }
 
 function isFiniteRect(rect: ExportBounds, allowDegenerate = false): boolean {
