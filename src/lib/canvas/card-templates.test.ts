@@ -13,7 +13,7 @@ test("card layout renders custom labels, rows, indentation and safe sūtra links
   });
   assert.match(output.richText, /padding-left: 2em/);
   assert.match(output.richText, /text-align: left/);
-  assert.match(output.richText, /&emsp;&emsp;/);
+  assert.doesNotMatch(output.richText, /&emsp;/);
   assert.match(output.richText, /First &lt;question&gt;<br>Second line/);
   assert.match(output.richText, /href="https:\/\/ashtadhyayi.com\/sutraani\/3\/4\/89"/);
   assert.ok(!output.richText.includes("<script>"));
@@ -63,4 +63,20 @@ test("sūtra lookup accepts both numeral systems, source URLs and words", () => 
   assert.deepEqual(searchSutras(sutras, "nonexistent"), []);
   assert.deepEqual(searchSutras(sutras, ""), []);
   assert.deepEqual(sutraFieldValue(sutras[0]), { text: "३.४.८९ मेर्निः", href: "https://ashtadhyayi.com/sutraani/3/4/89" });
+});
+
+test("adjacent fields use only authored spaces and separators", () => {
+  const template = newHomeworkTemplate("spacing");
+  template.rows = [template.rows[1]];
+  const compact = renderCardTemplate(template, {
+    answer: { text: "A" }, sutram: { text: "B" }, example: { text: "C" },
+  });
+  assert.equal(compact.text, "ABC");
+  assert.doesNotMatch(compact.richText, /&emsp;|&nbsp;|<\/span>\s+<span/);
+  const spaced = renderCardTemplate(template, {
+    answer: { text: "A  " }, sutram: { text: " | B " }, example: { text: " C" },
+  });
+  assert.equal(spaced.text, "A   | B  C");
+  assert.match(spaced.richText, /white-space: pre-wrap/);
+  assert.match(spaced.richText, /A  <\/span><span[^>]*> \| B <\/span><span[^>]*> C/);
 });

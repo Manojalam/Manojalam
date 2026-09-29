@@ -27,7 +27,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
   const valid = draft.name.trim() && draft.rows.length && draft.rows.every(row => row.fields.length);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="h-[94vh] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden" onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-      <DialogHeader><DialogTitle>Design card template</DialogTitle><DialogDescription>Arrange your own labels and fields. Each row becomes a line on the card; fields on the same row are separated by space. Fill the actual answers after saving.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>Design card template</DialogTitle><DialogDescription>Arrange your own labels and fields. Each row becomes a line on the card; fields on the same row flow together. Add any spaces or separators in the field text. Fill the actual answers after saving.</DialogDescription></DialogHeader>
       <div className="grid gap-6 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
         <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
           <label className="block text-sm">Template name<Input aria-label="Card template name" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
