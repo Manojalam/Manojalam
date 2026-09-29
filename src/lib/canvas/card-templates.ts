@@ -72,11 +72,11 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       const text = escapeHtml(value?.text || "…").replace(/\r?\n/g, "<br>");
       const href = field.kind === "link" || field.kind === "sutra" ? safeCardLink(value?.href) : undefined;
       const content = href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
-      return `${field.label ? `<strong>${escapeHtml(field.label)}:</strong> ` : ""}<span style="color: ${field.color}">${content}</span>`;
+      return `<span style="color: ${field.color}">${content}</span>`;
     }).join("&emsp;&emsp;");
     return `<p style="text-align: left; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
   }).join("");
-  const text = template.rows.map(row => row.fields.map(field => `${field.label ? `${field.label}: ` : ""}${values[field.id]?.text || "…"}`).join("\t")).join("\n");
+  const text = template.rows.map(row => row.fields.map(field => values[field.id]?.text || "…").join("\t")).join("\n");
   return { richText, text };
 }
 

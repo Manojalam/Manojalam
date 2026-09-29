@@ -352,6 +352,34 @@ body {
   text-underline-offset: 0.1em;
   text-decoration-skip-ink: none;
 }
+
+[data-template-sample] .sample-field-source {
+  position: relative;
+  margin-top: 16px;
+  outline: 1px dashed #818cf8;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+[data-template-sample] .sample-field-source::before {
+  content: attr(data-sample-name);
+  position: absolute;
+  left: 0;
+  top: -16px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px/16px sans-serif;
+  color: #6366f1;
+  pointer-events: none;
+}
+[data-template-sample] .sample-field-source * {
+  color: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-style: inherit !important;
+}
 /* A board override also covers explicitly colored spans inside links.
    Removing the override restores their authored colors without rewriting text. */
 /* Fillable cards own per-field colors, including their sūtra links. */

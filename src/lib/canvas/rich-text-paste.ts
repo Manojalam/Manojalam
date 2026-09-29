@@ -205,7 +205,7 @@ function unwrapElement(element: Element): void {
  * copies retain their authored text marks, but layout and unsafe markup are
  * stripped in both cases.
  */
-export function sanitizePastedHtml(html: string): string {
+export function sanitizePastedHtml(html: string, preserveBoundaries = false): string {
   const boundedHtml = /\bdata-pm-slice\s*=/.test(html) ? html : trimPastedHtmlBoundaries(html);
   if (typeof DOMParser === "undefined") return fallbackSanitizePastedHtml(boundedHtml);
 
@@ -243,6 +243,7 @@ export function sanitizePastedHtml(html: string): string {
           || name === "data-pm-slice"
           || name === "data-pm-node"
           || (element.tagName === "SPAN" && name === "data-template-role")
+          || (element.tagName === "SPAN" && ["data-sample-field", "data-sample-label", "data-sample-name", "data-sample-width"].includes(name))
           || (internalSymbol && INTERNAL_SYMBOL_ATTRIBUTES.has(name))
         );
       const safeListAttribute = element.tagName === "OL" && name === "start";
@@ -273,10 +274,12 @@ export function sanitizePastedHtml(html: string): string {
   // TipTap's own clipboard HTML can contain ProseMirror trailing-break blocks.
   // Those are layout sentinels, not authored blank lines, so trim them for both
   // internal and external clipboard content while retaining internal marks.
-  parsed.body.querySelectorAll<HTMLElement>("[data-pm-slice]").forEach((element) => {
-    trimPastedDomBoundaries(element, internalTipTapCopy);
-  });
-  trimPastedDomBoundaries(parsed.body, internalTipTapCopy);
+  if (!preserveBoundaries) {
+    parsed.body.querySelectorAll<HTMLElement>("[data-pm-slice]").forEach((element) => {
+      trimPastedDomBoundaries(element, internalTipTapCopy);
+    });
+    trimPastedDomBoundaries(parsed.body, internalTipTapCopy);
+  }
 
   return parsed.body.innerHTML;
 }

@@ -238,6 +238,37 @@ export interface BoardStyleTemplate {
   sample: { type: string; text: string; richText: string; width: number; height: number };
 }
 
+export interface SampleLabel {
+  id: string;
+  name: string;
+  kind: "text" | "sutra" | "number";
+  color: string;
+  fontSize: number;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  lineHeight: number;
+  background: string;
+  borderColor: string;
+  padding: number;
+}
+
+export interface SampleCardTemplate {
+  id: string;
+  name: string;
+  richText: string;
+  labels: SampleLabel[];
+  style: Record<string, unknown>;
+  width: number;
+  height: number;
+}
+
+export interface SampleCardEntry {
+  id: string;
+  values: Record<string, { text: string; href?: string }>;
+}
+
 export interface CardTemplateField {
   id: string;
   label: string;
@@ -261,6 +292,7 @@ export interface BoardCardTemplate {
 export type CardFieldValues = Record<string, { text: string; href?: string }>;
 
 export interface BoardSettings {
+  sampleTemplates?: SampleCardTemplate[];
   cardTemplates?: BoardCardTemplate[];
   styleTemplates?: BoardStyleTemplate[];
   background: "dots" | "grid" | "plain";
@@ -583,6 +615,10 @@ export interface MediaAttachment {
 }
 
 export interface BaseNodeData extends Record<string, unknown> {
+  sampleDesignId?: string;
+  sampleTemplateId?: string;
+  sampleTemplateSnapshot?: SampleCardTemplate;
+  sampleEntries?: SampleCardEntry[];
   cardTemplateId?: string;
   cardTemplateSnapshot?: BoardCardTemplate;
   cardFieldValues?: CardFieldValues;

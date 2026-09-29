@@ -6,6 +6,8 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
 import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
 import { TemplateTextRole } from "@/lib/canvas/template-text-role";
+import { SampleField } from "@/lib/canvas/sample-field";
+import { SampleTagDialog } from "./SampleTagDialog";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -17,7 +19,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { cn } from "@/lib/utils";
 import { FONT_OPTIONS, groupFontsByCategory } from "@/lib/fonts";
-import type { InlineTextFormatDetail, InlineTextFormatSnapshot } from "@/lib/types";
+import type { InlineTextFormatDetail, InlineTextFormatSnapshot, SampleLabel } from "@/lib/types";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { RichTextContentSync, textEditingSessions } from "@/lib/canvas/text-editing-session";
@@ -311,6 +313,7 @@ const EXTENSIONS = [
   }),
   ParagraphLayout,
   TemplateTextRole,
+  SampleField,
   TextStyle,
   Color,
   FontFamily,
@@ -596,6 +599,12 @@ export function RichTextEditor({
     return state.settings.styleTemplates?.find(template => template.id === id);
   });
   const defaultBoardLinkColor = useCanvasStore((state) => normalizeHexColor(state.settings.linkColor));
+  const activeSampleTemplate = useCanvasStore(state => {
+    const id = state.nodes.find(node => node.id === nodeId)?.data.sampleDesignId;
+    return state.settings.sampleTemplates?.find(template => template.id === id);
+  });
+  const [sampleTagSelection, setSampleTagSelection] = useState<{ from: number; to: number; width: number; format: Partial<SampleLabel> } | null>(null);
+  const sampleTagOpen = useRef(false);
   const nodeLinkColor = useCanvasStore(state => normalizeHexColor(state.nodes.find(node => node.id === nodeId)?.data.linkColor));
   const isFillableCard = useCanvasStore(state => !!state.nodes.find(node => node.id === nodeId)?.data.cardTemplateId);
   const boardLinkColor = isFillableCard ? undefined : activeStyleTemplate?.roles.find(role => role.id === "reference")?.color ?? nodeLinkColor ?? defaultBoardLinkColor;
@@ -809,7 +818,7 @@ export function RichTextEditor({
     extensions: EXTENSIONS,
     parseOptions: { preserveWhitespace: "full" },
     editorProps: {
-      transformPastedHTML: sanitizePastedHtml,
+      transformPastedHTML: html => sanitizePastedHtml(html),
       transformPastedText: normalizePastedText,
     },
     content: initialContent || "",
@@ -824,6 +833,7 @@ export function RichTextEditor({
       scheduleContentReport(editor, reason);
     },
     onBlur({ editor, event }) {
+      if (sampleTagOpen.current) return;
       reportContentSize(editor, "blur");
       const focusMovedToToolbar = toolbarRef.current?.contains(
         event.relatedTarget as globalThis.Node | null
@@ -2253,6 +2263,21 @@ export function RichTextEditor({
               >Remove role</button>
             </div>
           )}
+          {activeSampleTemplate && <Button type="button" size="sm" variant="outline" disabled={editor.state.selection.empty} onMouseDown={event => {
+            event.preventDefault();
+            const { from, to } = editor.state.selection;
+            if (from === to) return;
+            const range = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0) : null;
+            const width = range?.getBoundingClientRect().width ?? 220;
+            sampleTagOpen.current = true;
+            const anchor = window.getSelection()?.anchorNode;
+            const element = anchor instanceof Element ? anchor : anchor?.parentElement;
+            const css = element ? getComputedStyle(element) : null;
+            setSampleTagSelection({ from, to, width: Math.max(100, Math.min(1200, width / useCanvasStore.getState().viewport.zoom + 24)), format: css ? {
+              color: css.color, fontSize: parseFloat(css.fontSize), fontFamily: css.fontFamily,
+              bold: Number(css.fontWeight) >= 600, italic: css.fontStyle === "italic", underline: css.textDecorationLine.includes("underline"),
+            } : {} });
+          }}>Label selected text</Button>}
           {/* Drag grip */}
           <div
             title="Drag to move"
@@ -2758,6 +2783,7 @@ export function RichTextEditor({
         data-board-link-color={boardLinkColor ?? undefined}
         data-fillable-card={isFillableCard ? "" : undefined}
         data-rich-text-editor="true"
+        data-template-sample={activeSampleTemplate ? "" : undefined}
         className={cn(shapeTextFlow && "shape-text-flow-editor h-full w-full")}
         style={{ ...editorStyle, "--board-link-color": boardLinkColor ?? undefined } as CSSProperties}
       >
@@ -2776,6 +2802,11 @@ export function RichTextEditor({
           )}
         />
       </div>
+      {sampleTagSelection && editor && activeSampleTemplate && <SampleTagDialog editor={editor} template={activeSampleTemplate} selection={sampleTagSelection} onClose={() => {
+        sampleTagOpen.current = false;
+        setSampleTagSelection(null);
+        editor.commands.focus();
+      }} />}
     </>
   );
 }

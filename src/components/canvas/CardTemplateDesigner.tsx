@@ -32,12 +32,12 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
         <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
           <label className="block text-sm">Template name<Input aria-label="Card template name" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
           <div className="flex flex-wrap gap-3">
-            {([['fillColor', 'Background'], ['borderColor', 'Border'], ['textColor', 'Labels']] as const).map(([key, label]) => <label key={key} className="text-xs">{label}<input aria-label={`${label} color`} type="color" className="ml-1 h-7 w-9 align-middle" value={draft.style[key]} onChange={event => setDraft({ ...draft, style: { ...draft.style, [key]: event.target.value } })} /></label>)}
+            {([['fillColor', 'Background'], ['borderColor', 'Border'], ['textColor', 'Default text']] as const).map(([key, label]) => <label key={key} className="text-xs">{label}<input aria-label={`${label} color`} type="color" className="ml-1 h-7 w-9 align-middle" value={draft.style[key]} onChange={event => setDraft({ ...draft, style: { ...draft.style, [key]: event.target.value } })} /></label>)}
           </div>
           <div className="grid grid-cols-3 gap-2">
             {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1], ['width', 'Card width', 240, 2400, 20]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
           </div>
-          <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Leave a label empty to hide it on the card.</p>
+          <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Labels guide filling and are never printed on the card.</p>
           {draft.rows.map((row, index) => <section key={row.id} aria-label={`Template row ${index + 1}`} className="space-y-2 rounded-lg border p-3">
             <div className="flex flex-wrap items-center gap-1">
               <strong className="mr-auto text-xs">Row {index + 1}</strong>
