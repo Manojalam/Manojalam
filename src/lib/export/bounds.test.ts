@@ -6,9 +6,42 @@ import {
   computeTightExportBounds,
   resolveExportTarget,
   resolveSelectedSubtreeRoots,
+  resolveExportTargetWithBounds,
 } from "./bounds";
 
 type Rect = { left: number; top: number; width: number; height: number };
+
+test("Matrix subtree exports retain generated cell fills and selection exports retain their crop", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 0, y: 0 }, style: { width: 100, height: 20 }, data: {} },
+    { id: "child", position: { x: 0, y: 20 }, style: { width: 50, height: 40 }, data: { parentId: "root" } },
+    { id: "frame", type: "frame", position: { x: 0, y: 20 }, style: { width: 100, height: 40 },
+      data: { matrixFrameFor: "root", matrixEmptyCells: [{ x: 50, y: 0, width: 50, height: 40, background: "#aabbcc" }] } },
+    { id: "other-frame", type: "frame", position: { x: 200, y: 0 }, data: { matrixFrameFor: "other" } },
+    { id: "hidden-frame", type: "frame", hidden: true, position: { x: 0, y: 0 }, data: { matrixFrameFor: "root" } },
+  ];
+  const subtree = resolveExportTarget({ kind: "subtree", rootId: "root" }, nodes, []);
+  assert.deepEqual(subtree.nodeIds, ["root", "child", "frame"]);
+  assert.deepEqual(subtree.renderNodeIds, ["root", "child", "frame"]);
+
+  const selection = resolveExportTargetWithBounds(
+    { kind: "selection", nodeIds: ["child"] }, nodes, [], { padding: 0 }
+  );
+  assert.deepEqual(selection.target.nodeIds, ["child"]);
+  assert.deepEqual(selection.target.renderNodeIds, ["child", "frame"]);
+  assert.deepEqual(selection.bounds, { x: 0, y: 20, width: 50, height: 40 });
+});
+
+test("Matrix branch export excludes other fold artwork", () => {
+  const nodes: Node[] = [
+    { id: "root", position: { x: 0, y: 0 }, data: {} },
+    { id: "child", position: { x: 0, y: 20 }, data: { parentId: "root" } },
+    { id: "first-fold", position: { x: 0, y: 20 }, data: { matrixFrameFor: "root", matrixFoldSectionNodeIds: ["child"] } },
+    { id: "second-fold", position: { x: 200, y: 20 }, data: { matrixFrameFor: "root", matrixFoldSectionNodeIds: ["sibling"] } },
+  ];
+  const target = resolveExportTarget({ kind: "subtree", rootId: "child" }, nodes, []);
+  assert.deepEqual(target.renderNodeIds, ["child", "first-fold"]);
+});
 
 function mockElement({
   attributes = {},

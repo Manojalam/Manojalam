@@ -221,6 +221,27 @@ test("plans one export per top-level Matrix branch with a resized root header", 
   assert.equal(firstHeader.borderStyle, "dotted");
 });
 
+test("Matrix section exports keep empty-cell artwork without enlarging the section crop", () => {
+  const { nodes, edges } = fixture();
+  const before = resolveHierarchySectionExportPlan("root", nodes, edges, { padding: 12 });
+  nodes.push({
+    id: "matrix-frame-root",
+    type: "frame",
+    position: { x: 0, y: 48 },
+    style: { width: 600, height: 200 },
+    data: {
+      matrixFrameFor: "root",
+      matrixEmptyCells: [{ x: 120, y: 0, width: 120, height: 120, background: "#aabbcc" }],
+    },
+  });
+  const after = resolveHierarchySectionExportPlan("root", nodes, edges, { padding: 12 });
+  assert.ok(before && after);
+  for (const [index, section] of after.sections.entries()) {
+    assert.ok(section.nodeIds.includes("matrix-frame-root"));
+    assert.deepEqual(section.bounds, before.sections[index].bounds);
+  }
+});
+
 test("plans authored root folds and manual breakpoints as full-width printable groups", () => {
   const { nodes, edges } = fixture();
   nodes[0] = {
