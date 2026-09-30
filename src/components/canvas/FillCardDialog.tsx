@@ -81,7 +81,7 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
       onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
     >
       <DialogHeader><DialogTitle>Fill card · {template.name}</DialogTitle><DialogDescription>Keep this panel open while you navigate the board and copy text. Your draft stays here until you save or cancel. Tab moves between inputs.</DialogDescription><Button type="button" size="sm" variant="ghost" className="self-start" onClick={() => setSide(side === "right" ? "left" : "right")}>Move panel to {side === "right" ? "left" : "right"}</Button></DialogHeader>
-      <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => { event.preventDefault(); update(nodeId, sections); onClose(); }}>
+      <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => event.preventDefault()}>
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
           <label className="block text-sm font-medium">Section to fill<select aria-label="Section to fill" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={section.id} onChange={event => setActiveId(event.target.value)}>{sections.map((item, index) => <option key={item.id} value={item.id}>Section {index + 1} of {sections.length}</option>)}</select></label>
@@ -135,7 +135,7 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={savingNext} onClick={onClose}>Cancel</Button>
           <Button type="button" variant="outline" disabled={locked || savingNext} onClick={addSection}>Add another section</Button>
-          <Button type="submit" disabled={locked || savingNext}>Save card</Button>
+          <Button type="button" disabled={locked || savingNext} onClick={() => { update(nodeId, sections); onClose(); }}>Save card</Button>
           <Button type="button" disabled={locked || !available || savingNext} onClick={async () => {
             setSavingNext(true);
             update(nodeId, sections);
