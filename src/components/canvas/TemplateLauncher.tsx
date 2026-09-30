@@ -17,8 +17,8 @@ export function TemplateLauncher() {
   ];
   const selected = templates.find(item => item.key === chosen) ?? templates[0];
   return <>
-    {selected && <section aria-label="Create from template" className="space-y-2 border-b p-3">
-      <h3 className="text-sm font-semibold">Templates</h3>
+    {selected && <details aria-label="Create from template" className="space-y-2 border-b p-3">
+      <summary className="cursor-pointer text-sm font-semibold">Templates</summary>
       <select aria-label="Template to use" className="h-9 w-full rounded border bg-background px-2 text-xs" value={selected.key} onChange={event => setChosen(event.target.value)}>
         {templates.map(item => <option key={item.key} value={item.key}>{item.template.name}</option>)}
       </select>
@@ -30,7 +30,7 @@ export function TemplateLauncher() {
           if (id) useUIStore.getState().setFillingCardNodeId(id);
         } else if (!state.createSampleCard(selected.template.id)) state.openTemplateSample(selected.template.id);
       }}>New card &amp; fill</Button>
-    </section>}
+    </details>}
     <CrossBoardTemplateLibrary key={boardId} />
   </>;
 }

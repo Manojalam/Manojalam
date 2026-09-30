@@ -38,8 +38,8 @@ export function CrossBoardTemplateLibrary() {
       if (!state.createSampleCard(id)) state.openTemplateSample(id);
     } else state.createFromStyleTemplate(id);
   };
-  return <section aria-label="Templates from all boards" className="space-y-2 border-b p-3">
-    <h3 className="text-xs font-semibold">Templates from all boards</h3>
+  return <details aria-label="Templates from all boards" className="space-y-2 border-b p-3">
+    <summary className="cursor-pointer text-xs font-semibold">Templates from all boards</summary>
     <p className="text-[10px] text-muted-foreground">Reuse saved templates and linked styles from your other boards. Each board keeps its own editable copy.</p>
     {loading ? <p className="text-xs">Loading your templates...</p> : error ? <p role="alert" className="text-xs">Could not load your templates. Try refreshing.</p> : selected ? <>
       <select aria-label="Template from any board" className="h-8 w-full rounded border bg-background px-2 text-xs" value={selected.key} onChange={event => setChosen(event.target.value)}>
@@ -49,5 +49,5 @@ export function CrossBoardTemplateLibrary() {
       <Button size="sm" disabled={viewer} onClick={useTemplate}>Use on this board</Button>
     </> : <p className="text-xs text-muted-foreground">No saved templates on your other boards yet.</p>}
     <Button size="sm" variant="ghost" disabled={loading} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Refresh library</Button>
-  </section>;
+  </details>;
 }

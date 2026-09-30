@@ -28,8 +28,8 @@ export function SampleTemplatesPanel() {
   const fields = template ? sampleFields(template.richText) : [];
   const patchLabel = (patch: Partial<SampleLabel>) => { if (template && label) update(template.id, { labels: template.labels.map(item => item.id === label.id ? { ...item, ...patch } : item) }); };
   const eligible = selected && ["shape", "text", "sticky", "mindmap"].includes(selected.type ?? "") && !selected.data.cardTemplateId && !selected.data.sampleTemplateId && !selected.data.sampleDesignId && !selected.data.locked;
-  return <section aria-label="Sample templates" className="space-y-3 border-b p-3">
-    <h3 className="text-xs font-semibold">Templates from your sample</h3>
+  return <details aria-label="Sample templates" className="space-y-3 border-b p-3">
+    <summary className="cursor-pointer text-xs font-semibold">Templates from your sample</summary>
     <p className="text-[11px] text-muted-foreground">Arrange one example in a box. Tag its text with your own labels, then reuse it without formatting again.</p>
     {eligible ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); const id = create(selected.id, name); if (id) { setChosen(id); setName(""); } }}>
       <Input aria-label="Sample template name" placeholder="Template name" value={name} onChange={event => setName(event.target.value)} />
@@ -47,7 +47,7 @@ export function SampleTemplatesPanel() {
       </div>
       <p className="text-[10px] text-muted-foreground">Sample edits update linked cards. Existing answers stay; newly tagged parts start empty. Each occurrence has its own answer.</p>
       <label className="block text-xs">Default template font<select aria-label="Sample default font" className="mt-1 h-8 w-full rounded border bg-background px-2" value={String(template.style.fontFamily ?? "")} onChange={event => update(template.id, { style: { ...template.style, fontFamily: event.target.value || null } })}><option value="">Board default font</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select></label>
-      <details className="space-y-2" open={!!label}>
+      <details className="space-y-2">
         <summary className="cursor-pointer text-xs font-medium">Label styles and behavior</summary>
         {label ? <>
           <select aria-label="Label to style" className="h-8 w-full rounded border bg-background px-2 text-xs" value={label.id} onChange={event => setLabelId(event.target.value)}>{template.labels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
@@ -64,5 +64,5 @@ export function SampleTemplatesPanel() {
       {selected?.data.sampleDesignId === template.id && <Button size="sm" variant="outline" className="w-full text-[10px]" onClick={() => update(template.id, { style: captureTemplateStyle(selected.data) })}>Use sample’s current box styling</Button>}
       {deleting ? <div className="space-y-1 text-xs"><p>Delete this template? Existing content will remain as ordinary boxes.</p><Button size="sm" variant="destructive" onClick={() => { remove(template.id); setDeleting(false); }}>Delete template</Button><Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>Cancel</Button></div> : <button className="text-[10px] text-muted-foreground underline" onClick={() => setDeleting(true)}>Delete sample template…</button>}
     </>}
-  </section>;
+  </details>;
 }

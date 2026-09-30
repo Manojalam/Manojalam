@@ -415,18 +415,17 @@ const CONVERT_TYPES = [
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
-function Section({ label, children, visible = true, preserveTextSelection = false, defaultOpen = false }: {
+function Section({ label, children, visible = true, preserveTextSelection = false }: {
   label: string;
   children: React.ReactNode;
   visible?: boolean;
   preserveTextSelection?: boolean;
-  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   if (!visible) return null;
   return (
     <div>
-      <button onClick={() => setOpen((o) => !o)}
+      <button aria-expanded={open} onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
         {label}
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -5517,7 +5516,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       <div className="flex-1 divide-y overflow-y-auto">
 
         {isEditableFrame && (
-          <Section label="Label fill" visible={singleNodeTab === "style"} defaultOpen>
+          <Section label="Label fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
               value={activeFrameLabelFill}
               extra={settings.customHighlightColors}
@@ -5544,7 +5543,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isEditableFrame && (
-          <Section label="Frame fill" visible={singleNodeTab === "style"} defaultOpen>
+          <Section label="Frame fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
               value={typeof d.background === "string" ? d.background : ""}
               extra={settings.customColors}
@@ -5561,7 +5560,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isEditableFrame && (
-          <Section label="Frame border" visible={singleNodeTab === "style"} defaultOpen>
+          <Section label="Frame border" visible={singleNodeTab === "style"}>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Color
@@ -5598,7 +5597,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         )}
 
         {isEditableFrame && (
-          <Section label="Swim lane" visible={singleNodeTab === "text"} defaultOpen>
+          <Section label="Swim lane" visible={singleNodeTab === "text"}>
             <div>
               <Label htmlFor="frame-title" className="text-xs">Label</Label>
               <Input
