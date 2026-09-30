@@ -196,14 +196,14 @@ test("row repeats keep independent answers and shared design through persistence
   const restored = cardSections(JSON.parse(JSON.stringify(data)));
   assert.deepEqual(restored, sections);
   assert.deepEqual(template, original);
-  assert.equal(data.text, "\nRepeated question\nOriginal\nRepeat AReference\nRepeat B<example>\nLast");
+  assert.equal(data.text, "Repeated question\nOriginalRepeat AReferenceRepeat B<example>\nLast");
   assert.match(data.richText, /href="https:\/\/example.com\/a"/);
   assert.ok(data.richText.includes("&lt;example&gt;"));
   assert.equal((data.richText.match(/data-field-label="answer"/g) ?? []).length, 3);
   template.rows[1].indent = 3;
   template.rows[1].fields[0].color = "#123456";
   const updated = renderCardSections(template, restored);
-  assert.equal((updated.richText.match(/padding-left: 3em/g) ?? []).length, 3);
+  assert.equal((updated.richText.match(/padding-left: 3em/g) ?? []).length, 1);
   assert.equal((updated.richText.match(/color: #123456/g) ?? []).length, 3);
   restored[0].rowRepeats![0].values.answer.text = "Changed copy";
   assert.equal(sections[0].rowRepeats![0].values.answer.text, "Repeat A");
@@ -233,4 +233,23 @@ test("repeat before and after place blank copies beside originals and copies", (
   // Copies do not depend on an anchor that may later be removed.
   assert.deepEqual(ids(repeats.filter(item => item.id !== "b")), ["c", "d", "h", "original", "g", "e", "a", "f"]);
   assert.deepEqual(ids([{ id: "legacy", rowId: "answer_row", values: {} }]), ["original", "legacy"]);
+});
+
+
+test("repeated fields flow inline and preserve only authored whitespace and line breaks", () => {
+  const template = newHomeworkTemplate("inline");
+  const values = { answer: { text: "Original " } };
+  const repeats = [
+    { id: "before", rowId: "answer_row", position: "before" as const, values: { answer: { text: "Before " } } },
+    { id: "after", rowId: "answer_row", values: { answer: { text: "After" } } },
+  ];
+  const inline = renderCardTemplate(template, values, [], repeats);
+  assert.equal(inline.text, "\nBefore Original After\n");
+  assert.equal((inline.richText.match(/<p /g) ?? []).length, 3);
+  assert.ok(!inline.richText.includes("<br>"));
+  repeats[1].values.answer.text = "\nAfter\nAnother line";
+  const multiline = renderCardTemplate(template, values, [], repeats);
+  assert.equal(multiline.text, "\nBefore Original \nAfter\nAnother line\n");
+  assert.equal((multiline.richText.match(/<br>/g) ?? []).length, 2);
+  assert.equal((multiline.richText.match(/<p /g) ?? []).length, 3);
 });

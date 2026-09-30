@@ -91,7 +91,7 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
           </div>
           <p role="status" className="text-xs text-muted-foreground">Section {sectionIndex + 1} of {sections.length}. Move this section with all its values and extra rows. Save card saves the new order.</p>
         </div>
-        <p className="text-xs text-muted-foreground">Repeat any row to fill another set of its fields in this section only. The template stays unchanged.</p>
+        <p className="text-xs text-muted-foreground">Repeat before or after to add another set of fields in this section. Repeated fields flow on the same line. Add your own spaces; press Enter inside a field for a new line.</p>
         <fieldset ref={fieldsRef} disabled={locked} className="space-y-4">
           {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <div key={repeatId || row.id} role="group" aria-label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`} className="space-y-3 rounded-md border p-3">
             <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>
@@ -104,8 +104,9 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
             {row.fields.map(field => <div key={field.id} className="space-y-1">
               <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
               {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value, repeatId)} />}
-              {field.kind === "multiline" ? <textarea id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="min-h-24 w-full rounded-md border bg-background p-2 text-sm" value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value }, repeatId)} />
-                : <Input id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value }, repeatId)} />}
+              <textarea id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} rows={Math.min(8, Math.max(field.kind === "multiline" ? 3 : 1, (values[field.id]?.text ?? "").split("\n").length))}
+                className={`${field.kind === "multiline" ? "min-h-24" : "min-h-9"} w-full resize-y rounded-md border bg-background p-2 text-sm`}
+                value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value }, repeatId)} />
               {(field.kind === "link" || field.kind === "sutra") && <>
                 <Input aria-label={`${field.label} link`} placeholder="Optional link (https://…)" value={values[field.id]?.href ?? ""} onChange={event => patch(field.id, { href: event.target.value }, repeatId)} />
                 {!!values[field.id]?.href && !safeCardLink(values[field.id].href) && <p className="text-xs text-destructive">Use a full https://, http:// or mailto: link. This value will display as plain text until corrected.</p>}

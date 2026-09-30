@@ -103,8 +103,9 @@ export function expandedCardRows(template: BoardCardTemplate, values: CardFieldV
 /** Escape values and label metadata, and validate link destinations. */
 export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = [], repeats: CardRowRepeat[] = []) {
   const rows = expandedCardRows(template, values, repeats);
-  const richText = rows.map(({ row, values }) => {
-    const fields = row.fields.map(field => {
+  // Template rows define paragraphs; repeated fields flow within that paragraph.
+  const richText = template.rows.map(row => {
+    const fields = rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => {
       const value = values[field.id];
       if (!value?.text) return "";
       const text = escapeHtml(value.text).replace(/\r?\n/g, "<br>");
@@ -115,10 +116,10 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
         ? `${escapeHtml(parts[1]).replace(/\r?\n/g, "<br>")}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(parts[2]).replace(/\r?\n/g, "<br>")}</a>${escapeHtml(parts[3]).replace(/\r?\n/g, "<br>")}`
         : text;
       return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}">${content}</span>`;
-    }).join("");
+    }).join("")).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
   }).join("") + extraRows.filter(row => row.length).map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
-  const text = rows.map(({ row, values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).concat(extraRows.filter(row => row.length)).join("\n");
+  const text = template.rows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("")).concat(extraRows.filter(row => row.length)).join("\n");
   return { richText, text };
 }
 
