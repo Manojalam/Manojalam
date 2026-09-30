@@ -10,6 +10,7 @@ import type { BoardStyleTemplate } from "@/lib/types";
 import { generateId } from "@/lib/utils";
 import { CardTemplatesPanel } from "./CardTemplatesPanel";
 import { SampleTemplatesPanel } from "./SampleTemplatesPanel";
+import { CrossBoardTemplateLibrary } from "./CrossBoardTemplateLibrary";
 
 function ColorControl({ label, value, onChange, compact = false }: { label: string; value?: string; onChange: (color: string) => void; compact?: boolean }) {
   return <AppColorPicker value={value} onChange={onChange}>
@@ -19,7 +20,8 @@ function ColorControl({ label, value, onChange, compact = false }: { label: stri
   </AppColorPicker>;
 }
 
-export function BoardStyleTemplatesPanel() {
+export function BoardStyleTemplatesPanel({ showCrossBoardLibrary = true }: { showCrossBoardLibrary?: boolean } = {}) {
+  const boardId = useCanvasStore(state => state.board?.id);
   const nodes = useCanvasStore(state => state.nodes);
   const selectedIds = useCanvasStore(state => state.selectedNodeIds);
   const templates = useCanvasStore(state => state.settings.styleTemplates);
@@ -39,7 +41,7 @@ export function BoardStyleTemplatesPanel() {
   const linkedCount = template ? nodes.filter(node => node.data.styleTemplateId === template.id).length : 0;
   const patch = (value: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => { if (template) update(template.id, value); };
 
-  return <>{fieldCardSelected && <CardTemplatesPanel />}<SampleTemplatesPanel />{!fieldCardSelected && <details className="border-b p-3"><summary className="cursor-pointer text-xs">Fillable card templates</summary><CardTemplatesPanel /></details>}<section aria-label="Linked styles" className="space-y-3 border-b p-3">
+  return <>{showCrossBoardLibrary && <CrossBoardTemplateLibrary key={boardId} />}{fieldCardSelected && <CardTemplatesPanel />}<SampleTemplatesPanel />{!fieldCardSelected && <details className="border-b p-3"><summary className="cursor-pointer text-xs">Fillable card templates</summary><CardTemplatesPanel /></details>}<section aria-label="Linked styles" className="space-y-3 border-b p-3">
     <h3 className="text-xs font-semibold">Linked styles</h3>
     <p className="text-[10px] text-muted-foreground">Keep colors, fonts, borders and text roles consistent across linked boxes. Edit a style here to update all boxes using it.</p>
     {selected.length === 1 && <form className="flex gap-1" onSubmit={event => {

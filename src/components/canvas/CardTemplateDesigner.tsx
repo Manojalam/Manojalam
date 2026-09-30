@@ -10,6 +10,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { placeTemplateField } from "@/lib/canvas/template-field-order";
 
 function move<T>(items: T[], index: number, delta: number): T[] {
   const next = [...items];
@@ -21,12 +22,22 @@ function move<T>(items: T[], index: number, delta: number): T[] {
 
 export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: BoardCardTemplate; onClose: () => void; onSaved: (id: string) => void }) {
   const [draft, setDraft] = useState(() => structuredClone(initial));
+  const [draggedField, setDraggedField] = useState<string | null>(null);
   const save = useCanvasStore(state => state.saveCardTemplate);
   const saved = useCanvasStore(state => !!state.settings.cardTemplates?.some(template => template.id === initial.id));
   const linked = useCanvasStore(state => state.nodes.filter(node => node.data.cardTemplateId === initial.id).length);
   const patchRow = (id: string, patch: Partial<CardTemplateRow>) => setDraft(current => ({ ...current, rows: current.rows.map(row => row.id === id ? { ...row, ...patch } : row) }));
   const patchField = (row: CardTemplateRow, id: string, patch: Partial<CardTemplateField>) => patchRow(row.id, { fields: row.fields.map(field => field.id === id ? { ...field, ...patch } : field) });
   const newField = (): CardTemplateField => ({ id: generateId(), label: "New field", kind: "text", color: "" });
+  const placeField = (fieldId: string, rowId: string, beforeId?: string) => setDraft(current => ({ ...current, rows: placeTemplateField(current.rows, fieldId, rowId, beforeId) }));
+  const moveToNewRow = (fieldId: string, sourceRowId: string, side: "above" | "below") => setDraft(current => {
+    const index = current.rows.findIndex(row => row.id === sourceRowId);
+    if (index < 0) return current;
+    const id = generateId();
+    const rows = [...current.rows];
+    rows.splice(index + (side === "below" ? 1 : 0), 0, { id, indent: current.rows[index].indent, fields: [] });
+    return { ...current, rows: placeTemplateField(rows, fieldId, id) };
+  });
   const valid = draft.name.trim() && draft.rows.length && draft.rows.every(row => row.fields.length);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="h-[94vh] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden" onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
@@ -44,6 +55,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
             {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1], ['width', 'Card width', 240, 2400, 20]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step === 1 ? 1 : "any"} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
           </div>
           <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Labels guide filling and are never printed on the card.</p>
+          <p className="text-xs text-muted-foreground">Drag a field by its handle to place it before another field or at the end of a row. Use Move field for precise placement with a keyboard or touch.</p>
           {draft.rows.map((row, index) => <section key={row.id} aria-label={`Template row ${index + 1}`} className="space-y-2 rounded-lg border p-3">
             <div className="flex flex-wrap items-center gap-1">
               <strong className="mr-auto text-xs">Row {index + 1}</strong>
@@ -52,7 +64,11 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
               <Button type="button" size="sm" variant="ghost" disabled={draft.rows.length === 1} onClick={() => setDraft({ ...draft, rows: draft.rows.filter(item => item.id !== row.id) })}>Remove row</Button>
               <label className="flex items-center gap-1 text-xs">Indent (em)<Input aria-label={`Row ${index + 1} indent`} className="h-8 w-16" type="number" min={0} max={10} step={0.5} value={row.indent} onChange={event => patchRow(row.id, { indent: Math.max(0, Math.min(10, Number(event.target.value))) })} /></label>
             </div>
-            {row.fields.map((field, fieldIndex) => <div key={field.id} className="space-y-1 rounded border bg-muted/20 p-2">
+            {row.fields.map((field, fieldIndex) => <div key={field.id} data-template-field={field.id} className="space-y-1 rounded border bg-muted/20 p-2"
+              onDragOver={event => { if (draggedField) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
+              onDrop={event => { if (draggedField) { event.preventDefault(); event.stopPropagation(); placeField(draggedField, row.id, field.id); setDraggedField(null); } }}>
+              <button type="button" draggable aria-label={`Drag ${field.label || "field"} to move`} className="cursor-grab text-xs text-muted-foreground active:cursor-grabbing"
+                onDragStart={event => { setDraggedField(field.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", field.id); }} onDragEnd={() => setDraggedField(null)}>⠿ Drag field</button>
               <div className="flex gap-1">
                 <Input aria-label={`Row ${index + 1} field ${fieldIndex + 1} label`} placeholder="Label (optional)" value={field.label} onChange={event => patchField(row, field.id, { label: event.target.value })} />
                 <ColorPicker label={(field.label || "Field") + " value color"} value={field.color || undefined} onChange={color => patchField(row, field.id, { color })} />
@@ -63,13 +79,23 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                 </select>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Move ${field.label} left`} disabled={fieldIndex === 0} onClick={() => patchRow(row.id, { fields: move(row.fields, fieldIndex, -1) })}>←</Button>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Move ${field.label} right`} disabled={fieldIndex === row.fields.length - 1} onClick={() => patchRow(row.id, { fields: move(row.fields, fieldIndex, 1) })}>→</Button>
-                <select aria-label={`Move ${field.label} to row`} className="h-8 rounded border bg-background px-1 text-xs" value={row.id} onChange={event => {
-                  const target = event.target.value;
-                  setDraft({ ...draft, rows: draft.rows.map(item => item.id === row.id ? { ...item, fields: item.fields.filter(f => f.id !== field.id) } : item.id === target ? { ...item, fields: [...item.fields, field] } : item).filter(item => item.fields.length) });
-                }}>{draft.rows.map((item, i) => <option key={item.id} value={item.id}>Row {i + 1}</option>)}</select>
+                <select aria-label={`Move ${field.label || "field"}`} className="h-8 max-w-full rounded border bg-background px-1 text-xs" value="" onChange={event => {
+                  if (event.target.value === "above" || event.target.value === "below") moveToNewRow(field.id, row.id, event.target.value);
+                  else { const [targetRow, before] = JSON.parse(event.target.value) as [string, string?]; placeField(field.id, targetRow, before); }
+                }}>
+                  <option value="" disabled>Move field...</option>
+                  {draft.rows.map((item, i) => <optgroup key={item.id} label={`Row ${i + 1}`}>
+                    {item.fields.filter(target => target.id !== field.id).map(target => <option key={target.id} value={JSON.stringify([item.id, target.id])}>Before {target.label || "unlabelled field"}</option>)}
+                    <option value={JSON.stringify([item.id])}>End of row {i + 1}</option>
+                  </optgroup>)}
+                  <option value="above">New row above</option><option value="below">New row below</option>
+                </select>
                 <Button type="button" size="sm" variant="ghost" disabled={row.fields.length === 1} onClick={() => patchRow(row.id, { fields: row.fields.filter(item => item.id !== field.id) })}>Remove field</Button>
               </div>
             </div>)}
+            {draggedField && <div className="rounded border border-dashed p-3 text-center text-xs text-muted-foreground"
+              onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
+              onDrop={event => { event.preventDefault(); placeField(draggedField, row.id); setDraggedField(null); }}>Drop at end of row {index + 1}</div>}
             <Button type="button" size="sm" variant="outline" onClick={() => patchRow(row.id, { fields: [...row.fields, newField()] })}>Add field to row {index + 1}</Button>
           </section>)}
           <Button type="button" variant="outline" onClick={() => setDraft({ ...draft, rows: [...draft.rows, { id: generateId(), indent: 0, fields: [newField()] }] })}>Add row</Button>
