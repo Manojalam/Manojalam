@@ -1,3 +1,4 @@
+import { placeTemplateField } from "./template-field-order";
 import type { CardSection } from "../types";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -252,4 +253,24 @@ test("repeated fields flow inline and preserve only authored whitespace and line
   assert.equal(multiline.text, "\nBefore Original \nAfter\nAnother line\n");
   assert.equal((multiline.richText.match(/<br>/g) ?? []).length, 2);
   assert.equal((multiline.richText.match(/<p /g) ?? []).length, 3);
+});
+
+
+test("field placement preserves IDs, values and styles across rows and new rows", () => {
+  const template = newHomeworkTemplate("move");
+  const original = structuredClone(template.rows);
+  let rows = placeTemplateField(template.rows, "example", "answer_row", "answer");
+  assert.deepEqual(rows[1].fields.map(f => f.id), ["example", "answer", "sutram"]);
+  rows = placeTemplateField(rows, "question", "answer_row", "sutram");
+  assert.deepEqual(rows.map(r => r.id), ["answer_row", "explanation_row"]);
+  assert.deepEqual(rows[0].fields.map(f => f.id), ["example", "answer", "question", "sutram"]);
+  rows = placeTemplateField([{ id: "new", indent: 2, fields: [] }, ...rows], "sutram", "new");
+  assert.equal(rows[0].fields[0].kind, "sutra");
+  assert.equal(rows[0].fields[0].color, original[1].fields[1].color);
+  const output = renderCardTemplate({ ...template, rows }, { sutram: { text: "Saved reference", href: "https://example.com" }, question: { text: "Saved question" } });
+  assert.ok(output.text.startsWith("Saved reference\n"));
+  assert.ok(output.text.includes("Saved question"));
+  assert.deepEqual(template.rows, original);
+  assert.equal(placeTemplateField(rows, "sutram", "missing"), rows);
+  assert.equal(placeTemplateField(rows, "sutram", "new", "sutram"), rows);
 });
