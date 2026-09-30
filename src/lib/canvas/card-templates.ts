@@ -47,9 +47,16 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
       for (const field of row.fields) {
         if (!field || typeof field.id !== "string" || !field.id || fieldIds.has(field.id) || typeof field.label !== "string") continue;
         fieldIds.add(field.id);
-        fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra"].includes(field.kind) ? field.kind : "text" });
+        fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra"].includes(field.kind) ? field.kind : "text",
+          ...(typeof field.fontFamily === "string" && field.fontFamily ? { fontFamily: field.fontFamily } : {}),
+          ...(typeof field.fontSize === "number" && Number.isFinite(field.fontSize) ? { fontSize: bounded(field.fontSize, 22, 8, 100) } : {}),
+          ...(field.bold === true ? { bold: true } : {}), ...(field.italic === true ? { italic: true } : {}), ...(field.underline === true ? { underline: true } : {}),
+        });
       }
-      if (fields.length) rows.push({ id: row.id, indent: bounded(row.indent, 0, 0, 10), fields });
+      if (fields.length) rows.push({ id: row.id, indent: bounded(row.indent, 0, 0, 10), fields,
+        ...(["left", "center", "right", "justify"].includes(row.textAlign) ? { textAlign: row.textAlign } : {}),
+        ...(typeof row.lineSpacing === "number" && Number.isFinite(row.lineSpacing) ? { lineSpacing: bounded(row.lineSpacing, 1.5, 1, 4) } : {}),
+      });
     }
     if (!rows.length) return [];
     ids.add(item.id);
@@ -117,9 +124,15 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       const content = href && parts
         ? `${escapeHtml(parts[1]).replace(/\r?\n/g, "<br>")}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(parts[2]).replace(/\r?\n/g, "<br>")}</a>${escapeHtml(parts[3]).replace(/\r?\n/g, "<br>")}`
         : text;
-      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}">${content}</span>`;
+      let styledContent = content;
+      if (field.bold) styledContent = `<strong>${styledContent}</strong>`;
+      if (field.italic) styledContent = `<em>${styledContent}</em>`;
+      if (field.underline) styledContent = `<u>${styledContent}</u>`;
+      const fontStyle = (field.fontSize ? `; font-size: ${bounded(field.fontSize, 22, 8, 100)}px` : "")
+        + (field.fontFamily ? `; font-family: ${escapeHtml(field.fontFamily.replace(/[;{}<>]/g, ""))}` : "");
+      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}${fontStyle}">${styledContent}</span>`;
     }).join("")).join("");
-    return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
+    return `<p style="text-align: ${row.textAlign || "left"}; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${row.lineSpacing ?? template.style.lineSpacing}">${fields}</p>`;
   }).join("") + filledExtraRows.map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
   const text = visibleRows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("")).concat(filledExtraRows).join("\n");
   return { richText, text };
