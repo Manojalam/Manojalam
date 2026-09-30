@@ -266,6 +266,7 @@ interface CanvasState {
   createCardFromTemplate: (id: string) => string | null;
   updateCardValues: (nodeId: string, values: CardFieldValues, extraRows?: string[]) => void;
   updateCardSections: (nodeId: string, sections: CardSection[], history?: boolean) => void;
+  moveCardSectionsToNewBox: (nodeId: string, sectionId: string) => string | null;
   detachCardTemplate: (nodeId: string) => void;
   deleteCardTemplate: (id: string) => void;
   updateStyleTemplate: (id: string, patch: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => void;
@@ -2500,6 +2501,43 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ nodes: state.nodes.map(item => item.id === nodeId
       ? { ...item, data: { ...item.data, ...cardTemplateNodeData({ ...template, style: { ...template.style, lineSpacing: typeof node.data.lineSpacing === "number" ? node.data.lineSpacing : template.style.lineSpacing } }, undefined, undefined, sections) } }
       : item), saveStatus: "unsaved" });
+  },
+  moveCardSectionsToNewBox: (nodeId, sectionId) => {
+    const state = get();
+    const source = state.nodes.find(node => node.id === nodeId);
+    if (!source || source.data.locked || source.data.freeCardLayout || state.board?.accessRole === "viewer") return null;
+    const template = state.settings.cardTemplates?.find(item => item.id === source.data.cardTemplateId)
+      ?? normalizeCardTemplates([source.data.cardTemplateSnapshot])[0];
+    if (!template) return null;
+    const sections = cardSections(source.data);
+    const index = sections.findIndex(section => section.id === sectionId);
+    if (index < 0) return null;
+    const remaining = sections.slice(0, index);
+    if (!remaining.length) remaining.push({ id: generateId(), values: {}, extraRows: [] });
+    const effectiveTemplate = { ...template, style: { ...template.style, lineSpacing: typeof source.data.lineSpacing === "number" ? source.data.lineSpacing : template.style.lineSpacing } };
+    const content = (items: CardSection[]) => ({
+      ...renderCardSections(effectiveTemplate, items), cardSections: structuredClone(items),
+      cardFieldValues: structuredClone(items[0].values), cardExtraRows: [...items[0].extraRows],
+    });
+    const id = generateId();
+    const rect = getNodeRect(source);
+    const node: Node = {
+      id, type: "shape", selected: true,
+      position: { x: source.position.x, y: source.position.y + rect.height + 40 },
+      style: { width: rect.width, height: rect.height },
+      data: { ...cardTemplateNodeData(effectiveTemplate), ...captureTemplateStyle(source.data),
+        autoSizeMode: "height-only", ...content(sections.slice(index)) },
+    };
+    const nextNodes = [...state.nodes.map(item => ({ ...item, selected: false,
+      ...(item.id === nodeId ? { data: { ...item.data, ...content(remaining) } } : {}) })), node];
+    const placement = resolveInsertedNodeCollisions(nextNodes, id);
+    state.pushHistory();
+    set({
+      nodes: nextNodes.map(item => placement[item.id] ? { ...item, position: placement[item.id] } : item),
+      edges: state.edges.map(edge => ({ ...edge, selected: false })),
+      selectedNodeIds: [id], selectedEdgeIds: [], saveStatus: "unsaved",
+    });
+    return id;
   },
   detachCardTemplate: (nodeId) => {
     const state = get();
