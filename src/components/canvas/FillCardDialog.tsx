@@ -92,10 +92,14 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
             <CardTemplatePreview template={template} sections={sections} />
           </div>
         </details>
+        <details className="rounded border p-3">
+          <summary className="cursor-pointer text-sm">Advanced: switch to free text</summary>
+          <p className="my-2 text-xs text-muted-foreground">This switches this card from filling fields in this panel to editing text directly on the board. To keep using fields and sections, use Save card.</p>
+          <Button type="button" variant="outline" disabled={locked || savingNext} onClick={() => { update(nodeId, sections); onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
+        </details>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={savingNext} onClick={onClose}>Cancel</Button>
-          <Button type="button" disabled={locked || savingNext} onClick={() => { update(nodeId, sections); onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
           <Button type="button" variant="outline" disabled={locked || savingNext} onClick={addSection}>Add another section</Button>
           <Button type="submit" disabled={locked || savingNext}>Save card</Button>
           <Button type="button" disabled={locked || !available || savingNext} onClick={async () => {
