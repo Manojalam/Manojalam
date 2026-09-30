@@ -2279,7 +2279,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const template = settings.cardTemplates?.find(item => item.id === node.data.cardTemplateId)
         ?? normalizeCardTemplates([node.data.cardTemplateSnapshot])[0];
       if (!template) return node;
-      const content = (node.data.freeCardLayout || (typeof node.data.richText === "string" && node.data.richText.includes("data-field-label"))) ? flexibleCardContent(node.data, settings) : renderCardSections(template, cardSections(node.data));
+      // Structured cards derive their layout from saved fields, not stale rendered
+      // paragraphs. Only explicitly free-layout cards own their paragraph layout.
+      const content = node.data.freeCardLayout ? flexibleCardContent(node.data, settings)
+        : renderCardSections({ ...template, style: { ...template.style, lineSpacing: typeof node.data.lineSpacing === "number" ? node.data.lineSpacing : template.style.lineSpacing } }, cardSections(node.data));
       if (content.richText === node.data.richText && content.text === node.data.text) return node;
       cardContentMigrationRequired = true;
       return { ...node, data: { ...node.data, ...content } };
