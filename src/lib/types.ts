@@ -295,6 +295,7 @@ export type CardFieldValues = Record<string, { text: string; href?: string }>;
 export interface CardRowRepeat {
   id: string;
   rowId: string;
+  position?: "before" | "after";
   values: CardFieldValues;
 }
 

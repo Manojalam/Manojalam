@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
-import { cardSections, expandedCardRows, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
+import { cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -68,8 +68,8 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
       ? { ...item, rowRepeats: item.rowRepeats?.map(repeat => repeat.id === repeatId ? { ...repeat, values: patchValues(repeat.values) } : repeat) }
       : { ...item, values: patchValues(item.values) };
   }));
-  const repeatRow = (rowId: string) => setSections(current => current.map(item => item.id === section.id
-    ? { ...item, rowRepeats: [...(item.rowRepeats ?? []), { id: crypto.randomUUID(), rowId, values: {} }] } : item));
+  const repeatRow = (rowId: string, anchorId: string, side: "before" | "after") => setSections(current => current.map(item => item.id === section.id
+    ? { ...item, rowRepeats: insertCardRowRepeat(item.rowRepeats ?? [], rowId, anchorId, side, crypto.randomUUID()) } : item));
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
@@ -94,9 +94,13 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
         <p className="text-xs text-muted-foreground">Repeat any row to fill another set of its fields in this section only. The template stays unchanged.</p>
         <fieldset ref={fieldsRef} disabled={locked} className="space-y-4">
           {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <div key={repeatId || row.id} role="group" aria-label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`} className="space-y-3 rounded-md border p-3">
-            <div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>{repeatId
-              ? <Button type="button" size="sm" variant="ghost" onClick={() => removeRepeat(repeatId)}>Remove repeat</Button>
-              : <Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id)}>Repeat row {rowNumber}</Button>}</div>
+            <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id, repeatId, "before")}>Repeat before</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id, repeatId, "after")}>Repeat after</Button>
+                {repeatId && <Button type="button" size="sm" variant="ghost" onClick={() => removeRepeat(repeatId)}>Remove repeat</Button>}
+              </div>
+            </div>
             {row.fields.map(field => <div key={field.id} className="space-y-1">
               <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
               {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value, repeatId)} />}

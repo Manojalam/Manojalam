@@ -1,7 +1,7 @@
 import type { CardSection } from "../types";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
+import { expandedCardRows, insertCardRowRepeat, cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
 import { searchSutras, sutraFieldValue } from "../sanskrit/sutra-search";
 
 test("card layout renders custom labels, rows, indentation and safe sūtra links", () => {
@@ -209,4 +209,28 @@ test("row repeats keep independent answers and shared design through persistence
   assert.equal(sections[0].rowRepeats![0].values.answer.text, "Repeat A");
   assert.equal(restored[0].values.answer.text, "Original");
   assert.equal(cardTemplateNodeData(template).cardSections[0].rowRepeats, undefined);
+});
+
+
+test("repeat before and after place blank copies beside originals and copies", () => {
+  const template = newHomeworkTemplate("positions");
+  const values = { answer: { text: "Original" } };
+  let repeats = insertCardRowRepeat([], "answer_row", "", "after", "a");
+  repeats[0].values = { answer: { text: "First copy" } };
+  repeats = insertCardRowRepeat(repeats, "answer_row", "", "before", "b");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "b", "before", "c");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "b", "after", "d");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "a", "before", "e");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "a", "after", "f");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "", "after", "g");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "", "before", "h");
+  const ids = (items: typeof repeats) => expandedCardRows(template, values, items).filter(item => item.row.id === "answer_row").map(item => item.repeatId || "original");
+  assert.deepEqual(ids(repeats), ["c", "b", "d", "h", "original", "g", "e", "a", "f"]);
+  assert.deepEqual(repeats.find(item => item.id === "f")!.values, {});
+  assert.equal(repeats.find(item => item.id === "a")!.values.answer.text, "First copy");
+  const restored = cardSections(JSON.parse(JSON.stringify(cardTemplateNodeData(template, undefined, undefined, [{ id: "first", values, extraRows: [], rowRepeats: repeats }]))));
+  assert.deepEqual(ids(restored[0].rowRepeats!), ids(repeats));
+  // Copies do not depend on an anchor that may later be removed.
+  assert.deepEqual(ids(repeats.filter(item => item.id !== "b")), ["c", "d", "h", "original", "g", "e", "a", "f"]);
+  assert.deepEqual(ids([{ id: "legacy", rowId: "answer_row", values: {} }]), ["original", "legacy"]);
 });
