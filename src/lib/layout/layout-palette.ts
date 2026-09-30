@@ -92,6 +92,27 @@ export function supportsAutomaticLayoutColors(mode: LayoutMode | undefined): mod
   return mode !== undefined && AUTOMATIC_COLOR_MODES.has(mode);
 }
 
+/** Plain shapes have implicit free-form placement even before choosing a layout. */
+export function automaticLayoutColorMode(node: Node | undefined): LayoutMode | undefined {
+  const mode = node?.data.layoutMode as LayoutMode | undefined;
+  return mode ?? (node?.type === "shape" ? "freeForm" : undefined);
+}
+
+/** Prefer an existing chart owner before falling back to a standalone shape. */
+export function automaticLayoutColorRoot(nodes: readonly Node[], hierarchy: Hierarchy, selectedId: string): Node | null {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const seen = new Set<string>();
+  let currentId: string | null = selectedId;
+  while (currentId && !seen.has(currentId)) {
+    seen.add(currentId);
+    const candidate = byId.get(currentId);
+    if (candidate && supportsAutomaticLayoutColors(candidate.data.layoutMode as LayoutMode | undefined)) return candidate;
+    currentId = hierarchy.get(currentId)?.parentId ?? null;
+  }
+  const selected = byId.get(selectedId);
+  return selected && supportsAutomaticLayoutColors(automaticLayoutColorMode(selected)) ? selected : null;
+}
+
 export function selectedLayoutColorScheme(value: unknown): RadialColorScheme {
   return radialColorScheme(value ?? DEFAULT_RADIAL_COLOR_SCHEME).id;
 }

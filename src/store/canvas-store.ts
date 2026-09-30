@@ -47,6 +47,7 @@ import {
   applyLayoutPalette,
   resetDescendantLayoutFillOverrides,
   supportsAutomaticLayoutColors,
+  automaticLayoutColorMode,
 } from "@/lib/layout/layout-palette";
 import {
   computeLayoutNodeSizes,
@@ -5204,12 +5205,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     );
     const root = hierarchyNodes.find((node) => node.id === rootId);
     if (!root) return;
-    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+    const mode = automaticLayoutColorMode(root);
     if (!supportsAutomaticLayoutColors(mode)) return;
 
     const hierarchy = buildHierarchy(hierarchyNodes, edges);
     get().pushHistory();
-    const styled = applyLayoutPalette(nodes, edges, hierarchy, rootId, mode, scheme, { resetOverrides });
+    const paletteNodes = nodes.map(node => node.id === rootId
+      ? { ...node, data: { ...node.data, layoutMode: mode } } : node);
+    const styled = applyLayoutPalette(paletteNodes, edges, hierarchy, rootId, mode, scheme, { resetOverrides });
     const scopeIds = new Set(getSubtree(rootId, hierarchy));
     const nextNodes = mode === "matrix"
       ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true)
@@ -5244,7 +5247,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     );
     const root = hierarchyNodes.find((node) => node.id === rootId);
     if (!root) return;
-    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
+    const mode = automaticLayoutColorMode(root);
     if (!supportsAutomaticLayoutColors(mode)) return;
 
     const preparedNodes = nodes.map((node) => node.id === rootId
@@ -5252,6 +5255,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           ...node,
           data: {
             ...(node.data ?? {}),
+            layoutMode: mode,
             ...patch,
             ...("layoutColorPattern" in patch ? { matrixRowColorPattern: undefined } : {}),
             ...("layoutEndColor" in patch ? { matrixRowEndColor: undefined } : {}),
