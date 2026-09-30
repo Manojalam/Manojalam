@@ -292,6 +292,12 @@ export interface BoardCardTemplate {
 
 export type CardFieldValues = Record<string, { text: string; href?: string }>;
 
+export interface CardSection {
+  id: string;
+  values: CardFieldValues;
+  extraRows: string[];
+}
+
 export interface BoardSettings {
   sampleTemplates?: SampleCardTemplate[];
   cardTemplates?: BoardCardTemplate[];
@@ -624,6 +630,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   cardTemplateSnapshot?: BoardCardTemplate;
   cardFieldValues?: CardFieldValues;
   cardExtraRows?: string[];
+  cardSections?: CardSection[];
   /** Instance-owned rich text with portable field labels; template rows are only a starting layout. */
   freeCardLayout?: boolean;
   /** Board-local live style template; text and geometry remain instance-owned. */

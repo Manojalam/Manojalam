@@ -1,6 +1,7 @@
+import type { CardSection } from "../types";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
+import { cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
 import { searchSutras, sutraFieldValue } from "../sanskrit/sutra-search";
 
 test("card layout renders custom labels, rows, indentation and safe sūtra links", () => {
@@ -136,4 +137,48 @@ test("homework shortcut recognizes previously saved starters without confusing c
   const custom = { ...structuredClone(legacy), id: "custom", rows: [{ id: "my-row", indent: 0, fields: [{ id: "my-field", label: "My label", color: "", kind: "text" as const }] }] };
   assert.equal(savedHomeworkTemplate([legacy, custom])?.id, legacy.id);
   assert.equal(savedHomeworkTemplate([custom]), undefined);
+});
+
+test("existing cards become one section without losing values or extra rows", () => {
+  const legacy = { cardFieldValues: { question: { text: "Existing question" } }, cardExtraRows: ["My explanation"] };
+  const sections = cardSections(legacy);
+  assert.deepEqual(sections, [{ id: "first", values: legacy.cardFieldValues, extraRows: legacy.cardExtraRows }]);
+  sections[0].values.question.text = "Edited";
+  sections[0].extraRows.push("Another row");
+  assert.equal(legacy.cardFieldValues.question.text, "Existing question");
+  assert.equal(legacy.cardExtraRows.length, 1);
+});
+
+test("repeated sections retain independent answers, links and extra rows after reload and redesign", () => {
+  const template = newHomeworkTemplate("repeat");
+  template.style.lineSpacing = 1.75;
+  const sections = [
+    { id: "one", values: { question: { text: "First question" }, sutram: { text: "First sutra", href: "https://example.com/one" } }, extraRows: ["First extra <row>"] },
+    { id: "two", values: { question: { text: "Second question" }, sutram: { text: "Second sutra", href: "https://example.com/two" } }, extraRows: ["Second extra row"] },
+  ];
+  const data = cardTemplateNodeData(template, undefined, undefined, sections);
+  assert.match(data.richText, /First question[\s\S]*First extra &lt;row&gt;[\s\S]*Second question[\s\S]*Second extra row/);
+  assert.match(data.richText, /href="https:\/\/example.com\/one"/);
+  assert.match(data.richText, /href="https:\/\/example.com\/two"/);
+  assert.match(data.richText, /line-height: 1.75/);
+  const restored = cardSections(JSON.parse(JSON.stringify(data)));
+  assert.deepEqual(restored, sections);
+  template.rows.reverse();
+  template.rows.flatMap(row => row.fields).find(field => field.id === "question")!.color = "#ff0000";
+  const redesigned = cardTemplateNodeData(template, undefined, undefined, restored);
+  assert.deepEqual(redesigned.cardSections, sections);
+  assert.equal((redesigned.richText.match(/color: #ff0000/g) ?? []).length, 2);
+  const detached = detachCardTemplateData(redesigned);
+  assert.equal(detached.cardSections, undefined);
+  assert.equal(detached.richText, redesigned.richText);
+});
+
+test("new sections start blank and rendering does not print section headings or field labels", () => {
+  const template = newHomeworkTemplate("blank");
+  const sections: CardSection[] = [{ id: "one", values: { question: { text: "Keep this answer" } }, extraRows: [] }, { id: "two", values: {}, extraRows: [] }];
+  const output = renderCardSections(template, sections);
+  assert.equal(output.text.match(/Keep this answer/g)?.length, 1);
+  assert.doesNotMatch(output.text, /Section|Question|Answer|\.\.\./);
+  assert.equal(cardTemplateNodeData(template).cardSections.length, 1);
+  assert.deepEqual(cardTemplateNodeData(template).cardSections[0].values, {});
 });

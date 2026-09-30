@@ -1,4 +1,4 @@
-import type { BoardCardTemplate, CardFieldValues } from "../types";
+import type { BoardCardTemplate, CardFieldValues, CardSection } from "../types";
 import { normalizeHexColor } from "./custom-colors";
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -95,13 +95,30 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
   return { richText, text };
 }
 
-export function cardTemplateNodeData(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = []) {
+/** Older cards become the first section without changing any of their answers. */
+export function cardSections(data: Record<string, unknown>): CardSection[] {
+  const sections = Array.isArray(data.cardSections) ? data.cardSections.filter(section => section && typeof section.id === "string" && section.values && typeof section.values === "object") : [];
+  if (sections.length) return sections.map(section => ({ id: section.id, values: structuredClone(section.values), extraRows: Array.isArray(section.extraRows) ? section.extraRows.filter((row: unknown) => typeof row === "string") : [] }));
+  return [{ id: "first", values: structuredClone((data.cardFieldValues ?? {}) as CardFieldValues), extraRows: Array.isArray(data.cardExtraRows) ? data.cardExtraRows.filter((row: unknown) => typeof row === "string") : [] }];
+}
+
+export function renderCardSections(template: BoardCardTemplate, sections: CardSection[]) {
+  const content = sections.map(section => renderCardTemplate(template, section.values, section.extraRows));
   return {
-    ...renderCardTemplate(template, values, extraRows),
-    cardExtraRows: [...extraRows],
+    richText: content.map(section => section.richText).join(`<p style="line-height: ${template.style.lineSpacing}"><br></p>`),
+    text: content.map(section => section.text).join("\n\n"),
+  };
+}
+
+export function cardTemplateNodeData(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = [], sections: CardSection[] = [{ id: "first", values, extraRows }]) {
+  const first = sections[0] ?? { values, extraRows };
+  return {
+    ...renderCardSections(template, sections),
+    cardSections: structuredClone(sections),
+    cardExtraRows: [...first.extraRows],
     cardTemplateId: template.id,
     cardTemplateSnapshot: structuredClone(template),
-    cardFieldValues: structuredClone(values),
+    cardFieldValues: structuredClone(first.values),
     fillColor: template.style.fillColor || undefined, fillOpacity: 1, borderColor: template.style.borderColor || undefined,
     textColor: template.style.textColor || undefined, fontSize: template.style.fontSize,
     fontFamily: template.style.fontFamily || undefined,
@@ -117,5 +134,6 @@ export function detachCardTemplateData(data: Record<string, unknown>) {
   delete next.cardTemplateSnapshot;
   delete next.cardFieldValues;
   delete next.cardExtraRows;
+  delete next.cardSections;
   return next;
 }
