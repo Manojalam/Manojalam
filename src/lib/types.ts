@@ -285,6 +285,7 @@ export interface CardTemplateRow {
 export interface BoardCardTemplate {
   id: string;
   name: string;
+  starter?: "homework";
   rows: CardTemplateRow[];
   style: { fillColor: string; borderColor: string; textColor: string; fontFamily?: string; fontSize: number; lineSpacing: number; width: number };
 }

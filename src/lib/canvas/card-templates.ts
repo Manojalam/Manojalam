@@ -7,7 +7,7 @@ const bounded = (value: unknown, fallback: number, min: number, max: number) => 
 
 export function newHomeworkTemplate(id: string): BoardCardTemplate {
   return {
-    id, name: "Homework card",
+    id, name: "Homework card", starter: "homework",
     style: { fillColor: "#ffffff", borderColor: "#6366f1", textColor: "#334155", fontFamily: "", fontSize: 22, lineSpacing: 1.5, width: 800 },
     rows: [
       { id: "question_row", indent: 0, fields: [{ id: "question", label: "Question", color: "#1d4ed8", kind: "multiline" }] },
@@ -22,6 +22,14 @@ export function newHomeworkTemplate(id: string): BoardCardTemplate {
       ] },
     ],
   };
+}
+
+/** Reopen a saved starter even after its name or fields have been customized. */
+export function savedHomeworkTemplate(templates: BoardCardTemplate[] = [], preferredId?: string) {
+  const matches = templates.filter(template => template.starter === "homework"
+    // Boards saved before starter identity was persisted use these stable IDs.
+    || (!template.starter && template.rows.some(row => row.id === "question_row" && row.fields.some(field => field.id === "question"))));
+  return matches.find(template => template.id === preferredId) ?? matches.at(-1);
 }
 
 export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
@@ -46,7 +54,7 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
     if (!rows.length) return [];
     ids.add(item.id);
     const style = item.style ?? {};
-    return [{ id: item.id, name: item.name.trim(), rows, style: {
+    return [{ id: item.id, name: item.name.trim(), ...(item.starter === "homework" ? { starter: "homework" as const } : {}), rows, style: {
       fillColor: templateColor(style.fillColor, "#ffffff"),
       borderColor: templateColor(style.borderColor, "#6366f1"),
       textColor: templateColor(style.textColor, "#334155"),
