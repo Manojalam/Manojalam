@@ -607,9 +607,7 @@ function SliderControl({
       />
       <button onClick={() => applyStep(value + step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
-      <span className="w-9 text-center text-[10px] text-muted-foreground">
-        {mixed ? "Mixed" : `${displayValue}${suffix}`}
-      </span>
+      <Input key={displayValue} aria-label="Exact value" title={suffix || "Exact value"} type="number" min={min} max={max} step="any" defaultValue={mixed ? "" : displayValue} placeholder={mixed ? "Mixed" : undefined} className="h-7 w-16 px-1 text-xs" onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={event => { const next = Number(event.target.value); if (event.target.value !== "" && Number.isFinite(next) && next !== value) applyStep(next); }} />
     </div>
   );
 }
@@ -657,9 +655,7 @@ function ThicknessControl({
         className="flex-1 h-1.5 accent-primary" />
       <button onClick={() => applyStep(value + step)}
         className="flex h-6 w-6 items-center justify-center rounded border border-border hover:bg-muted text-xs"><Plus className="h-3 w-3" /></button>
-      <span className="w-10 text-center text-[10px] text-muted-foreground">
-        {mixed ? "Mixed" : `${Number(value.toFixed(precision))}px`}
-      </span>
+      <Input key={value} aria-label="Exact thickness" type="number" min={min} max={max} step="any" defaultValue={mixed ? "" : value} placeholder={mixed ? "Mixed" : undefined} className="h-7 w-16 px-1 text-xs" onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={event => { const next = Number(event.target.value); if (event.target.value !== "" && Number.isFinite(next) && next !== value) { onChangeStart?.(); onChange(clampControlValue(next, min, max)); onChangeEnd?.(); } }} />
     </div>
   );
 }
@@ -3993,6 +3989,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
                 {settings.linkColor ? "One color for all text links on this board." : "Links use their existing text colors."}
               </p>
             </div>
+            <label className="block text-xs">Board default font<select aria-label="Board default font" className="mt-1 h-8 w-full rounded border bg-background px-2" value={settings.defaultFont} onChange={event => setBoardSettings({ defaultFont: event.target.value })}><option value="Inter">Inter (default)</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select></label>
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">

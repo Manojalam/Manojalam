@@ -32,11 +32,11 @@ export function ColorPicker({ value, onChange, onClear, label, className }: Colo
           >
             <span
               className="block h-full w-full rounded-md"
-              style={{ backgroundColor: value ?? "#6366f1" }}
+              style={{ backgroundColor: value || "transparent" }}
             />
           </button>
         </AppColorPicker>
-        <span className="font-mono text-xs text-muted-foreground">{value ?? "—"}</span>
+        <span className="font-mono text-xs text-muted-foreground">{value || "Default"}</span>
         <button
           type="button"
           className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"

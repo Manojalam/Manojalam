@@ -286,7 +286,7 @@ export interface BoardCardTemplate {
   id: string;
   name: string;
   rows: CardTemplateRow[];
-  style: { fillColor: string; borderColor: string; textColor: string; fontSize: number; lineSpacing: number; width: number };
+  style: { fillColor: string; borderColor: string; textColor: string; fontFamily?: string; fontSize: number; lineSpacing: number; width: number };
 }
 
 export type CardFieldValues = Record<string, { text: string; href?: string }>;
@@ -622,6 +622,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   cardTemplateId?: string;
   cardTemplateSnapshot?: BoardCardTemplate;
   cardFieldValues?: CardFieldValues;
+  cardExtraRows?: string[];
+  /** Instance-owned rich text with portable field labels; template rows are only a starting layout. */
+  freeCardLayout?: boolean;
   /** Board-local live style template; text and geometry remain instance-owned. */
   styleTemplateId?: string;
   /** Materialized link style from a template, retained when detached. */

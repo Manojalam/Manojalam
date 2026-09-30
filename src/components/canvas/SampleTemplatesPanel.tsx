@@ -1,5 +1,6 @@
 "use client";
 
+import { ColorPicker } from "./ColorPicker";
 import { useState } from "react";
 import type { SampleLabel } from "@/lib/types";
 import { sampleFields, resizeSampleField } from "@/lib/canvas/sample-templates";
@@ -45,13 +46,14 @@ export function SampleTemplatesPanel() {
         <Button size="sm" variant="outline" onClick={() => openSample(template.id)}>Edit sample</Button>
       </div>
       <p className="text-[10px] text-muted-foreground">Sample edits update linked cards. Existing answers stay; newly tagged parts start empty. Each occurrence has its own answer.</p>
+      <label className="block text-xs">Default template font<select aria-label="Sample default font" className="mt-1 h-8 w-full rounded border bg-background px-2" value={String(template.style.fontFamily ?? "")} onChange={event => update(template.id, { style: { ...template.style, fontFamily: event.target.value || null } })}><option value="">Board default font</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select></label>
       <details className="space-y-2" open={!!label}>
         <summary className="cursor-pointer text-xs font-medium">Label styles and behavior</summary>
         {label ? <>
           <select aria-label="Label to style" className="h-8 w-full rounded border bg-background px-2 text-xs" value={label.id} onChange={event => setLabelId(event.target.value)}>{template.labels.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           <Input key={`${label.id}-${label.name}`} aria-label="Label name" defaultValue={label.name} onBlur={event => { if (event.target.value.trim() && event.target.value.trim() !== label.name) patchLabel({ name: event.target.value.trim() }); }} />
           <label className="block text-[10px]">Field behavior<select aria-label="Label behavior" className="mt-1 h-8 w-full rounded border bg-background px-2 text-xs" value={label.kind} onChange={event => patchLabel({ kind: event.target.value as SampleLabel["kind"] })}><option value="text">Your own text</option><option value="sutra">Text with sūtra lookup</option><option value="number">Automatic section number</option></select></label>
-          <div className="flex flex-wrap gap-2">{([['color', 'Text'], ['background', 'Background'], ['borderColor', 'Outline']] as const).map(([key, title]) => <label key={key} className="text-[10px]">{title}<input type="color" aria-label={`${title} for ${label.name}`} className="ml-1 h-7 w-8 align-middle" value={label[key] === "transparent" ? "#ffffff" : label[key]} onChange={event => patchLabel({ [key]: event.target.value })} /></label>)}</div>
+          <div className="flex flex-wrap gap-2">{([['color', 'Text'], ['background', 'Background'], ['borderColor', 'Outline']] as const).map(([key, title]) => <ColorPicker key={key} label={title + " for " + label.name} value={label[key] === "transparent" || label[key] === "inherit" ? undefined : label[key]} onChange={color => patchLabel({ [key]: color || (key === "color" ? "inherit" : "transparent") })} />)}</div>
           <label className="flex gap-2 text-[10px]"><input type="checkbox" checked={label.background === "transparent"} onChange={event => patchLabel({ background: event.target.checked ? "transparent" : "#ffffff" })} />Transparent field background</label>
           <select aria-label="Label font" className="h-8 w-full rounded border bg-background px-2 text-xs" value={label.fontFamily} onChange={event => patchLabel({ fontFamily: event.target.value })}><option value="inherit">Card font</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select>
           <div className="grid grid-cols-3 gap-1">{([['fontSize','Size',6,120],['lineHeight','Spacing',1,4],['padding','Padding',0,32]] as const).map(([key, title, min, max]) => <label key={key} className="text-[10px]">{title}<Input key={`${label.id}-${key}-${label[key]}`} type="number" aria-label={`Label ${title.toLowerCase()}`} min={min} max={max} step={key === 'lineHeight' ? 0.1 : 1} defaultValue={label[key]} onBlur={event => { const value = Number(event.target.value); if (Number.isFinite(value) && value !== label[key]) patchLabel({ [key]: Math.max(min, Math.min(max, value)) }); }} /></label>)}</div>

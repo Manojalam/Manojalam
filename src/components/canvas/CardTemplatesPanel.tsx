@@ -35,7 +35,8 @@ export function CardTemplatesPanel() {
       <p className="text-xs font-medium">Selected homework card</p>
       {selectedTemplate && <p className="text-[10px] text-muted-foreground">Template: {selectedTemplate.name}</p>}
       <p className="text-[10px] text-muted-foreground">Double-click this card or use Fill / edit card.</p>
-      <Button size="sm" disabled={!!selected.data.locked} onClick={() => setFillId(selected.id)}>Fill / edit card</Button>
+      <Button size="sm" disabled={!!selected.data.locked} onClick={() => selected.data.freeCardLayout ? useCanvasStore.getState().arrangeCard(selected.id) : setFillId(selected.id)}>{selected.data.freeCardLayout ? "Edit on card" : "Fill / edit card"}</Button>
+      {!selected.data.freeCardLayout && <Button size="sm" variant="outline" disabled={!!selected.data.locked} onClick={() => useCanvasStore.getState().arrangeCard(selected.id)}>Arrange / edit on card</Button>}
       {selectedTemplate && <Button size="sm" variant="outline" onClick={() => setDesign(structuredClone(selectedTemplate))}>Edit this card’s design</Button>}
       <Button size="sm" variant="ghost" disabled={!!selected.data.locked} onClick={() => detach(selected.id)}>Convert to ordinary box</Button>
     </div> : null}

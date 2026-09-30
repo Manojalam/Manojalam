@@ -1,5 +1,7 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
+
 import { useRef, useState } from "react";
 import { NodeToolbar, Position, useReactFlow, type Node } from "@xyflow/react";
 import {
@@ -274,7 +276,7 @@ function RotationControls({
         </div>
         <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
           Angle
-          <input
+          <Input
             key={inputKey}
             type="number"
             min={-180}

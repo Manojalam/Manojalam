@@ -2077,6 +2077,7 @@ function VidyaCanvasInner({
       className="vidya-canvas-bg"
       data-board-link-color={normalizeHexColor(settings.linkColor) ?? undefined}
       style={{
+        fontFamily: settings.defaultFont,
         "--board-canvas-bg": canvasBackgroundColor,
         "--board-link-color": normalizeHexColor(settings.linkColor) ?? undefined,
         ...canvasTextureStyle,
