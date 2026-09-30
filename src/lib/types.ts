@@ -274,11 +274,18 @@ export interface CardTemplateField {
   label: string;
   color: string;
   kind: "text" | "multiline" | "link" | "sutra";
+  fontFamily?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
 }
 
 export interface CardTemplateRow {
   id: string;
   indent: number;
+  textAlign?: "left" | "center" | "right" | "justify";
+  lineSpacing?: number;
   fields: CardTemplateField[];
 }
 

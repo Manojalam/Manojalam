@@ -64,6 +64,16 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
               <Button type="button" size="sm" variant="ghost" disabled={draft.rows.length === 1} onClick={() => setDraft({ ...draft, rows: draft.rows.filter(item => item.id !== row.id) })}>Remove row</Button>
               <label className="flex items-center gap-1 text-xs">Indent (em)<Input aria-label={`Row ${index + 1} indent`} className="h-8 w-16" type="number" min={0} max={10} step={0.5} value={row.indent} onChange={event => patchRow(row.id, { indent: Math.max(0, Math.min(10, Number(event.target.value))) })} /></label>
             </div>
+            <details className="rounded border p-2">
+              <summary className="cursor-pointer text-xs">Row styling</summary>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="text-xs">Alignment<select aria-label={`Row ${index + 1} alignment`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={row.textAlign ?? "left"} onChange={event => patchRow(row.id, { textAlign: event.target.value as CardTemplateRow["textAlign"] })}>
+                  <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option>
+                </select></label>
+                <label className="text-xs">Line spacing<Input aria-label={`Row ${index + 1} line spacing`} type="number" min={1} max={4} step="any" placeholder="Template default" value={row.lineSpacing ?? ""} onChange={event => patchRow(row.id, { lineSpacing: event.target.value === "" ? undefined : Number(event.target.value) })} /></label>
+              </div>
+              <Button type="button" size="sm" variant="ghost" onClick={() => patchRow(row.id, { textAlign: undefined, lineSpacing: undefined, indent: 0 })}>Reset row styling</Button>
+            </details>
             {row.fields.map((field, fieldIndex) => <div key={field.id} data-template-field={field.id} className="space-y-1 rounded border bg-muted/20 p-2"
               onDragOver={event => { if (draggedField) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
               onDrop={event => { if (draggedField) { event.preventDefault(); event.stopPropagation(); placeField(draggedField, row.id, field.id); setDraggedField(null); } }}>
@@ -73,6 +83,17 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                 <Input aria-label={`Row ${index + 1} field ${fieldIndex + 1} label`} placeholder="Label (optional)" value={field.label} onChange={event => patchField(row, field.id, { label: event.target.value })} />
                 <ColorPicker label={(field.label || "Field") + " value color"} value={field.color || undefined} onChange={color => patchField(row, field.id, { color })} />
               </div>
+              <details className="rounded border p-2">
+                <summary className="cursor-pointer text-xs">Field styling</summary>
+                <div className="mt-2 space-y-2">
+                  <label className="block text-xs">Font<select aria-label={`${field.label || "Field"} font`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={field.fontFamily ?? ""} onChange={event => patchField(row, field.id, { fontFamily: event.target.value || undefined })}>
+                    <option value="">Template default</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}
+                  </select></label>
+                  <label className="block text-xs">Font size<Input aria-label={`${field.label || "Field"} font size`} type="number" min={8} max={100} step="any" placeholder="Template default" value={field.fontSize ?? ""} onChange={event => patchField(row, field.id, { fontSize: event.target.value === "" ? undefined : Number(event.target.value) })} /></label>
+                  <div className="flex flex-wrap gap-2">{(["bold", "italic", "underline"] as const).map(key => <Button key={key} type="button" size="sm" variant={field[key] ? "default" : "outline"} aria-label={`${field.label || "Field"} ${key}`} aria-pressed={!!field[key]} onClick={() => patchField(row, field.id, { [key]: !field[key] })}>{key[0].toUpperCase() + key.slice(1)}</Button>)}</div>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => patchField(row, field.id, { fontFamily: undefined, fontSize: undefined, bold: undefined, italic: undefined, underline: undefined, color: "" })}>Reset field styling</Button>
+                </div>
+              </details>
               <div className="flex flex-wrap items-center gap-1">
                 <select aria-label={`${field.label || 'Field'} field type`} className="h-8 rounded border bg-background px-1 text-xs" value={field.kind} onChange={event => patchField(row, field.id, { kind: event.target.value as CardTemplateField['kind'] })}>
                   <option value="text">Text</option><option value="multiline">Long text</option><option value="link">Link</option><option value="sutra">Sūtra lookup</option>

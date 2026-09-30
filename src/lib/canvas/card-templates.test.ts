@@ -3,6 +3,39 @@ import type { CardSection } from "../types";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { expandedCardRows, insertCardRowRepeat, cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
+
+test("row and field styles survive persistence and repeated sections without changing answers", () => {
+  const template = newHomeworkTemplate("styled");
+  Object.assign(template.rows[0], { textAlign: "center", lineSpacing: 1.75 });
+  Object.assign(template.rows[0].fields[0], { fontFamily: "Noto Serif Devanagari", fontSize: 28, bold: true, italic: true, underline: true });
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.deepEqual(saved.rows[0], template.rows[0]);
+  const sections = [{ id: "one", values: { question: { text: "Heading" }, answer: { text: "Answer" } }, extraRows: [] }];
+  const output = renderCardSections(saved, sections);
+  assert.match(output.richText, /text-align: center;[^>]*line-height: 1.75/);
+  assert.match(output.richText, /font-size: 28px; font-family: Noto Serif Devanagari/);
+  assert.match(output.richText, /<u><em><strong>Heading<\/strong><\/em><\/u>/);
+  assert.match(output.richText, /text-align: left;[^>]*line-height: 1.5/);
+  assert.equal(output.text, "Heading\nAnswer");
+  assert.deepEqual(cardTemplateNodeData(saved, undefined, undefined, sections).cardSections, sections);
+  const cleared = structuredClone(saved);
+  delete cleared.rows[0].lineSpacing;
+  delete cleared.rows[0].fields[0].fontSize;
+  delete cleared.rows[0].fields[0].fontFamily;
+  const reset = renderCardSections(normalizeCardTemplates([cleared])[0], sections);
+  assert.doesNotMatch(reset.richText, /font-size:|font-family:|line-height: 1.75/);
+});
+
+test("invalid row and field styles normalize safely", () => {
+  const template = newHomeworkTemplate("invalid");
+  Object.assign(template.rows[0], { textAlign: "invalid", lineSpacing: 99 });
+  Object.assign(template.rows[0].fields[0], { fontSize: -20, bold: "false", italic: false });
+  const saved = normalizeCardTemplates([template])[0];
+  assert.equal(saved.rows[0].textAlign, undefined);
+  assert.equal(saved.rows[0].lineSpacing, 4);
+  assert.equal(saved.rows[0].fields[0].fontSize, 8);
+  assert.equal(saved.rows[0].fields[0].bold, undefined);
+});
 import { searchSutras, sutraFieldValue } from "../sanskrit/sutra-search";
 
 test("card layout renders custom labels, rows, indentation and safe sūtra links", () => {
