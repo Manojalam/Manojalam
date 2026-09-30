@@ -1,5 +1,7 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
+
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { CaseSensitive, RemoveFormatting, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -295,15 +297,15 @@ function SymbolAppearanceControls({
       <div className="mt-2 grid grid-cols-[1fr_auto_auto] items-center gap-2">
         <label className="flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground">
           Size
-          <input
+          <Input
             data-symbol-control
-            type="range"
+            type="number"
             min="0.75"
             max="1.6"
             step="0.05"
             value={appearance.scale ?? 1}
-            onChange={(event) => onChange({ ...appearance, scale: Number(event.target.value) })}
-            className="min-w-0 flex-1 accent-primary"
+            onChange={(event) => onChange({ ...appearance, scale: Math.max(0.75, Math.min(1.6, Number(event.target.value))) })}
+            className="h-7 w-16 rounded border bg-background px-1"
           />
         </label>
         <label className={cn(

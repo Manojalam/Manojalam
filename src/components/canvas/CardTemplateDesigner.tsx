@@ -1,5 +1,7 @@
 "use client";
 
+import { FONT_OPTIONS } from "@/lib/fonts";
+import { ColorPicker } from "./ColorPicker";
 import { useState } from "react";
 import type { BoardCardTemplate, CardTemplateField, CardTemplateRow } from "@/lib/types";
 import { generateId } from "@/lib/utils";
@@ -23,7 +25,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
   const linked = useCanvasStore(state => state.nodes.filter(node => node.data.cardTemplateId === initial.id).length);
   const patchRow = (id: string, patch: Partial<CardTemplateRow>) => setDraft(current => ({ ...current, rows: current.rows.map(row => row.id === id ? { ...row, ...patch } : row) }));
   const patchField = (row: CardTemplateRow, id: string, patch: Partial<CardTemplateField>) => patchRow(row.id, { fields: row.fields.map(field => field.id === id ? { ...field, ...patch } : field) });
-  const newField = (): CardTemplateField => ({ id: generateId(), label: "New field", kind: "text", color: "#334155" });
+  const newField = (): CardTemplateField => ({ id: generateId(), label: "New field", kind: "text", color: "" });
   const valid = draft.name.trim() && draft.rows.length && draft.rows.every(row => row.fields.length);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="h-[94vh] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden" onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
@@ -32,10 +34,12 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
         <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
           <label className="block text-sm">Template name<Input aria-label="Card template name" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
           <div className="flex flex-wrap gap-3">
-            {([['fillColor', 'Background'], ['borderColor', 'Border'], ['textColor', 'Default text']] as const).map(([key, label]) => <label key={key} className="text-xs">{label}<input aria-label={`${label} color`} type="color" className="ml-1 h-7 w-9 align-middle" value={draft.style[key]} onChange={event => setDraft({ ...draft, style: { ...draft.style, [key]: event.target.value } })} /></label>)}
+            {([['fillColor', 'Background'], ['borderColor', 'Border'], ['textColor', 'Default text']] as const).map(([key, label]) => <ColorPicker key={key} label={label} value={draft.style[key] || undefined} onChange={color => setDraft(current => ({ ...current, style: { ...current.style, [key]: color } }))} />)}
           </div>
+          <p className="text-xs text-muted-foreground">Clear color to use the default. Fields without a color inherit the template text color.</p>
+          <label className="block text-xs">Default font<select aria-label="Template default font" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={draft.style.fontFamily ?? ""} onChange={event => setDraft(current => ({ ...current, style: { ...current.style, fontFamily: event.target.value } }))}><option value="">Board default font</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select></label>
           <div className="grid grid-cols-3 gap-2">
-            {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1], ['width', 'Card width', 240, 2400, 20]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
+            {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1], ['width', 'Card width', 240, 2400, 20]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step === 1 ? 1 : "any"} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
           </div>
           <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Labels guide filling and are never printed on the card.</p>
           {draft.rows.map((row, index) => <section key={row.id} aria-label={`Template row ${index + 1}`} className="space-y-2 rounded-lg border p-3">
@@ -49,7 +53,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
             {row.fields.map((field, fieldIndex) => <div key={field.id} className="space-y-1 rounded border bg-muted/20 p-2">
               <div className="flex gap-1">
                 <Input aria-label={`Row ${index + 1} field ${fieldIndex + 1} label`} placeholder="Label (optional)" value={field.label} onChange={event => patchField(row, field.id, { label: event.target.value })} />
-                <input type="color" aria-label={`${field.label || 'Field'} value color`} className="h-9 w-10 shrink-0" value={field.color} onChange={event => patchField(row, field.id, { color: event.target.value })} />
+                <ColorPicker label={(field.label || "Field") + " value color"} value={field.color || undefined} onChange={color => patchField(row, field.id, { color })} />
               </div>
               <div className="flex flex-wrap items-center gap-1">
                 <select aria-label={`${field.label || 'Field'} field type`} className="h-8 rounded border bg-background px-1 text-xs" value={field.kind} onChange={event => patchField(row, field.id, { kind: event.target.value as CardTemplateField['kind'] })}>
@@ -70,9 +74,9 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
         </div>
         <div className="min-w-0 space-y-3 lg:overflow-y-auto">
           <h3 className="font-medium">Card preview</h3>
-          <p className="text-xs text-muted-foreground">The dots show where you will fill each card. Long content wraps onto the next line.</p>
+          <p className="text-xs text-muted-foreground">Field names below are sample text for previewing the design. Filled cards show only your values.</p>
           <div className="rounded-md border p-2">
-            <CardTemplatePreview template={draft} />
+            <CardTemplatePreview template={draft} values={Object.fromEntries(draft.rows.flatMap(row => row.fields.map(field => [field.id, { text: field.label || "Sample text" }])))}/>
           </div>
           {!!linked && <p className="text-xs text-muted-foreground">Saving updates the design of {linked} existing cards. Their field values are retained, including values of removed fields, so undo can restore them.</p>}
         </div>

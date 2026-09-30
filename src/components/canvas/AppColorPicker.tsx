@@ -1,5 +1,7 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
+
 import {
   useId,
   useMemo,
@@ -473,7 +475,7 @@ export function ColorPickerPanel({
               <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
                 {channel}
               </span>
-              <input
+              <Input
                 type="number"
                 min={0}
                 max={255}

@@ -507,7 +507,7 @@ function RelationshipDiagramDialogOpen({ request }: { request: RelationshipDiagr
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="relationship-diagram-text-size" className="text-xs">Text size</Label>
-                  <span className="text-[10px] text-muted-foreground">{draft.textSize}px</span>
+                  <Input aria-label="Exact diagram text size" className="h-7 w-16" type="number" min={8} max={36} value={draft.textSize} onChange={event => update("textSize", Math.max(8, Math.min(36, Number(event.target.value))))} />
                 </div>
                 <input
                   id="relationship-diagram-text-size"

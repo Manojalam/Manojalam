@@ -2,12 +2,13 @@ import type { BoardCardTemplate, CardFieldValues } from "../types";
 import { normalizeHexColor } from "./custom-colors";
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const templateColor = (value: unknown, fallback: string) => value === "" ? "" : normalizeHexColor(value) ?? fallback;
 const bounded = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 
 export function newHomeworkTemplate(id: string): BoardCardTemplate {
   return {
     id, name: "Homework card",
-    style: { fillColor: "#ffffff", borderColor: "#6366f1", textColor: "#334155", fontSize: 22, lineSpacing: 1.5, width: 800 },
+    style: { fillColor: "#ffffff", borderColor: "#6366f1", textColor: "#334155", fontFamily: "", fontSize: 22, lineSpacing: 1.5, width: 800 },
     rows: [
       { id: "question_row", indent: 0, fields: [{ id: "question", label: "Question", color: "#1d4ed8", kind: "multiline" }] },
       { id: "answer_row", indent: 2, fields: [
@@ -38,7 +39,7 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
       for (const field of row.fields) {
         if (!field || typeof field.id !== "string" || !field.id || fieldIds.has(field.id) || typeof field.label !== "string") continue;
         fieldIds.add(field.id);
-        fields.push({ id: field.id, label: field.label, color: normalizeHexColor(field.color) ?? "#334155", kind: ["link", "multiline", "sutra"].includes(field.kind) ? field.kind : "text" });
+        fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra"].includes(field.kind) ? field.kind : "text" });
       }
       if (fields.length) rows.push({ id: row.id, indent: bounded(row.indent, 0, 0, 10), fields });
     }
@@ -46,9 +47,10 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
     ids.add(item.id);
     const style = item.style ?? {};
     return [{ id: item.id, name: item.name.trim(), rows, style: {
-      fillColor: normalizeHexColor(style.fillColor) ?? "#ffffff",
-      borderColor: normalizeHexColor(style.borderColor) ?? "#6366f1",
-      textColor: normalizeHexColor(style.textColor) ?? "#334155",
+      fillColor: templateColor(style.fillColor, "#ffffff"),
+      borderColor: templateColor(style.borderColor, "#6366f1"),
+      textColor: templateColor(style.textColor, "#334155"),
+      fontFamily: typeof style.fontFamily === "string" ? style.fontFamily : "",
       fontSize: bounded(style.fontSize, 22, 8, 100),
       lineSpacing: bounded(style.lineSpacing, 1.5, 1, 4),
       width: bounded(style.width, 800, 240, 2400),
@@ -65,7 +67,7 @@ export function safeCardLink(href: string | undefined): string | undefined {
 }
 
 /** Escape values and label metadata, and validate link destinations. */
-export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}) {
+export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = []) {
   const richText = template.rows.map(row => {
     const fields = row.fields.map(field => {
       const value = values[field.id];
@@ -77,22 +79,25 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       const content = href && parts
         ? `${escapeHtml(parts[1]).replace(/\r?\n/g, "<br>")}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(parts[2]).replace(/\r?\n/g, "<br>")}</a>${escapeHtml(parts[3]).replace(/\r?\n/g, "<br>")}`
         : text;
-      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color}">${content}</span>`;
+      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}">${content}</span>`;
     }).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
-  }).join("");
-  const text = template.rows.map(row => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("\n");
+  }).join("") + extraRows.filter(row => row.length).map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
+  const text = template.rows.map(row => row.fields.map(field => values[field.id]?.text ?? "").join("")).concat(extraRows.filter(row => row.length)).join("\n");
   return { richText, text };
 }
 
-export function cardTemplateNodeData(template: BoardCardTemplate, values: CardFieldValues = {}) {
+export function cardTemplateNodeData(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = []) {
   return {
-    ...renderCardTemplate(template, values),
+    ...renderCardTemplate(template, values, extraRows),
+    cardExtraRows: [...extraRows],
     cardTemplateId: template.id,
     cardTemplateSnapshot: structuredClone(template),
     cardFieldValues: structuredClone(values),
-    fillColor: template.style.fillColor, fillOpacity: 1, borderColor: template.style.borderColor,
-    textColor: template.style.textColor, fontSize: template.style.fontSize,
+    fillColor: template.style.fillColor || undefined, fillOpacity: 1, borderColor: template.style.borderColor || undefined,
+    textColor: template.style.textColor || undefined, fontSize: template.style.fontSize,
+    fontFamily: template.style.fontFamily || undefined,
+    lineSpacing: template.style.lineSpacing,
     textAlign: "left", textVerticalAlign: "top", textPadding: 24,
     layoutAutoFill: false, layoutAutoBorder: false, layoutAutoText: false, layoutAutoTypography: false,
   };
@@ -103,5 +108,6 @@ export function detachCardTemplateData(data: Record<string, unknown>) {
   delete next.cardTemplateId;
   delete next.cardTemplateSnapshot;
   delete next.cardFieldValues;
+  delete next.cardExtraRows;
   return next;
 }

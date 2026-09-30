@@ -958,7 +958,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="export-padding" className="text-xs">Padding</Label>
-                <span className="text-[10px] text-muted-foreground">{padding}px</span>
+                <Input aria-label="Exact export padding" className="h-7 w-16" type="number" min={0} max={96} value={padding} onChange={event => setPadding(Math.max(0, Math.min(96, Number(event.target.value))))} />
               </div>
               <input
                 id="export-padding"

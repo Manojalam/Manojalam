@@ -264,7 +264,7 @@ interface CanvasState {
   updateSampleEntries: (nodeId: string, entries: SampleCardEntry[], history?: boolean) => void;
   deleteSampleTemplate: (id: string) => void;
   createCardFromTemplate: (id: string) => string | null;
-  updateCardValues: (nodeId: string, values: CardFieldValues) => void;
+  updateCardValues: (nodeId: string, values: CardFieldValues, extraRows?: string[]) => void;
   detachCardTemplate: (nodeId: string) => void;
   deleteCardTemplate: (id: string) => void;
   updateStyleTemplate: (id: string, patch: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => void;
@@ -2278,7 +2278,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const template = settings.cardTemplates?.find(item => item.id === node.data.cardTemplateId)
         ?? normalizeCardTemplates([node.data.cardTemplateSnapshot])[0];
       if (!template) return node;
-      const content = node.data.freeCardLayout ? flexibleCardContent(node.data, settings) : renderCardTemplate(template, (node.data.cardFieldValues ?? {}) as CardFieldValues);
+      const content = (node.data.freeCardLayout || (typeof node.data.richText === "string" && node.data.richText.includes("data-field-label"))) ? flexibleCardContent(node.data, settings) : renderCardTemplate(template, (node.data.cardFieldValues ?? {}) as CardFieldValues, (node.data.cardExtraRows ?? []) as string[]);
       if (content.richText === node.data.richText && content.text === node.data.text) return node;
       cardContentMigrationRequired = true;
       return { ...node, data: { ...node.data, ...content } };
@@ -2382,7 +2382,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (history) state.pushHistory();
     const settings = { ...state.settings, sampleTemplates: state.settings.sampleTemplates!.map(item => item.id === id ? template : item) };
     set({ settings, nodes: state.nodes.map(node => {
-      if (node.data.sampleDesignId === id) return { ...node, data: { ...node.data, richText: template.richText } };
+      if (node.data.sampleDesignId === id) return { ...node, data: { ...node.data, ...(patch.style ? template.style : {}), richText: template.richText } };
       if (node.data.sampleTemplateId === id) return { ...node, data: {
         ...node.data, ...sampleCardData(template, (node.data.sampleEntries ?? []) as SampleCardEntry[]),
         ...(node.data.freeCardLayout ? flexibleCardContent(node.data, settings) : {}),
@@ -2450,7 +2450,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (node.data.cardTemplateId === template.id) return {
         ...node,
         ...(previous?.style.width !== template.style.width ? { style: { ...node.style, width: template.style.width } } : {}),
-        data: { ...node.data, ...cardTemplateNodeData(template, node.data.cardFieldValues as CardFieldValues),
+        data: { ...node.data, ...cardTemplateNodeData(template, node.data.cardFieldValues as CardFieldValues, (node.data.cardExtraRows ?? []) as string[]),
           ...(node.data.freeCardLayout ? flexibleCardContent(node.data, settings) : {}),
         },
       };
@@ -2477,7 +2477,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ nodes: [...state.nodes.map(item => ({ ...item, selected: false })), node], selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });
     return nodeId;
   },
-  updateCardValues: (nodeId, values) => {
+  updateCardValues: (nodeId, values, extraRows) => {
     const state = get();
     const node = state.nodes.find(item => item.id === nodeId);
     if (!node || node.data.locked || node.data.freeCardLayout) return;
@@ -2486,7 +2486,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!template) return;
     state.pushHistory();
     set({ nodes: state.nodes.map(item => item.id === nodeId
-      ? { ...item, data: { ...item.data, ...cardTemplateNodeData(template, values) } }
+      ? { ...item, data: { ...item.data, ...cardTemplateNodeData({ ...template, style: { ...template.style, lineSpacing: typeof node.data.lineSpacing === "number" ? node.data.lineSpacing : template.style.lineSpacing } }, values, extraRows ?? (node.data.cardExtraRows ?? []) as string[]) } }
       : item), saveStatus: "unsaved" });
   },
   detachCardTemplate: (nodeId) => {

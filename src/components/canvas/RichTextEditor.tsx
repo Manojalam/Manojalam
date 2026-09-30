@@ -1674,6 +1674,9 @@ export function RichTextEditor({
 
   const updateToolbar = useCallback(() => {
     if (!editor) { hideToolbar(); return; }
+    // Numeric inputs need keyboard focus without losing the selected text or
+    // unmounting their toolbar when ProseMirror emits its blur transaction.
+    if (toolbarRef.current?.contains(document.activeElement)) return;
     const { state, view } = editor;
     const { from, to } = state.selection;
     savedSelectionRef.current = { from, to };
@@ -1682,7 +1685,7 @@ export function RichTextEditor({
       nodeId,
       selectedNodeIds,
       editorEditable: editor.isEditable,
-      editorFocused: editor.isFocused,
+      editorFocused: editor.isFocused || !!toolbarRef.current,
       hasTextSelection: selectedRanges.length > 0,
     })) {
       hideToolbar();
@@ -2355,17 +2358,7 @@ export function RichTextEditor({
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
-          <select
-            aria-label="Line spacing"
-            title="Line spacing"
-            className="h-8 rounded-md border border-border bg-background px-1 text-[11px]"
-            value={String(paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing))}
-            onChange={(event) => applySelectionCommand(chain => chain
-              .updateAttributes("paragraph", { lineSpacing: Number(event.target.value) })
-              .updateAttributes("heading", { lineSpacing: Number(event.target.value) }))}
-          >
-            {[...new Set([1, 1.15, 1.375, 1.5, 2, 2.5, 3, 4, paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing)])].sort((a, b) => a - b).map(value => <option key={value} value={value}>Lines {value === 1.375 ? "Default" : value}</option>)}
-          </select>
+          <Input type="number" aria-label="Line spacing" title="Line spacing" min={1} max={4} step="any" className="h-8 w-16 px-1 text-[11px]" key={String(paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing))} defaultValue={paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing)} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={event => { const value = paragraphValue("lineSpacing", event.currentTarget.value); applySelectionCommand(chain => chain.updateAttributes("paragraph", { lineSpacing: value }).updateAttributes("heading", { lineSpacing: value })); }} />
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(-1)))} title="Decrease indent (Ctrl/Cmd+[)"><IndentDecrease className="h-4 w-4" /></FormatButton>
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(1)))} title="Increase indent (Ctrl/Cmd+])"><IndentIncrease className="h-4 w-4" /></FormatButton>
 
@@ -2407,6 +2400,7 @@ export function RichTextEditor({
           </div>
 
           {/* Font size */}
+          <Input type="number" aria-label="Font size" title="Font size" min={8} max={200} step="any" className="h-8 w-16 px-1 text-xs" key={String(currentFontSize)} defaultValue={currentFontSize ?? ""} placeholder={selectedFontSize === "mixed" ? "Mixed" : "Size"} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={event => { const value = Number(event.currentTarget.value); if (event.currentTarget.value && Number.isFinite(value)) applySelectionCommand(chain => chain.setMark("textStyle", { fontSize: String(Math.max(8, Math.min(200, value))) + "px" })); }} />
           <button onMouseDown={(e) => {
             e.preventDefault();
             const cur = currentFontSize ?? 14;

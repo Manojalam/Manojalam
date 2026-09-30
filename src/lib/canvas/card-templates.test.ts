@@ -80,3 +80,37 @@ test("adjacent fields use only authored spaces and separators", () => {
   assert.match(spaced.richText, /white-space: pre-wrap/);
   assert.match(spaced.richText, /A  <\/span><span[^>]*> \| B <\/span><span[^>]*> C/);
 });
+
+test("cleared template colors and default font survive saving and inherit at render time", () => {
+  const template = newHomeworkTemplate("defaults");
+  template.style.textColor = "";
+  template.style.fillColor = "";
+  template.style.borderColor = "";
+  template.style.fontFamily = "Georgia, serif";
+  template.style.lineSpacing = 1.75;
+  template.rows[0].fields[0].color = "";
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.deepEqual(saved, template);
+  const data = cardTemplateNodeData(saved, { question: { text: "Question" } });
+  assert.equal(data.textColor, undefined);
+  assert.equal(data.fillColor, undefined);
+  assert.equal(data.borderColor, undefined);
+  assert.equal(data.fontFamily, "Georgia, serif");
+  assert.equal(data.lineSpacing, 1.75);
+  assert.match(data.richText, /color: inherit/);
+  assert.match(data.richText, /line-height: 1.75/);
+});
+
+test("card-only rows survive redesign without adding fields to the shared template", () => {
+  const template = newHomeworkTemplate("extras");
+  template.rows = template.rows.slice(0, 2);
+  const data = cardTemplateNodeData(template, { question: { text: "Question" } }, ["My <explanation>\nnext line", ""]);
+  assert.match(data.richText, /My &lt;explanation&gt;<br>next line/);
+  assert.equal(template.rows.length, 2);
+  const saved = JSON.parse(JSON.stringify(data));
+  template.rows.reverse();
+  const redesigned = cardTemplateNodeData(template, saved.cardFieldValues, saved.cardExtraRows);
+  assert.deepEqual(redesigned.cardExtraRows, data.cardExtraRows);
+  assert.match(redesigned.text, /My <explanation>\nnext line$/);
+  assert.doesNotMatch(cardTemplateNodeData(template).text, /explanation/);
+});

@@ -4,7 +4,7 @@ import { sampleLabelStyle } from "./sample-templates";
 
 export function flexibleCardLabels(data: Record<string, unknown>, settings: Pick<BoardSettings, "cardTemplates" | "sampleTemplates">) {
   const card = settings.cardTemplates?.find(item => item.id === data.cardTemplateId) ?? data.cardTemplateSnapshot as BoardCardTemplate | undefined;
-  if (card) return card.rows.flatMap(row => row.fields.map(field => ({ id: field.id, name: field.label, owner: "card:" + card.id, style: { color: field.color } as Record<string, string | number> })));
+  if (card) return card.rows.flatMap(row => row.fields.map(field => ({ id: field.id, name: field.label, owner: "card:" + card.id, style: { color: field.color || "inherit" } as Record<string, string | number> })));
   const sample = settings.sampleTemplates?.find(item => item.id === data.sampleTemplateId) ?? data.sampleTemplateSnapshot as SampleCardTemplate | undefined;
   return sample?.labels.map(label => ({ id: label.id, name: label.name, owner: "sample:" + sample.id, style: sampleLabelStyle(label) })) ?? [];
 }

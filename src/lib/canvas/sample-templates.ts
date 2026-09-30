@@ -102,7 +102,7 @@ export function normalizeSampleTemplates(value: unknown): SampleCardTemplate[] {
       labelIds.add(label.id);
       labels.push({ ...newSampleLabel(label.id, label.name.trim()),
         kind: label.kind === "sutra" || label.kind === "number" ? label.kind : "text",
-        color: normalizeHexColor(label.color) ?? "#2563eb", background: normalizeHexColor(label.background) ?? "transparent", borderColor: normalizeHexColor(label.borderColor) ?? "#cbd5e1",
+        color: label.color === "inherit" || label.color === "" ? "inherit" : normalizeHexColor(label.color) ?? "#2563eb", background: normalizeHexColor(label.background) ?? "transparent", borderColor: label.borderColor === "transparent" || label.borderColor === "" ? "transparent" : normalizeHexColor(label.borderColor) ?? "#cbd5e1",
         fontSize: bounded(label.fontSize, 20, 6, 120), lineHeight: bounded(label.lineHeight, 1.5, 1, 4), padding: bounded(label.padding, 4, 0, 32),
         fontFamily: typeof label.fontFamily === "string" && label.fontFamily.length < 200 ? label.fontFamily : "inherit",
         bold: label.bold === true, italic: label.italic === true, underline: label.underline === true,
