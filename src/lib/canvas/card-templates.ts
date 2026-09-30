@@ -74,19 +74,38 @@ export function safeCardLink(href: string | undefined): string | undefined {
   } catch { return undefined; }
 }
 
-/** Repeat the row design with independent answers, immediately after its original. */
+/** Insert beside either the original row or one of its copies without parent dependencies. */
+export function insertCardRowRepeat(repeats: CardRowRepeat[], rowId: string, anchorId: string, side: "before" | "after", id: string): CardRowRepeat[] {
+  const group = repeats.filter(repeat => repeat.rowId === rowId);
+  const anchor = anchorId ? group.findIndex(repeat => repeat.id === anchorId) : -1;
+  if (anchorId && anchor < 0) return repeats;
+  const position = anchor >= 0 ? group[anchor].position ?? "after" : side;
+  const sameSide = group.filter(repeat => (repeat.position ?? "after") === position);
+  const index = anchor >= 0 ? sameSide.findIndex(repeat => repeat.id === anchorId) + (side === "after" ? 1 : 0)
+    : side === "before" ? sameSide.length : 0;
+  sameSide.splice(index, 0, { id, rowId, position, values: {} });
+  const otherSide = group.filter(repeat => (repeat.position ?? "after") !== position);
+  return [...repeats.filter(repeat => repeat.rowId !== rowId),
+    ...(position === "before" ? [...sameSide, ...otherSide] : [...otherSide, ...sameSide])];
+}
+
+/** Repeat the row design with independent answers on either side of its original. */
 export function expandedCardRows(template: BoardCardTemplate, values: CardFieldValues, repeats: CardRowRepeat[] = []) {
-  return template.rows.flatMap((row, index) => [
-    { row, rowNumber: index + 1, values, repeatId: "", copyNumber: 0 },
-    ...repeats.filter(repeat => repeat.rowId === row.id).map((repeat, copy) => ({ row, rowNumber: index + 1, values: repeat.values, repeatId: repeat.id, copyNumber: copy + 1 })),
-  ]);
+  return template.rows.flatMap((row, index) => {
+    const copies = repeats.filter(repeat => repeat.rowId === row.id);
+    const ordered = [...copies.filter(repeat => repeat.position === "before"), ...copies.filter(repeat => repeat.position !== "before")];
+    const entries = ordered.map((repeat, copy) => ({ row, rowNumber: index + 1, values: repeat.values, repeatId: repeat.id, copyNumber: copy + 1 }));
+    entries.splice(copies.filter(repeat => repeat.position === "before").length, 0, { row, rowNumber: index + 1, values, repeatId: "", copyNumber: 0 });
+    return entries;
+  });
 }
 
 /** Escape values and label metadata, and validate link destinations. */
 export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = [], repeats: CardRowRepeat[] = []) {
   const rows = expandedCardRows(template, values, repeats);
-  const richText = rows.map(({ row, values }) => {
-    const fields = row.fields.map(field => {
+  // Template rows define paragraphs; repeated fields flow within that paragraph.
+  const richText = template.rows.map(row => {
+    const fields = rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => {
       const value = values[field.id];
       if (!value?.text) return "";
       const text = escapeHtml(value.text).replace(/\r?\n/g, "<br>");
@@ -97,10 +116,10 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
         ? `${escapeHtml(parts[1]).replace(/\r?\n/g, "<br>")}<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(parts[2]).replace(/\r?\n/g, "<br>")}</a>${escapeHtml(parts[3]).replace(/\r?\n/g, "<br>")}`
         : text;
       return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}">${content}</span>`;
-    }).join("");
+    }).join("")).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
   }).join("") + extraRows.filter(row => row.length).map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
-  const text = rows.map(({ row, values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).concat(extraRows.filter(row => row.length)).join("\n");
+  const text = template.rows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("")).concat(extraRows.filter(row => row.length)).join("\n");
   return { richText, text };
 }
 
@@ -108,7 +127,7 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
 export function cardSections(data: Record<string, unknown>): CardSection[] {
   const sections = Array.isArray(data.cardSections) ? data.cardSections.filter(section => section && typeof section.id === "string" && section.values && typeof section.values === "object") : [];
   if (sections.length) return sections.map(section => ({ id: section.id, values: structuredClone(section.values), extraRows: Array.isArray(section.extraRows) ? section.extraRows.filter((row: unknown) => typeof row === "string") : [],
-    ...(Array.isArray(section.rowRepeats) ? { rowRepeats: section.rowRepeats.flatMap((repeat: CardRowRepeat) => repeat && typeof repeat.id === "string" && typeof repeat.rowId === "string" && repeat.values && typeof repeat.values === "object" && !Array.isArray(repeat.values) ? [{ id: repeat.id, rowId: repeat.rowId, values: structuredClone(repeat.values) }] : []) } : {}),
+    ...(Array.isArray(section.rowRepeats) ? { rowRepeats: section.rowRepeats.flatMap((repeat: CardRowRepeat) => repeat && typeof repeat.id === "string" && typeof repeat.rowId === "string" && repeat.values && typeof repeat.values === "object" && !Array.isArray(repeat.values) ? [{ id: repeat.id, rowId: repeat.rowId, ...(repeat.position === "before" || repeat.position === "after" ? { position: repeat.position } : {}), values: structuredClone(repeat.values) }] : []) } : {}),
   }));
   return [{ id: "first", values: structuredClone((data.cardFieldValues ?? {}) as CardFieldValues), extraRows: Array.isArray(data.cardExtraRows) ? data.cardExtraRows.filter((row: unknown) => typeof row === "string") : [] }];
 }
