@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { BoardCardTemplate } from "@/lib/types";
 import { generateId } from "@/lib/utils";
-import { newHomeworkTemplate } from "@/lib/canvas/card-templates";
+import { newHomeworkTemplate, savedHomeworkTemplate } from "@/lib/canvas/card-templates";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Button } from "@/components/ui/button";
 import { CardTemplateDesigner } from "./CardTemplateDesigner";
@@ -21,15 +21,16 @@ export function CardTemplatesPanel() {
   const [deleting, setDeleting] = useState(false);
   const template = templates?.find(item => item.id === (chosen || selected?.data.cardTemplateId)) ?? templates?.[0];
   const selectedTemplate = templates?.find(item => item.id === selected?.data.cardTemplateId);
+  const homework = savedHomeworkTemplate(templates, chosen || (selected?.data.cardTemplateId as string | undefined));
   return <section aria-label="Fillable card templates" className="space-y-2 border-b p-3">
     <h3 className="text-xs font-semibold">Fillable card templates</h3>
     <p className="text-[10px] text-muted-foreground">Design your labels and rows once. Fill a new card for each question.</p>
     <div className="flex flex-wrap gap-1">
       <Button size="sm" className="h-8 text-xs" onClick={() => {
         const blank = newHomeworkTemplate(generateId());
-        setDesign({ ...blank, name: "My card template", rows: [{ id: generateId(), indent: 0, fields: [{ id: generateId(), label: "My label", color: "#334155", kind: "text" }] }] });
+        setDesign({ ...blank, starter: undefined, name: "My card template", rows: [{ id: generateId(), indent: 0, fields: [{ id: generateId(), label: "My label", color: "#334155", kind: "text" }] }] });
       }}>Design new template</Button>
-      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setDesign(newHomeworkTemplate(generateId()))}>Homework starter</Button>
+      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setDesign(homework ? { ...structuredClone(homework), starter: "homework" } : newHomeworkTemplate(generateId()))}>{homework ? "Edit homework template" : "Create homework template"}</Button>
     </div>
     {selected?.data.cardTemplateId ? <div className="space-y-1 rounded border p-2">
       <p className="text-xs font-medium">Selected homework card</p>

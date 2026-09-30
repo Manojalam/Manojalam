@@ -22,6 +22,7 @@ function move<T>(items: T[], index: number, delta: number): T[] {
 export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: BoardCardTemplate; onClose: () => void; onSaved: (id: string) => void }) {
   const [draft, setDraft] = useState(() => structuredClone(initial));
   const save = useCanvasStore(state => state.saveCardTemplate);
+  const saved = useCanvasStore(state => !!state.settings.cardTemplates?.some(template => template.id === initial.id));
   const linked = useCanvasStore(state => state.nodes.filter(node => node.data.cardTemplateId === initial.id).length);
   const patchRow = (id: string, patch: Partial<CardTemplateRow>) => setDraft(current => ({ ...current, rows: current.rows.map(row => row.id === id ? { ...row, ...patch } : row) }));
   const patchField = (row: CardTemplateRow, id: string, patch: Partial<CardTemplateField>) => patchRow(row.id, { fields: row.fields.map(field => field.id === id ? { ...field, ...patch } : field) });
@@ -32,6 +33,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
       <DialogHeader><DialogTitle>Design card template</DialogTitle><DialogDescription>Arrange your own labels and fields. Each row becomes a line on the card; fields on the same row flow together. Add any spaces or separators in the field text. Fill the actual answers after saving.</DialogDescription></DialogHeader>
       <div className="grid gap-6 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
         <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
+          <p className="text-xs text-muted-foreground">{saved ? "Editing your saved template. Save template updates this design." : "Creating a new template. Save template adds it to your template library."}</p>
           <label className="block text-sm">Template name<Input aria-label="Card template name" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
           <div className="flex flex-wrap gap-3">
             {([['fillColor', 'Background'], ['borderColor', 'Border'], ['textColor', 'Default text']] as const).map(([key, label]) => <ColorPicker key={key} label={label} value={draft.style[key] || undefined} onChange={color => setDraft(current => ({ ...current, style: { ...current.style, [key]: color } }))} />)}

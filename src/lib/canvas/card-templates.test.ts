@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardTemplate } from "./card-templates";
+import { cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
 import { searchSutras, sutraFieldValue } from "../sanskrit/sutra-search";
 
 test("card layout renders custom labels, rows, indentation and safe sūtra links", () => {
@@ -113,4 +113,27 @@ test("card-only rows survive redesign without adding fields to the shared templa
   assert.deepEqual(redesigned.cardExtraRows, data.cardExtraRows);
   assert.match(redesigned.text, /My <explanation>\nnext line$/);
   assert.doesNotMatch(cardTemplateNodeData(template).text, /explanation/);
+});
+
+test("homework shortcut reopens the saved design including renamed templates and custom rows", () => {
+  const template = newHomeworkTemplate("saved-homework");
+  template.name = "My custom chart";
+  template.style.lineSpacing = 1.75;
+  template.rows = [{ id: "custom-row", indent: 3, fields: [{ id: "custom-field", label: "Notes", color: "", kind: "text" }] }];
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])));
+  assert.deepEqual(savedHomeworkTemplate(saved), template);
+  const copy = { ...structuredClone(template), id: "copy" };
+  assert.equal(savedHomeworkTemplate([...saved, copy], template.id)?.id, template.id);
+  assert.equal(savedHomeworkTemplate([...saved, copy])?.id, copy.id);
+  assert.equal(savedHomeworkTemplate([]), undefined);
+});
+
+test("homework shortcut recognizes previously saved starters without confusing custom templates", () => {
+  const legacy = newHomeworkTemplate("legacy");
+  delete legacy.starter;
+  legacy.name = "Renamed homework";
+  legacy.style.lineSpacing = 1.75;
+  const custom = { ...structuredClone(legacy), id: "custom", rows: [{ id: "my-row", indent: 0, fields: [{ id: "my-field", label: "My label", color: "", kind: "text" as const }] }] };
+  assert.equal(savedHomeworkTemplate([legacy, custom])?.id, legacy.id);
+  assert.equal(savedHomeworkTemplate([custom]), undefined);
 });
