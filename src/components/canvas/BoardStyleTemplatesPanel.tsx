@@ -33,12 +33,13 @@ export function BoardStyleTemplatesPanel() {
   const [editingId, setEditingId] = useState("");
   const [deleteId, setDeleteId] = useState("");
   const selected = nodes.filter(node => selectedIds.includes(node.id) && supportsStyleTemplate(node) && !node.data.locked);
+  const fieldCardSelected = selectedIds.length === 1 && nodes.some(node => node.id === selectedIds[0] && node.data.cardTemplateId);
   const linkedId = selected.length === 1 ? selected[0].data.styleTemplateId : undefined;
   const template = templates?.find(item => item.id === (editingId || linkedId)) ?? templates?.[0];
   const linkedCount = template ? nodes.filter(node => node.data.styleTemplateId === template.id).length : 0;
   const patch = (value: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => { if (template) update(template.id, value); };
 
-  return <><SampleTemplatesPanel /><details className="border-b p-3"><summary className="cursor-pointer text-xs">Earlier form templates</summary><CardTemplatesPanel /></details><section aria-label="Board style templates" className="space-y-3 border-b p-3">
+  return <>{fieldCardSelected && <CardTemplatesPanel />}<SampleTemplatesPanel />{!fieldCardSelected && <details className="border-b p-3"><summary className="cursor-pointer text-xs">Fillable card templates</summary><CardTemplatesPanel /></details>}<section aria-label="Board style templates" className="space-y-3 border-b p-3">
     <h3 className="text-xs font-semibold">Shared style templates</h3>
     <p className="text-[10px] text-muted-foreground">Create from a box, reuse its style, and edit shared colors for linked boxes.</p>
     {selected.length === 1 && <form className="flex gap-1" onSubmit={event => {

@@ -182,3 +182,31 @@ test("new sections start blank and rendering does not print section headings or 
   assert.equal(cardTemplateNodeData(template).cardSections.length, 1);
   assert.deepEqual(cardTemplateNodeData(template).cardSections[0].values, {});
 });
+
+
+test("row repeats keep independent answers and shared design through persistence", () => {
+  const template = newHomeworkTemplate("repeat-test");
+  const original = structuredClone(template);
+  const sections: CardSection[] = [{ id: "first", values: { answer: { text: "Original" }, explanation: { text: "Last" } }, extraRows: [], rowRepeats: [
+    { id: "a", rowId: "answer_row", values: { answer: { text: "Repeat A" }, sutram: { text: "Reference", href: "https://example.com/a" } } },
+    { id: "b", rowId: "answer_row", values: { answer: { text: "Repeat B" }, example: { text: "<example>" } } },
+    { id: "c", rowId: "question_row", values: { question: { text: "Repeated question" } } },
+  ] }];
+  const data = cardTemplateNodeData(template, undefined, undefined, sections);
+  const restored = cardSections(JSON.parse(JSON.stringify(data)));
+  assert.deepEqual(restored, sections);
+  assert.deepEqual(template, original);
+  assert.equal(data.text, "\nRepeated question\nOriginal\nRepeat AReference\nRepeat B<example>\nLast");
+  assert.match(data.richText, /href="https:\/\/example.com\/a"/);
+  assert.ok(data.richText.includes("&lt;example&gt;"));
+  assert.equal((data.richText.match(/data-field-label="answer"/g) ?? []).length, 3);
+  template.rows[1].indent = 3;
+  template.rows[1].fields[0].color = "#123456";
+  const updated = renderCardSections(template, restored);
+  assert.equal((updated.richText.match(/padding-left: 3em/g) ?? []).length, 3);
+  assert.equal((updated.richText.match(/color: #123456/g) ?? []).length, 3);
+  restored[0].rowRepeats![0].values.answer.text = "Changed copy";
+  assert.equal(sections[0].rowRepeats![0].values.answer.text, "Repeat A");
+  assert.equal(restored[0].values.answer.text, "Original");
+  assert.equal(cardTemplateNodeData(template).cardSections[0].rowRepeats, undefined);
+});

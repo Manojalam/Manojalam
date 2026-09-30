@@ -1,4 +1,4 @@
-import type { BoardCardTemplate, CardFieldValues, CardSection } from "../types";
+import type { BoardCardTemplate, CardFieldValues, CardRowRepeat, CardSection } from "../types";
 import { normalizeHexColor } from "./custom-colors";
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -74,9 +74,18 @@ export function safeCardLink(href: string | undefined): string | undefined {
   } catch { return undefined; }
 }
 
+/** Repeat the row design with independent answers, immediately after its original. */
+export function expandedCardRows(template: BoardCardTemplate, values: CardFieldValues, repeats: CardRowRepeat[] = []) {
+  return template.rows.flatMap((row, index) => [
+    { row, rowNumber: index + 1, values, repeatId: "", copyNumber: 0 },
+    ...repeats.filter(repeat => repeat.rowId === row.id).map((repeat, copy) => ({ row, rowNumber: index + 1, values: repeat.values, repeatId: repeat.id, copyNumber: copy + 1 })),
+  ]);
+}
+
 /** Escape values and label metadata, and validate link destinations. */
-export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = []) {
-  const richText = template.rows.map(row => {
+export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = [], repeats: CardRowRepeat[] = []) {
+  const rows = expandedCardRows(template, values, repeats);
+  const richText = rows.map(({ row, values }) => {
     const fields = row.fields.map(field => {
       const value = values[field.id];
       if (!value?.text) return "";
@@ -91,19 +100,21 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
     }).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
   }).join("") + extraRows.filter(row => row.length).map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
-  const text = template.rows.map(row => row.fields.map(field => values[field.id]?.text ?? "").join("")).concat(extraRows.filter(row => row.length)).join("\n");
+  const text = rows.map(({ row, values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).concat(extraRows.filter(row => row.length)).join("\n");
   return { richText, text };
 }
 
 /** Older cards become the first section without changing any of their answers. */
 export function cardSections(data: Record<string, unknown>): CardSection[] {
   const sections = Array.isArray(data.cardSections) ? data.cardSections.filter(section => section && typeof section.id === "string" && section.values && typeof section.values === "object") : [];
-  if (sections.length) return sections.map(section => ({ id: section.id, values: structuredClone(section.values), extraRows: Array.isArray(section.extraRows) ? section.extraRows.filter((row: unknown) => typeof row === "string") : [] }));
+  if (sections.length) return sections.map(section => ({ id: section.id, values: structuredClone(section.values), extraRows: Array.isArray(section.extraRows) ? section.extraRows.filter((row: unknown) => typeof row === "string") : [],
+    ...(Array.isArray(section.rowRepeats) ? { rowRepeats: section.rowRepeats.flatMap((repeat: CardRowRepeat) => repeat && typeof repeat.id === "string" && typeof repeat.rowId === "string" && repeat.values && typeof repeat.values === "object" && !Array.isArray(repeat.values) ? [{ id: repeat.id, rowId: repeat.rowId, values: structuredClone(repeat.values) }] : []) } : {}),
+  }));
   return [{ id: "first", values: structuredClone((data.cardFieldValues ?? {}) as CardFieldValues), extraRows: Array.isArray(data.cardExtraRows) ? data.cardExtraRows.filter((row: unknown) => typeof row === "string") : [] }];
 }
 
 export function renderCardSections(template: BoardCardTemplate, sections: CardSection[]) {
-  const content = sections.map(section => renderCardTemplate(template, section.values, section.extraRows));
+  const content = sections.map(section => renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats));
   return {
     richText: content.map(section => section.richText).join(`<p style="line-height: ${template.style.lineSpacing}"><br></p>`),
     text: content.map(section => section.text).join("\n\n"),

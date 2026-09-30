@@ -628,6 +628,7 @@ export function SelectionToolbar() {
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
+  const fieldCard = selected.length === 1 && selected[0].data.cardTemplateId && !selected[0].data.freeCardLayout ? selected[0] : null;
   const selectedShapes = selected.filter((node) => node.type === "shape");
   const allSelectedAreShapes = selectedShapes.length === selected.length;
   const shapeTransformTargets = selected.filter(supportsShapeTransform);
@@ -830,6 +831,13 @@ export function SelectionToolbar() {
         controls={toolbarMove}
         label="Move shape toolbar"
       />
+      {fieldCard && <button
+        type="button"
+        className="mx-1 flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
+        disabled={!!fieldCard.data.locked}
+        onPointerDown={event => event.stopPropagation()}
+        onClick={event => { event.stopPropagation(); useUIStore.getState().setFillingCardNodeId(fieldCard.id); }}
+      ><Rows3 className="h-4 w-4" />Fill fields / sections</button>}
       <Divider />
       {singleId && (
         <>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
-import { cardSections, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
+import { cardSections, expandedCardRows, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,18 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
   const [activeId, setActiveId] = useState(initialSections[0].id);
   const fieldsRef = useRef<HTMLFieldSetElement>(null);
   const section = sections.find(item => item.id === activeId) ?? sections[0];
-  const values = section.values;
+  const sectionIndex = sections.findIndex(item => item.id === section.id);
+  const moveSection = (direction: -1 | 1) => {
+    if (locked || savingNext) return;
+    setSections(current => {
+      const index = current.findIndex(item => item.id === section.id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const reordered = [...current];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  };
   const extraRows = section.extraRows;
   const setExtraRows = (change: (rows: string[]) => string[]) => setSections(current => current.map(item => item.id === section.id ? { ...item, extraRows: change(item.extraRows) } : item));
   const addSection = () => {
@@ -50,7 +61,17 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
   const update = useCanvasStore(state => state.updateCardSections);
   const create = useCanvasStore(state => state.createCardFromTemplate);
   const available = useCanvasStore(state => !!state.settings.cardTemplates?.some(item => item.id === template.id));
-  const patch = (id: string, value: Partial<CardFieldValues[string]>) => setSections(current => current.map(item => item.id === section.id ? { ...item, values: { ...item.values, [id]: { ...(item.values[id] ?? { text: "" }), ...value } } } : item));
+  const patch = (id: string, value: Partial<CardFieldValues[string]>, repeatId: string) => setSections(current => current.map(item => {
+    if (item.id !== section.id) return item;
+    const patchValues = (values: CardFieldValues) => ({ ...values, [id]: { ...(values[id] ?? { text: "" }), ...value } });
+    return repeatId
+      ? { ...item, rowRepeats: item.rowRepeats?.map(repeat => repeat.id === repeatId ? { ...repeat, values: patchValues(repeat.values) } : repeat) }
+      : { ...item, values: patchValues(item.values) };
+  }));
+  const repeatRow = (rowId: string) => setSections(current => current.map(item => item.id === section.id
+    ? { ...item, rowRepeats: [...(item.rowRepeats ?? []), { id: crypto.randomUUID(), rowId, values: {} }] } : item));
+  const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
+    ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
     <DialogContent data-card-fill-panel onCloseAutoFocus={event => event.preventDefault()}
       className="top-4 bottom-4 w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
@@ -64,17 +85,25 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
           <label className="block text-sm font-medium">Section to fill<select aria-label="Section to fill" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={section.id} onChange={event => setActiveId(event.target.value)}>{sections.map((item, index) => <option key={item.id} value={item.id}>Section {index + 1} of {sections.length}</option>)}</select></label>
-          <p className="text-xs text-muted-foreground">All sections appear in this same box. Save card saves them together.</p>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === 0} onClick={() => moveSection(-1)}>Move up</Button>
+            <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === sections.length - 1} onClick={() => moveSection(1)}>Move down</Button>
+          </div>
+          <p role="status" className="text-xs text-muted-foreground">Section {sectionIndex + 1} of {sections.length}. Move this section with all its values and extra rows. Save card saves the new order.</p>
         </div>
+        <p className="text-xs text-muted-foreground">Repeat any row to fill another set of its fields in this section only. The template stays unchanged.</p>
         <fieldset ref={fieldsRef} disabled={locked} className="space-y-4">
-          {template.rows.map(row => <div key={row.id} className="space-y-3 rounded-md border p-3">
+          {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <div key={repeatId || row.id} role="group" aria-label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`} className="space-y-3 rounded-md border p-3">
+            <div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>{repeatId
+              ? <Button type="button" size="sm" variant="ghost" onClick={() => removeRepeat(repeatId)}>Remove repeat</Button>
+              : <Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id)}>Repeat row {rowNumber}</Button>}</div>
             {row.fields.map(field => <div key={field.id} className="space-y-1">
-              <label htmlFor={`card-field-${field.id}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
-              {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value)} />}
-              {field.kind === "multiline" ? <textarea id={`card-field-${field.id}`} className="min-h-24 w-full rounded-md border bg-background p-2 text-sm" value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value })} />
-                : <Input id={`card-field-${field.id}`} value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value })} />}
+              <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
+              {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value, repeatId)} />}
+              {field.kind === "multiline" ? <textarea id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="min-h-24 w-full rounded-md border bg-background p-2 text-sm" value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value }, repeatId)} />
+                : <Input id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} value={values[field.id]?.text ?? ""} onChange={event => patch(field.id, { text: event.target.value }, repeatId)} />}
               {(field.kind === "link" || field.kind === "sutra") && <>
-                <Input aria-label={`${field.label} link`} placeholder="Optional link (https://…)" value={values[field.id]?.href ?? ""} onChange={event => patch(field.id, { href: event.target.value })} />
+                <Input aria-label={`${field.label} link`} placeholder="Optional link (https://…)" value={values[field.id]?.href ?? ""} onChange={event => patch(field.id, { href: event.target.value }, repeatId)} />
                 {!!values[field.id]?.href && !safeCardLink(values[field.id].href) && <p className="text-xs text-destructive">Use a full https://, http:// or mailto: link. This value will display as plain text until corrected.</p>}
               </>}
             </div>)}
@@ -92,10 +121,14 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
             <CardTemplatePreview template={template} sections={sections} />
           </div>
         </details>
+        <details className="rounded border p-3">
+          <summary className="cursor-pointer text-sm">Advanced: switch to free text</summary>
+          <p className="my-2 text-xs text-muted-foreground">This switches this card from filling fields in this panel to editing text directly on the board. To keep using fields and sections, use Save card.</p>
+          <Button type="button" variant="outline" disabled={locked || savingNext} onClick={() => { update(nodeId, sections); onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
+        </details>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={savingNext} onClick={onClose}>Cancel</Button>
-          <Button type="button" disabled={locked || savingNext} onClick={() => { update(nodeId, sections); onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
           <Button type="button" variant="outline" disabled={locked || savingNext} onClick={addSection}>Add another section</Button>
           <Button type="submit" disabled={locked || savingNext}>Save card</Button>
           <Button type="button" disabled={locked || !available || savingNext} onClick={async () => {

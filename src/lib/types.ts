@@ -292,10 +292,17 @@ export interface BoardCardTemplate {
 
 export type CardFieldValues = Record<string, { text: string; href?: string }>;
 
+export interface CardRowRepeat {
+  id: string;
+  rowId: string;
+  values: CardFieldValues;
+}
+
 export interface CardSection {
   id: string;
   values: CardFieldValues;
   extraRows: string[];
+  rowRepeats?: CardRowRepeat[];
 }
 
 export interface BoardSettings {
