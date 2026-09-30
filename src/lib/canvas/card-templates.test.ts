@@ -245,14 +245,14 @@ test("repeated fields flow inline and preserve only authored whitespace and line
     { id: "after", rowId: "answer_row", values: { answer: { text: "After" } } },
   ];
   const inline = renderCardTemplate(template, values, [], repeats);
-  assert.equal(inline.text, "\nBefore Original After\n");
-  assert.equal((inline.richText.match(/<p /g) ?? []).length, 3);
+  assert.equal(inline.text, "Before Original After");
+  assert.equal((inline.richText.match(/<p /g) ?? []).length, 1);
   assert.ok(!inline.richText.includes("<br>"));
   repeats[1].values.answer.text = "\nAfter\nAnother line";
   const multiline = renderCardTemplate(template, values, [], repeats);
-  assert.equal(multiline.text, "\nBefore Original \nAfter\nAnother line\n");
+  assert.equal(multiline.text, "Before Original \nAfter\nAnother line");
   assert.equal((multiline.richText.match(/<br>/g) ?? []).length, 2);
-  assert.equal((multiline.richText.match(/<p /g) ?? []).length, 3);
+  assert.equal((multiline.richText.match(/<p /g) ?? []).length, 1);
 });
 
 
@@ -273,4 +273,24 @@ test("field placement preserves IDs, values and styles across rows and new rows"
   assert.deepEqual(template.rows, original);
   assert.equal(placeTemplateField(rows, "sutram", "missing"), rows);
   assert.equal(placeTemplateField(rows, "sutram", "new", "sutram"), rows);
+});
+
+
+test("optional empty rows and sections leave no gaps but keep their saved fields", () => {
+  const template = newHomeworkTemplate("optional");
+  const values = { question: { text: "Question" }, answer: { text: "  \n " }, explanation: { text: "Explanation\nsecond line" } };
+  const sections: CardSection[] = [
+    { id: "empty", values: {}, extraRows: [" ", "\n"] },
+    { id: "filled", values, extraRows: ["", "  "] },
+    { id: "empty-last", values: {}, extraRows: [] },
+  ];
+  const data = cardTemplateNodeData(template, undefined, undefined, sections);
+  assert.equal(data.text, "Question\nExplanation\nsecond line");
+  assert.equal((data.richText.match(/<p /g) ?? []).length, 2);
+  assert.equal((data.richText.match(/<br>/g) ?? []).length, 1);
+  assert.deepEqual(cardSections(JSON.parse(JSON.stringify(data))), sections);
+  assert.equal(renderCardTemplate(template).richText, "");
+  const repeated = renderCardTemplate(template, {}, [], [{ id: "repeat", rowId: "answer_row", values: { answer: { text: "Only repeat filled" } } }]);
+  assert.equal(repeated.text, "Only repeat filled");
+  assert.equal((repeated.richText.match(/<p /g) ?? []).length, 1);
 });

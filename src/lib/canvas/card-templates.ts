@@ -103,8 +103,10 @@ export function expandedCardRows(template: BoardCardTemplate, values: CardFieldV
 /** Escape values and label metadata, and validate link destinations. */
 export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = [], repeats: CardRowRepeat[] = []) {
   const rows = expandedCardRows(template, values, repeats);
+  const visibleRows = template.rows.filter(row => rows.some(entry => entry.row.id === row.id && row.fields.some(field => entry.values[field.id]?.text.trim())));
+  const filledExtraRows = extraRows.filter(row => row.trim());
   // Template rows define paragraphs; repeated fields flow within that paragraph.
-  const richText = template.rows.map(row => {
+  const richText = visibleRows.map(row => {
     const fields = rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => {
       const value = values[field.id];
       if (!value?.text) return "";
@@ -118,8 +120,8 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}">${content}</span>`;
     }).join("")).join("");
     return `<p style="text-align: left; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${template.style.lineSpacing}">${fields}</p>`;
-  }).join("") + extraRows.filter(row => row.length).map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
-  const text = template.rows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("")).concat(extraRows.filter(row => row.length)).join("\n");
+  }).join("") + filledExtraRows.map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
+  const text = visibleRows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("")).concat(filledExtraRows).join("\n");
   return { richText, text };
 }
 
@@ -133,7 +135,7 @@ export function cardSections(data: Record<string, unknown>): CardSection[] {
 }
 
 export function renderCardSections(template: BoardCardTemplate, sections: CardSection[]) {
-  const content = sections.map(section => renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats));
+  const content = sections.map(section => renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats)).filter(section => section.text.trim());
   return {
     richText: content.map(section => section.richText).join(`<p style="line-height: ${template.style.lineSpacing}"><br></p>`),
     text: content.map(section => section.text).join("\n\n"),
