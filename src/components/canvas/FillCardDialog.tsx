@@ -102,6 +102,11 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext }: { nod
             <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === sections.length - 1} onClick={() => moveSection(1)}>Move down</Button>
           </div>
           <p role="status" className="text-xs text-muted-foreground">Section {sectionIndex + 1} of {sections.length}. Move this section with all its values and extra rows. Changes save automatically.</p>
+          <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={() => {
+            const id = useCanvasStore.getState().moveCardSectionsToNewBox(nodeId, section.id);
+            if (id) onNext(id);
+          }}>Move from this section to new box</Button>
+          <p className="text-xs text-muted-foreground">Moves section {sectionIndex + 1} and all following sections into a new box. Earlier sections stay here.{sectionIndex === 0 ? " This box will be left empty." : ""}</p>
         </div>
         <p className="text-xs text-muted-foreground">Repeat before or after to add another set of fields in this section. Repeated fields flow on the same line. Add your own spaces; press Enter inside a field for a new line.</p>
         <fieldset ref={fieldsRef} disabled={locked || savingNext} className="space-y-4">
