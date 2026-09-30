@@ -34,6 +34,18 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
   const [activeId, setActiveId] = useState(initialSections[0].id);
   const fieldsRef = useRef<HTMLFieldSetElement>(null);
   const section = sections.find(item => item.id === activeId) ?? sections[0];
+  const sectionIndex = sections.findIndex(item => item.id === section.id);
+  const moveSection = (direction: -1 | 1) => {
+    if (locked || savingNext) return;
+    setSections(current => {
+      const index = current.findIndex(item => item.id === section.id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const reordered = [...current];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  };
   const values = section.values;
   const extraRows = section.extraRows;
   const setExtraRows = (change: (rows: string[]) => string[]) => setSections(current => current.map(item => item.id === section.id ? { ...item, extraRows: change(item.extraRows) } : item));
@@ -64,7 +76,11 @@ function CardForm({ nodeId, template, initialSections, locked, onClose, onNext }
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
           <label className="block text-sm font-medium">Section to fill<select aria-label="Section to fill" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={section.id} onChange={event => setActiveId(event.target.value)}>{sections.map((item, index) => <option key={item.id} value={item.id}>Section {index + 1} of {sections.length}</option>)}</select></label>
-          <p className="text-xs text-muted-foreground">All sections appear in this same box. Save card saves them together.</p>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === 0} onClick={() => moveSection(-1)}>Move up</Button>
+            <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === sections.length - 1} onClick={() => moveSection(1)}>Move down</Button>
+          </div>
+          <p role="status" className="text-xs text-muted-foreground">Section {sectionIndex + 1} of {sections.length}. Move this section with all its values and extra rows. Save card saves the new order.</p>
         </div>
         <fieldset ref={fieldsRef} disabled={locked} className="space-y-4">
           {template.rows.map(row => <div key={row.id} className="space-y-3 rounded-md border p-3">
