@@ -265,7 +265,7 @@ interface CanvasState {
   deleteSampleTemplate: (id: string) => void;
   createCardFromTemplate: (id: string) => string | null;
   updateCardValues: (nodeId: string, values: CardFieldValues, extraRows?: string[]) => void;
-  updateCardSections: (nodeId: string, sections: CardSection[]) => void;
+  updateCardSections: (nodeId: string, sections: CardSection[], history?: boolean) => void;
   detachCardTemplate: (nodeId: string) => void;
   deleteCardTemplate: (id: string) => void;
   updateStyleTemplate: (id: string, patch: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => void;
@@ -2488,7 +2488,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     sections[0] = { ...sections[0], values, extraRows: extraRows ?? sections[0].extraRows };
     get().updateCardSections(nodeId, sections);
   },
-  updateCardSections: (nodeId, sections) => {
+  updateCardSections: (nodeId, sections, history = true) => {
     if (!sections.length) return;
     const state = get();
     const node = state.nodes.find(item => item.id === nodeId);
@@ -2496,7 +2496,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const template = state.settings.cardTemplates?.find(item => item.id === node.data.cardTemplateId)
       ?? normalizeCardTemplates([node.data.cardTemplateSnapshot])[0];
     if (!template) return;
-    state.pushHistory();
+    if (history) state.pushHistory();
     set({ nodes: state.nodes.map(item => item.id === nodeId
       ? { ...item, data: { ...item.data, ...cardTemplateNodeData({ ...template, style: { ...template.style, lineSpacing: typeof node.data.lineSpacing === "number" ? node.data.lineSpacing : template.style.lineSpacing } }, undefined, undefined, sections) } }
       : item), saveStatus: "unsaved" });
