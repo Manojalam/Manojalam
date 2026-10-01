@@ -1,12 +1,12 @@
 # Board PDF export
 
-The direct **Export PDF** download remains a continuous custom-size page made
+The explicit **Use image-based PDF fallback** option downloads a continuous custom-size page made
 from a lossless PNG, with link annotations. It preserves the existing renderer
 and canvas safety planning (16,384 pixels per dimension / 96 million pixels).
 It can reduce the requested raster scale on oversized boards. Raising this
 scale does not turn text into vector text.
 
-The additional **Print PDF with selectable text** action prepares an isolated,
+The default **Export PDF** action prepares an isolated,
 sandboxed HTML document and asks the browser to print it. It reuses the export
 scope, computed styles, embedded fonts/images, editor exclusion and identity
 viewport transform. The outer SVG foreignObject wrapper is removed, so the
@@ -44,7 +44,7 @@ CSS requests a custom page matching board bounds. Above the existing PDF
 one page. No new pagination is introduced. Browser rounding can change the
 physical page size slightly. Printer drivers and some browsers can override
 CSS page sizes; the web app cannot force or inspect print-dialog settings.
-Use the direct image PDF download when the browser cannot honor them.
+Select **Use image-based PDF fallback** when the browser cannot honor them.
 
 Effects such as blurred glows may be rasterized locally by the browser. Some
 filter combinations can also rasterize text. Text selection is therefore
