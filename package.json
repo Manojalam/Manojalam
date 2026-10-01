@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:browser-pdf": "node scripts/run-browser-pdf-tests.mjs",
     "prepare:import-assets": "node scripts/prepare-import-assets.mjs",
     "predev": "npm run prepare:import-assets",
     "dev": "next dev",

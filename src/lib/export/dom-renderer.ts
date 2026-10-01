@@ -88,6 +88,7 @@ export const DOM_EXPORT_COMPUTED_STYLE_PROPERTIES = [
   "font-variation-settings", "line-height", "letter-spacing", "word-spacing",
   "text-align", "text-align-last", "text-decoration", "text-decoration-color",
   "text-decoration-line", "text-decoration-style", "text-transform", "text-indent",
+  "text-decoration-thickness", "text-decoration-skip-ink", "text-underline-position", "text-underline-offset",
   "text-shadow", "white-space", "word-break", "overflow-wrap", "hyphens",
   "text-wrap", "text-wrap-mode", "text-wrap-style",
   "writing-mode", "direction", "unicode-bidi", "vertical-align", "tab-size",
@@ -149,6 +150,8 @@ export interface ExportLayoutAdjustment {
 }
 
 export interface CloneReactFlowViewportOptions extends DomCloneSelection {
+  /** Native print supports CSS effects directly; SVG-image export needs substitutes. */
+  preserveNativeEffects?: boolean;
   signal?: AbortSignal;
   /** The visible board color used to preserve translucent node paint when the output itself is transparent. */
   appearanceBackground?: string | null;
@@ -1265,7 +1268,7 @@ export function cloneReactFlowViewport(
     }
     if (options.headerOverlay) appendExportHeaderOverlay(clone, options.headerOverlay);
     restoreExportElements(clone);
-    normalizeExportSurfaceEffects(clone);
+    if (!options.preserveNativeEffects) normalizeExportSurfaceEffects(clone);
     clearBoardDependentExportBackgrounds(
       clone,
       isTransparentExportBackground(options.background)

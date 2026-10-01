@@ -23,6 +23,7 @@ import {
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
+import { printBoardPdf } from "@/lib/export/browser-pdf";
 import { exportHierarchySections } from "@/lib/export/hierarchy-section-export";
 import {
   resolveHierarchySectionExportPlan,
@@ -525,6 +526,30 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     }
   };
 
+  const printSelectablePdf = async () => {
+    if (!root || !resolved.value || sectionMode) return;
+    setExporting(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const toastId = toast.loading("Preparing selectable PDF print document...");
+    try {
+      await printBoardPdf({
+        viewport: root, bounds: resolved.value.bounds,
+        nodeIds: resolved.value.target.renderNodeIds, edgeIds: resolved.value.target.edgeIds,
+        title: request.title || boardTitle, background: exportBackground,
+        backgroundTexture: includeBackground ? boardTextureStyle(canvasTexture) : null,
+        appearanceBackground: boardBackground.appearanceBackground,
+        signal: controller.signal,
+      });
+      toast.success("Print requested. Choose Save as PDF and check that the preview has one page.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to prepare browser printing. Use Export PDF instead.", { id: toastId, duration: 8000 });
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+      setExporting(false);
+    }
+  };
+
   const closeDialog = () => {
     abortControllerRef.current?.abort();
     close();
@@ -886,6 +911,15 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             </div>
           </section>
 
+          {!sectionMode && format === "pdf" && (
+            <section className="space-y-2 rounded-lg border p-3" aria-label="Selectable PDF">
+              <p className="text-xs font-semibold">PDF with selectable text</p>
+              <p className="text-xs text-muted-foreground">Use Chrome or Edge and choose Save as PDF. Keep backgrounds enabled, margins at None, scale at 100%, and headers/footers off. Check that the preview shows one continuous page. Some browsers or printers override custom page sizes.</p>
+              <Button type="button" variant="outline" disabled={exporting || !root || !resolved.value} onClick={() => void printSelectablePdf()}>Print PDF with selectable text</Button>
+              <p className="text-[10px] text-muted-foreground">Browser printing preserves text and simple shapes where supported; glows and other effects may be images. Export PDF below remains the image-based fallback, with clickable links. The image scale control applies only to that fallback.</p>
+              <p className="text-[10px] text-muted-foreground">Sanskrit glyphs stay browser-shaped, but copied text can contain split clusters or missing characters depending on the font and PDF viewer. Very long boards are scaled proportionally to fit one custom page.</p>
+            </section>
+          )}
           {sectionMode && format === "pdf" && (
             <section className="space-y-2.5">
               <Label className="text-xs">Print paper</Label>

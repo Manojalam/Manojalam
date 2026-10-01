@@ -16,6 +16,12 @@ import {
 } from "./dom-renderer";
 import { ExportError } from "./errors";
 
+test("retains Sanskrit link underline placement and thickness in exported styles", () => {
+  for (const property of ["text-decoration-thickness", "text-decoration-skip-ink", "text-underline-position", "text-underline-offset"] as const) {
+    assert.ok(DOM_EXPORT_COMPUTED_STYLE_PROPERTIES.includes(property));
+  }
+});
+
 function fontFailure(code: "FONT_LOAD_TIMEOUT" | "FONT_LOAD_FAILED"): ExportError {
   return new ExportError({
     stage: "prepare-assets",
