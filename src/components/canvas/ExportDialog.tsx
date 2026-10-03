@@ -23,7 +23,7 @@ import {
 import { ExportError } from "@/lib/export/errors";
 import { createPngExportPlan } from "@/lib/export/limits";
 import { exportBoardVisual } from "@/lib/export/pipeline";
-import { printBoardPdf } from "@/lib/export/browser-pdf";
+import { downloadBoardPdf } from "@/lib/export/browser-pdf";
 import { exportHierarchySections } from "@/lib/export/hierarchy-section-export";
 import {
   resolveHierarchySectionExportPlan,
@@ -535,9 +535,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     setExporting(true);
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const toastId = toast.loading("Preparing selectable PDF print document...");
+    const toastId = toast.loading("Preparing PDF download...");
     try {
-      await printBoardPdf({
+      await downloadBoardPdf({
         viewport: root, bounds: resolved.value.bounds,
         nodeIds: resolved.value.target.renderNodeIds, edgeIds: resolved.value.target.edgeIds,
         title: request.title || boardTitle, background: exportBackground,
@@ -545,9 +545,9 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
         appearanceBackground: boardBackground.appearanceBackground,
         signal: controller.signal,
       });
-      toast.success("Print requested. Choose Save as PDF and check that the preview has one page.", { id: toastId });
+      toast.success("PDF download started.", { id: toastId });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to prepare browser printing. You can choose the image-based PDF fallback.", { id: toastId, duration: 8000 });
+      toast.error(error instanceof Error ? error.message : "Unable to prepare PDF. You can choose the image-based PDF fallback.", { id: toastId, duration: 8000 });
     } finally {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setExporting(false);
@@ -918,11 +918,11 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
           {!sectionMode && format === "pdf" && (
             <section className="space-y-2 rounded-lg border p-3" aria-label="Selectable PDF">
-              <p className="text-xs font-semibold">Export PDF uses browser-rendered text</p>
-              <p className="text-xs text-muted-foreground">Use Chrome or Edge and choose Save as PDF. Keep backgrounds enabled, margins at None, scale at 100%, and headers/footers off. Check that the preview shows one continuous page. Some browsers or printers override custom page sizes.</p>
-              <p className="text-[10px] text-muted-foreground">Click Export PDF below, then Save as PDF in the browser dialog. Text and simple shapes are preserved where supported; glows and other effects may be images.</p>
+              <p className="text-xs font-semibold">Download a continuous PDF</p>
+              <p className="text-xs text-muted-foreground">Export PDF downloads the file directly. Text and simple shapes stay vector; glows and some effects may be images. The board is processed by our server to create the PDF.</p>
+              <p className="text-[10px] text-muted-foreground">Vector text has no resolution setting. Choose the image fallback below to set its pixel resolution or export without signing in.</p>
               <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={rasterPdfFallback} disabled={exporting} onChange={event => setRasterPdfFallback(event.target.checked)} />Use image-based PDF fallback (text is not selectable)</label>
-              <p className="text-[10px] text-muted-foreground">Sanskrit glyphs stay browser-shaped, but copied text can contain split clusters or missing characters depending on the font and PDF viewer. Very long boards are scaled proportionally to fit one custom page.</p>
+              <p className="text-[10px] text-muted-foreground">Original text is included for searching and copying. Very long boards are scaled proportionally to fit one custom page.</p>
             </section>
           )}
           {sectionMode && format === "pdf" && (
@@ -1073,7 +1073,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                 <span className="text-right font-medium">{formatDimension(bounds.width)} × {formatDimension(bounds.height)}</span>
                 <span className="text-muted-foreground">Scale</span>
                 <span className="text-right font-medium">
-                  {browserPdf ? "Browser-rendered text" : format !== "svg" && activeEffectiveScale ? formatScale(activeEffectiveScale) : "Vector"}
+                  {browserPdf ? "Vector text" : format !== "svg" && activeEffectiveScale ? formatScale(activeEffectiveScale) : "Vector"}
                 </span>
                 <span className="text-muted-foreground">
                   {browserPdf ? "Custom page" : sectionMode ? "Largest image" : format === "pdf" ? "Embedded image" : "Output"}
@@ -1098,7 +1098,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                     : format === "svg"
                       ? "Vector · no canvas limit"
                       : format === "pdf"
-                        ? browserPdf ? "Single page · browser Save as PDF" : "Single page · image fallback"
+                        ? browserPdf ? "Single page · direct download" : "Single page · image fallback"
                         : activeAdjusted ? "Adjusted to safe size" : "Safe"}
                 </span>
               </div>

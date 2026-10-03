@@ -8,6 +8,9 @@ export function createBrowserPdfDocument(source: string, width: number, height: 
   const wrapper = parsed.querySelector("svg > foreignObject > div");
   if (!wrapper || parsed.querySelector("parsererror")) throw new Error("The printable board could not be prepared.");
   const doc = document.implementation.createHTMLDocument(title);
+  const charset = doc.createElement("meta");
+  charset.setAttribute("charset", "utf-8");
+  doc.head.append(charset);
   const style = doc.createElement("style");
   const scale = page.pointsPerPixel / 0.75;
   style.textContent = `
@@ -38,7 +41,7 @@ export function createBrowserPdfDocument(source: string, width: number, height: 
 function abortable<T>(work: Promise<T>, signal?: AbortSignal, timeout = 30_000): Promise<T> {
   return new Promise((resolve, reject) => {
     const stop = () => finish(() => reject(new DOMException("Export cancelled", "AbortError")));
-    const timer = setTimeout(() => finish(() => reject(new Error("Print resources timed out. Try the image PDF download instead."))), timeout);
+    const timer = setTimeout(() => finish(() => reject(new Error("PDF resources timed out. Try the image PDF download instead."))), timeout);
     function finish(action: () => void) { clearTimeout(timer); signal?.removeEventListener("abort", stop); action(); }
     signal?.addEventListener("abort", stop, { once: true });
     if (signal?.aborted) { stop(); return; }
@@ -53,7 +56,7 @@ export async function waitForBrowserPdfResources(doc: Document, signal?: AbortSi
   await abortable(Promise.all(Array.from(root.querySelectorAll("img"), async image => {
     image.loading = "eager";
     await image.decode();
-    if (!image.naturalWidth) throw new Error("An image could not be loaded for printing.");
+    if (!image.naturalWidth) throw new Error("An image could not be loaded for PDF export.");
   })), signal);
   const images = new Set<string>();
   root.querySelectorAll("*").forEach(element => {
@@ -68,45 +71,33 @@ export async function waitForBrowserPdfResources(doc: Document, signal?: AbortSi
     const image = doc.createElement("img"); image.src = src; await image.decode();
   })), signal);
   const failedFonts = Array.from(doc.fonts).filter(font => font.status === "error");
-  if (failedFonts.length) throw new Error("A required font could not be loaded. Retry before printing Sanskrit text.");
+  if (failedFonts.length) throw new Error("A required font could not be loaded. Retry before exporting Sanskrit text.");
 }
 
-let activeFrame: HTMLIFrameElement | undefined;
-
-/** Optional native print path. The existing jsPDF download remains the fallback. */
-export async function printBoardPdf(options: PrepareDomExportSvgOptions) {
+export async function downloadBoardPdf(options: PrepareDomExportSvgOptions) {
   const nodeIds = options.nodeIds ? Array.from(options.nodeIds) : undefined;
   await waitForBrowserPdfResources(document, options.signal, options.viewport);
   const prepared = await prepareReactFlowDomSvg({ ...options, nodeIds, preserveNativeEffects: true });
-  if (nodeIds?.some(id => !prepared.includedNodeIds.includes(id))) {
-    throw new Error("Some board objects are still rendering. Wait a moment and retry printing.");
-  }
-  if (prepared.assets.warnings.length) {
-    throw new Error("Some board fonts or images could not be prepared. Retry or use the image PDF download and review its resource warnings.");
-  }
+  if (nodeIds?.some(id => !prepared.includedNodeIds.includes(id))) throw new Error("Some board objects are still rendering. Retry in a moment.");
+  if (prepared.assets.warnings.length) throw new Error("Some board fonts or images could not be prepared. Retry or use the image PDF fallback.");
   const output = createBrowserPdfDocument(prepared.source, prepared.width, prepared.height, options.title);
-  activeFrame?.remove();
-  const frame = document.createElement("iframe");
-  activeFrame = frame;
-  frame.title = "Board PDF print document";
-  frame.setAttribute("sandbox", "allow-same-origin allow-modals");
-  frame.style.cssText = `position:fixed;left:-100000px;top:0;width:${prepared.width}px;height:${prepared.height}px;border:0;`;
-  const dispose = () => { frame.remove(); if (activeFrame === frame) activeFrame = undefined; };
-  try {
-    const loaded = new Promise<void>(resolve => { frame.onload = () => resolve(); });
-    frame.srcdoc = output.html;
-    document.body.append(frame);
-    await abortable(loaded, options.signal);
-    const target = frame.contentWindow;
-    if (!target || !frame.contentDocument) throw new Error("Your browser could not open the print document. Use the image PDF download instead.");
-    await waitForBrowserPdfResources(frame.contentDocument, options.signal);
-    if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
-    target.addEventListener("afterprint", () => setTimeout(dispose, 1000), { once: true });
-    target.focus();
-    target.print();
-    return { pageWidth: output.width, pageHeight: output.height };
-  } catch (error) {
-    dispose();
-    throw error;
+  const source = new Blob([output.html]);
+  if (source.size > 40_000_000) throw new Error("This board is too large for vector PDF. Use the image PDF fallback.");
+  const compressed = await new Response(source.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+  if (compressed.size > 4_000_000) throw new Error("This board is too large for vector PDF. Use the image PDF fallback.");
+  const response = await fetch("/api/export-pdf", {
+    method: "POST", headers: { "content-type": "application/gzip" }, body: compressed, signal: options.signal,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.message || "PDF export failed. Retry or use the image PDF fallback.");
   }
+  const blob = await response.blob();
+  options.signal?.throwIfAborted();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = (options.title || "Board").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_") + ".pdf";
+  document.body.append(anchor); anchor.click(); anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
