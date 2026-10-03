@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { PDFDocument, PDFDict, PDFName } from "pdf-lib";
 
 const output = path.resolve(".tmp/direct-pdf-smoke");
 fs.mkdirSync(output, { recursive: true });
@@ -23,9 +24,9 @@ const font = fs.readFileSync(`.next/static/media/${fontName}`).toString("base64"
 const { renderBoardPdf } = await import(pathToFileURL(path.join(output, "server-pdf.mjs")));
 const phrase = "क्षत्रियः ज्ञानम् विधिनिर्णयः";
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face{font-family:Sanskrit;src:url(data:font/woff2;base64,${font})}
+@font-face{font-family:"Board Export Devanagari";src:url(data:font/woff2;base64,${font})}
 @page{size:600pt 14400pt;margin:0}html,body{margin:0;width:800px;height:19200px;overflow:hidden}
-body{font-family:Sanskrit;font-size:24px}section{position:absolute;left:20px;width:700px;padding:20px;
+body{font-family:"Board Export Devanagari";font-size:24px}section{position:absolute;left:20px;width:700px;padding:20px;
 border:2px solid blue;border-radius:30px;background:white;box-shadow:0 0 12px purple}
 p{color:blue}a{color:#cc2277;text-decoration:underline;text-underline-position:under}
 </style></head><body><div id="board-print-sheet"><section style="top:20px"><p>${phrase}</p>
@@ -33,6 +34,10 @@ p{color:blue}a{color:#cc2277;text-decoration:underline;text-underline-position:u
 <section style="top:18700px"><p>${phrase}</p><p>अन्तिमः</p></section></div>
 <script>document.body.replaceChildren();fetch('https://example.com/never')</script></body></html>`;
 const bytes = await renderBoardPdf(html);
+const structure = await PDFDocument.load(bytes);
+const nativeFonts = structure.context.enumerateIndirectObjects()
+  .map(([, object]) => object instanceof PDFDict ? (object.get(PDFName.of("BaseFont")) ?? object.get(PDFName.of("FontName")))?.toString() ?? "" : "");
+assert.ok(nativeFonts.some(name => name.replace(/-/g, "").includes("NotoSerifDevanagari")), "Visible Sanskrit must use an embedded Devanagari font, not just an invisible text layer.");
 fs.writeFileSync(path.join(output, "long-sanskrit.pdf"), bytes);
 const task = getDocument({ data: bytes });
 try {
@@ -46,4 +51,5 @@ try {
   assert.ok(!text.includes("\u0000"));
 } finally { await task.destroy(); }
 await assert.rejects(renderBoardPdf(html.replace("</body>", '<img src="http://127.0.0.1:9/blocked"></body>')));
+await assert.rejects(renderBoardPdf(html.replace(/@font-face\{[^}]+\}/, "")), /Devanagari font is missing/);
 console.log("PASS: direct renderer, one long page, off-screen text, Unicode phrases, disabled scripts, blocked external image.");

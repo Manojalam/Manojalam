@@ -1,4 +1,5 @@
 import { ExportError } from "./errors";
+import { portableFontStack, PORTABLE_DEVANAGARI_FONT } from "./portable-fonts";
 import type {
   ExportAssetFallbackAction,
   ExportAssetWarning,
@@ -23,6 +24,8 @@ export interface ExportAssetReport {
 }
 
 export interface ExportAssetOptions {
+  /** Server PDFs cannot use the source computer's installed fallback fonts. */
+  portableFonts?: boolean;
   baseUrl?: string;
   signal?: AbortSignal;
   fontTimeoutMs?: number;
@@ -860,10 +863,25 @@ async function embeddedFontCss(
   root: Element,
   context: AssetContext,
   strict: boolean,
-  warnings: ExportAssetWarning[]
+  warnings: ExportAssetWarning[],
+  portable = false
 ): Promise<string> {
+  const allFaces = documentFontFaces(warnings);
+  if (portable) {
+    const fallback = allFaces.filter(face => face.family === "noto sans devanagari");
+    if (!fallback.length) throw new Error("The portable Sanskrit font is unavailable. Reload the app before exporting PDF.");
+    const available = new Set(allFaces.map(face => face.family));
+    for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
+      if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+      const stack = element.style.getPropertyValue("font-family");
+      if (stack || element === root) element.style.setProperty("font-family", portableFontStack(stack, available), element.style.getPropertyPriority("font-family"));
+    }
+    allFaces.push(...fallback.map(face => ({ ...face, family: PORTABLE_DEVANAGARI_FONT.toLowerCase(),
+      cssText: face.cssText.replace(/font-family\s*:[^;]+;/i, `font-family: "${PORTABLE_DEVANAGARI_FONT}";`),
+    })));
+  }
   const usedFamilies = usedFontFamilies(root);
-  const faces = documentFontFaces(warnings).filter((face) =>
+  const faces = allFaces.filter((face) =>
     !usedFamilies.size || !face.family || usedFamilies.has(face.family)
   );
   const embedded = new Set<string>();
@@ -1001,7 +1019,8 @@ export async function embedDomExportAssets(
       root,
       context,
       options.strictFontEmbedding ?? false,
-      warnings
+      warnings,
+      options.portableFonts ?? false
     );
     return {
       embeddedImageCount: context.embeddedByKind.image.size,

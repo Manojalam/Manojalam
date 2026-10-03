@@ -65,3 +65,15 @@ after building (set `PDF_CHROMIUM_EXECUTABLE_PATH` on Windows/macOS). It checks 
 and rejection of an external image. Browser PDF.js search also found all 12
 occurrences of a conjunct-bearing word in the full board fixture, and selection
 copied it without missing characters.
+
+## Portable fonts
+
+Server PDF preparation retains app-provided web fonts and replaces device-only
+font stacks with an embedded Noto Sans Devanagari fallback. This can change the
+appearance of a device-only font; choose an app-provided font for consistent
+cross-device typography. The server explicitly loads the portable Indic face
+before rendering and rejects Devanagari content if it is unavailable.
+
+Vercel postbuild runs the native renderer smoke test using the shipped Linux
+Chromium binary. The test requires a visible Devanagari font in the PDF, intact
+Unicode at both ends, and rejection when the required embedded face is absent.

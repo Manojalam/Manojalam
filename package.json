@@ -10,6 +10,7 @@
     "dev": "next dev",
     "prebuild": "npm run prepare:import-assets",
     "build": "next build",
+    "postbuild": "node scripts/verify-pdf-deployment.mjs",
     "start": "next start",
     "lint": "eslint",
     "test:canvas-layers": "node scripts/run-canvas-layer-tests.mjs",
