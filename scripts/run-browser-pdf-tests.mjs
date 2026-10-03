@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const workspace = dirname(dirname(fileURLToPath(import.meta.url)));
 const output = join(workspace, ".browser-pdf-test");
 if (relative(workspace, output) !== ".browser-pdf-test") throw new Error("Unexpected test output path");
-const tests = ["browser-pdf", "pdf", "dom-renderer", "bounds", "pipeline", "svg-raster-source"];
+const tests = ["browser-pdf", "pdf", "pdf-source-text", "dom-renderer", "bounds", "pipeline", "svg-raster-source"];
 try {
   const compile = spawnSync(process.execPath, [join(workspace, "node_modules/typescript/bin/tsc"),
     "--outDir", output, "--rootDir", "src/lib", "--module", "commonjs", "--moduleResolution", "node",
