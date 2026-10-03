@@ -923,7 +923,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
               <p className="text-[10px] text-muted-foreground">Vector text has no resolution setting. Choose the image fallback below to set its pixel resolution or export without signing in.</p>
               <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={rasterPdfFallback} disabled={exporting} onChange={event => setRasterPdfFallback(event.target.checked)} />Use image-based PDF fallback (text is not selectable)</label>
               <p className="text-[10px] text-muted-foreground">Original text is included for searching and copying. Very long boards are scaled proportionally to fit one custom page.</p>
-              <p className="text-[10px] text-muted-foreground">Fonts available only on your device use embedded Noto Sans Devanagari in PDF. Choose an app-provided font for matching typography across devices.</p>
+              <p className="text-[10px] text-muted-foreground">PDF preserves your selected fonts. For device fonts, Chrome or Edge may ask for local font access; only the required font files are sent with this export. If a font cannot be embedded, choose image PDF to keep its appearance. Fonts are never silently replaced.</p>
             </section>
           )}
           {sectionMode && format === "pdf" && (

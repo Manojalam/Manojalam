@@ -13,8 +13,8 @@ The submitted PDF reproduced this with thousands of fragments and NUL characters
 Native vector text alone is insufficient.
 
 The renderer measures source words and adds an invisible standard-font text layer with
-explicit UTF-16 Unicode mappings. Original glyph mappings become zero-width
-spaces to prevent duplicate/broken extraction; visible drawing operators remain
+explicit UTF-16 Unicode mappings. Original glyph mappings and ActualText become
+neutral whitespace to prevent duplicate/broken extraction; visible drawing operators remain
 unchanged. No substitute font, OCR or reshaping is needed. Each source Unicode character has an explicit mapping for Chrome selection.
 Rotated text, wrapped words and unusual SVG arrangements can have approximate
 selection rectangles. Readers differ in whitespace and reading order. This is
@@ -68,11 +68,25 @@ copied it without missing characters.
 
 ## Portable fonts
 
-Server PDF preparation retains app-provided web fonts and replaces device-only
-font stacks with an embedded Noto Sans Devanagari fallback. This can change the
-appearance of a device-only font; choose an app-provided font for consistent
-cross-device typography. The server explicitly loads the portable Indic face
-before rendering and rejects Devanagari content if it is unavailable.
+Server PDF preparation keeps the authored font stacks. App-provided fonts are
+embedded automatically. Desktop Chrome/Edge can read device fonts with the
+Local Font Access API after the user's permission; only the requested families'
+font bytes are included in that export, with weight, italic and width descriptors
+from the font's OS/2 table. Font bytes are not saved to the board or a library.
+`node scripts/check-local-pdf-fonts.mjs` tests actual local font access and
+unchanged regular/bold/italic metrics on a desktop with Arial and Georgia,
+after the direct PDF smoke test has prepared the renderer modules.
+
+Missing fonts, denied permission, unsupported containers/local variable instances,
+and embedding restrictions produce an error rather than a substitute. The image
+PDF option remains available to preserve appearance without font embedding.
+App-provided variable web fonts continue to use their existing CSS descriptors.
+The server also checks the actual glyph fonts with Chromium's CSS domain and
+rejects platform fallback, including missing glyphs in otherwise loaded fonts.
+This avoids silently changing an Indic font, punctuation or other script.
+
+References: [Chrome Local Font Access](https://developer.chrome.com/docs/capabilities/web-apis/local-fonts),
+[OpenType OS/2 embedding flags](https://learn.microsoft.com/en-us/typography/opentype/spec/os2#fstype).
 
 Vercel postbuild runs the native renderer smoke test using the shipped Linux
 Chromium binary. The test requires a visible Devanagari font in the PDF, intact

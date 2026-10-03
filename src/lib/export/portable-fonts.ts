@@ -1,9 +1,12 @@
-export const PORTABLE_DEVANAGARI_FONT = "Board Export Devanagari";
+export function firstFontFamily(stack: string): string {
+  return stack.split(",")[0].trim().replace(/^['"]|['"]$/g, "");
+}
 
-/** OS fonts cannot travel with browser HTML. Preserve embedded faces, then use
- * an embedded Indic fallback before any generic platform font. */
+/** A PDF must never silently replace the authored face. */
 export function portableFontStack(stack: string, available: Set<string>): string {
-  const families = stack.split(",").map(value => value.trim().replace(/^['"]|['"]$/g, ""));
-  const embedded = families.filter(family => available.has(family.toLowerCase()));
-  return [...embedded, PORTABLE_DEVANAGARI_FONT].map(family => JSON.stringify(family)).join(", ");
+  const family = firstFontFamily(stack);
+  if (!family || !available.has(family.toLowerCase())) {
+    throw new Error(`The font “${family || stack}” cannot be embedded. Allow access to local fonts, or use image PDF to preserve its appearance.`);
+  }
+  return stack;
 }

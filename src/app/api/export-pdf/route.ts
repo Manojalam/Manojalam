@@ -1,6 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { isSameOriginExportRequest } from "@/lib/export/route-security";
-import { renderBoardPdf } from "@/lib/export/server-pdf";
+import { renderBoardPdf, PdfFontError } from "@/lib/export/server-pdf";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     } });
     return new Response(stream, { headers: { ...headers, "content-type": "application/pdf", "content-disposition": 'attachment; filename="board.pdf"' } });
   } catch (error) {
+    if (error instanceof PdfFontError) return fail(error.message, 422);
     console.error("PDF rendering failed", error instanceof Error ? error.message : "Unknown error");
     return fail("The vector PDF could not be rendered. Retry or choose the image PDF fallback.", 500);
   } finally { active--; }

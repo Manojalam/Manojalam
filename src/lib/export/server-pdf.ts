@@ -2,6 +2,8 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { addPdfSourceText } from "./pdf-source-text";
 
+export class PdfFontError extends Error {}
+
 /** No remote resources or user scripts are allowed in the rendering browser. */
 export async function renderBoardPdf(html: string, signal?: AbortSignal) {
   const localPath = process.env.PDF_CHROMIUM_EXECUTABLE_PATH;
@@ -31,12 +33,6 @@ export async function renderBoardPdf(html: string, signal?: AbortSignal) {
     await page.goto("https://board-pdf.invalid/", { waitUntil: "load", timeout: 30_000 });
     await page.emulateMediaType("print");
     const words = await page.evaluate(async () => {
-      if (/[\u0900-\u097f]/u.test(document.body.innerText)) {
-        const fonts = await document.fonts.load('24px "Board Export Devanagari"', "क्षत्रियः ज्ञानम्");
-        if (!fonts.length || fonts.some(font => font.status !== "loaded")) {
-          throw new Error("The embedded Devanagari font is missing. Reload the app and retry PDF export.");
-        }
-      }
       await document.fonts.ready;
       await Promise.all(Array.from(document.images, image => image.decode()));
       if (Array.from(document.fonts).some(font => font.status === "error")) throw new Error("A PDF font failed to load.");
@@ -61,13 +57,30 @@ export async function renderBoardPdf(html: string, signal?: AbortSignal) {
           const range = document.createRange();
           range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].trimEnd().length);
           const rect = range.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) words.push({ text: match[0].replace(/\s+/gu, " "), x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+          if (rect.width > 0 && rect.height > 0) {
+            parent.setAttribute("data-pdf-font-check", "");
+            words.push({ text: match[0].replace(/\s+/gu, " "), x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+          }
           if (words.length > 100_000) throw new Error("The board contains too much text for one PDF export.");
         }
       }
       return words;
     });
     if (blockedResource) throw new Error("The PDF contains a resource that was not embedded.");
+    // Inspect the fonts actually used for glyphs, not merely declared CSS.
+    // A loaded Latin font can still fall back to a different system Indic font.
+    const session = await page.createCDPSession();
+    await session.send("DOM.enable");
+    await session.send("CSS.enable");
+    const { root } = await session.send("DOM.getDocument");
+    const { nodeIds } = await session.send("DOM.querySelectorAll", { nodeId: root.nodeId, selector: "[data-pdf-font-check]" });
+    for (let offset = 0; offset < nodeIds.length; offset += 32) {
+      const results = await Promise.all(nodeIds.slice(offset, offset + 32).map(nodeId => session.send("CSS.getPlatformFontsForNode", { nodeId })));
+      if (results.some(result => result.fonts.some(font => font.glyphCount > 0 && !font.isCustomFont))) {
+        throw new PdfFontError("Some text requires a font or glyph that was not embedded. PDF export stopped to avoid changing its appearance. Use image PDF to preserve the board exactly.");
+      }
+    }
+    await session.detach();
     const bytes = await page.pdf({ preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, tagged: false, timeout: 30_000 });
     return await addPdfSourceText(bytes, words);
   } finally {
