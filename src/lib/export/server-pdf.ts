@@ -7,8 +7,9 @@ export async function renderBoardPdf(html: string, signal?: AbortSignal) {
   const localPath = process.env.PDF_CHROMIUM_EXECUTABLE_PATH;
   const browser = await puppeteer.launch({
     executablePath: localPath || await chromium.executablePath(),
-    args: localPath ? [] : chromium.args,
-    headless: "shell", timeout: 30_000,
+    args: localPath ? (/msedge(?:\.exe)?$/i.test(localPath)
+      ? ["--edge-skip-compat-layer-relaunch", "--disable-features=msEdgeUpdateLaunchServicesPreferredVersion,AutoDeElevate"] : []) : chromium.args,
+    headless: localPath ? true : "shell", timeout: 30_000,
   });
   const stop = () => { void browser.close(); };
   const timeout = setTimeout(stop, 60_000);
@@ -30,6 +31,12 @@ export async function renderBoardPdf(html: string, signal?: AbortSignal) {
     await page.goto("https://board-pdf.invalid/", { waitUntil: "load", timeout: 30_000 });
     await page.emulateMediaType("print");
     const words = await page.evaluate(async () => {
+      if (/[\u0900-\u097f]/u.test(document.body.innerText)) {
+        const fonts = await document.fonts.load('24px "Board Export Devanagari"', "क्षत्रियः ज्ञानम्");
+        if (!fonts.length || fonts.some(font => font.status !== "loaded")) {
+          throw new Error("The embedded Devanagari font is missing. Reload the app and retry PDF export.");
+        }
+      }
       await document.fonts.ready;
       await Promise.all(Array.from(document.images, image => image.decode()));
       if (Array.from(document.fonts).some(font => font.status === "error")) throw new Error("A PDF font failed to load.");

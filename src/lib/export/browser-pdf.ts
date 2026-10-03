@@ -77,7 +77,7 @@ export async function waitForBrowserPdfResources(doc: Document, signal?: AbortSi
 export async function downloadBoardPdf(options: PrepareDomExportSvgOptions) {
   const nodeIds = options.nodeIds ? Array.from(options.nodeIds) : undefined;
   await waitForBrowserPdfResources(document, options.signal, options.viewport);
-  const prepared = await prepareReactFlowDomSvg({ ...options, nodeIds, preserveNativeEffects: true });
+  const prepared = await prepareReactFlowDomSvg({ ...options, nodeIds, preserveNativeEffects: true, portableFonts: true, strictFontEmbedding: true });
   if (nodeIds?.some(id => !prepared.includedNodeIds.includes(id))) throw new Error("Some board objects are still rendering. Retry in a moment.");
   if (prepared.assets.warnings.length) throw new Error("Some board fonts or images could not be prepared. Retry or use the image PDF fallback.");
   const output = createBrowserPdfDocument(prepared.source, prepared.width, prepared.height, options.title);
