@@ -35,7 +35,7 @@ import {
   resolveElementExportBackground,
 } from "@/lib/export/background";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
-import type { PdfPaperSize } from "@/lib/export/pdf";
+import { resolvePdfPageSize, type PdfPaperSize } from "@/lib/export/pdf";
 import type { ExportFormat, ExportPlan, ExportScope } from "@/lib/export/types";
 import { resolvedFoldSectionCount } from "@/lib/layout/child-group-wrap";
 import { buildHierarchy } from "@/lib/layout/hierarchy";
@@ -169,13 +169,14 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   const [scopeKind, setScopeKind] = useState<DialogScope>(initialScopeKind);
   const requestedFormat = request.format ?? "png";
   const [format, setFormat] = useState<ExportFormat>(requestedFormat);
+  const [rasterPdfFallback, setRasterPdfFallback] = useState(false);
   const [scaleChoice, setScaleChoice] = useState<ScaleChoice>("2");
   const [customScale, setCustomScale] = useState(2);
   const [padding, setPadding] = useState(DEFAULT_PADDING);
   const [includeBackground, setIncludeBackground] = useState(true);
   const [opaqueFallback, setOpaqueFallback] = useState<OpaqueFallback>("black");
   const [hierarchyOutputMode, setHierarchyOutputMode] = useState<HierarchyOutputMode>(
-    initialScopeKind === "board"
+    initialScopeKind === "board" || requestedFormat === "pdf"
       ? "whole"
       : preferredHierarchyOutputMode(
           initialSectionParent,
@@ -357,6 +358,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
     && !!hierarchySectionPlan
   );
 
+  const browserPdf = format === "pdf" && !sectionMode && !rasterPdfFallback;
   const rasterPlanning = useMemo(() => {
     if (!resolved.value || format === "svg") return { plan: null, error: null };
     try {
@@ -410,6 +412,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
   const selectFormat = (nextFormat: ExportFormat) => {
     setFormat(nextFormat);
+    if (nextFormat === "pdf") setHierarchyOutputMode("whole");
   };
 
   const fitToSafeSize = () => {
@@ -422,6 +425,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   };
 
   const submit = async () => {
+    if (browserPdf) { await printSelectablePdf(); return; }
     if (!root || (!sectionMode && !resolved.value)) {
       toast.error(
         hierarchySectionPlanning.error?.userMessage
@@ -543,7 +547,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
       });
       toast.success("Print requested. Choose Save as PDF and check that the preview has one page.", { id: toastId });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to prepare browser printing. Use Export PDF instead.", { id: toastId, duration: 8000 });
+      toast.error(error instanceof Error ? error.message : "Unable to prepare browser printing. You can choose the image-based PDF fallback.", { id: toastId, duration: 8000 });
     } finally {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setExporting(false);
@@ -562,26 +566,27 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
       }
     : null;
   const bounds = sectionBounds ?? resolved.value?.bounds;
-  const outputWidth = sectionMode
+  const printPage = browserPdf && bounds ? resolvePdfPageSize(bounds.width, bounds.height) : null;
+  const outputWidth = printPage ? printPage.width : sectionMode
     ? format !== "svg"
       ? Math.max(0, ...hierarchyRasterPlanning.plans.map((plan) => plan.outputWidth))
       : sectionBounds ? Math.ceil(sectionBounds.width) : null
     : format !== "svg"
       ? rasterPlan?.outputWidth
       : bounds ? Math.ceil(bounds.width) : null;
-  const outputHeight = sectionMode
+  const outputHeight = printPage ? printPage.height : sectionMode
     ? format !== "svg"
       ? Math.max(0, ...hierarchyRasterPlanning.plans.map((plan) => plan.outputHeight))
       : sectionBounds ? Math.ceil(sectionBounds.height) : null
     : format !== "svg"
       ? rasterPlan?.outputHeight
       : bounds ? Math.ceil(bounds.height) : null;
-  const megapixels = format !== "svg"
+  const megapixels = format !== "svg" && !browserPdf
     ? sectionMode
       ? hierarchyRasterPlanning.plans.reduce((total, plan) => total + plan.megapixels, 0)
       : rasterPlan?.megapixels
     : null;
-  const activeRasterPlans = sectionMode ? hierarchyRasterPlanning.plans : rasterPlan ? [rasterPlan] : [];
+  const activeRasterPlans = browserPdf ? [] : sectionMode ? hierarchyRasterPlanning.plans : rasterPlan ? [rasterPlan] : [];
   const activeAdjusted = activeRasterPlans.some((plan) => plan.adjusted);
   const activeEffectiveScale = activeRasterPlans.length > 0
     ? Math.min(...activeRasterPlans.map((plan) => plan.effectiveScale))
@@ -592,10 +597,10 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
   );
   const preparationError = sectionMode
     ? hierarchySectionPlanning.error?.userMessage ?? hierarchyRasterPlanning.error
-    : resolved.error?.userMessage ?? rasterPlanning.error;
+    : resolved.error?.userMessage ?? (browserPdf ? undefined : rasterPlanning.error);
   const canExport = !!root
     && (sectionMode ? selectedHierarchySections.length > 0 : !!resolved.value)
-    && (format === "svg" || activeRasterPlans.length > 0);
+    && (browserPdf || format === "svg" || activeRasterPlans.length > 0);
 
   return (
     <Dialog open onOpenChange={(open) => !open && closeDialog()}>
@@ -913,10 +918,10 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
 
           {!sectionMode && format === "pdf" && (
             <section className="space-y-2 rounded-lg border p-3" aria-label="Selectable PDF">
-              <p className="text-xs font-semibold">PDF with selectable text</p>
+              <p className="text-xs font-semibold">Export PDF uses browser-rendered text</p>
               <p className="text-xs text-muted-foreground">Use Chrome or Edge and choose Save as PDF. Keep backgrounds enabled, margins at None, scale at 100%, and headers/footers off. Check that the preview shows one continuous page. Some browsers or printers override custom page sizes.</p>
-              <Button type="button" variant="outline" disabled={exporting || !root || !resolved.value} onClick={() => void printSelectablePdf()}>Print PDF with selectable text</Button>
-              <p className="text-[10px] text-muted-foreground">Browser printing preserves text and simple shapes where supported; glows and other effects may be images. Export PDF below remains the image-based fallback, with clickable links. The image scale control applies only to that fallback.</p>
+              <p className="text-[10px] text-muted-foreground">Click Export PDF below, then Save as PDF in the browser dialog. Text and simple shapes are preserved where supported; glows and other effects may be images.</p>
+              <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={rasterPdfFallback} disabled={exporting} onChange={event => setRasterPdfFallback(event.target.checked)} />Use image-based PDF fallback (text is not selectable)</label>
               <p className="text-[10px] text-muted-foreground">Sanskrit glyphs stay browser-shaped, but copied text can contain split clusters or missing characters depending on the font and PDF viewer. Very long boards are scaled proportionally to fit one custom page.</p>
             </section>
           )}
@@ -951,7 +956,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
             </section>
           )}
 
-          {format !== "svg" && (
+          {format !== "svg" && !browserPdf && (
             <section className="space-y-3">
               <Label className="text-xs">Resolution</Label>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-5" role="group" aria-label={`${format.toUpperCase()} export scale`}>
@@ -1068,13 +1073,13 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                 <span className="text-right font-medium">{formatDimension(bounds.width)} × {formatDimension(bounds.height)}</span>
                 <span className="text-muted-foreground">Scale</span>
                 <span className="text-right font-medium">
-                  {format !== "svg" && activeEffectiveScale ? formatScale(activeEffectiveScale) : "Vector"}
+                  {browserPdf ? "Browser-rendered text" : format !== "svg" && activeEffectiveScale ? formatScale(activeEffectiveScale) : "Vector"}
                 </span>
                 <span className="text-muted-foreground">
-                  {sectionMode ? "Largest image" : format === "pdf" ? "Embedded image" : "Output"}
+                  {browserPdf ? "Custom page" : sectionMode ? "Largest image" : format === "pdf" ? "Embedded image" : "Output"}
                 </span>
                 <span className="text-right font-medium">
-                  {outputWidth.toLocaleString()} × {outputHeight.toLocaleString()}{format === "pdf" ? " px" : ""}
+                  {outputWidth.toLocaleString()} × {outputHeight.toLocaleString()}{browserPdf ? " pt" : format === "pdf" ? " px" : ""}
                 </span>
                 {megapixels !== null && megapixels !== undefined && (
                   <>
@@ -1093,7 +1098,7 @@ function ExportDialogOpen({ request }: { request: BoardExportRequest }) {
                     : format === "svg"
                       ? "Vector · no canvas limit"
                       : format === "pdf"
-                        ? "Single page · clickable links"
+                        ? browserPdf ? "Single page · browser Save as PDF" : "Single page · image fallback"
                         : activeAdjusted ? "Adjusted to safe size" : "Safe"}
                 </span>
               </div>
