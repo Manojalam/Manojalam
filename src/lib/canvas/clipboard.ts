@@ -1,4 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
+import { normalizeTable, tablePlainText } from "./table";
 import { buildHierarchy, getSubtree } from "../layout/hierarchy";
 import { includeAttachedExternalNoteIds } from "./node-note";
 import { trimRichTextContent, trimTextContentLines } from "./rich-text-paste";
@@ -219,6 +220,12 @@ export function clearNodeContent(data: Record<string, unknown>): Record<string, 
   }
   for (const field of NODE_CONTENT_COLLECTIONS) {
     if (Array.isArray(next[field])) next[field] = [];
+  }
+  if (data.table) {
+    const table = normalizeTable(data.table);
+    const empty = { ...table, rows: table.rows.map(row => ({ ...row, cells: row.cells.map(() => "") })) };
+    next.table = empty;
+    next.text = tablePlainText(empty);
   }
   return next;
 }

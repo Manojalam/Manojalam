@@ -17,6 +17,7 @@ export type SelectionTextStyleKey =
   | "textColor";
 
 const TEXT_NODE_TYPES = new Set([
+  "table",
   "mindmap",
   "sticky",
   "text",

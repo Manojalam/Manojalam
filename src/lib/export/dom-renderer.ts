@@ -503,7 +503,7 @@ function copyLiveElementState(source: Element, target: Element): void {
     return;
   }
   if (source instanceof HTMLTextAreaElement && target instanceof HTMLTextAreaElement) {
-    if (source.hasAttribute("data-sample-input")) {
+    if (source.hasAttribute("data-sample-input") || source.hasAttribute("data-table-input")) {
       const href = source.getAttribute("data-sample-href");
       const display = target.ownerDocument.createElement(href ? "a" : "span");
       display.setAttribute("style", target.getAttribute("style") ?? "");

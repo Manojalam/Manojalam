@@ -32,6 +32,7 @@ import { FillCardPanelHost } from "./FillCardDialog";
 import { Focus, Minus, Plus } from "lucide-react";
 
 import { nodeTypes } from "./nodes";
+import { createTable, tablePlainText } from "@/lib/canvas/table";
 import { edgeTypes } from "./edges/VidyaEdge";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -1560,6 +1561,11 @@ function VidyaCanvasInner({
       const defaultFontSize = useCanvasStore.getState().settings.defaultFontSize;
 
       switch (tool) {
+        case "table": {
+          const table = createTable();
+          newNode = { id, type: "table", position, selected: true, data: { table, text: tablePlainText(table), fontSize: defaultFontSize, tags: [] }, style: { width: 600 } };
+          break;
+        }
         case "mindmap":
           newNode = { id, type: "shape", position,
             data: { shapeType: "rounded", text: "New Idea", scriptMode: "plain", color: "#818cf8", fontSize: defaultFontSize, tags: [] },
@@ -1612,6 +1618,7 @@ function VidyaCanvasInner({
           return next.map((n) => placements[n.id] ? { ...n, position: placements[n.id] } : n);
         });
         useUIStore.getState().setActiveTool("select");
+        if (tool === "table") useCanvasStore.getState().setSelectedNodeIds([id]);
       }
     },
     [screenToFlowPosition, setNodes]  // stable deps
