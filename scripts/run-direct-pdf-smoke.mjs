@@ -17,14 +17,18 @@ for (const name of ["pdf-source-text", "server-pdf"]) {
 }
 const css = fs.readdirSync(".next/static/chunks").filter(file => file.endsWith(".css"))
   .map(file => fs.readFileSync(`.next/static/chunks/${file}`, "utf8")).join("\n");
-const face = css.match(/@font-face\{[^}]*Noto Serif Devanagari[^}]*unicode-range:U\+900[^}]*\}/)?.[0];
-assert.ok(face, "Run npm run build first to prepare the app's Sanskrit font.");
-const fontName = path.basename(face.match(/src:url\(([^)]+)\)/)[1]);
-const font = fs.readFileSync(`.next/static/media/${fontName}`).toString("base64");
+const faces = css.match(/@font-face\{[^}]*font-family:[^;]*Noto Serif Devanagari[^}]*\}/g)?.filter(face => face.includes("src:url("));
+assert.ok(faces?.length, "Run npm run build first to prepare the app's Sanskrit font.");
+const fontCss = faces.map(face => {
+  const fontName = path.basename(face.match(/src:url\(([^)]+)\)/)[1]);
+  const font = fs.readFileSync(`.next/static/media/${fontName}`).toString("base64");
+  return face.replace(/font-family:[^;]+;/, 'font-family:"Board Export Devanagari";')
+    .replace(/src:url\([^)]+\)/, `src:url(data:font/woff2;base64,${font})`);
+}).join("\n");
 const { renderBoardPdf } = await import(pathToFileURL(path.join(output, "server-pdf.mjs")));
 const phrase = "क्षत्रियः ज्ञानम् विधिनिर्णयः";
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face{font-family:"Board Export Devanagari";src:url(data:font/woff2;base64,${font})}
+${fontCss}
 @page{size:600pt 14400pt;margin:0}html,body{margin:0;width:800px;height:19200px;overflow:hidden}
 body{font-family:"Board Export Devanagari";font-size:24px}section{position:absolute;left:20px;width:700px;padding:20px;
 border:2px solid blue;border-radius:30px;background:white;box-shadow:0 0 12px purple}
@@ -66,5 +70,8 @@ for (const weight of ["Regular", "Bold"]) {
 }
 fs.writeFileSync(path.join(output, "long-shobhika.pdf"), shobhikaBytes);
 await assert.rejects(renderBoardPdf(html.replace("</body>", '<img src="http://127.0.0.1:9/blocked"></body>')));
-await assert.rejects(renderBoardPdf(html.replace(/@font-face\{[^}]+\}/, "")), /Devanagari font is missing/);
+await assert.rejects(renderBoardPdf(html.replace(/@font-face\{[^}]+\}/g, "")), /font or glyph that was not embedded/);
+// A successfully loaded Latin face is insufficient for Sanskrit: check actual
+// glyph fallback rather than merely document.fonts.ready or declared families.
+await assert.rejects(renderBoardPdf(html.replace(/@font-face\{[^}]*unicode-range:U\+900[^}]*\}/g, "")), /font or glyph that was not embedded/);
 console.log("PASS: direct renderer, one long page, off-screen text, Unicode phrases, disabled scripts, blocked external image.");

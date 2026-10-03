@@ -1,5 +1,6 @@
 import { ExportError } from "./errors";
-import { portableFontStack, PORTABLE_DEVANAGARI_FONT } from "./portable-fonts";
+import { portableFontStack } from "./portable-fonts";
+import type { EmbeddedLocalFont } from "./local-fonts";
 import type {
   ExportAssetFallbackAction,
   ExportAssetWarning,
@@ -26,6 +27,7 @@ export interface ExportAssetReport {
 export interface ExportAssetOptions {
   /** Server PDFs cannot use the source computer's installed fallback fonts. */
   portableFonts?: boolean;
+  localFontFaces?: EmbeddedLocalFont[];
   baseUrl?: string;
   signal?: AbortSignal;
   fontTimeoutMs?: number;
@@ -834,7 +836,7 @@ function collectFontFaceRules(
   }
 }
 
-function documentFontFaces(warnings: ExportAssetWarning[]): FontFaceSource[] {
+export function documentFontFaces(warnings: ExportAssetWarning[]): FontFaceSource[] {
   const output: FontFaceSource[] = [];
   const visitedSheets = new Set<CSSStyleSheet>();
   for (const sheet of Array.from(document.styleSheets)) {
@@ -864,21 +866,19 @@ async function embeddedFontCss(
   context: AssetContext,
   strict: boolean,
   warnings: ExportAssetWarning[],
-  portable = false
+  portable = false,
+  localFaces: EmbeddedLocalFont[] = []
 ): Promise<string> {
-  const allFaces = documentFontFaces(warnings);
+  const allFaces: FontFaceSource[] = [...documentFontFaces(warnings), ...localFaces];
   if (portable) {
-    const fallback = allFaces.filter(face => face.family === "noto sans devanagari");
-    if (!fallback.length) throw new Error("The portable Sanskrit font is unavailable. Reload the app before exporting PDF.");
     const available = new Set(allFaces.map(face => face.family));
     for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
       if (!(element instanceof HTMLElement || element instanceof SVGElement)) continue;
+      if (!Array.from(element.childNodes).some(node => node.nodeType === 3 && node.textContent?.trim())) continue;
+      if (element.closest("style,script,noscript")) continue;
       const stack = element.style.getPropertyValue("font-family");
-      if (stack || element === root) element.style.setProperty("font-family", portableFontStack(stack, available), element.style.getPropertyPriority("font-family"));
+      if (stack) portableFontStack(stack, available);
     }
-    allFaces.push(...fallback.map(face => ({ ...face, family: PORTABLE_DEVANAGARI_FONT.toLowerCase(),
-      cssText: face.cssText.replace(/font-family\s*:[^;]+;/i, `font-family: "${PORTABLE_DEVANAGARI_FONT}";`),
-    })));
   }
   const usedFamilies = usedFontFamilies(root);
   const faces = allFaces.filter((face) =>
@@ -1020,7 +1020,8 @@ export async function embedDomExportAssets(
       context,
       options.strictFontEmbedding ?? false,
       warnings,
-      options.portableFonts ?? false
+      options.portableFonts ?? false,
+      options.localFontFaces
     );
     return {
       embeddedImageCount: context.embeddedByKind.image.size,
