@@ -62,14 +62,46 @@ try {
   await button("Delete folder Reading").click();
   await page.waitForFunction(() => document.querySelector('select[aria-label="Folder for Beta"]')?.value === "");
   assert.equal(await page.$$eval("h3 a", (links) => links.length), 2);
+  await button("New folder").click();
+  await page.locator("#folder-name").fill("Parent");
+  await button("Save folder").click();
+  await button("Parent").click();
+  await button("New subfolder").click();
+  await page.locator("#folder-name").fill("Child");
+  await button("Save folder").click();
+  await button("Child").click();
+  await button("New subfolder").click();
+  await page.locator("#folder-name").fill("Grandchild");
+  await button("Save folder").click();
+  await button("All boards").click();
+  const grandchildId = await page.$eval('select[aria-label="Folder for Alpha"]', (select) => [...select.options].find((option) => option.textContent === "Parent / Child / Grandchild").value);
+  await page.select('select[aria-label="Folder for Alpha"]', grandchildId);
+  await page.waitForFunction((id) => document.querySelector('select[aria-label="Folder for Alpha"]').value === id, {}, grandchildId);
+  await page.reload({ waitUntil: "networkidle0" });
+  await button("Parent").click();
+  await button("Child").click();
+  const allowedParents = await page.$$eval("#parent-folder option", (options) => options.map((option) => option.textContent));
+  assert.deepEqual(allowedParents, ["Top level", "Parent"]);
+  await button("Grandchild").click();
+  assert.equal(await page.$eval('nav[aria-label="Folder breadcrumbs"]', (nav) => nav.textContent), "Folders/Parent/Child/Grandchild");
+  assert.equal(await page.$eval("h3 a", (link) => link.textContent), "Alpha");
+  await button("Child").click(); // breadcrumb back to parent
+  await page.select("#parent-folder", "");
+  await page.waitForFunction(() => document.querySelector('nav[aria-label="Folder breadcrumbs"]').textContent === "Folders/Child");
+  page.once("dialog", (dialog) => dialog.accept());
+  await button("Delete folder Child").click();
+  await button("Grandchild").click();
+  assert.equal(await page.$eval("h3 a", (link) => link.textContent), "Alpha");
+  await button("All boards").click();
   // Click the card's metadata, outside the title link's original bounds.
-  const cardPoint = await page.$eval("h3 a", (link) => {
+  await page.$eval('h3 a[href="/app/boards/guest-alpha"]', (link) => link.scrollIntoView({ block: "center" }));
+  const cardPoint = await page.$eval('h3 a[href="/app/boards/guest-alpha"]', (link) => {
     const rect = link.closest("h3").parentElement.parentElement.querySelector("p").getBoundingClientRect();
     return { x: rect.x + 15, y: rect.y + 5 };
   });
   await Promise.all([page.waitForFunction(() => location.pathname === "/app/boards/guest-alpha"), page.mouse.click(cardPoint.x, cardPoint.y)]);
   assert.deepEqual(errors, []);
-  console.log("PASS: create, assign, filter, rename, reload, search, sort, delete folder safely, and open a board by clicking its card.");
+  console.log("PASS: create, assign, filter, rename, reload, search, sort, nested navigation, cycle-safe moves, child promotion and clickable board cards.");
 } catch (error) {
   console.error(await page.evaluate(() => document.body.innerText));
   throw error;

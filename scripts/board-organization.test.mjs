@@ -50,6 +50,39 @@ test("invalid names and authentication errors never silently save to device", as
   assert.deepEqual(await organization.loadOrganization(), { folders: [], assignments: {} });
 });
 
+test("nested device folders persist, move and reject cycles", async () => {
+  await organization.changeOrganization({ type: "create", id: "root", name: "Studies" });
+  await organization.changeOrganization({ type: "create", id: "child", name: "Language", parentId: "root" });
+  await organization.changeOrganization({ type: "create", id: "leaf", name: "Grammar", parentId: "child" });
+  await organization.changeOrganization({ type: "move", boardId: "guest-a", folderId: "leaf" });
+  let state = await organization.loadOrganization();
+  assert.deepEqual(organization.folderPath(state.folders, "leaf").map((folder) => folder.name), ["Studies", "Language", "Grammar"]);
+  assert.equal(organization.folderOptions(state.folders).find((folder) => folder.id === "leaf").label, "Studies / Language / Grammar");
+  await assert.rejects(organization.changeOrganization({ type: "reparent", id: "root", parentId: "leaf" }));
+  await assert.rejects(organization.changeOrganization({ type: "reparent", id: "child", parentId: "child" }));
+  await assert.rejects(organization.changeOrganization({ type: "create", id: "bad", name: "Missing", parentId: "missing" }));
+  assert.deepEqual(await organization.loadOrganization(), state);
+  await organization.changeOrganization({ type: "reparent", id: "child", parentId: null });
+  state = await organization.loadOrganization();
+  assert.equal(organization.folderPath(state.folders, "leaf").length, 2);
+  assert.equal(state.assignments["guest-a"], "leaf");
+});
+
+test("deleting a nested parent preserves descendants and their boards", async () => {
+  for (const [id, parentId] of [["root", null], ["child", "root"], ["leaf", "child"]]) {
+    await organization.changeOrganization({ type: "create", id, name: id, parentId });
+  }
+  await organization.changeOrganization({ type: "move", boardId: "direct", folderId: "child" });
+  await organization.changeOrganization({ type: "move", boardId: "nested", folderId: "leaf" });
+  await organization.changeOrganization({ type: "delete", id: "child" });
+  const state = await organization.loadOrganization();
+  assert.equal(state.folders.find((folder) => folder.id === "leaf").parentId, "root");
+  assert.equal(state.assignments.nested, "leaf");
+  assert.equal(state.assignments.direct, undefined);
+  await organization.changeOrganization({ type: "delete", id: "root" });
+  assert.equal((await organization.loadOrganization()).folders[0].parentId, null);
+});
+
 test("search, folder filters and every sort compose without mutating the input", () => {
   const boards = [
     { id: "b", title: "Beta", description: "Sanskrit notes", updatedAt: "2026-02-01", createdAt: "2026-01-01" },
@@ -96,6 +129,11 @@ test("cloud reads and mutations use personal tables and account scope", async ()
   assert.ok(calls.every((call) => call.filters.some(([key, value]) => key === "user_id" && value === "account-a")));
   await storage.changeOrganization({ type: "create", id: "f2", name: " New " });
   assert.deepEqual(calls.at(-1).payload, { id: "f2", name: "New", user_id: "account-a" });
+  await storage.changeOrganization({ type: "create", id: "child", name: "Nested", parentId: "f2" });
+  assert.deepEqual(calls.at(-1).payload, { id: "child", name: "Nested", user_id: "account-a", parent_id: "f2" });
+  await storage.changeOrganization({ type: "reparent", id: "child", parentId: null });
+  assert.deepEqual(calls.at(-1).payload, { parent_id: null });
+  assert.deepEqual(calls.at(-1).filters, [["user_id", "account-a"], ["id", "child"]]);
   await storage.changeOrganization({ type: "move", boardId: "shared-board", folderId: "f2" });
   assert.deepEqual(calls.at(-1).payload, { user_id: "account-a", board_id: "shared-board", folder_id: "f2" });
   assert.deepEqual(calls.at(-1).options, { onConflict: "user_id,board_id" });
