@@ -114,7 +114,9 @@ function embedSvgTextSymbols(source: SVGTextElement, target: SVGTextElement): vo
       images.push(image);
       replacement.append(target.ownerDocument.createTextNode(text.slice(start, match.index)));
       const placeholder = target.ownerDocument.createElementNS(SVG_NS, "tspan");
-      placeholder.textContent = match[0];
+      // Keep the advance without leaving a hidden missing glyph for Chromium's
+      // font audit. NBSP is covered by the authored text face and won't collapse.
+      placeholder.textContent = "\u00a0";
       placeholder.setAttribute("textLength", String(source.getSubStringLength(offset + match.index, match[0].length)));
       placeholder.setAttribute("lengthAdjust", "spacingAndGlyphs");
       placeholder.setAttribute("data-export-symbol-placeholder", "");

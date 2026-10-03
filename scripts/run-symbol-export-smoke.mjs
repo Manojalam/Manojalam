@@ -9,13 +9,15 @@ import { PDFDocument, PDFName } from "pdf-lib";
 const output = path.resolve(".tmp/symbol-export-smoke");
 mkdirSync(output, { recursive: true });
 const executablePath = process.env.PDF_CHROMIUM_EXECUTABLE_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const font = readFileSync(process.env.SYMBOL_TEST_FONT ?? "C:/Windows/Fonts/arial.ttf").toString("base64");
+const fontCss = `@font-face{font-family:SmokeText;src:url(data:font/ttf;base64,${font})}`;
 const browser = await puppeteer.launch({ executablePath, headless: true });
 let html;
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1100, height: 600, deviceScaleFactor: 2 });
-  await page.setContent(`<!doctype html><html><head><style>
-    body{margin:20px;background:white}#original{width:960px;font:32px Arial;color:#138c3c}
+  await page.setContent(`<!doctype html><html><head><style>${fontCss}
+    body{margin:20px;background:white}#original{width:960px;font:32px SmokeText;color:#138c3c}
     p{margin:10px 0}a{color:#a21caf}.enclosed{display:inline-flex;border:2px solid #c22;border-radius:50%;padding:6px;transform:scale(1.1)}
     svg{display:block;width:800px;height:120px}
   </style></head><body><div id="original">
@@ -42,7 +44,7 @@ try {
     sources.forEach((element, index) => window.embedExportSymbolImages(element, copies[index]));
     document.body.replaceChildren(clone);
     // Exported assets must stay independent of the font assigned in the destination.
-    clone.querySelectorAll("*").forEach((element) => element.style.setProperty("font-family", "monospace", "important"));
+    clone.querySelectorAll("*").forEach((element) => element.style.setProperty("font-family", "SmokeText", "important"));
     await Promise.all([...clone.querySelectorAll("img")].map((image) => image.decode()));
     const assets = [...clone.querySelectorAll("[data-export-symbol]")];
     const pixelCounts = await Promise.all(assets.map(async (element) => {
@@ -67,7 +69,7 @@ try {
   assert.equal(result.svgCount, 4);
   assert.ok(result.pixelCounts.every((count) => count > 100));
   assert.ok(result.originalUnchanged);
-  html = result.html;
+  html = result.html.replace("<style>", `<style>${fontCss}`);
   await page.screenshot({ path: path.join(output, "symbols.png") });
 } finally { await browser.close(); }
 
