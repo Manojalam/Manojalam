@@ -50,6 +50,21 @@ try {
   assert.ok(text.includes("अन्तिमः"));
   assert.ok(!text.includes("\u0000"));
 } finally { await task.destroy(); }
+// Exercise the actual self-hosted font files, including both weights. Checking
+// visible font dictionaries catches substitution that a text-layer test misses.
+const shobhikaFaces = ["Regular", "Bold"].map((weight, index) => {
+  const data = fs.readFileSync(`public/fonts/shobhika/Shobhika-${weight}.otf`).toString("base64");
+  return `@font-face{font-family:Shobhika;src:url(data:font/otf;base64,${data});font-weight:${index ? 700 : 400}}`;
+}).join("\n");
+const shobhikaHtml = html.replace("</style>", `${shobhikaFaces}\nbody{font-family:Shobhika}a{font-weight:700}</style>`);
+const shobhikaBytes = await renderBoardPdf(shobhikaHtml);
+const shobhikaPdf = await PDFDocument.load(shobhikaBytes);
+const shobhikaNames = shobhikaPdf.context.enumerateIndirectObjects()
+  .map(([, object]) => object instanceof PDFDict ? (object.get(PDFName.of("BaseFont")) ?? object.get(PDFName.of("FontName")))?.toString() ?? "" : "");
+for (const weight of ["Regular", "Bold"]) {
+  assert.ok(shobhikaNames.some(name => name.includes(`Shobhika-${weight}`)), `Visible text must retain Shobhika ${weight}.`);
+}
+fs.writeFileSync(path.join(output, "long-shobhika.pdf"), shobhikaBytes);
 await assert.rejects(renderBoardPdf(html.replace("</body>", '<img src="http://127.0.0.1:9/blocked"></body>')));
 await assert.rejects(renderBoardPdf(html.replace(/@font-face\{[^}]+\}/, "")), /Devanagari font is missing/);
 console.log("PASS: direct renderer, one long page, off-screen text, Unicode phrases, disabled scripts, blocked external image.");
