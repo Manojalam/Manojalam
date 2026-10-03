@@ -12,7 +12,7 @@ import type { VidyaBoard } from "@/lib/types";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { changeOrganization, loadOrganization, type BoardOrganization, type OrganizationAction } from "@/lib/storage/board-organization";
+import { changeOrganization, loadOrganization, canParentFolder, folderOptions, folderPath, type BoardOrganization, type OrganizationAction } from "@/lib/storage/board-organization";
 import { filterBoards, type BoardSort } from "@/lib/storage/board-list";
 
 export default function BoardsPage() {
@@ -27,9 +27,13 @@ export default function BoardsPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<BoardSort>("updated");
   const [busy, setBusy] = useState(false);
-  const [folderDialog, setFolderDialog] = useState<{ id?: string; name: string } | null>(null);
+  const [folderDialog, setFolderDialog] = useState<{ id?: string; name: string; parentId?: string | null } | null>(null);
   const visibleBoards = filterBoards(boards, organization, folder, query, sort);
   const selectedFolder = organization.folders.find((item) => item.id === folder);
+  const path = selectedFolder ? folderPath(organization.folders, selectedFolder.id) : [];
+  const destinations = folderOptions(organization.folders);
+  const childFolders = organization.folders.filter((item) => (item.parentId ?? null) === (selectedFolder?.id ?? null))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const selectClass = "h-9 rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   const refreshFolders = async () => {
@@ -42,7 +46,7 @@ export default function BoardsPage() {
     setBusy(true);
     try {
       await changeOrganization(action);
-      if (action.type === "delete") setFolder("all");
+      if (action.type === "delete") setFolder(organization.folders.find((item) => item.id === action.id)?.parentId ?? "all");
       if (action.type === "create" || action.type === "rename") setFolderDialog(null);
       await refreshFolders();
       toast.success(action.type === "move" ? "Board moved" : "Folder saved");
@@ -133,14 +137,31 @@ export default function BoardsPage() {
           </select>
         </div>
         {folderError ? <p role="alert" className="mb-4 text-sm text-destructive">{folderError} <button className="underline" onClick={() => void refreshFolders()}>Retry</button></p> : (
-          <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="Board folders">
-            {[{ id: "all", name: "All boards" }, { id: "unfiled", name: "Unfiled" }, ...[...organization.folders].sort((a, b) => a.name.localeCompare(b.name))].map((item) => (
+          <div className="mb-4 space-y-3" aria-label="Board folders">
+            <div className="flex flex-wrap items-center gap-2">
+            {[{ id: "all", name: "All boards" }, { id: "unfiled", name: "Unfiled" }].map((item) => (
               <Button key={item.id} size="sm" variant={folder === item.id ? "default" : "outline"} aria-pressed={folder === item.id} onClick={() => setFolder(item.id)}>{item.name}</Button>
             ))}
+            </div>
+            {selectedFolder && <nav aria-label="Folder breadcrumbs" className="flex flex-wrap items-center gap-2 text-sm">
+              <button className="text-primary underline" onClick={() => setFolder("all")}>Folders</button>
+              {path.map((item, index) => <span key={item.id} className="flex items-center gap-2"><span aria-hidden="true">/</span>{index === path.length - 1 ? <span aria-current="location">{item.name}</span> : <button className="text-primary underline" onClick={() => setFolder(item.id)}>{item.name}</button>}</span>)}
+            </nav>}
+            <div className="flex flex-wrap items-center gap-2">
+              {childFolders.map((item) => <Button key={item.id} size="sm" variant="outline" onClick={() => setFolder(item.id)}><FolderPlus className="mr-2 h-4 w-4" />{item.name}</Button>)}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
             {selectedFolder && <>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setFolderDialog({ name: "", parentId: selectedFolder.id })}><FolderPlus className="mr-2 h-4 w-4" /> New subfolder</Button>
+              <label htmlFor="parent-folder" className="text-sm text-muted-foreground">Parent folder</label>
+              <select id="parent-folder" className={`${selectClass} max-w-64`} disabled={busy} value={selectedFolder.parentId ?? ""} onChange={(event) => void organize({ type: "reparent", id: selectedFolder.id, parentId: event.target.value || null })}>
+                <option value="">Top level</option>
+                {destinations.filter((item) => canParentFolder(organization.folders, selectedFolder.id, item.id)).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
               <Button variant="ghost" size="icon" disabled={busy} aria-label={`Rename ${selectedFolder.name}`} onClick={() => setFolderDialog(selectedFolder)}><Pencil className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="icon" disabled={busy} aria-label={`Delete folder ${selectedFolder.name}`} onClick={() => { if (confirm(`Delete folder “${selectedFolder.name}”? Its boards will become unfiled; no boards will be deleted.`)) void organize({ type: "delete", id: selectedFolder.id }); }}><Trash2 className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon" disabled={busy} aria-label={`Delete folder ${selectedFolder.name}`} onClick={() => { if (confirm(`Delete folder “${selectedFolder.name}”? Its direct boards will become unfiled. Subfolders will move to its parent, keeping their boards. No boards will be deleted.`)) void organize({ type: "delete", id: selectedFolder.id }); }}><Trash2 className="h-4 w-4" /></Button>
             </>}
+            </div>
           </div>
         )}
 
@@ -192,7 +213,7 @@ export default function BoardsPage() {
                 <div className="relative z-10 flex flex-wrap items-center gap-1">
                   <select aria-label={`Folder for ${board.title}`} className={`${selectClass} max-w-40`} disabled={busy || !!folderError} value={organization.assignments[board.id] ?? ""} onChange={(event) => void organize({ type: "move", boardId: board.id, folderId: event.target.value || null })}>
                     <option value="">Unfiled</option>
-                    {organization.folders.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {destinations.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
                   {board.storageMode === "local" && signedIn && (
                     <Button variant="outline" size="sm" disabled={moving !== null} onClick={() => void handleMove(board.id)}>
@@ -221,9 +242,16 @@ export default function BoardsPage() {
         <Dialog open={!!folderDialog} onOpenChange={(open) => { if (!open && !busy) setFolderDialog(null); }}>
           <DialogContent>
             <DialogHeader><DialogTitle>{folderDialog?.id ? "Rename folder" : "New folder"}</DialogTitle><DialogDescription>Organize boards in your personal folders.</DialogDescription></DialogHeader>
-            <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (folderDialog) void organize({ type: folderDialog.id ? "rename" : "create", id: folderDialog.id ?? crypto.randomUUID(), name: folderDialog.name }); }}>
+            <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (folderDialog) void organize(folderDialog.id ? { type: "rename", id: folderDialog.id, name: folderDialog.name } : { type: "create", id: crypto.randomUUID(), name: folderDialog.name, parentId: folderDialog.parentId }); }}>
               <label htmlFor="folder-name" className="text-sm font-medium">Folder name</label>
               <Input id="folder-name" autoFocus required maxLength={80} disabled={busy} value={folderDialog?.name ?? ""} onChange={(event) => setFolderDialog((current) => current ? { ...current, name: event.target.value } : null)} />
+              {!folderDialog?.id && <>
+                <label htmlFor="new-folder-parent" className="text-sm font-medium">Create inside</label>
+                <select id="new-folder-parent" className={`${selectClass} w-full`} disabled={busy} value={folderDialog?.parentId ?? ""} onChange={(event) => setFolderDialog((current) => current ? { ...current, parentId: event.target.value || null } : null)}>
+                  <option value="">Top level</option>
+                  {destinations.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              </>}
               <Button type="submit" disabled={busy || !folderDialog?.name.trim()}>{busy ? "Saving…" : "Save folder"}</Button>
             </form>
           </DialogContent>
