@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import {
   Geist, Geist_Mono,
   Noto_Sans_Devanagari, Noto_Serif_Devanagari,
-  Noto_Serif,
   Hind, Mukta,
   Lora,
   Tiro_Devanagari_Sanskrit,
   Yatra_One,
 } from "next/font/google";
 import "./globals.css";
+import "@fontsource/noto-serif/400.css";
+import "@fontsource/noto-serif/600.css";
 import { Providers } from "@/components/layout/Providers";
 import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 
@@ -43,12 +44,6 @@ const hind = Hind({
 const mukta = Mukta({
   variable: "--font-mukta",
   subsets: ["devanagari", "latin"],
-  weight: ["400", "600"],
-});
-
-const notoSerif = Noto_Serif({
-  variable: "--font-noto-serif",
-  subsets: ["latin"],
   weight: ["400", "600"],
 });
 
@@ -89,7 +84,7 @@ export default function RootLayout({
       geistSans.variable, geistMono.variable,
       notoDevanagari.variable, notoSerifDevanagari.variable,
       hind.variable, mukta.variable,
-      notoSerif.variable, lora.variable,
+      lora.variable,
       tiroDevanagari.variable,
       yatraOne.variable,
       "h-full",

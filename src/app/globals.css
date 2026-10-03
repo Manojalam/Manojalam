@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Keep saved font selections while self-hosting Noto Serif's exact family.
+   Its Google loader currently fails in Turbopack production builds. */
+:root {
+  --font-noto-serif: "Noto Serif";
+}
+
 /* Keep the persisted family name: existing boards store "Shobhika, serif".
    Self-hosting lets exports embed the same face instead of substituting Noto. */
 @font-face {
