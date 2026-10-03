@@ -1,6 +1,7 @@
 import type { VidyaBoard, VidyaEdge, VidyaNode } from "../types";
 import { buildHierarchy, getRoots } from "../layout/hierarchy";
 import { formatRecordingDuration } from "../canvas/audio-recording";
+import { normalizeTable, tablePlainText } from "../canvas/table";
 
 export type OutlineTextFormat = "markdown" | "txt" | "html";
 
@@ -32,6 +33,7 @@ export interface OutlineDocument {
 }
 
 const NODE_TYPE_LABELS: Record<string, string> = {
+  table: "Table",
   mindmap: "Mind map",
   sticky: "Sticky note",
   text: "Text",
@@ -161,6 +163,9 @@ function nodeDetails(node: VidyaNode, title: string): OutlineDetail[] {
   }
 
   switch (node.type) {
+    case "table":
+      if (!authoredText) addDetail(details, "Table", tablePlainText(normalizeTable(data.table)), seen);
+      break;
     case "sanskrit":
       addDetail(details, "Source", data.source, seen);
       addDetail(details, "Devanagari", data.devanagari, seen);

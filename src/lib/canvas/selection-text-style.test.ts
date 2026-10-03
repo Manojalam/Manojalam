@@ -22,6 +22,7 @@ function node(
 
 test("supports every text-bearing canvas node and excludes junctions", () => {
   for (const type of [
+    "table",
     "mindmap",
     "sticky",
     "text",

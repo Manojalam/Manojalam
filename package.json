@@ -4,6 +4,7 @@
   "private": true,
   "engines": { "node": "24.x" },
   "scripts": {
+    "test:tables": "node scripts/run-table-tests.mjs",
     "test:browser-pdf": "node scripts/run-browser-pdf-tests.mjs",
     "prepare:import-assets": "node scripts/prepare-import-assets.mjs",
     "predev": "npm run prepare:import-assets",

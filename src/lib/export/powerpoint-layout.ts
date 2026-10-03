@@ -1,6 +1,7 @@
 import type { Node } from "@xyflow/react";
 import type { ShapeType } from "../types";
 import { getNodeRect } from "../layout/geometry";
+import { normalizeTable, tablePlainText } from "../canvas/table";
 
 export const POWERPOINT_SLIDE = {
   width: 13.333,
@@ -273,6 +274,8 @@ export function editableNodeText(node: Node): string {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const compact = (values: unknown[]) => values.map(textPart).filter((value): value is string => Boolean(value));
   switch (node.type) {
+    case "table":
+      return tablePlainText(normalizeTable(data.table));
     case "sanskrit":
       return compact([data.title, data.devanagari, data.iast, data.translation, data.grammarNotes]).join("\n");
     case "shloka":

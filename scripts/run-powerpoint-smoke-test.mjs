@@ -261,6 +261,16 @@ try {
     "more than six authored folds should paginate instead of shrinking the overview"
   );
   console.log("Verified folded Matrix overviews use editable fold maps, preserve focused teaching slides, and paginate after six folds.");
+  const tableOutput = join(outputDirectory, "editable-table.pptx");
+  const tableNode = { id: "table", type: "table", position: { x: 0, y: 0 }, style: { width: 600, height: 200 }, data: { table: { columns: [{ id: "sutra", name: "Sūtra" }, { id: "meaning", name: "Meaning" }], rows: [{ id: "one", cells: ["मेर्निः", "Meaning one"] }, { id: "two", cells: ["3.4.89", "Meaning two"] }] } } };
+  await downloadEditablePowerPoint({ boardTitle: "Table", nodes: [tableNode], edges: [], relationships: [], stops: [{ id: "table-stop", kind: "overview", title: "Table", nodeIds: ["table"] }], filename: tableOutput });
+  const tableArchive = await JSZip.loadAsync(await readFile(tableOutput));
+  const tableXml = await tableArchive.file("ppt/slides/slide1.xml").async("string");
+  assert.match(tableXml, /<a:tbl>/);
+  assert.match(tableXml, /मेर्निः/);
+  assert.match(tableXml, /Meaning two/);
+  assert.equal((tableXml.match(/<a:tr\b/g) ?? []).length, 3);
+  console.log("Verified Table exports as a native editable PowerPoint table with headers and every cell.");
   if (keepArtifacts) console.log(`Kept verification deck at ${outputFile}`);
   if (keepArtifacts) console.log(`Kept folded Matrix verification deck at ${foldedOutputFile}`);
 } finally {

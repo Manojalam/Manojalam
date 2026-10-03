@@ -9,8 +9,10 @@ import { SunburstNode } from "./SunburstNode";
 import { RelationshipDiagramNode } from "./RelationshipDiagramNode";
 import { ConnectorJunctionNode } from "./ConnectorJunctionNode";
 import { AudioNode } from "./AudioNode";
+import { TableNode } from "./TableNode";
 
 export const nodeTypes = {
+  table: TableNode,
   // Legacy "mindmap" nodes are migrated to shapes on load; alias to ShapeNode
   // as a safety fallback so any stray mindmap node still renders consistently.
   mindmap: ShapeNode,

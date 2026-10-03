@@ -307,6 +307,7 @@ export const TOOL_LABELS: Record<CanvasTool, string> = {
   sticky: "Sticky Note",
   text: "Text Block",
   shape: "Shape",
+  table: "Table",
   connector: "Connector",
   frame: "Frame",
   pen: "Pen (placeholder)",

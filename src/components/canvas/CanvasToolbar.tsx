@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   MousePointer2, Hand, StickyNote, Type, Spline, Frame,
   BookOpen, Scroll, GraduationCap, ChevronRight,
-  Network,
+  Network, Table2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -275,6 +275,7 @@ export function CanvasToolbar() {
         <ToolBtn tool="text"   icon={<Type className="h-[18px] w-[18px] stroke-[1.5]" />}          label="Text" shortcut="T" />
         {/* Shapes (with popover) */}
         <ShapesBtn />
+        <ToolBtn tool="table" icon={<Table2 className="h-[18px] w-[18px] stroke-[1.5]" />} label="Table" />
 
         <ToolBtn
           icon={<Spline className="h-[18px] w-[18px] stroke-[1.5]" />}

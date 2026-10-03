@@ -48,6 +48,7 @@ export type CanvasTool =
   | "sticky"
   | "text"
   | "shape"
+  | "table"
   | "connector"
   | "frame"
   | "pen"
@@ -637,6 +638,8 @@ export interface MediaAttachment {
 }
 
 export interface BaseNodeData extends Record<string, unknown> {
+  /** Independent row-and-column content; separate from hierarchy-based Matrix. */
+  table?: import("./canvas/table").CanvasTable;
   sampleDesignId?: string;
   sampleTemplateId?: string;
   sampleTemplateSnapshot?: SampleCardTemplate;

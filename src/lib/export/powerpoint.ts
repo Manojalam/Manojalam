@@ -1,4 +1,5 @@
 import PptxGenJS from "pptxgenjs";
+import { normalizeTable } from "../canvas/table";
 import type { Edge, Node } from "@xyflow/react";
 import type {
   FrameNodeData,
@@ -937,6 +938,21 @@ function renderRelationshipDiagram(context: RenderContext, node: Node, rect: Pow
 }
 
 function renderSpecialNode(context: RenderContext, node: Node, rect: PowerPointRect): boolean {
+  if (node.type === "table") {
+    const table = normalizeTable(node.data.table);
+    context.slide.addTable([
+      table.columns.map(column => ({ text: column.name, options: { bold: true, fill: "E2E8F0" } })),
+      ...table.rows.map(row => row.cells.map(text => ({ text }))),
+    ], {
+      x: rect.x, y: rect.y, w: rect.width, h: rect.height,
+      colW: table.columns.map(() => rect.width / table.columns.length),
+      fontFace: nodeFontFace(node), fontSize: clamp(Number(node.data.fontSize) || 14, 6, 24),
+      color: INK, border: { type: "solid", color: "94A3B8", pt: 0.5 },
+      margin: 3, autoPage: false,
+    });
+    context.objectCount += 1;
+    return true;
+  }
   if (node.type === "sunburst") {
     renderSunburst(context, node, rect);
     return true;

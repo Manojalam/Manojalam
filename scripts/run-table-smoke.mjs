@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import puppeteer from "puppeteer-core";
+
+const browser = await puppeteer.launch({ executablePath: process.env.BOARD_TEST_BROWSER ?? "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+const page = await browser.newPage();
+const errors = [];
+page.on("pageerror", error => errors.push(error.message));
+page.on("dialog", dialog => dialog.accept());
+const base = process.env.BOARD_TEST_URL ?? "http://localhost:3113";
+try {
+  await page.setViewport({ width: 1440, height: 1000 });
+  await page.goto(`${base}/app/boards`, { waitUntil: "networkidle0" });
+  await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("manojalam-guest-boards", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("boards", { keyPath: "id" });
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("boards", "readwrite"); tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+      tx.objectStore("boards").put({ id: "guest-table-test", title: "Table smoke test", description: "", accessRole: "owner", storageMode: "local", userId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), content: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } } });
+    }); db.close();
+  });
+  await page.goto(`${base}/app/boards/guest-table-test`, { waitUntil: "networkidle0" });
+  await page.waitForSelector('button[aria-label="Table"]');
+  await page.click('button[aria-label="Table"]');
+  await page.click(".react-flow__pane", { offset: { x: 280, y: 180 } });
+  await page.waitForSelector('table[aria-label="Editable table"]');
+  assert.equal(await page.$$eval("tbody tr", rows => rows.length), 3);
+  await page.locator('textarea[aria-label="Column 1 name"]').fill("Sūtra");
+  await page.locator('textarea[aria-label="Column 2 name"]').fill("Meaning");
+  await page.locator('textarea[aria-label="Row 1, Sūtra"]').fill("मेर्निः");
+  await page.keyboard.press("Tab");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Row 1, Meaning");
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-label")), "Row 1, Meaning");
+  await page.keyboard.type("First meaning");
+  await page.keyboard.down("Shift"); await page.keyboard.press("Tab"); await page.keyboard.up("Shift");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Row 1, Sūtra");
+  assert.equal(await page.evaluate(() => document.activeElement.value), "मेर्निः");
+  await page.focus('textarea[aria-label="Row 3, Column 3"]');
+  await page.keyboard.press("Tab");
+  await page.waitForFunction(() => document.querySelectorAll("tbody tr").length === 4);
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Row 4, Sūtra");
+  assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-label")), "Row 4, Sūtra");
+  await page.$eval('textarea[aria-label="Row 2, Meaning"]', element => {
+    const clipboardData = new DataTransfer(); clipboardData.setData("text/plain", "a\tb\nc\td");
+    element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData }));
+  });
+  assert.equal(await page.$eval('textarea[aria-label="Row 3, Column 3"]', element => element.value), "d");
+  await page.locator('textarea[aria-label="Row 1, Meaning"]').fill("First meaning\nSecond line");
+  await page.click('button[aria-label="Delete column 2"]');
+  assert.equal(await page.$$eval("thead th", columns => columns.length), 2);
+  await page.locator('::-p-aria([name="Undo (⌘Z)"][role="button"])').click();
+  await page.waitForFunction(() => document.querySelectorAll("thead th").length === 3);
+  assert.equal(await page.$eval('textarea[aria-label="Row 1, Meaning"]', element => element.value), "First meaning\nSecond line");
+  await page.click('button[aria-label="Delete column 2"]');
+  assert.equal(await page.$eval('textarea[aria-label="Row 3, Column 3"]', element => element.value), "d");
+  await page.click('button[aria-label="Insert row after 1"]');
+  assert.equal(await page.$$eval("tbody tr", rows => rows.length), 5);
+  await page.click('button[aria-label="Delete row 2"]');
+  assert.equal(await page.$$eval("tbody tr", rows => rows.length), 4);
+  await page.mouse.click(1200, 750);
+  await page.waitForFunction(() => document.body.textContent.includes("Saved"), { timeout: 15000 });
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.waitForSelector('table[aria-label="Editable table"]');
+  assert.equal(await page.$eval('textarea[aria-label="Row 1, Sūtra"]', element => element.value), "मेर्निः");
+  assert.equal(await page.$$eval("thead th", columns => columns.length), 2);
+  assert.equal(await page.$$eval("tbody tr", rows => rows.length), 4);
+  mkdirSync(".tmp/table-smoke", { recursive: true });
+  await page.screenshot({ path: ".tmp/table-smoke/desktop.png" });
+  console.log("Desktop entry, undo, and persistence verified.");
+  await page.setViewport({ width: 820, height: 1180, isMobile: true, hasTouch: true });
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.waitForSelector('textarea[aria-label="Row 1, Sūtra"]');
+  await page.focus('textarea[aria-label="Row 1, Sūtra"]');
+  await page.waitForSelector('button[aria-label="Delete row 1"]');
+  await page.locator('textarea[aria-label="Row 1, Sūtra"]').fill("Tablet entry");
+  assert.equal(await page.$eval('textarea[aria-label="Row 1, Sūtra"]', element => element.value), "Tablet entry");
+  await page.screenshot({ path: ".tmp/table-smoke/tablet.png" });
+  console.log("Tablet entry verified; checking viewer access.");
+  await page.mouse.click(700, 900);
+  await page.waitForFunction(() => document.body.textContent.includes("Saved"), { timeout: 15000 });
+  await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => { const request = indexedDB.open("manojalam-guest-boards", 1); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    await new Promise((resolve, reject) => { const tx = db.transaction("boards", "readwrite"); tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); const store = tx.objectStore("boards"); const request = store.get("guest-table-test"); request.onsuccess = () => { if (!request.result) { reject(new Error("Missing test board")); return; } store.put({ ...request.result, accessRole: "viewer" }); }; });
+    db.close();
+  });
+  console.log("Viewer fixture saved.");
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.waitForSelector('textarea[data-table-input]');
+  assert.ok(await page.$$eval('textarea[data-table-input]', inputs => inputs.every(input => input.readOnly)));
+  assert.deepEqual(errors, []);
+  console.log("Verified table creation, headers, Tab/Shift+Tab, auto-add row, spreadsheet paste, undo, row/column deletion, save/reload, tablet entry, and viewer read-only access.");
+} catch (error) {
+  mkdirSync(".tmp/table-smoke", { recursive: true });
+  await page.screenshot({ path: ".tmp/table-smoke/failure.png" });
+  console.error("Browser failure:", page.url(), await page.evaluate(() => document.body.innerText.slice(0, 2500)), errors);
+  throw error;
+} finally { await browser.close(); }
