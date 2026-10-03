@@ -30,7 +30,7 @@ body{font-family:"Board Export Devanagari";font-size:24px}section{position:absol
 border:2px solid blue;border-radius:30px;background:white;box-shadow:0 0 12px purple}
 p{color:blue}a{color:#cc2277;text-decoration:underline;text-underline-position:under}
 </style></head><body><div id="board-print-sheet"><section style="top:20px"><p>${phrase}</p>
-<a href="https://ashtadhyayi.com/sutraani/3/4/89">३.४.८९ मेर्निः</a></section>
+<a href="https://ashtadhyayi.com/sutraani/3/4/89">३.४.८९ मेर्निः</a><p>कः धातुः मूलरूपेण परस्मैपदी अस्ति परन्तु वि-उपसर्गस्य योगे केवलम् आत्मनेपदप्रत्ययन् एव स्वीकरोति ?</p></section>
 <section style="top:18700px"><p>${phrase}</p><p>अन्तिमः</p></section></div>
 <script>document.body.replaceChildren();fetch('https://example.com/never')</script></body></html>`;
 const bytes = await renderBoardPdf(html);
@@ -45,7 +45,7 @@ try {
   assert.equal(pdf.numPages, 1);
   const page = await pdf.getPage(1);
   assert.ok(Math.abs(page.view[3] - 14400) < 1);
-  const text = (await page.getTextContent()).items.map(item => item.str ?? "").join(" ");
+  const text = (await page.getTextContent()).items.map(item => (item.str ?? "") + (item.hasEOL ? " " : "")).join("").replace(/\s+/g, " ");
   assert.equal(text.match(new RegExp(phrase, "g"))?.length, 2);
   assert.ok(text.includes("अन्तिमः"));
   assert.ok(!text.includes("\u0000"));
