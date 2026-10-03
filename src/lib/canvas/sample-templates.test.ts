@@ -1,8 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseHTML, DOMParser, Node, Element, HTMLElement } from "linkedom";
-import { newSampleLabel, normalizeSampleTemplates, sampleCardData, sampleFields, refreshSampleFields, sampleEntryHtml } from "./sample-templates";
+import { newSampleLabel, normalizeSampleTemplates, sampleCardData, sampleFields, refreshSampleFields, sampleEntryHtml, sampleTemplateCopyData } from "./sample-templates";
 import type { SampleCardTemplate, SampleCardEntry } from "../types";
+
+test("untagged box templates preserve authored content and size as independent editable copies", () => {
+  const saved: SampleCardTemplate = { id: "saved", name: "Cell", labels: [], richText: '<p><strong>Example</strong> <a href="https://example.com">reference</a></p>', style: { shapeType: "rectangle", fillColor: "#ff0000", fontFamily: null }, width: 160, height: 90 };
+  const first = sampleTemplateCopyData(saved);
+  const second = sampleTemplateCopyData(saved);
+  assert.equal(first.richText, saved.richText);
+  assert.equal(first.text, "Example reference");
+  assert.equal(first.shapeType, "rectangle");
+  assert.equal(first.fillColor, "#ff0000");
+  assert.equal(first.fontFamily, undefined);
+  assert.equal(first.autoSizeMode, "fixed");
+  assert.deepEqual(first.userSize, { width: 160, height: 90 });
+  first.userSize.width = 900;
+  assert.equal(second.userSize.width, 160);
+  assert.equal(saved.width, 160);
+  assert.equal("sampleTemplateId" in first, false);
+  assert.equal("sampleDesignId" in first, false);
+});
 const { document } = parseHTML("<html><body></body></html>");
 class BrowserParser {
   parseFromString(value: string, type: string) { return new DOMParser().parseFromString(`<html><body>${value}</body></html>`, type as "text/html"); }

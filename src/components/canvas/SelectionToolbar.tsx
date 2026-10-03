@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 
 import { useRef, useState } from "react";
 import { NodeToolbar, Position, useReactFlow, type Node } from "@xyflow/react";
@@ -841,6 +842,7 @@ export function SelectionToolbar() {
       <Divider />
       {singleId && (
         <>
+          {!selectedRelationshipDiagramItem && <SaveBoxTemplateButton key={singleId} node={selected[0]} />}
           {selectedRelationshipDiagramItem ? (
             <RelationshipDiagramItemMediaMenu
               diagramNodeId={singleId}
