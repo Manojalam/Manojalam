@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { portableFontStack } from "./portable-fonts";
 
+test("preserves the self-hosted Shobhika family used by existing boards", () => {
+  assert.equal(portableFontStack("Shobhika, serif", new Set(["shobhika"])), '"Shobhika", "Board Export Devanagari"');
+});
+
 test("OS-only fonts become an embedded fallback rather than Linux Open Sans", () => {
   assert.equal(portableFontStack('"Nirmala UI", Mangal, sans-serif', new Set()), '"Board Export Devanagari"');
 });
