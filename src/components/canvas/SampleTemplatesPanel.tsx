@@ -30,19 +30,20 @@ export function SampleTemplatesPanel() {
   const eligible = selected && ["shape", "text", "sticky", "mindmap"].includes(selected.type ?? "") && !selected.data.cardTemplateId && !selected.data.sampleTemplateId && !selected.data.sampleDesignId && !selected.data.locked;
   return <section aria-label="Sample templates" className="space-y-3 border-b p-3">
     <h3 className="text-xs font-semibold">Templates from your sample</h3>
-    <p className="text-[11px] text-muted-foreground">Arrange one example in a box. Tag its text with your own labels, then reuse it without formatting again.</p>
+    <p className="text-[11px] text-muted-foreground">Reuse any saved cell or box immediately. Optionally tag text with labels to make fillable cards.</p>
     {eligible ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); const id = create(selected.id, name); if (id) { setChosen(id); setName(""); } }}>
       <Input aria-label="Sample template name" placeholder="Template name" value={name} onChange={event => setName(event.target.value)} />
-      <Button type="submit" size="sm" disabled={!name.trim()}>Use as sample</Button>
+      <Button type="submit" size="sm" disabled={!name.trim()}>Use as template</Button>
     </form> : !selectedId && <p className="text-[10px] text-muted-foreground">Select a box containing your example to start.</p>}
     {!!templates?.length && <label className="block text-[10px]">Template library<select aria-label="Sample template library" className="mt-1 h-8 w-full rounded border bg-background px-2 text-xs" value={template?.id ?? ""} onChange={event => { setChosen(event.target.value); setLabelId(""); useCanvasStore.getState().setSelectedNodeIds([]); }}>
       {templates.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select></label>}
     {template && <>
+      <label className="block text-xs">Template name<Input key={`${template.id}-${template.name}`} aria-label="Saved template name" defaultValue={template.name} onBlur={event => { const name = event.target.value.trim(); if (name && name !== template.name) update(template.id, { name }); }} /></label>
       <p className="text-[11px] font-medium">{selected?.data.sampleDesignId === template.id ? "Editing the sample" : selected?.data.sampleTemplateId === template.id ? "Filling a card" : template.name}</p>
-      <p className="text-[10px] text-muted-foreground">{selected?.data.sampleDesignId === template.id ? "Double-click the sample, select text, then click Label selected text in its toolbar. Untagged text stays fixed. Edit this sample to change the layout." : "Type directly into labeled boxes. Tab moves between fields. Add another repeats an empty section inside the same card."}</p>
+      <p className="text-[10px] text-muted-foreground">{!fields.length ? "Use template adds an editable copy with the saved text, size, and formatting." : selected?.data.sampleDesignId === template.id ? "Double-click the sample, select text, then click Label selected text in its toolbar. Untagged text stays fixed. Edit this sample to change the layout." : "Type directly into labeled boxes. Tab moves between fields. Add another repeats an empty section inside the same card."}</p>
       <div className="flex flex-wrap gap-1">
-        <Button size="sm" disabled={!fields.length} onClick={() => insert(template.id)}>New empty card</Button>
+        <Button size="sm" onClick={() => insert(template.id)}>Use template</Button>
         <Button size="sm" variant="outline" onClick={() => openSample(template.id)}>Edit sample</Button>
       </div>
       <p className="text-[10px] text-muted-foreground">Sample edits update linked cards. Existing answers stay; newly tagged parts start empty. Each occurrence has its own answer.</p>

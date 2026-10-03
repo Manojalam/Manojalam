@@ -88,6 +88,15 @@ export function sampleCardData(template: SampleCardTemplate, entries: SampleCard
   };
 }
 
+/** Untagged templates insert ordinary, independently editable boxes. */
+export function sampleTemplateCopyData(template: SampleCardTemplate): Record<string, unknown> & { richText: string; text: string; autoSizeMode: string; userSize: { width: number; height: number } } {
+  return {
+    ...Object.fromEntries(Object.entries(template.style).map(([key, value]) => [key, value === null ? undefined : structuredClone(value)])),
+    richText: template.richText, text: richTextToPlainText(template.richText),
+    autoSizeMode: "fixed", userSize: { width: template.width, height: template.height },
+  };
+}
+
 export function normalizeSampleTemplates(value: unknown): SampleCardTemplate[] {
   if (!Array.isArray(value)) return [];
   const ids = new Set<string>();

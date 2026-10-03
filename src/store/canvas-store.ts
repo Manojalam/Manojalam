@@ -5,7 +5,7 @@ import { applyStyleTemplate, captureTemplateStyle, detachTemplateData, normalize
 import type { BoardStyleTemplate, BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
 import { cardSections, cardTemplateNodeData, detachCardTemplateData, normalizeCardTemplates, renderCardSections } from "@/lib/canvas/card-templates";
 import { flexibleCardContent } from "@/lib/canvas/flexible-card";
-import { normalizeSampleTemplates, refreshSampleFields, sampleCardData } from "@/lib/canvas/sample-templates";
+import { normalizeSampleTemplates, refreshSampleFields, sampleCardData, sampleTemplateCopyData } from "@/lib/canvas/sample-templates";
 import type { SampleCardTemplate, SampleCardEntry } from "@/lib/types";
 
 
@@ -2369,7 +2369,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   createSampleTemplate: (sourceId, name) => {
     const state = get();
     const source = state.nodes.find(node => node.id === sourceId);
-    if (!source || source.data.locked || source.data.sampleTemplateId || source.data.sampleDesignId || source.data.cardTemplateId || !name.trim()) return null;
+    if (!source || source.data.locked || !supportsStyleTemplate(source) || state.board?.accessRole === "viewer" || !name.trim()) return null;
     const id = generateId();
     const rect = getNodeRect(source);
     const template: SampleCardTemplate = { id, name: name.trim(), richText: typeof source.data.richText === "string" ? source.data.richText : plainTextToRichText(String(source.data.text ?? "")), labels: [], style: captureTemplateStyle(source.data), width: rect.width, height: rect.height };
@@ -2411,12 +2411,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   createSampleCard: (id) => {
     const state = get();
     const template = state.settings.sampleTemplates?.find(item => item.id === id);
-    if (!template || !template.labels.length) return null;
+    if (!template || state.board?.accessRole === "viewer") return null;
     const nodeId = generateId();
     const node: Node = { id: nodeId, type: "shape", selected: true,
       position: { x: (180 - state.viewport.x) / state.viewport.zoom, y: (160 - state.viewport.y) / state.viewport.zoom },
-      style: { width: Math.max(300, template.width), height: Math.max(200, template.height) },
-      data: { shapeType: "rounded", ...sampleCardData(template, [{ id: generateId(), values: {} }]) },
+      style: { width: template.width, height: template.height },
+      data: template.labels.length
+        ? { shapeType: "rounded", ...sampleCardData(template, [{ id: generateId(), values: {} }]) }
+        : sampleTemplateCopyData(template),
     };
     state.pushHistory();
     set({ nodes: [...state.nodes.map(item => ({ ...item, selected: false })), node], selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });
