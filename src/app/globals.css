@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Stable family names keep saved selections and exports compatible. Font files
+   are bundled from pinned packages, without build-time Google font requests. */
+:root {
+  --font-geist-sans: "Geist";
+  --font-geist-mono: "Geist Mono";
+  --font-noto-serif: "Noto Serif";
+  --font-noto-devanagari: "Noto Sans Devanagari";
+  --font-noto-serif-devanagari: "Noto Serif Devanagari";
+  --font-hind: "Hind";
+  --font-mukta: "Mukta";
+  --font-lora: "Lora";
+  --font-tiro-devanagari: "Tiro Devanagari Sanskrit";
+  --font-yatra-one: "Yatra One";
+}
+
 /* Keep the persisted family name: existing boards store "Shobhika, serif".
    Self-hosting lets exports embed the same face instead of substituting Noto. */
 @font-face {
