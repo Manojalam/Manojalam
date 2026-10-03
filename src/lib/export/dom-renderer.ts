@@ -1,4 +1,5 @@
 import { ExportError } from "./errors";
+import { embedExportSymbolImages } from "./symbol-assets";
 import type {
   ExportBounds,
   ExportDiagnostics,
@@ -1258,6 +1259,12 @@ export function cloneReactFlowViewport(
         convertCanvas(source, target);
         convertedCanvasCount += 1;
       }
+    }
+
+    // Capture local symbol/emoji fallback before font embedding removes OS faces.
+    // Do this after all styles are copied so newly inserted assets stay intact.
+    for (const [source, target] of pairs) {
+      if (retainedTargets.has(target)) embedExportSymbolImages(source, target);
     }
 
     if (options.layoutAdjustment) {
