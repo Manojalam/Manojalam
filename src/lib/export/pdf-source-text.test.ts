@@ -2,6 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { addPdfSourceText } from "./pdf-source-text";
+import { PDFDict, PDFName } from "pdf-lib";
+
+test("Chrome gets a standard-font source layer and neutralized native ActualText", async () => {
+  const original = await PDFDocument.create(); const page = original.addPage();
+  page.node.addContentStream(original.context.register(original.context.flateStream('/Span << /ActualText <FEFF09150903> >> BDC EMC')));
+  const result = await PDFDocument.load(await addPdfSourceText(await original.save(), [
+    { text: "कः धातुः", x: 10, y: 10, width: 100, height: 20 },
+  ]));
+  const objects = result.context.enumerateIndirectObjects().map(([, value]) => value);
+  assert.ok(objects.some(object => object instanceof PDFDict && object.get(PDFName.of("Subtype")) === PDFName.of("Type1")));
+  const streams = objects.filter((object): object is PDFRawStream => object instanceof PDFRawStream)
+    .map(stream => Buffer.from(decodePDFRawStream(stream).decode()).toString());
+  assert.ok(streams.some(stream => stream.includes('/ActualText <FEFF0020>')));
+  assert.ok(!streams.some(stream => stream.includes('/ActualText <FEFF09150903>')));
+});
 
 test("source Unicode survives conjuncts without changing page geometry", async () => {
   const original = await PDFDocument.create();
@@ -15,7 +30,7 @@ test("source Unicode survives conjuncts without changing page geometry", async (
   const streams = result.context.enumerateIndirectObjects().map(([, object]) => object)
     .filter((object): object is PDFRawStream => object instanceof PDFRawStream)
     .map(stream => Buffer.from(decodePDFRawStream(stream).decode()).toString());
-  assert.ok(streams.some(stream => stream.includes(Buffer.from(text, "utf16le").swap16().toString("hex"))));
+  for (const character of text) assert.ok(streams.some(stream => stream.includes(Buffer.from(character, "utf16le").swap16().toString("hex"))));
   assert.ok(streams.some(stream => stream.includes("3 Tr")));
 });
 
@@ -28,7 +43,7 @@ test("broken native mappings are suppressed, including ranged mappings", async (
   const streams = result.context.enumerateIndirectObjects().map(([, object]) => object)
     .filter((object): object is PDFRawStream => object instanceof PDFRawStream)
     .map(stream => Buffer.from(decodePDFRawStream(stream).decode()).toString());
-  assert.ok(streams.some(stream => stream.includes("<01> <200B>") && stream.includes("[<200B> <200B> <200B> ]")));
+  assert.ok(streams.some(stream => stream.includes("<01> <0020>") && stream.includes("[<0020> <0020> <0020> ]")));
 });
 
 test("rejects unexpected pagination rather than hiding additional pages", async () => {
@@ -46,7 +61,7 @@ test("PDF.js extracts intact searchable Sanskrit from multiple source fonts", as
   const pdf = await task.promise;
   try {
     const content = await (await pdf.getPage(1)).getTextContent();
-    const text = content.items.map(item => "str" in item ? item.str : "").join(" ");
+    const text = content.items.map(item => "str" in item ? item.str + (item.hasEOL ? " " : "") : "").join("").replace(/\s+/g, " ");
     assert.equal(text.includes("\u0000"), false);
     assert.equal(text.match(/क्षत्रियः ज्ञानम् विधिनिर्णयः/g)?.length, 260);
   } finally { await task.destroy(); }

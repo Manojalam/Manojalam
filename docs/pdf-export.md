@@ -12,10 +12,10 @@ Chromium's native mappings lose some Devanagari characters and split clusters.
 The submitted PDF reproduced this with thousands of fragments and NUL characters.
 Native vector text alone is insufficient.
 
-The renderer measures source words and adds an invisible Type3 text layer with
+The renderer measures source words and adds an invisible standard-font text layer with
 explicit UTF-16 Unicode mappings. Original glyph mappings become zero-width
 spaces to prevent duplicate/broken extraction; visible drawing operators remain
-unchanged. No substitute font, OCR or reshaping is needed. Selection is word-level.
+unchanged. No substitute font, OCR or reshaping is needed. Each source Unicode character has an explicit mapping for Chrome selection.
 Rotated text, wrapped words and unusual SVG arrangements can have approximate
 selection rectangles. Readers differ in whitespace and reading order. This is
 not a tagged-accessibility PDF. Text inside images has no source layer.
@@ -77,3 +77,9 @@ before rendering and rejects Devanagari content if it is unavailable.
 Vercel postbuild runs the native renderer smoke test using the shipped Linux
 Chromium binary. The test requires a visible Devanagari font in the PDF, intact
 Unicode at both ends, and rejection when the required embedded face is absent.
+
+Chrome/PDFium regression checks use `scripts/check-pdfium-copy.py` (pypdfium2)
+against the native smoke-test PDF. The test requires the complete reported
+Sanskrit sentence, including a wrapped line, to copy without lost characters.
+PDF.js tests alone are insufficient: Chrome honors native ActualText fragments
+and ignores empty Type3 glyphs. PDF viewers may add whitespace or line breaks.
