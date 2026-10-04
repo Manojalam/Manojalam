@@ -725,26 +725,11 @@ mark { border-radius: 2px; padding: 0 2px; }
   .board-tool-group[aria-label="Format"] { order: 5; }
 }
 
-/* Persistent names make creation tools discoverable without hovering. */
-.creation-tool-label { display: none; }
-.creation-tool-heading { display: none; }
-[data-device-kind="desktop"] .canvas-toolbar,
-[data-device-kind="tablet"] .canvas-toolbar { align-items: stretch; width: 8rem; }
-[data-device-kind="desktop"] .canvas-toolbar button:has(> .creation-tool-label),
-[data-device-kind="tablet"] .canvas-toolbar button:has(> .creation-tool-label) { width: 100%; justify-content: flex-start; padding: 0 .5rem; gap: .5rem; }
-[data-device-kind="desktop"] .creation-tool-label,
-[data-device-kind="tablet"] .creation-tool-label { display: inline; font-size: .7rem; white-space: nowrap; }
-[data-device-kind="desktop"] .creation-tool-heading,
-[data-device-kind="tablet"] .creation-tool-heading { display: block; padding: .25rem .5rem; font-size: .6rem; color: var(--muted-foreground); }
 [data-tool-category="text"] .board-tool-group[aria-label="Format"] .board-quick-actions > button,
 [data-tool-category="text"] .board-tool-group[aria-label="Format"] .h-5.w-px { display: none; }
 [data-tool-category="appearance"] [aria-label="Text formatting"] { display: none; }
 
 .canvas-toolbar button > svg { flex-shrink: 0; }
-[data-device-kind="desktop"] .canvas-toolbar .board-action-label,
-[data-device-kind="tablet"] .canvas-toolbar .board-action-label { display: inline; font-size: .7rem; }
-[data-device-kind="desktop"] .canvas-toolbar button:has(> .board-action-label),
-[data-device-kind="tablet"] .canvas-toolbar button:has(> .board-action-label) { width: 100%; height: auto; min-height: 2.25rem; justify-content: flex-start; gap: .5rem; padding-inline: .5rem; text-align: left; }
 [data-tool-category="board"] .board-selection-dock > .selection-hint,
 [data-tool-category="templates"] .board-selection-dock > .selection-hint { display: block; }
 [data-tool-category="board"] .selection-toolbar { display: none; }
