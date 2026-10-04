@@ -1,7 +1,7 @@
 "use client";
 
+import { QuickTextFormat } from "./QuickTextFormat";
 import { Input } from "@/components/ui/input";
-import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 
 import { useRef, useState } from "react";
 import { type Node } from "@xyflow/react";
@@ -73,7 +73,7 @@ import {
 } from "@/lib/canvas/text-rotation";
 import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
 import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
-import { DockedSelectionTools, BoardToolMenu } from "@/components/canvas/BoardToolDock";
+import { DockedSelectionTools, BoardToolMenu, BoardToolGroup } from "@/components/canvas/BoardToolDock";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { CopyToBoardDialog } from "@/components/canvas/CopyToBoardDialog";
 import {
@@ -623,7 +623,7 @@ export function SelectionToolbar() {
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
-  const fieldCard = selected.length === 1 && selected[0].data.cardTemplateId && !selected[0].data.freeCardLayout ? selected[0] : null;
+
   const selectedShapes = selected.filter((node) => node.type === "shape");
   const allSelectedAreShapes = selectedShapes.length === selected.length;
   const shapeTransformTargets = selected.filter(supportsShapeTransform);
@@ -814,18 +814,78 @@ export function SelectionToolbar() {
   return (
     <>
     <DockedSelectionTools><div data-export-ignore role="group" aria-label="Selected object tools" className="selection-toolbar nodrag nopan flex min-w-max items-center gap-1 px-2 py-1">
-      <span className="mr-1 hidden text-xs text-muted-foreground sm:inline">{selected.length === 1 ? "Selected object" : selected.length + " selected"}</span>
-      {fieldCard && <button
-        type="button"
-        className="mx-1 flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
-        disabled={!!fieldCard.data.locked}
-        onPointerDown={event => event.stopPropagation()}
-        onClick={event => { event.stopPropagation(); useUIStore.getState().setFillingCardNodeId(fieldCard.id); }}
-      ><Rows3 className="h-4 w-4" />Fill fields / sections</button>}
+
+      <BoardToolGroup label="Create">
+      {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && !singleIsExternalNote && <>
+          <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
+          <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
+      </>}
+      </BoardToolGroup>
+      <BoardToolGroup label="Format">
+        <QuickTextFormat nodes={selected} />
+          {singleId && singleShapeData && (
+            <ShapeChanger
+              nodeIds={[singleId]}
+              shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
+              cornerRadiusPercent={typeof singleShapeData.cornerRadiusPercent === "number"
+                ? singleShapeData.cornerRadiusPercent
+                : undefined}
+              petalCount={typeof singleShapeData.petalCount === "number" ? singleShapeData.petalCount : undefined}
+            />
+          )}
+
+      {selected.length > 1 && shapeTransformTargets.length > 0 && (
+        <>
+          <ShapeChanger
+            nodeIds={shapeTransformTargets.map((node) => node.id)}
+            shapeType={commonSelectedShape}
+            cornerRadiusPercent={typeof commonCornerRadius === "number" ? commonCornerRadius : undefined}
+            petalCount={typeof commonPetalCount === "number" ? commonPetalCount : undefined}
+          />
+          <Divider />
+        </>
+      )}
+
+      {allSelectedAreShapes && (selectedShapes.length === 1 || shapeFormatPainter) && (
+        <>
+          <ActionButton
+            label={shapeFormatPainter ? "Apply copied shape formatting" : "Copy shape formatting"}
+            active={!!shapeFormatPainter}
+            onClick={useShapeFormatPainter}
+          >
+            <Paintbrush className="h-4 w-4" />
+          </ActionButton>
+          <Divider />
+        </>
+      )}
+
+      </BoardToolGroup>
+      <BoardToolGroup label="Organize">
       <BoardToolMenu label="Add & connect">
+      {singleIsRelationshipDiagram && singleId && (
+        <>
+          <ActionButton
+            label="Change layout and options"
+            onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: singleId })}
+          >
+            <Settings2 className="h-4 w-4" />
+          </ActionButton>
+          <ActionButton
+            label="Fit frame to diagram"
+            onClick={() => window.dispatchEvent(new CustomEvent(
+              "vidya:fit-relationship-diagram",
+              { detail: { nodeId: singleId } }
+            ))}
+          >
+            <Maximize2 className="h-4 w-4" />
+          </ActionButton>
+          <Divider />
+        </>
+      )}
+
+
       {singleId && (
         <>
-          {!selectedRelationshipDiagramItem && <SaveBoxTemplateButton key={singleId} node={selected[0]} />}
           {selectedRelationshipDiagramItem ? (
             <RelationshipDiagramItemMediaMenu
               diagramNodeId={singleId}
@@ -885,8 +945,6 @@ export function SelectionToolbar() {
 
       {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && !singleIsExternalNote && (
         <>
-          <ActionButton label="Add child" onClick={() => createChildNode(singleId)}><Plus className="h-4 w-4" /></ActionButton>
-          <ActionButton label="Add sibling" onClick={() => createSiblingNode(singleId)}><Rows3 className="h-4 w-4" /></ActionButton>
           {singleParentId && (
             <>
               <ActionButton
@@ -948,65 +1006,6 @@ export function SelectionToolbar() {
       )}
 
       </BoardToolMenu>
-      {(singleShapeData || (selected.length > 1 && shapeTransformTargets.length > 0) || (allSelectedAreShapes && (selectedShapes.length === 1 || shapeFormatPainter)) || singleIsRelationshipDiagram) && <BoardToolMenu label="Style">
-          {singleId && singleShapeData && (
-            <ShapeChanger
-              nodeIds={[singleId]}
-              shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
-              cornerRadiusPercent={typeof singleShapeData.cornerRadiusPercent === "number"
-                ? singleShapeData.cornerRadiusPercent
-                : undefined}
-              petalCount={typeof singleShapeData.petalCount === "number" ? singleShapeData.petalCount : undefined}
-            />
-          )}
-
-      {selected.length > 1 && shapeTransformTargets.length > 0 && (
-        <>
-          <ShapeChanger
-            nodeIds={shapeTransformTargets.map((node) => node.id)}
-            shapeType={commonSelectedShape}
-            cornerRadiusPercent={typeof commonCornerRadius === "number" ? commonCornerRadius : undefined}
-            petalCount={typeof commonPetalCount === "number" ? commonPetalCount : undefined}
-          />
-          <Divider />
-        </>
-      )}
-
-      {allSelectedAreShapes && (selectedShapes.length === 1 || shapeFormatPainter) && (
-        <>
-          <ActionButton
-            label={shapeFormatPainter ? "Apply copied shape formatting" : "Copy shape formatting"}
-            active={!!shapeFormatPainter}
-            onClick={useShapeFormatPainter}
-          >
-            <Paintbrush className="h-4 w-4" />
-          </ActionButton>
-          <Divider />
-        </>
-      )}
-
-      {singleIsRelationshipDiagram && singleId && (
-        <>
-          <ActionButton
-            label="Change layout and options"
-            onClick={() => openRelationshipDiagram({ mode: "edit", diagramNodeId: singleId })}
-          >
-            <Settings2 className="h-4 w-4" />
-          </ActionButton>
-          <ActionButton
-            label="Fit frame to diagram"
-            onClick={() => window.dispatchEvent(new CustomEvent(
-              "vidya:fit-relationship-diagram",
-              { detail: { nodeId: singleId } }
-            ))}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </ActionButton>
-          <Divider />
-        </>
-      )}
-
-      </BoardToolMenu>}
       <BoardToolMenu label="Arrange">
       {selected.length > 1 && (
         <>
@@ -1058,6 +1057,15 @@ export function SelectionToolbar() {
         </ActionButton>
       )}
       </BoardToolMenu>
+      </BoardToolGroup>
+      <BoardToolGroup label="Edit & share">
+      <ActionButton
+        label="Duplicate"
+        disabled={singleIsSunburst}
+        onClick={duplicateSelected}
+      >
+        <Copy className="h-4 w-4" />
+      </ActionButton>
       {!singleIsExternalNote && <BoardToolMenu label="Export">
       {!singleIsExternalNote && (
         <>
@@ -1100,15 +1108,6 @@ export function SelectionToolbar() {
 
       </BoardToolMenu>}
       <BoardToolMenu label="Edit">
-      <ActionButton
-        label={singleIsSunburst
-          ? "Radial charts cannot be duplicated without their source branch"
-          : "Duplicate with style and content"}
-        disabled={singleIsSunburst}
-        onClick={duplicateSelected}
-      >
-        <Copy className="h-4 w-4" />
-      </ActionButton>
       <ObjectClipboardMenu />
       <ActionButton
         label="Copy diagram to another board"
@@ -1140,6 +1139,7 @@ export function SelectionToolbar() {
       </ActionButton>
       <ActionButton label="Delete" onClick={() => deleteSelected()}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
       </BoardToolMenu>
+      </BoardToolGroup>
     </div></DockedSelectionTools>
     {board && (
       <CopyToBoardDialog

@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PanelRight, X } from "lucide-react";
-import { BoardToolbarHost } from "@/components/canvas/BoardToolDock";
+import { BoardToolbarHost, BoardTemplatesButton, BoardToolCategoryContext, BOARD_TOOL_CATEGORIES, type BoardToolCategory } from "@/components/canvas/BoardToolDock";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { getBoard } from "@/lib/storage/board-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CanvasTopbar } from "@/components/canvas/CanvasTopbar";
 import { CanvasToolbar } from "@/components/canvas/CanvasToolbar";
+import { BoardStyleTemplatesPanel } from "@/components/canvas/BoardStyleTemplatesPanel";
+import { TemplateLauncher } from "@/components/canvas/TemplateLauncher";
 import { CanvasInspector } from "@/components/canvas/CanvasInspector";
 import { LayoutPanel } from "@/components/canvas/LayoutPanel";
 import { CanvasLayersPanel } from "@/components/canvas/CanvasLayersPanel";
@@ -41,11 +43,16 @@ export default function BoardEditorPage() {
   const [notFound, setNotFound] = useState(false);
   const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [toolCategory, setToolCategory] = useState<BoardToolCategory>("create");
+  const selectedCount = useCanvasStore(state => state.selectedNodeIds.length + state.selectedEdgeIds.length);
+  const selectedEdgeCount = useCanvasStore(state => state.selectedEdgeIds.length);
+  const activeTool = useUIStore(state => state.activeTool);
+  const categoryLabel = BOARD_TOOL_CATEGORIES.find(item => item.id === toolCategory)?.label ?? "Properties";
+
   const beginBoardHydration = useCanvasStore((s) => s.beginBoardHydration);
   const setBoard = useCanvasStore((s) => s.setBoard);
   const pushHistory = useCanvasStore((s) => s.pushHistory);
   const board = useCanvasStore((s) => s.board);
-  const layoutPanelOpen = useUIStore((s) => s.layoutPanelOpen);
   const relationshipSelection = useUIStore((s) => s.relationshipSelection);
   const presentationMode = useUIStore((s) => s.presentationMode);
   const device = useDeviceProfile();
@@ -200,6 +207,7 @@ export default function BoardEditorPage() {
   }
 
   return (
+    <BoardToolCategoryContext.Provider value={toolCategory}>
     <BoardToolbarHost.Provider value={toolbarHost}>
     <div
       className="flex h-[100dvh] flex-col overflow-hidden bg-background"
@@ -210,14 +218,23 @@ export default function BoardEditorPage() {
     >
       {!presentationMode && <CanvasTopbar />}
 
-      {canEdit && !presentationMode && <div className="flex min-h-11 shrink-0 items-center border-b bg-background" data-export-ignore>
+      {canEdit && !presentationMode && <nav aria-label="Board tool categories" className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-background px-2 py-1">
+        {BOARD_TOOL_CATEGORIES.map(item => <button key={item.id} type="button" aria-pressed={toolCategory === item.id} className={cn("h-8 shrink-0 rounded-md px-3 text-xs font-medium hover:bg-accent", toolCategory === item.id && "bg-primary/10 text-primary")} onClick={() => {
+          setToolCategory(item.id);
+          setInspectorOpen(item.id !== "create");
+        }}>{item.label}</button>)}
+      </nav>}
+      {canEdit && !presentationMode && <div className="flex min-h-11 shrink-0 items-center border-b bg-background" data-tool-category={toolCategory} data-export-ignore>
+        {toolCategory === "connections" && <button type="button" className="m-1 h-8 shrink-0 rounded border px-2 text-xs" onClick={() => useUIStore.getState().setActiveTool("connector")}>Draw connector</button>}
+        <BoardTemplatesButton />
         <div ref={setToolbarHost} className="board-selection-dock min-w-0 flex-1 overflow-x-auto">
-          <p className="selection-hint px-3 text-xs text-muted-foreground">Select an object to edit it</p>
+          <p className="selection-hint px-3 text-xs text-muted-foreground">{toolCategory === "board" ? "Board defaults — selection is preserved" : toolCategory === "templates" ? "Create, fill, and design cards" : "Select an object to edit it"}</p>
         </div>
         <button type="button" aria-label="Properties" aria-expanded={inspectorOpen} aria-controls="board-properties" onClick={() => setInspectorOpen(value => !value)} className={cn("mx-2 flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-medium hover:bg-accent", inspectorOpen && "bg-primary/10 text-primary")}>
           <PanelRight className="h-4 w-4" /><span className="hidden sm:inline">Properties</span>
         </button>
       </div>}
+      {canEdit && !presentationMode && activeTool !== "select" && <p role="status" className="shrink-0 border-b bg-primary/5 px-3 py-1 text-xs">{activeTool === "pan" ? "Hand tool: drag to pan the board." : activeTool === "connector" ? "Connect: click or drag from one shape’s edge to another shape’s edge." : `Place ${activeTool}: click an empty area of the board.`} Press Esc to return to Select.</p>}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {canEdit && !presentationMode && !isPhone && !relationshipSelection && <aside aria-label="Create and navigate" className="shrink-0 overflow-y-auto border-r bg-background px-1 py-2"><CanvasToolbar /></aside>}
       <div className="relative min-w-0 flex-1 overflow-hidden">
@@ -264,10 +281,10 @@ export default function BoardEditorPage() {
 
       {canEdit && !presentationMode && inspectorOpen && !relationshipSelection && <aside id="board-properties" aria-label="Object properties" className={cn("shrink-0 border-l bg-background", isPhone ? "absolute inset-x-3 bottom-20 z-40 max-h-[55dvh] overflow-y-auto rounded-xl border shadow-lg" : "w-72 overflow-y-auto")}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-2">
-          <span className="text-xs font-semibold">Properties</span>
+          <span className="text-xs font-semibold">{categoryLabel} · {toolCategory === "board" ? "Board defaults" : toolCategory === "templates" ? "Cards & designs" : `${selectedCount} selected`}</span>
           <button type="button" aria-label="Close properties" onClick={() => setInspectorOpen(false)} className="rounded-md p-1.5 hover:bg-accent"><X className="h-4 w-4" /></button>
         </div>
-        {!(isPhone && layoutPanelOpen) && <CanvasInspector compact={isPhone} />}
+        {toolCategory === "templates" ? <><TemplateLauncher /><BoardStyleTemplatesPanel showCrossBoardLibrary={false} /></> : (toolCategory === "connections" ? selectedEdgeCount : selectedCount || toolCategory === "board") ? <CanvasInspector key={toolCategory} compact={isPhone} boardOnly={toolCategory === "board"} initialTab={toolCategory === "text" ? "text" : toolCategory === "arrange" ? "layout" : "style"} /> : <p className="p-3 text-xs text-muted-foreground">Select {toolCategory === "connections" ? "a connector" : "an object"} to see its {categoryLabel.toLowerCase()} controls.</p>}
       </aside>}
       </div>
       {canEdit && !presentationMode && isPhone && !relationshipSelection && <div className="flex shrink-0 justify-center border-t bg-background p-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]" aria-label="Create and navigate"><CanvasToolbar /></div>}
@@ -277,5 +294,6 @@ export default function BoardEditorPage() {
       {!presentationMode && <SearchPanel />}
     </div>
     </BoardToolbarHost.Provider>
+    </BoardToolCategoryContext.Provider>
   );
 }
