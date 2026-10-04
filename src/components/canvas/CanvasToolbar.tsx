@@ -64,8 +64,9 @@ function ToolBtn({
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           )}
           aria-label={label}
+          aria-pressed={tool ? isActive : undefined}
         >
-          {icon}
+          {icon}<span className="creation-tool-label">{label}</span>
         </button>
       </TooltipTrigger>
       <TooltipContent side={tooltipSide} className="flex items-center gap-2 rounded-lg text-xs">
@@ -100,7 +101,7 @@ function ShapesBtn() {
               )}
               aria-label="Shapes"
             >
-              {currentShape.icon}
+              {currentShape.icon}<span className="creation-tool-label">Shapes</span>
               <ChevronRight className="absolute -right-0.5 bottom-0.5 h-2.5 w-2.5 opacity-50" />
             </button>
           </PopoverTrigger>
@@ -126,6 +127,7 @@ function ShapesBtn() {
                     setActiveTool("shape");
                     setOpen(false);
                   }}
+                  aria-label={s.label}
                 >
                   {s.icon}
                 </button>
@@ -160,7 +162,7 @@ function SanskritBtn() {
               )}
               aria-label="Sanskrit tools"
             >
-              <span className="text-[15px] font-bold leading-none" style={{ fontFamily: "serif" }}>सं</span>
+              <span className="text-[15px] font-bold leading-none" style={{ fontFamily: "serif" }}>सं</span><span className="creation-tool-label">Sanskrit cards</span>
               <ChevronRight className="absolute -right-0.5 bottom-0.5 h-2.5 w-2.5 opacity-50" />
             </button>
           </PopoverTrigger>
@@ -213,7 +215,7 @@ function LayoutBtn() {
           )}
           aria-label="Layouts"
         >
-          <Network className="h-[18px] w-[18px] stroke-[1.5]" />
+          <Network className="h-[18px] w-[18px] stroke-[1.5]" /><span className="creation-tool-label">Layouts</span>
         </button>
       </TooltipTrigger>
       <TooltipContent side={tooltipSide} className="text-xs">Layouts</TooltipContent>
@@ -247,7 +249,7 @@ function TouchMultiSelectBtn() {
           aria-label="Multi-select"
           aria-pressed={active}
         >
-          <MousePointer2 className="h-[18px] w-[18px] stroke-[1.5]" />
+          <MousePointer2 className="h-[18px] w-[18px] stroke-[1.5]" /><span className="creation-tool-label">Multi-select</span>
         </button>
       </TooltipTrigger>
       <TooltipContent side={tooltipSide} className="text-xs">Multi-select drag</TooltipContent>
@@ -262,6 +264,7 @@ export function CanvasToolbar() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="vidya-float-panel canvas-toolbar flex flex-col items-center gap-0.5 p-1.5">
+        <span className="creation-tool-heading">Navigate</span>
         {/* Navigation */}
         <ToolBtn tool="select" icon={<MousePointer2 className="h-[18px] w-[18px] stroke-[1.5]" />} label="Select" shortcut="V" />
         <ToolBtn tool="pan"    icon={<Hand className="h-[18px] w-[18px] stroke-[1.5]" />}          label="Hand / Pan" shortcut="H" />
@@ -270,6 +273,7 @@ export function CanvasToolbar() {
 
         <Divider />
 
+        <span className="creation-tool-heading">Create</span>
         {/* Creation */}
         <ToolBtn tool="sticky" icon={<StickyNote className="h-[18px] w-[18px] stroke-[1.5]" />}   label="Sticky Note" shortcut="S" />
         <ToolBtn tool="text"   icon={<Type className="h-[18px] w-[18px] stroke-[1.5]" />}          label="Text" shortcut="T" />

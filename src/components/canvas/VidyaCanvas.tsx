@@ -1613,12 +1613,12 @@ function VidyaCanvasInner({
 
       if (newNode) {
         setNodes((nds) => {
-          const next = [...nds, newNode!];
+          const next = [...nds.map(node => ({ ...node, selected: false })), { ...newNode!, selected: true }];
           const placements = resolveInsertedNodeCollisions(next, newNode!.id);
           return next.map((n) => placements[n.id] ? { ...n, position: placements[n.id] } : n);
         });
         useUIStore.getState().setActiveTool("select");
-        if (tool === "table") useCanvasStore.getState().setSelectedNodeIds([id]);
+        useCanvasStore.getState().setSelectedNodeIds([id]);
       }
     },
     [screenToFlowPosition, setNodes]  // stable deps
@@ -1840,6 +1840,7 @@ function VidyaCanvasInner({
           cs.createSiblingNode(selectedNode.id);
         }
       }
+      else if (e.key === "Escape") { ui.setActiveTool("select"); ui.setTouchSelectionMode(false); }
       else if (e.key === "f" || e.key === "F") { fitView({ padding: 0.2 }); }
       else if (e.key === "+" || e.key === "=") { zoomByStep(0.1); }
       else if (e.key === "-")                  { zoomByStep(-0.1); }
@@ -2092,13 +2093,6 @@ function VidyaCanvasInner({
     >
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
-      )}
-      {canEdit && !presentationMode && activeTool === "connector" && (
-        <Panel position="top-center" className="pointer-events-none !mt-3">
-          <div className="rounded-full border bg-background/95 px-3 py-1.5 text-[11px] font-medium text-foreground shadow-md backdrop-blur">
-            Click or drag from a blue connection point to another shape
-          </div>
-        </Panel>
       )}
       <ListTreeConnectors />
       <StructuredTreeConnectors />

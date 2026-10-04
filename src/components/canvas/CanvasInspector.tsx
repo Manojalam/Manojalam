@@ -1,4 +1,5 @@
 "use client";
+import { normalizeWholeTextFormat } from "@/lib/canvas/whole-text-format";
 
 import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
 import { TemplateLauncher } from "./TemplateLauncher";
@@ -172,7 +173,6 @@ import {
 } from "@/lib/canvas/object-rotation";
 import { isMetallicColor, rememberCustomColor } from "@/lib/canvas/custom-colors";
 import {
-  isInsideEnclosedSticker,
   normalizeWholeTextHighlight,
   protectEnclosedStickerTextStyles,
   reclaimAutomaticTextColor,
@@ -1135,58 +1135,6 @@ function LayoutBorderControls({
   );
 }
 
-function normalizeWholeTextFormat(
-  data: Record<string, unknown>,
-  key: "fontFamily" | "fontWeight" | "fontStyle" | "textColor" | "textAlign",
-  value: unknown
-): Record<string, unknown> {
-  const patch: Record<string, unknown> = { [key]: value };
-  if (typeof data.richText !== "string") return patch;
-  const cssProperty = {
-    fontFamily: "font-family",
-    fontWeight: "font-weight",
-    fontStyle: "font-style",
-    textColor: "color",
-    textAlign: "text-align",
-  }[key];
-  const fallback = data.richText.replace(new RegExp(`${cssProperty}\\s*:\\s*[^;\"']+;?`, "gi"), "");
-  if (typeof document === "undefined") {
-    patch.richText = fallback;
-    return patch;
-  }
-
-  const container = document.createElement("div");
-  container.innerHTML = key === "textAlign"
-    ? data.richText
-    : protectEnclosedStickerTextStyles(data) ?? data.richText;
-  container.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
-    if (isInsideEnclosedSticker(element)) return;
-    element.style.removeProperty(cssProperty);
-    if (!element.getAttribute("style")?.trim()) element.removeAttribute("style");
-  });
-  if (key === "textColor") {
-    container.querySelectorAll<HTMLElement>("[color]").forEach((element) => {
-      if (!isInsideEnclosedSticker(element)) element.removeAttribute("color");
-    });
-  }
-  if (key === "fontFamily") {
-    container.querySelectorAll<HTMLElement>("[face]").forEach((element) => {
-      if (!isInsideEnclosedSticker(element)) element.removeAttribute("face");
-    });
-  }
-  if (key === "textAlign") {
-    container.querySelectorAll<HTMLElement>("[align]").forEach((element) => element.removeAttribute("align"));
-  }
-  if (key === "fontWeight" && value !== "bold") {
-    container.querySelectorAll("strong, b").forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
-  }
-  if (key === "fontStyle" && value !== "italic") {
-    container.querySelectorAll("em, i").forEach((element) => element.replaceWith(...Array.from(element.childNodes)));
-  }
-  container.normalize();
-  patch.richText = container.innerHTML || fallback;
-  return patch;
-}
 
 function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   let patch: Record<string, unknown>;
@@ -1684,10 +1632,10 @@ function ConnectionInspectorSections({
 
 // ── Main inspector ─────────────────────────────────────────────────────────
 
-export function CanvasInspector({ compact = false }: { compact?: boolean }) {
+export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean }) {
   const { resolvedTheme } = useTheme();
   const boardTheme: BoardColorTheme = resolvedTheme === "dark" ? "dark" : "light";
-  const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>("style");
+  const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>(initialTab);
   const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
   const [bulkChildCount, setBulkChildCount] = useState(3);
   const [resetManualRoutes, setResetManualRoutes] = useState(false);
@@ -1695,12 +1643,14 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
   const [tidyLaneCount, setTidyLaneCount] = useState(2);
   const [tidyEqualizeCrossAxis, setTidyEqualizeCrossAxis] = useState(false);
   const [wholeFlowchartDirection, setWholeFlowchartDirection] = useState<FlowchartTidyDirection>("auto");
-  const [canvasSettingsOpen, setCanvasSettingsOpen] = useState(false);
+  const [canvasSettingsOpen, setCanvasSettingsOpen] = useState(boardOnly);
   const nodes           = useCanvasStore((s) => s.nodes);
   const edges           = useCanvasStore((s) => s.edges);
   const relationships   = useCanvasStore((s) => s.relationships);
-  const selectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
-  const selectedEdgeIds = useCanvasStore((s) => s.selectedEdgeIds);
+  const actualSelectedNodeIds = useCanvasStore((s) => s.selectedNodeIds);
+  const selectedNodeIds = boardOnly ? [] : actualSelectedNodeIds;
+  const actualSelectedEdgeIds = useCanvasStore((s) => s.selectedEdgeIds);
+  const selectedEdgeIds = boardOnly ? [] : actualSelectedEdgeIds;
   const settings        = useCanvasStore((s) => s.settings);
   const resolvedCanvasBackgroundColor = resolvedBoardColor(
     settings.canvasBackgroundColor,
@@ -3796,11 +3746,11 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
       );
     }
 
-    if (compact) return <aside className="vidya-float-panel canvas-inspector-panel w-72 max-w-[calc(100vw-1rem)]"><TemplateLauncher /></aside>;
+    if (compact && !boardOnly) return <aside className="vidya-float-panel canvas-inspector-panel w-72 max-w-[calc(100vw-1rem)]"><TemplateLauncher /></aside>;
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
-        <TemplateLauncher />
+        {!boardOnly && <TemplateLauncher />}
         <button
           type="button"
           aria-expanded={canvasSettingsOpen}
@@ -3819,7 +3769,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
             : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </button>
         {canvasSettingsOpen && <div className="flex-1 overflow-y-auto">
-          <BoardStyleTemplatesPanel showCrossBoardLibrary={false} />
+          {!boardOnly && <BoardStyleTemplatesPanel showCrossBoardLibrary={false} />}
           <Section label="Background">
             <Select value={settings.background} onValueChange={(v) => setBoardSettings({ background: v as "dots" | "grid" | "plain" })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
@@ -6048,6 +5998,7 @@ export function CanvasInspector({ compact = false }: { compact?: boolean }) {
         {(isContentNode || isEditableFrame || isRadialLayoutSector) && (
           <Section
             label="Text"
+            defaultOpen={initialTab === "text"}
             visible={singleNodeTab === "text"}
             preserveTextSelection
           >
