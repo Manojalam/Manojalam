@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 
 import { useRef, useState } from "react";
-import { NodeToolbar, Position, useReactFlow, type Node } from "@xyflow/react";
+import { type Node } from "@xyflow/react";
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
@@ -73,10 +73,7 @@ import {
 } from "@/lib/canvas/text-rotation";
 import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
 import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
-import {
-  MovableToolbarHandle,
-  useMovableToolbar,
-} from "@/components/canvas/MovableToolbar";
+import { DockedSelectionTools, BoardToolMenu } from "@/components/canvas/BoardToolDock";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { CopyToBoardDialog } from "@/components/canvas/CopyToBoardDialog";
 import {
@@ -125,6 +122,7 @@ function ActionButton({
       )}
     >
       {children}
+      <span className="board-action-label hidden">{label}</span>
     </button>
   );
 }
@@ -198,7 +196,7 @@ function ShapeChanger({
           onClick={(event) => event.stopPropagation()}
           className="relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          {currentShape.icon}
+          {currentShape.icon}<span className="board-action-label hidden">Change shape</span>
           <ChevronDown className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 opacity-60" />
         </button>
       </PopoverTrigger>
@@ -471,7 +469,7 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
               && "bg-primary/10 text-primary"
           )}
         >
-          <RotateCw className="h-4 w-4" />
+          <RotateCw className="h-4 w-4" /><span className="board-action-label hidden">Rotate object or text</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -556,7 +554,7 @@ function LayerOrderMenu({
           onClick={(event) => event.stopPropagation()}
           className="flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <Layers3 className="h-4 w-4" />
+          <Layers3 className="h-4 w-4" /><span className="board-action-label hidden">Layer order</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -621,11 +619,7 @@ export function SelectionToolbar() {
   );
   const shapeFormatPainter = useUIStore((state) => state.shapeFormatPainter);
   const setShapeFormatPainter = useUIStore((state) => state.setShapeFormatPainter);
-  const { screenToFlowPosition } = useReactFlow();
-  const toolbarMove = useMovableToolbar(
-    ".selection-toolbar",
-    selectedNodeIds.join("\u0000")
-  );
+
 
   const selected = nodes.filter((node) => selectedNodeIds.includes(node.id) && !node.hidden);
   if (!selected.length) return null;
@@ -819,19 +813,8 @@ export function SelectionToolbar() {
 
   return (
     <>
-    <NodeToolbar
-      data-export-ignore
-      nodeId={selected.map((node) => node.id)}
-      isVisible
-      position={Position.Top}
-      offset={14}
-      style={toolbarMove.positionStyle}
-      className="selection-toolbar nodrag nopan flex max-w-[min(94vw,46rem)] flex-wrap items-center justify-center rounded-lg border border-border bg-background/95 p-1 shadow-xl backdrop-blur"
-    >
-      <MovableToolbarHandle
-        controls={toolbarMove}
-        label="Move shape toolbar"
-      />
+    <DockedSelectionTools><div data-export-ignore role="group" aria-label="Selected object tools" className="selection-toolbar nodrag nopan flex min-w-max items-center gap-1 px-2 py-1">
+      <span className="mr-1 hidden text-xs text-muted-foreground sm:inline">{selected.length === 1 ? "Selected object" : selected.length + " selected"}</span>
       {fieldCard && <button
         type="button"
         className="mx-1 flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
@@ -839,7 +822,7 @@ export function SelectionToolbar() {
         onPointerDown={event => event.stopPropagation()}
         onClick={event => { event.stopPropagation(); useUIStore.getState().setFillingCardNodeId(fieldCard.id); }}
       ><Rows3 className="h-4 w-4" />Fill fields / sections</button>}
-      <Divider />
+      <BoardToolMenu label="Add & connect">
       {singleId && (
         <>
           {!selectedRelationshipDiagramItem && <SaveBoxTemplateButton key={singleId} node={selected[0]} />}
@@ -891,10 +874,7 @@ export function SelectionToolbar() {
           {typeof noteSourceId === "string" && noteSource && (
             <ActionButton
               label={`Add another note to ${noteSourceLabel}`}
-              onClick={(event) => createNodeNote(noteSourceId, screenToFlowPosition({
-                x: event.clientX,
-                y: event.clientY,
-              }))}
+              onClick={() => createNodeNote(noteSourceId)}
             >
               <MessageSquarePlus className="h-4 w-4" />
             </ActionButton>
@@ -927,10 +907,7 @@ export function SelectionToolbar() {
           )}
           <ActionButton
             label="Add note outside box"
-            onClick={(event) => createNodeNote(singleId, screenToFlowPosition({
-              x: event.clientX,
-              y: event.clientY,
-            }))}
+            onClick={() => createNodeNote(singleId)}
           >
             <MessageSquarePlus className="h-4 w-4" />
           </ActionButton>
@@ -954,16 +931,6 @@ export function SelectionToolbar() {
               <Move className="h-4 w-4" />
             </ActionButton>
           )}
-          {singleShapeData && (
-            <ShapeChanger
-              nodeIds={[singleId]}
-              shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
-              cornerRadiusPercent={typeof singleShapeData.cornerRadiusPercent === "number"
-                ? singleShapeData.cornerRadiusPercent
-                : undefined}
-              petalCount={typeof singleShapeData.petalCount === "number" ? singleShapeData.petalCount : undefined}
-            />
-          )}
           <Divider />
         </>
       )}
@@ -979,6 +946,19 @@ export function SelectionToolbar() {
           <Divider />
         </>
       )}
+
+      </BoardToolMenu>
+      {(singleShapeData || (selected.length > 1 && shapeTransformTargets.length > 0) || (allSelectedAreShapes && (selectedShapes.length === 1 || shapeFormatPainter)) || singleIsRelationshipDiagram) && <BoardToolMenu label="Style">
+          {singleId && singleShapeData && (
+            <ShapeChanger
+              nodeIds={[singleId]}
+              shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
+              cornerRadiusPercent={typeof singleShapeData.cornerRadiusPercent === "number"
+                ? singleShapeData.cornerRadiusPercent
+                : undefined}
+              petalCount={typeof singleShapeData.petalCount === "number" ? singleShapeData.petalCount : undefined}
+            />
+          )}
 
       {selected.length > 1 && shapeTransformTargets.length > 0 && (
         <>
@@ -1026,6 +1006,8 @@ export function SelectionToolbar() {
         </>
       )}
 
+      </BoardToolMenu>}
+      <BoardToolMenu label="Arrange">
       {selected.length > 1 && (
         <>
           <div role="group" aria-label="Align selected objects" className="flex items-center">
@@ -1075,6 +1057,8 @@ export function SelectionToolbar() {
           {singleLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
         </ActionButton>
       )}
+      </BoardToolMenu>
+      {!singleIsExternalNote && <BoardToolMenu label="Export">
       {!singleIsExternalNote && (
         <>
           <ActionButton
@@ -1114,6 +1098,8 @@ export function SelectionToolbar() {
         </>
       )}
 
+      </BoardToolMenu>}
+      <BoardToolMenu label="Edit">
       <ActionButton
         label={singleIsSunburst
           ? "Radial charts cannot be duplicated without their source branch"
@@ -1153,7 +1139,8 @@ export function SelectionToolbar() {
         <Eraser className="h-4 w-4 text-destructive" />
       </ActionButton>
       <ActionButton label="Delete" onClick={() => deleteSelected()}><Trash2 className="h-4 w-4 text-destructive" /></ActionButton>
-    </NodeToolbar>
+      </BoardToolMenu>
+    </div></DockedSelectionTools>
     {board && (
       <CopyToBoardDialog
         open={copyToBoardOpen}

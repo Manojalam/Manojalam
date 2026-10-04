@@ -207,7 +207,7 @@ export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
             triggerClassName
           )}
         >
-          <Paperclip className="h-4 w-4" />
+          <Paperclip className="h-4 w-4" /><span className="board-action-label hidden">Attachments</span>
           {attachments.length > 0 && (
             <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold leading-none text-primary-foreground">
               {attachments.length}

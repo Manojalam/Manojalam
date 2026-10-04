@@ -649,6 +649,21 @@ mark { border-radius: 2px; padding: 0 2px; }
   width: 1px;
 }
 
+.board-selection-dock:has(.selection-toolbar) > .selection-hint {
+  display: none;
+}
+
+.board-tool-menu .board-action-label { display: inline; text-align: left; }
+.board-tool-menu button:has(> .board-action-label) {
+  width: 100%; height: auto; min-height: 2.25rem; justify-content: flex-start;
+  gap: 0.5rem; padding: 0.5rem; font-size: 0.75rem;
+}
+.board-tool-menu button > svg { flex-shrink: 0; }
+.board-tool-menu [role="group"] { flex-direction: column; align-items: stretch; }
+.board-tool-menu .h-5.w-px { height: 1px; width: 100%; margin: 0.25rem 0; }
+.board-selection-dock .selection-toolbar { max-width: none; }
+#board-properties .canvas-inspector-panel { border: 0; border-radius: 0; box-shadow: none; max-width: 100%; }
+
 [data-device-kind="phone"] .selection-toolbar,
 [data-device-kind="tablet"] .selection-toolbar {
   max-width: min(88vw, 34rem);
@@ -689,3 +704,7 @@ mark { border-radius: 2px; padding: 0 2px; }
 [data-device-kind="tablet"] .layout-panel {
   max-height: calc(100dvh - 7rem);
 }
+
+/* The creation rail is already separated from the canvas by its dock. */
+[aria-label="Create and navigate"] .canvas-toolbar { border: 0; border-radius: 0; box-shadow: none; }
+.board-tool-menu > .h-5.w-px:last-child { display: none; }
