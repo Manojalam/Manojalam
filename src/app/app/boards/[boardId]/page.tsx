@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { PanelRight, X } from "lucide-react";
+import { BoardToolbarHost } from "@/components/canvas/BoardToolDock";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { getBoard } from "@/lib/storage/board-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -37,6 +39,8 @@ export default function BoardEditorPage() {
   })();
   const [loading, setLoading] = useState(!hasPrefetchedTemplateBoard);
   const [notFound, setNotFound] = useState(false);
+  const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const beginBoardHydration = useCanvasStore((s) => s.beginBoardHydration);
   const setBoard = useCanvasStore((s) => s.setBoard);
   const pushHistory = useCanvasStore((s) => s.pushHistory);
@@ -196,6 +200,7 @@ export default function BoardEditorPage() {
   }
 
   return (
+    <BoardToolbarHost.Provider value={toolbarHost}>
     <div
       className="flex h-[100dvh] flex-col overflow-hidden bg-background"
       data-device-kind={device.kind}
@@ -205,26 +210,19 @@ export default function BoardEditorPage() {
     >
       {!presentationMode && <CanvasTopbar />}
 
-      {/* Canvas + floating overlays */}
-      <div className="relative flex-1 overflow-hidden">
+      {canEdit && !presentationMode && <div className="flex min-h-11 shrink-0 items-center border-b bg-background" data-export-ignore>
+        <div ref={setToolbarHost} className="board-selection-dock min-w-0 flex-1 overflow-x-auto">
+          <p className="selection-hint px-3 text-xs text-muted-foreground">Select an object to edit it</p>
+        </div>
+        <button type="button" aria-label="Properties" aria-expanded={inspectorOpen} aria-controls="board-properties" onClick={() => setInspectorOpen(value => !value)} className={cn("mx-2 flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-medium hover:bg-accent", inspectorOpen && "bg-primary/10 text-primary")}>
+          <PanelRight className="h-4 w-4" /><span className="hidden sm:inline">Properties</span>
+        </button>
+      </div>}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {canEdit && !presentationMode && !isPhone && !relationshipSelection && <aside aria-label="Create and navigate" className="shrink-0 overflow-y-auto border-r bg-background px-1 py-2"><CanvasToolbar /></aside>}
+      <div className="relative min-w-0 flex-1 overflow-hidden">
         {/* Canvas fills entire space */}
         <VidyaCanvas boardId={boardId} canEdit={canEdit} />
-
-        {/* Floating left toolbar */}
-        {canEdit && !presentationMode && <div
-          className={cn(
-            "pointer-events-none absolute z-30 flex",
-            isPhone
-              ? "inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+2.75rem)] justify-center px-3"
-              : "inset-y-0 left-0 items-center pl-3"
-          )}
-        >
-          {!relationshipSelection && (
-            <div className="pointer-events-auto">
-              <CanvasToolbar />
-            </div>
-          )}
-        </div>}
 
         {/* Floating layout panel (left, next to toolbar) */}
         {canEdit && !presentationMode && <div
@@ -232,29 +230,13 @@ export default function BoardEditorPage() {
             "pointer-events-none absolute z-40 flex",
             isPhone
               ? "inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+6.25rem)] justify-center"
-              : "inset-y-0 left-16 items-start pt-3"
+              : "inset-y-0 left-3 items-start pt-3"
           )}
         >
           {!relationshipSelection && (
             <div className="pointer-events-auto">
               <LayoutPanel />
               <CanvasLayersPanel />
-            </div>
-          )}
-        </div>}
-
-        {/* Floating right inspector */}
-        {canEdit && !presentationMode && <div
-          className={cn(
-            "pointer-events-none absolute z-40 flex",
-            isPhone
-              ? "inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+6.25rem)] justify-center"
-              : "inset-y-0 right-0 items-start pt-3 pr-3"
-          )}
-        >
-          {!relationshipSelection && (
-            <div className="pointer-events-auto max-h-[calc(100dvh-100px)] overflow-y-auto">
-              {!(isPhone && layoutPanelOpen) && <CanvasInspector compact={isPhone} />}
             </div>
           )}
         </div>}
@@ -280,9 +262,20 @@ export default function BoardEditorPage() {
         </div>}
       </div>
 
+      {canEdit && !presentationMode && inspectorOpen && !relationshipSelection && <aside id="board-properties" aria-label="Object properties" className={cn("shrink-0 border-l bg-background", isPhone ? "absolute inset-x-3 bottom-20 z-40 max-h-[55dvh] overflow-y-auto rounded-xl border shadow-lg" : "w-72 overflow-y-auto")}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-2">
+          <span className="text-xs font-semibold">Properties</span>
+          <button type="button" aria-label="Close properties" onClick={() => setInspectorOpen(false)} className="rounded-md p-1.5 hover:bg-accent"><X className="h-4 w-4" /></button>
+        </div>
+        {!(isPhone && layoutPanelOpen) && <CanvasInspector compact={isPhone} />}
+      </aside>}
+      </div>
+      {canEdit && !presentationMode && isPhone && !relationshipSelection && <div className="flex shrink-0 justify-center border-t bg-background p-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]" aria-label="Create and navigate"><CanvasToolbar /></div>}
+
       {canEdit && !presentationMode && <SanskritToolsPanel />}
       {canEdit && !presentationMode && <CommandPalette />}
       {!presentationMode && <SearchPanel />}
     </div>
+    </BoardToolbarHost.Provider>
   );
 }

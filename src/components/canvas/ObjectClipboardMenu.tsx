@@ -30,7 +30,7 @@ export function ObjectClipboardMenu() {
       <PopoverTrigger asChild>
         <button type="button" title="Copy and paste objects" aria-label="Copy and paste objects"
           className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-accent">
-          <Clipboard className="h-4 w-4" />
+          <Clipboard className="h-4 w-4" /><span className="board-action-label hidden">Copy and paste objects</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 max-w-[calc(100vw-1rem)] p-1" side="bottom" align="start" collisionPadding={8} sticky="always">
