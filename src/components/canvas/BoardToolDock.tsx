@@ -10,7 +10,7 @@ import { useUIStore } from "@/store/ui-store";
 import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 import { TemplateLauncher } from "./TemplateLauncher";
 
-export type BoardToolCategory = "create" | "templates" | "text" | "appearance" | "arrange" | "connections" | "board";
+export type BoardToolCategory = "all" | "create" | "templates" | "text" | "appearance" | "arrange" | "connections" | "board";
 export const BoardToolCategoryContext = createContext<BoardToolCategory>("create");
 export const BOARD_TOOL_CATEGORIES: { id: BoardToolCategory; label: string }[] = [
   { id: "create", label: "Create" }, { id: "templates", label: "Templates" },
@@ -46,7 +46,8 @@ export function BoardToolMenu({ label, children }: { label: string; children: Re
 export function BoardToolGroup({ label, children }: { label: string; children: ReactNode }) {
   const category = useContext(BoardToolCategoryContext);
   const categories: Record<string, BoardToolCategory[]> = { Create: ["create"], Format: ["text", "appearance"], Organize: ["create", "arrange", "connections"], Templates: ["templates"], "Edit & share": ["create", "arrange"] };
-  if (categories[label] && !categories[label].includes(category)) return null;
+  if (category !== "all" && categories[label] && !categories[label].includes(category)) return null;
+  if (category === "all") return <details className="border-b p-2"><summary className="cursor-pointer text-xs font-medium">{label === "Create" ? "Related objects" : label === "Format" ? "Advanced formatting" : label === "Organize" ? "Arrange & connections" : label}</summary><div className="board-quick-actions mt-2 flex flex-wrap items-center gap-1">{children}</div></details>;
   return <div className="board-tool-group flex shrink-0 flex-col border-r px-1.5" role="group" aria-label={label}>
     <span className="px-1 text-[10px] font-semibold text-muted-foreground">{label}</span>
     <div className="board-quick-actions flex items-center gap-1">{children}</div>

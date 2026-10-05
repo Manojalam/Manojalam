@@ -11,25 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SutraLookup } from "./SutraLookup";
 
-/** Keep the field panel mounted even when its card is outside the rendered viewport. */
-export function FillCardPanelHost() {
-  const id = useUIStore(state => state.fillingCardNodeId);
-  const close = useUIStore(state => state.setFillingCardNodeId);
-  useEffect(() => () => close(null), [close]);
-  return id ? <FillCardDialog key={id} nodeId={id} onClose={() => close(null)} /> : null;
-}
-
-export function FillCardDialog({ nodeId, onClose }: { nodeId: string; onClose: () => void }) {
+export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: string; onClose: () => void; embedded?: boolean }) {
   const [currentId, setCurrentId] = useState(nodeId);
   const node = useCanvasStore(state => state.nodes.find(item => item.id === currentId));
   const savedTemplate = useCanvasStore(state => state.settings.cardTemplates?.find(item => item.id === node?.data.cardTemplateId));
   const template = savedTemplate ?? normalizeCardTemplates([node?.data.cardTemplateSnapshot])[0];
   if (!node || !template) return null;
+  if (node.data.freeCardLayout && embedded) return <div className="space-y-2 p-3"><p className="text-sm">This card uses a free layout. Edit its text directly on the board.</p><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit on card</Button></div>;
   if (node.data.freeCardLayout) return <Dialog open modal={false} onOpenChange={open => { if (!open) onClose(); }}><DialogContent onCloseAutoFocus={event => event.preventDefault()}><DialogHeader><DialogTitle>Edit this card directly</DialogTitle><DialogDescription>This card has its own layout. Cut and paste its text on the board; labels and styling stay attached.</DialogDescription></DialogHeader><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit on card</Button></DialogContent></Dialog>;
-  return <CardForm key={currentId} nodeId={currentId} template={template} sections={cardSections(node.data)} locked={!!node.data.locked} onClose={onClose} onNext={setCurrentId} />;
+  return <CardForm embedded={embedded} key={currentId} nodeId={currentId} template={template} sections={cardSections(node.data)} locked={!!node.data.locked} onClose={onClose} onNext={id => { setCurrentId(id); if (useUIStore.getState().fillingCardNodeId) useUIStore.getState().setFillingCardNodeId(id); }} />;
 }
 
-function CardForm({ nodeId, template, sections, locked, onClose, onNext }: { nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
+function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedded = false }: { embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
@@ -70,7 +63,6 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext }: { nod
     fieldsRef.current?.querySelector<HTMLElement>("textarea,input")?.focus();
   }, [activeId]);
   const [savingNext, setSavingNext] = useState(false);
-  const [side, setSide] = useState<"left" | "right">("right");
   const create = useCanvasStore(state => state.createCardFromTemplate);
   const available = useCanvasStore(state => !!state.settings.cardTemplates?.some(item => item.id === template.id));
   const patch = (id: string, value: Partial<CardFieldValues[string]>, repeatId: string) => setSections(current => current.map(item => {
@@ -84,20 +76,13 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext }: { nod
     ? { ...item, rowRepeats: insertCardRowRepeat(item.rowRepeats ?? [], rowId, anchorId, side, crypto.randomUUID()) } : item));
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
-  return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
-    <DialogContent data-card-fill-panel onCloseAutoFocus={event => event.preventDefault()}
-      className="top-4 bottom-4 w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-      style={{ left: side === "left" ? 16 : "auto", right: side === "right" ? 16 : "auto" }}
-      onInteractOutside={event => event.preventDefault()}
-      onEscapeKeyDown={event => { if (!document.activeElement?.closest("[data-card-fill-panel]")) event.preventDefault(); }}
-      onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
-    >
-      <DialogHeader><DialogTitle>Fill card · {template.name}</DialogTitle><DialogDescription>Keep this panel open while you navigate the board and copy text. Changes save automatically as you fill the card. Enter adds a new line; Tab moves between inputs.</DialogDescription><Button type="button" size="sm" variant="ghost" className="self-start" onClick={() => setSide(side === "right" ? "left" : "right")}>Move panel to {side === "right" ? "left" : "right"}</Button></DialogHeader>
+  const content = <>
+    <header className="space-y-1"><h3 className="text-sm font-semibold">Fill card · {template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
       <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => event.preventDefault()}>
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
           <label className="block text-sm font-medium">Section to fill<select aria-label="Section to fill" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={section.id} onChange={event => setActiveId(event.target.value)}>{sections.map((item, index) => <option key={item.id} value={item.id}>Section {index + 1} of {sections.length}</option>)}</select></label>
-          <div className="flex gap-2">
+          <details><summary className="cursor-pointer text-xs font-medium">Reorder or move sections</summary><div className="mt-2 flex gap-2">
             <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === 0} onClick={() => moveSection(-1)}>Move up</Button>
             <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === sections.length - 1} onClick={() => moveSection(1)}>Move down</Button>
           </div>
@@ -106,9 +91,9 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext }: { nod
             const id = useCanvasStore.getState().moveCardSectionsToNewBox(nodeId, section.id);
             if (id) onNext(id);
           }}>Move from this section to new box</Button>
-          <p className="text-xs text-muted-foreground">Moves section {sectionIndex + 1} and all following sections into a new box. Earlier sections stay here.{sectionIndex === 0 ? " This box will be left empty." : ""}</p>
+          <p className="text-xs text-muted-foreground">Moves section {sectionIndex + 1} and all following sections into a new box. Earlier sections stay here.{sectionIndex === 0 ? " This box will be left empty." : ""}</p></details>
         </div>
-        <p className="text-xs text-muted-foreground">Repeat before or after to add another set of fields in this section. Repeated fields flow on the same line. Add your own spaces; press Enter inside a field for a new line.</p>
+        <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">How repeated fields work</summary>Repeat before or after to add fields on the same line. Press Enter inside a field for a new line.</details>
         <fieldset ref={fieldsRef} disabled={locked || savingNext} className="space-y-4">
           {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <div key={repeatId || row.id} role="group" aria-label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`} className="space-y-3 rounded-md border p-3">
             <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>
@@ -163,6 +148,11 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext }: { nod
           }}>{savingNext ? "Creating..." : "New box"}</Button>
         </div>
       </form>
+  </>;
+  if (embedded) return <section data-card-fill-panel aria-label="Fill card" className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3" onKeyDown={event => event.stopPropagation()}>{content}</section>;
+  return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
+    <DialogContent data-card-fill-panel onCloseAutoFocus={event => event.preventDefault()} className="top-4 bottom-4 right-4 left-auto w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden" onInteractOutside={event => event.preventDefault()}>
+      <DialogTitle className="sr-only">Fill card</DialogTitle><DialogDescription className="sr-only">Edit card fields. Changes save automatically.</DialogDescription>{content}
     </DialogContent>
   </Dialog>;
 }

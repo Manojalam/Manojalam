@@ -733,3 +733,13 @@ mark { border-radius: 2px; padding: 0 2px; }
 [data-tool-category="board"] .board-selection-dock > .selection-hint,
 [data-tool-category="templates"] .board-selection-dock > .selection-hint { display: block; }
 [data-tool-category="board"] .selection-toolbar { display: none; }
+
+/* One editing surface: wrap controls within the dock rather than a second toolbar. */
+#board-properties .canvas-inspector-panel { width: 100%; }
+#board-properties .selection-toolbar { display: block; min-width: 0; padding: 0; }
+#board-properties [aria-label="Text formatting"] { flex-wrap: wrap; }
+#board-properties [hidden] { display: none !important; }
+#board-properties [data-card-fill-panel] form { min-height: 0; }
+
+#board-properties[hidden] { display: none; }
+#board-properties .layout-panel, #board-properties .layers-panel { width: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }

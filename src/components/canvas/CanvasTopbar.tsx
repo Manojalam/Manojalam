@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  Undo2, Redo2, Download, Upload, Search,
+  Undo2, Redo2, Download, Search,
   ChevronDown, Eye, Share2,
   Languages, Sun, Moon, Presentation,
   Layers3,
@@ -31,7 +31,6 @@ import { buildPresentationStops } from "@/lib/canvas/presentation";
 import { canvasLayerById, isCanvasItemLayerVisible } from "@/lib/canvas/layers";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { BoardShareDialog } from "@/components/canvas/BoardShareDialog";
-import { ImportDialog } from "@/components/canvas/ImportDialog";
 import { toast } from "sonner";
 
 /* ── Save status dot ── */
@@ -107,7 +106,6 @@ function ThemeToggle() {
 
 export function CanvasTopbar() {
   const [shareOpen, setShareOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [powerPointExporting, setPowerPointExporting] = useState(false);
   // Targeted selectors — each only re-renders when its own slice changes
   const board           = useCanvasStore((s) => s.board);
@@ -318,12 +316,6 @@ export function CanvasTopbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <IconBtn
-          icon={<Upload className="h-4 w-4" />}
-          label="Import"
-          onClick={() => setImportOpen(true)}
-          className="max-sm:hidden"
-        />
 
         <UserMenu compact align="end" side="bottom" />
 
@@ -383,7 +375,6 @@ export function CanvasTopbar() {
         onOpenChange={setShareOpen}
       />
     )}
-    <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </>
   );
 }

@@ -39,6 +39,8 @@ export interface BoardExportRequest {
 }
 
 interface UIState {
+  boardPanel: "selection" | "templates" | "board" | null;
+  setBoardPanel: (panel: "selection" | "templates" | "board" | null) => void;
   activeTool: CanvasTool;
   setActiveTool: (tool: CanvasTool) => void;
   touchSelectionMode: boolean;
@@ -128,6 +130,8 @@ function sameActiveTextSelection(
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
+  boardPanel: "selection",
+  setBoardPanel: (boardPanel) => set({ boardPanel, layoutPanelOpen: false, layersPanelOpen: false }),
   activeTool: "select",
   setActiveTool: (tool) => set({
     activeTool: tool,
