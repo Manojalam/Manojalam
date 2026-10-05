@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { applyContentTemplate, mergeTableTemplate } from "./apply-content-template";
+import { newHomeworkTemplate } from "./card-templates";
+import { normalizeSampleTemplates } from "./sample-templates";
+import { createTable, tableTemplateDesign, tablePlainText, addTableColumn, removeTableColumn, normalizeTable } from "./table";
+import type { Node } from "@xyflow/react";
+const card = newHomeworkTemplate("homework");
+const node: Node = { id: "selected", type: "table", position: { x: 32, y: 48 }, data: { table: createTable(2, 2) } };
+test("apply to table keeps type, geometry, cell IDs, answers and extra columns", () => {
+  const current = createTable(4, 8);
+  current.rows[0].cells[0] = "Existing answer";
+  const source = { ...node, data: { table: current } };
+  const updated = applyContentTemplate(source, card, "card");
+  assert.equal(updated.id, source.id);
+  assert.equal(updated.type, "table");
+  assert.deepEqual(updated.position, source.position);
+  const result = normalizeTable(updated.data.table);
+  assert.equal(result.columns[0].name, card.rows[0].fields[0].label);
+  assert.equal(result.columns.length, 8);
+  assert.equal(result.rows.length, 4);
+  assert.equal(result.rows[0].cells[0], "Existing answer");
+  assert.equal(result.rows[0].id, current.rows[0].id);
+  assert.equal(result.columns[0].id, current.columns[0].id);
+  assert.equal(updated.data.cardTemplateId, undefined);
+  assert.equal(current.columns[0].name, "Column 1");
+});
+test("table design persistence keeps headings and row labels but clears answers", () => {
+  const current = createTable(2, 2);
+  current.showRowLabels = true;
+  current.rows[0].label = "प्रश्नः";
+  current.rows[0].cells[0] = "Private answer";
+  const design = tableTemplateDesign(current);
+  const saved = normalizeSampleTemplates([{ id: "sample", name: "Table", richText: "", labels: [], style: {}, width: 500, height: 200, table: design }])[0];
+  assert.deepEqual(saved.table, design);
+  assert.equal(saved.table!.rows[0].cells[0], "");
+  assert.equal(saved.table!.rows[0].label, "प्रश्नः");
+  const expanded = addTableColumn(design);
+  assert.equal(removeTableColumn(expanded, expanded.columns[2].id).showRowLabels, true);
+  assert.match(tablePlainText(design), /प्रश्नः/);
+  assert.equal(mergeTableTemplate(current, design).rows[0].cells[0], "Private answer");
+});
+test("blank boxes become fillable in place; existing rich text survives and old bindings are cleared", () => {
+  const blank = { ...node, type: "shape", data: {} };
+  const filled = applyContentTemplate(blank, card, "card");
+  assert.equal(filled.id, blank.id);
+  assert.equal(filled.data.cardTemplateId, card.id);
+  assert.equal(filled.data.freeCardLayout, false);
+  const source = { ...blank, data: { text: "Keep me", richText: '<p><strong>Keep me</strong></p>', layerId: "layer", sampleTemplateId: "old", sampleEntries: [] } };
+  const updated = applyContentTemplate(source, card, "card");
+  assert.equal(updated.data.richText, source.data.richText);
+  assert.equal(updated.data.text, source.data.text);
+  assert.equal(updated.data.layerId, "layer");
+  assert.equal(updated.data.freeCardLayout, true);
+  assert.equal(updated.data.sampleTemplateId, undefined);
+  assert.equal(updated.data.sampleEntries, undefined);
+});
+test("locked and unsupported objects cannot be changed", () => {
+  const locked = { ...node, data: { ...node.data, locked: true } };
+  assert.equal(applyContentTemplate(locked, card, "card"), locked);
+  const image = { ...node, type: "image" };
+  assert.equal(applyContentTemplate(image, card, "card"), image);
+});
+
+test("plain-text content becomes safe rich text so later template edits cannot erase it", () => {
+  const source = { ...node, type: "shape", data: { text: "A < B\nSecond line" } };
+  const updated = applyContentTemplate(source, card, "card");
+  assert.match(String(updated.data.richText), /A &lt; B/);
+  assert.match(String(updated.data.richText), /Second line/);
+  assert.equal(updated.data.text, source.data.text);
+});

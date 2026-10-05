@@ -62,8 +62,8 @@ export function BoardTemplatesButton() {
   return <BoardToolGroup label="Templates">
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className="flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium hover:bg-accent" aria-label="New card from template">
-          <LayoutTemplate className="h-4 w-4" /><span>New card</span><ChevronDown className="h-3 w-3" />
+        <button type="button" className="flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium hover:bg-accent" aria-label="Choose template">
+          <LayoutTemplate className="h-4 w-4" /><span>Choose template</span><ChevronDown className="h-3 w-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="max-h-[65dvh] w-80 max-w-[calc(100vw-1rem)] overflow-y-auto p-0">

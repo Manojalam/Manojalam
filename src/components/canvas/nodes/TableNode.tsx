@@ -10,7 +10,7 @@ import { NodeQuickActions } from "./NodeQuickActions";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
-import { addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
+import { tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
 
 function TableInput(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -48,6 +48,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
     if (!editable || !node || node.data.locked || state.board?.accessRole === "viewer" || state.layers.some(layer => layer.id === node.data.layerId && layer.locked) || useUIStore.getState().presentationMode) return;
     if (history) state.pushHistory();
     state.updateNodeData(id, { table: next, text: tablePlainText(next) });
+    if (typeof node.data.sampleDesignId === "string") state.updateSampleTemplate(node.data.sampleDesignId, { table: tableTemplateDesign(next) }, false);
     if (Number(node.style?.width) < next.columns.length * 100) {
       state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, style: { ...item.style, width: Math.max(Number(item.style?.width) || 600, next.columns.length * 100) } } : item));
     }
@@ -67,11 +68,11 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
     <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, backgroundColor: typeof data.fillColor === "string" ? data.fillColor : undefined }}>
       <div className="shrink-0 cursor-grab border-b px-3 py-2 text-xs font-semibold text-muted-foreground" style={{ borderColor: color }}>Table · {table.rows.length} rows × {table.columns.length} columns</div>
       <table className="w-full flex-1 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table">
-        <thead><tr>{table.columns.map((column, columnIndex) => <th key={column.id} scope="col" className="relative border-b border-r bg-muted/50 text-left font-semibold last:border-r-0" style={{ borderColor: color }}>
+        <thead><tr>{table.showRowLabels && <th scope="col" className="border-b border-r bg-muted/50 px-2 text-left" style={{ borderColor: color }}>Row label</th>}{table.columns.map((column, columnIndex) => <th key={column.id} scope="col" className="relative border-b border-r bg-muted/50 text-left font-semibold last:border-r-0" style={{ borderColor: color }}>
           <TableInput aria-label={`Column ${columnIndex + 1} name`} value={column.name} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), columns: current().columns.map(item => item.id === column.id ? { ...item, name: event.target.value } : item) }, false); }} />
           {selected && editable && <button data-export-ignore type="button" title={`Delete column ${columnIndex + 1}`} aria-label={`Delete column ${columnIndex + 1}`} disabled={table.columns.length <= 1} className="nodrag nopan absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), column.id))}><Trash2 size={12} /></button>}
         </th>)}</tr></thead>
-        <tbody>{table.rows.map((row, rowIndex) => <tr key={row.id}>{row.cells.map((cell, columnIndex) => <td key={table.columns[columnIndex].id} className="relative border-b border-r align-top last:border-r-0" style={{ borderColor: color }}>
+        <tbody>{table.rows.map((row, rowIndex) => <tr key={row.id}>{table.showRowLabels && <th scope="row" className="border-b border-r text-left align-top" style={{ borderColor: color }}><TableInput aria-label={`Row ${rowIndex + 1} label`} value={row.label ?? ""} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, label: event.target.value } : item) }, false); }} /></th>}{row.cells.map((cell, columnIndex) => <td key={table.columns[columnIndex].id} className="relative border-b border-r align-top last:border-r-0" style={{ borderColor: color }}>
           <TableInput aria-label={`Row ${rowIndex + 1}, ${table.columns[columnIndex].name || `column ${columnIndex + 1}`}`} data-row={row.id} data-column={table.columns[columnIndex].id} value={cell} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, cells: item.cells.map((value, index) => index === columnIndex ? event.target.value : value) } : item) }, false); }} onKeyDown={event => {
             if (event.key !== "Tab" || !editable || event.nativeEvent.isComposing) return;
             const nextIndex = rowIndex * table.columns.length + columnIndex + (event.shiftKey ? -1 : 1);
@@ -95,6 +96,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
       {selected && editable && <div data-export-ignore className="nodrag nopan flex shrink-0 flex-wrap items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
         <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => addRow()}><Plus size={14} />Add row</button>
         <button type="button" disabled={table.columns.length >= MAX_TABLE_COLUMNS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => write(addTableColumn(current()))}><Plus size={14} />Add column</button>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={!!table.showRowLabels} onChange={event => write({ ...current(), showRowLabels: event.target.checked })} />Row labels</label>
         <span>Tab → next cell · Enter → new line</span>
       </div>}
     </div>

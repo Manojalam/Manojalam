@@ -256,6 +256,7 @@ export interface SampleLabel {
 }
 
 export interface SampleCardTemplate {
+  table?: import("./canvas/table").CanvasTable;
   id: string;
   name: string;
   richText: string;
