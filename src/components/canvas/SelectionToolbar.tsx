@@ -1,6 +1,5 @@
 "use client";
 
-import { QuickTextFormat } from "./QuickTextFormat";
 import { Input } from "@/components/ui/input";
 
 import { useRef, useState } from "react";
@@ -822,7 +821,6 @@ export function SelectionToolbar() {
       </>}
       </BoardToolGroup>
       <BoardToolGroup label="Format">
-        <QuickTextFormat nodes={selected} />
           {singleId && singleShapeData && (
             <ShapeChanger
               nodeIds={[singleId]}

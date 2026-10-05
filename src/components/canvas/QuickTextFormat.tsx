@@ -12,7 +12,8 @@ import { selectionNodeTextStylePatch, selectionNodeTextStyleValue, supportsSelec
 /** Same whole-object formatting as Properties; inline editing keeps its own text toolbar. */
 export function QuickTextFormat({ nodes }: { nodes: Node[] }) {
   const settings = useCanvasStore(state => state.settings);
-  const targets = nodes.filter(node => !node.data.locked && supportsSelectionTextStyle(node));
+  const layers = useCanvasStore(state => state.layers);
+  const targets = nodes.filter(node => !layers.some(layer => layer.id === node.data.layerId && layer.locked) && !node.data.locked && supportsSelectionTextStyle(node));
   if (!targets.length) return null;
   const common = (key: SelectionTextStyleKey) => {
     const values = targets.map(node => selectionNodeTextStyleValue(node, key));

@@ -415,6 +415,8 @@ const CONVERT_TYPES = [
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
+const rememberedInspectorSections = new Map<string, boolean>();
+
 function Section({ label, children, visible = true, preserveTextSelection = false, defaultOpen = false }: {
   label: string;
   children: React.ReactNode;
@@ -422,11 +424,11 @@ function Section({ label, children, visible = true, preserveTextSelection = fals
   preserveTextSelection?: boolean;
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(() => rememberedInspectorSections.get(label) ?? defaultOpen);
   if (!visible) return null;
   return (
     <div>
-      <button onClick={() => setOpen((o) => !o)}
+      <button onClick={() => setOpen((o) => { rememberedInspectorSections.set(label, !o); return !o; })}
         className="flex w-full items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
         {label}
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -1136,7 +1138,7 @@ function LayoutBorderControls({
 }
 
 
-function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+export function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   let patch: Record<string, unknown>;
   if (isParagraphField(key)) patch = paragraphFormatPatch(data, key, value);
   else if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, Number(value));
@@ -1632,7 +1634,7 @@ function ConnectionInspectorSections({
 
 // ── Main inspector ─────────────────────────────────────────────────────────
 
-export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean }) {
+export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false, showTemplates = true }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean; showTemplates?: boolean }) {
   const { resolvedTheme } = useTheme();
   const boardTheme: BoardColorTheme = resolvedTheme === "dark" ? "dark" : "light";
   const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>(initialTab);
@@ -3037,7 +3039,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         </div>
 
         <div className="flex-1 divide-y overflow-y-auto">
-          <BoardStyleTemplatesPanel />
+          {showTemplates && <BoardStyleTemplatesPanel />}
           {selectedRelationshipSourceIds.length > 0 && <div className="p-3">
             <Button
               type="button"
@@ -5828,7 +5830,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
         )}
 
-        {isContentNode && !isRadialLayoutSector && singleNodeTab === "style" && <BoardStyleTemplatesPanel />}
+        {showTemplates && isContentNode && !isRadialLayoutSector && singleNodeTab === "style" && <BoardStyleTemplatesPanel />}
         {isContentNode && !isRadialLayoutSector && (
           <Section label="Presets" visible={singleNodeTab === "style"}>
             <div className="grid grid-cols-2 gap-1.5">

@@ -28,7 +28,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toast } from "sonner";
-import { FillCardPanelHost } from "./FillCardDialog";
 import { Focus, Minus, Plus } from "lucide-react";
 
 import { nodeTypes } from "./nodes";
@@ -2108,7 +2107,6 @@ function VidyaCanvasInner({
       )}
     </ReactFlow>
     {!presentationMode && <RelationshipDiagramDialog />}
-    {canEdit && !presentationMode && <FillCardPanelHost key={boardId} />}
     {!presentationMode && <ExportDialog />}
     {!presentationMode && <HierarchyDeleteDialog />}
     </>

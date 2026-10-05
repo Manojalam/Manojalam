@@ -1,11 +1,12 @@
 "use client";
 
+import { ImportDialog } from "./ImportDialog";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { useState } from "react";
 import {
   MousePointer2, Hand, StickyNote, Type, Spline, Frame,
   BookOpen, Scroll, GraduationCap, ChevronRight,
-  Network, Table2,
+  Network, Table2, LayoutTemplate, PanelRight, Settings2, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -259,6 +260,7 @@ function TouchMultiSelectBtn() {
 
 /* ── Main toolbar ── */
 export function CanvasToolbar() {
+  const [importOpen, setImportOpen] = useState(false);
   const { setActiveTool } = useUIStore();
 
   return (
@@ -293,11 +295,16 @@ export function CanvasToolbar() {
         {/* Layouts */}
         <LayoutBtn />
 
+        <ToolBtn icon={<LayoutTemplate className="h-[18px] w-[18px]" />} label="Templates" onClick={() => useUIStore.getState().setBoardPanel("templates")} />
+        <ToolBtn icon={<PanelRight className="h-[18px] w-[18px]" />} label="Object properties" onClick={() => useUIStore.getState().setBoardPanel("selection")} />
+        <ToolBtn icon={<Settings2 className="h-[18px] w-[18px]" />} label="Board settings" onClick={() => useUIStore.getState().setBoardPanel("board")} />
         <Divider />
 
         {/* Sanskrit (with popover) */}
         <SanskritBtn />
+        <ToolBtn icon={<Upload className="h-[18px] w-[18px]" />} label="Import file" onClick={() => setImportOpen(true)} />
       </div>
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </TooltipProvider>
   );
 }
