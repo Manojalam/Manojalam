@@ -1,5 +1,6 @@
 "use client";
 
+import { TemplateUseActions } from "./TemplateUseActions";
 import { useEffect, useState } from "react";
 import { listTemplateSources } from "@/lib/storage/template-library";
 import { collectBoardTemplates, importLibraryTemplate, type LibraryTemplate } from "@/lib/templates/board-library";
@@ -46,7 +47,10 @@ export function CrossBoardTemplateLibrary() {
         {entries.map(entry => <option key={entry.key} value={entry.key}>{entry.template.name} - {entry.kind === "style" ? "Linked style" : entry.kind === "card" ? "Fillable card" : "Sample"} ({entry.sourceTitle})</option>)}
       </select>
       {localCopy && <p className="text-[10px] text-muted-foreground">This board already has a copy. Using it keeps your local design edits.</p>}
-      <Button size="sm" disabled={viewer} onClick={useTemplate}>Use on this board</Button>
+      {selected.kind === "style" ? <Button size="sm" disabled={viewer} onClick={useTemplate}>Create new styled box</Button> : <TemplateUseActions kind={selected.kind} template={selected.template} prepare={() => {
+        const state = useCanvasStore.getState();
+        state.setSettings(importLibraryTemplate(state.settings, selected));
+      }} />}
     </> : <p className="text-xs text-muted-foreground">No saved templates on your other boards yet.</p>}
     <Button size="sm" variant="ghost" disabled={loading} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Refresh library</Button>
   </section>;

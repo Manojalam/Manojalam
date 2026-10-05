@@ -63,7 +63,7 @@ try {
   await button('Typography');
   await page.waitForSelector('[aria-label="Board default font"]', { visible: true });
   console.log('Templates'); await category('Templates');
-  await page.waitForSelector('[aria-label="New card from template"]', { visible: true });
+  await page.waitForSelector('[aria-label="Choose template"]', { visible: true });
   await page.waitForSelector('[aria-label="Sample templates"]', { visible: true });
   await category('Create');
   await button('Connector'); await page.keyboard.press('Escape');

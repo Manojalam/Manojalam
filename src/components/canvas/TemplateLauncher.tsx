@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
-import { useUIStore } from "@/store/ui-store";
-import { Button } from "@/components/ui/button";
+import { TemplateUseActions } from "./TemplateUseActions";
 import { CrossBoardTemplateLibrary } from "./CrossBoardTemplateLibrary";
 
 /** Creation belongs to the canvas, not to an existing box's selection. */
@@ -22,14 +21,7 @@ export function TemplateLauncher() {
       <select aria-label="Template to use" className="h-9 w-full rounded border bg-background px-2 text-xs" value={selected.key} onChange={event => setChosen(event.target.value)}>
         {templates.map(item => <option key={item.key} value={item.key}>{item.template.name}</option>)}
       </select>
-      <Button size="sm" className="w-full" onClick={() => {
-        const state = useCanvasStore.getState();
-        if (state.board?.accessRole === "viewer") return;
-        if (selected.kind === "card") {
-          const id = state.createCardFromTemplate(selected.template.id);
-          if (id) useUIStore.getState().setFillingCardNodeId(id);
-        } else if (!state.createSampleCard(selected.template.id)) state.openTemplateSample(selected.template.id);
-      }}>New card &amp; fill</Button>
+      <TemplateUseActions kind={selected.kind as "card" | "sample"} template={selected.template} />
     </section>}
     <CrossBoardTemplateLibrary key={boardId} />
   </>;

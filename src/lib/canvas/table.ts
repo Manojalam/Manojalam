@@ -1,6 +1,6 @@
 export interface TableColumn { id: string; name: string }
-export interface TableRow { id: string; cells: string[] }
-export interface CanvasTable { columns: TableColumn[]; rows: TableRow[] }
+export interface TableRow { id: string; cells: string[]; label?: string }
+export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean }
 export const MAX_TABLE_COLUMNS = 30;
 export const MAX_TABLE_ROWS = 500;
 const id = () => crypto.randomUUID();
@@ -20,8 +20,8 @@ export function normalizeTable(value: unknown): CanvasTable {
     used.add(result); return result;
   };
   const columns = (Array.isArray(source?.columns) && source.columns.length ? source.columns : [{ id: "column_0", name: "Column 1" }]).slice(0, MAX_TABLE_COLUMNS).map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}` }));
-  const rows = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => ({ id: safeId(row?.id, `row_${index}`), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : "") }));
-  return { columns, rows };
+  const rows = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => ({ id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : "") }));
+  return { columns, rows, ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
 }
 
 export function addTableRow(table: CanvasTable, after = table.rows.length - 1): CanvasTable {
@@ -32,7 +32,7 @@ export function addTableRow(table: CanvasTable, after = table.rows.length - 1): 
 }
 export function addTableColumn(table: CanvasTable): CanvasTable {
   if (table.columns.length >= MAX_TABLE_COLUMNS) return table;
-  return { columns: [...table.columns, { id: id(), name: `Column ${table.columns.length + 1}` }], rows: table.rows.map(row => ({ ...row, cells: [...row.cells, ""] })) };
+  return { ...table, columns: [...table.columns, { id: id(), name: `Column ${table.columns.length + 1}` }], rows: table.rows.map(row => ({ ...row, cells: [...row.cells, ""] })) };
 }
 export function removeTableRow(table: CanvasTable, rowId: string): CanvasTable {
   return table.rows.length <= 1 ? table : { ...table, rows: table.rows.filter(row => row.id !== rowId) };
@@ -40,7 +40,7 @@ export function removeTableRow(table: CanvasTable, rowId: string): CanvasTable {
 export function removeTableColumn(table: CanvasTable, columnId: string): CanvasTable {
   const index = table.columns.findIndex(column => column.id === columnId);
   if (index < 0 || table.columns.length <= 1) return table;
-  return { columns: table.columns.filter(column => column.id !== columnId), rows: table.rows.map(row => ({ ...row, cells: row.cells.filter((_, i) => i !== index) })) };
+  return { ...table, columns: table.columns.filter(column => column.id !== columnId), rows: table.rows.map(row => ({ ...row, cells: row.cells.filter((_, i) => i !== index) })) };
 }
 
 /** Excel/Sheets TSV, including quoted newlines and escaped quotes. */
@@ -71,5 +71,11 @@ export function pasteTableCells(table: CanvasTable, rowIndex: number, columnInde
   }) };
 }
 export function tablePlainText(table: CanvasTable): string {
-  return [table.columns.map(column => column.name).join("\t"), ...table.rows.map(row => row.cells.join("\t"))].join("\n");
+  return [[...(table.showRowLabels ? ["Row label"] : []), ...table.columns.map(column => column.name)].join("\t"), ...table.rows.map(row => [...(table.showRowLabels ? [row.label ?? ""] : []), ...row.cells].join("\t"))].join("\n");
+}
+
+/** Save structure and headings, never another card's answers. */
+export function tableTemplateDesign(value: unknown): CanvasTable {
+  const table = normalizeTable(value);
+  return { ...table, rows: table.rows.map(row => ({ ...row, cells: table.columns.map(() => "") })) };
 }

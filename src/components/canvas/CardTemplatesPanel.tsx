@@ -1,5 +1,6 @@
 "use client";
 
+import { TemplateUseActions } from "./TemplateUseActions";
 import { useState } from "react";
 import type { BoardCardTemplate } from "@/lib/types";
 import { generateId } from "@/lib/utils";
@@ -12,7 +13,6 @@ import { useUIStore } from "@/store/ui-store";
 export function CardTemplatesPanel() {
   const templates = useCanvasStore(state => state.settings.cardTemplates);
   const selected = useCanvasStore(state => state.selectedNodeIds.length === 1 ? state.nodes.find(node => node.id === state.selectedNodeIds[0]) : undefined);
-  const create = useCanvasStore(state => state.createCardFromTemplate);
   const detach = useCanvasStore(state => state.detachCardTemplate);
   const remove = useCanvasStore(state => state.deleteCardTemplate);
   const [chosen, setChosen] = useState("");
@@ -45,7 +45,7 @@ export function CardTemplatesPanel() {
         {templates?.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select>
       <div className="flex flex-wrap gap-1">
-        <Button size="sm" onClick={() => { const id = create(template.id); if (id) setFillId(id); }}>New card &amp; fill</Button>
+        <TemplateUseActions kind="card" template={template} />
         <Button size="sm" variant="outline" onClick={() => setDesign(structuredClone(template))}>Edit design</Button>
         <Button size="sm" variant="ghost" onClick={() => setDesign({ ...structuredClone(template), id: generateId(), name: `${template.name} copy` })}>Duplicate design</Button>
       </div>

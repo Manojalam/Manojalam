@@ -1,3 +1,4 @@
+import { tableTemplateDesign } from "./table";
 import type { SampleCardEntry, SampleCardTemplate, SampleLabel } from "../types";
 import { captureTemplateStyle } from "./board-style-templates";
 import { normalizeHexColor } from "./custom-colors";
@@ -117,7 +118,7 @@ export function normalizeSampleTemplates(value: unknown): SampleCardTemplate[] {
         bold: label.bold === true, italic: label.italic === true, underline: label.underline === true,
       });
     }
-    return [{ id: item.id, name: item.name.trim(), labels, richText: refreshSampleFields(item.richText, labels),
+    return [{ id: item.id, name: item.name.trim(), ...(item.table ? { table: tableTemplateDesign(item.table) } : {}), labels, richText: refreshSampleFields(item.richText, labels),
       style: Object.fromEntries(Object.entries(item.style ?? {}).filter(([key]) => styleKeys.has(key))),
       width: bounded(item.width, 800, 120, 4000), height: bounded(item.height, 300, 80, 4000),
     }];
