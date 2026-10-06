@@ -46,6 +46,7 @@ import { withMatrixLevelDefaults } from "@/lib/layout/matrix-level-layout";
 import { buildMatrixLeafRows } from "@/lib/layout/matrix-layout";
 import {
   layoutBorderWidthFor,
+  layoutPaletteTarget,
   supportsAutomaticLayoutColors,
 } from "@/lib/layout/layout-palette";
 import { resolveLayoutFontSize } from "@/lib/layout/layout-presentation";
@@ -1635,6 +1636,7 @@ function ConnectionInspectorSections({
 // ── Main inspector ─────────────────────────────────────────────────────────
 
 export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false, showTemplates = true }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean; showTemplates?: boolean }) {
+  const [automaticColorScope, setAutomaticColorScope] = useState<"branch" | "chart">("branch");
   const { resolvedTheme } = useTheme();
   const boardTheme: BoardColorTheme = resolvedTheme === "dark" ? "dark" : "light";
   const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>(initialTab);
@@ -1963,40 +1965,44 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   })();
   const structuredLayoutRootData = (structuredLayoutRootNode?.data ?? {}) as Record<string, unknown>;
   const structuredLayoutMode = structuredLayoutRootData.layoutMode as LayoutMode | undefined;
+  const canColorSelectedBranch = structuredLayoutMode === "matrix" && !!selectedNode && selectedNode.id !== structuredLayoutRootNode?.id;
+  const colorSelectedBranch = canColorSelectedBranch && automaticColorScope === "branch";
+  const structuredColorTargetId = colorSelectedBranch ? selectedNode!.id : structuredLayoutRootNode?.id ?? "";
+  const scopedPaletteData = layoutPaletteTarget(nodes, hierarchy, structuredColorTargetId)?.inheritedData ?? structuredLayoutRootData;
   const listRootNode = structuredLayoutMode === "list" ? structuredLayoutRootNode : null;
   const listBranchIds = listRootNode ? getSubtree(listRootNode.id, hierarchy) : [];
   const activeStructuredColorScheme = radialColorScheme(
-    structuredLayoutRootData.layoutColorScheme ?? structuredLayoutRootData.radialColorScheme
+    scopedPaletteData.layoutColorScheme ?? scopedPaletteData.radialColorScheme
   ).id;
   const activeStructuredScheme = radialColorScheme(activeStructuredColorScheme);
-  const activeLayoutStartColor = typeof structuredLayoutRootData.layoutStartColor === "string"
-    ? structuredLayoutRootData.layoutStartColor
+  const activeLayoutStartColor = typeof scopedPaletteData.layoutStartColor === "string"
+    ? scopedPaletteData.layoutStartColor
     : undefined;
   const activeLayoutColorPattern = layoutColorPattern(
-    structuredLayoutRootData.layoutColorPattern
-      ?? structuredLayoutRootData.matrixRowColorPattern,
+    scopedPaletteData.layoutColorPattern
+      ?? scopedPaletteData.matrixRowColorPattern,
     structuredLayoutMode === "matrix" ? "flow" : "curated"
   );
-  const activeLayoutEndColor = typeof structuredLayoutRootData.layoutEndColor === "string"
-    ? structuredLayoutRootData.layoutEndColor
-    : typeof structuredLayoutRootData.matrixRowEndColor === "string"
-      ? structuredLayoutRootData.matrixRowEndColor
+  const activeLayoutEndColor = typeof scopedPaletteData.layoutEndColor === "string"
+    ? scopedPaletteData.layoutEndColor
+    : typeof scopedPaletteData.matrixRowEndColor === "string"
+      ? scopedPaletteData.matrixRowEndColor
     : undefined;
   const activeLayoutBorderTreatment = layoutBorderTreatment(
-    structuredLayoutRootData.layoutBorderTreatment
+    scopedPaletteData.layoutBorderTreatment
   );
   const activeLayoutTextTreatment = layoutTextTreatment(
-    structuredLayoutRootData.layoutTextTreatment
+    scopedPaletteData.layoutTextTreatment
   );
   const activeLayoutBorderStyle = layoutBorderLineStyle(
-    structuredLayoutRootData.layoutBorderStyle
+    scopedPaletteData.layoutBorderStyle
   );
   const activeLayoutBorderWidth = structuredLayoutMode === "matrix"
-    ? matrixGridStrokeWidth(structuredLayoutRootData.layoutBorderWidth)
+    ? matrixGridStrokeWidth(scopedPaletteData.layoutBorderWidth)
     : layoutBorderWidthFor(
         structuredLayoutMode ?? "freeForm",
         0,
-        structuredLayoutRootData.layoutBorderWidth
+        scopedPaletteData.layoutBorderWidth
       );
   const foldsMatrixTerminalRows = !!selectedNode
     && !!matrixRootNode
@@ -5862,13 +5868,20 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
         {structuredLayoutRootNode && supportsAutomaticLayoutColors(structuredLayoutMode) && !isRadialLayoutSector && (
           <Section label="Automatic colors" visible={singleNodeTab === "style"}>
+            {canColorSelectedBranch && <label className="block space-y-1 text-[10px]">
+              <span>Apply automatic colors to</span>
+              <select aria-label="Automatic color scope" className="h-8 w-full rounded-md border bg-background px-2" value={automaticColorScope} onChange={(event) => setAutomaticColorScope(event.target.value as "branch" | "chart")}>
+                <option value="branch">Selected branch (including children)</option>
+                <option value="chart">Whole chart</option>
+              </select>
+            </label>}
             <div className="rounded-md border border-border bg-muted/30 p-2">
               <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground">
                 <Palette className="h-3.5 w-3.5" />
-                Whole {inspectorLayoutLabel(structuredLayoutMode)} chart
+                {colorSelectedBranch ? "Selected branch and its children" : `Whole ${inspectorLayoutLabel(structuredLayoutMode)} chart`}
               </div>
               <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                Choose a coordinated palette for the entire hierarchy. Ordinary color and style edits stay local to the objects you select.
+                {colorSelectedBranch ? "Choose a palette for this branch at any depth. Other branches keep their colors." : "Choose a coordinated palette for the entire hierarchy. Ordinary color and style edits stay local to the objects you select."}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Automatic chart color palette">
@@ -5880,8 +5893,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                   aria-checked={activeStructuredColorScheme === scheme.id}
                   title={`Apply ${scheme.label} to the whole ${inspectorLayoutLabel(structuredLayoutMode)} chart`}
                   onClick={() => {
-                    applyLayoutColorScheme(structuredLayoutRootNode.id, scheme.id);
-                    toast.success(`Applied ${scheme.label} automatic colors to the whole chart.`, {
+                    applyLayoutColorScheme(structuredColorTargetId, scheme.id);
+                    toast.success(`Applied ${scheme.label} automatic colors to ${colorSelectedBranch ? "the selected branch" : "the whole chart"}.`, {
                       action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
                     });
                   }}
@@ -5908,7 +5921,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               startColor={activeLayoutStartColor}
               endColor={activeLayoutEndColor}
               onPatternChange={(pattern) => {
-                applyLayoutColorPattern(structuredLayoutRootNode.id, pattern);
+                applyLayoutColorPattern(structuredColorTargetId, pattern);
                 const label = LAYOUT_COLOR_PATTERN_OPTIONS.find(
                   (option) => option.value === pattern
                 )?.label ?? "Flow";
@@ -5917,7 +5930,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 });
               }}
               onStartColorChange={(value) => {
-                applyLayoutStartColor(structuredLayoutRootNode.id, value);
+                applyLayoutStartColor(structuredColorTargetId, value);
                 toast.success(value
                   ? "Updated the first automatic color."
                   : "Restored the palette's default first color.", {
@@ -5925,7 +5938,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 });
               }}
               onEndColorChange={(value) => {
-                applyLayoutEndColor(structuredLayoutRootNode.id, value);
+                applyLayoutEndColor(structuredColorTargetId, value);
                 toast.success(value
                   ? "Updated the secondary automatic color."
                   : "Restored the palette's default secondary color.", {
@@ -5937,7 +5950,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               scheme={activeStructuredScheme}
               treatment={activeLayoutTextTreatment}
               onTreatmentChange={(layoutTextTreatment) => {
-                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                applyLayoutPalettePatch(structuredColorTargetId, {
                   layoutTextTreatment,
                 });
                 const label = LAYOUT_TEXT_TREATMENT_OPTIONS.find(
@@ -5954,7 +5967,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               lineStyle={activeLayoutBorderStyle}
               borderWidth={activeLayoutBorderWidth}
               onTreatmentChange={(treatment) => {
-                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                applyLayoutPalettePatch(structuredColorTargetId, {
                   layoutBorderTreatment: treatment,
                 });
                 const label = LAYOUT_BORDER_TREATMENT_OPTIONS.find(
@@ -5965,7 +5978,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 });
               }}
               onLineStyleChange={(layoutBorderStyle) => {
-                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                applyLayoutPalettePatch(structuredColorTargetId, {
                   layoutBorderStyle,
                 });
                 toast.success(`Applied ${layoutBorderStyle} automatic border lines.`, {
@@ -5973,7 +5986,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 });
               }}
               onBorderWidthChange={(layoutBorderWidth) => {
-                applyLayoutPalettePatch(structuredLayoutRootNode.id, {
+                applyLayoutPalettePatch(structuredColorTargetId, {
                   layoutBorderWidth,
                 });
               }}
@@ -5984,14 +5997,14 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               size="sm"
               className="h-7 w-full text-[10px]"
               onClick={() => {
-                applyLayoutColorScheme(structuredLayoutRootNode.id, activeStructuredColorScheme, true);
-                toast.success("Restored automatic colors throughout the chart.", {
+                applyLayoutColorScheme(structuredColorTargetId, activeStructuredColorScheme, true);
+                toast.success(`Restored automatic colors ${colorSelectedBranch ? "in the selected branch" : "throughout the chart"}.`, {
                   action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
                 });
               }}
             >
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Reset every {structuredLayoutMode === "matrix" ? "cell" : "item"} to automatic
+              Reset {colorSelectedBranch ? "this branch" : `every ${structuredLayoutMode === "matrix" ? "cell" : "item"}`} to automatic
             </Button>
           </Section>
         )}

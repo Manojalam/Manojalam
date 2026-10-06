@@ -5,6 +5,7 @@ import type { LayoutMode } from "../types";
 import { buildHierarchy } from "./hierarchy";
 import {
   applyLayoutPalette,
+  applyScopedLayoutPalette,
   buildLayoutVisualStyles,
   layoutBorderWidthFor,
   resetDescendantLayoutFillOverrides,
@@ -22,6 +23,55 @@ import {
   requiresAutomaticTextColorMigration,
   uniformLayoutTextColor,
 } from "../radial-layout";
+
+test("Matrix automatic palettes apply to any child branch without changing siblings or geometry", () => {
+  const { nodes, edges } = hierarchyFixture();
+  nodes[0].data.layoutMode = "matrix";
+  const hierarchy = buildHierarchy(nodes, edges);
+  const initial = applyLayoutPalette(nodes, edges, hierarchy, "root", "matrix", "spectrum");
+  const changed = applyScopedLayoutPalette(initial.nodes, initial.edges, hierarchy, "a-1", { layoutColorScheme: "forest" });
+  assert.ok(changed);
+  const style = (list: Node[], id: string) => list.find((node) => node.id === id)!.data.layoutVisualStyle as Record<string, unknown>;
+  assert.notDeepEqual(style(changed.nodes, "a-1"), style(initial.nodes, "a-1"));
+  assert.equal(style(changed.nodes, "a-1-child").scheme, "forest");
+  for (const id of ["root", "branch-a", "a-2", "branch-b", "b-1"]) assert.deepEqual(style(changed.nodes, id), style(initial.nodes, id));
+  for (const node of changed.nodes) {
+    assert.deepEqual(node.position, nodes.find((candidate) => candidate.id === node.id)!.position);
+    assert.equal(style(changed.nodes, node.id).fontSize, style(initial.nodes, node.id).fontSize);
+    assert.equal(style(changed.nodes, node.id).depth, style(initial.nodes, node.id).depth);
+  }
+  assert.equal(changed.nodes.find((node) => node.id === "a-1")!.data.layoutMode, undefined);
+  assert.equal(changed.nodes.find((node) => node.id === "a-1")!.data.layoutPaletteScope, true);
+  const reloaded = applyLayoutPalette(JSON.parse(JSON.stringify(changed.nodes)), changed.edges, hierarchy, "root", "matrix", "spectrum");
+  assert.deepEqual(style(reloaded.nodes, "a-1-child"), style(changed.nodes, "a-1-child"));
+});
+
+test("nested Matrix palette scopes preserve independent descendant choices", () => {
+  const { nodes, edges } = hierarchyFixture();
+  nodes[0].data.layoutMode = "matrix";
+  const hierarchy = buildHierarchy(nodes, edges);
+  const parent = applyScopedLayoutPalette(nodes, edges, hierarchy, "branch-a", { layoutColorScheme: "forest", layoutColorPattern: "flow", layoutStartColor: "#123456" })!;
+  const nested = applyScopedLayoutPalette(parent.nodes, parent.edges, hierarchy, "a-1", { layoutColorScheme: "spectrum", layoutStartColor: "#ff0000" })!;
+  const changed = applyScopedLayoutPalette(nested.nodes, nested.edges, hierarchy, "root", { layoutColorScheme: "forest" })!;
+  const byId = new Map(changed.nodes.map((node) => [node.id, node]));
+  assert.equal((byId.get("a-1-child")!.data.layoutVisualStyle as Record<string, unknown>).scheme, "spectrum");
+  assert.equal(byId.get("a-1")!.data.layoutColorPattern, "flow");
+  const reset = applyScopedLayoutPalette(changed.nodes, changed.edges, hierarchy, "branch-a", { layoutColorScheme: "forest" }, { resetOverrides: true })!;
+  assert.equal(reset.nodes.find((node) => node.id === "a-1")!.data.layoutPaletteScope, undefined);
+  assert.equal((reset.nodes.find((node) => node.id === "a-1-child")!.data.layoutVisualStyle as Record<string, unknown>).scheme, "forest");
+});
+
+test("branch automatic border and text resets stay local to the selected Matrix branch", () => {
+  const { nodes, edges } = hierarchyFixture();
+  nodes[0].data.layoutMode = "matrix";
+  for (const node of nodes) Object.assign(node.data, { layoutAutoBorder: false, layoutAutoText: false });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = applyScopedLayoutPalette(nodes, edges, hierarchy, "branch-a", { layoutBorderTreatment: "coordinated", layoutTextTreatment: "contrast" }, { resetBorderOverrides: true, resetTextOverrides: true })!;
+  assert.equal(result.nodes.find((node) => node.id === "a-1")!.data.layoutAutoBorder, undefined);
+  assert.equal(result.nodes.find((node) => node.id === "a-1")!.data.layoutAutoText, undefined);
+  assert.equal(result.nodes.find((node) => node.id === "b-1")!.data.layoutAutoBorder, false);
+  assert.equal(result.nodes.find((node) => node.id === "b-1")!.data.layoutAutoText, false);
+});
 
 function hierarchyFixture(): { nodes: Node[]; edges: Edge[] } {
   const specs = [

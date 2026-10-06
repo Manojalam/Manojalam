@@ -729,6 +729,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   mindMapSide?: "left" | "right";
   /** Palette selected for non-radial hierarchy layouts. */
   layoutColorScheme?: RadialColorScheme;
+  /** Independent automatic colors for this Matrix branch, without a new layout. */
+  layoutPaletteScope?: boolean;
   /** Optional user-selected hue anchor for the first automatic layout branch. */
   layoutStartColor?: string;
   /** Controls hue distribution across top-level branches in every layout. */
