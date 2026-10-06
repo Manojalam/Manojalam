@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChildOrderControls } from "./ChildOrderControls";
 import { Pin, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -59,6 +60,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       </div>}
       {card && <div className="min-h-0 flex-1" hidden={cardTab !== "fill"}><FillCardDialog embedded key={card.id} nodeId={card.id} onClose={close} /></div>}
       <div className="min-h-0 flex-1 overflow-y-auto" hidden={!!card && cardTab === "fill"}>
+        <ChildOrderControls />
         {!!selected.length && <div className="border-b p-3"><QuickTextFormat nodes={selected} />
           {selected.some(node => ["shape", "sticky", "text", "mindmap", "table", "frame"].includes(node.type ?? "")) && <div className="mt-2 flex gap-2">{(["fillColor", "borderColor"] as const).map(key => <AppColorPicker key={key} value={typeof selected[0].data[key] === "string" ? selected[0].data[key] as string : undefined} onChange={value => {
             const state = useCanvasStore.getState(); state.pushHistory(); selected.filter(node => !node.data.locked && !state.layers.some(layer => layer.id === node.data.layerId && layer.locked)).forEach(node => state.updateNodeData(node.id, fieldPatch(node.data, key, value || undefined)));

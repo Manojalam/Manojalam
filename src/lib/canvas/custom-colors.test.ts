@@ -82,28 +82,16 @@ test("collects board colors once and returns them in neutral then hue order", ()
   assert.equal(colorsUsedOnBoard(nodes, edges), colorsUsedOnBoard(nodes, edges));
 });
 
-test("offers general bright, light, strong, neutral, and metallic swatches", () => {
-  assert.deepEqual(
-    COLOR_SWATCH_GROUPS.map(({ name }) => name),
-    ["Bright", "Light", "Strong", "Neutral", "Metallic"]
-  );
-  assert.ok(COLOR_SWATCH_GROUPS[0].colors.includes("#16b364"));
-  assert.ok(COLOR_SWATCH_GROUPS[1].colors.includes("#c9f3d8"));
-  assert.ok(COLOR_SWATCH_GROUPS[2].colors.includes("#087f5b"));
-  assert.ok(COLOR_SWATCH_GROUPS[3].colors.includes("#ffffff"));
-  assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#d4af37"));
-  assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#c0c0c0"));
-  assert.ok(COLOR_SWATCH_GROUPS[4].colors.includes("#2a3439"));
-  assert.equal(COLOR_SWATCH_GROUPS[4].colors, METALLIC_COLORS);
-});
-
-test("offers a condensed direct palette with distinct, neutral, and metallic colors", () => {
-  assert.ok(GENERAL_COLOR_PALETTE.includes("#ffffff"));
-  assert.ok(GENERAL_COLOR_PALETTE.includes("#ff3b30"));
-  assert.ok(GENERAL_COLOR_PALETTE.includes("#16b364"));
-  assert.ok(GENERAL_COLOR_PALETTE.includes("#2878ff"));
-  assert.ok(METALLIC_COLORS.every((color) => GENERAL_COLOR_PALETTE.includes(color)));
-  assert.equal(new Set(GENERAL_COLOR_PALETTE).size, GENERAL_COLOR_PALETTE.length);
+test("general palettes offer varied solid colors separately from metals", () => {
+  assert.deepEqual(COLOR_SWATCH_GROUPS.map(({ name }) => name),
+    ["Bright", "Light", "Strong", "Neutral", "Pastel", "Deep", "Earth"]);
+  assert.equal(GENERAL_COLOR_PALETTE.length, 70);
+  assert.equal(new Set(GENERAL_COLOR_PALETTE).size, 70);
+  assert.ok(GENERAL_COLOR_PALETTE.every(color => /^#[0-9a-f]{6}$/.test(color)));
+  assert.ok(METALLIC_COLORS.every(color => !GENERAL_COLOR_PALETTE.includes(color)));
+  for (const color of ["#ffffff", "#000000", "#ff3b30", "#16b364", "#2878ff", "#fda4af", "#7f1d1d", "#a0522d"]) {
+    assert.ok(GENERAL_COLOR_PALETTE.includes(color));
+  }
 });
 
 test("recognizes metallic swatches without treating nearby custom colors as metal", () => {

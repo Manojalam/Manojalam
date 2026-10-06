@@ -14,8 +14,6 @@ import {
   AlignStartVertical,
   AlignVerticalDistributeCenter,
   ArrowDown,
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   BringToFront,
   Copy,
@@ -598,7 +596,6 @@ export function SelectionToolbar() {
   const relationships = useCanvasStore((state) => state.relationships);
   const createChildNode = useCanvasStore((state) => state.createChildNode);
   const createSiblingNode = useCanvasStore((state) => state.createSiblingNode);
-  const moveSiblingNode = useCanvasStore((state) => state.moveSiblingNode);
   const createNodeNote = useCanvasStore((state) => state.createNodeNote);
   const duplicateSelected = useCanvasStore((state) => state.duplicateSelected);
   const clearSelectedContent = useCanvasStore((state) => state.clearSelectedContent);
@@ -758,11 +755,6 @@ export function SelectionToolbar() {
         hierarchy,
       }).find((group) => group.itemId === relationshipDiagramItemSelection.itemId)
     : undefined;
-  const singleParentId = singleId ? hierarchy.get(singleId)?.parentId : undefined;
-  const siblingIds = singleParentId ? hierarchy.get(singleParentId)?.childIds ?? [] : [];
-  const singleSiblingIndex = singleId ? siblingIds.indexOf(singleId) : -1;
-  const singleCanMoveBefore = singleSiblingIndex > 0;
-  const singleCanMoveAfter = singleSiblingIndex >= 0 && singleSiblingIndex < siblingIds.length - 1;
   const singleHasChildren = singleId
     ? (hierarchy.get(singleId)?.childIds.length ?? 0) > 0
     : false;
@@ -943,24 +935,6 @@ export function SelectionToolbar() {
 
       {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && !singleIsExternalNote && (
         <>
-          {singleParentId && (
-            <>
-              <ActionButton
-                label="Move before previous sibling"
-                disabled={!singleCanMoveBefore}
-                onClick={() => moveSiblingNode(singleId, -1)}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </ActionButton>
-              <ActionButton
-                label="Move after next sibling"
-                disabled={!singleCanMoveAfter}
-                onClick={() => moveSiblingNode(singleId, 1)}
-              >
-                <ArrowRight className="h-4 w-4" />
-              </ActionButton>
-            </>
-          )}
           <ActionButton
             label="Add note outside box"
             onClick={() => createNodeNote(singleId)}
