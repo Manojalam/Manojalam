@@ -12,6 +12,7 @@ import {
   colorsUsedOnBoard,
   forgetCustomColor,
   GENERAL_COLOR_PALETTE,
+  METALLIC_COLORS,
   hexToRgb,
   isMetallicColor,
 } from "@/lib/canvas/custom-colors";
@@ -250,7 +251,7 @@ export function ColorSwatchPicker({
       )}
       <PaletteSection
         label="General colors"
-        hint="Distinct + metallic"
+        hint="70 solid colours"
         colors={HUE_SORTED_GENERAL_COLORS}
         value={value}
         mixed={mixed}
@@ -258,12 +259,12 @@ export function ColorSwatchPicker({
         defaultOpen={defaultSectionsOpen}
         selectionSafe={selectionSafe}
         onChange={onChange}
-        onRemove={removeSavedColor}
       />
 
       <PaletteSection
         label="Saved palette"
         hint="Hue order"
+        onRemove={removeSavedColor}
         colors={hueSortedSavedColors}
         value={value}
         mixed={mixed}
@@ -272,6 +273,8 @@ export function ColorSwatchPicker({
         selectionSafe={selectionSafe}
         onChange={onChange}
       />
+
+      <PaletteSection label="Metal colors" hint="Gold, silver, copper & more" colors={[...METALLIC_COLORS]} value={value} mixed={mixed} compact={compact} defaultOpen={false} selectionSafe={selectionSafe} onChange={onChange} />
 
       <PaletteSection
         label="Used colors"

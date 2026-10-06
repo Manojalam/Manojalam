@@ -10,14 +10,6 @@ export const METALLIC_COLORS = [
   "#b76e79", "#e5e4e2", "#c0c0c0", "#71797e", "#2a3439",
 ] as const;
 
-/** Condensed palette shown directly in every color control. */
-export const GENERAL_COLOR_PALETTE = [
-  "#ffffff", "#cbd5e1", "#64748b", "#0f172a",
-  "#ff3b30", "#ff7a00", "#f5c400", "#a3d900", "#16b364",
-  "#00a88f", "#00a8e8", "#2878ff", "#6f5cff", "#e83e8c",
-  ...METALLIC_COLORS,
-] as const;
-
 const METALLIC_COLOR_SET = new Set<string>(METALLIC_COLORS);
 
 /** General-purpose swatches grouped by visual family. */
@@ -47,14 +39,25 @@ export const COLOR_SWATCH_GROUPS = [
     name: "Neutral",
     colors: [
       "#ffffff", "#f8fafc", "#e2e8f0", "#cbd5e1", "#94a3b8",
-      "#64748b", "#475569", "#334155", "#1e293b", "#0f172a",
+      "#64748b", "#475569", "#334155", "#0f172a", "#000000",
     ],
   },
   {
-    name: "Metallic",
-    colors: METALLIC_COLORS,
+    name: "Pastel",
+    colors: ["#fda4af", "#fdba74", "#fde047", "#bef264", "#86efac", "#5eead4", "#7dd3fc", "#93c5fd", "#c4b5fd", "#f9a8d4"],
+  },
+  {
+    name: "Deep",
+    colors: ["#7f1d1d", "#9a3412", "#854d0e", "#365314", "#14532d", "#134e4a", "#0c4a6e", "#1e3a8a", "#4c1d95", "#831843"],
+  },
+  {
+    name: "Earth",
+    colors: ["#a0522d", "#8b4513", "#d2b48c", "#deb887", "#8a9a5b", "#556b2f", "#5f7f7a", "#708090", "#80697d", "#a66a6a"],
   },
 ] as const;
+
+/** Shared solid-colour choices. Metals are offered only in their own section. */
+export const GENERAL_COLOR_PALETTE: readonly string[] = COLOR_SWATCH_GROUPS.flatMap(group => [...group.colors]);
 
 export interface RgbColor {
   r: number;

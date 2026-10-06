@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   arrangeColorPalette,
   COLOR_SWATCH_GROUPS,
+  METALLIC_COLORS,
   colorSwatchHex,
   colorsUsedOnBoard,
   forgetCustomColor,
@@ -305,7 +306,7 @@ export function ColorPickerPanel({
 
       <CollapsibleColorSection
         label="General colors"
-        hint="Distinct, neutral + metallic"
+        hint="70 solid colours"
         preserveCurrentFocus={selectionSafe}
         contentClassName="space-y-1.5"
       >
@@ -328,6 +329,10 @@ export function ColorPickerPanel({
             </div>
           </section>
         ))}
+      </CollapsibleColorSection>
+
+      <CollapsibleColorSection label="Metal colors" hint="Gold, silver, copper & more" defaultOpen={false} preserveCurrentFocus={selectionSafe}>
+        <div className="grid grid-cols-10 gap-1">{METALLIC_COLORS.map(color => <ColorSwatch key={color} color={color} selected={!mixed && draftColor === color} title={`Metal · ${color}`} onSelect={() => selectSwatch(color)} selectionSafe={selectionSafe} />)}</div>
       </CollapsibleColorSection>
 
       {usedColors.length > 0 && (

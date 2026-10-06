@@ -27,6 +27,8 @@ export function DockedSelectionTools({ children }: { children: ReactNode }) {
 }
 
 export function BoardToolMenu({ label, children }: { label: string; children: ReactNode }) {
+  const category = useContext(BoardToolCategoryContext);
+  if (category === "all") return <section className="w-full space-y-1" aria-label={label}><h4 className="text-[10px] font-medium text-muted-foreground">{label === "Add & connect" ? "Connections & notes" : label === "Arrange" ? "Position, rotation & stacking" : label}</h4><div className="board-quick-actions flex flex-wrap items-center gap-1">{children}</div></section>;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -47,7 +49,7 @@ export function BoardToolGroup({ label, children }: { label: string; children: R
   const category = useContext(BoardToolCategoryContext);
   const categories: Record<string, BoardToolCategory[]> = { Create: ["create"], Format: ["text", "appearance"], Organize: ["create", "arrange", "connections"], Templates: ["templates"], "Edit & share": ["create", "arrange"] };
   if (category !== "all" && categories[label] && !categories[label].includes(category)) return null;
-  if (category === "all") return <details className="border-b p-2"><summary className="cursor-pointer text-xs font-medium">{label === "Create" ? "Related objects" : label === "Format" ? "Advanced formatting" : label === "Organize" ? "Arrange & connections" : label}</summary><div className="board-quick-actions mt-2 flex flex-wrap items-center gap-1">{children}</div></details>;
+  if (category === "all") return <details className="border-b p-2"><summary className="cursor-pointer text-xs font-medium">{label === "Create" ? "Related objects" : label === "Format" ? "Advanced formatting" : label === "Organize" ? "Position & connections" : label}</summary><div className="board-quick-actions mt-2 flex flex-wrap items-center gap-1">{children}</div></details>;
   return <div className="board-tool-group flex shrink-0 flex-col border-r px-1.5" role="group" aria-label={label}>
     <span className="px-1 text-[10px] font-semibold text-muted-foreground">{label}</span>
     <div className="board-quick-actions flex items-center gap-1">{children}</div>
