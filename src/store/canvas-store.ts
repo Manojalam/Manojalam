@@ -47,6 +47,7 @@ import {
 import { buildHierarchy, findLayoutRoot, getSubtree } from "@/lib/layout/hierarchy";
 import {
   applyLayoutPalette,
+  applyScopedLayoutPalette,
   resetDescendantLayoutFillOverrides,
   supportsAutomaticLayoutColors,
 } from "@/lib/layout/layout-palette";
@@ -5219,17 +5220,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       && !isAutoSunburstNode(node)
       && node.type !== "relationshipDiagram"
     );
-    const root = hierarchyNodes.find((node) => node.id === rootId);
-    if (!root) return;
-    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
-    if (!supportsAutomaticLayoutColors(mode)) return;
-
     const hierarchy = buildHierarchy(hierarchyNodes, edges);
+    const styled = applyScopedLayoutPalette(nodes, edges, hierarchy, rootId, { layoutColorScheme: scheme }, { resetOverrides });
+    if (!styled) return;
     get().pushHistory();
-    const styled = applyLayoutPalette(nodes, edges, hierarchy, rootId, mode, scheme, { resetOverrides });
-    const scopeIds = new Set(getSubtree(rootId, hierarchy));
-    const nextNodes = mode === "matrix"
-      ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true)
+    const scopeIds = new Set(getSubtree(styled.rootId, hierarchy));
+    const nextNodes = styled.mode === "matrix"
+      ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(styled.rootId), true)
       : styled.nodes;
     set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
   },
@@ -5259,40 +5256,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       && !isAutoSunburstNode(node)
       && node.type !== "relationshipDiagram"
     );
-    const root = hierarchyNodes.find((node) => node.id === rootId);
-    if (!root) return;
-    const mode = ((root.data ?? {}) as Record<string, unknown>).layoutMode as LayoutMode | undefined;
-    if (!supportsAutomaticLayoutColors(mode)) return;
-
-    const preparedNodes = nodes.map((node) => node.id === rootId
-      ? {
-          ...node,
-          data: {
-            ...(node.data ?? {}),
-            ...patch,
-            ...("layoutColorPattern" in patch ? { matrixRowColorPattern: undefined } : {}),
-            ...("layoutEndColor" in patch ? { matrixRowEndColor: undefined } : {}),
-          },
-        }
-      : node);
     const resetBorderOverrides = "layoutBorderTreatment" in patch
       || "layoutBorderStyle" in patch
       || "layoutBorderWidth" in patch;
     const resetTextOverrides = "layoutTextTreatment" in patch;
     const hierarchy = buildHierarchy(hierarchyNodes, edges);
+    const styled = applyScopedLayoutPalette(nodes, edges, hierarchy, rootId, {
+      ...patch,
+      ...("layoutColorPattern" in patch ? { matrixRowColorPattern: undefined } : {}),
+      ...("layoutEndColor" in patch ? { matrixRowEndColor: undefined } : {}),
+    }, { resetBorderOverrides, resetTextOverrides });
+    if (!styled) return;
     get().pushHistory();
-    const styled = applyLayoutPalette(
-      preparedNodes,
-      edges,
-      hierarchy,
-      rootId,
-      mode,
-      layoutSchemeValue(preparedNodes, rootId),
-      { resetBorderOverrides, resetTextOverrides }
-    );
-    const scopeIds = new Set(getSubtree(rootId, hierarchy));
-    const nextNodes = mode === "matrix"
-      ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(rootId), true)
+    const scopeIds = new Set(getSubtree(styled.rootId, hierarchy));
+    const nextNodes = styled.mode === "matrix"
+      ? withMatrixFrame(styled.nodes, scopeIds, matrixFrameKey(styled.rootId), true)
       : styled.nodes;
     set({ nodes: nextNodes, edges: styled.edges, saveStatus: "unsaved" });
   },

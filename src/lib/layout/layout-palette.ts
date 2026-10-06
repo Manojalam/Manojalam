@@ -362,7 +362,74 @@ export function buildLayoutVisualStyles(
     }
   }
 
+  // A Matrix child can own a palette without becoming a separate layout root.
+  // Rebuild its colors on every reflow/load, retaining the chart's geometry.
+  if (mode === "matrix") {
+    const scopeRoots = layoutNodeIds.filter((id) => id !== rootId &&
+      (nodes.find((node) => node.id === id)?.data as Record<string, unknown> | undefined)?.layoutPaletteScope === true);
+    for (const id of scopeRoots) {
+      // The nearest scope handles its own nested scopes recursively.
+      let parentId = hierarchy.get(id)?.parentId;
+      let nested = false;
+      while (parentId && parentId !== rootId) {
+        if (scopeRoots.includes(parentId)) { nested = true; break; }
+        parentId = hierarchy.get(parentId)?.parentId;
+      }
+      if (nested) continue;
+      const data = nodes.find((node) => node.id === id)?.data as Record<string, unknown>;
+      const scoped = buildLayoutVisualStyles(id, hierarchy, mode, selectedLayoutColorScheme(data.layoutColorScheme ?? schemeId), nodes);
+      for (const [nodeId, style] of scoped) {
+        const original = styles.get(nodeId);
+        if (!original) continue;
+        styles.set(nodeId, { ...style, rootId, depth: original.depth, fontSize: original.fontSize });
+      }
+    }
+  }
+
   return styles;
+}
+
+export function layoutPaletteTarget(nodes: Node[], hierarchy: Hierarchy, targetId: string): { rootId: string; mode: LayoutMode; inheritedData: Record<string, unknown> } | null {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const visited = new Set<string>();
+  let id: string | null = targetId;
+  let inheritedData: Record<string, unknown> | null = null;
+  while (id && !visited.has(id)) {
+    visited.add(id);
+    const data = (byId.get(id)?.data ?? {}) as Record<string, unknown>;
+    if (!inheritedData && data.layoutPaletteScope === true) inheritedData = data;
+    const mode = data.layoutMode as LayoutMode;
+    if (supportsAutomaticLayoutColors(mode)) {
+      if (id !== targetId && mode !== "matrix") return null;
+      return { rootId: id, mode, inheritedData: inheritedData ?? data };
+    }
+    id = hierarchy.get(id)?.parentId ?? null;
+  }
+  return null;
+}
+
+const PALETTE_FIELDS = ["layoutColorScheme", "layoutStartColor", "layoutEndColor", "layoutColorPattern", "matrixRowColorPattern", "matrixRowEndColor", "layoutBorderTreatment", "layoutBorderStyle", "layoutBorderWidth", "layoutTextTreatment"] as const;
+
+export function applyScopedLayoutPalette(nodes: Node[], edges: Edge[], hierarchy: Hierarchy, targetId: string, patch: Record<string, unknown>, options: ApplyLayoutPaletteOptions = {}): (LayoutPaletteResult & { rootId: string; mode: LayoutMode }) | null {
+  const target = layoutPaletteTarget(nodes, hierarchy, targetId);
+  if (!target) return null;
+  const scopeIds = new Set(getLayoutOwnedSubtree(targetId, hierarchy, nodes));
+  const branch = target.rootId !== targetId;
+  const inherited = Object.fromEntries(PALETTE_FIELDS.map((field) => [field, target.inheritedData[field]]));
+  const prepared = nodes.map((node) => {
+    if (!scopeIds.has(node.id)) return node;
+    const data = (node.data ?? {}) as Record<string, unknown>;
+    const resetText = options.resetOverrides || options.resetTextOverrides;
+    return { ...node, data: {
+      ...(resetText ? reclaimAutomaticTextColor(data) : data),
+      ...(options.resetOverrides ? { layoutAutoFill: undefined, layoutAutoBorder: undefined, layoutAutoText: undefined, ...(node.id !== targetId ? { layoutPaletteScope: undefined } : {}) } : {}),
+      ...(options.resetBorderOverrides ? { layoutAutoBorder: undefined } : {}),
+      ...(options.resetTextOverrides ? { layoutAutoText: undefined } : {}),
+      ...(node.id === targetId ? { ...inherited, ...patch, ...(branch ? { layoutPaletteScope: true } : {}), layoutTextColorVersion: LAYOUT_TEXT_COLOR_VERSION } : {}),
+    } };
+  });
+  const rootData = prepared.find((node) => node.id === target.rootId)?.data as Record<string, unknown>;
+  return { ...applyLayoutPalette(prepared, edges, hierarchy, target.rootId, target.mode, rootData.layoutColorScheme ?? rootData.radialColorScheme), rootId: target.rootId, mode: target.mode };
 }
 
 function markerColor(markerEnd: Edge["markerEnd"]): string | null {
