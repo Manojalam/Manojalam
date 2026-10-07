@@ -5,6 +5,7 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
 import { cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
+import { columnSections, normalizeTable, tablePlainText, updateColumnSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -22,22 +23,27 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
   return <CardForm embedded={embedded} key={currentId} nodeId={currentId} template={template} sections={cardSections(node.data)} locked={!!node.data.locked} onClose={onClose} onNext={id => { setCurrentId(id); if (useUIStore.getState().fillingCardNodeId) useUIStore.getState().setFillingCardNodeId(id); }} />;
 }
 
-function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedded = false }: { embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
+export function CardForm({ columnId, initialSectionId, nodeId, template, sections, locked, onClose, onNext, embedded = false }: { columnId?: string; initialSectionId?: string; embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
     const node = state.nodes.find(item => item.id === nodeId);
-    if (!node || node.data.locked || node.data.freeCardLayout || state.board?.accessRole === "viewer") return;
-    const current = cardSections(node.data);
+    if (!node || node.data.locked || node.data.freeCardLayout || state.board?.accessRole === "viewer" || state.layers.some(layer => layer.id === node.data.layerId && layer.locked)) return;
+    const current = columnId ? columnSections(normalizeTable(node.data.table), columnId) : cardSections(node.data);
     const next = change(current);
     if (JSON.stringify(next) === JSON.stringify(current)) return;
     const now = Date.now();
     const previous = lastEdit.current;
-    const history = !editKey || previous?.key !== editKey || now - previous.at > 750 || previous.sections !== node.data.cardSections;
-    state.updateCardSections(nodeId, next, history);
-    lastEdit.current = editKey ? { key: editKey, at: now, sections: useCanvasStore.getState().nodes.find(item => item.id === nodeId)?.data.cardSections } : null;
-  }, [nodeId]);
-  const [activeId, setActiveId] = useState(sections[0].id);
+    const history = !editKey || previous?.key !== editKey || now - previous.at > 750 || previous.sections !== (columnId ? node.data.table : node.data.cardSections);
+    if (columnId) {
+      const table = updateColumnSections(normalizeTable(node.data.table), columnId, next);
+      table.columns = table.columns.map(column => column.id === columnId && column.card ? { ...column, card: { ...column.card, template: structuredClone(template) } } : column);
+      if (history) state.pushHistory();
+      state.updateNodeData(nodeId, { table, text: tablePlainText(table) });
+    } else state.updateCardSections(nodeId, next, history);
+    lastEdit.current = editKey ? { key: editKey, at: now, sections: useCanvasStore.getState().nodes.find(item => item.id === nodeId)?.data[columnId ? "table" : "cardSections"] } : null;
+  }, [nodeId, columnId, template]);
+  const [activeId, setActiveId] = useState(initialSectionId ?? sections[0].id);
   const fieldsRef = useRef<HTMLFieldSetElement>(null);
   const section = sections.find(item => item.id === activeId) ?? sections[0];
   const sectionIndex = sections.findIndex(item => item.id === section.id);
@@ -49,6 +55,7 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
       if (index < 0 || target < 0 || target >= current.length) return current;
       const reordered = [...current];
       [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      if (columnId) setActiveId(current[target].id);
       return reordered;
     });
   };
@@ -57,7 +64,7 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
   const addSection = () => {
     const id = crypto.randomUUID();
     setSections(current => [...current, { id, values: {}, extraRows: [] }]);
-    setActiveId(id);
+    setActiveId(columnId ? normalizeTable(useCanvasStore.getState().nodes.find(node => node.id === nodeId)?.data.table).rows.at(-1)!.id : id);
   };
   useEffect(() => {
     fieldsRef.current?.querySelector<HTMLElement>("textarea,input")?.focus();
@@ -77,7 +84,7 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   const content = <>
-    <header className="space-y-1"><h3 className="text-sm font-semibold">Fill card · {template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
+    <header className="space-y-1"><h3 className="text-sm font-semibold">{columnId ? "Fill column" : "Fill card"} · {template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
       <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => event.preventDefault()}>
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
@@ -87,11 +94,11 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
             <Button type="button" size="sm" variant="outline" disabled={locked || savingNext || sectionIndex === sections.length - 1} onClick={() => moveSection(1)}>Move down</Button>
           </div>
           <p role="status" className="text-xs text-muted-foreground">Section {sectionIndex + 1} of {sections.length}. Move this section with all its values and extra rows. Changes save automatically.</p>
-          <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={() => {
+          {!columnId && <><Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={() => {
             const id = useCanvasStore.getState().moveCardSectionsToNewBox(nodeId, section.id);
             if (id) onNext(id);
           }}>Move from this section to new box</Button>
-          <p className="text-xs text-muted-foreground">Moves section {sectionIndex + 1} and all following sections into a new box. Earlier sections stay here.{sectionIndex === 0 ? " This box will be left empty." : ""}</p></details>
+          <p className="text-xs text-muted-foreground">Moves section {sectionIndex + 1} and all following sections into a new box. Earlier sections stay here.{sectionIndex === 0 ? " This box will be left empty." : ""}</p></>}</details>
         </div>
         <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">How repeated fields work</summary>Repeat before or after to add fields on the same line. Press Enter inside a field for a new line.</details>
         <fieldset ref={fieldsRef} disabled={locked || savingNext} className="space-y-4">
@@ -120,7 +127,7 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
             <Button type="button" size="sm" variant="ghost" onClick={() => setExtraRows(current => current.filter((_, i) => i !== index))}>Remove my row {index + 1}</Button>
           </div>)}
           <Button type="button" variant="outline" onClick={() => setExtraRows(current => [...current, ""])}>Add my own row</Button>
-          <p className="text-xs text-muted-foreground">Your extra rows belong to this card only. Use Arrange / edit on card to move text anywhere and assign labels.</p>
+          <p className="text-xs text-muted-foreground">Your extra rows belong to this card only. {!columnId && "Use Arrange / edit on card to move text anywhere and assign labels."}</p>
         </fieldset>
         <details className="rounded border p-3">
           <summary className="cursor-pointer text-sm">Preview filled card</summary>
@@ -128,16 +135,16 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
             <CardTemplatePreview template={template} sections={sections} />
           </div>
         </details>
-        <details className="rounded border p-3">
+        {!columnId && <details className="rounded border p-3">
           <summary className="cursor-pointer text-sm">Advanced: switch to free text</summary>
           <p className="my-2 text-xs text-muted-foreground">This switches this card from filling fields in this panel to editing text directly on the board. Close this panel to continue using fields and sections later.</p>
           <Button type="button" variant="outline" disabled={locked || savingNext} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
-        </details>
+        </details>}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={savingNext} onClick={onClose}>Close</Button>
           <Button type="button" variant="outline" disabled={locked || savingNext} onClick={addSection}>Add another section</Button>
-          <Button type="button" disabled={locked || !available || savingNext} onClick={async () => {
+          {!columnId && <Button type="button" disabled={locked || !available || savingNext} onClick={async () => {
             setSavingNext(true);
             // Content sync, size reporting and React Flow measurement each run
             // on a frame. Place the next card after the current card has expanded.
@@ -145,7 +152,7 @@ function CardForm({ nodeId, template, sections, locked, onClose, onNext, embedde
             const id = create(template.id);
             if (id) onNext(id);
             else setSavingNext(false);
-          }}>{savingNext ? "Creating..." : "New box"}</Button>
+          }}>{savingNext ? "Creating..." : "New box"}</Button>}
         </div>
       </form>
   </>;

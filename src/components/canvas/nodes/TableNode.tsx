@@ -7,6 +7,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { NodeHandles } from "./NodeHandles";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { renderCardSections } from "@/lib/canvas/card-templates";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
@@ -101,10 +102,20 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
       <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table">
         <thead><tr>{table.showRowLabels && <th scope="col" className="border-b border-r bg-muted/50 px-2 text-left" style={{ borderColor: color }}>Row label</th>}{table.columns.map((column, columnIndex) => <th key={column.id} scope="col" className="relative border-b border-r bg-muted/50 text-left font-semibold last:border-r-0" style={{ borderColor: color }}>
           <TableInput aria-label={`Column ${columnIndex + 1} name`} value={column.name} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), columns: current().columns.map(item => item.id === column.id ? { ...item, name: event.target.value } : item) }, false); }} />
+          {selected && editable && <button data-export-ignore type="button" aria-label={`${column.card ? "Fill" : "Use template in"} column ${columnIndex + 1}`} className="nodrag nopan w-full px-2 pb-1 text-left text-[10px] font-normal underline" onClick={() => useUIStore.setState({ fillingCardNodeId: null, fillingTableColumn: { nodeId: id, columnId: column.id }, boardPanel: "templates" })}>{column.card ? "Fill column" : "Use template"}</button>}
           {selected && editable && <button data-export-ignore type="button" title={`Delete column ${columnIndex + 1}`} aria-label={`Delete column ${columnIndex + 1}`} disabled={table.columns.length <= 1} className="nodrag nopan absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), column.id))}><Trash2 size={12} /></button>}
         </th>)}</tr></thead>
         <tbody>{table.rows.map((row, rowIndex) => <tr key={row.id}>{table.showRowLabels && <th scope="row" className="border-b border-r text-left align-top" style={{ borderColor: color }}><TableInput aria-label={`Row ${rowIndex + 1} label`} value={row.label ?? ""} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, label: event.target.value } : item) }, false); }} /></th>}{row.cells.map((cell, columnIndex) => <td key={table.columns[columnIndex].id} className="relative border-b border-r align-top last:border-r-0" style={{ borderColor: color }}>
-          <TableInput aria-label={`Row ${rowIndex + 1}, ${table.columns[columnIndex].name || `column ${columnIndex + 1}`}`} data-row={row.id} data-column={table.columns[columnIndex].id} value={cell} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, cells: item.cells.map((value, index) => index === columnIndex ? event.target.value : value) } : item) }, false); }} onKeyDown={event => {
+          {table.columns[columnIndex].card && (() => {
+            const card = table.columns[columnIndex].card!;
+            const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
+            const rendered = renderCardSections(template, card.sections.filter(section => section.id === row.id));
+            return <div className="p-2" style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined, background: template.style.fillColor || undefined }}>
+              <div className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" dangerouslySetInnerHTML={{ __html: rendered.richText }} />
+              {selected && editable && <button data-export-ignore type="button" aria-label={`Fill row ${rowIndex + 1}, column ${columnIndex + 1}`} className="nodrag nopan text-[10px] underline" onClick={() => useUIStore.setState({ fillingCardNodeId: null, fillingTableColumn: { nodeId: id, columnId: table.columns[columnIndex].id, rowId: row.id }, boardPanel: "templates" })}>Fill fields</button>}
+            </div>;
+          })()}
+          {(!table.columns[columnIndex].card || cell) && <TableInput aria-label={`Row ${rowIndex + 1}, ${table.columns[columnIndex].name || `column ${columnIndex + 1}`}`} data-row={row.id} data-column={table.columns[columnIndex].id} value={cell} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, cells: item.cells.map((value, index) => index === columnIndex ? event.target.value : value) } : item) }, false); }} onKeyDown={event => {
             if (event.key !== "Tab" || !editable || event.nativeEvent.isComposing) return;
             const nextIndex = rowIndex * table.columns.length + columnIndex + (event.shiftKey ? -1 : 1);
             if (nextIndex < 0) return;
@@ -117,7 +128,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
             const text = event.clipboardData.getData("text/plain");
             if (!text.includes("\t")) return;
             event.preventDefault(); write(pasteTableCells(current(), rowIndex, columnIndex, parseTablePaste(text)));
-          }} />
+          }} />}
           {columnIndex === table.columns.length - 1 && selected && editable && <div data-export-ignore className="nodrag nopan absolute -right-14 top-1 flex rounded border bg-background shadow-sm">
             <button type="button" aria-label={`Insert row after ${rowIndex + 1}`} title="Insert row below" disabled={table.rows.length >= MAX_TABLE_ROWS} className="p-1 hover:bg-accent disabled:opacity-30" onClick={() => addRow(rowIndex)}><Plus size={14} /></button>
             <button type="button" aria-label={`Delete row ${rowIndex + 1}`} title="Delete row" disabled={table.rows.length <= 1} className="p-1 hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), row.id))}><Trash2 size={14} /></button>

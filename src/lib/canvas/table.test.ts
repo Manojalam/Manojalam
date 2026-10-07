@@ -1,6 +1,7 @@
+import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addTableColumn, addTableRow, createTable, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText } from "./table";
+import { applyColumnTemplate, columnSections, updateColumnSections, tableTemplateDesign, addTableColumn, addTableRow, createTable, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText } from "./table";
 import { normalizePersistedNode } from "./node-persistence";
 import { editableNodeText } from "../export/powerpoint-layout";
 import { clearNodeContent } from "./clipboard";
@@ -64,4 +65,46 @@ test("clearing a table keeps its reusable column pattern and outline export reta
   const outline = serializeOutlineText(buildOutlineDocument(board));
   assert.match(outline, /मेर्निः/);
   assert.match(outline, /Meaning two/);
+});
+
+
+test("column templates preserve headings and labels with independent, portable answers", () => {
+  const source = createTable(2, 2);
+  source.showRowLabels = true;
+  source.rows[0].label = "Step 1";
+  source.rows[0].cells[0] = "Keep existing";
+  const template = newHomeworkTemplate("steps");
+  let table = applyColumnTemplate(source, template);
+  const field = template.rows[0].fields[0].id;
+  const sections = columnSections(table, table.columns[0].id);
+  sections[0].values[field] = { text: "Column one", href: "https://ashtadhyayi.com/sutraani/1.3.1" };
+  table = updateColumnSections(table, table.columns[0].id, sections);
+  assert.equal(columnSections(table, table.columns[1].id)[0].values[field], undefined);
+  assert.equal(table.columns[0].name, source.columns[0].name);
+  assert.equal(table.rows[0].label, "Step 1");
+  assert.equal(table.rows[0].cells[0], "Keep existing");
+  assert.deepEqual(normalizeTable(JSON.parse(JSON.stringify(table))), table);
+  assert.match(tablePlainText(table), /Column one/);
+  const saved = tableTemplateDesign(table);
+  assert.equal(saved.columns[0].card?.template.id, template.id);
+  assert.deepEqual(saved.columns[0].card?.sections[0].values, {});
+  assert.equal(saved.rows[0].cells[0], "");
+});
+
+test("column-only application and row insertion/deletion keep values attached to rows", () => {
+  let table = createTable(2, 2);
+  const template = newHomeworkTemplate("steps");
+  table = applyColumnTemplate(table, template, table.columns[1].id);
+  assert.equal(table.columns[0].card, undefined);
+  const sections = columnSections(table, table.columns[1].id);
+  sections[1].extraRows = ["Keep my second step"];
+  table = updateColumnSections(table, table.columns[1].id, sections);
+  const second = table.rows[1].id;
+  table = addTableRow(table, 0);
+  assert.equal(columnSections(table, table.columns[1].id)[2].extraRows[0], "Keep my second step");
+  table = removeTableRow(table, table.rows[1].id);
+  assert.equal(columnSections(table, table.columns[1].id)[1].id, second);
+  assert.equal(columnSections(table, table.columns[1].id)[1].extraRows[0], "Keep my second step");
+  const cleared = clearNodeContent({ table });
+  assert.ok(!tablePlainText(normalizeTable(cleared.table)).includes("Keep my second step"));
 });

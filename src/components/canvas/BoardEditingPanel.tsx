@@ -16,9 +16,12 @@ import { LayoutPanel } from "./LayoutPanel";
 import { CanvasLayersPanel } from "./CanvasLayersPanel";
 import { AppColorPicker } from "./AppColorPicker";
 import { QuickTextFormat } from "./QuickTextFormat";
+import { normalizeTable } from "@/lib/canvas/table";
+import { TableColumnFillPanel } from "./TableColumnFillPanel";
 import { FillCardDialog } from "./FillCardDialog";
 
 export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: HTMLDivElement | null) => void }) {
+  const columnTarget = useUIStore(state => state.fillingTableColumn);
   const panel = useUIStore(state => state.boardPanel);
   const layoutOpen = useUIStore(state => state.layoutPanelOpen);
   const layersOpen = useUIStore(state => state.layersPanelOpen);
@@ -27,6 +30,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const pinnedId = useUIStore(state => state.fillingCardNodeId);
   const setPinned = useUIStore(state => state.setFillingCardNodeId);
   const nodes = useCanvasStore(state => state.nodes);
+  const hasColumnCard = columnTarget && normalizeTable(nodes.find(node => node.id === columnTarget.nodeId)?.data.table).columns.some(column => column.id === columnTarget.columnId && column.card);
   const ids = useCanvasStore(state => state.selectedNodeIds);
   const edgeIds = useCanvasStore(state => state.selectedEdgeIds);
   const selected = nodes.filter(node => ids.includes(node.id));
@@ -44,16 +48,16 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       if ((next.layoutPanelOpen && !previous.layoutPanelOpen) || (next.layersPanelOpen && !previous.layersPanelOpen)) useUIStore.setState({ boardPanel: "selection" });
       if (next.fillingCardNodeId && next.fillingCardNodeId !== previous.fillingCardNodeId) { next.setBoardPanel("selection"); setCardTab("fill"); }
     });
-    return () => { selection(); filling(); useUIStore.getState().setFillingCardNodeId(null); };
+    return () => { selection(); filling(); useUIStore.setState({ fillingTableColumn: null }); useUIStore.getState().setFillingCardNodeId(null); };
   }, []);
-  const close = () => { setPanel(null); setPinned(null); useUIStore.getState().setLayoutPanelOpen(false); useUIStore.getState().setLayersPanelOpen(false); };
+  const close = () => { useUIStore.setState({ fillingTableColumn: null }); setPanel(null); setPinned(null); useUIStore.getState().setLayoutPanelOpen(false); useUIStore.getState().setLayersPanelOpen(false); };
   return <>
     <header className="flex shrink-0 items-center justify-between border-b px-3 py-2">
       <h2 className="text-sm font-semibold">{panel === "templates" ? "Templates" : panel === "board" ? "Board settings" : card ? "Card" : selected.length === 1 ? String(selected[0].type ?? "Object") : selected.length + edgeIds.length ? `${selected.length + edgeIds.length} selected` : "Properties"}</h2>
       <button type="button" title="Close panel" aria-label="Close editing panel" onClick={close} className="rounded p-1.5 hover:bg-accent"><X size={16} /></button>
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
-    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}><TemplateLauncher /><details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Design & manage templates</summary><BoardStyleTemplatesPanel showCrossBoardLibrary={false} /></details></div>
+    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnCard ? <TableColumnFillPanel /> : <><TemplateLauncher /><details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Design & manage templates</summary><BoardStyleTemplatesPanel showCrossBoardLibrary={false} /></details></>}</div>
     {panel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
     <div hidden={panel !== "selection" || auxiliary} className="min-h-0 flex-1 flex-col data-[visible=true]:flex" data-visible={panel === "selection"}>
       {card && <div className="flex shrink-0 items-center gap-1 border-b p-2" aria-label="Card controls">

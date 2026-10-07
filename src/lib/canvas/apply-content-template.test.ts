@@ -3,7 +3,7 @@ import test from "node:test";
 import { applyContentTemplate, mergeTableTemplate } from "./apply-content-template";
 import { newHomeworkTemplate } from "./card-templates";
 import { normalizeSampleTemplates } from "./sample-templates";
-import { createTable, tableTemplateDesign, tablePlainText, addTableColumn, removeTableColumn, normalizeTable } from "./table";
+import { applyColumnTemplate, columnSections, updateColumnSections, createTable, tableTemplateDesign, tablePlainText, addTableColumn, removeTableColumn, normalizeTable } from "./table";
 import type { Node } from "@xyflow/react";
 const card = newHomeworkTemplate("homework");
 const node: Node = { id: "selected", type: "table", position: { x: 32, y: 48 }, data: { table: createTable(2, 2) } };
@@ -16,7 +16,8 @@ test("apply to table keeps type, geometry, cell IDs, answers and extra columns",
   assert.equal(updated.type, "table");
   assert.deepEqual(updated.position, source.position);
   const result = normalizeTable(updated.data.table);
-  assert.equal(result.columns[0].name, card.rows[0].fields[0].label);
+  assert.equal(result.columns[0].name, current.columns[0].name);
+  assert.equal(result.columns[0].card?.template.id, card.id);
   assert.equal(result.columns.length, 8);
   assert.equal(result.rows.length, 4);
   assert.equal(result.rows[0].cells[0], "Existing answer");
@@ -71,7 +72,7 @@ test("plain-text content becomes safe rich text so later template edits cannot e
 });
 
 
-test("applying many fields widens a table without shrinking a larger table or losing values", () => {
+test("applying many fields keeps columns as containers without replacing their headings", () => {
   const table = createTable(3, 3);
   table.showRowLabels = true;
   table.rows[0].label = "prathama";
@@ -79,9 +80,27 @@ test("applying many fields widens a table without shrinking a larger table or lo
   const design = { ...card, style: { ...card.style, fontSize: 22 }, rows: [{ id: "row", indent: 0, fields: Array.from({ length: 9 }, (_, index) => ({ id: `f${index}`, label: `Field ${index}`, color: "", kind: "text" as const })) }] };
   const source = { ...node, style: { width: 660, height: 240 }, data: { table } };
   const result = applyContentTemplate(source, design, "card");
-  assert.equal(result.style?.width, 1480);
+  assert.equal(normalizeTable(result.data.table).columns.length, 3);
+  assert.equal(normalizeTable(result.data.table).columns[0].card?.template.rows[0].fields.length, 9);
+  assert.ok(Number(result.style?.width) >= 660);
   assert.equal(normalizeTable(result.data.table).rows[0].label, "prathama");
   assert.equal(normalizeTable(result.data.table).rows[0].cells[0], "Keep this answer");
   assert.deepEqual(result.position, source.position);
   assert.equal(applyContentTemplate({ ...source, style: { width: 2000 } }, design, "card").style?.width, 2000);
+});
+
+
+test("saved column-template designs rebind steps to destination rows without copying answers", () => {
+  let source = applyColumnTemplate(createTable(2, 2), card);
+  const sections = columnSections(source, source.columns[0].id);
+  sections[0].extraRows = ["Source private answer"];
+  source = updateColumnSections(source, source.columns[0].id, sections);
+  const destination = createTable(3, 2);
+  destination.rows[0].cells[0] = "Existing destination value";
+  const result = mergeTableTemplate(destination, tableTemplateDesign(source));
+  assert.equal(result.columns[0].card?.template.id, card.id);
+  assert.equal(result.columns[0].card?.sections[0].id, destination.rows[0].id);
+  assert.deepEqual(result.columns[0].card?.sections[0].extraRows, []);
+  assert.equal(result.rows[0].cells[0], "Existing destination value");
+  assert.equal(result.columns[0].card?.sections.length, 3);
 });
