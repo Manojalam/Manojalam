@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isMetallicColor } from "@/lib/canvas/custom-colors";
+import { surfaceEffectLayerPatch } from "@/lib/canvas/surface-effects";
+import { resolveSurfaceEffectData } from "@/lib/style-utils";
 import { ChildOrderControls } from "./ChildOrderControls";
 import { Pin, X } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -63,7 +66,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
         <ChildOrderControls />
         {!!selected.length && <div className="border-b p-3"><QuickTextFormat nodes={selected} />
           {selected.some(node => ["shape", "sticky", "text", "mindmap", "table", "frame"].includes(node.type ?? "")) && <div className="mt-2 flex gap-2">{(["fillColor", "borderColor"] as const).map(key => <AppColorPicker key={key} value={typeof selected[0].data[key] === "string" ? selected[0].data[key] as string : undefined} onChange={value => {
-            const state = useCanvasStore.getState(); state.pushHistory(); selected.filter(node => !node.data.locked && !state.layers.some(layer => layer.id === node.data.layerId && layer.locked)).forEach(node => state.updateNodeData(node.id, fieldPatch(node.data, key, value || undefined)));
+            const state = useCanvasStore.getState(); state.pushHistory(); selected.filter(node => !node.data.locked && !state.layers.some(layer => layer.id === node.data.layerId && layer.locked)).forEach(node => state.updateNodeData(node.id, { ...fieldPatch(node.data, key, value || undefined), ...(key === "fillColor" && isMetallicColor(value) ? surfaceEffectLayerPatch(resolveSurfaceEffectData(node.data), "metallic", true) : {}) }));
           }}><button className="flex items-center gap-2 rounded border px-2 py-1 text-xs" type="button"><span className="h-4 w-4 rounded border" style={{ background: String(selected[0].data[key] || "transparent") }} />{key === "fillColor" ? "Fill colour" : "Border colour"}</button></AppColorPicker>)}</div>}
         </div>}
         {selected.length === 1 && <div className="border-b px-2"><SaveBoxTemplateButton node={selected[0]} /></div>}

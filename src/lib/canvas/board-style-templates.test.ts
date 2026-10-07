@@ -48,3 +48,11 @@ test("ordinary boxes support templates while generated charts do not", () => {
   assert.equal(supportsStyleTemplate({ ...node, data: { radialChart: { enabled: true } } }), false);
   assert.equal(supportsStyleTemplate({ ...node, type: "relationshipDiagram" }), false);
 });
+
+
+test("template style capture retains independent effect layers without sharing references", () => {
+  const layers = [{ preset: "metallic", depth: 6, strength: 72, angle: 20 }, { preset: "glow", depth: 12, strength: 58, angle: 45 }];
+  const style = captureTemplateStyle({ surfaceEffects: layers });
+  assert.deepEqual(style.surfaceEffects, layers);
+  assert.notEqual(style.surfaceEffects, layers);
+});

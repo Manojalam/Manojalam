@@ -507,6 +507,7 @@ export function resolveLayoutFillGradient(d: Record<string, unknown>): string | 
 export function resolveSurfaceEffectData(
   d: Record<string, unknown>
 ): Record<string, unknown> {
+  if (Array.isArray(d.surfaceEffects)) return d;
   const layoutStyle = resolveLayoutVisualStyle(d);
   if (
     !layoutStyle

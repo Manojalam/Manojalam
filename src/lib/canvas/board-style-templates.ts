@@ -4,7 +4,7 @@ import { captureShapeFormat } from "./shape-format";
 import { colorSwatchHex, normalizeHexColor } from "./custom-colors";
 import { plainTextToRichText } from "./rich-text-paste";
 
-export const TEMPLATE_EXTRA_STYLE_KEYS = ["shapeType", "surfaceEffect", "surfaceEffectDepth", "surfaceEffectStrength", "surfaceEffectAngle", "lineSpacing", "paragraphIndent", "firstLineIndent", "tabSize"] as const;
+export const TEMPLATE_EXTRA_STYLE_KEYS = ["shapeType", "surfaceEffects", "surfaceEffect", "surfaceEffectDepth", "surfaceEffectStrength", "surfaceEffectAngle", "lineSpacing", "paragraphIndent", "firstLineIndent", "tabSize"] as const;
 export function supportsStyleTemplate(node: Node): boolean {
   return ["shape", "text", "sticky", "mindmap"].includes(node.type ?? "") && !node.data.cardTemplateId && !node.data.sampleTemplateId && !node.data.sampleDesignId && !(node.data.radialChart as { enabled?: boolean } | undefined)?.enabled;
 }
