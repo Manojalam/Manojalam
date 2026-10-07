@@ -110,7 +110,7 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
                 {repeatId && <Button type="button" size="sm" variant="ghost" onClick={() => removeRepeat(repeatId)}>Remove repeat</Button>}
               </div>
             </div>
-            {row.fields.map(field => <div key={field.id} className="space-y-1">
+            {row.fields.filter(field => field.kind !== "constant").map(field => <div key={field.id} className="space-y-1">
               <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
               {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value, repeatId)} />}
               <textarea id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} rows={Math.min(8, Math.max(field.kind === "multiline" ? 3 : 1, (values[field.id]?.text ?? "").split("\n").length))}

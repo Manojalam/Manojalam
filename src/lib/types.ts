@@ -276,7 +276,10 @@ export interface CardTemplateField {
   id: string;
   label: string;
   color: string;
-  kind: "text" | "multiline" | "link" | "sutra";
+  kind: "text" | "multiline" | "link" | "sutra" | "constant";
+  constantText?: string;
+  /** Omit to show when any input in this row is filled. */
+  constantWhenFieldId?: string;
   fontFamily?: string;
   fontSize?: number;
   bold?: boolean;

@@ -54,7 +54,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
           <div className="grid grid-cols-2 gap-2">
             {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step === 1 ? 1 : "any"} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
           </div>
-          <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Labels guide filling and are never printed with the text.</p>
+          <p className="text-xs text-muted-foreground">Field types: text, long text, link, searchable sūtra, or conditional constant. Labels guide filling and are never printed with the text.</p>
           <p className="text-xs text-muted-foreground">Drag a field by its handle to place it before another field or at the end of a row. Use Move field for precise placement with a keyboard or touch.</p>
           {draft.rows.map((row, index) => <section key={row.id} aria-label={`Template row ${index + 1}`} className="space-y-2 rounded-lg border p-3">
             <div className="flex flex-wrap items-center gap-1">
@@ -94,9 +94,18 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                   <Button type="button" size="sm" variant="ghost" onClick={() => patchField(row, field.id, { fontFamily: undefined, fontSize: undefined, bold: undefined, italic: undefined, underline: undefined, color: "" })}>Reset field styling</Button>
                 </div>
               </details>
+              {field.kind === "constant" && <div className="space-y-2">
+                <label className="block text-xs">Constant text<textarea aria-label={`${field.label || "Field"} constant text`} className="mt-1 w-full rounded border bg-background p-2" rows={1} placeholder=" + , [ , ] , → …" value={field.constantText ?? ""} onChange={event => patchField(row, field.id, { constantText: event.target.value })} /></label>
+                <label className="block text-xs">Show only when<select aria-label={`${field.label || "Field"} show when`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={field.constantWhenFieldId ?? ""} onChange={event => patchField(row, field.id, { constantWhenFieldId: event.target.value || undefined })}>
+                  <option value="">Any input in this row is filled</option>
+                  {field.constantWhenFieldId && !row.fields.some(input => input.kind !== "constant" && input.id === field.constantWhenFieldId) && <option value={field.constantWhenFieldId}>Field missing — choose another</option>}
+                  {row.fields.filter(input => input.kind !== "constant").map(input => <option key={input.id} value={input.id}>{input.label || "Unlabelled field"} is filled</option>)}
+                </select></label>
+                <p className="text-xs text-muted-foreground">Include your own spaces. For brackets, add one constant before and one after the field, both depending on that field.</p>
+              </div>}
               <div className="flex flex-wrap items-center gap-1">
                 <select aria-label={`${field.label || 'Field'} field type`} className="h-8 rounded border bg-background px-1 text-xs" value={field.kind} onChange={event => patchField(row, field.id, { kind: event.target.value as CardTemplateField['kind'] })}>
-                  <option value="text">Text</option><option value="multiline">Long text</option><option value="link">Link</option><option value="sutra">Sūtra lookup</option>
+                  <option value="text">Text</option><option value="multiline">Long text</option><option value="link">Link</option><option value="sutra">Sūtra lookup</option><option value="constant">Constant</option>
                 </select>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Move ${field.label} left`} disabled={fieldIndex === 0} onClick={() => patchRow(row.id, { fields: move(row.fields, fieldIndex, -1) })}>←</Button>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Move ${field.label} right`} disabled={fieldIndex === row.fields.length - 1} onClick={() => patchRow(row.id, { fields: move(row.fields, fieldIndex, 1) })}>→</Button>
