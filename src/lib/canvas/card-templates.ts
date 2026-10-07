@@ -44,16 +44,22 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
       if (!row || typeof row.id !== "string" || rowIds.has(row.id) || !Array.isArray(row.fields)) continue;
       rowIds.add(row.id);
       const fields: BoardCardTemplate["rows"][number]["fields"] = [];
-      for (const field of row.fields) {
+      const readFields = (source: CardTemplateField[], nested = false): CardTemplateField[] => {
+      const fields: CardTemplateField[] = [];
+      for (const field of source) {
         if (!field || typeof field.id !== "string" || !field.id || fieldIds.has(field.id) || typeof field.label !== "string") continue;
         fieldIds.add(field.id);
-        fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra", "constant"].includes(field.kind) ? field.kind : "text",
+        fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra", "constant", ...(!nested ? ["multipart"] : [])].includes(field.kind) ? field.kind : "text",
+          ...(field.kind === "multipart" && !nested ? { parts: readFields(Array.isArray(field.parts) ? field.parts : [], true) } : {}),
           ...(field.kind === "constant" ? { constantText: typeof field.constantText === "string" ? field.constantText : "", ...(typeof field.constantWhenFieldId === "string" && field.constantWhenFieldId ? { constantWhenFieldId: field.constantWhenFieldId } : {}) } : {}),
           ...(typeof field.fontFamily === "string" && field.fontFamily ? { fontFamily: field.fontFamily } : {}),
           ...(typeof field.fontSize === "number" && Number.isFinite(field.fontSize) ? { fontSize: bounded(field.fontSize, 22, 8, 100) } : {}),
           ...(field.bold === true ? { bold: true } : {}), ...(field.italic === true ? { italic: true } : {}), ...(field.underline === true ? { underline: true } : {}),
         });
       }
+      return fields;
+      };
+      fields.push(...readFields(row.fields));
       if (fields.length) rows.push({ id: row.id, indent: bounded(row.indent, 0, 0, 10), fields,
         ...(["left", "center", "right", "justify"].includes(row.textAlign) ? { textAlign: row.textAlign } : {}),
         ...(typeof row.lineSpacing === "number" && Number.isFinite(row.lineSpacing) ? { lineSpacing: bounded(row.lineSpacing, 1.5, 1, 4) } : {}),
@@ -108,11 +114,24 @@ export function expandedCardRows(template: BoardCardTemplate, values: CardFieldV
   });
 }
 
+/** Leaf parts keep their stable IDs so answers survive reordering and redesign. */
+export function templateInputFields(fields: CardTemplateField[]): CardTemplateField[] {
+  return fields.flatMap(field => field.kind === "multipart" ? (field.parts ?? []).map(part => ({ ...field, ...part, color: part.color || field.color, parts: undefined })) : [field]);
+}
+
+function fieldEntries(row: CardTemplateRow, values: CardFieldValues) {
+  return row.fields.flatMap(field => {
+    const scope = field.kind === "multipart" ? { ...row, fields: templateInputFields([field]) } : row;
+    return (field.kind === "multipart" ? scope.fields : [field]).map(part => ({ field: part, value: fieldValue(part, scope, values) }));
+  });
+}
+
 /** Constants depend on actual input in the same row/copy, never other constants or stale values. */
 function fieldValue(field: CardTemplateField, row: CardTemplateRow, values: CardFieldValues): { text: string; href?: string } | undefined {
   if (field.kind !== "constant") return values[field.id];
-  const populated = row.fields.some(input => input.kind !== "constant"
-    && (!field.constantWhenFieldId || input.id === field.constantWhenFieldId)
+  const dependency = row.fields.find(input => input.id === field.constantWhenFieldId);
+  const populated = templateInputFields(dependency ? [dependency] : row.fields).some(input => input.kind !== "constant"
+    && (!field.constantWhenFieldId || !!dependency || input.id === field.constantWhenFieldId)
     && !!values[input.id]?.text.trim());
   return populated ? { text: field.constantText ?? "" } : undefined;
 }
@@ -120,13 +139,12 @@ function fieldValue(field: CardTemplateField, row: CardTemplateRow, values: Card
 /** Escape values and label metadata, and validate link destinations. */
 export function renderCardTemplate(template: BoardCardTemplate, values: CardFieldValues = {}, extraRows: string[] = [], repeats: CardRowRepeat[] = []) {
   const rows = expandedCardRows(template, values, repeats);
-  const visibleRows = template.rows.filter(row => rows.some(entry => entry.row.id === row.id && row.fields.some(field => field.kind !== "constant" && entry.values[field.id]?.text.trim())));
+  const visibleRows = template.rows.filter(row => rows.some(entry => entry.row.id === row.id && templateInputFields(row.fields).some(field => field.kind !== "constant" && entry.values[field.id]?.text.trim())));
   const filledExtraRows = extraRows.filter(row => row.trim());
   // Template rows define paragraphs; repeated fields flow within that paragraph.
   const textStyle = `color: ${template.style.textColor || "inherit"}; font-size: ${template.style.fontSize}px; font-family: ${escapeHtml((template.style.fontFamily || "inherit").replace(/[;{}<>]/g, ""))};`;
   const richText = visibleRows.map(row => {
-    const fields = rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => {
-      const value = fieldValue(field, row, values);
+    const fields = rows.filter(entry => entry.row.id === row.id).map(({ values }) => fieldEntries(row, values).map(({ field, value }) => {
       if (!value?.text) return "";
       const text = escapeHtml(value.text).replace(/\r?\n/g, "<br>");
       const href = field.kind === "link" || field.kind === "sutra" ? safeCardLink(value?.href) : undefined;
@@ -145,7 +163,7 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
     }).join("")).join("");
     return `<p style="${textStyle} text-align: ${row.textAlign || "left"}; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${row.lineSpacing ?? template.style.lineSpacing}">${fields}</p>`;
   }).join("") + filledExtraRows.map(row => `<p style="${textStyle} text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}"><span style="${textStyle}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</span></p>`).join("");
-  const text = visibleRows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => fieldValue(field, row, values)?.text ?? "").join("")).join("")).concat(filledExtraRows).join("\n");
+  const text = visibleRows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => fieldEntries(row, values).map(({ value }) => value?.text ?? "").join("")).join("")).concat(filledExtraRows).join("\n");
   return { richText, text };
 }
 

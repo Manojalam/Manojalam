@@ -276,7 +276,8 @@ export interface CardTemplateField {
   id: string;
   label: string;
   color: string;
-  kind: "text" | "multiline" | "link" | "sutra" | "constant";
+  kind: "text" | "multiline" | "link" | "sutra" | "constant" | "multipart";
+  parts?: CardTemplateField[];
   constantText?: string;
   /** Omit to show when any input in this row is filled. */
   constantWhenFieldId?: string;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
-import { cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
+import { templateInputFields, cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
 import { columnSections, normalizeTable, tablePlainText, updateColumnSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -109,7 +109,7 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
                 {repeatId && <Button type="button" size="sm" variant="ghost" onClick={() => removeRepeat(repeatId)}>Remove repeat</Button>}
               </div>
             </div>
-            {row.fields.filter(field => field.kind !== "constant").map(field => <div key={field.id} className="space-y-1">
+            {templateInputFields(row.fields).filter(field => field.kind !== "constant").map(field => <div key={field.id} className="space-y-1">
               <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
               {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value, repeatId)} />}
               <textarea id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} rows={Math.min(8, Math.max(field.kind === "multiline" ? 3 : 1, (values[field.id]?.text ?? "").split("\n").length))}

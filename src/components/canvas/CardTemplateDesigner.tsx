@@ -1,5 +1,6 @@
 "use client";
 
+import { templateInputFields } from "@/lib/canvas/card-templates";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { ColorPicker } from "./ColorPicker";
 import { useState } from "react";
@@ -94,6 +95,30 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                   <Button type="button" size="sm" variant="ghost" onClick={() => patchField(row, field.id, { fontFamily: undefined, fontSize: undefined, bold: undefined, italic: undefined, underline: undefined, color: "" })}>Reset field styling</Button>
                 </div>
               </details>
+              {field.kind === "multipart" && <div className="space-y-2 rounded border p-2">
+                <p className="text-xs">Parts flow together. Constants appear only when an input in this field is filled. Include your own spaces.</p>
+                {!field.parts?.some(part => part.kind !== "constant") && <p className="text-xs text-muted-foreground">Add a text, link, or sūtra part. A group containing only constants stays hidden.</p>}
+                {(field.parts ?? []).map((part, partIndex) => {
+                  const patchPart = (patch: Partial<CardTemplateField>) => patchField(row, field.id, { parts: field.parts!.map(item => item.id === part.id ? { ...item, ...patch } : item) });
+                  return <div key={part.id} className="space-y-2 rounded border p-2" aria-label={`Part ${partIndex + 1} of ${field.label}`}>
+                    <Input aria-label={`Part ${partIndex + 1} label`} value={part.label} onChange={event => patchPart({ label: event.target.value })} />
+                    <select aria-label={`Part ${partIndex + 1} type`} className="h-8 rounded border bg-background px-2 text-xs" value={part.kind} onChange={event => patchPart({ kind: event.target.value as CardTemplateField['kind'] })}>
+                      <option value="text">Text</option><option value="multiline">Long text</option><option value="constant">Constant</option><option value="sutra">Sūtra lookup</option><option value="link">Link</option>
+                    </select>
+                    {part.kind === "constant" && <textarea aria-label={`Part ${partIndex + 1} constant text`} className="w-full rounded border bg-background p-2" rows={1} value={part.constantText ?? ""} onChange={event => patchPart({ constantText: event.target.value })} />}
+                    <details><summary className="cursor-pointer text-xs">Part styling</summary>
+                      <ColorPicker label={`${part.label} color`} value={part.color || undefined} onChange={color => patchPart({ color })} />
+                      <select aria-label={`Part ${partIndex + 1} font`} value={part.fontFamily ?? ""} onChange={event => patchPart({ fontFamily: event.target.value || undefined })}><option value="">Field default</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select>
+                      <Input aria-label={`Part ${partIndex + 1} font size`} type="number" placeholder="Field default" value={part.fontSize ?? ""} min={8} max={100} onChange={event => patchPart({ fontSize: event.target.value ? Number(event.target.value) : undefined })} />
+                      {(["bold", "italic", "underline"] as const).map(key => <Button key={key} type="button" variant={part[key] ? "default" : "outline"} size="sm" onClick={() => patchPart({ [key]: !part[key] })}>{key}</Button>)}
+                    </details>
+                    <Button type="button" size="sm" variant="ghost" disabled={partIndex === 0} onClick={() => patchField(row, field.id, { parts: move(field.parts!, partIndex, -1) })}>Move part left</Button>
+                    <Button type="button" size="sm" variant="ghost" disabled={partIndex === field.parts!.length - 1} onClick={() => patchField(row, field.id, { parts: move(field.parts!, partIndex, 1) })}>Move part right</Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => patchField(row, field.id, { parts: field.parts!.filter(item => item.id !== part.id) })}>Remove part</Button>
+                  </div>;
+                })}
+                <Button type="button" size="sm" variant="outline" onClick={() => patchField(row, field.id, { parts: [...(field.parts ?? []), { ...newField(), label: 'New part' }] })}>Add part</Button>
+              </div>}
               {field.kind === "constant" && <div className="space-y-2">
                 <label className="block text-xs">Constant text<textarea aria-label={`${field.label || "Field"} constant text`} className="mt-1 w-full rounded border bg-background p-2" rows={1} placeholder=" + , [ , ] , → …" value={field.constantText ?? ""} onChange={event => patchField(row, field.id, { constantText: event.target.value })} /></label>
                 <label className="block text-xs">Show only when<select aria-label={`${field.label || "Field"} show when`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={field.constantWhenFieldId ?? ""} onChange={event => patchField(row, field.id, { constantWhenFieldId: event.target.value || undefined })}>
@@ -104,8 +129,8 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                 <p className="text-xs text-muted-foreground">Include your own spaces. For brackets, add one constant before and one after the field, both depending on that field.</p>
               </div>}
               <div className="flex flex-wrap items-center gap-1">
-                <select aria-label={`${field.label || 'Field'} field type`} className="h-8 rounded border bg-background px-1 text-xs" value={field.kind} onChange={event => patchField(row, field.id, { kind: event.target.value as CardTemplateField['kind'] })}>
-                  <option value="text">Text</option><option value="multiline">Long text</option><option value="link">Link</option><option value="sutra">Sūtra lookup</option><option value="constant">Constant</option>
+                <select aria-label={`${field.label || 'Field'} field type`} className="h-8 rounded border bg-background px-1 text-xs" value={field.kind} onChange={event => patchField(row, field.id, { kind: event.target.value as CardTemplateField['kind'], ...(event.target.value === 'multipart' && !field.parts?.length ? { id: generateId(), parts: [{ ...field, parts: undefined, kind: field.kind === 'multipart' ? 'text' : field.kind }] } : {}) })}>
+                  <option value="text">Text</option><option value="multiline">Long text</option><option value="link">Link</option><option value="sutra">Sūtra lookup</option><option value="constant">Constant</option><option value="multipart">Multi-part field</option>
                 </select>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Move ${field.label} left`} disabled={fieldIndex === 0} onClick={() => patchRow(row.id, { fields: move(row.fields, fieldIndex, -1) })}>←</Button>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Move ${field.label} right`} disabled={fieldIndex === row.fields.length - 1} onClick={() => patchRow(row.id, { fields: move(row.fields, fieldIndex, 1) })}>→</Button>
@@ -134,7 +159,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
           <h3 className="font-medium">Text preview</h3>
           <p className="text-xs text-muted-foreground">Field names below are sample text for previewing the design. Objects show only your filled values.</p>
           <div className="rounded-md border p-2">
-            <CardTemplatePreview template={draft} values={Object.fromEntries(draft.rows.flatMap(row => row.fields.map(field => [field.id, { text: field.label || "Sample text" }])))}/>
+            <CardTemplatePreview template={draft} values={Object.fromEntries(draft.rows.flatMap(row => templateInputFields(row.fields).map(field => [field.id, { text: field.label || "Sample text" }])))}/>
           </div>
           {!!linked && <p className="text-xs text-muted-foreground">Saving updates the design of {linked} existing objects. Their field values are retained, including values of removed fields, so undo can restore them.</p>}
         </div>

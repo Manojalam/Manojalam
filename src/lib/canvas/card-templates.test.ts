@@ -354,3 +354,36 @@ test("conditional constants follow populated inputs in each repeat, with safe st
   assert.equal(renderCardTemplate(saved, values).text, "→ भू + तिप्");
   assert.equal(renderCardTemplate(saved, {}, [], [{ id: "empty", rowId: "step", values: {} }]).richText, "");
 });
+
+
+test("multi-part fields scope constants to their own values and retain typed parts across save and repeats", () => {
+  const template = newHomeworkTemplate("parts");
+  template.rows = [{ id: "row", indent: 0, fields: [
+    { id: "root", label: "Root", kind: "text", color: "" },
+    { id: "endingGroup", label: "Ending group", kind: "multipart", color: "#ff0000", parts: [
+      { id: "plus", label: "Plus", kind: "constant", constantText: " + ", color: "" },
+      { id: "ending", label: "Ending", kind: "text", color: "", bold: true },
+    ] },
+    { id: "reference", label: "Reference", kind: "multipart", color: "", parts: [
+      { id: "open", label: "Open", kind: "constant", constantText: " [", color: "" },
+      { id: "sutra", label: "Sutra", kind: "sutra", color: "#0000ff" },
+      { id: "close", label: "Close", kind: "constant", constantText: "]", color: "" },
+    ] },
+  ] }];
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.deepEqual(saved, template);
+  const root = { root: { text: "भू" } };
+  assert.equal(renderCardTemplate(saved, root).text, "भू");
+  const reference = { ...root, sutra: { text: "सूत्रम्", href: "https://example.com" } };
+  assert.equal(renderCardTemplate(saved, reference).text, "भू [सूत्रम्]");
+  const filled = { ...reference, ending: { text: "तिप्" } };
+  const rendered = renderCardTemplate(saved, filled);
+  assert.equal(rendered.text, "भू + तिप् [सूत्रम्]");
+  assert.match(rendered.richText, /color: #ff0000/);
+  assert.match(rendered.richText, /<strong>तिप्<\/strong>/);
+  assert.match(rendered.richText, /href="https:\/\/example.com\/"/);
+  assert.equal(renderCardTemplate(saved, {}).richText, "");
+  assert.equal(renderCardTemplate(saved, filled, [], [{ id: "copy", rowId: "row", values: root }]).text, "भू + तिप् [सूत्रम्]भू");
+  saved.rows[0].fields[1].parts!.reverse();
+  assert.equal(renderCardTemplate(saved, filled).text, "भूतिप् +  [सूत्रम्]");
+});
