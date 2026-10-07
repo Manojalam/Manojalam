@@ -29,17 +29,17 @@ export function SampleTemplatesPanel() {
   const patchLabel = (patch: Partial<SampleLabel>) => { if (template && label) update(template.id, { labels: template.labels.map(item => item.id === label.id ? { ...item, ...patch } : item) }); };
   const eligible = selected && ["table", "shape", "text", "sticky", "mindmap"].includes(selected.type ?? "") && !selected.data.cardTemplateId && !selected.data.sampleTemplateId && !selected.data.sampleDesignId && !selected.data.locked;
   return <section aria-label="Sample templates" className="space-y-3 border-b p-3">
-    <h3 className="text-xs font-semibold">Templates from your sample</h3>
+    <h3 className="text-xs font-semibold">Saved object designs</h3>
     <p className="text-[11px] text-muted-foreground">Reuse saved tables and boxes. Optionally tag text with labels to make fillable cards.</p>
     {eligible ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); const id = create(selected.id, name); if (id) { setChosen(id); setName(""); } }}>
-      <Input aria-label="Sample template name" placeholder="Template name" value={name} onChange={event => setName(event.target.value)} />
-      <Button type="submit" size="sm" disabled={!name.trim()}>Save as template</Button>
+      <Input aria-label="Sample template name" placeholder="Object design name" value={name} onChange={event => setName(event.target.value)} />
+      <Button type="submit" size="sm" disabled={!name.trim()}>Save object design</Button>
     </form> : !selectedId && <p className="text-[10px] text-muted-foreground">Select a table or box containing your example to start.</p>}
-    {!!templates?.length && <label className="block text-[10px]">Template library<select aria-label="Sample template library" className="mt-1 h-8 w-full rounded border bg-background px-2 text-xs" value={template?.id ?? ""} onChange={event => { setChosen(event.target.value); setLabelId(""); }}>
+    {!!templates?.length && <label className="block text-[10px]">Saved designs<select aria-label="Sample template library" className="mt-1 h-8 w-full rounded border bg-background px-2 text-xs" value={template?.id ?? ""} onChange={event => { setChosen(event.target.value); setLabelId(""); }}>
       {templates.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
     </select></label>}
     {template && <>
-      <label className="block text-xs">Template name<Input key={`${template.id}-${template.name}`} aria-label="Saved template name" defaultValue={template.name} onBlur={event => { const name = event.target.value.trim(); if (name && name !== template.name) update(template.id, { name }); }} /></label>
+      <label className="block text-xs">Design name<Input key={`${template.id}-${template.name}`} aria-label="Saved template name" defaultValue={template.name} onBlur={event => { const name = event.target.value.trim(); if (name && name !== template.name) update(template.id, { name }); }} /></label>
       <p className="text-[11px] font-medium">{selected?.data.sampleDesignId === template.id ? "Editing the sample" : selected?.data.sampleTemplateId === template.id ? "Filling a card" : template.name}</p>
       <p className="text-[10px] text-muted-foreground">{!fields.length ? "Create new makes a separate copy. Apply changes the selected object in place." : selected?.data.sampleDesignId === template.id ? "Double-click the sample, select text, then click Label selected text in its toolbar. Untagged text stays fixed. Edit this sample to change the layout." : "Type directly into labeled boxes. Tab moves between fields. Add another repeats an empty section inside the same card."}</p>
       <div className="flex flex-wrap gap-1">
@@ -64,7 +64,7 @@ export function SampleTemplatesPanel() {
       {template.table && <p className="text-xs text-muted-foreground">Edit column headings and row labels directly in the sample table. New tables start with empty cells.</p>}
       {!!fields.length && <details className="space-y-2"><summary className="cursor-pointer text-xs">Resize individual text boxes</summary>{fields.map((field, index) => <label key={field.id} className="flex items-center gap-2 text-[10px]"><span className="min-w-0 flex-1 truncate">{index + 1}. {template.labels.find(item => item.id === field.labelId)?.name}</span><Input className="h-7 w-20" type="number" min={60} max={1600} aria-label={`Field ${index + 1} width`} key={`${field.id}-${field.width}`} defaultValue={field.width} onBlur={event => { const width = Number(event.target.value); if (width !== field.width) update(template.id, { richText: resizeSampleField(template.richText, field.id, width) }); }} /></label>)}<p className="text-[10px] text-muted-foreground">Move tagged parts by cutting/pasting or dragging them in the sample. Add fixed text or tagged parts anywhere.</p></details>}
       {selected?.data.sampleDesignId === template.id && <Button size="sm" variant="outline" className="w-full text-[10px]" onClick={() => update(template.id, { style: captureTemplateStyle(selected.data) })}>Use sample’s current box styling</Button>}
-      {deleting ? <div className="space-y-1 text-xs"><p>Delete this template? Existing content will remain as ordinary boxes.</p><Button size="sm" variant="destructive" onClick={() => { remove(template.id); setDeleting(false); }}>Delete template</Button><Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>Cancel</Button></div> : <button className="text-[10px] text-muted-foreground underline" onClick={() => setDeleting(true)}>Delete sample template…</button>}
+      {deleting ? <div className="space-y-1 text-xs"><p>Delete this template? Existing content will remain as ordinary boxes.</p><Button size="sm" variant="destructive" onClick={() => { remove(template.id); setDeleting(false); }}>Delete template</Button><Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>Cancel</Button></div> : <button className="text-[10px] text-muted-foreground underline" onClick={() => setDeleting(true)}>Delete saved design…</button>}
     </>}
   </section>;
 }

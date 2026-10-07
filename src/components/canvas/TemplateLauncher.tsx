@@ -1,28 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { useCanvasStore } from "@/store/canvas-store";
-import { TemplateUseActions } from "./TemplateUseActions";
+import { CardTemplatesPanel } from "./CardTemplatesPanel";
 import { CrossBoardTemplateLibrary } from "./CrossBoardTemplateLibrary";
+import { SampleTemplatesPanel } from "./SampleTemplatesPanel";
+import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
 
-/** Creation belongs to the canvas, not to an existing box's selection. */
+/** A single entry point for creating, editing and using reusable text. */
 export function TemplateLauncher() {
-  const boardId = useCanvasStore(state => state.board?.id);
-  const settings = useCanvasStore(state => state.settings);
-  const [chosen, setChosen] = useState("");
-  const templates = [
-    ...(settings.cardTemplates ?? []).map(template => ({ key: `card:${template.id}`, kind: "card", template })),
-    ...(settings.sampleTemplates ?? []).map(template => ({ key: `sample:${template.id}`, kind: "sample", template })),
-  ];
-  const selected = templates.find(item => item.key === chosen) ?? templates[0];
   return <>
-    {selected && <section aria-label="Create from template" className="space-y-2 border-b p-3">
-      <h3 className="text-sm font-semibold">Templates</h3>
-      <select aria-label="Template to use" className="h-9 w-full rounded border bg-background px-2 text-xs" value={selected.key} onChange={event => setChosen(event.target.value)}>
-        {templates.map(item => <option key={item.key} value={item.key}>{item.template.name}</option>)}
-      </select>
-      <TemplateUseActions kind={selected.kind as "card" | "sample"} template={selected.template} />
-    </section>}
-    <CrossBoardTemplateLibrary key={boardId} />
+    <CardTemplatesPanel />
+    <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">From other boards</summary><CrossBoardTemplateLibrary /></details>
+    <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Saved object designs</summary><SampleTemplatesPanel /></details>
+    <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Linked object styles</summary><BoardStyleTemplatesPanel /></details>
   </>;
 }

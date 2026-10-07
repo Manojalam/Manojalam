@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { applyContentTemplate, mergeTableTemplate } from "./apply-content-template";
-import { newHomeworkTemplate } from "./card-templates";
+import { newHomeworkTemplate, cardTemplateNodeData } from "./card-templates";
 import { normalizeSampleTemplates } from "./sample-templates";
 import { applyColumnTemplate, columnSections, updateColumnSections, createTable, tableTemplateDesign, tablePlainText, addTableColumn, removeTableColumn, normalizeTable } from "./table";
 import type { Node } from "@xyflow/react";
@@ -103,4 +103,22 @@ test("saved column-template designs rebind steps to destination rows without cop
   assert.deepEqual(result.columns[0].card?.sections[0].extraRows, []);
   assert.equal(result.rows[0].cells[0], "Existing destination value");
   assert.equal(result.columns[0].card?.sections.length, 3);
+});
+
+
+test("text templates leave object appearance and geometry alone on apply, fill and redesign", () => {
+  for (const type of ["shape", "text", "sticky", "mindmap"]) {
+    const appearance = { fillColor: "#123456", fillOpacity: 0.4, borderColor: "#654321", borderWidth: 5, textPadding: 7, textVerticalAlign: "bottom", layoutAutoFill: true, styleTemplateId: "shared-appearance", shadow: "glow" };
+    const source = { ...node, type, style: { width: 350, height: 280 }, data: appearance };
+    const applied = applyContentTemplate(source, card, "card");
+    const filled = { ...applied.data, ...cardTemplateNodeData(card, { question: { text: "प्रश्नः" } }) };
+    const redesigned = { ...filled, ...cardTemplateNodeData({ ...card, style: { ...card.style, fillColor: "#ffffff", borderColor: "#ff0000", width: 1200, fontSize: 30 } }, { question: { text: "प्रश्नः" } }) };
+    for (const [key, value] of Object.entries(appearance)) {
+      assert.equal(applied.data[key], value);
+      assert.equal(filled[key as keyof typeof filled], value);
+      assert.equal(redesigned[key as keyof typeof redesigned], value);
+    }
+    assert.deepEqual(applied.style, source.style);
+    assert.match(redesigned.richText, /font-size: 30px/);
+  }
 });

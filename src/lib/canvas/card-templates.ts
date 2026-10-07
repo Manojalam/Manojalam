@@ -113,6 +113,7 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
   const visibleRows = template.rows.filter(row => rows.some(entry => entry.row.id === row.id && row.fields.some(field => entry.values[field.id]?.text.trim())));
   const filledExtraRows = extraRows.filter(row => row.trim());
   // Template rows define paragraphs; repeated fields flow within that paragraph.
+  const textStyle = `color: ${template.style.textColor || "inherit"}; font-size: ${template.style.fontSize}px; font-family: ${escapeHtml((template.style.fontFamily || "inherit").replace(/[;{}<>]/g, ""))};`;
   const richText = visibleRows.map(row => {
     const fields = rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => {
       const value = values[field.id];
@@ -128,12 +129,12 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       if (field.bold) styledContent = `<strong>${styledContent}</strong>`;
       if (field.italic) styledContent = `<em>${styledContent}</em>`;
       if (field.underline) styledContent = `<u>${styledContent}</u>`;
-      const fontStyle = (field.fontSize ? `; font-size: ${bounded(field.fontSize, 22, 8, 100)}px` : "")
-        + (field.fontFamily ? `; font-family: ${escapeHtml(field.fontFamily.replace(/[;{}<>]/g, ""))}` : "");
-      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || "inherit"}${fontStyle}">${styledContent}</span>`;
+      const fontStyle = `; font-size: ${bounded(field.fontSize ?? template.style.fontSize, 22, 8, 100)}px`
+        + ((field.fontFamily || template.style.fontFamily) ? `; font-family: ${escapeHtml((field.fontFamily || template.style.fontFamily!).replace(/[;{}<>]/g, ""))}` : "");
+      return `<span data-field-label="${escapeHtml(field.id)}" data-field-owner="${escapeHtml("card:" + template.id)}" data-field-name="${escapeHtml(field.label)}" style="color: ${field.color || template.style.textColor || "inherit"}${fontStyle}">${styledContent}</span>`;
     }).join("")).join("");
-    return `<p style="text-align: ${row.textAlign || "left"}; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${row.lineSpacing ?? template.style.lineSpacing}">${fields}</p>`;
-  }).join("") + filledExtraRows.map(row => `<p style="text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</p>`).join("");
+    return `<p style="${textStyle} text-align: ${row.textAlign || "left"}; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${row.lineSpacing ?? template.style.lineSpacing}">${fields}</p>`;
+  }).join("") + filledExtraRows.map(row => `<p style="${textStyle} text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}"><span style="${textStyle}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</span></p>`).join("");
   const text = visibleRows.map(row => rows.filter(entry => entry.row.id === row.id).map(({ values }) => row.fields.map(field => values[field.id]?.text ?? "").join("")).join("")).concat(filledExtraRows).join("\n");
   return { richText, text };
 }
@@ -164,12 +165,6 @@ export function cardTemplateNodeData(template: BoardCardTemplate, values: CardFi
     cardTemplateId: template.id,
     cardTemplateSnapshot: structuredClone(template),
     cardFieldValues: structuredClone(first.values),
-    fillColor: template.style.fillColor || undefined, fillOpacity: 1, borderColor: template.style.borderColor || undefined,
-    textColor: template.style.textColor || undefined, fontSize: template.style.fontSize,
-    fontFamily: template.style.fontFamily || undefined,
-    lineSpacing: template.style.lineSpacing,
-    textAlign: "left", textVerticalAlign: "top", textPadding: 24,
-    layoutAutoFill: false, layoutAutoBorder: false, layoutAutoText: false, layoutAutoTypography: false,
   };
 }
 

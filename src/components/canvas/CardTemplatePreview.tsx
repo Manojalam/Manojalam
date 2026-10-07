@@ -8,7 +8,7 @@ import { renderCardSections, renderCardTemplate } from "@/lib/canvas/card-templa
 export function CardTemplatePreview({ template, values, extraRows, sections }: { template: BoardCardTemplate; values?: CardFieldValues; extraRows?: string[]; sections?: CardSection[] }) {
   const container = useRef<HTMLDivElement>(null);
   const card = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(template.style.width);
+  const [width, setWidth] = useState(600);
   const [height, setHeight] = useState(200);
   useEffect(() => {
     const observer = new ResizeObserver(() => {
@@ -19,10 +19,10 @@ export function CardTemplatePreview({ template, values, extraRows, sections }: {
     if (card.current) observer.observe(card.current);
     return () => observer.disconnect();
   }, []);
-  const scale = Math.min(1, width / template.style.width);
+  const scale = Math.min(1, width / 600);
   return <div ref={container} className="w-full overflow-hidden">
     <div className="relative" style={{ height: height * scale }}>
-      <div ref={card} aria-label="Card template preview" className="absolute left-0 top-0 rounded-xl border-2 p-6" style={{ background: template.style.fillColor, borderColor: template.style.borderColor, color: template.style.textColor, fontFamily: template.style.fontFamily || undefined, fontSize: template.style.fontSize, width: template.style.width, transform: `scale(${scale})`, transformOrigin: "top left" }} dangerouslySetInnerHTML={{ __html: (sections ? renderCardSections(template, sections) : renderCardTemplate(template, values, extraRows)).richText }} />
+      <div ref={card} aria-label="Template text preview" className="absolute left-0 top-0 p-2" style={{ color: template.style.textColor, fontFamily: template.style.fontFamily || undefined, fontSize: template.style.fontSize, width: 600, transform: `scale(${scale})`, transformOrigin: "top left" }} dangerouslySetInnerHTML={{ __html: (sections ? renderCardSections(template, sections) : renderCardTemplate(template, values, extraRows)).richText }} />
     </div>
   </div>;
 }

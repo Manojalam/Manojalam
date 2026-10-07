@@ -10,7 +10,6 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { CanvasInspector, fieldPatch } from "./CanvasInspector";
 import { TemplateLauncher } from "./TemplateLauncher";
-import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
 import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 import { LayoutPanel } from "./LayoutPanel";
 import { CanvasLayersPanel } from "./CanvasLayersPanel";
@@ -53,14 +52,14 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const close = () => { useUIStore.setState({ fillingTableColumn: null }); setPanel(null); setPinned(null); useUIStore.getState().setLayoutPanelOpen(false); useUIStore.getState().setLayersPanelOpen(false); };
   return <>
     <header className="flex shrink-0 items-center justify-between border-b px-3 py-2">
-      <h2 className="text-sm font-semibold">{panel === "templates" ? "Templates" : panel === "board" ? "Board settings" : card ? "Card" : selected.length === 1 ? String(selected[0].type ?? "Object") : selected.length + edgeIds.length ? `${selected.length + edgeIds.length} selected` : "Properties"}</h2>
+      <h2 className="text-sm font-semibold">{panel === "templates" ? "Templates" : panel === "board" ? "Board settings" : card ? "Template fields" : selected.length === 1 ? String(selected[0].type ?? "Object") : selected.length + edgeIds.length ? `${selected.length + edgeIds.length} selected` : "Properties"}</h2>
       <button type="button" title="Close panel" aria-label="Close editing panel" onClick={close} className="rounded p-1.5 hover:bg-accent"><X size={16} /></button>
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
-    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnTarget ? <TableColumnFillPanel /> : <><TemplateLauncher /><details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Design & manage templates</summary><BoardStyleTemplatesPanel showCrossBoardLibrary={false} /></details></>}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnTarget ? <TableColumnFillPanel /> : <TemplateLauncher />}</div>
     {panel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
     <div hidden={panel !== "selection" || auxiliary} className="min-h-0 flex-1 flex-col data-[visible=true]:flex" data-visible={panel === "selection"}>
-      {card && <div className="flex shrink-0 items-center gap-1 border-b p-2" aria-label="Card controls">
+      {card && <div className="flex shrink-0 items-center gap-1 border-b p-2" aria-label="Template controls">
         <button className="rounded px-3 py-1.5 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={cardTab === "fill"} onClick={() => setCardTab("fill")}>Fill</button>
         <button className="rounded px-3 py-1.5 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary" aria-pressed={cardTab === "style"} onClick={() => { useCanvasStore.setState({ selectedNodeIds: [card.id], selectedEdgeIds: [], nodes: nodes.map(node => ({ ...node, selected: node.id === card.id })) }); setCardTab("style"); }}>Style</button>
         <button className="ml-auto flex items-center gap-1 rounded px-2 py-1.5 text-xs aria-pressed:bg-primary/10" aria-label="Keep this card open" aria-pressed={!!pinnedId} title="Keep this card open while selecting and copying other objects" onClick={() => setPinned(pinnedId ? null : card.id)}><Pin size={14} />{pinnedId ? "Pinned" : "Pin"}</button>
