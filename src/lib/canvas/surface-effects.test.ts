@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   normalizeSurfaceEffect,
+  normalizeSurfaceEffects,
+  surfaceEffectLayerPatch,
   surfaceEffectExportShadowLayers,
   surfaceEffectExportStyle,
   surfaceEffectFillStyle,
@@ -150,4 +152,50 @@ test("flat surfaces add no paint and preserve legacy boards", () => {
   assert.equal(surfaceEffectFilter({}), undefined);
   assert.deepEqual(surfaceEffectExportStyle({}), {});
   assert.deepEqual(surfaceEffectExportShadowLayers({}), []);
+});
+
+
+test("adding and removing an effect preserves other layers and legacy settings", () => {
+  const legacy = { surfaceEffect: "metallic", surfaceEffectDepth: 4, surfaceEffectStrength: 81, surfaceEffectAngle: 17 };
+  const both = { ...legacy, ...surfaceEffectLayerPatch(legacy, "glow", true) };
+  assert.deepEqual(normalizeSurfaceEffects(both).map(layer => layer.preset), ["metallic", "glow"]);
+  assert.equal(normalizeSurfaceEffects(both)[0].strength, 81);
+  const changed = { ...both, ...surfaceEffectLayerPatch(both, "glow", true, { depth: 18 }) };
+  assert.equal(normalizeSurfaceEffects(changed)[0].depth, 4);
+  assert.equal(normalizeSurfaceEffects(changed)[1].depth, 18);
+  const removed = { ...changed, ...surfaceEffectLayerPatch(changed, "glow", false) };
+  assert.deepEqual(normalizeSurfaceEffects(removed), normalizeSurfaceEffects(legacy));
+  const clear = { ...changed, ...surfaceEffectLayerPatch(changed, "flat", false) };
+  assert.deepEqual(surfaceEffectStyle(clear), {});
+  assert.deepEqual(surfaceEffectExportShadowLayers(clear), []);
+});
+
+test("metal, glow and shadow compose in screen and export renderers", () => {
+  let data: Record<string, unknown> = {};
+  for (const preset of ["metallic", "glow", "soft"] as const) data = { ...data, ...surfaceEffectLayerPatch(data, preset, true) };
+  const style = surfaceEffectStyle(data, "#ff0000");
+  assert.match(style.backgroundImage ?? "", /linear-gradient/);
+  assert.match(style.boxShadow ?? "", /color-mix/);
+  assert.match(style.boxShadow ?? "", /rgba/);
+  assert.equal(surfaceEffectExportShadowLayers(data).length, 4);
+  assert.match(surfaceEffectFilter(data) ?? "", /drop-shadow/);
+  const exported = surfaceEffectExportStyle(data);
+  assert.equal(exported.backgroundImage, style.backgroundImage);
+  assert.ok(exported.boxShadow?.split('inset').length === 4);
+  assert.equal(surfaceEffectFillStyle(data).boxShadow, undefined);
+});
+
+test("effect lists validate entries, deduplicate and honor explicit flat", () => {
+  assert.deepEqual(normalizeSurfaceEffects({ surfaceEffect: "glow", surfaceEffects: [] }), []);
+  const settings = normalizeSurfaceEffects({ surfaceEffects: [null, {}, { preset: "unknown" }, { preset: "glow", depth: 99 }, { preset: "glow" }] });
+  assert.equal(settings.length, 1);
+  assert.equal(settings[0].depth, 24);
+});
+
+test("choosing metal again keeps its customization and existing glow", () => {
+  let data = surfaceEffectLayerPatch({}, "glow", true);
+  data = surfaceEffectLayerPatch(data, "metallic", true, { strength: 33 });
+  data = surfaceEffectLayerPatch(data, "metallic", true);
+  assert.deepEqual(normalizeSurfaceEffects(data).map(layer => layer.preset), ["glow", "metallic"]);
+  assert.equal(normalizeSurfaceEffects(data)[1].strength, 33);
 });

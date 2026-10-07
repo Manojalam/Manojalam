@@ -255,3 +255,13 @@ test("a border-matched fill renders as the intended pastel instead of being wash
   assert.equal(resolveFillColor(patch), "rgba(213, 220, 255, 1)");
   assert.equal(resolveEffectiveFillOpacity(patch), 1);
 });
+
+
+test("authored effect lists override automatic layout effects, including explicit flat", () => {
+  const automatic = { surfaceEffect: "metallic", surfaceEffectDepth: 8 };
+  const layers = [{ preset: "glow", depth: 12, strength: 58, angle: 45 }];
+  const data = { layoutVisualStyle: automatic, surfaceEffects: layers };
+  assert.equal(resolveSurfaceEffectData(data), data);
+  const flat = { ...data, surfaceEffects: [] };
+  assert.equal(resolveSurfaceEffectData(flat), flat);
+});

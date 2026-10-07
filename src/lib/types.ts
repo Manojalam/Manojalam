@@ -145,6 +145,7 @@ export interface LayoutVisualStyle {
   /** Optional generated CSS gradient layered over the automatic fill. */
   fillGradient?: string;
   /** Optional generated surface treatment paired with an automatic fill. */
+  surfaceEffects?: { preset: SurfaceEffectPreset; depth: number; strength: number; angle: number }[];
   surfaceEffect?: SurfaceEffectPreset;
   surfaceEffectDepth?: number;
   surfaceEffectStrength?: number;
@@ -677,6 +678,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   borderRadius?: number;
   borderStyle?: "solid" | "dashed" | "dotted";
   /** Reusable dimensional treatment for the node surface. */
+  surfaceEffects?: { preset: SurfaceEffectPreset; depth: number; strength: number; angle: number }[];
   surfaceEffect?: SurfaceEffectPreset;
   /** Apparent extrusion or shadow distance in canvas pixels. */
   surfaceEffectDepth?: number;

@@ -31,7 +31,7 @@ export const SURFACE_EFFECT_PRESETS: ReadonlyArray<{
   angle: number;
 }> = [
   { id: "flat", label: "Flat", description: "Clean, print-like surface", depth: 0, strength: 0, angle: 45 },
-  { id: "soft", label: "Soft", description: "Gentle floating shadow", depth: 7, strength: 34, angle: 45 },
+  { id: "soft", label: "Soft shadow", description: "Gentle floating shadow", depth: 7, strength: 34, angle: 45 },
   { id: "raised", label: "Raised", description: "Projected card with a contact edge and directional depth", depth: 10, strength: 56, angle: 45 },
   { id: "bevel", label: "Bevel", description: "Sculpted inner highlight and edge", depth: 6, strength: 62, angle: 45 },
   { id: "glass", label: "Glass", description: "Glossy highlight with soft depth", depth: 8, strength: 44, angle: 45 },
@@ -77,6 +77,61 @@ export function surfaceEffectPresetPatch(preset: SurfaceEffectPreset): Record<st
   };
 }
 
+/** Legacy objects retain their single effect until first edited. An empty list means flat. */
+export function normalizeSurfaceEffects(data: Record<string, unknown>): SurfaceEffectSettings[] {
+  if (!Array.isArray(data.surfaceEffects)) {
+    const legacy = normalizeSurfaceEffect(data);
+    return legacy.preset === "flat" ? [] : [legacy];
+  }
+  const seen = new Set<SurfaceEffectPreset>();
+  return data.surfaceEffects.flatMap(value => {
+    if (!value || typeof value !== "object") return [];
+    const settings = normalizeSurfaceEffect({ surfaceEffect: value.preset, surfaceEffectDepth: value.depth, surfaceEffectStrength: value.strength, surfaceEffectAngle: value.angle });
+    if (settings.preset === "flat" || seen.has(settings.preset)) return [];
+    seen.add(settings.preset);
+    return [settings];
+  });
+}
+
+export function surfaceEffectLayerPatch(
+  data: Record<string, unknown>, preset: SurfaceEffectPreset,
+  enabled: boolean, changes: Partial<Pick<SurfaceEffectSettings, "depth" | "strength" | "angle">> = {}
+): Record<string, unknown> {
+  let layers = normalizeSurfaceEffects(data);
+  if (preset === "flat") layers = [];
+  else if (!enabled) layers = layers.filter(layer => layer.preset !== preset);
+  else {
+    const existing = layers.find(layer => layer.preset === preset);
+    const updated = { ...(existing ?? normalizeSurfaceEffect(surfaceEffectPresetPatch(preset))), ...changes };
+    layers = existing ? layers.map(layer => layer.preset === preset ? updated : layer) : [...layers, updated];
+  }
+  // Mirror the first layer for older consumers that only support a single shadow.
+  const first = layers[0] ?? normalizeSurfaceEffect({});
+  return { surfaceEffects: layers, surfaceEffect: first.preset, surfaceEffectDepth: first.depth, surfaceEffectStrength: first.strength, surfaceEffectAngle: first.angle };
+}
+
+function layerData(layer: SurfaceEffectSettings): Record<string, unknown> {
+  return { surfaceEffect: layer.preset, surfaceEffectDepth: layer.depth, surfaceEffectStrength: layer.strength, surfaceEffectAngle: layer.angle };
+}
+
+export function surfaceEffectStyle(data: Record<string, unknown>, accentColor?: string): SurfaceEffectStyle {
+  const styles = normalizeSurfaceEffects(data).map(layer => singleSurfaceEffectStyle(layerData(layer), accentColor));
+  const result: SurfaceEffectStyle = {};
+  for (const key of ["backgroundImage", "backgroundBlendMode", "boxShadow", "backdropFilter"] as const) {
+    const values = styles.map(style => style[key]).filter(Boolean);
+    if (values.length) result[key] = values.join(key === "backdropFilter" ? " " : ",");
+  }
+  return result;
+}
+
+export function surfaceEffectFilter(data: Record<string, unknown>, accentColor?: string): string | undefined {
+  return normalizeSurfaceEffects(data).map(layer => singleSurfaceEffectFilter(layerData(layer), accentColor)).filter(Boolean).join(" ") || undefined;
+}
+
+export function surfaceEffectExportShadowLayers(data: Record<string, unknown>, accentColor?: string): SurfaceEffectShadowLayer[] {
+  return normalizeSurfaceEffects(data).flatMap(layer => singleSurfaceEffectExportShadowLayers(layerData(layer), accentColor));
+}
+
 function effectGeometry(settings: SurfaceEffectSettings) {
   const radians = settings.angle * Math.PI / 180;
   const offset = settings.depth * 0.62;
@@ -104,7 +159,7 @@ function surfaceEffectAccentColor(accentColor: string | undefined): string {
     : requested;
 }
 
-export function surfaceEffectStyle(
+function singleSurfaceEffectStyle(
   data: Record<string, unknown>,
   accentColor?: string
 ): SurfaceEffectStyle {
@@ -218,7 +273,7 @@ export function surfaceEffectFillStyle(
   };
 }
 
-export function surfaceEffectFilter(
+function singleSurfaceEffectFilter(
   data: Record<string, unknown>,
   accentColor?: string
 ): string | undefined {
@@ -239,7 +294,7 @@ export function surfaceEffectFilter(
  * `blur` retains the CSS blur-radius convention; the SVG renderer converts it
  * to a Gaussian standard deviation when it builds filter primitives.
  */
-export function surfaceEffectExportShadowLayers(
+function singleSurfaceEffectExportShadowLayers(
   data: Record<string, unknown>,
   accentColor?: string
 ): SurfaceEffectShadowLayer[] {
