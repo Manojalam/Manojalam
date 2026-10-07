@@ -30,7 +30,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const pinnedId = useUIStore(state => state.fillingCardNodeId);
   const setPinned = useUIStore(state => state.setFillingCardNodeId);
   const nodes = useCanvasStore(state => state.nodes);
-  const hasColumnCard = columnTarget && normalizeTable(nodes.find(node => node.id === columnTarget.nodeId)?.data.table).columns.some(column => column.id === columnTarget.columnId && column.card);
+  const hasColumnTarget = columnTarget && normalizeTable(nodes.find(node => node.id === columnTarget.nodeId)?.data.table).columns.some(column => column.id === columnTarget.columnId);
   const ids = useCanvasStore(state => state.selectedNodeIds);
   const edgeIds = useCanvasStore(state => state.selectedEdgeIds);
   const selected = nodes.filter(node => ids.includes(node.id));
@@ -57,7 +57,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       <button type="button" title="Close panel" aria-label="Close editing panel" onClick={close} className="rounded p-1.5 hover:bg-accent"><X size={16} /></button>
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
-    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnCard ? <TableColumnFillPanel /> : <><TemplateLauncher /><details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Design & manage templates</summary><BoardStyleTemplatesPanel showCrossBoardLibrary={false} /></details></>}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnTarget ? <TableColumnFillPanel /> : <><TemplateLauncher /><details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Design & manage templates</summary><BoardStyleTemplatesPanel showCrossBoardLibrary={false} /></details></>}</div>
     {panel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
     <div hidden={panel !== "selection" || auxiliary} className="min-h-0 flex-1 flex-col data-[visible=true]:flex" data-visible={panel === "selection"}>
       {card && <div className="flex shrink-0 items-center gap-1 border-b p-2" aria-label="Card controls">
