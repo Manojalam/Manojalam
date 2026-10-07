@@ -23,7 +23,7 @@ export function mergeTableTemplate(current: CanvasTable, design: CanvasTable): C
   }));
   return normalizeTable({ columns: columns.map((column, index) => {
     const card = column.card ?? current.columns[index]?.card;
-    return !card ? column : { ...column, card: { ...card, sections: rows.map((row, rowIndex) => ({ ...(current.columns[index]?.card?.sections.find(section => section.id === current.rows[rowIndex]?.id) ?? card.sections.find(section => section.id === design.rows[rowIndex]?.id) ?? { values: {}, extraRows: [] }), id: row.id })) } };
+    return !card ? column : { ...column, card: { ...card, sections: current.columns[index]?.card?.sections ?? card.sections } };
   }), rows, showRowLabels: design.showRowLabels || current.showRowLabels });
 }
 

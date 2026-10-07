@@ -55,7 +55,6 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
       if (index < 0 || target < 0 || target >= current.length) return current;
       const reordered = [...current];
       [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-      if (columnId) setActiveId(current[target].id);
       return reordered;
     });
   };
@@ -64,7 +63,7 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
   const addSection = () => {
     const id = crypto.randomUUID();
     setSections(current => [...current, { id, values: {}, extraRows: [] }]);
-    setActiveId(columnId ? normalizeTable(useCanvasStore.getState().nodes.find(node => node.id === nodeId)?.data.table).rows.at(-1)!.id : id);
+    setActiveId(id);
   };
   useEffect(() => {
     fieldsRef.current?.querySelector<HTMLElement>("textarea,input")?.focus();

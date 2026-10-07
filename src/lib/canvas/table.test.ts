@@ -91,20 +91,35 @@ test("column templates preserve headings and labels with independent, portable a
   assert.equal(saved.rows[0].cells[0], "");
 });
 
-test("column-only application and row insertion/deletion keep values attached to rows", () => {
-  let table = createTable(2, 2);
-  const template = newHomeworkTemplate("steps");
-  table = applyColumnTemplate(table, template, table.columns[1].id);
-  assert.equal(table.columns[0].card, undefined);
-  const sections = columnSections(table, table.columns[1].id);
-  sections[1].extraRows = ["Keep my second step"];
-  table = updateColumnSections(table, table.columns[1].id, sections);
-  const second = table.rows[1].id;
-  table = addTableRow(table, 0);
-  assert.equal(columnSections(table, table.columns[1].id)[2].extraRows[0], "Keep my second step");
-  table = removeTableRow(table, table.rows[1].id);
-  assert.equal(columnSections(table, table.columns[1].id)[1].id, second);
-  assert.equal(columnSections(table, table.columns[1].id)[1].extraRows[0], "Keep my second step");
+test("sections are independent of table rows and other columns, including reorder and reload", () => {
+  let table = applyColumnTemplate(createTable(3, 3), newHomeworkTemplate("steps"));
+  const column = table.columns[0].id;
+  assert.equal(columnSections(table, column).length, 1);
+  const originalRows = structuredClone(table.rows);
+  const otherColumn = structuredClone(table.columns[1]);
+  const sections = [...columnSections(table, column), { id: "second", values: {}, extraRows: ["Second step"] }, { id: "third", values: {}, extraRows: [] }, { id: "fourth", values: {}, extraRows: ["Fourth step"] }];
+  table = updateColumnSections(table, column, sections);
+  assert.deepEqual(table.rows, originalRows);
+  assert.deepEqual(table.columns[1], otherColumn);
+  assert.deepEqual(columnSections(table, column), sections);
+  table = updateColumnSections(table, column, [...sections].reverse());
+  assert.equal(columnSections(table, column)[0].id, "fourth");
+  table = removeTableRow(addTableRow(table, 0), table.rows[1].id);
+  assert.deepEqual(columnSections(table, column), [...sections].reverse());
+  assert.deepEqual(normalizeTable(JSON.parse(JSON.stringify(table))), table);
+  assert.equal(columnSections(table, table.columns[1].id).length, 1);
+  assert.equal(tablePlainText(table).split("Second step").length, 2);
   const cleared = clearNodeContent({ table });
-  assert.ok(!tablePlainText(normalizeTable(cleared.table)).includes("Keep my second step"));
+  assert.ok(!tablePlainText(normalizeTable(cleared.table)).includes("Second step"));
+});
+
+test("legacy row-bound columns keep authored values and remove generated empty sections once", () => {
+  const table = createTable(3, 2);
+  table.columns[0].card = { template: newHomeworkTemplate("legacy"), sections: table.rows.map(row => ({ id: row.id, values: {}, extraRows: [] })) };
+  table.columns[0].card.sections[1].extraRows = ["Keep this"];
+  const migrated = normalizeTable(table);
+  assert.equal(columnSections(migrated, migrated.columns[0].id).length, 1);
+  assert.equal(columnSections(migrated, migrated.columns[0].id)[0].extraRows[0], "Keep this");
+  assert.equal(migrated.columns[0].card?.independent, true);
+  assert.deepEqual(normalizeTable(migrated), migrated);
 });

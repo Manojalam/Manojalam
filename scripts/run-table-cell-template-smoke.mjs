@@ -34,27 +34,45 @@ try {
   assert.equal(await page.$eval('[aria-label="Row 1 label"]', el => el.value), 'prathama');
   assert.equal(await page.$eval('textarea[aria-label="Row 1, Column 0"]', el => el.value), 'Existing answer');
 
-  // Different cells open their own section, and another column starts independently.
-  await page.locator(cell(1, 0)).click();
-  assert.equal(await page.$eval(field, el => el.value), '');
+  // Sections belong to the column, not the table's three body rows.
+  assert.equal(await page.$$eval('[aria-label="Section to fill"] option', options => options.length), 1);
+  const addSection = async () => {
+    const button = await page.waitForFunction(()=>[...document.querySelectorAll('button')].find(el=>el.textContent.trim()==='Add another section' && el.getBoundingClientRect().width));
+    await button.asElement().click();
+  };
+  await addSection();
   await page.locator(field).fill('भवति');
+  await addSection();
+  await page.locator(field).fill('third');
+  await addSection();
+  await page.locator(field).fill('fourth');
+  assert.equal(await page.$$eval('tbody tr', rows=>rows.length),3);
+  assert.equal(await page.$$eval('[aria-label="Section to fill"] option', options=>options.length),4);
   await page.locator('textarea[aria-label="Row 1, Column 1"]').click();
   await page.select('[aria-label="Template for this column"]', 'step');
-  assert.equal(await page.$eval(field, el => el.value), '');
+  assert.equal(await page.$$eval('[aria-label="Section to fill"] option', options=>options.length),1);
   await page.locator(field).fill('गम्');
-  await page.locator(cell(0, 0)).click();
-  assert.equal(await page.$eval(field, el => el.value), 'भू + तिप्');
-  await page.focus(cell(0, 0));
-  await page.keyboard.press('Tab');
-  assert.equal(await page.$eval('[aria-label="Column to fill"]', el => el.value), 'c1');
-
+  await page.locator(cell(0,0)).click();
+  assert.equal(await page.$$eval('[aria-label="Section to fill"] option', options=>options.length),4);
+  assert.equal(await page.$eval(field, el=>el.value),'भू + तिप्');
+  const options = await page.$$eval('[aria-label="Section to fill"] option', options=>options.map(el=>el.value));
+  await page.select('[aria-label="Section to fill"]', options[1]);
+  assert.equal(await page.$eval(field, el=>el.value),'भवति');
+  assert.equal(await page.$eval('tbody td[rowspan]', el=>el.rowSpan),3);
+  await page.locator('summary').filter(el => el.textContent === 'Reorder or move sections').click();
+  const move = await page.waitForFunction(()=>[...document.querySelectorAll('button')].find(el=>el.textContent.trim()==='Move up' && el.getBoundingClientRect().width));
+  await move.asElement().click();
+  assert.equal(await page.$eval(field, el=>el.value),'भवति');
+  assert.equal(await page.$eval('[aria-label="Section to fill"] option', el=>el.value),options[1]);
+  await page.screenshot({path:'.tmp/independent-columns.png'});
   // Wait for guest-board autosave, then verify persisted values by clicking a cell.
   await new Promise(resolve => setTimeout(resolve, 2200));
   await page.reload({ waitUntil: "networkidle0" });
-  await page.locator(cell(1, 0)).click();
+  await page.locator(cell(0, 0)).click();
+  await page.select('[aria-label="Section to fill"]', options[1]);
   assert.equal(await page.$eval(field, el => el.value), 'भवति');
   assert.deepEqual(errors, []);
-  console.log('PASS click-to-fill, unchanged table background, no template labels, independent cells, keyboard navigation and reload');
+  console.log('PASS independent column sections, unchanged table rows, preserved text/styles, and reload');
 } finally {
   await browser.close();
 }

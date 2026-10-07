@@ -40,7 +40,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
   const editable = !viewer && !layerLocked && !data.locked && !presentation;
   const editingHistory = useRef(false);
   const focus = (rowId: string, columnId: string) => requestAnimationFrame(() => {
-    const target = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-row][data-column]") ?? []).find(input => input.dataset.row === rowId && input.dataset.column === columnId);
+    const target = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-row][data-column]") ?? []).find(input => (input.dataset.row === rowId || !!table.columns.find(column => column.id === columnId)?.card) && input.dataset.column === columnId);
     target?.focus();
   });
   const openCell = (columnId: string, rowId: string) => {
@@ -108,14 +108,13 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
           <TableInput aria-label={`Column ${columnIndex + 1} name`} value={column.name} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), columns: current().columns.map(item => item.id === column.id ? { ...item, name: event.target.value } : item) }, false); }} />
           {selected && editable && <button data-export-ignore type="button" title={`Delete column ${columnIndex + 1}`} aria-label={`Delete column ${columnIndex + 1}`} disabled={table.columns.length <= 1} className="nodrag nopan absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), column.id))}><Trash2 size={12} /></button>}
         </th>)}</tr></thead>
-        <tbody>{table.rows.map((row, rowIndex) => <tr key={row.id}>{table.showRowLabels && <th scope="row" className="border-b border-r text-left align-top" style={{ borderColor: color }}><TableInput aria-label={`Row ${rowIndex + 1} label`} value={row.label ?? ""} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, label: event.target.value } : item) }, false); }} /></th>}{row.cells.map((cell, columnIndex) => <td key={table.columns[columnIndex].id} className="nodrag nopan relative border-b border-r align-top last:border-r-0" style={{ borderColor: color }}
+        <tbody>{table.rows.map((row, rowIndex) => <tr key={row.id}>{table.showRowLabels && <th scope="row" className="border-b border-r text-left align-top" style={{ borderColor: color }}><TableInput aria-label={`Row ${rowIndex + 1} label`} value={row.label ?? ""} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, label: event.target.value } : item) }, false); }} /></th>}{row.cells.map((cell, columnIndex) => table.columns[columnIndex].card && rowIndex > 0 ? null : <td rowSpan={table.columns[columnIndex].card ? table.rows.length : undefined} key={table.columns[columnIndex].id} className="nodrag nopan relative border-b border-r align-top last:border-r-0" style={{ borderColor: color }}
               onKeyDown={event => {
                 if (!editable || !(event.target as HTMLElement).matches('[role="group"][data-row]')) return;
                 if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCell(table.columns[columnIndex].id, row.id); }
                 if (event.key === "Tab") {
-                  const next = rowIndex * table.columns.length + columnIndex + (event.shiftKey ? -1 : 1);
-                  if (next >= 0 && next < table.rows.length * table.columns.length) { event.preventDefault(); focus(table.rows[Math.floor(next / table.columns.length)].id, table.columns[next % table.columns.length].id); }
-                  else if (!event.shiftKey && table.rows.length < MAX_TABLE_ROWS) { event.preventDefault(); addRow(); }
+                  const next = columnIndex + (event.shiftKey ? -1 : 1);
+                  if (next >= 0 && next < table.columns.length) { event.preventDefault(); focus(table.rows[0].id, table.columns[next].id); }
                 }
               }}
           onClick={event => { if (!(event.target as HTMLElement).closest("a, button, [data-export-ignore]")) openCell(table.columns[columnIndex].id, row.id); }}>
@@ -123,13 +122,14 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
           {table.columns[columnIndex].card && (() => {
             const card = table.columns[columnIndex].card!;
             const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
-            const rendered = renderCardSections(template, card.sections.filter(section => section.id === row.id));
-            return <div className="min-h-9 p-2 outline-none focus:ring-2 focus:ring-inset focus:ring-primary" tabIndex={editable ? 0 : undefined} role="group" aria-label={`Row ${rowIndex + 1}, ${table.columns[columnIndex].name}`} data-row={row.id} data-column={table.columns[columnIndex].id}
+            const rendered = renderCardSections(template, card.sections);
+            return <div className="min-h-9 p-2 outline-none focus:ring-2 focus:ring-inset focus:ring-primary" tabIndex={editable ? 0 : undefined} role="group" aria-label={`Template text, ${table.columns[columnIndex].name}`} data-row={row.id} data-column={table.columns[columnIndex].id}
               onFocus={() => openCell(table.columns[columnIndex].id, row.id)}
               style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
               <div className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" dangerouslySetInnerHTML={{ __html: rendered.richText }} />
             </div>;
           })()}
+          {table.columns[columnIndex].card && table.rows.slice(1).filter(item => item.cells[columnIndex]).map(item => <TableInput key={item.id} aria-label={`Existing text, ${table.columns[columnIndex].name}`} value={item.cells[columnIndex]} readOnly={!editable} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(saved => saved.id === item.id ? { ...saved, cells: saved.cells.map((text, index) => index === columnIndex ? event.target.value : text) } : saved) }, false); }} onBlur={() => { editingHistory.current = false; }} />)}
           {(!table.columns[columnIndex].card || cell) && <TableInput aria-label={`Row ${rowIndex + 1}, ${table.columns[columnIndex].name || `column ${columnIndex + 1}`}`} data-row={row.id} data-column={table.columns[columnIndex].id} value={cell} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, cells: item.cells.map((value, index) => index === columnIndex ? event.target.value : value) } : item) }, false); }} onKeyDown={event => {
             if (event.key !== "Tab" || !editable || event.nativeEvent.isComposing) return;
             const nextIndex = rowIndex * table.columns.length + columnIndex + (event.shiftKey ? -1 : 1);
