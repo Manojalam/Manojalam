@@ -90,7 +90,7 @@ test("applying many fields keeps columns as containers without replacing their h
 });
 
 
-test("saved column-template designs rebind steps to destination rows without copying answers", () => {
+test("saved column-template designs keep independent sections without copying answers", () => {
   let source = applyColumnTemplate(createTable(2, 2), card);
   const sections = columnSections(source, source.columns[0].id);
   sections[0].extraRows = ["Source private answer"];
@@ -99,10 +99,10 @@ test("saved column-template designs rebind steps to destination rows without cop
   destination.rows[0].cells[0] = "Existing destination value";
   const result = mergeTableTemplate(destination, tableTemplateDesign(source));
   assert.equal(result.columns[0].card?.template.id, card.id);
-  assert.equal(result.columns[0].card?.sections[0].id, destination.rows[0].id);
+  assert.equal(result.columns[0].card?.sections[0].id, "first");
   assert.deepEqual(result.columns[0].card?.sections[0].extraRows, []);
   assert.equal(result.rows[0].cells[0], "Existing destination value");
-  assert.equal(result.columns[0].card?.sections.length, 3);
+  assert.equal(result.columns[0].card?.sections.length, 1);
 });
 
 

@@ -29,8 +29,8 @@ export function TableColumnFillPanel() {
   return <div className="flex h-full min-h-0 flex-col">
     <div className="space-y-2 border-b p-3"><button className="text-xs underline" onClick={close}>Back to templates</button>
       <label className="block text-xs">Column to fill<select aria-label="Column to fill" className="mt-1 w-full rounded border bg-background p-2" value={column.id} onChange={event => useUIStore.setState({ fillingTableColumn: { nodeId: node.id, columnId: event.target.value } })}>{table.columns.map(column => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
-      <p className="text-xs text-muted-foreground">Each section fills one body row. Headers and row labels stay separate.</p>
+      <p className="text-xs text-muted-foreground">Sections belong only to this column. Adding or moving sections does not change table rows or other columns.</p>
     </div>
-    <CardForm key={`${node.id}:${column.id}:${target.rowId ?? ""}`} columnId={column.id} initialSectionId={target.rowId} nodeId={node.id} template={template} sections={columnSections(table, column.id)} locked={viewer || layerLocked || !!node.data.locked} onClose={close} onNext={() => {}} embedded />
+    <CardForm key={`${node.id}:${column.id}`} columnId={column.id} nodeId={node.id} template={template} sections={columnSections(table, column.id)} locked={viewer || layerLocked || !!node.data.locked} onClose={close} onNext={() => {}} embedded />
   </div>;
 }

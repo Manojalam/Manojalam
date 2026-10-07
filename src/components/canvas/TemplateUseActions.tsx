@@ -46,6 +46,6 @@ export function TemplateUseActions({ kind, template, prepare }: { kind: "card" |
         if (id) useUIStore.getState().setFillingCardNodeId(kind === "card" ? id : null);
       }}>Create new {tableDesign ? "table" : kind === "card" ? "text" : "object"}</Button>
     </div>
-    <p className="text-[10px] text-muted-foreground">{!applicable ? `Select an unlocked ${tableDesign ? "table" : "table or text object"} to apply here, or create a new one.` : node?.type === "table" ? tableDesign ? "Applies the saved table headings and styling; keeps existing cells." : "Uses the template inside each chosen column. Headers and row labels stay unchanged. Each section is a body row." : kind === "card" ? "Uses the template text here. Object styling stays unchanged. Existing text stays editable." : "Applies the saved object design. Existing text stays editable."}</p>
+    <p className="text-[10px] text-muted-foreground">{!applicable ? `Select an unlocked ${tableDesign ? "table" : "table or text object"} to apply here, or create a new one.` : node?.type === "table" ? tableDesign ? "Applies the saved table headings and styling; keeps existing cells." : "Uses the template inside each chosen column. Headers and row labels stay unchanged. Each column has its own independent sections." : kind === "card" ? "Uses the template text here. Object styling stays unchanged. Existing text stays editable." : "Applies the saved object design. Existing text stays editable."}</p>
   </div>;
 }
