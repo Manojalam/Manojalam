@@ -69,3 +69,19 @@ test("plain-text content becomes safe rich text so later template edits cannot e
   assert.match(String(updated.data.richText), /Second line/);
   assert.equal(updated.data.text, source.data.text);
 });
+
+
+test("applying many fields widens a table without shrinking a larger table or losing values", () => {
+  const table = createTable(3, 3);
+  table.showRowLabels = true;
+  table.rows[0].label = "prathama";
+  table.rows[0].cells[0] = "Keep this answer";
+  const design = { ...card, style: { ...card.style, fontSize: 22 }, rows: [{ id: "row", indent: 0, fields: Array.from({ length: 9 }, (_, index) => ({ id: `f${index}`, label: `Field ${index}`, color: "", kind: "text" as const })) }] };
+  const source = { ...node, style: { width: 660, height: 240 }, data: { table } };
+  const result = applyContentTemplate(source, design, "card");
+  assert.equal(result.style?.width, 1480);
+  assert.equal(normalizeTable(result.data.table).rows[0].label, "prathama");
+  assert.equal(normalizeTable(result.data.table).rows[0].cells[0], "Keep this answer");
+  assert.deepEqual(result.position, source.position);
+  assert.equal(applyContentTemplate({ ...source, style: { width: 2000 } }, design, "card").style?.width, 2000);
+});

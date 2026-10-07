@@ -32,6 +32,6 @@ export function TemplateUseActions({ kind, template, prepare }: { kind: "card" |
         if (id) useUIStore.getState().setFillingCardNodeId(kind === "card" ? id : null);
       }}>Create new {tableDesign ? "table" : "card"}</Button>
     </div>
-    <p className="text-[10px] text-muted-foreground">{!applicable ? `Select an unlocked ${tableDesign ? "table" : "table or box"} to apply here, or create a new one.` : node?.type === "table" ? "Applies headings and styling to this table; keeps existing cells. Fill cells directly." : "Applies here without adding a box. Existing text stays editable."}</p>
+    <p className="text-[10px] text-muted-foreground">{!applicable ? `Select an unlocked ${tableDesign ? "table" : "table or box"} to apply here, or create a new one.` : node?.type === "table" ? tableDesign ? "Applies the saved table headings and styling; keeps existing cells." : "Each template field becomes a column. The table widens to fit; existing values stay. Fill cells directly." : "Applies here without adding a box. Existing text stays editable."}</p>
   </div>;
 }
