@@ -79,3 +79,10 @@ export function tableTemplateDesign(value: unknown): CanvasTable {
   const table = normalizeTable(value);
   return { ...table, rows: table.rows.map(row => ({ ...row, cells: table.columns.map(() => "") })) };
 }
+
+
+/** Include the optional label column and scale readable cells with the chosen font. */
+export function tableMinimumWidth(table: CanvasTable, fontSize = 16): number {
+  const size = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 16;
+  return Math.ceil((table.columns.length + (table.showRowLabels ? 1 : 0)) * Math.max(120, size * 6 + 16));
+}

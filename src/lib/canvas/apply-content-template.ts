@@ -3,7 +3,7 @@ import type { BoardCardTemplate, SampleCardTemplate } from "../types";
 import { plainTextToRichText } from "./rich-text-paste";
 import { cardTemplateNodeData } from "./card-templates";
 import { sampleCardData, sampleTemplateCopyData } from "./sample-templates";
-import { normalizeTable, tablePlainText, type CanvasTable } from "./table";
+import { normalizeTable, tableMinimumWidth, tablePlainText, type CanvasTable } from "./table";
 
 export function supportsContentTemplate(node: Node): boolean {
   return ["table", "shape", "text", "sticky", "mindmap"].includes(node.type ?? "") && !(node.data.radialChart as { enabled?: boolean } | undefined)?.enabled;
@@ -34,7 +34,7 @@ export function applyContentTemplate(node: Node, template: BoardCardTemplate | S
       ?? sample?.labels.map(label => ({ id: label.id, name: label.name })) ?? [];
     const design = sample?.table ?? (fields.length ? normalizeTable({ columns: fields, rows: [{ id: "template-row", cells: [] }] }) : normalizeTable(node.data.table));
     const table = mergeTableTemplate(normalizeTable(node.data.table), design);
-    return { ...node, data: { ...node.data, ...template.style, sampleDesignId: undefined, styleTemplateId: undefined, table, text: tablePlainText(table) } };
+    return { ...node, style: { ...node.style, width: Math.max(Number(node.style?.width) || node.width || 0, tableMinimumWidth(table, Number(template.style.fontSize ?? node.data.fontSize))) }, data: { ...node.data, ...template.style, sampleDesignId: undefined, styleTemplateId: undefined, table, text: tablePlainText(table) } };
   }
   if (node.data.cardTemplateId === template.id || node.data.sampleTemplateId === template.id) return node;
   const oldRichText = typeof node.data.richText === "string" ? node.data.richText : "";

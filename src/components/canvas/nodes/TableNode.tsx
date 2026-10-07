@@ -10,7 +10,7 @@ import { NodeQuickActions } from "./NodeQuickActions";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
-import { tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
+import { tableMinimumWidth, tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
 
 function TableInput(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -30,6 +30,7 @@ function TableInput(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 function TableNodeComponent({ id, data, selected }: NodeProps) {
   const resizeControls = useNodeManualResize(id);
   const root = useRef<HTMLDivElement>(null);
+  const tableElement = useRef<HTMLTableElement>(null);
   const table = normalizeTable(data.table);
   const settings = useCanvasStore(state => state.settings);
   const viewer = useCanvasStore(state => state.board?.accessRole === "viewer");
@@ -49,25 +50,55 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
     if (history) state.pushHistory();
     state.updateNodeData(id, { table: next, text: tablePlainText(next) });
     if (typeof node.data.sampleDesignId === "string") state.updateSampleTemplate(node.data.sampleDesignId, { table: tableTemplateDesign(next) }, false);
-    if (Number(node.style?.width) < next.columns.length * 100) {
-      state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, style: { ...item.style, width: Math.max(Number(item.style?.width) || 600, next.columns.length * 100) } } : item));
+    const minWidth = tableMinimumWidth(next, Number(node.data.fontSize) || settings.defaultFontSize);
+    if (Number(node.style?.width) < minWidth) {
+      state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, style: { ...item.style, width: Math.max(Number(item.style?.width) || 600, minWidth) } } : item));
     }
   };
   const beginTyping = () => { if (!editingHistory.current && editable) { useCanvasStore.getState().pushHistory(); editingHistory.current = true; } };
   const addRow = (after?: number) => { const next = addTableRow(current(), after); write(next); focus(next.rows[Math.min((after ?? next.rows.length - 2) + 1, next.rows.length - 1)].id, next.columns[0].id); };
   const color = typeof data.borderColor === "string" ? data.borderColor : "#94a3b8";
   const defaultFont = FONT_OPTIONS.find(font => font.label === settings.defaultFont)?.value ?? `${settings.defaultFont}, system-ui, sans-serif`;
+  const minimumWidth = tableMinimumWidth(table, Number(data.fontSize) || settings.defaultFontSize);
+  useLayoutEffect(() => {
+    const element = tableElement.current;
+    if (!element) return;
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const state = useCanvasStore.getState();
+        const node = state.nodes.find(item => item.id === id);
+        if (!node || node.resizing) return;
+        // Measure natural rows, not the fixed React Flow wrapper. Reserve the footer
+        // even while deselected so selection does not repeatedly resize the node.
+        const header = element.previousElementSibling as HTMLElement | null;
+        const height = Math.ceil(element.offsetHeight + (header?.offsetHeight ?? 34) + 46);
+        const width = Math.max(Number(node.style?.width) || node.width || 0, minimumWidth);
+        const minimumHeight = typeof node.data.tableMinHeight === "number" ? node.data.tableMinHeight : Number(node.style?.height) || node.height || 0;
+        const nextHeight = width !== Number(node.style?.width)
+          ? Number(node.style?.height) || node.height || height
+          : Math.max(minimumHeight, height);
+        if (width === Number(node.style?.width) && nextHeight === Number(node.style?.height)) return;
+        state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, data: { ...item.data, tableMinHeight: minimumHeight }, style: { ...item.style, width, height: nextHeight } } : item));
+      });
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    fit();
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [id, minimumWidth, data.tableMinHeight]);
   return <div ref={root} className="relative h-full w-full" onFocus={() => {
     if (!editable) return;
     const state = useCanvasStore.getState();
     if (!state.selectedNodeIds.includes(id)) useCanvasStore.setState({ nodes: state.nodes.map(node => ({ ...node, selected: node.id === id })), selectedNodeIds: [id], selectedEdgeIds: [] });
   }} style={{ ...objectRotationStyle("table", data), fontFamily: String(data.fontFamily || defaultFont), fontSize: Number(data.fontSize) || settings.defaultFontSize, fontWeight: data.fontWeight === "bold" ? 700 : undefined, fontStyle: data.fontStyle === "italic" ? "italic" : undefined, color: typeof data.textColor === "string" ? data.textColor : undefined }}>
-    {selected && editable && <NodeResizeControl minWidth={Math.max(240, table.columns.length * 80)} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResizeEnd={resizeControls.onResizeEnd} />}
+    {selected && editable && <NodeResizeControl minWidth={minimumWidth} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResizeEnd={(event, params) => { useCanvasStore.getState().updateNodeData(id, { tableMinHeight: params.height }); resizeControls.onResizeEnd(event, params); }} />}
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
     <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, backgroundColor: typeof data.fillColor === "string" ? data.fillColor : undefined }}>
       <div className="shrink-0 cursor-grab border-b px-3 py-2 text-xs font-semibold text-muted-foreground" style={{ borderColor: color }}>Table · {table.rows.length} rows × {table.columns.length} columns</div>
-      <table className="w-full flex-1 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table">
+      <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table">
         <thead><tr>{table.showRowLabels && <th scope="col" className="border-b border-r bg-muted/50 px-2 text-left" style={{ borderColor: color }}>Row label</th>}{table.columns.map((column, columnIndex) => <th key={column.id} scope="col" className="relative border-b border-r bg-muted/50 text-left font-semibold last:border-r-0" style={{ borderColor: color }}>
           <TableInput aria-label={`Column ${columnIndex + 1} name`} value={column.name} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), columns: current().columns.map(item => item.id === column.id ? { ...item, name: event.target.value } : item) }, false); }} />
           {selected && editable && <button data-export-ignore type="button" title={`Delete column ${columnIndex + 1}`} aria-label={`Delete column ${columnIndex + 1}`} disabled={table.columns.length <= 1} className="nodrag nopan absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), column.id))}><Trash2 size={12} /></button>}
