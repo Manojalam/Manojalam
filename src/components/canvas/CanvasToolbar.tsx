@@ -4,7 +4,7 @@ import { ImportDialog } from "./ImportDialog";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { useState } from "react";
 import {
-  MousePointer2, Hand, StickyNote, Type, Spline, Frame,
+  MousePointer2, SquareDashedMousePointer, Hand, StickyNote, Type, Spline, Frame,
   BookOpen, Scroll, GraduationCap, ChevronRight,
   Network, Table2, LayoutTemplate, PanelRight, Settings2, Upload,
 } from "lucide-react";
@@ -250,7 +250,7 @@ function TouchMultiSelectBtn() {
           aria-label="Multi-select"
           aria-pressed={active}
         >
-          <MousePointer2 className="h-[18px] w-[18px] stroke-[1.5]" />
+          <SquareDashedMousePointer className="h-[18px] w-[18px] stroke-[1.5]" />
         </button>
       </TooltipTrigger>
       <TooltipContent side={tooltipSide} className="text-xs">Multi-select drag</TooltipContent>
