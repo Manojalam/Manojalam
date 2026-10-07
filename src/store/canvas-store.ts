@@ -260,7 +260,7 @@ interface CanvasState {
   createStyleTemplate: (sourceId: string, name: string) => string | null;
   saveCardTemplate: (template: BoardCardTemplate) => void;
   arrangeCard: (nodeId: string) => void;
-  applyContentTemplateToNode: (kind: "card" | "sample", templateId: string, nodeId: string) => boolean;
+  applyContentTemplateToNode: (kind: "card" | "sample", templateId: string, nodeId: string, columnId?: string) => boolean;
   createSampleTemplate: (sourceId: string, name: string) => string | null;
   updateSampleTemplate: (id: string, patch: Partial<SampleCardTemplate>, history?: boolean) => void;
   openTemplateSample: (id: string) => void;
@@ -2370,13 +2370,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set({ nodes: state.nodes.map(item => item.id === nodeId ? { ...item, selected: true, data: { ...item.data, ...content, freeCardLayout: true } } : { ...item, selected: false }), selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });
     requestNodeTextEdit(nodeId);
   },
-  applyContentTemplateToNode: (kind, templateId, nodeId) => {
+  applyContentTemplateToNode: (kind, templateId, nodeId, columnId) => {
     const state = get();
     const node = state.nodes.find(item => item.id === nodeId);
     const template = kind === "card" ? state.settings.cardTemplates?.find(item => item.id === templateId) : state.settings.sampleTemplates?.find(item => item.id === templateId);
     if (!node || !template || !supportsContentTemplate(node) || node.data.locked || state.board?.accessRole === "viewer" || state.layers.some(layer => layer.id === node.data.layerId && layer.locked)) return false;
     if (kind === "sample" && (template as SampleCardTemplate).table && node.type !== "table") return false;
-    const updated = applyContentTemplate(node, template, kind);
+    const updated = applyContentTemplate(node, template, kind, columnId);
     if (updated !== node) state.pushHistory();
     set({ nodes: state.nodes.map(item => item.id === nodeId ? { ...updated, selected: true } : { ...item, selected: false }), selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });
     return true;

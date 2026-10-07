@@ -64,6 +64,7 @@ interface UIState {
   closeRelationshipDiagram: () => void;
   relationshipDiagramItemSelection: RelationshipDiagramItemSelection | null;
   setRelationshipDiagramItemSelection: (selection: RelationshipDiagramItemSelection | null) => void;
+  fillingTableColumn: { nodeId: string; columnId: string; rowId?: string } | null;
   fillingCardNodeId: string | null;
   setFillingCardNodeId: (id: string | null) => void;
   boardExportRequest: BoardExportRequest | null;
@@ -193,6 +194,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setRelationshipDiagramItemSelection: (selection) => set({
     relationshipDiagramItemSelection: selection,
   }),
+  fillingTableColumn: null,
   fillingCardNodeId: null,
   setFillingCardNodeId: (id) => set({ fillingCardNodeId: id }),
   boardExportRequest: null,
