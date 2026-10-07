@@ -18,8 +18,8 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
   const savedTemplate = useCanvasStore(state => state.settings.cardTemplates?.find(item => item.id === node?.data.cardTemplateId));
   const template = savedTemplate ?? normalizeCardTemplates([node?.data.cardTemplateSnapshot])[0];
   if (!node || !template) return null;
-  if (node.data.freeCardLayout && embedded) return <div className="space-y-2 p-3"><p className="text-sm">This card uses a free layout. Edit its text directly on the board.</p><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit on card</Button></div>;
-  if (node.data.freeCardLayout) return <Dialog open modal={false} onOpenChange={open => { if (!open) onClose(); }}><DialogContent onCloseAutoFocus={event => event.preventDefault()}><DialogHeader><DialogTitle>Edit this card directly</DialogTitle><DialogDescription>This card has its own layout. Cut and paste its text on the board; labels and styling stay attached.</DialogDescription></DialogHeader><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit on card</Button></DialogContent></Dialog>;
+  if (node.data.freeCardLayout && embedded) return <div className="space-y-2 p-3"><p className="text-sm">This object uses a free layout. Edit its text directly on the board.</p><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit text on object</Button></div>;
+  if (node.data.freeCardLayout) return <Dialog open modal={false} onOpenChange={open => { if (!open) onClose(); }}><DialogContent onCloseAutoFocus={event => event.preventDefault()}><DialogHeader><DialogTitle>Edit this object directly</DialogTitle><DialogDescription>This object has its own layout. Cut and paste its text on the board; labels and styling stay attached.</DialogDescription></DialogHeader><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit text on object</Button></DialogContent></Dialog>;
   return <CardForm embedded={embedded} key={currentId} nodeId={currentId} template={template} sections={cardSections(node.data)} locked={!!node.data.locked} onClose={onClose} onNext={id => { setCurrentId(id); if (useUIStore.getState().fillingCardNodeId) useUIStore.getState().setFillingCardNodeId(id); }} />;
 }
 
@@ -84,7 +84,7 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   const content = <>
-    <header className="space-y-1"><h3 className="text-sm font-semibold">{columnId ? "Fill column" : "Fill card"} · {template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
+    <header className="space-y-1"><h3 className="text-sm font-semibold">{columnId ? "Fill column" : "Fill template"} · {template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
       <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => event.preventDefault()}>
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
@@ -127,18 +127,19 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
             <Button type="button" size="sm" variant="ghost" onClick={() => setExtraRows(current => current.filter((_, i) => i !== index))}>Remove my row {index + 1}</Button>
           </div>)}
           <Button type="button" variant="outline" onClick={() => setExtraRows(current => [...current, ""])}>Add my own row</Button>
-          <p className="text-xs text-muted-foreground">Your extra rows belong to this card only. {!columnId && "Use Arrange / edit on card to move text anywhere and assign labels."}</p>
+          <p className="text-xs text-muted-foreground">Your extra rows belong to this object only. {!columnId && "Use Arrange / edit text to move text anywhere and assign labels."}</p>
         </fieldset>
         <details className="rounded border p-3">
-          <summary className="cursor-pointer text-sm">Preview filled card</summary>
+          <summary className="cursor-pointer text-sm">Preview text</summary>
           <div className="mt-2">
             <CardTemplatePreview template={template} sections={sections} />
           </div>
         </details>
         {!columnId && <details className="rounded border p-3">
           <summary className="cursor-pointer text-sm">Advanced: switch to free text</summary>
-          <p className="my-2 text-xs text-muted-foreground">This switches this card from filling fields in this panel to editing text directly on the board. Close this panel to continue using fields and sections later.</p>
-          <Button type="button" variant="outline" disabled={locked || savingNext} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit on card</Button>
+          <p className="my-2 text-xs text-muted-foreground">This switches this object from filling fields in this panel to editing text directly on the board. Close this panel to continue using fields and sections later.</p>
+          <Button type="button" variant="outline" disabled={locked || savingNext} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(nodeId); }}>Arrange / edit text</Button>
+          <Button type="button" variant="ghost" disabled={locked || savingNext} onClick={() => { useCanvasStore.getState().detachCardTemplate(nodeId); onClose(); }}>Detach template, keep text</Button>
         </details>}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
@@ -152,14 +153,14 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
             const id = create(template.id);
             if (id) onNext(id);
             else setSavingNext(false);
-          }}>{savingNext ? "Creating..." : "New box"}</Button>}
+          }}>{savingNext ? "Creating..." : "New text object"}</Button>}
         </div>
       </form>
   </>;
-  if (embedded) return <section data-card-fill-panel aria-label="Fill card" className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3" onKeyDown={event => event.stopPropagation()}>{content}</section>;
+  if (embedded) return <section data-card-fill-panel aria-label="Fill template" className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3" onKeyDown={event => event.stopPropagation()}>{content}</section>;
   return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
     <DialogContent data-card-fill-panel onCloseAutoFocus={event => event.preventDefault()} className="top-4 bottom-4 right-4 left-auto w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden" onInteractOutside={event => event.preventDefault()}>
-      <DialogTitle className="sr-only">Fill card</DialogTitle><DialogDescription className="sr-only">Edit card fields. Changes save automatically.</DialogDescription>{content}
+      <DialogTitle className="sr-only">Fill template</DialogTitle><DialogDescription className="sr-only">Edit template fields. Changes save automatically.</DialogDescription>{content}
     </DialogContent>
   </Dialog>;
 }

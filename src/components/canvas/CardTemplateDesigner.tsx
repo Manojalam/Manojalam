@@ -41,20 +41,20 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
   const valid = draft.name.trim() && draft.rows.length && draft.rows.every(row => row.fields.length);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent className="h-[94vh] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden" onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-      <DialogHeader><DialogTitle>Design card template</DialogTitle><DialogDescription>Arrange your own labels and fields. Each row becomes a line on the card; fields on the same row flow together. Add any spaces or separators in the field text. Fill the actual answers after saving.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>Design template</DialogTitle><DialogDescription>Arrange your own labels and fields. Each row becomes a line of text; fields on the same row flow together. Add any spaces or separators in the field text. Fill the actual answers after saving.</DialogDescription></DialogHeader>
       <div className="grid gap-6 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
         <div className="space-y-4 lg:overflow-y-auto lg:pr-2">
           <p className="text-xs text-muted-foreground">{saved ? "Editing your saved template. Save template updates this design." : "Creating a new template. Save template adds it to your template library."}</p>
-          <label className="block text-sm">Template name<Input aria-label="Card template name" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
+          <label className="block text-sm">Template name<Input aria-label="Template name" value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
           <div className="flex flex-wrap gap-3">
-            {([['fillColor', 'Background'], ['borderColor', 'Border'], ['textColor', 'Default text']] as const).map(([key, label]) => <ColorPicker key={key} label={label} value={draft.style[key] || undefined} onChange={color => setDraft(current => ({ ...current, style: { ...current.style, [key]: color } }))} />)}
+            {([['textColor', 'Default text']] as const).map(([key, label]) => <ColorPicker key={key} label={label} value={draft.style[key] || undefined} onChange={color => setDraft(current => ({ ...current, style: { ...current.style, [key]: color } }))} />)}
           </div>
           <p className="text-xs text-muted-foreground">Clear color to use the default. Fields without a color inherit the template text color.</p>
-          <label className="block text-xs">Default font<select aria-label="Template default font" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={draft.style.fontFamily ?? ""} onChange={event => setDraft(current => ({ ...current, style: { ...current.style, fontFamily: event.target.value } }))}><option value="">Board default font</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select></label>
-          <div className="grid grid-cols-3 gap-2">
-            {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1], ['width', 'Card width', 240, 2400, 20]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step === 1 ? 1 : "any"} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
+          <label className="block text-xs">Default font<select aria-label="Template default font" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={draft.style.fontFamily ?? ""} onChange={event => setDraft(current => ({ ...current, style: { ...current.style, fontFamily: event.target.value } }))}><option value="">Object default font</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select></label>
+          <div className="grid grid-cols-2 gap-2">
+            {([['fontSize', 'Font size', 8, 100, 1], ['lineSpacing', 'Line spacing', 1, 4, 0.1]] as const).map(([key, label, min, max, step]) => <label key={key} className="text-xs">{label}<Input aria-label={label} type="number" min={min} max={max} step={step === 1 ? 1 : "any"} value={draft.style[key]} onChange={event => { const value = Number(event.target.value); setDraft({ ...draft, style: { ...draft.style, [key]: Math.min(max, Math.max(min, value)) } }); }} /></label>)}
           </div>
-          <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Labels guide filling and are never printed on the card.</p>
+          <p className="text-xs text-muted-foreground">Field types: text, long text, link, or searchable sūtra. Labels guide filling and are never printed with the text.</p>
           <p className="text-xs text-muted-foreground">Drag a field by its handle to place it before another field or at the end of a row. Use Move field for precise placement with a keyboard or touch.</p>
           {draft.rows.map((row, index) => <section key={row.id} aria-label={`Template row ${index + 1}`} className="space-y-2 rounded-lg border p-3">
             <div className="flex flex-wrap items-center gap-1">
@@ -122,12 +122,12 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
           <Button type="button" variant="outline" onClick={() => setDraft({ ...draft, rows: [...draft.rows, { id: generateId(), indent: 0, fields: [newField()] }] })}>Add row</Button>
         </div>
         <div className="min-w-0 space-y-3 lg:overflow-y-auto">
-          <h3 className="font-medium">Card preview</h3>
-          <p className="text-xs text-muted-foreground">Field names below are sample text for previewing the design. Filled cards show only your values.</p>
+          <h3 className="font-medium">Text preview</h3>
+          <p className="text-xs text-muted-foreground">Field names below are sample text for previewing the design. Objects show only your filled values.</p>
           <div className="rounded-md border p-2">
             <CardTemplatePreview template={draft} values={Object.fromEntries(draft.rows.flatMap(row => row.fields.map(field => [field.id, { text: field.label || "Sample text" }])))}/>
           </div>
-          {!!linked && <p className="text-xs text-muted-foreground">Saving updates the design of {linked} existing cards. Their field values are retained, including values of removed fields, so undo can restore them.</p>}
+          {!!linked && <p className="text-xs text-muted-foreground">Saving updates the design of {linked} existing objects. Their field values are retained, including values of removed fields, so undo can restore them.</p>}
         </div>
       </div>
       <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="button" disabled={!valid} onClick={() => { save(draft); onSaved(draft.id); }}>Save template</Button></div>

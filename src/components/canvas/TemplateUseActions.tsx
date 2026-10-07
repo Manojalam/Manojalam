@@ -27,7 +27,8 @@ export function TemplateUseActions({ kind, template, prepare }: { kind: "card" |
         if (!node || !applicable) return;
         prepare?.();
         const state = useCanvasStore.getState();
-        if (!state.applyContentTemplateToNode(kind, template.id, node.id, columnMode && targetColumn !== "all" ? targetColumn : undefined)) return;
+        const alreadyUsing = kind === "card" ? node.data.cardTemplateId === template.id : node.data.sampleTemplateId === template.id;
+        if (!alreadyUsing && !state.applyContentTemplateToNode(kind, template.id, node.id, columnMode && targetColumn !== "all" ? targetColumn : undefined)) return;
         if (columnMode) {
           useUIStore.setState({ fillingCardNodeId: null, fillingTableColumn: { nodeId: node.id, columnId: targetColumn === "all" ? columns[0].id : targetColumn }, boardPanel: "templates" });
           toast.success("Template applied to column bodies", { description: "Fill each column independently. Headings and existing cells were kept." });
@@ -36,15 +37,15 @@ export function TemplateUseActions({ kind, template, prepare }: { kind: "card" |
         const updated = useCanvasStore.getState().nodes.find(item => item.id === node.id);
         useUIStore.getState().setFillingCardNodeId(null);
         if (updated?.data.cardTemplateId && !updated.data.freeCardLayout) useUIStore.getState().setFillingCardNodeId(node.id);
-        toast.success("Template applied", { description: node.type === "table" ? "Edit the table cells directly. Existing values were kept." : updated?.data.freeCardLayout ? "Your content was kept. Edit it directly on the box." : "Fill the fields in this box." });
-      }}>{columnMode ? targetColumn === "all" ? "Apply to all columns" : "Apply to this column" : `Apply to selected ${node?.type === "table" ? "table" : "box"}`}</Button>
+        toast.success("Template applied", { description: node.type === "table" ? "Edit the table cells directly. Existing values were kept." : updated?.data.freeCardLayout ? "Your content was kept. Edit it directly on the box." : "Fill the fields for this object." });
+      }}>{columnMode ? targetColumn === "all" ? "Apply to all columns" : "Use in this column" : `Use in selected ${node?.type === "table" ? "table" : "object"}`}</Button>
       <Button size="sm" variant="outline" disabled={viewer} onClick={() => {
         prepare?.();
         const state = useCanvasStore.getState();
         const id = kind === "card" ? state.createCardFromTemplate(template.id) : state.createSampleCard(template.id);
         if (id) useUIStore.getState().setFillingCardNodeId(kind === "card" ? id : null);
-      }}>Create new {tableDesign ? "table" : "card"}</Button>
+      }}>Create new {tableDesign ? "table" : kind === "card" ? "text" : "object"}</Button>
     </div>
-    <p className="text-[10px] text-muted-foreground">{!applicable ? `Select an unlocked ${tableDesign ? "table" : "table or box"} to apply here, or create a new one.` : node?.type === "table" ? tableDesign ? "Applies the saved table headings and styling; keeps existing cells." : "Uses the template inside each chosen column. Headers and row labels stay unchanged. Each section is a body row." : "Applies here without adding a box. Existing text stays editable."}</p>
+    <p className="text-[10px] text-muted-foreground">{!applicable ? `Select an unlocked ${tableDesign ? "table" : "table or text object"} to apply here, or create a new one.` : node?.type === "table" ? tableDesign ? "Applies the saved table headings and styling; keeps existing cells." : "Uses the template inside each chosen column. Headers and row labels stay unchanged. Each section is a body row." : kind === "card" ? "Uses the template text here. Object styling stays unchanged. Existing text stays editable." : "Applies the saved object design. Existing text stays editable."}</p>
   </div>;
 }

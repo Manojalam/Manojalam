@@ -37,7 +37,7 @@ export function applyContentTemplate(node: Node, template: BoardCardTemplate | S
     const current = normalizeTable(node.data.table);
     const table = card ? applyColumnTemplate(current, card, columnId) : sample?.table ? mergeTableTemplate(current, sample.table) : current;
     if (table === current) return node;
-    return { ...node, style: { ...node.style, width: Math.max(Number(node.style?.width) || node.width || 0, tableMinimumWidth(table, Number(node.data.fontSize))) }, data: { ...node.data, ...(card ? {} : template.style), sampleDesignId: undefined, styleTemplateId: undefined, table, text: tablePlainText(table) } };
+    return { ...node, style: { ...node.style, width: Math.max(Number(node.style?.width) || node.width || 0, tableMinimumWidth(table, Number(node.data.fontSize))) }, data: { ...node.data, ...(card ? {} : template.style), sampleDesignId: undefined, table, text: tablePlainText(table) } };
   }
   if (node.data.cardTemplateId === template.id || node.data.sampleTemplateId === template.id) return node;
   const oldRichText = typeof node.data.richText === "string" ? node.data.richText : "";
@@ -45,7 +45,7 @@ export function applyContentTemplate(node: Node, template: BoardCardTemplate | S
   const patch = card ? cardTemplateNodeData(card) : sample!.labels.length
     ? sampleCardData(sample!, [{ id: "first", values: {} }]) : sampleTemplateCopyData(sample!);
   // Content that cannot be mapped to named fields stays editable in place, including its HTML.
-  return { ...node, data: { ...node.data, styleTemplateId: undefined, cardTemplateId: undefined, cardTemplateSnapshot: undefined, cardSections: undefined, cardExtraRows: undefined, cardFieldValues: undefined, sampleTemplateId: undefined, sampleTemplateSnapshot: undefined, sampleEntries: undefined, sampleDesignId: undefined, ...patch,
+  return { ...node, data: { ...node.data, cardTemplateId: undefined, cardTemplateSnapshot: undefined, cardSections: undefined, cardExtraRows: undefined, cardFieldValues: undefined, sampleTemplateId: undefined, sampleTemplateSnapshot: undefined, sampleEntries: undefined, sampleDesignId: undefined, ...patch,
     ...(hasContent ? { text: node.data.text, richText: oldRichText || plainTextToRichText(String(node.data.text ?? "")), freeCardLayout: true } : { freeCardLayout: false }),
   } };
 }

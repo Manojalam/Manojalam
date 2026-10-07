@@ -23,7 +23,7 @@ test("row and field styles survive persistence and repeated sections without cha
   delete cleared.rows[0].fields[0].fontSize;
   delete cleared.rows[0].fields[0].fontFamily;
   const reset = renderCardSections(normalizeCardTemplates([cleared])[0], sections);
-  assert.doesNotMatch(reset.richText, /font-size:|font-family:|line-height: 1.75/);
+  assert.doesNotMatch(reset.richText, /font-size: 28px|font-family: Noto Serif Devanagari|line-height: 1.75/);
 });
 
 test("invalid row and field styles normalize safely", () => {
@@ -60,7 +60,7 @@ test("redesign preserves independent field values by ID, including removed field
   const template = newHomeworkTemplate("homework");
   const values = { question: { text: "Original question" }, answer: { text: "My answer" } };
   const first = cardTemplateNodeData(template, values);
-  assert.equal(first.fillOpacity, 1);
+  assert.equal("fillOpacity" in first, false);
   template.rows[0].fields[0].label = "New label";
   template.rows = template.rows.slice(0, 1);
   const updated = cardTemplateNodeData(template, first.cardFieldValues);
@@ -127,11 +127,8 @@ test("cleared template colors and default font survive saving and inherit at ren
   const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
   assert.deepEqual(saved, template);
   const data = cardTemplateNodeData(saved, { question: { text: "Question" } });
-  assert.equal(data.textColor, undefined);
-  assert.equal(data.fillColor, undefined);
-  assert.equal(data.borderColor, undefined);
-  assert.equal(data.fontFamily, "Georgia, serif");
-  assert.equal(data.lineSpacing, 1.75);
+  for (const property of ["textColor", "fillColor", "borderColor", "fontFamily", "lineSpacing", "textPadding", "layoutAutoFill"]) assert.equal(property in data, false);
+  assert.match(data.richText, /font-family: Georgia, serif/);
   assert.match(data.richText, /color: inherit/);
   assert.match(data.richText, /line-height: 1.75/);
 });

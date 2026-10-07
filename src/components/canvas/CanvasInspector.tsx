@@ -3651,7 +3651,6 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </button>
         {canvasSettingsOpen && <div className="flex-1 overflow-y-auto">
-          {!boardOnly && <BoardStyleTemplatesPanel showCrossBoardLibrary={false} />}
           <Section label="Background">
             <Select value={settings.background} onValueChange={(v) => setBoardSettings({ background: v as "dots" | "grid" | "plain" })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>

@@ -1,7 +1,7 @@
 "use client";
 
 import { applyContentTemplate, supportsContentTemplate } from "@/lib/canvas/apply-content-template";
-import { tableTemplateDesign, tablePlainText } from "@/lib/canvas/table";
+import { normalizeTable, tableTemplateDesign, tablePlainText } from "@/lib/canvas/table";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import { applyStyleTemplate, captureTemplateStyle, detachTemplateData, normalizeBoardStyleTemplates, supportsStyleTemplate, templateRolesFromHtml, bindTemplateRoles, refreshTemplateRoles } from "@/lib/canvas/board-style-templates";
 import type { BoardStyleTemplate, BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
@@ -2466,13 +2466,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!template) return;
     const state = get();
     const templates = state.settings.cardTemplates ?? [];
-    const previous = templates.find(item => item.id === template.id);
     state.pushHistory();
     const settings = { ...state.settings, cardTemplates: [...templates.filter(item => item.id !== template.id), template] };
     set({ settings, nodes: state.nodes.map(node => {
+      if (node.type === "table") {
+        const table = normalizeTable(node.data.table);
+        if (table.columns.some(column => column.card?.template.id === template.id)) {
+          table.columns = table.columns.map(column => column.card?.template.id === template.id ? { ...column, card: { ...column.card, template: structuredClone(template) } } : column);
+          return { ...node, data: { ...node.data, table, text: tablePlainText(table) } };
+        }
+      }
       if (node.data.cardTemplateId === template.id) return {
         ...node,
-        ...(previous?.style.width !== template.style.width ? { style: { ...node.style, width: template.style.width } } : {}),
         data: { ...node.data, ...cardTemplateNodeData(template, undefined, undefined, cardSections(node.data)),
           ...(node.data.freeCardLayout ? flexibleCardContent(node.data, settings) : {}),
         },
@@ -2492,9 +2497,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const position = previous
       ? { x: previous.position.x, y: previous.position.y + getNodeRect(previous).height + 40 }
       : { x: (240 - state.viewport.x) / state.viewport.zoom, y: (140 - state.viewport.y) / state.viewport.zoom };
-    const node: Node = { id: nodeId, type: "shape", position, selected: true,
-      style: { width: template.style.width, height: Math.max(220, template.rows.length * template.style.fontSize * 2 + 48) },
-      data: { shapeType: "rounded", borderWidth: 2, autoSizeMode: "height-only", ...cardTemplateNodeData(template) },
+    const node: Node = { id: nodeId, type: "text", position, selected: true,
+      style: { width: 480, height: Math.max(220, template.rows.length * template.style.fontSize * 2 + 48) },
+      data: { autoSizeMode: "height-only", ...cardTemplateNodeData(template) },
     };
     state.pushHistory();
     set({ nodes: [...state.nodes.map(item => ({ ...item, selected: false })), node], selectedNodeIds: [nodeId], selectedEdgeIds: [], saveStatus: "unsaved" });
@@ -2517,7 +2522,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!template) return;
     if (history) state.pushHistory();
     set({ nodes: state.nodes.map(item => item.id === nodeId
-      ? { ...item, data: { ...item.data, ...cardTemplateNodeData({ ...template, style: { ...template.style, lineSpacing: typeof node.data.lineSpacing === "number" ? node.data.lineSpacing : template.style.lineSpacing } }, undefined, undefined, sections) } }
+      ? { ...item, data: { ...item.data, ...cardTemplateNodeData(template, undefined, undefined, sections) } }
       : item), saveStatus: "unsaved" });
   },
   moveCardSectionsToNewBox: (nodeId, sectionId) => {

@@ -44,7 +44,7 @@ export function CrossBoardTemplateLibrary() {
     <p className="text-[10px] text-muted-foreground">Reuse saved templates and linked styles from your other boards. Each board keeps its own editable copy.</p>
     {loading ? <p className="text-xs">Loading your templates...</p> : error ? <p role="alert" className="text-xs">Could not load your templates. Try refreshing.</p> : selected ? <>
       <select aria-label="Template from any board" className="h-8 w-full rounded border bg-background px-2 text-xs" value={selected.key} onChange={event => setChosen(event.target.value)}>
-        {entries.map(entry => <option key={entry.key} value={entry.key}>{entry.template.name} - {entry.kind === "style" ? "Linked style" : entry.kind === "card" ? "Fillable card" : "Sample"} ({entry.sourceTitle})</option>)}
+        {entries.map(entry => <option key={entry.key} value={entry.key}>{entry.template.name} - {entry.kind === "style" ? "Linked style" : entry.kind === "card" ? "Text template" : "Sample"} ({entry.sourceTitle})</option>)}
       </select>
       {localCopy && <p className="text-[10px] text-muted-foreground">This board already has a copy. Using it keeps your local design edits.</p>}
       {selected.kind === "style" ? <Button size="sm" disabled={viewer} onClick={useTemplate}>Create new styled box</Button> : <TemplateUseActions kind={selected.kind} template={selected.template} prepare={() => {
