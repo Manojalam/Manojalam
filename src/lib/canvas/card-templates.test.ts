@@ -324,3 +324,33 @@ test("optional empty rows and sections leave no gaps but keep their saved fields
   assert.equal(repeated.text, "Only repeat filled");
   assert.equal((repeated.richText.match(/<p /g) ?? []).length, 1);
 });
+
+
+test("conditional constants follow populated inputs in each repeat, with safe styling and persistence", () => {
+  const template = newHomeworkTemplate("constants");
+  template.rows = [{ id: "step", indent: 0, fields: [
+    { id: "arrow", label: "Arrow", kind: "constant", constantText: "→ ", color: "" },
+    { id: "root", label: "Root", kind: "text", color: "" },
+    { id: "plus", label: "Plus", kind: "constant", constantText: " + ", constantWhenFieldId: "ending", color: "#ff0000", bold: true },
+    { id: "ending", label: "Ending", kind: "text", color: "" },
+    { id: "open", label: "Open", kind: "constant", constantText: " [", constantWhenFieldId: "sutra", color: "" },
+    { id: "sutra", label: "Sutra", kind: "sutra", color: "" },
+    { id: "close", label: "Close", kind: "constant", constantText: "]", constantWhenFieldId: "sutra", color: "" },
+  ] }];
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.deepEqual(saved, template);
+  assert.equal(renderCardTemplate(saved, {}).text, "");
+  assert.equal(renderCardTemplate(saved, { root: { text: "भू" }, plus: { text: "stale" }, sutra: { text: "  " } }).text, "→ भू  ");
+  const values = { root: { text: "भू" }, ending: { text: "तिप्" }, sutra: { text: "३.४.७८", href: "https://ashtadhyayi.com/sutraani/3/4/78" } };
+  const output = renderCardTemplate(saved, values);
+  assert.equal(output.text, "→ भू + तिप् [३.४.७८]");
+  assert.match(output.richText, /<strong> \+ <\/strong>/);
+  assert.match(output.richText, /href="https:/);
+  const repeated = renderCardTemplate(saved, values, [], [{ id: "again", rowId: "step", values: { root: { text: "भवति" } } }]);
+  assert.equal(repeated.text, "→ भू + तिप् [३.४.७८]→ भवति");
+  saved.rows[0].fields.find(field => field.id === "open")!.constantText = '<script>&"';
+  assert.match(renderCardTemplate(saved, values).richText, /&lt;script&gt;&amp;&quot;/);
+  saved.rows[0].fields = saved.rows[0].fields.filter(field => field.id !== "sutra");
+  assert.equal(renderCardTemplate(saved, values).text, "→ भू + तिप्");
+  assert.equal(renderCardTemplate(saved, {}, [], [{ id: "empty", rowId: "step", values: {} }]).richText, "");
+});
