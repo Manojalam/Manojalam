@@ -1,7 +1,8 @@
 import type { BoardCardTemplate, CardSection } from "../types";
 import { cardSections, normalizeCardTemplates, renderCardSections } from "./card-templates";
-export interface TableColumn { id: string; name: string; card?: { template: BoardCardTemplate; sections: CardSection[]; independent?: true } }
-export interface TableRow { id: string; cells: string[]; label?: string }
+export interface TableTemplateContent { template: BoardCardTemplate; sections: CardSection[]; independent?: true }
+export interface TableColumn { id: string; name: string; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
+export interface TableRow { id: string; cells: string[]; label?: string; templates?: Record<string, TableTemplateContent> }
 export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean }
 export const MAX_TABLE_COLUMNS = 30;
 export const MAX_TABLE_ROWS = 500;
@@ -30,8 +31,29 @@ export function normalizeTable(value: unknown): CanvasTable {
     while (used.has(result)) result += "_";
     used.add(result); return result;
   };
-  const columns = (Array.isArray(source?.columns) && source.columns.length ? source.columns : [{ id: "column_0", name: "Column 1" }]).slice(0, MAX_TABLE_COLUMNS).map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}`, ...(normalizeCardTemplates([column?.card?.template])[0] ? { card: { template: normalizeCardTemplates([column?.card?.template])[0], sections: independentSections(column?.card), independent: true as const } } : {}) }));
-  const rows = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => ({ id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : "") }));
+  const sourceColumns = (Array.isArray(source?.columns) && source.columns.length ? source.columns : [{ id: "column_0", name: "Column 1" }]).slice(0, MAX_TABLE_COLUMNS);
+  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}` }));
+  const rows: TableRow[] = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => {
+    const templates: Record<string, TableTemplateContent> = {};
+    columns.forEach((column, i) => {
+      const content = row?.templates?.[sourceColumns[i].id];
+      const template = normalizeCardTemplates([content?.template])[0];
+      if (template) templates[column.id] = { template, sections: independentSections(content), independent: true };
+    });
+    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
+  });
+  // Recover old column content without changing the table grid or dropping answers.
+  sourceColumns.forEach((column, i) => {
+    const content = column.card;
+    const template = normalizeCardTemplates([content?.template])[0];
+    if (!content || !template) return;
+    const sections = independentSections(content);
+    sections.forEach(section => {
+      const row = !content.independent ? rows.find(row => row.id === section.id) ?? rows[0] : rows[0];
+      const previous = row.templates?.[columns[i].id];
+      row.templates = { ...row.templates, [columns[i].id]: { template, independent: true, sections: [...(previous?.sections ?? []), section] } };
+    });
+  });
   return { columns, rows, ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
 }
 
@@ -51,7 +73,7 @@ export function removeTableRow(table: CanvasTable, rowId: string): CanvasTable {
 export function removeTableColumn(table: CanvasTable, columnId: string): CanvasTable {
   const index = table.columns.findIndex(column => column.id === columnId);
   if (index < 0 || table.columns.length <= 1) return table;
-  return { ...table, columns: table.columns.filter(column => column.id !== columnId), rows: table.rows.map(row => ({ ...row, cells: row.cells.filter((_, i) => i !== index) })) };
+  return { ...table, columns: table.columns.filter(column => column.id !== columnId), rows: table.rows.map(row => ({ ...row, templates: Object.fromEntries(Object.entries(row.templates ?? {}).filter(([key]) => key !== columnId)), cells: row.cells.filter((_, i) => i !== index) })) };
 }
 
 /** Excel/Sheets TSV, including quoted newlines and escaped quotes. */
@@ -83,8 +105,8 @@ export function pasteTableCells(table: CanvasTable, rowIndex: number, columnInde
 }
 export function tableCellText(table: CanvasTable, rowIndex: number, columnIndex: number): string {
   const row = table.rows[rowIndex];
-  const card = table.columns[columnIndex]?.card;
-  return [row?.cells[columnIndex] ?? "", card && rowIndex === 0 ? renderCardSections(card.template, independentSections(card)).text : ""].filter(Boolean).join("\n");
+  const card = row?.templates?.[table.columns[columnIndex]?.id];
+  return [row?.cells[columnIndex] ?? "", card ? renderCardSections(card.template, independentSections(card)).text : ""].filter(Boolean).join("\n");
 }
 export function tablePlainText(table: CanvasTable): string {
   return [[...(table.showRowLabels ? ["Row label"] : []), ...table.columns.map(column => column.name)].join("\t"), ...table.rows.map((row, rowIndex) => [...(table.showRowLabels ? [row.label ?? ""] : []), ...row.cells.map((_, columnIndex) => tableCellText(table, rowIndex, columnIndex))].join("\t"))].join("\n");
@@ -93,30 +115,31 @@ export function tablePlainText(table: CanvasTable): string {
 /** Save structure and headings, never another card's answers. */
 export function tableTemplateDesign(value: unknown): CanvasTable {
   const table = normalizeTable(value);
-  return { ...table, columns: table.columns.map(column => !column.card ? column : { ...column, card: { ...column.card, independent: true as const, sections: [{ id: "first", values: {}, extraRows: [] }] } }), rows: table.rows.map(row => ({ ...row, cells: table.columns.map(() => "") })) };
+  return { ...table, rows: table.rows.map(row => ({ ...row, cells: table.columns.map(() => ""), ...(row.templates ? { templates: Object.fromEntries(Object.entries(row.templates).map(([key, content]) => [key, { ...content, sections: [{ id: "first", values: {}, extraRows: [] }] }])) } : {}) })) };
 }
 
 
 /** Include the optional label column and scale readable cells with the chosen font. */
 export function tableMinimumWidth(table: CanvasTable, fontSize = 16): number {
   const size = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 16;
-  return Math.ceil(table.columns.reduce((width, column) => width + (column.card ? Math.max(260, column.card.template.style.fontSize * 12) : Math.max(120, size * 6 + 16)), table.showRowLabels ? Math.max(120, size * 6 + 16) : 0));
+  return Math.ceil((table.columns.length + (table.showRowLabels ? 1 : 0)) * Math.max(120, size * 6 + 16));
 }
 
 
-/** Apply a fillable design to column bodies, never to their headings or row labels. */
-export function applyColumnTemplate(table: CanvasTable, template: BoardCardTemplate, columnId?: string): CanvasTable {
-  return { ...table, columns: table.columns.map(column => columnId && column.id !== columnId ? column : {
-    ...column, card: { template: structuredClone(template), independent: true as const, sections: independentSections(column.card) },
+/** Text templates occupy only the selected cell; structure and object styling are untouched. */
+export function applyCellTemplate(table: CanvasTable, template: BoardCardTemplate, columnId?: string, rowId?: string): CanvasTable {
+  if (!columnId || !rowId || !table.columns.some(column => column.id === columnId) || !table.rows.some(row => row.id === rowId)) return table;
+  return { ...table, rows: table.rows.map(row => row.id !== rowId ? row : { ...row, templates: { ...row.templates, [columnId]: { template: structuredClone(template), independent: true, sections: independentSections(row.templates?.[columnId]) } } }) };
+}
+
+export function cellSections(table: CanvasTable, columnId: string, rowId: string): CardSection[] {
+  return independentSections(table.rows.find(row => row.id === rowId)?.templates?.[columnId]);
+}
+
+export function updateCellSections(table: CanvasTable, columnId: string, rowId: string, sections: CardSection[], template?: BoardCardTemplate): CanvasTable {
+  if (!sections.length) return table;
+  return { ...table, rows: table.rows.map(row => {
+    const content = row.templates?.[columnId];
+    return row.id !== rowId || !content ? row : { ...row, templates: { ...row.templates, [columnId]: { ...content, template: structuredClone(template ?? content.template), independent: true, sections: structuredClone(sections) } } };
   }) };
-}
-
-export function columnSections(table: CanvasTable, columnId: string): CardSection[] {
-  const card = table.columns.find(column => column.id === columnId)?.card;
-  return independentSections(card);
-}
-
-export function updateColumnSections(table: CanvasTable, columnId: string, sections: CardSection[]): CanvasTable {
-  if (!table.columns.some(column => column.id === columnId && column.card) || !sections.length) return table;
-  return { ...table, columns: table.columns.map(column => column.id !== columnId || !column.card ? column : { ...column, card: { ...column.card, independent: true, sections: structuredClone(sections) } }) };
 }

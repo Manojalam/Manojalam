@@ -3,7 +3,7 @@ import test from "node:test";
 import { applyContentTemplate, mergeTableTemplate } from "./apply-content-template";
 import { newHomeworkTemplate, cardTemplateNodeData } from "./card-templates";
 import { normalizeSampleTemplates } from "./sample-templates";
-import { applyColumnTemplate, columnSections, updateColumnSections, createTable, tableTemplateDesign, tablePlainText, addTableColumn, removeTableColumn, normalizeTable } from "./table";
+import { applyCellTemplate, cellSections, updateCellSections, createTable, tableTemplateDesign, tablePlainText, addTableColumn, removeTableColumn, normalizeTable } from "./table";
 import type { Node } from "@xyflow/react";
 const card = newHomeworkTemplate("homework");
 const node: Node = { id: "selected", type: "table", position: { x: 32, y: 48 }, data: { table: createTable(2, 2) } };
@@ -11,13 +11,13 @@ test("apply to table keeps type, geometry, cell IDs, answers and extra columns",
   const current = createTable(4, 8);
   current.rows[0].cells[0] = "Existing answer";
   const source = { ...node, data: { table: current } };
-  const updated = applyContentTemplate(source, card, "card");
+  const updated = applyContentTemplate(source, card, "card", current.columns[0].id, current.rows[0].id);
   assert.equal(updated.id, source.id);
   assert.equal(updated.type, "table");
   assert.deepEqual(updated.position, source.position);
   const result = normalizeTable(updated.data.table);
   assert.equal(result.columns[0].name, current.columns[0].name);
-  assert.equal(result.columns[0].card?.template.id, card.id);
+  assert.equal(result.rows[0].templates?.[result.columns[0].id]?.template.id, card.id);
   assert.equal(result.columns.length, 8);
   assert.equal(result.rows.length, 4);
   assert.equal(result.rows[0].cells[0], "Existing answer");
@@ -72,17 +72,18 @@ test("plain-text content becomes safe rich text so later template edits cannot e
 });
 
 
-test("applying many fields keeps columns as containers without replacing their headings", () => {
+test("applying many fields keeps cells as text destinations without replacing their headings", () => {
   const table = createTable(3, 3);
   table.showRowLabels = true;
   table.rows[0].label = "prathama";
   table.rows[0].cells[0] = "Keep this answer";
   const design = { ...card, style: { ...card.style, fontSize: 22 }, rows: [{ id: "row", indent: 0, fields: Array.from({ length: 9 }, (_, index) => ({ id: `f${index}`, label: `Field ${index}`, color: "", kind: "text" as const })) }] };
   const source = { ...node, style: { width: 660, height: 240 }, data: { table } };
-  const result = applyContentTemplate(source, design, "card");
+  const result = applyContentTemplate(source, design, "card", table.columns[0].id, table.rows[0].id);
   assert.equal(normalizeTable(result.data.table).columns.length, 3);
-  assert.equal(normalizeTable(result.data.table).columns[0].card?.template.rows[0].fields.length, 9);
-  assert.ok(Number(result.style?.width) >= 660);
+  assert.equal(normalizeTable(result.data.table).rows[0].templates?.[table.columns[0].id]?.template.rows[0].fields.length, 9);
+  assert.deepEqual(result.style, source.style);
+  assert.equal(normalizeTable(result.data.table).rows[1].templates, undefined);
   assert.equal(normalizeTable(result.data.table).rows[0].label, "prathama");
   assert.equal(normalizeTable(result.data.table).rows[0].cells[0], "Keep this answer");
   assert.deepEqual(result.position, source.position);
@@ -90,19 +91,20 @@ test("applying many fields keeps columns as containers without replacing their h
 });
 
 
-test("saved column-template designs keep independent sections without copying answers", () => {
-  let source = applyColumnTemplate(createTable(2, 2), card);
-  const sections = columnSections(source, source.columns[0].id);
+test("saved cell-template designs keep independent sections without copying answers", () => {
+  const initial = createTable(2, 2);
+  let source = applyCellTemplate(initial, card, initial.columns[0].id, initial.rows[0].id);
+  const sections = cellSections(source, source.columns[0].id, source.rows[0].id);
   sections[0].extraRows = ["Source private answer"];
-  source = updateColumnSections(source, source.columns[0].id, sections);
+  source = updateCellSections(source, source.columns[0].id, source.rows[0].id, sections);
   const destination = createTable(3, 2);
   destination.rows[0].cells[0] = "Existing destination value";
   const result = mergeTableTemplate(destination, tableTemplateDesign(source));
-  assert.equal(result.columns[0].card?.template.id, card.id);
-  assert.equal(result.columns[0].card?.sections[0].id, "first");
-  assert.deepEqual(result.columns[0].card?.sections[0].extraRows, []);
+  assert.equal(result.rows[0].templates?.[result.columns[0].id]?.template.id, card.id);
+  assert.equal(result.rows[0].templates?.[result.columns[0].id]?.sections[0].id, "first");
+  assert.deepEqual(result.rows[0].templates?.[result.columns[0].id]?.sections[0].extraRows, []);
   assert.equal(result.rows[0].cells[0], "Existing destination value");
-  assert.equal(result.columns[0].card?.sections.length, 1);
+  assert.equal(result.rows[0].templates?.[result.columns[0].id]?.sections.length, 1);
 });
 
 
@@ -121,4 +123,9 @@ test("text templates leave object appearance and geometry alone on apply, fill a
     assert.deepEqual(applied.style, source.style);
     assert.match(redesigned.richText, /font-size: 30px/);
   }
+});
+
+
+test("a text template without an explicit cell target cannot modify a table", () => {
+  assert.equal(applyContentTemplate(node, card, "card"), node);
 });

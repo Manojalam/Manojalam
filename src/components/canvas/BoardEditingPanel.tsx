@@ -16,7 +16,7 @@ import { CanvasLayersPanel } from "./CanvasLayersPanel";
 import { AppColorPicker } from "./AppColorPicker";
 import { QuickTextFormat } from "./QuickTextFormat";
 import { normalizeTable } from "@/lib/canvas/table";
-import { TableColumnFillPanel } from "./TableColumnFillPanel";
+import { TableCellFillPanel } from "./TableCellFillPanel";
 import { FillCardDialog } from "./FillCardDialog";
 
 export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: HTMLDivElement | null) => void }) {
@@ -29,7 +29,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const pinnedId = useUIStore(state => state.fillingCardNodeId);
   const setPinned = useUIStore(state => state.setFillingCardNodeId);
   const nodes = useCanvasStore(state => state.nodes);
-  const hasColumnTarget = columnTarget && normalizeTable(nodes.find(node => node.id === columnTarget.nodeId)?.data.table).columns.some(column => column.id === columnTarget.columnId);
+  const targetTable = normalizeTable(nodes.find(node => node.id === columnTarget?.nodeId)?.data.table);
+  const hasColumnTarget = columnTarget && targetTable.columns.some(column => column.id === columnTarget.columnId) && targetTable.rows.some(row => row.id === columnTarget.rowId);
   const ids = useCanvasStore(state => state.selectedNodeIds);
   const edgeIds = useCanvasStore(state => state.selectedEdgeIds);
   const selected = nodes.filter(node => ids.includes(node.id));
@@ -56,7 +57,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       <button type="button" title="Close panel" aria-label="Close editing panel" onClick={close} className="rounded p-1.5 hover:bg-accent"><X size={16} /></button>
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
-    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnTarget ? <TableColumnFillPanel /> : <TemplateLauncher />}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto" hidden={panel !== "templates" || auxiliary}>{hasColumnTarget ? <TableCellFillPanel /> : <TemplateLauncher />}</div>
     {panel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
     <div hidden={panel !== "selection" || auxiliary} className="min-h-0 flex-1 flex-col data-[visible=true]:flex" data-visible={panel === "selection"}>
       {card && <div className="flex shrink-0 items-center gap-1 border-b p-2" aria-label="Template controls">

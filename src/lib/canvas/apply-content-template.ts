@@ -3,7 +3,7 @@ import type { BoardCardTemplate, SampleCardTemplate } from "../types";
 import { plainTextToRichText } from "./rich-text-paste";
 import { cardTemplateNodeData } from "./card-templates";
 import { sampleCardData, sampleTemplateCopyData } from "./sample-templates";
-import { applyColumnTemplate, normalizeTable, tableMinimumWidth, tablePlainText, type CanvasTable } from "./table";
+import { applyCellTemplate, normalizeTable, tableMinimumWidth, tablePlainText, type CanvasTable } from "./table";
 
 export function supportsContentTemplate(node: Node): boolean {
   return ["table", "shape", "text", "sticky", "mindmap"].includes(node.type ?? "") && !(node.data.radialChart as { enabled?: boolean } | undefined)?.enabled;
@@ -11,6 +11,8 @@ export function supportsContentTemplate(node: Node): boolean {
 
 /** Preserve cell coordinates, IDs, extra rows/columns, and nonempty answers. */
 export function mergeTableTemplate(current: CanvasTable, design: CanvasTable): CanvasTable {
+  current = normalizeTable(current);
+  design = normalizeTable(design);
   const columns = Array.from({ length: Math.max(current.columns.length, design.columns.length) }, (_, i) => ({
     ...(design.columns[i] ?? current.columns[i]),
     id: current.columns[i]?.id ?? design.columns[i].id,
@@ -19,15 +21,16 @@ export function mergeTableTemplate(current: CanvasTable, design: CanvasTable): C
   const rows = Array.from({ length: Math.max(current.rows.length, design.rows.length) }, (_, i) => ({
     id: current.rows[i]?.id ?? design.rows[i].id,
     label: design.rows[i]?.label || current.rows[i]?.label,
+    templates: Object.fromEntries(columns.flatMap((column, j) => {
+      const content = current.rows[i]?.templates?.[current.columns[j]?.id] ?? design.rows[i]?.templates?.[design.columns[j]?.id];
+      return content ? [[column.id, content]] : [];
+    })),
     cells: columns.map((_, j) => current.rows[i]?.cells[j] || design.rows[i]?.cells[j] || ""),
   }));
-  return normalizeTable({ columns: columns.map((column, index) => {
-    const card = column.card ?? current.columns[index]?.card;
-    return !card ? column : { ...column, card: { ...card, sections: current.columns[index]?.card?.sections ?? card.sections } };
-  }), rows, showRowLabels: design.showRowLabels || current.showRowLabels });
+  return normalizeTable({ columns, rows, showRowLabels: design.showRowLabels || current.showRowLabels });
 }
 
-export function applyContentTemplate(node: Node, template: BoardCardTemplate | SampleCardTemplate, kind: "card" | "sample", columnId?: string): Node {
+export function applyContentTemplate(node: Node, template: BoardCardTemplate | SampleCardTemplate, kind: "card" | "sample", columnId?: string, rowId?: string): Node {
   const card = kind === "card" ? template as BoardCardTemplate : undefined;
   const sample = kind === "sample" ? template as SampleCardTemplate : undefined;
   if (node.data.locked || !supportsContentTemplate(node)) return node;
@@ -35,9 +38,9 @@ export function applyContentTemplate(node: Node, template: BoardCardTemplate | S
   if (sample?.table && node.type !== "table") return node;
   if (node.type === "table") {
     const current = normalizeTable(node.data.table);
-    const table = card ? applyColumnTemplate(current, card, columnId) : sample?.table ? mergeTableTemplate(current, sample.table) : current;
+    const table = card ? applyCellTemplate(current, card, columnId, rowId) : sample?.table ? mergeTableTemplate(current, sample.table) : current;
     if (table === current) return node;
-    return { ...node, style: { ...node.style, width: Math.max(Number(node.style?.width) || node.width || 0, tableMinimumWidth(table, Number(node.data.fontSize))) }, data: { ...node.data, ...(card ? {} : template.style), sampleDesignId: undefined, table, text: tablePlainText(table) } };
+    return { ...node, style: card ? node.style : { ...node.style, width: Math.max(Number(node.style?.width) || node.width || 0, tableMinimumWidth(table, Number(node.data.fontSize))) }, data: { ...node.data, ...(card ? {} : template.style), sampleDesignId: undefined, table, text: tablePlainText(table) } };
   }
   if (node.data.cardTemplateId === template.id || node.data.sampleTemplateId === template.id) return node;
   const oldRichText = typeof node.data.richText === "string" ? node.data.richText : "";

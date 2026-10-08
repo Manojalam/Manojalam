@@ -5,7 +5,7 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
 import { templateInputFields, cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
-import { columnSections, normalizeTable, tablePlainText, updateColumnSections } from "@/lib/canvas/table";
+import { cellSections, normalizeTable, tablePlainText, updateCellSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -23,26 +23,25 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
   return <CardForm embedded={embedded} key={currentId} nodeId={currentId} template={template} sections={cardSections(node.data)} locked={!!node.data.locked} onClose={onClose} onNext={id => { setCurrentId(id); if (useUIStore.getState().fillingCardNodeId) useUIStore.getState().setFillingCardNodeId(id); }} />;
 }
 
-export function CardForm({ columnId, initialSectionId, nodeId, template, sections, locked, onClose, onNext, embedded = false }: { columnId?: string; initialSectionId?: string; embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
+export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, template, sections, locked, onClose, onNext, embedded = false }: { columnId?: string; cellRowId?: string; initialSectionId?: string; embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
     const node = state.nodes.find(item => item.id === nodeId);
     if (!node || node.data.locked || node.data.freeCardLayout || state.board?.accessRole === "viewer" || state.layers.some(layer => layer.id === node.data.layerId && layer.locked)) return;
-    const current = columnId ? columnSections(normalizeTable(node.data.table), columnId) : cardSections(node.data);
+    const current = columnId ? cellSections(normalizeTable(node.data.table), columnId, cellRowId!) : cardSections(node.data);
     const next = change(current);
     if (JSON.stringify(next) === JSON.stringify(current)) return;
     const now = Date.now();
     const previous = lastEdit.current;
     const history = !editKey || previous?.key !== editKey || now - previous.at > 750 || previous.sections !== (columnId ? node.data.table : node.data.cardSections);
     if (columnId) {
-      const table = updateColumnSections(normalizeTable(node.data.table), columnId, next);
-      table.columns = table.columns.map(column => column.id === columnId && column.card ? { ...column, card: { ...column.card, template: structuredClone(template) } } : column);
+      const table = updateCellSections(normalizeTable(node.data.table), columnId, cellRowId!, next, template);
       if (history) state.pushHistory();
       state.updateNodeData(nodeId, { table, text: tablePlainText(table) });
     } else state.updateCardSections(nodeId, next, history);
     lastEdit.current = editKey ? { key: editKey, at: now, sections: useCanvasStore.getState().nodes.find(item => item.id === nodeId)?.data[columnId ? "table" : "cardSections"] } : null;
-  }, [nodeId, columnId, template]);
+  }, [nodeId, columnId, cellRowId, template]);
   const [activeId, setActiveId] = useState(initialSectionId ?? sections[0].id);
   const fieldsRef = useRef<HTMLFieldSetElement>(null);
   const section = sections.find(item => item.id === activeId) ?? sections[0];
@@ -83,7 +82,7 @@ export function CardForm({ columnId, initialSectionId, nodeId, template, section
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   const content = <>
-    <header className="space-y-1"><h3 className="text-sm font-semibold">{columnId ? "Fill column" : "Fill template"} · {template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
+    <header className="space-y-1"><h3 className="text-sm font-semibold">{template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
       <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => event.preventDefault()}>
         <div className="space-y-4 overflow-y-auto pr-1">
         <div className="space-y-2 rounded-md border p-3">
