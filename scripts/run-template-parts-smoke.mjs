@@ -34,9 +34,15 @@ try {
   await page.locator('[aria-label="Part 2 label"]').fill('Marker');
   await page.select('[aria-label="Part 2 type"]', 'constant');
   await page.locator('[aria-label="Part 2 constant text"]').fill(' + ');
+  assert.equal(await page.$('[aria-label="Part 2 label"]'), null);
   await button('Add part');
   await page.locator('[aria-label="Part 3 label"]').fill('Part sutra');
   await page.select('[aria-label="Part 3 type"]', 'sutra');
+  await page.locator('[aria-label="Wrap part 3 in brackets"]').click();
+  assert.equal(await page.$eval('[aria-label="Part 3 constant text"]', el => el.value), '[');
+  assert.equal(await page.$eval('[aria-label="Part 5 constant text"]', el => el.value), ']');
+  assert.equal(await page.$eval('[aria-label="Part 4 type"]', el => el.value), 'sutra');
+  await page.screenshot({path:'.tmp/multipart-brackets.png'});
   await button('Save template');
   await button('Use in selected object');
   assert.equal(await page.$$eval('[data-card-fill-panel] label', els=>els.some(el=>el.textContent==='Marker')),false);
@@ -46,6 +52,14 @@ try {
   await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control'); await page.keyboard.press('Backspace');
   await page.waitForFunction(()=>!(document.querySelector('.react-flow__node[data-id="target"] .tiptap')?.textContent ?? '').includes('+'));
   await page.locator('#card-field-expression').fill('भू');
+  const sutraInput = await page.evaluate(() => [...document.querySelectorAll('label[for]')].find(el => el.textContent === 'Part sutra').htmlFor);
+  assert.equal(await page.$eval('.react-flow__node[data-id="target"] .tiptap', el => el.textContent.includes('[')), false);
+  await page.locator('#' + sutraInput).fill('भुवादयो धातवः १.३.१');
+  await page.waitForFunction(() => document.querySelector('.react-flow__node[data-id="target"] .tiptap').textContent.includes('[भुवादयो धातवः १.३.१]'));
+  await page.focus('#' + sutraInput);
+  await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control'); await page.keyboard.press('Backspace');
+  await page.waitForFunction(() => !document.querySelector('.react-flow__node[data-id="target"] .tiptap').textContent.includes('['));
+
   await new Promise(resolve => setTimeout(resolve,2200));
   const saved = await page.evaluate(async () => {
     const db = await new Promise(resolve => {const r=indexedDB.open('manojalam-guest-boards',1);r.onsuccess=()=>resolve(r.result)});
@@ -61,7 +75,9 @@ try {
   const group=saved.settings.cardTemplates[0].rows[0].fields.find(field=>field.kind==='multipart');
   const constant=group.parts.find(part=>part.kind==='constant');
   assert.equal(group.parts[0].id,'expression');
-  assert.equal(group.parts[2].kind,'sutra');
+  assert.equal(group.parts[3].kind,'sutra');
+  assert.equal(group.parts[2].constantWhenFieldId, group.parts[3].id);
+  assert.equal(group.parts[4].constantWhenFieldId, group.parts[3].id);
   assert.equal(await page.$$eval('[aria-label="Find sūtra for Part sutra"]', els=>els.length),1);
   assert.equal(constant.constantText,' + ');
 
