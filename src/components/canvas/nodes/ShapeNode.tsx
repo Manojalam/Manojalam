@@ -1488,7 +1488,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           {!radialChart?.enabled && (
             <div
               onPointerDownCapture={event => {
-                if (!d.cardTemplateId || d.locked || event.button !== 0 || editing) return;
+                if (!d.cardTemplateId || d.locked || event.button !== 0 || editing || (event.target as HTMLElement).closest("[data-template-toggle]")) return;
                 const access = useCanvasStore.getState();
                 if (access.board?.accessRole === "viewer" || access.layers.some(layer => layer.id === d.layerId && layer.locked)) return;
                 event.stopPropagation();
@@ -1569,6 +1569,8 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                       )}
                       blockAlign={wholeTextAlign}
                       onChange={(html) => {
+                        const access = useCanvasStore.getState();
+                        if (d.locked || access.board?.accessRole === "viewer" || access.layers.some(layer => layer.id === d.layerId && layer.locked) || useUIStore.getState().presentationMode) return;
                         captureTextHistory();
                         const plain = html.replace(/<[^>]+>/g, "").trim();
                         updateNodeData(id, { richText: html, text: plain });

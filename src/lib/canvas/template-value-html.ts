@@ -34,6 +34,11 @@ export function refreshEditedTemplate(html: string, baseline: string, generated:
     const oldParagraph = spans(before).find(span => span.dataset.fieldInstance === key)?.closest("p");
     const target = spans(body).find(span => span.dataset.fieldInstance === key)?.closest("p");
     if (!oldParagraph || !target) continue;
+    for (const attribute of ["data-template-row", "data-template-parent", "data-template-collapsible"]) {
+      const value = paragraph.getAttribute(attribute);
+      if (value !== null) target.setAttribute(attribute, value); else target.removeAttribute(attribute);
+    }
+    if (!target.hasAttribute("data-template-collapsed")) target.setAttribute("data-template-collapsed", paragraph.getAttribute("data-template-collapsed") || "false");
     for (const property of ["line-height", "text-align", "padding-left"]) {
       const current = target.style.getPropertyValue(property);
       if (!current || current === oldParagraph.style.getPropertyValue(property)) target.style.setProperty(property, paragraph.style.getPropertyValue(property));

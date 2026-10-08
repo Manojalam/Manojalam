@@ -7,6 +7,7 @@ import { Extension, Mark, mergeAttributes, type Editor, type Command } from "@ti
 import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
 import { TemplateTextRole } from "@/lib/canvas/template-text-role";
 import { templateInputFields } from "@/lib/canvas/card-templates";
+import { TemplateRowCollapse } from "@/lib/canvas/template-row-collapse";
 import { FieldLabel } from "@/lib/canvas/field-label";
 import { flexibleCardLabels } from "@/lib/canvas/flexible-card";
 import { SampleField } from "@/lib/canvas/sample-field";
@@ -315,6 +316,7 @@ const EXTENSIONS = [
     },
   }),
   ParagraphLayout,
+  TemplateRowCollapse,
   TemplateTextRole,
   FieldLabel,
   SampleField,

@@ -293,6 +293,10 @@ export interface CardTemplateField {
 }
 
 export interface CardTemplateRow {
+  /** This row stays visible as the heading for its child rows. */
+  collapsible?: boolean;
+  collapsedByDefault?: boolean;
+  collapseParentId?: string;
   id: string;
   indent: number;
   textAlign?: "left" | "center" | "right" | "justify";

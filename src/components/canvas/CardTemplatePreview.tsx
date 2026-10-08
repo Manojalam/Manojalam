@@ -1,5 +1,6 @@
 "use client";
 
+import { RichTextEditor } from "./RichTextEditor";
 import { useEffect, useRef, useState } from "react";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
 import { renderCardSections, renderCardTemplate } from "@/lib/canvas/card-templates";
@@ -22,7 +23,7 @@ export function CardTemplatePreview({ template, values, extraRows, sections }: {
   const scale = Math.min(1, width / 600);
   return <div ref={container} className="w-full overflow-hidden">
     <div className="relative" style={{ height: height * scale }}>
-      <div ref={card} aria-label="Template text preview" className="absolute left-0 top-0 p-2" style={{ color: template.style.textColor, fontFamily: template.style.fontFamily || undefined, fontSize: template.style.fontSize, width: 600, transform: `scale(${scale})`, transformOrigin: "top left" }} dangerouslySetInnerHTML={{ __html: (sections ? renderCardSections(template, sections) : renderCardTemplate(template, values, extraRows)).richText }} />
+      <div ref={card} aria-label="Template text preview" className="absolute left-0 top-0 p-2" style={{ color: template.style.textColor, fontFamily: template.style.fontFamily || undefined, fontSize: template.style.fontSize, width: 600, transform: `scale(${scale})`, transformOrigin: "top left" }} ><RichTextEditor templateText editable={false} initialContent={(sections ? renderCardSections(template, sections) : renderCardTemplate(template, values, extraRows)).richText} onChange={() => {}} /></div>
     </div>
   </div>;
 }

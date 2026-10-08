@@ -63,7 +63,8 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
       return fields;
       };
       fields.push(...readFields(row.fields));
-      if (fields.length) rows.push({ id: row.id, indent: bounded(row.indent, 0, 0, 10), fields,
+      if (fields.length) rows.push({ ...(row.collapsible === true ? { collapsible: true, collapsedByDefault: row.collapsedByDefault === true } : {}),
+        ...(typeof row.collapseParentId === "string" && rows.some(parent => parent.id === row.collapseParentId && parent.collapsible) ? { collapseParentId: row.collapseParentId } : {}), id: row.id, indent: bounded(row.indent, 0, 0, 10), fields,
         ...(["left", "center", "right", "justify"].includes(row.textAlign) ? { textAlign: row.textAlign } : {}),
         ...(typeof row.lineSpacing === "number" && Number.isFinite(row.lineSpacing) ? { lineSpacing: bounded(row.lineSpacing, 1.5, 1, 4) } : {}),
       });
@@ -178,7 +179,10 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       return `<span ${Object.entries(attributes).map(([name, value]) => `${name}="${escapeHtml(value)}"`).join(" ")} style="${style}">${decorateTemplateValue(styledContent, attributes, style)}</span>`;
     }).join("")).join("");
     const localParagraph = entries.flatMap(entry => templateInputFields(entry.row.fields).map(field => entry.values[field.id]).filter(Boolean)).map(value => valueParagraphStyle(value.paragraphStyle || "")).filter(Boolean).at(-1) || "";
-    return `<p style="${textStyle} text-align: ${row.textAlign || "left"}; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${row.lineSpacing ?? template.style.lineSpacing}; ${localParagraph}">${fields}</p>`;
+    const rowKey = escapeHtml(JSON.stringify([sectionId, row.id]));
+    const parent = row.collapseParentId && template.rows.slice(0, template.rows.indexOf(row)).find(candidate => candidate.id === row.collapseParentId && candidate.collapsible);
+    const collapse = ` data-template-row="${rowKey}"${row.collapsible ? ` data-template-collapsible="true" data-template-collapsed="${row.collapsedByDefault === true}"` : ""}${parent ? ` data-template-parent="${escapeHtml(JSON.stringify([sectionId, parent.id]))}"` : ""}`;
+    return `<p${collapse} style="${textStyle} text-align: ${row.textAlign || "left"}; white-space: pre-wrap; padding-left: ${row.indent}em; line-height: ${row.lineSpacing ?? template.style.lineSpacing}; ${localParagraph}">${fields}</p>`;
   }).join("") + filledExtraRows.map(row => `<p style="${textStyle} text-align: left; white-space: pre-wrap; line-height: ${template.style.lineSpacing}"><span style="${textStyle}">${escapeHtml(row).replace(/\r?\n/g, "<br>")}</span></p>`).join("");
   const text = paragraphs.map(entries => entries.map(({ row, values }) => fieldEntries(row, values).map(({ value }) => value?.text ?? "").join("")).join("")).concat(filledExtraRows).join("\n");
   return { richText, text };
@@ -201,7 +205,7 @@ export function renderCardSections(template: BoardCardTemplate, sections: CardSe
     return { richText, text: templateValueText(richText) };
   }).filter(section => section.text.trim());
   return {
-    richText: content.map(section => section.richText).join(`<p style="line-height: ${template.style.lineSpacing}"><br></p>`),
+    richText: content.map(section => section.richText).join(`<p data-template-section-separator="true" style="line-height: ${template.style.lineSpacing}"><br></p>`),
     text: content.map(section => section.text).join("\n\n"),
   };
 }
@@ -286,6 +290,7 @@ export function cardSectionsFromText(template: BoardCardTemplate, sections: Card
   const chunks = new Map(next.map(section => [section.id, ""]));
   let active = next[0]?.id;
   for (const element of Array.from(body.children)) {
+    if (element.hasAttribute("data-template-section-separator")) continue;
     const mark = element.querySelector<HTMLElement>("[data-field-instance]");
     if (mark) { try { const id = JSON.parse(mark.dataset.fieldInstance!)[0]; if (chunks.has(id)) active = id; } catch { /* Unrecognized pasted labels remain ordinary text. */ } }
     if (active) chunks.set(active, chunks.get(active)! + element.outerHTML);

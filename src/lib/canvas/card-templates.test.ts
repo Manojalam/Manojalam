@@ -1,3 +1,4 @@
+import { hiddenTemplateRows } from "./template-row-collapse";
 import { placeTemplateField } from "./template-field-order";
 import type { CardSection } from "../types";
 import assert from "node:assert/strict";
@@ -443,4 +444,36 @@ test("extended field and part typography survives normalization and rendering", 
   assert.match(result.richText, /<sup><s>Text<\/s><\/sup>/);
   assert.match(result.richText, /background-color: #ffee00/);
   assert.equal(saved.rows[0].fields[0].parts![0].superscript, true);
+});
+
+
+test("collapsible row design survives persistence and rejects invalid parent links", () => {
+  const template = newHomeworkTemplate("collapse");
+  template.rows[0].collapsible = true;
+  template.rows[0].collapsedByDefault = true;
+  template.rows[1].collapseParentId = template.rows[0].id;
+  template.rows[2].collapseParentId = template.rows[2].id;
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.equal(saved.rows[0].collapsedByDefault, true);
+  assert.equal(saved.rows[1].collapseParentId, saved.rows[0].id);
+  assert.equal(saved.rows[2].collapseParentId, undefined);
+  const rendered = renderCardSections(saved, [{ id: "a", values: { question: { text: "भवति" }, answer: { text: "भू + तिप्" } }, extraRows: [] }, { id: "b", values: { question: { text: "भवतः" }, answer: { text: "भू + तस्" } }, extraRows: [] }]);
+  assert.match(rendered.richText, /data-template-collapsed="true"/);
+  assert.match(rendered.richText, /data-template-parent="\[&quot;a&quot;/);
+  assert.match(rendered.richText, /data-template-parent="\[&quot;b&quot;/);
+  assert.ok(rendered.text.includes("भू + तिप्"));
+});
+
+test("row visibility follows only its own ancestors and does not hide orphaned rows", () => {
+  const rows = [
+    { key: "a", collapsible: true, collapsed: true },
+    { key: "b", parent: "a", collapsible: true, collapsed: false },
+    { key: "c", parent: "b", collapsible: false, collapsed: false },
+    { key: "other", collapsible: true, collapsed: false },
+    { key: "other-child", parent: "other", collapsible: false, collapsed: false },
+    { key: "orphan", parent: "missing", collapsible: false, collapsed: false },
+  ];
+  assert.deepEqual([...hiddenTemplateRows(rows)], ["b", "c"]);
+  rows[0].collapsed = false;
+  assert.equal(hiddenTemplateRows(rows).size, 0);
 });
