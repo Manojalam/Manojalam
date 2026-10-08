@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 export function TemplateUseActions({ kind, template, prepare }: { kind: "card" | "sample"; template: BoardCardTemplate | SampleCardTemplate; prepare?: () => void }) {
   const node = useCanvasStore(state => state.selectedNodeIds.length === 1 ? state.nodes.find(item => item.id === state.selectedNodeIds[0]) : undefined);
-  const columnTarget = useUIStore(state => state.fillingTableColumn);
+  const columnTarget = useUIStore(state => state.selectedTableCell ?? state.fillingTableColumn);
   const table = node?.type === "table" ? normalizeTable(node.data.table) : undefined;
   const targetCell = columnTarget?.nodeId === node?.id && table?.columns.some(column => column.id === columnTarget?.columnId) && table.rows.some(row => row.id === columnTarget?.rowId) ? columnTarget : undefined;
   const columnMode = node?.type === "table" && kind === "card";

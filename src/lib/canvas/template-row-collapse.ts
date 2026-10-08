@@ -56,7 +56,7 @@ export const TemplateRowCollapse = Extension.create({
             button.setAttribute("aria-expanded", String(!row.collapsed));
             button.setAttribute("aria-label", `${row.collapsed ? "Expand" : "Collapse"} ${row.text.trim().slice(0, 80) || "row"}`);
             button.title = row.collapsed ? "Expand rows" : "Collapse rows";
-            button.textContent = row.collapsed ? "▸" : "▾";
+            button.textContent = row.collapsed ? "+" : "−";
             button.style.cssText = "display:inline-block;pointer-events:auto;cursor:pointer;color:var(--foreground,currentColor);background:none;border:0;padding:0 .3em 0 0;font:inherit;user-select:none";
             button.onmousedown = event => event.preventDefault();
             button.onkeydown = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); button.click(); } };
@@ -73,6 +73,7 @@ export const TemplateRowCollapse = Extension.create({
                 }
               }
               view.dispatch(tr);
+              view.dom.dispatchEvent(new CustomEvent("template-row-toggled", { bubbles: true }));
             };
             return button;
           }, { side: -1, key: `${row.key}:${row.collapsed}:${row.text}`, stopEvent: () => true }));
