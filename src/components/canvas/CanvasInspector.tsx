@@ -1,4 +1,6 @@
 "use client";
+
+import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
 import { InlineTextControls } from "./InlineTextControls";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { normalizeWholeTextFormat } from "@/lib/canvas/whole-text-format";
@@ -1241,6 +1243,7 @@ function BorderStylePicker({ value, onChange }: {
 }
 
 function ConnectionInspectorSections({
+  tab,
   connectionEdges,
   commonValue,
   commonLabelValue,
@@ -1251,6 +1254,7 @@ function ConnectionInspectorSections({
   onReverse,
   onDelete,
 }: {
+  tab?: InspectorTab;
   connectionEdges: Edge[];
   commonValue: (key: string) => unknown;
   commonLabelValue: (key: string) => unknown;
@@ -1310,7 +1314,7 @@ function ConnectionInspectorSections({
   const labelFontStyle = commonLabelValue("labelFontStyle") === "italic" ? "italic" : "normal";
   return (
     <>
-      <Section label={`Connection path (${connectionEdges.length})`}>
+      <Section label={`Connection path (${connectionEdges.length})`} visible={!tab || tab === "layout"} defaultOpen>
         <div className="grid grid-cols-3 gap-1">
           {([
             ["step", "Elbow"],
@@ -1390,7 +1394,7 @@ function ConnectionInspectorSections({
           Reverse {connectionEdges.length === 1 ? "direction" : `${connectionEdges.length} directions`}
         </Button>
       </Section>
-      <Section label="Connection appearance">
+      <Section label="Connection appearance" visible={!tab || tab === "style"} defaultOpen>
         <div>
           <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
           <ColorSwatchPicker
@@ -1417,7 +1421,7 @@ function ConnectionInspectorSections({
           Delete {connectionEdges.length === 1 ? "connection" : `${connectionEdges.length} connections`}
         </Button>
       </Section>
-      <Section label="Connection label">
+      <Section label="Connection label" visible={!tab || tab === "text"} flat={!!tab} defaultOpen>
         {connectionEdges.length === 1 && (
           <div>
             <Label htmlFor="connection-label" className="text-xs">Label</Label>
@@ -1861,6 +1865,9 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     }
     return null;
   })();
+  const specificLabel = objectPropertiesLabel(selectedNode ?? undefined, nodes, edges);
+  const hierarchyTab = embedded ? (specificLabel && specificLabel !== "Table" ? "specific" : "data") : "layout";
+  const dimensionsTab = embedded ? (["Table", "Matrix", "Radial", "Diagram"].includes(specificLabel ?? "") ? "specific" : "layout") : "shape";
   const structuredLayoutRootData = (structuredLayoutRootNode?.data ?? {}) as Record<string, unknown>;
   const structuredLayoutMode = structuredLayoutRootData.layoutMode as LayoutMode | undefined;
   const canColorSelectedBranch = structuredLayoutMode === "matrix" && !!selectedNode && selectedNode.id !== structuredLayoutRootNode?.id;
@@ -2005,6 +2012,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   const activeRadialBorderStyle = layoutBorderLineStyle(
     radialRootData.layoutBorderStyle
   );
+  const selectedTextEditor = selectedNode && activeTextSelection?.nodeId === selectedNode.id ? activeTextSelection : null;
   const selectedTextRange = selectedNode && activeTextSelection?.nodeId === selectedNode.id && activeTextSelection.hasSelection
     ? activeTextSelection
     : null;
@@ -2952,7 +2960,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Button>
           </div>}
           {selectedHierarchyNumberNodes.length > 0 && (
-            <Section label="Numbering">
+            <Section label="Numbering" visible={!embedded || singleNodeTab === "data"} defaultOpen>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Applies to {selectedHierarchyNumberNodes.length} hierarchy object{selectedHierarchyNumberNodes.length === 1 ? "" : "s"}.
                 Hidden objects keep their structural position.
@@ -2983,7 +2991,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
           {!isRadialMultiSelection && selectedNodes.length > 1 && canMatchSelectionSize && (
-            <Section label="Selected box dimensions">
+            <Section label="Selected box dimensions" visible={!embedded || singleNodeTab === "layout"} defaultOpen>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Enter an exact dimension for all {selectedNodes.length} selected boxes. The other dimension stays unchanged, and structured layouts reflow automatically.
               </p>
@@ -3019,7 +3027,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
           {!isRadialMultiSelection && selectedNodes.length > 1 && (
-            <Section label="Arrange">
+            <Section label="Arrange" visible={!embedded || singleNodeTab === "layout"} defaultOpen>
               <div className="space-y-2 rounded-lg border border-border bg-muted/25 p-2">
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Tidy selection</p>
@@ -3169,7 +3177,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
           {isMatrixCellMultiSelection && (
-            <Section label="Matrix cell minimum size">
+            <Section label="Matrix cell minimum size" visible={!embedded || singleNodeTab === "specific"} defaultOpen>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Enter one minimum size for all {selectedMatrixCells.length} selected cells. Leaf cells use it exactly; aligned or merged cells can grow beyond it.
               </p>
@@ -3220,7 +3228,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
           {selectedMatrixLevel && matrixLevelParents.length > 0 && (
-            <Section label="Matrix arrangement">
+            <Section label="Matrix arrangement" visible={!embedded || singleNodeTab === "specific"} defaultOpen>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Arrange the complete sibling {matrixLevelParents.length === 1 ? "group" : "groups"} represented by these same-level cells.
               </p>
@@ -3279,7 +3287,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
           {!isRadialMultiSelection && selectedShapeTransformNodes.length > 0 && (
-            <Section label="Shape type">
+            <Section label="Shape type" visible={!embedded || singleNodeTab === "style"} defaultOpen>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Applies to {selectedShapeTransformNodes.length} selected shape object{
                   selectedShapeTransformNodes.length === 1 ? "" : "s"
@@ -3304,7 +3312,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               </div>
             </Section>
           )}
-          {(selectedTextNodes.length > 0 || editableSelectionEdges.length > 0) && <Section label="Text">
+          {(selectedTextNodes.length > 0 || editableSelectionEdges.length > 0) && <Section label="Text" visible={!embedded || singleNodeTab === "text"} flat={embedded} defaultOpen>
             <p className="text-[9px] leading-snug text-muted-foreground">
               Font, size, bold, italic, and color apply to all {selectedTextNodes.length} text object{
                 selectedTextNodes.length === 1 ? "" : "s"
@@ -3501,7 +3509,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </div>
           </Section>}
 
-          <Section label="Fill">
+          <Section label="Fill" visible={!embedded || singleNodeTab === "style"} defaultOpen>
             {isRadialMultiSelection && (
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Band-1 colors coordinate the gradient shades of their descendants.
@@ -3548,7 +3556,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
 
           {surfaceEffectNodes.length > 0 && !isRadialMultiSelection && (
-            <Section label="Effects">
+            <Section label="Effects" visible={!embedded || singleNodeTab === "style"} defaultOpen>
               <SurfaceEffectsControl data={surfaceEffectNodes.map(node => node.data)} onChange={makePatch => {
                 pushHistory();
                 for (const node of surfaceEffectNodes) {
@@ -3559,7 +3567,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
 
-          <Section label="Border">
+          <Section label="Border" visible={!embedded || singleNodeTab === "style"} defaultOpen>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Color</p>
               <ColorSwatchPicker
@@ -3585,6 +3593,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
           {editableSelectionEdges.length > 0 ? (
             <ConnectionInspectorSections
+              tab={embedded ? singleNodeTab : undefined}
               connectionEdges={editableSelectionEdges}
               commonValue={commonEdgeValue}
               commonLabelValue={commonEdgeLabelValue}
@@ -3596,7 +3605,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               onDelete={deleteEditableConnections}
             />
           ) : (
-            <Section label="Connections">
+            <Section label="Connections" visible={!embedded || singleNodeTab === "data"} defaultOpen>
               <p className="text-[10px] leading-snug text-muted-foreground">
                 No visible connectors are selected or run between the selected boxes.
               </p>
@@ -3625,6 +3634,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </div>
           <div className="flex-1 divide-y overflow-y-auto">
             <ConnectionInspectorSections
+              tab={embedded ? singleNodeTab : undefined}
               connectionEdges={selectedEdges}
               commonValue={commonEdgeValue}
               commonLabelValue={commonEdgeLabelValue}
@@ -4009,7 +4019,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     );
   }
 
-  if (selectedNode.type === "sunburst" && (embedded ? singleNodeTab === "specific" : singleNodeTab !== "text" && singleNodeTab !== "shape")) {
+  if (selectedNode.type === "sunburst" && (embedded ? (["specific", "style", "layout"].includes(singleNodeTab) || (singleNodeTab === "text" && !selectedTextEditor)) : singleNodeTab !== "text" && singleNodeTab !== "shape")) {
     const chartData = (selectedNode.data ?? {}) as Record<string, unknown>;
     const chartDimensions = getNodeDimensions(selectedNode);
     const chartDiameter = Math.round(Math.max(chartDimensions.width, chartDimensions.height));
@@ -4026,7 +4036,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
         {!embedded && <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />}
-        <div className="flex items-center justify-between border-b px-3 py-2.5">
+        <div hidden={embedded} className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground">Radial chart</h3>
             <p className="truncate text-[10px] text-muted-foreground">{chartTitle}</p>
@@ -4054,7 +4064,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         </div>
 
         <div className="flex-1 divide-y overflow-y-auto">
-          <div className="space-y-2 p-3">
+          <div hidden={embedded && singleNodeTab !== "specific"} className="space-y-2 p-3">
             <p className="text-[10px] leading-relaxed text-muted-foreground">
               Drag the chart to move it. Drag any corner handle to resize it; the saved diameter stays the same after refresh.
             </p>
@@ -4114,7 +4124,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </div>
           </div>
 
-          <Section label="Size">
+          <Section label="Size" visible={!embedded || singleNodeTab === "specific"} defaultOpen>
             <label htmlFor={`sunburst-diameter-${selectedNode.id}`} className="space-y-1">
               <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Diameter</span>
               <div className="flex items-center gap-1.5">
@@ -4195,7 +4205,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </div>
           </Section>
 
-          <Section label="Transform">
+          <Section label="Transform" visible={!embedded || singleNodeTab === "layout"} defaultOpen>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Object rotation</p>
               <SliderControl
@@ -4211,7 +4221,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </div>
           </Section>
 
-          <Section label="Typography">
+          <Section label="Typography" visible={!embedded || singleNodeTab === "text"} preserveTextSelection flat={embedded} defaultOpen>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Font size</p>
               <SliderControl
@@ -4274,7 +4284,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </div>
           </Section>
 
-          <Section label="Appearance">
+          <Section label="Appearance" visible={!embedded || singleNodeTab === "style"} defaultOpen>
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <p className="mb-1 text-[9px] uppercase text-muted-foreground">Fill</p>
@@ -4316,7 +4326,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     );
   }
 
-  if (selectedNode.type === "relationshipDiagram" && (embedded ? singleNodeTab === "specific" : singleNodeTab !== "text" && singleNodeTab !== "shape")) {
+  if (selectedNode.type === "relationshipDiagram" && (embedded ? (["specific", "style", "layout"].includes(singleNodeTab) || (singleNodeTab === "text" && !selectedTextEditor)) : singleNodeTab !== "text" && singleNodeTab !== "shape")) {
     const diagramSpec = normalizeRelationshipDiagramSpec(d.relationshipDiagramSpec);
     const diagramTitle = diagramSpec.title || "Relationship Diagram";
     const diagramSubtitle = diagramSpec.subtitle;
@@ -4375,7 +4385,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
         {!embedded && <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />}
-        <div className="flex items-center justify-between border-b px-3 py-2.5">
+        <div hidden={embedded} className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground">Relationship diagram</h3>
             <p className="truncate text-[10px] capitalize text-muted-foreground">
@@ -4407,7 +4417,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </div>
         </div>
         <div className="flex-1 divide-y overflow-y-auto">
-          <div className="space-y-2 p-3">
+          <div hidden={embedded && singleNodeTab !== "specific"} className="space-y-2 p-3">
             <p className="text-[10px] leading-relaxed text-muted-foreground">
               This live relationship view can be moved, resized, styled, and exported like any other canvas object.
             </p>
@@ -4478,7 +4488,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </div>
 
           {selectedDiagramItem && (
-            <Section label="Selected relationship item">
+            <Section label="Selected relationship item" visible={!embedded || singleNodeTab === "specific"} defaultOpen>
               <div className="flex items-center gap-2 rounded-lg border border-primary/35 bg-primary/5 p-2">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-semibold text-foreground">
@@ -4573,7 +4583,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
 
-          <Section label="Size">
+          <Section label="Size" visible={!embedded || singleNodeTab === "specific"} defaultOpen>
             <div className="grid grid-cols-2 gap-2">
               <label htmlFor={`relationship-width-${selectedNode.id}`} className="space-y-1">
                 <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Width</span>
@@ -4627,7 +4637,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </p>
           </Section>
 
-          <Section label="Transform">
+          <Section label="Transform" visible={!embedded || singleNodeTab === "layout"} defaultOpen>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Object rotation</p>
               <SliderControl
@@ -4644,7 +4654,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
 
           {diagramSpec.layout === "flower" && (
-            <Section label="Flower layout">
+            <Section label="Flower layout" visible={!embedded || singleNodeTab === "specific"} defaultOpen>
               <div>
                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   Layer count
@@ -4674,7 +4684,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </Section>
           )}
 
-          <Section label="Text">
+          <Section label="Text" visible={!embedded || singleNodeTab === "text"} preserveTextSelection flat={embedded} defaultOpen>
             <div>
               <Label htmlFor="relationship-diagram-inspector-title" className="text-xs">Title</Label>
               <Input
@@ -4786,7 +4796,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             </div>
           </Section>
 
-          <Section label="Appearance">
+          <Section label="Appearance" visible={!embedded || singleNodeTab === "style"} defaultOpen>
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Palette</p>
               <Select
@@ -4921,7 +4931,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             )}
           </Section>
 
-          <Section label={`Arrange & style items (${diagramGroups.length})`}>
+          <Section label={`Arrange items (${diagramGroups.length})`} visible={!embedded || singleNodeTab === "specific"} defaultOpen>
             <p className="text-[9px] leading-relaxed text-muted-foreground">
               The order and overrides below follow each item across flower, cards, matrix, hub, and fan layouts.
             </p>
@@ -5259,7 +5269,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
       {!embedded && <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} hideSize={isRadialLayoutSector} />}
 
-      <div hidden={embedded && singleNodeTab !== "layout"} className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
+      <div hidden={embedded} className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
         <Button
           variant="outline"
           size="sm"
@@ -5449,7 +5459,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {isRadialLayoutSector && (
-          <Section label="Children" visible={singleNodeTab === "layout"}>
+          <Section label="Children" visible={singleNodeTab === hierarchyTab}>
             <div className="rounded-md border border-border bg-muted/25 p-2">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>
@@ -5493,7 +5503,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
         )}
 
-        <Section label="Hierarchy" visible={singleNodeTab === "layout"}>
+        <Section label="Hierarchy" visible={singleNodeTab === hierarchyTab}>
           {participatesInHierarchyNumbering(selectedNode) && childIds.length > 0 && (
             <div className="space-y-2 rounded-md border border-border p-2">
               <div className="flex items-center justify-between gap-3">
@@ -5686,7 +5696,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
         <Section
           label="Flowchart"
-          visible={singleNodeTab === "layout"
+          visible={singleNodeTab === hierarchyTab
+            && nodeType !== "table"
             && !matrixRootNode
             && !isRadialLayoutSector
             && (!d.layoutMode || d.layoutMode === "freeForm" || d.layoutMode === "fromParentFreeForm")}
@@ -5695,7 +5706,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         </Section>
 
         {canFoldSelectedBranch && (
-          <Section label="Fold branch" visible={singleNodeTab === "layout"}>
+          <Section label="Fold branch" visible={singleNodeTab === hierarchyTab}>
             <FoldBranchControls
               parentId={selectedNode.id}
               parentData={d}
@@ -5891,7 +5902,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             visible={singleNodeTab === "text"}
             preserveTextSelection
           >
-            {selectedTextRange ? <InlineTextControls nodeId={selectedNode.id} /> : <>
+            {selectedTextEditor ? <><p className="px-2 text-[10px] text-muted-foreground">{selectedTextRange ? "Selected text" : nodeType === "table" ? "Active cell text" : "Text at cursor"}</p><InlineTextControls nodeId={selectedNode.id} /></> : <>
             <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <span className="text-[10px] font-medium text-foreground">
                 {selectedTextRange
@@ -6130,7 +6141,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {matrixRootNode && selectedNode && (
-          <Section label="Matrix table" visible={singleNodeTab === (embedded ? "specific" : "layout")} defaultOpen>
+          <Section label="Matrix table" visible={singleNodeTab === hierarchyTab} defaultOpen>
             <MatrixLevelLayoutControls rootId={matrixRootNode.id} />
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
@@ -6701,7 +6712,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {listRootNode && (
-          <Section label="List" visible={singleNodeTab === "layout"}>
+          <Section label="List" visible={singleNodeTab === hierarchyTab}>
             <div className="grid grid-cols-2 gap-1">
               {(["compact", "comfortable"] as const).map((density) => (
                 <button
@@ -6921,7 +6932,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         {isRadialLayoutSector && (
           <Section
             label="Radial"
-            visible={singleNodeTab === "layout"}
+            visible={singleNodeTab === hierarchyTab}
           >
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
@@ -7266,7 +7277,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {supportsIndividualDimensions && (
-          <Section label="Dimensions" visible={singleNodeTab === "shape"}>
+          <Section label="Dimensions" visible={singleNodeTab === dimensionsTab} defaultOpen>
             <p className="text-[9px] leading-relaxed text-muted-foreground">
               {matrixRootNode
                 ? "Set this Matrix item's minimum dimensions. Simple cells use them exactly; aligned or merged cells may grow."
@@ -7329,7 +7340,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {isContentNode && !isRadialLayoutSector && !matrixRootNode && (
-          <Section label="Content fit" visible={singleNodeTab === "shape"}>
+          <Section label="Content fit" visible={singleNodeTab === (embedded ? "text" : "shape")} defaultOpen>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fit</p>
               <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Text sizing mode">
@@ -7381,7 +7392,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {supportsTextFrame && !isRadialLayoutSector && (
-          <Section label="Text frame" visible={singleNodeTab === "shape"}>
+          <Section label="Text frame" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Frame
@@ -7499,7 +7510,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
         {/* Matrix cells of any node type can be converted to an authored shape. */}
         {canChooseShapeType && !isRadialLayoutSector && (
-          <Section label="Shape type" visible={singleNodeTab === "shape"}>
+          <Section label="Shape type" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div className="grid grid-cols-3 gap-1">
               {SHAPE_TYPES.map(({ label, value }) => (
                 <button key={value}
@@ -7536,7 +7547,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         {supportsObjectRotation(nodeType, d) && !isRadialLayoutSector && (
           <Section
             label="Transform"
-            visible={singleNodeTab === (isShapeNode ? "shape" : "layout")}
+            visible={singleNodeTab === (embedded ? "layout" : isShapeNode ? "shape" : "layout")}
           >
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Object rotation</p>
@@ -7555,7 +7566,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {isShapeNode && !isRadialLayoutSector && (
-          <Section label="Concentric" visible={singleNodeTab === "shape"}>
+          <Section label="Concentric" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <span className="text-[10px] text-muted-foreground">{concentricLayers.length} inner shapes</span>
               <Button
@@ -7674,7 +7685,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {isShapeNode && !isRadialLayoutSector && (
-          <Section label="Split chart" visible={singleNodeTab === "shape"}>
+          <Section label="Split chart" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <Label className="text-xs">Radial split</Label>
               <Switch
@@ -8113,7 +8124,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
         {/* ── Internal fill regions ── */}
         {isContentNode && !isRadialLayoutSector && !hasFramedTextObject && (
-          <Section label="Fill regions" visible={singleNodeTab === "shape"}>
+          <Section label="Fill regions" visible={singleNodeTab === (embedded ? "style" : "shape")} defaultOpen>
             {/* Region color */}
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region color</p>

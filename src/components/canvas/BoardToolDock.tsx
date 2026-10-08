@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, LayoutTemplate } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
+import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
@@ -27,7 +28,9 @@ export function DockedSelectionTools({ children }: { children: ReactNode }) {
 }
 
 export function BoardToolMenu({ label, children }: { label: string; children: ReactNode }) {
+  const tab = useUIStore(state => state.propertiesTab);
   const category = useContext(BoardToolCategoryContext);
+  if (category === "all" && tab !== (label === "Arrange" ? "layout" : "data")) return null;
   if (category === "all") return <section className="w-full space-y-1" aria-label={label}><h4 className="text-[10px] font-medium text-muted-foreground">{label === "Add & connect" ? "Connections & notes" : label === "Arrange" ? "Position, rotation & stacking" : label}</h4><div className="board-quick-actions flex flex-wrap items-center gap-1">{children}</div></section>;
   return (
     <Popover>
@@ -46,10 +49,20 @@ export function BoardToolMenu({ label, children }: { label: string; children: Re
 
 
 export function BoardToolGroup({ label, children }: { label: string; children: ReactNode }) {
+  const context = useCanvasStore(state => {
+    const node = state.selectedNodeIds.length === 1 ? state.nodes.find(item => item.id === state.selectedNodeIds[0]) : undefined;
+    return objectPropertiesLabel(node, state.nodes, state.edges);
+  });
+  const tab = useUIStore(state => state.propertiesTab);
   const category = useContext(BoardToolCategoryContext);
   const categories: Record<string, BoardToolCategory[]> = { Create: ["create"], Format: ["text", "appearance"], Organize: ["create", "arrange", "connections"], Templates: ["templates"], "Edit & share": ["create", "arrange"] };
   if (category !== "all" && categories[label] && !categories[label].includes(category)) return null;
-  if (category === "all") return <details className="border-b p-2"><summary className="cursor-pointer text-xs font-medium">{label === "Create" ? "Related objects" : label === "Format" ? "Advanced formatting" : label === "Organize" ? "Position & connections" : label}</summary><div className="board-quick-actions mt-2 flex flex-wrap items-center gap-1">{children}</div></details>;
+  if (category === "all") {
+    const homes: Record<string, string[]> = { Create: [context && context !== "Table" ? "specific" : "data"], Format: ["style"], Text: ["text"], Organize: ["layout", "data"], "Edit & share": ["data"] };
+    if (homes[label] && !homes[label].includes(tab)) return null;
+    return <section className="border-b p-2" aria-label={label}><div className="board-quick-actions flex flex-wrap items-center gap-1">{children}</div></section>;
+  }
+
   return <div className="board-tool-group flex shrink-0 flex-col border-r px-1.5" role="group" aria-label={label}>
     <span className="px-1 text-[10px] font-semibold text-muted-foreground">{label}</span>
     <div className="board-quick-actions flex items-center gap-1">{children}</div>

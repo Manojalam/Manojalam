@@ -26,7 +26,7 @@ try{
     await page.locator('#board-properties [aria-label="Line spacing"]').fill('2');await page.keyboard.press('Tab');
     await page.waitForFunction(()=>{const p=document.querySelector('.react-flow__node .ProseMirror p');return p && parseFloat(getComputedStyle(p).lineHeight)===2*parseFloat(getComputedStyle(p).fontSize)});
   }
-  await clickText('Size');await clickText('Dimensions');assert.ok(await page.$('[aria-label="Selected item width"]'),type+' Size');
+  await clickText(({table:'Table',sunburst:'Radial',relationshipDiagram:'Diagram'})[type]??'Arrange');assert.ok(await page.$('#board-properties input[type=number]'),type+' dimensions');
   await clickText('Style');await page.evaluate(()=>document.fonts.ready);await new Promise(r=>setTimeout(r,500));
   if(['sunburst','relationshipDiagram'].includes(type)){console.log('PASS '+type+' shared inspector');continue;}
   const surface=type==='table'?'[aria-label="Row 1, Alpha beta"] .ProseMirror':['sanskrit','shloka','frame'].includes(type)?'[data-object-text-field="title"] .ProseMirror':type==='grammar'?'[data-object-text-field="topic"] .ProseMirror':'.react-flow__node .ProseMirror';
@@ -35,6 +35,8 @@ try{
   await page.waitForSelector('#board-properties [aria-label="Selected text controls"] [title="Bold"]');
   await page.click('#board-properties [aria-label="Selected text controls"] [title="Bold"]');
   assert.equal(await page.evaluate(()=>window.getSelection().toString()),'Alpha',type+' formatting preserves selection');
+  await page.waitForSelector(surface+' strong');
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   await word(surface,'beta');await page.waitForFunction(()=>window.getSelection()?.toString()==='beta');assert.equal(await page.evaluate(()=>window.getSelection().toString()),'beta',type+' native word selection');
   if(type==='table'){
     await page.keyboard.press('Tab');

@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { type Node } from "@xyflow/react";
 import {
   AlignCenterHorizontal,
@@ -70,7 +70,7 @@ import {
 } from "@/lib/canvas/text-rotation";
 import { captureShapeFormat, shapeFormatPatch } from "@/lib/canvas/shape-format";
 import { supportsShapeTransform } from "@/lib/canvas/shape-transform";
-import { DockedSelectionTools, BoardToolMenu, BoardToolGroup } from "@/components/canvas/BoardToolDock";
+import { DockedSelectionTools, BoardToolMenu, BoardToolGroup, BoardToolCategoryContext } from "@/components/canvas/BoardToolDock";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { CopyToBoardDialog } from "@/components/canvas/CopyToBoardDialog";
 import {
@@ -343,10 +343,10 @@ function RotationControls({
   );
 }
 
-function RotationPicker({ nodes }: { nodes: Node[] }) {
+function RotationPicker({ nodes, hideObject = false }: { nodes: Node[]; hideObject?: boolean }) {
   const [open, setOpen] = useState(false);
   const historyCaptured = useRef(false);
-  const rotatable = nodes.filter((node) => supportsObjectRotation(
+  const rotatable = hideObject ? [] : nodes.filter((node) => supportsObjectRotation(
     node.type,
     (node.data ?? {}) as Record<string, unknown>
   ));
@@ -441,7 +441,7 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
       saveStatus: "unsaved",
     }));
   };
-  const pickerTitle = textRotatable
+  const pickerTitle = hideObject ? `Text rotation (${displayedTextRotation}°)` : textRotatable
     ? `Rotation (object ${displayedRotation}°, text ${displayedTextRotation}°)`
     : mixed
       ? "Rotate selected objects (mixed angles)"
@@ -456,7 +456,7 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
         <button
           type="button"
           title={pickerTitle}
-          aria-label={textRotatable ? "Rotate object or text" : "Rotate selected objects"}
+          aria-label={hideObject ? "Text rotation" : textRotatable ? "Rotate object or text" : "Rotate selected objects"}
           aria-expanded={open}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
@@ -466,7 +466,7 @@ function RotationPicker({ nodes }: { nodes: Node[] }) {
               && "bg-primary/10 text-primary"
           )}
         >
-          <RotateCw className="h-4 w-4" /><span className="board-action-label hidden">Rotate object or text</span>
+          <RotateCw className="h-4 w-4" /><span className="board-action-label hidden">{hideObject ? "Text rotation" : "Rotate object or text"}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -585,6 +585,7 @@ function LayerOrderMenu({
 }
 
 export function SelectionToolbar() {
+  const docked = useContext(BoardToolCategoryContext) === "all";
   const [copyToBoardOpen, setCopyToBoardOpen] = useState(false);
   const [objectOnlyPayload, setObjectOnlyPayload] = useState<CrossBoardDiagramPayload | null>(null);
   const [copyPayload, setCopyPayload] =
@@ -813,7 +814,7 @@ export function SelectionToolbar() {
       </>}
       </BoardToolGroup>
       <BoardToolGroup label="Format">
-          {singleId && singleShapeData && (
+          {!docked && singleId && singleShapeData && (
             <ShapeChanger
               nodeIds={[singleId]}
               shapeType={(singleShapeData.shapeType as ShapeType | undefined) ?? "rounded"}
@@ -824,7 +825,7 @@ export function SelectionToolbar() {
             />
           )}
 
-      {selected.length > 1 && shapeTransformTargets.length > 0 && (
+      {!docked && selected.length > 1 && shapeTransformTargets.length > 0 && (
         <>
           <ShapeChanger
             nodeIds={shapeTransformTargets.map((node) => node.id)}
@@ -850,6 +851,7 @@ export function SelectionToolbar() {
       )}
 
       </BoardToolGroup>
+      {docked && selected.length === 1 && <BoardToolGroup label="Text"><RotationPicker nodes={selected} hideObject /></BoardToolGroup>}
       <BoardToolGroup label="Organize">
       <BoardToolMenu label="Add & connect">
       {singleIsRelationshipDiagram && singleId && (
@@ -1014,13 +1016,13 @@ export function SelectionToolbar() {
         </>
       )}
 
-      {!selectedRelationshipDiagramItem && <RotationPicker nodes={selected} />}
+      {!selectedRelationshipDiagramItem && (!docked || selected.length > 1) && <RotationPicker nodes={selected} />}
 
       {!selectedRelationshipDiagramItem && (
         <LayerOrderMenu selectedIds={selected.map((node) => node.id)} />
       )}
 
-      {singleId && (
+      {!docked && singleId && (
         <ActionButton
           label={singleLocked ? "Unlock object" : "Lock object"}
           onClick={() => setNodeLocked(singleId, !singleLocked)}
