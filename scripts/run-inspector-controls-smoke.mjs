@@ -26,7 +26,7 @@ try{
  await page.click('#board-properties button[title="Center"]');
  assert.equal(await page.$eval('[aria-label="Row 1, A"]',el=>getComputedStyle(el).textAlign),'center');
  await button('Style');await button('Fill');await button('Border');
- await button('Size');await button('Dimensions');
+ await button('Table');
  assert.ok(await page.$('[aria-label="Selected item width"]'));
  // Select template text, then open Properties and Text without losing the range.
  await page.click('[aria-label="Template text, B"]');

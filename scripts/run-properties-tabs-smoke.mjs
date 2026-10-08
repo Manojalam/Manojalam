@@ -27,7 +27,8 @@ try{
  assert.equal(await page.$$eval('#board-properties [role="tablist"]',els=>els.length),1);
  assert.equal(await page.$$eval('#board-properties [aria-label="Object properties tabs"]',els=>els.filter(el=>el.getBoundingClientRect().height).length),0);
  await page.screenshot({path:'.tmp/properties-template-tabs.png'});
- await tab('Table');await page.waitForSelector('#properties-table-tools [aria-label="Table tools"]');
+ assert.deepEqual(await page.$$eval('[data-properties-header] [role=tab]',els=>els.map(el=>el.textContent)),['Style','Text','Template','Table','Arrange','More']);
+ await tab('Table');assert.ok(await page.$('#board-properties [aria-label="Selected item width"]'));await page.waitForSelector('#properties-table-tools [aria-label="Table tools"]');
  assert.ok(await page.$eval('#properties-table-tools',el=>el.getBoundingClientRect().height>100));
  assert.ok(await page.$eval('#properties-table-tools',el=>el.scrollWidth<=el.clientWidth+1),'Table controls fit the sidebar');
  assert.equal(await page.$$eval('.react-flow__node [aria-label="Table tools"]',els=>els.length),0,'Table controls leave the canvas');
@@ -49,9 +50,26 @@ try{
  });
  await page.goto(base+'/app/boards/guest-matrix-tabs',{waitUntil:'networkidle0'});
  await page.$eval('.react-flow__node',el=>el.click());await page.click('[aria-label="Object properties"]');
+ assert.equal(await page.$$eval('[data-properties-header] [role=tab]',els=>els.some(el=>['Size','Structure','Data'].includes(el.textContent))),false);
  await tab('Matrix');assert.match(await page.$eval('#board-properties',el=>el.innerText),/Matrix table/i);
  await tab('Template');assert.ok(await page.$('#properties-template [aria-label="Templates"]'));
  await page.setViewport({width:900,height:750});
  const compact=await page.$eval('#properties-template',el=>el.getBoundingClientRect().height);assert.ok(compact>500,String(compact));
+ await page.setViewport({width:1600,height:950});
+ await page.evaluate(async()=>{
+  const db=await new Promise(resolve=>{const r=indexedDB.open('manojalam-guest-boards',1);r.onsuccess=()=>resolve(r.result)});
+  await new Promise(resolve=>{const tx=db.transaction('boards','readwrite');tx.oncomplete=resolve;
+   for(const mode of ['list','mindMap','topDown','radial']) tx.objectStore('boards').put({id:'guest-context-'+mode,title:mode,storageMode:'local',accessRole:'owner',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),content:{nodes:[{id:'root',type:'shape',position:{x:100,y:180},data:{text:'Root',layoutMode:mode},style:{width:240,height:90}},{id:'child',type:'mindmap',position:{x:430,y:180},data:{text:'Child'},style:{width:240,height:90}}],edges:[{id:'e',source:'root',target:'child'}],settings:{},viewport:{x:0,y:0,zoom:1}}});
+  });db.close();
+ });
+ for(const [mode,label] of [['list','List'],['mindMap','Mind map'],['topDown','Tree'],['radial','Radial']]) {
+  await page.goto(base+'/app/boards/guest-context-'+mode,{waitUntil:'networkidle0'});
+  await page.$eval('.react-flow__node[data-id="child"]',el=>el.click());await page.click('[aria-label="Object properties"]');
+  await tab(label);
+  assert.ok(await page.$('#board-properties [aria-label="Child order"]'),label+' inherited child context');
+  await tab('Arrange');assert.ok(await page.$('#board-properties [aria-label="Object position x"]'));
+  await tab('More');
+  assert.ok(await page.$('#board-properties [aria-label="Edit & share"]'));
+ }
  assert.deepEqual(errors,[]);console.log('PASS fixed shared tabs, full-height template, table-specific tools and retained inline selection');
 }catch(e){await page.screenshot({path:'.tmp/properties-tabs-failure.png'}).catch(()=>{});throw e}finally{await browser.close()}

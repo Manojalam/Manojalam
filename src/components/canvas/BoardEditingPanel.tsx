@@ -11,6 +11,7 @@ import { LayoutPanel } from "./LayoutPanel";
 import { CanvasLayersPanel } from "./CanvasLayersPanel";
 import { ChildOrderControls } from "./ChildOrderControls";
 import { normalizeTable } from "@/lib/canvas/table";
+import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { TableCellFillPanel } from "./TableCellFillPanel";
 import { FillCardDialog } from "./FillCardDialog";
@@ -23,10 +24,26 @@ function ObjectToolsSlot({ nodeId, hidden }: { nodeId: string; hidden: boolean }
   return <div id="properties-table-tools" ref={attach} hidden={hidden} />;
 }
 
+function ObjectPosition({ nodeId }: { nodeId: string }) {
+  const node = useCanvasStore(state => state.nodes.find(item => item.id === nodeId));
+  const readonly = useCanvasStore(state => state.board?.accessRole === "viewer" || state.layers.some(layer => layer.id === node?.data.layerId && layer.locked));
+  if (!node) return null;
+  return <section className="grid grid-cols-2 gap-2 border-b p-3" aria-label="Object position">
+    <h3 className="col-span-2 text-xs font-medium">Position{node.parentId ? " within parent" : " on board"}</h3>
+    {(["x", "y"] as const).map(axis => <label key={axis} className="text-xs uppercase">{axis}<input
+      key={node.position[axis]} type="number" step="any" aria-label={`Object position ${axis}`} disabled={readonly || !!node.data.locked}
+      className="mt-1 h-8 w-full rounded border bg-background px-2" defaultValue={Math.round(node.position[axis] * 100) / 100}
+      onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }}
+      onBlur={event => { const value = Number(event.currentTarget.value); if (!event.currentTarget.value || !Number.isFinite(value) || value === node.position[axis]) return; const state = useCanvasStore.getState(); state.pushHistory(); state.setNodes(items => items.map(item => item.id === nodeId ? { ...item, position: { ...item.position, [axis]: value } } : item)); }}
+    /></label>)}
+  </section>;
+}
+
 /** One fixed navigation header. Each tool uses the available panel height. */
 export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: HTMLDivElement | null) => void }) {
   const ui = useUIStore();
   const nodes = useCanvasStore(state => state.nodes);
+  const edges = useCanvasStore(state => state.edges);
   const ids = useCanvasStore(state => state.selectedNodeIds);
   const edgeIds = useCanvasStore(state => state.selectedEdgeIds);
   const selected = nodes.filter(node => ids.includes(node.id));
@@ -37,9 +54,13 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const cell = target && table.columns.some(column => column.id === target.columnId) && table.rows.some(row => row.id === target.rowId);
   const auxiliary = ui.layoutPanelOpen || ui.layersPanelOpen;
   const editing = !auxiliary && ui.boardPanel !== "board";
-  const isMatrix = candidate?.data.layoutMode === "matrix" || !!candidate?.data.matrixRootId;
-  const specific = candidate?.type === "table" ? "Table" : isMatrix ? "Matrix" : candidate?.type === "sunburst" ? "Radial" : candidate?.type === "relationshipDiagram" ? "Diagram" : null;
-  const activeTab = ui.propertiesTab === "specific" && !specific ? "style" : ui.propertiesTab;
+  const labels = selected.map(node => objectPropertiesLabel(node, nodes, edges));
+  const specific = labels.length && labels.every(label => label === labels[0]) && (selected.length === 1 || labels[0] === "Matrix") ? labels[0] : null;
+  const supportsText = !selected.length || selected.some(node => objectCapabilities(node.type).text);
+  const supportsStyle = !selected.length || selected.some(node => objectCapabilities(node.type).surface);
+
+  // Old saved Size selections resolve to their new home.
+  const requestedTab = ui.propertiesTab === "shape" ? (specific ? "specific" : "layout") : ui.propertiesTab === "specific" && !specific ? "layout" : ui.propertiesTab;
   const changeInspectorTab = useCallback((tab: InspectorTab) => useUIStore.setState({ propertiesTab: tab }), []);
   useEffect(() => {
     const selection = useCanvasStore.subscribe((next, previous) => {
@@ -61,10 +82,12 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   }, []);
   const close = () => { ui.setBoardPanel(null); ui.setLayoutPanelOpen(false); ui.setLayersPanelOpen(false); ui.setFillingCardNodeId(null); useUIStore.setState({ fillingTableColumn: null }); };
   const tabs: { id: typeof ui.propertiesTab; label: string }[] = [
-    { id: "style", label: "Style" }, ...(candidate && !objectCapabilities(candidate.type).text ? [] : [{ id: "text" as const, label: "Text" }]),
-    { id: "shape", label: "Size" }, { id: "template", label: "Template" },
-    { id: "layout", label: "Structure" }, { id: "data", label: "Data" }, ...(specific ? [{ id: "specific" as const, label: specific }] : []),
+    ...(supportsStyle ? [{ id: "style" as const, label: "Style" }] : []), ...(supportsText ? [{ id: "text" as const, label: "Text" }] : []),
+    ...(supportsText && !edgeIds.length ? [{ id: "template" as const, label: "Template" }] : []),
+    ...(specific ? [{ id: "specific" as const, label: specific }] : []),
+    { id: "layout", label: "Arrange" }, { id: "data", label: "More" },
   ];
+  const activeTab = tabs.some(tab => tab.id === requestedTab) ? requestedTab : tabs[0]?.id ?? "data";
   return <>
     <header className="shrink-0 border-b bg-background" data-properties-header>
       <div className="flex items-center justify-between px-3 py-2">
@@ -74,7 +97,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
           <button type="button" title="Close panel" aria-label="Close editing panel" onClick={close} className="rounded p-1.5 hover:bg-accent"><X size={16} /></button>
         </div>
       </div>
-      {ui.boardPanel !== "board" && <div role="tablist" aria-label="Properties tabs" className="grid grid-cols-4 gap-1 px-2 pb-2">{tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`properties-${tab.id}`} onMouseDown={event => event.preventDefault()} onClick={() => { ui.setBoardPanel("selection"); useUIStore.setState({ propertiesTab: tab.id }); }} className="rounded-md px-1 py-2 text-xs font-medium aria-selected:bg-primary aria-selected:text-primary-foreground">{tab.label}</button>)}</div>}
+      {ui.boardPanel !== "board" && <div role="tablist" aria-label="Properties tabs" className="grid grid-cols-3 gap-1 px-2 pb-2">{tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`properties-${tab.id}`} onMouseDown={event => event.preventDefault()} onClick={() => { ui.setBoardPanel("selection"); useUIStore.setState({ propertiesTab: tab.id }); }} className="rounded-md px-1 py-2 text-xs font-medium aria-selected:bg-primary aria-selected:text-primary-foreground">{tab.label}</button>)}</div>}
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
     {ui.boardPanel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
@@ -83,13 +106,14 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       {cell ? <TableCellFillPanel /> : card ? <FillCardDialog embedded key={card.id} nodeId={card.id} onClose={() => { ui.setFillingCardNodeId(null); useUIStore.setState({ propertiesTab: "style" }); }} /> : <div className="min-h-0 flex-1 overflow-y-auto"><TemplateLauncher /></div>}
     </div>
     <div role="tabpanel" id={`properties-${activeTab === "template" ? "style" : activeTab}`} aria-label={specific && activeTab === "specific" ? specific : activeTab} className={editing && activeTab !== "template" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
-      {activeTab === "layout" && <ChildOrderControls />}
-      <div hidden={activeTab === "specific" && candidate?.type === "table"}>
+      {activeTab === "specific" && <ChildOrderControls />}
+      {activeTab === "layout" && candidate && <ObjectPosition nodeId={candidate.id} />}
+      <div>
         {selected.length || edgeIds.length ? <CanvasInspector embedded tab={activeTab === "template" ? "style" : activeTab} onTabChange={changeInspectorTab} showTemplates={false} /> : <p className="p-4 text-sm text-muted-foreground">Select an object to edit it.</p>}
       </div>
       {candidate?.type === "table" && <ObjectToolsSlot nodeId={candidate.id} hidden={activeTab !== "specific"} />}
       {selected.length === 1 && activeTab === "style" && <div className="border-b px-2"><SaveBoxTemplateButton node={selected[0]} /></div>}
-      <div hidden={activeTab !== "layout"} ref={setToolbarHost} className="board-selection-dock" />
+      <div hidden={activeTab === "template"} ref={setToolbarHost} className="board-selection-dock" />
     </div>
   </>;
 }
