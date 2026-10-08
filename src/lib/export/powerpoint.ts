@@ -943,7 +943,7 @@ function renderSpecialNode(context: RenderContext, node: Node, rect: PowerPointR
     const tableRows: PptxGenJS.TableRow[] = tableDisplayRows(table).map(row => row.map(cell => ({ text: cell.text, options: { rowspan: cell.rowspan, colspan: cell.colspan, ...(cell.header ? { bold: true, fill: { color: "E2E8F0" } } : {}) } })));
     context.slide.addTable(tableRows, {
       x: rect.x, y: rect.y, w: rect.width, h: rect.height,
-      colW: Array.from({ length: table.columns.length + (table.showRowLabels ? 1 : 0) }, () => rect.width / (table.columns.length + (table.showRowLabels ? 1 : 0))),
+      colW: [...(table.showRowLabels ? [table.labelWidth ?? 120] : []), ...table.columns.map(column => column.width ?? 120)].map(width => rect.width * width / (table.columns.reduce((sum, column) => sum + (column.width ?? 120), table.showRowLabels ? table.labelWidth ?? 120 : 0))),
       fontFace: nodeFontFace(node), fontSize: clamp(Number(node.data.fontSize) || 14, 6, 24),
       color: INK, border: { type: "solid", color: "94A3B8", pt: 0.5 },
       margin: 3, autoPage: false,

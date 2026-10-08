@@ -5,7 +5,7 @@ import { normalizeTable, tableTemplateDesign, tablePlainText } from "@/lib/canva
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import { applyStyleTemplate, captureTemplateStyle, detachTemplateData, normalizeBoardStyleTemplates, supportsStyleTemplate, templateRolesFromHtml, bindTemplateRoles, refreshTemplateRoles } from "@/lib/canvas/board-style-templates";
 import type { BoardStyleTemplate, BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
-import { cardSections, cardTemplateNodeData, detachCardTemplateData, normalizeCardTemplates, renderCardSections } from "@/lib/canvas/card-templates";
+import { cardSectionsFromText, cardSections, cardTemplateNodeData, detachCardTemplateData, normalizeCardTemplates, renderCardSections } from "@/lib/canvas/card-templates";
 import { flexibleCardContent } from "@/lib/canvas/flexible-card";
 import { normalizeSampleTemplates, refreshSampleFields, sampleCardData, sampleTemplateCopyData } from "@/lib/canvas/sample-templates";
 import type { SampleCardTemplate, SampleCardEntry } from "@/lib/types";
@@ -3954,6 +3954,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   updateNodeData: (nodeId, data) => {
+    const editingNode = get().nodes.find(node => node.id === nodeId);
+    if (typeof data.richText === "string" && editingNode?.data.cardTemplateId && !editingNode.data.freeCardLayout && !data.cardSections) {
+      const template = get().settings.cardTemplates?.find(item => item.id === editingNode.data.cardTemplateId) ?? normalizeCardTemplates([editingNode.data.cardTemplateSnapshot])[0];
+      if (template) {
+        const sections = cardSectionsFromText(template, cardSections(editingNode.data), data.richText);
+        data = { ...data, cardSections: sections, cardFieldValues: sections[0]?.values ?? {} };
+      }
+    }
     const sampleId = get().nodes.find(node => node.id === nodeId)?.data.sampleDesignId;
     if (typeof sampleId === "string" && typeof data.richText === "string") {
       get().updateSampleTemplate(sampleId, { richText: data.richText }, false);

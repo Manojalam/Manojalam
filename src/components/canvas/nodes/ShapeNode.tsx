@@ -1106,7 +1106,6 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   );
 
   const [editing, setEditing] = useState(false);
-  const setFillingCardNodeId = useUIStore(state => state.setFillingCardNodeId);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const [chartTextEdit, setChartTextEdit] = useState<ChartTextEdit | null>(null);
   const initialContent = (dd.richText as string) || (d.text as string) || "";
@@ -1217,16 +1216,12 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
   }, [pushHistory]);
 
   const beginRequestedEdit = useCallback(() => {
-    if (d.sampleTemplateId && !d.freeCardLayout) return;
-    if (d.cardTemplateId && !d.freeCardLayout) {
-      if (!d.locked) setFillingCardNodeId(id);
-      return;
-    }
+    if (d.locked || (d.sampleTemplateId && !d.freeCardLayout)) return;
     if (!isDrawing) {
       setEditFocusPoint(null);
       setEditing(true);
     }
-  }, [isDrawing, setEditing, setFillingCardNodeId, id, d.cardTemplateId, d.locked, d.sampleTemplateId, d.freeCardLayout]);
+  }, [isDrawing, setEditing, d.locked, d.sampleTemplateId, d.freeCardLayout]);
   useNodeTextEditRequest(id, beginRequestedEdit);
 
   const finishEditing = useCallback(() => {
@@ -1300,11 +1295,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
         className="group relative flex h-full w-full items-center justify-center"
         onDoubleClick={(event) => {
           event.stopPropagation();
-          if (d.sampleTemplateId && !d.freeCardLayout) return;
-          if (d.cardTemplateId && !d.freeCardLayout) {
-            if (!d.locked) setFillingCardNodeId(id);
-            return;
-          }
+          if (d.locked || (d.sampleTemplateId && !d.freeCardLayout)) return;
           if (isDrawing || radialChart?.enabled) return;
           editHistoryCaptured.current = false;
           editDirty.current = false;
@@ -1496,9 +1487,21 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
           {!radialChart?.enabled && (
             <div
+              onPointerDownCapture={event => {
+                if (!d.cardTemplateId || d.locked || event.button !== 0 || editing) return;
+                const access = useCanvasStore.getState();
+                if (access.board?.accessRole === "viewer" || access.layers.some(layer => layer.id === d.layerId && layer.locked)) return;
+                event.stopPropagation();
+                if (!selected) {
+                  const state = useCanvasStore.getState();
+                  useCanvasStore.setState({ nodes: state.nodes.map(node => ({ ...node, selected: node.id === id })), selectedNodeIds: [id], selectedEdgeIds: [] });
+                }
+                setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
+                setEditing(true);
+              }}
               className={cn(
                 "absolute inset-0 z-10 box-border text-center text-sm font-medium text-foreground",
-                editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
+                editing || d.cardTemplateId ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
               )}
             >
               <div
@@ -1533,7 +1536,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
                     {d.sampleTemplateId && !d.freeCardLayout ? <SampleCardContent nodeId={id} /> : <RichTextEditor
                       nodeId={id}
                       initialContent={initialContent}
-                      editable={editing && (!d.cardTemplateId || !!d.freeCardLayout)}
+                      editable={editing}
                       initialFocusPoint={editFocusPoint}
                       measurementKey={presentationKey}
                       measurementWidth={availableTextSize.width}
