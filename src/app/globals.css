@@ -743,3 +743,6 @@ mark { border-radius: 2px; padding: 0 2px; }
 
 #board-properties[hidden] { display: none; }
 #board-properties .layout-panel, #board-properties .layers-panel { width: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+
+/* The editing panel owns scrolling; nested inspector bodies must not collapse. */
+#board-properties .canvas-inspector-panel > .overflow-y-auto { flex: none; overflow: visible; }

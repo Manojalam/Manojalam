@@ -57,6 +57,8 @@ function ToolBtn({
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          data-universal-text-tools={label === "Object properties" ? "properties-trigger" : undefined}
+          onMouseDown={event => { if (label === "Object properties") event.preventDefault(); }}
           onClick={handleClick}
           className={cn(
             "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-100",
