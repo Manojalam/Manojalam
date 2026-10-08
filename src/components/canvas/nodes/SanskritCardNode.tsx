@@ -1,4 +1,5 @@
 "use client";
+import { EditableObjectText } from "../EditableObjectText";
 
 import { memo } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
@@ -91,8 +92,8 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
       >
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-foreground" style={authoredTextStyle}>{d.title || "Sanskrit Card"}</h3>
-            {d.source && <p className="text-xs text-muted-foreground" style={authoredTextStyle}>{d.source}</p>}
+            <div className="font-semibold text-foreground" style={authoredTextStyle}><EditableObjectText nodeId={id} field="title" value={d.title || ""} fallback="Sanskrit Card" /></div>
+            {d.source && <div className="text-xs text-muted-foreground" style={authoredTextStyle}><EditableObjectText nodeId={id} field="source" value={d.source || ""} fallback="" /></div>}
           </div>
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={cycleMode}>
             {mode.replace("-", " ")}
@@ -101,7 +102,7 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
 
         {(mode === "devanagari" || mode === "both-stacked" || mode === "both-side") && d.devanagari && (
           <div className={cn(mode === "both-side" && "inline-block w-1/2 align-top")}>
-            <p className="font-devanagari text-lg leading-relaxed text-foreground" style={authoredTextStyle}>{d.devanagari}</p>
+            <div className="font-devanagari text-lg leading-relaxed text-foreground" style={authoredTextStyle}><EditableObjectText nodeId={id} field="devanagari" value={d.devanagari || ""} fallback="" /></div>
           </div>
         )}
 
@@ -110,18 +111,18 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
             className={cn("font-iast text-sm italic text-muted-foreground", mode === "both-stacked" && "mt-1")}
             style={authoredTextStyle}
           >
-            {d.iast}
+            <EditableObjectText nodeId={id} field="iast" value={d.iast || ""} fallback="" />
           </div>
         )}
 
         {d.translation && (
-          <p className="mt-2 border-t border-amber-200/50 pt-2 text-sm dark:border-amber-800/30" style={authoredTextStyle}>
-            {d.translation}
-          </p>
+          <div className="mt-2 border-t border-amber-200/50 pt-2 text-sm dark:border-amber-800/30" style={authoredTextStyle}>
+            <EditableObjectText nodeId={id} field="translation" value={d.translation || ""} fallback="" />
+          </div>
         )}
 
         {d.grammarNotes && (
-          <p className="mt-1 text-xs text-muted-foreground" style={authoredTextStyle}>{d.grammarNotes}</p>
+          <div className="mt-1 text-xs text-muted-foreground" style={authoredTextStyle}><EditableObjectText nodeId={id} field="grammarNotes" value={d.grammarNotes || ""} fallback="" /></div>
         )}
 
         <div className="mt-2 flex flex-wrap gap-1">

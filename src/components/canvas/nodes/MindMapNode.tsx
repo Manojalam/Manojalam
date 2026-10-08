@@ -133,6 +133,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
           borderRadius,
         }}
         onDoubleClick={(event) => {
+            if ((event.target as HTMLElement).closest("[contenteditable=true], input, textarea")) return;
           event.stopPropagation();
           startEditing(event.clientX, event.clientY);
         }}

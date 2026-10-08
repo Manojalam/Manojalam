@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
 const base=process.env.BOARD_TEST_URL??'http://localhost:3093';
 const browser=await puppeteer.launch({executablePath:process.env.BOARD_TEST_BROWSER??'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
-const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const page=await browser.newPage();page.on('dialog',dialog=>dialog.accept());const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const button=async name=>{const h=await page.waitForFunction(name=>[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===name&&el.getBoundingClientRect().width),{},name);await h.asElement().click()};
 const tools=async()=>{await page.$eval('summary',()=>{});await page.$$eval('summary',els=>els.filter(el=>el.textContent==='Convert layout').forEach(el=>{if(!el.parentElement.open)el.click()}));};
 try{
@@ -17,21 +17,21 @@ try{
  await page.goto(base+'/app/boards/guest-convert',{waitUntil:'networkidle0'});
  await page.click('[aria-label="Row 1, A"]');await tools();await button('Stack into one column');
  await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===6);
- assert.deepEqual(await page.$$eval('tbody textarea',els=>els.map(el=>el.value)),['a1','b1','c1','a2','b2','c2']);
- assert.equal(await page.$$eval('tbody [role="group"]',els=>els.length),1);
+ assert.deepEqual(await page.$$eval('tbody td',els=>els.map(el=>el.querySelector('textarea')?.value??el.querySelector('.ProseMirror')?.textContent??'')),['a1','b1','c1','a2','b2','c2']);
+ assert.equal(await page.$$eval('tbody [aria-label^="Template text"]',els=>els.length),1);
  assert.match(await page.$eval('tbody tr:nth-child(2)',el=>el.textContent),/भवति/);
  assert.ok(await page.$('tbody tr:nth-child(2) strong'));
  // One undo restores the whole layout and template mapping.
  await page.mouse.click(1300,800);await page.keyboard.down('Control');await page.keyboard.press('z');await page.keyboard.up('Control');
  await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===2);
- assert.deepEqual(await page.$$eval('thead textarea',els=>els.map(el=>el.value)),['A','B','C']);
+ assert.deepEqual(await page.$$eval('thead .ProseMirror',els=>els.map(el=>el.textContent)),['A','B','C']);
  await page.click('[aria-label="Row 1, A"]');await tools();await button('Transpose rows / columns');
  await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===3);
- assert.deepEqual(await page.$$eval('tbody td textarea',els=>els.map(el=>el.value)),['a1','a2','b1','b2','c1','c2']);
- assert.deepEqual(await page.$$eval('tbody th textarea',els=>els.map(el=>el.value)),['A','B','C']);
+ assert.deepEqual(await page.$$eval('tbody td',els=>els.map(el=>el.querySelector('textarea')?.value??el.querySelector('.ProseMirror')?.textContent??'')),['a1','a2','b1','b2','c1','c2']);
+ assert.deepEqual(await page.$$eval('tbody th .ProseMirror',els=>els.map(el=>el.textContent)),['A','B','C']);
  await tools();await page.select('[aria-label="Reshape reading order"]','columns');await page.locator('[aria-label="Reshape column count"]').fill('1');await button('Reshape');
  await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===6);
- assert.deepEqual(await page.$$eval('tbody td textarea',els=>els.map(el=>el.value)),['a1','b1','c1','a2','b2','c2']);
+ assert.deepEqual(await page.$$eval('tbody td',els=>els.map(el=>el.querySelector('textarea')?.value??el.querySelector('.ProseMirror')?.textContent??'')),['a1','b1','c1','a2','b2','c2']);
  await new Promise(r=>setTimeout(r,2200));await page.reload({waitUntil:'networkidle0'});
  assert.equal(await page.$$eval('tbody tr',els=>els.length),6);
  assert.equal(await page.$$eval('tbody [data-template-toggle]',els=>els.length),1);

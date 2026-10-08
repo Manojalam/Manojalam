@@ -1,4 +1,5 @@
 "use client";
+import { EditableObjectText } from "../EditableObjectText";
 
 import { memo, useState } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
@@ -170,7 +171,7 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
                 style={{ backgroundColor: studyPalette.accent }}
               />
             )}
-            <h3
+            <div
               className={cn(
                 "truncate font-semibold",
                 studyPalette && "text-lg font-bold tracking-tight",
@@ -178,8 +179,8 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
               )}
               style={authoredTextStyle}
             >
-              {d.title || "Śloka"}
-            </h3>
+              <EditableObjectText nodeId={id} field="title" value={d.title || ""} fallback="Śloka" />
+            </div>
           </div>
           {(!d.studySection || d.studySection === "memorization") && (
             <Badge
@@ -209,15 +210,15 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
         ) : (
           <>
             {d.sourceText && (
-              <p
+              <div
                 className={cn(
                   "mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground",
                   studyPalette?.meta
                 )}
                 style={authoredTextStyle}
               >
-                {d.sourceText}
-              </p>
+                <EditableObjectText nodeId={id} field="sourceText" value={d.sourceText || ""} fallback="" />
+              </div>
             )}
 
             <div className={cn(
@@ -225,15 +226,15 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
               studyPalette?.content ?? "border-amber-200/70 bg-amber-50/80 dark:border-amber-800/60 dark:bg-amber-950/30"
             )}>
               {d.devanagari && (
-                <p className="whitespace-pre-wrap font-devanagari text-2xl font-medium leading-10 text-slate-950 dark:text-white" style={authoredTextStyle}>{d.devanagari}</p>
+                <div className="whitespace-pre-wrap font-devanagari text-2xl font-medium leading-10 text-slate-950 dark:text-white" style={authoredTextStyle}><EditableObjectText nodeId={id} field="devanagari" value={d.devanagari || ""} fallback="" /></div>
               )}
               {d.iast && (
-                <p
+                <div
                   className={cn("mt-2 whitespace-pre-wrap font-iast text-base italic leading-7 text-muted-foreground", studyPalette?.meta)}
                   style={authoredTextStyle}
                 >
-                  {d.iast}
-                </p>
+                  <EditableObjectText nodeId={id} field="iast" value={d.iast || ""} fallback="" />
+                </div>
               )}
             </div>
           </>
@@ -256,13 +257,13 @@ function ShlokaCardNodeComponent({ id, data, selected }: NodeProps) {
                 {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 {label}
               </button>
-              {!isCollapsed && value && (
-                <p
+              {!isCollapsed && value && field && (
+                <div
                   className={cn("mt-1 text-sm", key === "padartha" && "font-devanagari")}
                   style={authoredTextStyle}
                 >
-                  {value}
-                </p>
+                  <EditableObjectText nodeId={id} field={field!} value={value} />
+                </div>
               )}
             </div>
           );

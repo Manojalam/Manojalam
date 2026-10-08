@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useState } from "react";
+import { EditableObjectText } from "../EditableObjectText";
+import { memo } from "react";
 import { NodeResizer, ViewportPortal, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import type { FrameNodeData } from "@/lib/types";
@@ -112,23 +113,6 @@ function FrameNodeComponent({
     ? d.textAlign
     : undefined;
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
-
-  const beginTitleEdit = () => {
-    if (d.locked || isMatrixFrame) return;
-    setTitleDraft(d.title ?? "");
-    setEditingTitle(true);
-  };
-
-  const commitTitleEdit = () => {
-    setEditingTitle(false);
-    if (titleDraft === (d.title ?? "")) return;
-    const store = useCanvasStore.getState();
-    store.pushHistory();
-    store.updateNodeData(id, { title: titleDraft });
-  };
-
   return (
     <>
       <NodeResizer
@@ -267,12 +251,8 @@ function FrameNodeComponent({
               "nodrag nopan absolute -top-3 left-3 rounded-md px-2 py-0.5 text-xs font-medium shadow-sm",
               !isMatrixFrame && !d.locked && "cursor-text"
             )}
-            title={isMatrixFrame ? undefined : "Click to rename"}
+            title={isMatrixFrame ? undefined : "Double-click to edit text"}
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (!editingTitle) beginTitleEdit();
-            }}
             style={{
               backgroundColor: labelBackground,
               color: "white",
@@ -280,34 +260,7 @@ function FrameNodeComponent({
               textAlign: labelTextAlign,
             }}
           >
-            {editingTitle ? (
-              <input
-                autoFocus
-                aria-label="Swim lane label"
-                className="nodrag nopan min-w-16 border-0 bg-transparent p-0 text-inherit outline-none"
-                value={titleDraft}
-                onFocus={(event) => event.currentTarget.select()}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                onBlur={commitTitleEdit}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  event.stopPropagation();
-                  if (event.key === "Enter") event.currentTarget.blur();
-                  if (event.key === "Escape") {
-                    setTitleDraft(d.title ?? "");
-                    setEditingTitle(false);
-                  }
-                }}
-                style={{
-                  width: `${Math.max(8, titleDraft.length + 1)}ch`,
-                  ...authoredTextStyle,
-                  textAlign: labelTextAlign,
-                }}
-              />
-            ) : (
-              d.title || "Frame"
-            )}
+            {isMatrixFrame ? d.title || "Frame" : <EditableObjectText nodeId={id} field="title" value={d.title || ""} fallback="Frame" />}
           </div>
         )}
         </div>

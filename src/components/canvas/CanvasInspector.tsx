@@ -1,4 +1,6 @@
 "use client";
+import { InlineTextControls } from "./InlineTextControls";
+import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { normalizeWholeTextFormat } from "@/lib/canvas/whole-text-format";
 
 import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
@@ -674,18 +676,6 @@ function supportsSurfaceEffects(node: Node): boolean {
 }
 
 const CONTENT_SIZED_COLUMN_NODE_TYPES = new Set(["mindmap", "shape", "sticky", "text"]);
-const EXACT_DIMENSION_NODE_TYPES = new Set([
-  "mindmap",
-  "shape",
-  "sticky",
-  "text",
-  "sanskrit",
-  "shloka",
-  "grammar",
-  "audio",
-  "table",
-  "frame",
-]);
 const FIXED_ASPECT_COLUMN_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
 
 function supportsFreeformSelectionSize(node: Node): boolean {
@@ -1205,6 +1195,13 @@ const TEXT_CALLOUT_DIRECTIONS: ReadonlyArray<{
   { id: "bottom", label: "Bottom" },
   { id: "left", label: "Left" },
 ];
+
+function InspectorTabs({ value, onChange, type, hideSize = false }: { value: InspectorTab; onChange: (tab: InspectorTab) => void; type?: string; hideSize?: boolean }) {
+  const capabilities = objectCapabilities(type);
+  return <div className="sticky top-0 z-10 grid grid-cols-5 gap-1 border-b bg-background p-2" aria-label="Object properties tabs">
+    {INSPECTOR_TABS.filter(tab => (tab.id !== "text" || capabilities.text) && (tab.id !== "shape" || (capabilities.dimensions && !hideSize))).map(tab => <button key={tab.id} type="button" data-universal-text-tools="inspector-tab" onMouseDown={event => event.preventDefault()} onClick={() => onChange(tab.id)} aria-pressed={value === tab.id} className="rounded-md px-1.5 py-1.5 text-[10px] font-medium aria-pressed:bg-primary aria-pressed:text-primary-foreground">{tab.label}</button>)}
+  </div>;
+}
 
 function TextFramePreview({ style }: { style: TextFrameStyle }) {
   if (style === "plain") {
@@ -2011,6 +2008,12 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     : null;
 
   useEffect(() => {
+    if (!selectedTextRange?.hasSelection) return;
+    const frame = requestAnimationFrame(() => setSingleNodeTab("text"));
+    return () => cancelAnimationFrame(frame);
+  }, [selectedTextRange?.nodeId, selectedTextRange?.hasSelection]);
+
+  useEffect(() => {
     if (!isRadialLayoutSector || singleNodeTab !== "shape") return;
     const frame = requestAnimationFrame(() => setSingleNodeTab("style"));
     return () => cancelAnimationFrame(frame);
@@ -2022,6 +2025,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
       setNodeLocked(selectedNode.id, value === true);
       return;
     }
+    const state = useCanvasStore.getState();
+    if (state.board?.accessRole === "viewer" || selectedNode.data.locked || state.layers.some(layer => layer.id === selectedNode.data.layerId && layer.locked)) return;
     pushHistory();
     if (selectedTextRange && INLINE_TEXT_FIELDS.has(key as InlineTextFormatKey)) {
       window.dispatchEvent(new CustomEvent("vidya:apply-inline-text-format", {
@@ -2048,7 +2053,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         return;
       }
     }
-    updateNodeData(selectedNode.id, patch);
+    updateNodeData(selectedNode.id, ["fontFamily", "fontSize", "fontWeight", "fontStyle", "textColor"].includes(key)
+      ? selectionNodeTextStylePatch(selectedNode, key as SelectionTextStyleKey, value, patch) : patch);
   };
 
   const commonValue = (key: string) => {
@@ -4001,7 +4007,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     );
   }
 
-  if (selectedNode.type === "sunburst") {
+  if (selectedNode.type === "sunburst" && singleNodeTab !== "text" && singleNodeTab !== "shape") {
     const chartData = (selectedNode.data ?? {}) as Record<string, unknown>;
     const chartDimensions = getNodeDimensions(selectedNode);
     const chartDiameter = Math.round(Math.max(chartDimensions.width, chartDimensions.height));
@@ -4017,6 +4023,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
+        <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground">Radial chart</h3>
@@ -4307,7 +4314,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     );
   }
 
-  if (selectedNode.type === "relationshipDiagram") {
+  if (selectedNode.type === "relationshipDiagram" && singleNodeTab !== "text" && singleNodeTab !== "shape") {
     const diagramSpec = normalizeRelationshipDiagramSpec(d.relationshipDiagramSpec);
     const diagramTitle = diagramSpec.title || "Relationship Diagram";
     const diagramSubtitle = diagramSpec.subtitle;
@@ -4365,6 +4372,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     };
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
+        <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground">Relationship diagram</h3>
@@ -5080,6 +5088,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   }
 
   const nodeType      = selectedNode.type ?? "";
+  const capabilities = objectCapabilities(nodeType);
   const isTextNode    = ["mindmap", "sticky", "text"].includes(nodeType);
   const isShapeNode   = nodeType === "shape";
   const isEditableFrame = nodeType === "frame" && typeof d.matrixFrameFor !== "string";
@@ -5103,7 +5112,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   const borderRadius  = cornerRadiusPercentForNode(selectedNode);
   // Corner-radius only makes sense for rectangular-ish shapes.
   const shapeType     = (d.shapeType as string) ?? "";
-  const supportsIndividualDimensions = EXACT_DIMENSION_NODE_TYPES.has(nodeType)
+  const supportsIndividualDimensions = objectCapabilities(nodeType).dimensions
     && !isRadialLayoutSector;
   const individualWidth = matrixRootNode ? selectedMatrixWidth : currentNodeSize.width;
   const individualHeight = matrixRootNode ? selectedMatrixHeight : currentNodeSize.height;
@@ -5145,10 +5154,10 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   const fontGroups    = groupFontsByCategory(FONT_OPTIONS);
   const activeTextAlign = selectedTextRange?.textAlign ?? d.textAlign;
   const activeFontSize = selectedTextRange?.fontSize
-    ?? ((d.fontSize as number) || (isEditableFrame ? 12 : 14));
-  const activeFontFamily = selectedTextRange?.fontFamily ?? ((d.fontFamily as string) || "");
+    ?? ((selectionNodeTextStyleValue(selectedNode, "fontSize") as number) || (isEditableFrame ? 12 : 14));
+  const activeFontFamily = selectedTextRange?.fontFamily ?? ((selectionNodeTextStyleValue(selectedNode, "fontFamily") as string) || "");
   const activeTextColor = selectedTextRange?.textColor
-    ?? ((isRadialLayoutSector ? d.radialTextColor : d.textColor) as string | undefined)
+    ?? (selectionNodeTextStyleValue(selectedNode, "textColor") as string | undefined)
     ?? "";
   const activeHighlightColor = selectedTextRange?.highlightColor ?? ((d.textHighlightColor as string) || "");
   const activeFrameLabelFill = isEditableFrame
@@ -5246,24 +5255,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         </div>
       </div>
 
-      <div className={cn("grid gap-1 border-b bg-background/95 p-2", isRadialLayoutSector ? "grid-cols-4" : "grid-cols-5")}>
-        {INSPECTOR_TABS.filter((tab) => !isRadialLayoutSector || tab.id !== "shape").map((tab) => (
-          <button
-            key={tab.id}
-            data-universal-text-tools="inspector-tab"
-            onMouseDown={event => event.preventDefault()}
-            onClick={() => setSingleNodeTab(tab.id)}
-            className={cn(
-              "rounded-md px-1.5 py-1.5 text-[10px] font-medium transition-colors",
-              singleNodeTab === tab.id
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} hideSize={isRadialLayoutSector} />
 
       <div className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
         <Button
@@ -5889,7 +5881,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {/* ── Text ── */}
-        {(isContentNode || nodeType === "table" || isEditableFrame || isRadialLayoutSector) && (
+        {capabilities.text && (
           <Section
             label="Text"
             flat
@@ -5897,6 +5889,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             visible={singleNodeTab === "text"}
             preserveTextSelection
           >
+            {selectedTextRange ? <InlineTextControls nodeId={selectedNode.id} /> : <>
             <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <span className="text-[10px] font-medium text-foreground">
                 {selectedTextRange
@@ -5909,7 +5902,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 {selectedTextRange ? "Inline" : "All text"}
               </span>
             </div>
-            {(isContentNode || nodeType === "table") && !isRadialLayoutSector && !radialChart?.enabled && (
+            {capabilities.paragraphs && !isRadialLayoutSector && !radialChart?.enabled && (
               <div className="grid grid-cols-2 gap-2">
                 {PARAGRAPH_KEYS.map(key => {
                   const spec = PARAGRAPH_FIELDS[key];
@@ -5998,19 +5991,15 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
             {/* Bold / Italic */}
             <Row label="Style">
-              <IconBtn active={selectedTextRange ? selectedTextRange.bold : d.fontWeight === "bold"}
-                onClick={() => setField("fontWeight", (selectedTextRange ? selectedTextRange.bold : d.fontWeight === "bold") ? "normal" : "bold")} title="Bold">
+              <IconBtn active={d.fontWeight === "bold"}
+                onClick={() => setField("fontWeight", (d.fontWeight === "bold") ? "normal" : "bold")} title="Bold">
                 <Bold className="h-3.5 w-3.5" />
               </IconBtn>
-              <IconBtn active={selectedTextRange ? selectedTextRange.italic : d.fontStyle === "italic"}
-                onClick={() => setField("fontStyle", (selectedTextRange ? selectedTextRange.italic : d.fontStyle === "italic") ? "normal" : "italic")} title="Italic">
+              <IconBtn active={d.fontStyle === "italic"}
+                onClick={() => setField("fontStyle", (d.fontStyle === "italic") ? "normal" : "italic")} title="Italic">
                 <Italic className="h-3.5 w-3.5" />
               </IconBtn>
             </Row>
-
-            <div className="flex flex-wrap gap-1" data-universal-text-tools="inspector">
-              {([['underline', 'Underline'], ['strike', 'Strikethrough'], ['superscript', 'Superscript'], ['subscript', 'Subscript']] as const).map(([key, label]) => <button key={key} type="button" disabled={!selectedTextRange} title={selectedTextRange ? label : `Select text to apply ${label.toLowerCase()}`} aria-label={label} aria-pressed={!!selectedTextRange?.[key]} className="rounded border px-2 py-1 text-xs disabled:opacity-40 aria-pressed:bg-primary/15" onClick={() => setField(key, !selectedTextRange?.[key])}>{label}</button>)}
-            </div>
 
             {/* Font size */}
             <div>
@@ -6097,7 +6086,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text color</p>
               <ColorSwatchPicker
                 value={activeTextColor}
-                mixed={selectedTextRange?.textColorMixed}
+                mixed={false}
                 extra={settings.customTextColors}
                 selectionSafe={!!selectedTextRange}
                 onCustomColor={(color) => setSettings({
@@ -6134,6 +6123,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 </Button>
               )}
             </div>
+            </>}
           </Section>
         )}
 
@@ -7192,7 +7182,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {/* ── Fill ── */}
-        {(isContentNode || nodeType === "table") && !isRadialLayoutSector && (
+        {capabilities.surface && !isEditableFrame && !isRadialLayoutSector && (
           <Section label="Fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
               value={resolveFillSourceColor(d) ?? ""}
@@ -8014,7 +8004,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {/* ── Border ── */}
-        {(isContentNode || nodeType === "table") && !isRadialLayoutSector && (
+        {capabilities.surface && !isEditableFrame && !isRadialLayoutSector && (
           <Section label="Border" visible={singleNodeTab === "style"}>
             {matrixRootNode && (
               <p className="rounded-md border border-border bg-muted/20 p-2 text-[9px] leading-snug text-muted-foreground">

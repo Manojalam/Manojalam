@@ -283,3 +283,19 @@ test("conversions reject oversized and invalid layouts rather than truncating va
   assert.ok(convertTableLayout(source, { kind: "reshape", columns: 0, order: "rows" }).error);
   assert.ok(convertTableLayout(source, { kind: "reshape", columns: 1.5, order: "rows" }).error);
 });
+
+
+test("cell rich text survives normalization and reshaping independently of templates", () => {
+  const table = createTable(2, 2);
+  const column = table.columns[1].id;
+  table.rows[0].cells[1] = "भवति";
+  table.rows[0].richCells = { [column]: "<p><strong>भवति</strong></p>" };
+  table.columns[0].richText = "<p><em>Heading</em></p>";
+  table.rows[0].labelRichText = "<p><u>Label</u></p>";
+  const restored = normalizeTable(JSON.parse(JSON.stringify(table)));
+  assert.equal(restored.rows[0].richCells?.[column], table.rows[0].richCells[column]);
+  assert.equal(restored.columns[0].richText, table.columns[0].richText);
+  assert.equal(restored.rows[0].labelRichText, table.rows[0].labelRichText);
+  const stacked = convertTableLayout(restored, { kind: "reshape", columns: 1, order: "rows" }).table!;
+  assert.equal(stacked.rows[1].richCells?.[stacked.columns[0].id], table.rows[0].richCells[column]);
+});

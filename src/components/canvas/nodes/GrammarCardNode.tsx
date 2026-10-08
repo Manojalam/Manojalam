@@ -1,4 +1,5 @@
 "use client";
+import { EditableObjectText } from "../EditableObjectText";
 
 import { memo } from "react";
 import { Handle, Position, NodeResizer, type NodeProps } from "@xyflow/react";
@@ -74,7 +75,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         }}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="font-semibold" style={authoredTextStyle}>{d.topic || "Grammar Rule"}</h3>
+          <div className="font-semibold" style={authoredTextStyle}><EditableObjectText nodeId={id} field="topic" value={d.topic || ""} fallback="Grammar Rule" /></div>
           <Badge
             className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 text-[10px]"
             style={authoredTextStyle}
@@ -87,7 +88,7 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
           className="rounded-lg border border-indigo-100 bg-white/60 p-2 text-sm dark:border-indigo-900 dark:bg-indigo-950/20"
           style={authoredTextStyle}
         >
-          {d.rule || "Enter rule..."}
+          <EditableObjectText nodeId={id} field="rule" value={d.rule || ""} fallback="Enter rule..." />
         </div>
 
         {d.examples && d.examples.length > 0 && (
@@ -100,9 +101,9 @@ function GrammarCardNodeComponent({ id, data, selected }: NodeProps) {
         )}
 
         {d.exceptions && (
-          <p className="mt-2 text-xs text-muted-foreground" style={authoredTextStyle}>
-            <span className="font-medium">Exceptions:</span> {d.exceptions}
-          </p>
+          <div className="mt-2 text-xs text-muted-foreground" style={authoredTextStyle}>
+            <span className="font-medium">Exceptions:</span> <EditableObjectText nodeId={id} field="exceptions" value={d.exceptions || ""} fallback="" />
+          </div>
         )}
 
         {d.tags && d.tags.length > 0 && (
