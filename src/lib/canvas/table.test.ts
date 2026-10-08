@@ -1,7 +1,7 @@
 import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyColumnTemplate, columnSections, updateColumnSections, tableTemplateDesign, addTableColumn, addTableRow, createTable, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText } from "./table";
+import { applyCellTemplate, cellSections, updateCellSections, tableTemplateDesign, addTableColumn, addTableRow, createTable, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText } from "./table";
 import { normalizePersistedNode } from "./node-persistence";
 import { editableNodeText } from "../export/powerpoint-layout";
 import { clearNodeContent } from "./clipboard";
@@ -68,46 +68,48 @@ test("clearing a table keeps its reusable column pattern and outline export reta
 });
 
 
-test("column templates preserve headings and labels with independent, portable answers", () => {
+test("cell templates preserve headings and labels with independent, portable answers", () => {
   const source = createTable(2, 2);
   source.showRowLabels = true;
   source.rows[0].label = "Step 1";
   source.rows[0].cells[0] = "Keep existing";
   const template = newHomeworkTemplate("steps");
-  let table = applyColumnTemplate(source, template);
+  let table = applyCellTemplate(source, template, source.columns[0].id, source.rows[0].id);
   const field = template.rows[0].fields[0].id;
-  const sections = columnSections(table, table.columns[0].id);
+  const sections = cellSections(table, table.columns[0].id, table.rows[0].id);
   sections[0].values[field] = { text: "Column one", href: "https://ashtadhyayi.com/sutraani/1.3.1" };
-  table = updateColumnSections(table, table.columns[0].id, sections);
-  assert.equal(columnSections(table, table.columns[1].id)[0].values[field], undefined);
+  table = updateCellSections(table, table.columns[0].id, table.rows[0].id, sections);
+  assert.equal(cellSections(table, table.columns[1].id, table.rows[0].id)[0].values[field], undefined);
   assert.equal(table.columns[0].name, source.columns[0].name);
   assert.equal(table.rows[0].label, "Step 1");
   assert.equal(table.rows[0].cells[0], "Keep existing");
   assert.deepEqual(normalizeTable(JSON.parse(JSON.stringify(table))), table);
   assert.match(tablePlainText(table), /Column one/);
   const saved = tableTemplateDesign(table);
-  assert.equal(saved.columns[0].card?.template.id, template.id);
-  assert.deepEqual(saved.columns[0].card?.sections[0].values, {});
+  assert.equal(saved.rows[0].templates?.[saved.columns[0].id]?.template.id, template.id);
+  assert.deepEqual(saved.rows[0].templates?.[saved.columns[0].id]?.sections[0].values, {});
   assert.equal(saved.rows[0].cells[0], "");
 });
 
 test("sections are independent of table rows and other columns, including reorder and reload", () => {
-  let table = applyColumnTemplate(createTable(3, 3), newHomeworkTemplate("steps"));
+  const source = createTable(3, 3);
+  let table = applyCellTemplate(source, newHomeworkTemplate("steps"), source.columns[0].id, source.rows[0].id);
   const column = table.columns[0].id;
-  assert.equal(columnSections(table, column).length, 1);
+  assert.equal(cellSections(table, column, table.rows[0].id).length, 1);
   const originalRows = structuredClone(table.rows);
   const otherColumn = structuredClone(table.columns[1]);
-  const sections = [...columnSections(table, column), { id: "second", values: {}, extraRows: ["Second step"] }, { id: "third", values: {}, extraRows: [] }, { id: "fourth", values: {}, extraRows: ["Fourth step"] }];
-  table = updateColumnSections(table, column, sections);
-  assert.deepEqual(table.rows, originalRows);
+  const sections = [...cellSections(table, column, table.rows[0].id), { id: "second", values: {}, extraRows: ["Second step"] }, { id: "third", values: {}, extraRows: [] }, { id: "fourth", values: {}, extraRows: ["Fourth step"] }];
+  table = updateCellSections(table, column, table.rows[0].id, sections);
+  assert.deepEqual(table.rows.map(row => row.cells), originalRows.map(row => row.cells));
+  assert.deepEqual(table.rows.slice(1), originalRows.slice(1));
   assert.deepEqual(table.columns[1], otherColumn);
-  assert.deepEqual(columnSections(table, column), sections);
-  table = updateColumnSections(table, column, [...sections].reverse());
-  assert.equal(columnSections(table, column)[0].id, "fourth");
+  assert.deepEqual(cellSections(table, column, table.rows[0].id), sections);
+  table = updateCellSections(table, column, table.rows[0].id, [...sections].reverse());
+  assert.equal(cellSections(table, column, table.rows[0].id)[0].id, "fourth");
   table = removeTableRow(addTableRow(table, 0), table.rows[1].id);
-  assert.deepEqual(columnSections(table, column), [...sections].reverse());
+  assert.deepEqual(cellSections(table, column, table.rows[0].id), [...sections].reverse());
   assert.deepEqual(normalizeTable(JSON.parse(JSON.stringify(table))), table);
-  assert.equal(columnSections(table, table.columns[1].id).length, 1);
+  assert.equal(cellSections(table, table.columns[1].id, table.rows[0].id).length, 1);
   assert.equal(tablePlainText(table).split("Second step").length, 2);
   const cleared = clearNodeContent({ table });
   assert.ok(!tablePlainText(normalizeTable(cleared.table)).includes("Second step"));
@@ -118,8 +120,35 @@ test("legacy row-bound columns keep authored values and remove generated empty s
   table.columns[0].card = { template: newHomeworkTemplate("legacy"), sections: table.rows.map(row => ({ id: row.id, values: {}, extraRows: [] })) };
   table.columns[0].card.sections[1].extraRows = ["Keep this"];
   const migrated = normalizeTable(table);
-  assert.equal(columnSections(migrated, migrated.columns[0].id).length, 1);
-  assert.equal(columnSections(migrated, migrated.columns[0].id)[0].extraRows[0], "Keep this");
-  assert.equal(migrated.columns[0].card?.independent, true);
+  assert.equal(cellSections(migrated, migrated.columns[0].id, migrated.rows[1].id).length, 1);
+  assert.equal(cellSections(migrated, migrated.columns[0].id, migrated.rows[1].id)[0].extraRows[0], "Keep this");
+  assert.equal(migrated.columns[0].card, undefined);
   assert.deepEqual(normalizeTable(migrated), migrated);
+});
+
+
+test("legacy spanned column migrates to one cell without merging rows or losing sections", () => {
+  const source = createTable(3, 3);
+  source.columns[0].card = { template: newHomeworkTemplate("old"), independent: true, sections: [{ id: "a", values: {}, extraRows: ["One"] }, { id: "b", values: {}, extraRows: ["Two"] }] };
+  const table = normalizeTable(source);
+  assert.equal(table.columns[0].card, undefined);
+  assert.equal(table.rows[0].templates?.[table.columns[0].id].sections.length, 2);
+  assert.equal(table.rows[1].templates, undefined);
+  assert.deepEqual(table.rows.map(row => row.cells), source.rows.map(row => row.cells));
+  assert.match(tablePlainText(table), /One/);
+  assert.match(tablePlainText(table), /Two/);
+  assert.deepEqual(normalizeTable(table), table);
+});
+
+test("cells in the same column hold unrelated template instances", () => {
+  const source = createTable(3, 2);
+  const column = source.columns[0].id;
+  const first = source.rows[0].id, second = source.rows[1].id;
+  let table = applyCellTemplate(source, newHomeworkTemplate("one"), column, first);
+  table = applyCellTemplate(table, newHomeworkTemplate("two"), column, second);
+  const other = structuredClone(table.rows[1]);
+  table = updateCellSections(table, column, first, [{ id: "a", values: {}, extraRows: ["Only first"] }, { id: "b", values: {}, extraRows: [] }]);
+  assert.deepEqual(table.rows[1], other);
+  assert.equal(cellSections(table, column, second).length, 1);
+  assert.equal(applyCellTemplate(table, newHomeworkTemplate("no target")), table);
 });
