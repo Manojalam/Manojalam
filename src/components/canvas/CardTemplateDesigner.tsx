@@ -96,16 +96,27 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                 </div>
               </details>
               {field.kind === "multipart" && <div className="space-y-2 rounded border p-2">
-                <p className="text-xs">Parts flow together. Constants appear only when an input in this field is filled. Include your own spaces.</p>
+                <p className="text-xs">Each part has its own type. Add parts before or after any part. Constants are fixed text; include your own spaces.</p>
                 {!field.parts?.some(part => part.kind !== "constant") && <p className="text-xs text-muted-foreground">Add a text, link, or sūtra part. A group containing only constants stays hidden.</p>}
                 {(field.parts ?? []).map((part, partIndex) => {
                   const patchPart = (patch: Partial<CardTemplateField>) => patchField(row, field.id, { parts: field.parts!.map(item => item.id === part.id ? { ...item, ...patch } : item) });
                   return <div key={part.id} className="space-y-2 rounded border p-2" aria-label={`Part ${partIndex + 1} of ${field.label}`}>
-                    <Input aria-label={`Part ${partIndex + 1} label`} value={part.label} onChange={event => patchPart({ label: event.target.value })} />
-                    <select aria-label={`Part ${partIndex + 1} type`} className="h-8 rounded border bg-background px-2 text-xs" value={part.kind} onChange={event => patchPart({ kind: event.target.value as CardTemplateField['kind'] })}>
+                    <span className="block text-xs font-semibold">Part {partIndex + 1}</span>
+                    {part.kind !== "constant" && <label className="block text-xs">Input name (shown when filling)<Input aria-label={`Part ${partIndex + 1} label`} value={part.label} onChange={event => patchPart({ label: event.target.value })} /></label>}
+                    <label className="block text-xs">Part type<select aria-label={`Part ${partIndex + 1} type`} className="h-8 rounded border bg-background px-2 text-xs" value={part.kind} onChange={event => patchPart({ kind: event.target.value as CardTemplateField['kind'] })}>
                       <option value="text">Text</option><option value="multiline">Long text</option><option value="constant">Constant</option><option value="sutra">Sūtra lookup</option><option value="link">Link</option>
-                    </select>
-                    {part.kind === "constant" && <textarea aria-label={`Part ${partIndex + 1} constant text`} className="w-full rounded border bg-background p-2" rows={1} value={part.constantText ?? ""} onChange={event => patchPart({ constantText: event.target.value })} />}
+                    </select></label>
+                    {part.kind === "constant" && <label className="block text-xs">Constant text (printed as written)<textarea aria-label={`Part ${partIndex + 1} constant text`} className="w-full rounded border bg-background p-2" rows={1} value={part.constantText ?? ""} onChange={event => patchPart({ constantText: event.target.value })} /></label>}
+                    {part.kind === "constant" && <label className="block text-xs">Show only when<select aria-label={`Part ${partIndex + 1} show when`} className="mt-1 w-full rounded border bg-background p-1 text-xs" value={part.constantWhenFieldId ?? ""} onChange={event => patchPart({ constantWhenFieldId: event.target.value || undefined })}>
+                      <option value="">Any input in this multi-part field is filled</option>
+                      {part.constantWhenFieldId && !field.parts?.some(input => input.kind !== "constant" && input.id === part.constantWhenFieldId) && <option value={part.constantWhenFieldId}>Input missing — choose another</option>}
+                      {field.parts?.filter(input => input.kind !== "constant").map(input => <option key={input.id} value={input.id}>{input.label || "Unnamed input"} is filled</option>)}
+                    </select></label>}
+                    <div className="flex flex-wrap gap-1">
+                      <Button type="button" size="sm" variant="outline" onClick={() => patchField(row, field.id, { parts: [...field.parts!.slice(0, partIndex), { ...newField(), label: "New part" }, ...field.parts!.slice(partIndex)] })}>Add part before</Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => patchField(row, field.id, { parts: [...field.parts!.slice(0, partIndex + 1), { ...newField(), label: "New part" }, ...field.parts!.slice(partIndex + 1)] })}>Add part after</Button>
+                      {part.kind !== "constant" && <Button type="button" size="sm" variant="outline" aria-label={`Wrap part ${partIndex + 1} in brackets`} onClick={() => patchField(row, field.id, { parts: [...field.parts!.slice(0, partIndex), { ...newField(), label: "Opening bracket", kind: "constant", constantText: "[", constantWhenFieldId: part.id }, part, { ...newField(), label: "Closing bracket", kind: "constant", constantText: "]", constantWhenFieldId: part.id }, ...field.parts!.slice(partIndex + 1)] })}>Wrap in [ ]</Button>}
+                    </div>
                     <details><summary className="cursor-pointer text-xs">Part styling</summary>
                       <ColorPicker label={`${part.label} color`} value={part.color || undefined} onChange={color => patchPart({ color })} />
                       <select aria-label={`Part ${partIndex + 1} font`} value={part.fontFamily ?? ""} onChange={event => patchPart({ fontFamily: event.target.value || undefined })}><option value="">Field default</option>{FONT_OPTIONS.map(font => <option key={font.value} value={font.value}>{font.label}</option>)}</select>
