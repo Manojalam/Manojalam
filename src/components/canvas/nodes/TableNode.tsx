@@ -1,7 +1,7 @@
 "use client";
 import { objectTextDefaults, OBJECT_TEXT_DEFAULTS_CLASS } from "@/lib/canvas/object-text-style";
 
-import { memo, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { memo, useEffectEvent, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { NodeResizeControl, type NodeProps } from "@xyflow/react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -71,6 +71,10 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   });
   const openCell = (columnId: string, rowId: string) => {
     if (!editable) return;
+    if (!table.rows.find(row => row.id === rowId)?.templates?.[columnId]) {
+      useUIStore.setState({ fillingTableColumn: null, boardPanel: "selection" });
+      return;
+    }
     useUIStore.setState({ fillingCardNodeId: null, fillingTableColumn: { nodeId: id, columnId, rowId }, boardPanel: "templates", layoutPanelOpen: false, layersPanelOpen: false });
   };
   const current = () => normalizeTable(useCanvasStore.getState().nodes.find(node => node.id === id)?.data.table);
@@ -93,7 +97,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     if (!result.table) return;
     const next = result.table;
     write(next);
-    setSelection(null); setEditingCell(null);
+    setSelection(null); setEditingCell(null); useUIStore.setState({ selectedTableCell: null });
     if (useUIStore.getState().fillingTableColumn?.nodeId === id) useUIStore.setState({ fillingTableColumn: null });
     const state = useCanvasStore.getState();
     state.setNodes(nodes => nodes.map(node => node.id === id ? { ...node, data: { ...node.data, tableMinHeight: 0 }, style: { ...node.style, width: Math.max(240, tableMinimumWidth(next, Number(data.fontSize) || settings.defaultFontSize)), height: 80 } } : node));
@@ -111,7 +115,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const total = next.columns.reduce((sum, column) => sum + column.width!, next.showRowLabels ? next.labelWidth! : 0);
     useCanvasStore.getState().setNodes(nodes => nodes.map(node => node.id === id ? { ...node, style: { ...node.style, width: total + 2 } } : node));
   };
-  const fitColumn = (columnId: string) => {
+  const fitColumn = (columnId: string, history = true) => {
     const measurement = document.createElement("div");
     Object.assign(measurement.style, { position: "fixed", left: "-10000px", width: "max-content", whiteSpace: "pre" });
     document.body.append(measurement);
@@ -133,8 +137,27 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
       }
       width = Math.max(width, measurement.getBoundingClientRect().width + 24);
     }
-    measurement.remove(); resizeColumn(columnId, Math.min(1600, Math.ceil(width)));
+    measurement.remove(); resizeColumn(columnId, Math.min(1600, Math.ceil(width)), history);
   };
+  const fitToggledColumn = useEffectEvent((columnId: string) => {
+    useCanvasStore.getState().updateNodeData(id, { tableMinHeight: 0 });
+    fitColumn(columnId, false);
+  });
+  useLayoutEffect(() => {
+    const element = tableElement.current;
+    if (!element) return;
+    let frame = 0;
+    const resize = (event: Event) => {
+      const cell = (event.target as HTMLElement).closest<HTMLElement>("[data-cell-column]");
+      if (!cell) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        fitToggledColumn(cell.dataset.cellColumn!);
+      });
+    };
+    element.addEventListener("template-row-toggled", resize);
+    return () => { element.removeEventListener("template-row-toggled", resize); cancelAnimationFrame(frame); };
+  }, [id]);
   const beginTyping = () => { if (!editingHistory.current && editable) { useCanvasStore.getState().pushHistory(); editingHistory.current = true; } };
   const addRow = (after?: number) => { const before = current(); const next = addTableRow(before, after); if (after !== undefined && before.rows[after]?.aboveHeader) { next.rows[after + 1].aboveHeader = true; next.rows[after + 1].header = true; } write(next); focus(next.rows[Math.min((after ?? next.rows.length - 2) + 1, next.rows.length - 1)].id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); };
   const color = typeof data.borderColor === "string" ? data.borderColor : "#94a3b8";
@@ -166,7 +189,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     fit();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [id, minimumWidth, data.tableMinHeight]);
-  const selectCell = (address: TableAddress, extend = false) => setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
+  const selectCell = (address: TableAddress, extend = false) => {
+    setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
+    useUIStore.setState({ selectedTableCell: !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL ? { nodeId: id, ...address } : null });
+    if (!extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL) openCell(address.columnId, address.rowId);
+  };
   const updateText = (address: TableAddress, text: string) => {
     beginTyping();
     const next = current();
@@ -186,13 +213,19 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const header = rowId === TABLE_HEADER || row?.header || columnId === TABLE_LABEL || !!row?.cellHeaders?.includes(columnId);
     const Cell = header ? "th" : "td";
     const addresses = (merge?.rowIds ?? [rowId]).flatMap(r => (merge?.columnIds ?? [columnId]).map(c => ({ rowId: r, columnId: c })));
-    const highlighted = selected && range && range.rowIds.length * range.columnIds.length > 1 && range.rowIds.includes(rowId) && range.columnIds.includes(columnId);
-    return <Cell key={columnId} data-cell-row={rowId} data-cell-column={columnId} scope={header ? rowId === TABLE_HEADER ? "col" : "row" : undefined} rowSpan={merge?.rowIds.length} colSpan={merge?.columnIds.length}
+    const highlighted = selected && range && range.rowIds.includes(rowId) && range.columnIds.includes(columnId);
+    return <Cell key={columnId} data-cell-row={rowId} data-cell-column={columnId} data-cell-selected={highlighted ? "true" : undefined} scope={header ? rowId === TABLE_HEADER ? "col" : "row" : undefined} rowSpan={merge?.rowIds.length} colSpan={merge?.columnIds.length}
       className={`nodrag nopan relative border-b border-r align-top text-left last:border-r-0 ${header ? "bg-muted/50 font-semibold" : ""} ${highlighted ? "ring-2 ring-inset ring-primary" : ""}`}
       style={{ borderColor: color, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", verticalAlign: data.textVerticalAlign === "middle" ? "middle" : data.textVerticalAlign === "bottom" ? "bottom" : "top" }}
       onPointerDownCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClickCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
-      onClick={event => { if (event.shiftKey || !editable || (event.target as HTMLElement).closest("button, a, [contenteditable=true]")) return; selectCell(address); if (rowId !== TABLE_HEADER && columnId !== TABLE_LABEL) openCell(columnId, rowId); }}>
+      onClick={event => {
+        if (event.shiftKey || !editable || (event.target as HTMLElement).closest("button, a, input, select, [data-universal-text-tools]")) return;
+        selectCell(address);
+        if ((event.target as HTMLElement).closest("[contenteditable=true]")) return;
+        const editor = event.currentTarget.querySelector<HTMLElement>('[role="group"][data-row]');
+        if (editor) { setEditFocusPoint(null); setEditingCell(`${editor.dataset.row}:${editor.dataset.column}`); }
+      }}>
       {addresses.map((source, index) => {
         const sourceRow = table.rows.find(row => row.id === source.rowId);
         const columnIndex = table.columns.findIndex(column => column.id === source.columnId);
@@ -223,14 +256,14 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
                 const sections = cardSectionsFromText(template, content.sections, html);
                 write(updateCellSections(latest, source.columnId, source.rowId, sections, template), !editingHistory.current);
                 editingHistory.current = true;
-              }} onBlur={() => { setEditingCell(null); editingHistory.current = false; }} />
+              }} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} />
             </div>;
           })()}
           {!card && !(source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL) ? <div role="group" tabIndex={editable ? 0 : undefined} data-row={source.rowId} data-column={source.columnId} aria-label={label} style={objectTextDefaults(data)} className={`nodrag nopan min-h-10 px-2 py-2 outline-none [&_p]:m-0 ${OBJECT_TEXT_DEFAULTS_CLASS}`}
             onFocus={event => { if (event.target === event.currentTarget && editable) { selectCell(address); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
             onPointerDownCapture={event => { if (!editable || (event.target as HTMLElement).closest("[contenteditable=true], [data-universal-text-tools]")) return; selectCell(address); setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY }); setEditingCell(`${source.rowId}:${source.columnId}`); }}
             onDoubleClick={event => { if (!editable || (event.target as HTMLElement).closest("[data-universal-text-tools]")) return; event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); }}>
-            <RichTextEditor nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(null); editingHistory.current = false; }} onChange={html => {
+            <RichTextEditor nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} onChange={html => {
               const next = current(); const target = next.rows.find(row => row.id === source.rowId);
               const index = next.columns.findIndex(column => column.id === source.columnId);
               if (source.rowId === TABLE_HEADER && index >= 0) next.columns[index] = { ...next.columns[index], name: richTextToPlainText(html), richText: html };

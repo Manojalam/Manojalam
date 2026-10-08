@@ -59,12 +59,22 @@ export function refreshEditedTemplate(html: string, baseline: string, generated:
     } else if (next.length && !old.length) {
       // Insert a newly populated field alongside its row; new rows follow the closest preceding row.
       const paragraph = next[0].closest("p");
-      const sibling = paragraph && spans(paragraph).find(span => spans(body).some(target => target.dataset.fieldInstance === span.dataset.fieldInstance));
+      const order = paragraph ? spans(paragraph) : [];
+      const position = order.indexOf(next[0]);
+      const existing = (span: HTMLElement) => spans(body).find(target => target.dataset.fieldInstance === span.dataset.fieldInstance);
+      const following = order.slice(position + 1).find(span => existing(span));
+      const precedingInRow = order.slice(0, position).reverse().find(span => existing(span));
+      const sibling = following ?? precedingInRow;
       if (sibling) {
-        const anchor = spans(body).find(span => span.dataset.fieldInstance === sibling.dataset.fieldInstance)!;
-        const order = spans(paragraph!);
-        if (order.indexOf(next[0]) < order.indexOf(sibling)) anchor.before(next[0].cloneNode(true));
-        else anchor.after(next[0].cloneNode(true));
+        let anchor = existing(sibling)!;
+        // A link/bold wrapper belongs to that field, not to the new neighboring part.
+        while (anchor.parentElement && anchor.parentElement.tagName !== "P" && anchor.parentElement !== body
+          && spans(anchor.parentElement).every(span => span.dataset.fieldInstance === sibling.dataset.fieldInstance)) anchor = anchor.parentElement;
+        for (const span of next) {
+          const clone = span.cloneNode(true) as HTMLElement;
+          if (following) anchor.before(clone);
+          else { anchor.after(clone); anchor = clone; }
+        }
       } else if (paragraph) {
         const preceding = spans(after).slice(0, spans(after).indexOf(next[0])).reverse().find(span => spans(body).some(target => target.dataset.fieldInstance === span.dataset.fieldInstance));
         const anchor = preceding && spans(body).find(span => span.dataset.fieldInstance === preceding.dataset.fieldInstance)?.closest("p");

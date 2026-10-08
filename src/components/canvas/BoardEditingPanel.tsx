@@ -35,9 +35,10 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       if (next.selectedNodeIds.join() === previous.selectedNodeIds.join() && next.selectedEdgeIds.join() === previous.selectedEdgeIds.join()) return;
       const state = useUIStore.getState();
       if (!state.layoutPanelOpen && !state.layersPanelOpen && (next.selectedNodeIds.length || next.selectedEdgeIds.length)) state.setBoardPanel("selection");
+      if (state.selectedTableCell && !next.selectedNodeIds.includes(state.selectedTableCell.nodeId)) useUIStore.setState({ selectedTableCell: null });
       if (state.fillingTableColumn && !next.selectedNodeIds.includes(state.fillingTableColumn.nodeId)) useUIStore.setState({ fillingTableColumn: null });
     });
-    return () => { unsubscribe(); useUIStore.setState({ fillingTableColumn: null, fillingCardNodeId: null }); };
+    return () => { unsubscribe(); useUIStore.setState({ fillingTableColumn: null, selectedTableCell: null, fillingCardNodeId: null }); };
   }, []);
   const close = () => { ui.setBoardPanel(null); ui.setLayoutPanelOpen(false); ui.setLayersPanelOpen(false); ui.setFillingCardNodeId(null); useUIStore.setState({ fillingTableColumn: null }); };
   return <>
@@ -49,8 +50,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     <div className="min-h-0 flex-1 overflow-y-auto" hidden={!library || auxiliary}><TemplateLauncher /></div>
     {ui.boardPanel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
     <div hidden={!editing} className="min-h-0 flex-1 overflow-y-auto">
-      {(card || cell) && <details ref={templateSection} key={cell ? `${target!.nodeId}:${target!.rowId}:${target!.columnId}` : card!.id} open className="border-b" data-template-accessory>
-        <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">Template fields</summary>
+      {(card || cell) && <details ref={templateSection} key={cell ? `${target!.nodeId}:${target!.rowId}:${target!.columnId}` : card!.id} open className="group/template border-b" data-template-accessory>
+        <summary className="sticky top-0 z-20 flex cursor-pointer list-none items-center gap-2 bg-background px-3 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden"><span aria-hidden="true" className="group-open/template:hidden">+</span><span aria-hidden="true" className="hidden group-open/template:inline">−</span>Template fields</summary>
         {card && !cell && <button className="mx-3 flex items-center gap-1 text-xs" aria-label="Keep this template open" aria-pressed={!!ui.fillingCardNodeId} onClick={() => ui.setFillingCardNodeId(ui.fillingCardNodeId ? null : card.id)}><Pin size={12} />Keep open while copying</button>}
         <div className="h-72 overflow-y-auto">{cell ? <TableCellFillPanel /> : <FillCardDialog embedded key={card!.id} nodeId={card!.id} onClose={() => { ui.setFillingCardNodeId(null); if (templateSection.current) templateSection.current.open = false; }} />}</div>
       </details>}
