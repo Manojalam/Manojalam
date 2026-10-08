@@ -1,3 +1,4 @@
+import { tableRowOrder, moveTableColumn, addTableFooter } from "./table";
 import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -206,4 +207,25 @@ test("span repair never drops contents and rejects overlaps or invalid rectangle
   assert.equal(addTableRow(table,0).merges,undefined);
   const top = mergeTableCells(table,{rowId:TABLE_HEADER,columnId:table.columns[0].id},{rowId:TABLE_HEADER,columnId:table.columns[2].id});
   assert.equal(tableDisplayRows(top)[0][0].colspan,3);
+});
+
+
+test("column widths and order retain each cell's values and template identity", () => {
+  const original = createTable(2, 3);
+  original.columns[0].width = 90; original.columns[1].width = 310;
+  original.rows[0].cells = ["one", "two", "three"];
+  const moved = moveTableColumn(normalizeTable(original), original.columns[0].id, 1);
+  assert.equal(moved.columns[1].id, original.columns[0].id);
+  assert.equal(moved.columns[1].width, 90);
+  assert.deepEqual(moved.rows[0].cells, ["two", "one", "three"]);
+});
+
+test("optional footer remains after the body and cannot merge across body rows", () => {
+  const original = createTable(2, 3);
+  const table = addTableFooter(original);
+  const footer = table.rows.at(-1)!;
+  assert.equal(footer.footer, true);
+  assert.equal(tableRowOrder(table).at(-1), footer.id);
+  assert.equal(normalizeTable(table).rows.at(-1)!.footer, true);
+  assert.deepEqual(mergeTableCells(table, { rowId: table.rows[0].id, columnId: table.columns[0].id }, { rowId: footer.id, columnId: table.columns[0].id }), table);
 });

@@ -387,3 +387,60 @@ test("multi-part fields scope constants to their own values and retain typed par
   saved.rows[0].fields[1].parts!.reverse();
   assert.equal(renderCardTemplate(saved, filled).text, "भूतिप् +  [सूत्रम्]");
 });
+
+
+test("new repeated rows automatically separate before and after without blank empty copies", () => {
+  const template = newHomeworkTemplate("new-lines");
+  let repeats = insertCardRowRepeat([], "answer_row", "", "after", "after");
+  repeats = insertCardRowRepeat(repeats, "answer_row", "", "before", "before");
+  repeats.find(row => row.id === "before")!.values = { answer: { text: "Before" } };
+  repeats.find(row => row.id === "after")!.values = { answer: { text: "After" } };
+  repeats = insertCardRowRepeat(repeats, "answer_row", "after", "after", "empty");
+  const sections = cardSections(JSON.parse(JSON.stringify({cardSections:[{id:"one", values:{answer:{text:"Original"}}, extraRows:[], rowRepeats:repeats}]})));
+  assert.ok(sections[0].rowRepeats!.every(row => row.newLine));
+  const result = renderCardTemplate(template, sections[0].values, [], sections[0].rowRepeats);
+  assert.equal(result.text, "Before\nOriginal\nAfter");
+  assert.equal((result.richText.match(/<p /g) ?? []).length,3);
+  assert.match(result.richText,/padding-left: 2em/);
+});
+
+
+test("value formatting stays local and survives saving without changing the template", () => {
+  const template = newHomeworkTemplate("local");
+  const before = structuredClone(template);
+  const sections: CardSection[] = [{ id: "first", values: { question: { text: "भू गम्", richText: 'भू <strong><span style="color: #cc2299">गम्</span></strong>' } }, extraRows: [] }];
+  const saved = cardSections({ cardSections: JSON.parse(JSON.stringify(sections)) });
+  const result = renderCardSections(template, saved);
+  assert.match(result.richText, /<strong>/);
+  assert.match(result.richText, /#cc2299/);
+  assert.deepEqual(template, before);
+  assert.equal(result.text, "भू गम्");
+});
+
+test("explicit false part styling survives normalization instead of inheriting bold", () => {
+  const template = newHomeworkTemplate("parts");
+  template.rows[0].fields = [{ id: "group", label: "Group", kind: "multipart", color: "", bold: true, parts: [{ id: "plain", label: "Plain", kind: "text", color: "", bold: false }] }];
+  const saved = normalizeCardTemplates([template])[0];
+  assert.equal(saved.rows[0].fields[0].parts![0].bold, false);
+  assert.doesNotMatch(renderCardTemplate(saved, { plain: { text: "plain" } }).richText, /<strong>/);
+});
+
+
+test("local paragraph formatting stays within the edited template row", () => {
+  const template = newHomeworkTemplate("paragraphs");
+  const result = renderCardTemplate(template, { question: { text: "Question", paragraphStyle: "text-align: center; line-height: 2" }, answer: { text: "Answer" } });
+  const paragraphs = result.richText.match(/<p[^>]*>/g)!;
+  assert.match(paragraphs[0], /text-align: center/);
+  assert.doesNotMatch(paragraphs[1], /text-align: center|line-height: 2/);
+});
+
+
+test("extended field and part typography survives normalization and rendering", () => {
+  const template = newHomeworkTemplate("marks");
+  template.rows[0].fields = [{ id: "group", label: "Group", kind: "multipart", color: "", strike: true, highlightColor: "#ffee00", parts: [{ id: "part", label: "Part", kind: "text", color: "", superscript: true }] }];
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  const result = renderCardTemplate(saved, { part: { text: "Text" } });
+  assert.match(result.richText, /<sup><s>Text<\/s><\/sup>/);
+  assert.match(result.richText, /background-color: #ffee00/);
+  assert.equal(saved.rows[0].fields[0].parts![0].superscript, true);
+});

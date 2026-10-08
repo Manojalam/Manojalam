@@ -269,7 +269,7 @@ export interface SampleCardTemplate {
 
 export interface SampleCardEntry {
   id: string;
-  values: Record<string, { text: string; href?: string }>;
+  values: Record<string, { text: string; href?: string; richText?: string; paragraphStyle?: string }>;
 }
 
 export interface CardTemplateField {
@@ -286,6 +286,10 @@ export interface CardTemplateField {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strike?: boolean;
+  superscript?: boolean;
+  subscript?: boolean;
+  highlightColor?: string;
 }
 
 export interface CardTemplateRow {
@@ -304,9 +308,10 @@ export interface BoardCardTemplate {
   style: { fillColor: string; borderColor: string; textColor: string; fontFamily?: string; fontSize: number; lineSpacing: number; width: number };
 }
 
-export type CardFieldValues = Record<string, { text: string; href?: string }>;
+export type CardFieldValues = Record<string, { text: string; href?: string; richText?: string; paragraphStyle?: string }>;
 
 export interface CardRowRepeat {
+  newLine?: boolean;
   id: string;
   rowId: string;
   position?: "before" | "after";
@@ -314,6 +319,8 @@ export interface CardRowRepeat {
 }
 
 export interface CardSection {
+  /** Local text/layout edits, reconciled when structured values change. */
+  editedText?: { html: string; baseline: string };
   id: string;
   values: CardFieldValues;
   extraRows: string[];

@@ -3,9 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
-import { Extension, Mark, mergeAttributes, type Editor } from "@tiptap/core";
+import { Extension, Mark, mergeAttributes, type Editor, type Command } from "@tiptap/core";
 import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
 import { TemplateTextRole } from "@/lib/canvas/template-text-role";
+import { templateInputFields } from "@/lib/canvas/card-templates";
 import { FieldLabel } from "@/lib/canvas/field-label";
 import { flexibleCardLabels } from "@/lib/canvas/flexible-card";
 import { SampleField } from "@/lib/canvas/sample-field";
@@ -531,7 +532,35 @@ function FormatButton({
   );
 }
 
+/** Clearing or painting formatting must not erase the selected field's template identity. */
+function resetInlineFormatting(restoreTemplate: boolean): Command {
+  return ({ tr, state }) => {
+    const { from, to } = tr.selection;
+    const fields: { from: number; to: number; attrs: Record<string, unknown> }[] = [];
+    tr.doc.nodesBetween(from, to, (node, position) => {
+      if (!node.isText) return;
+      const attrs = node.marks.find(mark => mark.type.name === "textStyle")?.attrs;
+      if (attrs?.fieldInstance) fields.push({ from: Math.max(from, position), to: Math.min(to, position + node.nodeSize), attrs });
+    });
+    tr.removeMark(from, to);
+    for (const field of fields) {
+      const attrs = Object.fromEntries(["fieldInstance", "fieldLabel", "fieldOwner", "fieldName"].map(key => [key, field.attrs[key]]));
+      const template = useCanvasStore.getState().settings.cardTemplates?.find(item => `card:${item.id}` === field.attrs.fieldOwner);
+      const definition = template?.rows.flatMap(row => templateInputFields(row.fields)).find(item => item.id === field.attrs.fieldLabel);
+      if (restoreTemplate && definition && template) Object.assign(attrs, { color: definition.color || template.style.textColor || null, fontSize: `${definition.fontSize ?? template.style.fontSize}px`, fontFamily: definition.fontFamily || template.style.fontFamily || null });
+      tr.addMark(field.from, field.to, state.schema.marks.textStyle.create(attrs));
+      if (restoreTemplate && definition) for (const name of ["bold", "italic", "underline", "strike", "superscript", "subscript"] as const) if (definition[name]) tr.addMark(field.from, field.to, state.schema.marks[name].create());
+      if (restoreTemplate && definition?.highlightColor) tr.addMark(field.from, field.to, state.schema.marks.highlight.create({ color: definition.highlightColor }));
+    }
+    return true;
+  };
+}
+
 interface RichTextEditorProps {
+  inputId?: string;
+  inputLabel?: string;
+  valueInput?: boolean;
+  templateText?: boolean;
   nodeId?: string;
   initialContent: string;
   editable: boolean;
@@ -574,6 +603,8 @@ interface RichTextEditorProps {
 }
 
 export function RichTextEditor({
+  inputId, inputLabel, valueInput = false,
+  templateText = false,
   nodeId,
   initialContent,
   editable,
@@ -613,7 +644,7 @@ export function RichTextEditor({
   const [sampleTagSelection, setSampleTagSelection] = useState<{ from: number; to: number; width: number; format: Partial<SampleLabel> } | null>(null);
   const sampleTagOpen = useRef(false);
   const nodeLinkColor = useCanvasStore(state => normalizeHexColor(state.nodes.find(node => node.id === nodeId)?.data.linkColor));
-  const isFillableCard = useCanvasStore(state => !!state.nodes.find(node => node.id === nodeId)?.data.cardTemplateId || !!state.nodes.find(node => node.id === nodeId)?.data.sampleTemplateId);
+  const isFillableCard = useCanvasStore(state => templateText || !!state.nodes.find(node => node.id === nodeId)?.data.cardTemplateId || !!state.nodes.find(node => node.id === nodeId)?.data.sampleTemplateId);
   const boardLinkColor = isFillableCard ? undefined : activeStyleTemplate?.roles.find(role => role.id === "reference")?.color ?? nodeLinkColor ?? defaultBoardLinkColor;
   const customTextColors = useCanvasStore((state) => state.settings.customTextColors ?? []);
   const customHighlightColors = useCanvasStore((state) => state.settings.customHighlightColors ?? []);
@@ -825,6 +856,14 @@ export function RichTextEditor({
     extensions: EXTENSIONS,
     parseOptions: { preserveWhitespace: "full" },
     editorProps: {
+      attributes: inputId ? { id: inputId, role: "textbox", "aria-label": inputLabel || "Text", "aria-multiline": "true" } : {},
+      handleKeyDown: (view, event) => {
+        if (!valueInput || event.key !== "Tab") return false;
+        const inputs = Array.from(view.dom.closest("form")?.querySelectorAll<HTMLElement>('input:not([type="color"]), textarea, [contenteditable="true"][role="textbox"]') ?? []).filter(element => !element.hasAttribute("disabled"));
+        const next = inputs[inputs.indexOf(view.dom) + (event.shiftKey ? -1 : 1)];
+        if (!next) return false;
+        event.preventDefault(); next.focus(); return true;
+      },
       transformPastedHTML: html => sanitizePastedHtml(html),
       transformPastedText: normalizePastedText,
     },
@@ -1566,6 +1605,7 @@ export function RichTextEditor({
     previousEditableRef.current = editable;
     if (editor.isEditable !== editable) editor.setEditable(editable, false);
     if (editable) {
+      if (valueInput) return;
       const frame = requestAnimationFrame(() => {
         if (editor.isDestroyed) return;
         const position = initialFocusPoint
@@ -1595,7 +1635,7 @@ export function RichTextEditor({
       });
       return () => cancelAnimationFrame(frame);
     }
-  }, [editor, editable, hideToolbar, initialFocusPoint, reportContentSize, scheduleContentReport]);
+  }, [editor, editable, hideToolbar, initialFocusPoint, reportContentSize, scheduleContentReport, valueInput]);
 
   // Whole-object alignment: when the inspector changes blockAlign, apply it to
   // EVERY paragraph so it overrides any per-paragraph alignment. Skip the first
@@ -1692,7 +1732,7 @@ export function RichTextEditor({
       return;
     }
     publishTextSelection();
-    const lastRange = selectedRanges[selectedRanges.length - 1];
+    const lastRange = selectedRanges[selectedRanges.length - 1] ?? { from, to };
     const start = view.coordsAtPos(lastRange.from);
     const end   = view.coordsAtPos(lastRange.to);
     // Keep the toolbar nearest to the most recently added range.
@@ -1768,8 +1808,9 @@ export function RichTextEditor({
       preservedRanges,
       maximumPosition: editor.state.doc.content.size,
     });
+    if (!ranges.length && valueInput) return command(editor.chain().focus()).run();
     return applyRichTextCommandAcrossRanges(editor, ranges, command);
-  }, [currentTextSelectionRanges, editor]);
+  }, [currentTextSelectionRanges, editor, valueInput]);
 
   const applyPickerSelectionCommand = useCallback((
     command: (chain: RichTextCommandChain) => RichTextCommandChain
@@ -1833,7 +1874,7 @@ export function RichTextEditor({
     applySelectionCommand((chain) => chain.setTextAlign("right"));
   }, [applySelectionCommand]);
   const clearFormatting = useCallback(() => {
-    applySelectionCommand((chain) => chain.unsetAllMarks());
+    applySelectionCommand((chain) => chain.command(resetInlineFormatting(true)));
   }, [applySelectionCommand]);
 
   const closeLinkEditor = useCallback(() => {
@@ -1957,7 +1998,7 @@ export function RichTextEditor({
     }
 
     applySelectionCommand((chain) => {
-      let next = chain.unsetAllMarks();
+      let next = chain.command(resetInlineFormatting(false));
       if (inlineFormatPainter.bold) next = next.setBold();
       if (inlineFormatPainter.italic) next = next.setItalic();
       if (inlineFormatPainter.strike) next = next.setStrike();
@@ -2322,6 +2363,7 @@ export function RichTextEditor({
           <FormatButton active={boldState === "present"} mixed={boldState === "mixed"} onAction={toggleBold} title="Bold"><b className="text-xs">B</b></FormatButton>
           <FormatButton active={italicState === "present"} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
           <FormatButton active={underlineState === "present"} mixed={underlineState === "mixed"} onAction={toggleUnderline} title="Underline"><u className="text-xs">U</u></FormatButton>
+          <FormatButton active={editor.isActive("strike")} onAction={() => toggleInlineMark("strike")} title="Strikethrough"><s className="text-xs">S</s></FormatButton>
           <FormatButton active={superscriptState === "present"} mixed={superscriptState === "mixed"} onAction={toggleSuperscript} title="Superscript"><span className="text-xs">x<sup>2</sup></span></FormatButton>
           <FormatButton active={subscriptState === "present"} mixed={subscriptState === "mixed"} onAction={toggleSubscript} title="Subscript"><span className="text-xs">x<sub>2</sub></span></FormatButton>
 
@@ -2355,6 +2397,7 @@ export function RichTextEditor({
           <FormatButton active={editor.isActive({ textAlign: "left" })} onAction={alignLeft} title="Left"><AlignLeft className="h-4 w-4" /></FormatButton>
           <FormatButton active={editor.isActive({ textAlign: "center" })} onAction={alignCenter} title="Center"><AlignCenter className="h-4 w-4" /></FormatButton>
           <FormatButton active={editor.isActive({ textAlign: "right" })} onAction={alignRight} title="Right"><AlignRight className="h-4 w-4" /></FormatButton>
+          <FormatButton active={editor.isActive({ textAlign: "justify" })} onAction={() => applySelectionCommand(chain => chain.setTextAlign("justify"))} title="Justify"><span className="text-xs">☰</span></FormatButton>
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 

@@ -1,11 +1,11 @@
 import type { BoardCardTemplate, CardSection } from "../types";
 import { cardSections, normalizeCardTemplates, renderCardSections } from "./card-templates";
 export interface TableTemplateContent { template: BoardCardTemplate; sections: CardSection[]; independent?: true }
-export interface TableColumn { id: string; name: string; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
-export interface TableRow { id: string; cells: string[]; label?: string; header?: boolean; aboveHeader?: boolean; templates?: Record<string, TableTemplateContent> }
+export interface TableColumn { id: string; name: string; width?: number; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
+export interface TableRow { id: string; cells: string[]; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; templates?: Record<string, TableTemplateContent> }
 export interface TableMerge { rowIds: string[]; columnIds: string[] }
 export interface TableAddress { rowId: string; columnId: string }
-export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; merges?: TableMerge[] }
+export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelWidth?: number; merges?: TableMerge[] }
 export const TABLE_HEADER = "$table-header";
 export const TABLE_LABEL = "$row-label";
 export const MAX_TABLE_COLUMNS = 30;
@@ -36,7 +36,7 @@ export function normalizeTable(value: unknown): CanvasTable {
     used.add(result); return result;
   };
   const sourceColumns = (Array.isArray(source?.columns) && source.columns.length ? source.columns : [{ id: "column_0", name: "Column 1" }]).slice(0, MAX_TABLE_COLUMNS);
-  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}` }));
+  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}`, ...(typeof column?.width === "number" && Number.isFinite(column.width) ? { width: Math.max(60, Math.min(4000, column.width)) } : {}) }));
   const rows: TableRow[] = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => {
     const templates: Record<string, TableTemplateContent> = {};
     columns.forEach((column, i) => {
@@ -44,7 +44,7 @@ export function normalizeTable(value: unknown): CanvasTable {
       const template = normalizeCardTemplates([content?.template])[0];
       if (template) templates[column.id] = { template, sections: independentSections(content), independent: true };
     });
-    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
+    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), ...(row?.footer === true && !row?.aboveHeader ? { footer: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
   });
   // Recover old column content without changing the table grid or dropping answers.
   sourceColumns.forEach((column, i) => {
@@ -58,7 +58,7 @@ export function normalizeTable(value: unknown): CanvasTable {
       row.templates = { ...row.templates, [columns[i].id]: { template, independent: true, sections: [...(previous?.sections ?? []), section] } };
     });
   });
-  const table: CanvasTable = { columns, rows, ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
+  const table: CanvasTable = { columns, rows, ...(typeof source?.labelWidth === "number" && Number.isFinite(source.labelWidth) ? { labelWidth: Math.max(60, Math.min(4000, source.labelWidth)) } : {}), ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
   const rowOrder = tableRowOrder(table);
   const columnOrder = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...columns.map(column => column.id)];
   const merges: TableMerge[] = [];
@@ -156,7 +156,7 @@ export function tableTemplateDesign(value: unknown): CanvasTable {
 /** Include the optional label column and scale readable cells with the chosen font. */
 export function tableMinimumWidth(table: CanvasTable, fontSize = 16): number {
   const size = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 16;
-  return Math.ceil((table.columns.length + (table.showRowLabels ? 1 : 0)) * Math.max(120, size * 6 + 16));
+  return Math.ceil(table.columns.reduce((sum, column) => sum + (column.width ?? Math.max(120, size * 6 + 16)), table.showRowLabels ? table.labelWidth ?? Math.max(120, size * 6 + 16) : 0));
 }
 
 
@@ -217,15 +217,32 @@ export function splitTableCells(table: CanvasTable, address: TableAddress): Canv
 }
 
 export function tableRowOrder(table: CanvasTable): string[] {
-  return [...table.rows.filter(row => row.aboveHeader).map(row => row.id), TABLE_HEADER, ...table.rows.filter(row => !row.aboveHeader).map(row => row.id)];
+  return [...table.rows.filter(row => row.aboveHeader).map(row => row.id), TABLE_HEADER, ...table.rows.filter(row => !row.aboveHeader && !row.footer).map(row => row.id), ...table.rows.filter(row => row.footer).map(row => row.id)];
 }
 function crossesTableHeading(table: CanvasTable, rowIds: string[]): boolean {
   const headings = new Set([TABLE_HEADER, ...table.rows.filter(row => row.aboveHeader).map(row => row.id)]);
-  return rowIds.some(id => headings.has(id)) && rowIds.some(id => !headings.has(id));
+  const footers = new Set(table.rows.filter(row => row.footer).map(row => row.id));
+  return (rowIds.some(id => headings.has(id)) && rowIds.some(id => !headings.has(id))) || (rowIds.some(id => footers.has(id)) && rowIds.some(id => !footers.has(id)));
 }
 export function addTableHeading(table: CanvasTable): CanvasTable {
   if (table.rows.length >= MAX_TABLE_ROWS) return table;
   const row: TableRow = { id: id(), cells: table.columns.map(() => ""), header: true, aboveHeader: true };
   const next = { ...table, rows: [...table.rows.filter(item => item.aboveHeader), row, ...table.rows.filter(item => !item.aboveHeader)] };
+  return mergeTableCells(next, { rowId: row.id, columnId: table.showRowLabels ? TABLE_LABEL : table.columns[0].id }, { rowId: row.id, columnId: table.columns.at(-1)!.id });
+}
+
+/** Reorder by identity: cell answers, template instances, and widths travel together. */
+export function moveTableColumn(table: CanvasTable, columnId: string, direction: -1 | 1): CanvasTable {
+  const from = table.columns.findIndex(column => column.id === columnId), to = from + direction;
+  if (from < 0 || to < 0 || to >= table.columns.length) return table;
+  const order = table.columns.map((_, index) => index);
+  [order[from], order[to]] = [order[to], order[from]];
+  return normalizeTable({ ...table, columns: order.map(index => table.columns[index]), rows: table.rows.map(row => ({ ...row, cells: order.map(index => row.cells[index]) })) });
+}
+
+export function addTableFooter(table: CanvasTable): CanvasTable {
+  if (table.rows.length >= MAX_TABLE_ROWS) return table;
+  const row: TableRow = { id: id(), cells: table.columns.map(() => ""), footer: true };
+  const next = { ...table, rows: [...table.rows, row] };
   return mergeTableCells(next, { rowId: row.id, columnId: table.showRowLabels ? TABLE_LABEL : table.columns[0].id }, { rowId: row.id, columnId: table.columns.at(-1)!.id });
 }

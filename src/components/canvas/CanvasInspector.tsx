@@ -5882,7 +5882,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {/* ── Text ── */}
-        {(isContentNode || isEditableFrame || isRadialLayoutSector) && (
+        {(isContentNode || nodeType === "table" || isEditableFrame || isRadialLayoutSector) && (
           <Section
             label="Text"
             defaultOpen={initialTab === "text"}

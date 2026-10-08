@@ -67,8 +67,22 @@ try {
   await page.click('[aria-label="Row 1, Column 0"]');
   await button('Split cells');
   assert.equal(await page.$$eval('tbody td', cells => cells.length),9);
+  await page.click('[aria-label="Row 1, Column 0"]');
+  await page.locator('[aria-label="Column width"]').fill('240');
+  await page.keyboard.press('Enter');
+  await button('Move column right');
+  assert.equal(await page.$$eval('thead tr:last-child th', cells => cells.map(cell=>cell.textContent).findIndex(text=>text.includes('Column 0'))),2);
+  await button('Fit content');
+  assert.equal(await page.$eval('[aria-label="Table tools"]', el=>!!el.closest('table')),false);
+  assert.equal(await page.$eval('[aria-label="Table tools"]', el=>el.hasAttribute('data-export-ignore')),true);
+  await button('Add footer');
+  await page.locator('[aria-label="Footer 1"]').fill('Footer note');
+  assert.equal(await page.$eval('tfoot tr th, tfoot tr td', el=>el.colSpan),4);
+  await new Promise(resolve=>setTimeout(resolve,2200));
+  await page.reload({waitUntil:'networkidle0'});
+  assert.equal(await page.$eval('[aria-label="Footer 1"]', el=>el.value),'Footer note');
   assert.deepEqual(errors, []);
-  console.log('PASS editable headings before table, split heading, rectangle merge/split, retained contents, spatial navigation and reload');
+  console.log('PASS editable headings before table, split heading, rectangle merge/split, retained contents, spatial navigation, column widths/reordering, external controls, footer and reload');
 } catch (error) { await page.screenshot({path:".tmp/table-merge-failure.png"}); throw error; } finally {
   await browser.close();
 }
