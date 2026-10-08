@@ -1,3 +1,4 @@
+import { convertTableLayout } from "./table-transform";
 import { tableRowOrder, moveTableColumn, addTableFooter } from "./table";
 import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
@@ -228,4 +229,57 @@ test("optional footer remains after the body and cannot merge across body rows",
   assert.equal(tableRowOrder(table).at(-1), footer.id);
   assert.equal(normalizeTable(table).rows.at(-1)!.footer, true);
   assert.deepEqual(mergeTableCells(table, { rowId: table.rows[0].id, columnId: table.columns[0].id }, { rowId: footer.id, columnId: table.columns[0].id }), table);
+});
+
+
+const conversionFixture = () => normalizeTable({ columns: [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }], rows: [{ id: "r1", label: "One", cells: ["a1", "b1", "c1"] }, { id: "r2", label: "Two", cells: ["a2", "", "c2"] }], showRowLabels: true });
+test("reshape stacks across rows or down columns without dropping empty cells", () => {
+  const source = conversionFixture();
+  const across = convertTableLayout(source, { kind: "reshape", columns: 1, order: "rows" }).table!;
+  assert.deepEqual(across.rows.map(row => row.cells[0]), ["a1", "b1", "c1", "a2", "", "c2"]);
+  assert.deepEqual(across.rows.map(row => row.label), ["One", "One", "One", "Two", "Two", "Two"]);
+  assert.equal(across.columns[0].name, "A / B / C");
+  const down = convertTableLayout(source, { kind: "reshape", columns: 2, order: "columns" }).table!;
+  assert.deepEqual(down.rows.map(row => row.cells), [["a1", "a2"], ["b1", ""], ["c1", "c2"]]);
+  assert.deepEqual(source, conversionFixture());
+});
+test("transpose swaps headings and row labels and roundtrips cell contents", () => {
+  const source = conversionFixture();
+  const transposed = convertTableLayout(source, { kind: "transpose" }).table!;
+  assert.deepEqual(transposed.columns.map(column => column.name), ["One", "Two"]);
+  assert.deepEqual(transposed.rows.map(row => row.label), ["A", "B", "C"]);
+  assert.deepEqual(transposed.rows.map(row => row.cells), [["a1", "a2"], ["b1", ""], ["c1", "c2"]]);
+  const restored = convertTableLayout(transposed, { kind: "transpose" }).table!;
+  assert.deepEqual(restored.rows.map(row => row.cells), source.rows.map(row => row.cells));
+  assert.deepEqual(restored.columns.map(column => column.name), source.columns.map(column => column.name));
+});
+test("conversion retains independent templates, local rich formatting, and header styling", () => {
+  const source = conversionFixture();
+  source.rows[0].header = true;
+  source.rows[1].templates = { b: { template: newHomeworkTemplate("homework"), independent: true, sections: [{ id: "first", values: { question: { text: "भू", richText: "<strong>भू</strong>" } }, extraRows: [], editedText: { html: "<p>भू</p>", baseline: "<p>भू</p>" } }] } };
+  const transposed = convertTableLayout(source, { kind: "transpose" }).table!;
+  const content = transposed.rows[1].templates![transposed.columns[1].id];
+  assert.deepEqual(content, source.rows[1].templates.b);
+  assert.notEqual(content, source.rows[1].templates.b);
+  assert.ok(transposed.rows.every(row => row.cellHeaders?.includes(transposed.columns[0].id)));
+  assert.equal(tableDisplayRows(transposed)[1][1].header, true);
+  assert.equal(tableDisplayRows(transposed)[1][2].header, false);
+});
+test("heading/footer text stays separate and merged body contents are retained", () => {
+  const source = conversionFixture();
+  source.rows.unshift({ id: "title", aboveHeader: true, header: true, cells: ["Title", "", ""] });
+  source.rows.push({ id: "foot", footer: true, cells: ["Footer", "", ""] });
+  source.merges = [{ rowIds: ["r1"], columnIds: ["a", "b"] }];
+  const converted = convertTableLayout(source, { kind: "reshape", columns: 1, order: "rows" }).table!;
+  assert.equal(converted.rows.length, 8);
+  assert.equal(converted.rows[0].aboveHeader, true);
+  assert.equal(converted.rows.at(-1)!.footer, true);
+  assert.deepEqual(converted.rows.slice(1, 4).map(row => row.cells[0]), ["a1", "b1", "c1"]);
+});
+test("conversions reject oversized and invalid layouts rather than truncating values", () => {
+  const source = createTable(500, 3);
+  assert.match(convertTableLayout(source, { kind: "reshape", columns: 1, order: "rows" }).error!, /1500 rows/);
+  assert.match(convertTableLayout(source, { kind: "transpose" }).error!, /30/);
+  assert.ok(convertTableLayout(source, { kind: "reshape", columns: 0, order: "rows" }).error);
+  assert.ok(convertTableLayout(source, { kind: "reshape", columns: 1.5, order: "rows" }).error);
 });

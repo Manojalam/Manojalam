@@ -10,6 +10,7 @@ import { NodeHandles } from "./NodeHandles";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { RichTextEditor } from "../RichTextEditor";
 import { cardSectionsFromText, renderCardSections } from "@/lib/canvas/card-templates";
+import { convertTableLayout, type TableConversion } from "@/lib/canvas/table-transform";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
@@ -46,6 +47,9 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
   }, [selected]);
   const table = normalizeTable(data.table);
+  const [reshapeColumns, setReshapeColumns] = useState("1");
+  const [reshapeOrder, setReshapeOrder] = useState<"rows" | "columns">("rows");
+  const [conversionError, setConversionError] = useState("");
   const [selection, setSelection] = useState<{ start: TableAddress; end: TableAddress } | null>(null);
   const [toolbarOffset, setToolbarOffset] = useState({ x: 0, y: 0 });
   const [editingCell, setEditingCell] = useState<string | null>(null);
@@ -78,6 +82,18 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     if (Number(node.style?.width) < minWidth) {
       state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, style: { ...item.style, width: Math.max(Number(item.style?.width) || 600, minWidth) } } : item));
     }
+  };
+  const convert = (operation: TableConversion) => {
+    if (!editable) return;
+    const result = convertTableLayout(current(), operation);
+    setConversionError(result.error || "");
+    if (!result.table) return;
+    const next = result.table;
+    write(next);
+    setSelection(null); setEditingCell(null);
+    if (useUIStore.getState().fillingTableColumn?.nodeId === id) useUIStore.setState({ fillingTableColumn: null });
+    const state = useCanvasStore.getState();
+    state.setNodes(nodes => nodes.map(node => node.id === id ? { ...node, data: { ...node.data, tableMinHeight: 0 }, style: { ...node.style, width: Math.max(240, tableMinimumWidth(next, Number(data.fontSize) || settings.defaultFontSize)), height: 80 } } : node));
   };
   const columnWidth = (columnId: string) => {
     const header = Array.from(tableElement.current?.querySelectorAll<HTMLElement>(`[data-cell-row="${TABLE_HEADER}"]`) ?? []).find(cell => cell.dataset.cellColumn === columnId);
@@ -164,7 +180,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const merge = tableMergeAt(table, address);
     if (merge && (merge.rowIds[0] !== rowId || merge.columnIds[0] !== columnId)) return null;
     const row = table.rows.find(row => row.id === rowId);
-    const header = rowId === TABLE_HEADER || row?.header || columnId === TABLE_LABEL;
+    const header = rowId === TABLE_HEADER || row?.header || columnId === TABLE_LABEL || !!row?.cellHeaders?.includes(columnId);
     const Cell = header ? "th" : "td";
     const addresses = (merge?.rowIds ?? [rowId]).flatMap(r => (merge?.columnIds ?? [columnId]).map(c => ({ rowId: r, columnId: c })));
     const highlighted = selected && range && range.rowIds.length * range.columnIds.length > 1 && range.rowIds.includes(rowId) && range.columnIds.includes(columnId);
@@ -293,12 +309,24 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} onClick={() => { const next = addTableFooter(current()); write(next); const footer = next.rows.at(-1)!; focus(footer.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add footer</button>
         <button type="button" disabled={!range || range.rowIds.length * range.columnIds.length < 2} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(mergeTableCells(current(), selection.start, selection.end)); }}>Merge cells</button>
         <button type="button" disabled={!selection || !tableMergeAt(table, selection.start)} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(splitTableCells(current(), selection.start)); }}>Split cells</button>
-        {activeRow && <><label className="flex items-center gap-1"><input type="checkbox" aria-label="Header row" checked={!!activeRow.header} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, header: event.target.checked } : row) })} />Header row</label>
+        {activeRow && <><label className="flex items-center gap-1"><input type="checkbox" aria-label="Header row" checked={!!activeRow.header} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, header: event.target.checked, cellHeaders: undefined } : row) })} />Header row</label>
           <button type="button" className="hover:text-foreground" onClick={() => addRow(table.rows.findIndex(row => row.id === activeRow.id))}>Insert row below</button>
           <button type="button" disabled={table.rows.length <= 1} className="hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), activeRow.id))}>Delete row</button></>}
         <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => addRow()}><Plus size={14} />Add row</button>
         <button type="button" disabled={table.columns.length >= MAX_TABLE_COLUMNS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => write(addTableColumn(current()))}><Plus size={14} />Add column</button>
         <label className="flex items-center gap-1"><input type="checkbox" aria-label="Row labels" checked={!!table.showRowLabels} onChange={event => write({ ...current(), showRowLabels: event.target.checked })} />Row labels</label>
+        <details className="relative">
+          <summary className="cursor-pointer font-medium">Convert layout</summary>
+          <div className="absolute left-0 top-full z-40 mt-2 w-80 space-y-3 rounded-lg border bg-popover p-3 shadow-xl" onKeyDown={event => event.stopPropagation()}>
+            <button type="button" className="rounded border px-2 py-1" onClick={() => convert({ kind: "transpose" })}>Transpose rows / columns</button>
+            <p className="text-muted-foreground">Transpose swaps row labels and column headings.</p>
+            <label className="block">Reading order<select aria-label="Reshape reading order" className="mt-1 w-full rounded border bg-background p-1" value={reshapeOrder} onChange={event => setReshapeOrder(event.target.value as "rows" | "columns")}><option value="rows">Across each row, then next row</option><option value="columns">Down each column, then next column</option></select></label>
+            <div className="flex items-center gap-2"><label>Columns <input aria-label="Reshape column count" className="w-14 rounded border bg-background p-1" type="number" min={1} max={MAX_TABLE_COLUMNS} value={reshapeColumns} onChange={event => setReshapeColumns(event.target.value)} /></label><button type="button" className="rounded border px-2 py-1" onClick={() => convert({ kind: "reshape", columns: Number(reshapeColumns), order: reshapeOrder })}>Reshape</button></div>
+            <button type="button" className="rounded border px-2 py-1" onClick={() => { setReshapeColumns("1"); convert({ kind: "reshape", columns: 1, order: reshapeOrder }); }}>Stack into one column</button>
+            <p className="text-muted-foreground">Cells keep their templates and values, including empty cells. Reshaping combines column headings. Merged cells are split; heading and footer content stays separate. Undo restores the original layout.</p>
+            {conversionError && <p role="alert" className="text-destructive">{conversionError}</p>}
+          </div>
+        </details>
         <span>Shift-click cells to select a range · Tab / arrows → navigate · Enter → new line</span>
       </div>}
     </div>
