@@ -45,7 +45,7 @@ try{
  await page.click('#board-properties button[title="Right"]');
  await page.waitForFunction(()=>document.querySelector('[aria-label="Template text, B"] .ProseMirror p')?.style.textAlign==='right');
  assert.equal(await page.evaluate(()=>window.getSelection().toString()),'भवति');
- assert.ok(await page.$('[data-template-accessory]'));
+ assert.ok(await page.$('#properties-template'));
  assert.ok(await page.$('#board-properties [aria-label="Selected text controls"]'));
  assert.deepEqual(errors,[]);await page.screenshot({path:'.tmp/inspector-controls.png'});
  console.log('PASS direct Text controls, no duplicates, table alignment, Style/Size, preserved template selection and inline underline/alignment');

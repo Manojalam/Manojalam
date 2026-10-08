@@ -4,7 +4,7 @@ const base=process.env.BOARD_TEST_URL??'http://localhost:3093';
 const browser=await puppeteer.launch({executablePath:process.env.BOARD_TEST_BROWSER??'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
 const page=await browser.newPage();page.on('dialog',dialog=>dialog.accept());const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const button=async name=>{const h=await page.waitForFunction(name=>[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===name&&el.getBoundingClientRect().width),{},name);await h.asElement().click()};
-const tools=async()=>{await page.$eval('summary',()=>{});await page.$$eval('summary',els=>els.filter(el=>el.textContent==='Convert layout').forEach(el=>{if(!el.parentElement.open)el.click()}));};
+const tools=async()=>{const tab=await page.waitForFunction(()=>[...document.querySelectorAll('[role="tab"]')].find(el=>el.textContent==='Table'));await tab.asElement().click();await page.$eval('summary',()=>{});await page.$$eval('summary',els=>els.filter(el=>el.textContent==='Convert layout').forEach(el=>{if(!el.parentElement.open)el.click()}));};
 try{
  await page.setViewport({width:1800,height:1100});await page.goto(base);
  await page.evaluate(async()=>{

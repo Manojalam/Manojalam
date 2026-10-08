@@ -2,6 +2,7 @@
 import { objectTextDefaults, OBJECT_TEXT_DEFAULTS_CLASS } from "@/lib/canvas/object-text-style";
 
 import { memo, useEffectEvent, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { NodeResizeControl, type NodeProps } from "@xyflow/react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -39,6 +40,8 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   const root = useRef<HTMLDivElement>(null);
   const tableElement = useRef<HTMLTableElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
+  const toolsHost = useUIStore(state => state.objectToolsHost);
+  const dockedTools = toolsHost?.nodeId === id ? toolsHost.element : null;
   const [toolbarBelow, setToolbarBelow] = useState(false);
   useLayoutEffect(() => {
     if (!selected) return;
@@ -290,6 +293,44 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     </Cell>;
   };
   const renderRow = (rowId: string) => <tr key={rowId}>{columns.map(columnId => renderCell(rowId, columnId))}</tr>;
+  const tableTools = selected && editable ? <div ref={toolbar} data-export-ignore role="toolbar" aria-label="Table tools" className={dockedTools ? "nodrag nopan nowheel flex flex-wrap items-center gap-3 p-3 text-xs [&_button]:rounded [&_button]:border [&_button]:px-2 [&_button]:py-1" : `nodrag nopan nowheel absolute ${toolbarBelow ? "top-full mt-3" : "bottom-full mb-3"} left-0 z-30 flex w-max max-w-[900px] flex-wrap items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl`} style={dockedTools ? undefined : { transform: `translate(${toolbarOffset.x}px, ${toolbarOffset.y}px)` }} onPointerDown={event => event.stopPropagation()}>
+        <button hidden={!!dockedTools} type="button" aria-label="Move table toolbar" title="Drag toolbar" className="cursor-grab" onPointerDown={event => {
+          event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
+          const start = { x: event.clientX, y: event.clientY }, origin = toolbarOffset, target = event.currentTarget, zoom = useCanvasStore.getState().viewport.zoom;
+          const move = (e: PointerEvent) => setToolbarOffset({ x: origin.x + (e.clientX - start.x) / zoom, y: origin.y + (e.clientY - start.y) / zoom });
+          const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); };
+          target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
+        }}><GripVertical size={16} /></button>
+        {selection && <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Column sizing and order">
+          <label>Width <input key={`${selection.start.columnId}:${selectedWidth}`} aria-label="Column width" type="number" min={60} max={4000} className="w-16 rounded border bg-background px-1" defaultValue={selectedWidth} onBlur={event => { if (event.target.value) resizeColumn(selection.start.columnId, Number(event.target.value)); }} onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+          <button type="button" onClick={() => fitColumn(selection.start.columnId)}>Fit content</button>
+          <button type="button" disabled={table.columns.findIndex(column => column.id === selection.start.columnId) <= 0} onClick={() => write(moveTableColumn(current(), selection.start.columnId, -1))}>Move column left</button>
+          <button type="button" disabled={selection.start.columnId === TABLE_LABEL || table.columns.at(-1)?.id === selection.start.columnId} onClick={() => write(moveTableColumn(current(), selection.start.columnId, 1))}>Move column right</button>
+        </div>}
+        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="hover:text-foreground disabled:opacity-30" onClick={() => { const next = addTableHeading(current()); write(next); const heading = next.rows.filter(row => row.aboveHeader).at(-1)!; focus(heading.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add heading</button>
+        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} onClick={() => { const next = addTableFooter(current()); write(next); const footer = next.rows.at(-1)!; focus(footer.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add footer</button>
+        <button type="button" disabled={!range || range.rowIds.length * range.columnIds.length < 2} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(mergeTableCells(current(), selection.start, selection.end)); }}>Merge cells</button>
+        <button type="button" disabled={!selection || !tableMergeAt(table, selection.start)} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(splitTableCells(current(), selection.start)); }}>Split cells</button>
+        {activeRow && <><label className="flex items-center gap-1"><input type="checkbox" aria-label="Header row" checked={!!activeRow.header} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, header: event.target.checked, cellHeaders: undefined } : row) })} />Header row</label>
+          <button type="button" className="hover:text-foreground" onClick={() => addRow(table.rows.findIndex(row => row.id === activeRow.id))}>Insert row below</button>
+          <button type="button" disabled={table.rows.length <= 1} className="hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), activeRow.id))}>Delete row</button></>}
+        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => addRow()}><Plus size={14} />Add row</button>
+        <button type="button" disabled={table.columns.length >= MAX_TABLE_COLUMNS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => write(addTableColumn(current()))}><Plus size={14} />Add column</button>
+        <label className="flex items-center gap-1"><input type="checkbox" aria-label="Row labels" checked={!!table.showRowLabels} onChange={event => write({ ...current(), showRowLabels: event.target.checked })} />Row labels</label>
+        <details className="relative">
+          <summary className="cursor-pointer font-medium">Convert layout</summary>
+          <div className="absolute left-0 top-full z-40 mt-2 w-80 space-y-3 rounded-lg border bg-popover p-3 shadow-xl" onKeyDown={event => event.stopPropagation()}>
+            <button type="button" className="rounded border px-2 py-1" onClick={() => convert({ kind: "transpose" })}>Transpose rows / columns</button>
+            <p className="text-muted-foreground">Transpose swaps row labels and column headings.</p>
+            <label className="block">Reading order<select aria-label="Reshape reading order" className="mt-1 w-full rounded border bg-background p-1" value={reshapeOrder} onChange={event => setReshapeOrder(event.target.value as "rows" | "columns")}><option value="rows">Across each row, then next row</option><option value="columns">Down each column, then next column</option></select></label>
+            <div className="flex items-center gap-2"><label>Columns <input aria-label="Reshape column count" className="w-14 rounded border bg-background p-1" type="number" min={1} max={MAX_TABLE_COLUMNS} value={reshapeColumns} onChange={event => setReshapeColumns(event.target.value)} /></label><button type="button" className="rounded border px-2 py-1" onClick={() => convert({ kind: "reshape", columns: Number(reshapeColumns), order: reshapeOrder })}>Reshape</button></div>
+            <button type="button" className="rounded border px-2 py-1" onClick={() => { setReshapeColumns("1"); convert({ kind: "reshape", columns: 1, order: reshapeOrder }); }}>Stack into one column</button>
+            <p className="text-muted-foreground">Cells keep their templates and values, including empty cells. Reshaping combines column headings. Merged cells are split; heading and footer content stays separate. Undo restores the original layout.</p>
+            {conversionError && <p role="alert" className="text-destructive">{conversionError}</p>}
+          </div>
+        </details>
+        <span>Shift-click cells to select a range · Tab / arrows → navigate · Enter → new line</span>
+      </div> : null;
   return <div ref={root} className="relative h-full w-full" onFocus={() => {
     if (!editable) return;
     const state = useCanvasStore.getState();
@@ -355,44 +396,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         <tbody>{table.rows.filter(row => !row.aboveHeader && !row.footer).map(row => renderRow(row.id))}</tbody>
         {!!table.rows.some(row => row.footer) && <tfoot>{table.rows.filter(row => row.footer).map(row => renderRow(row.id))}</tfoot>}
       </table>
-      {selected && editable && <div ref={toolbar} data-export-ignore role="toolbar" aria-label="Table tools" className={`nodrag nopan nowheel absolute ${toolbarBelow ? "top-full mt-3" : "bottom-full mb-3"} left-0 z-30 flex w-max max-w-[900px] flex-wrap items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl`} style={{ transform: `translate(${toolbarOffset.x}px, ${toolbarOffset.y}px)` }} onPointerDown={event => event.stopPropagation()}>
-        <button type="button" aria-label="Move table toolbar" title="Drag toolbar" className="cursor-grab" onPointerDown={event => {
-          event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-          const start = { x: event.clientX, y: event.clientY }, origin = toolbarOffset, target = event.currentTarget, zoom = useCanvasStore.getState().viewport.zoom;
-          const move = (e: PointerEvent) => setToolbarOffset({ x: origin.x + (e.clientX - start.x) / zoom, y: origin.y + (e.clientY - start.y) / zoom });
-          const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); };
-          target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
-        }}><GripVertical size={16} /></button>
-        {selection && <div className="flex items-center gap-2" role="group" aria-label="Column sizing and order">
-          <label>Width <input key={`${selection.start.columnId}:${selectedWidth}`} aria-label="Column width" type="number" min={60} max={4000} className="w-16 rounded border bg-background px-1" defaultValue={selectedWidth} onBlur={event => { if (event.target.value) resizeColumn(selection.start.columnId, Number(event.target.value)); }} onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
-          <button type="button" onClick={() => fitColumn(selection.start.columnId)}>Fit content</button>
-          <button type="button" disabled={table.columns.findIndex(column => column.id === selection.start.columnId) <= 0} onClick={() => write(moveTableColumn(current(), selection.start.columnId, -1))}>Move column left</button>
-          <button type="button" disabled={selection.start.columnId === TABLE_LABEL || table.columns.at(-1)?.id === selection.start.columnId} onClick={() => write(moveTableColumn(current(), selection.start.columnId, 1))}>Move column right</button>
-        </div>}
-        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="hover:text-foreground disabled:opacity-30" onClick={() => { const next = addTableHeading(current()); write(next); const heading = next.rows.filter(row => row.aboveHeader).at(-1)!; focus(heading.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add heading</button>
-        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} onClick={() => { const next = addTableFooter(current()); write(next); const footer = next.rows.at(-1)!; focus(footer.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add footer</button>
-        <button type="button" disabled={!range || range.rowIds.length * range.columnIds.length < 2} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(mergeTableCells(current(), selection.start, selection.end)); }}>Merge cells</button>
-        <button type="button" disabled={!selection || !tableMergeAt(table, selection.start)} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(splitTableCells(current(), selection.start)); }}>Split cells</button>
-        {activeRow && <><label className="flex items-center gap-1"><input type="checkbox" aria-label="Header row" checked={!!activeRow.header} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, header: event.target.checked, cellHeaders: undefined } : row) })} />Header row</label>
-          <button type="button" className="hover:text-foreground" onClick={() => addRow(table.rows.findIndex(row => row.id === activeRow.id))}>Insert row below</button>
-          <button type="button" disabled={table.rows.length <= 1} className="hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), activeRow.id))}>Delete row</button></>}
-        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => addRow()}><Plus size={14} />Add row</button>
-        <button type="button" disabled={table.columns.length >= MAX_TABLE_COLUMNS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => write(addTableColumn(current()))}><Plus size={14} />Add column</button>
-        <label className="flex items-center gap-1"><input type="checkbox" aria-label="Row labels" checked={!!table.showRowLabels} onChange={event => write({ ...current(), showRowLabels: event.target.checked })} />Row labels</label>
-        <details className="relative">
-          <summary className="cursor-pointer font-medium">Convert layout</summary>
-          <div className="absolute left-0 top-full z-40 mt-2 w-80 space-y-3 rounded-lg border bg-popover p-3 shadow-xl" onKeyDown={event => event.stopPropagation()}>
-            <button type="button" className="rounded border px-2 py-1" onClick={() => convert({ kind: "transpose" })}>Transpose rows / columns</button>
-            <p className="text-muted-foreground">Transpose swaps row labels and column headings.</p>
-            <label className="block">Reading order<select aria-label="Reshape reading order" className="mt-1 w-full rounded border bg-background p-1" value={reshapeOrder} onChange={event => setReshapeOrder(event.target.value as "rows" | "columns")}><option value="rows">Across each row, then next row</option><option value="columns">Down each column, then next column</option></select></label>
-            <div className="flex items-center gap-2"><label>Columns <input aria-label="Reshape column count" className="w-14 rounded border bg-background p-1" type="number" min={1} max={MAX_TABLE_COLUMNS} value={reshapeColumns} onChange={event => setReshapeColumns(event.target.value)} /></label><button type="button" className="rounded border px-2 py-1" onClick={() => convert({ kind: "reshape", columns: Number(reshapeColumns), order: reshapeOrder })}>Reshape</button></div>
-            <button type="button" className="rounded border px-2 py-1" onClick={() => { setReshapeColumns("1"); convert({ kind: "reshape", columns: 1, order: reshapeOrder }); }}>Stack into one column</button>
-            <p className="text-muted-foreground">Cells keep their templates and values, including empty cells. Reshaping combines column headings. Merged cells are split; heading and footer content stays separate. Undo restores the original layout.</p>
-            {conversionError && <p role="alert" className="text-destructive">{conversionError}</p>}
-          </div>
-        </details>
-        <span>Shift-click cells to select a range · Tab / arrows → navigate · Enter → new line</span>
-      </div>}
+      {dockedTools ? createPortal(tableTools, dockedTools) : tableTools}
     </div>
   </div>;
 }

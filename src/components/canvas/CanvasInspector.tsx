@@ -8,7 +8,7 @@ import { TemplateLauncher } from "./TemplateLauncher";
 
 import { PARAGRAPH_FIELDS, PARAGRAPH_KEYS, isParagraphField, paragraphFormatPatch, paragraphValue, storedParagraphValue } from "@/lib/canvas/paragraph-layout";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Eraser, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -1170,7 +1170,7 @@ const INLINE_TEXT_FIELDS = new Set<InlineTextFormatKey>([
   "textAlign",
 ]);
 
-type InspectorTab = "style" | "text" | "shape" | "layout" | "data";
+export type InspectorTab = "style" | "text" | "shape" | "layout" | "data" | "specific";
 
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: "style", label: "Style" },
@@ -1531,11 +1531,13 @@ function ConnectionInspectorSections({
 
 // ── Main inspector ─────────────────────────────────────────────────────────
 
-export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false, showTemplates = true }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean; showTemplates?: boolean }) {
+export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false, showTemplates = true, tab, onTabChange, embedded = false }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean; showTemplates?: boolean; tab?: InspectorTab; onTabChange?: (tab: InspectorTab) => void; embedded?: boolean }) {
   const [automaticColorScope, setAutomaticColorScope] = useState<"branch" | "chart">("branch");
   const { resolvedTheme } = useTheme();
   const boardTheme: BoardColorTheme = resolvedTheme === "dark" ? "dark" : "light";
-  const [singleNodeTab, setSingleNodeTab] = useState<InspectorTab>(initialTab);
+  const [localTab, setLocalTab] = useState<InspectorTab>(initialTab);
+  const singleNodeTab = tab ?? localTab;
+  const setSingleNodeTab = useCallback((value: InspectorTab) => { if (onTabChange) onTabChange(value); else setLocalTab(value); }, [onTabChange]);
   const [openRadialParentGroups, setOpenRadialParentGroups] = useState<Set<string>>(() => new Set());
   const [bulkChildCount, setBulkChildCount] = useState(3);
   const [resetManualRoutes, setResetManualRoutes] = useState(false);
@@ -2011,13 +2013,13 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     if (!selectedTextRange?.hasSelection) return;
     const frame = requestAnimationFrame(() => setSingleNodeTab("text"));
     return () => cancelAnimationFrame(frame);
-  }, [selectedTextRange?.nodeId, selectedTextRange?.hasSelection]);
+  }, [selectedTextRange?.nodeId, selectedTextRange?.hasSelection, setSingleNodeTab]);
 
   useEffect(() => {
     if (!isRadialLayoutSector || singleNodeTab !== "shape") return;
     const frame = requestAnimationFrame(() => setSingleNodeTab("style"));
     return () => cancelAnimationFrame(frame);
-  }, [isRadialLayoutSector, singleNodeTab]);
+  }, [isRadialLayoutSector, singleNodeTab, setSingleNodeTab]);
 
   const setField = (key: string, value: unknown) => {
     if (!selectedNode) return;
@@ -4007,7 +4009,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     );
   }
 
-  if (selectedNode.type === "sunburst" && singleNodeTab !== "text" && singleNodeTab !== "shape") {
+  if (selectedNode.type === "sunburst" && (embedded ? singleNodeTab === "specific" : singleNodeTab !== "text" && singleNodeTab !== "shape")) {
     const chartData = (selectedNode.data ?? {}) as Record<string, unknown>;
     const chartDimensions = getNodeDimensions(selectedNode);
     const chartDiameter = Math.round(Math.max(chartDimensions.width, chartDimensions.height));
@@ -4023,7 +4025,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
-        <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />
+        {!embedded && <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />}
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground">Radial chart</h3>
@@ -4314,7 +4316,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     );
   }
 
-  if (selectedNode.type === "relationshipDiagram" && singleNodeTab !== "text" && singleNodeTab !== "shape") {
+  if (selectedNode.type === "relationshipDiagram" && (embedded ? singleNodeTab === "specific" : singleNodeTab !== "text" && singleNodeTab !== "shape")) {
     const diagramSpec = normalizeRelationshipDiagramSpec(d.relationshipDiagramSpec);
     const diagramTitle = diagramSpec.title || "Relationship Diagram";
     const diagramSubtitle = diagramSpec.subtitle;
@@ -4372,7 +4374,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     };
     return (
       <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
-        <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />
+        {!embedded && <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} />}
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-foreground">Relationship diagram</h3>
@@ -5233,7 +5235,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   return (
     <aside className="vidya-float-panel canvas-inspector-panel flex w-72 max-w-[calc(100vw-1rem)] flex-col">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between border-b px-3 py-2.5">
+      <div hidden={embedded} className="flex items-center justify-between border-b px-3 py-2.5">
         <div>
           <h3 className="text-sm font-semibold capitalize">{isRadialLayoutSector ? "Radial sector" : nodeType}</h3>
           <p className="text-[10px] text-muted-foreground">{selectedNode.id.slice(0, 8)}…</p>
@@ -5255,9 +5257,9 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         </div>
       </div>
 
-      <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} hideSize={isRadialLayoutSector} />
+      {!embedded && <InspectorTabs value={singleNodeTab} onChange={setSingleNodeTab} type={selectedNode.type} hideSize={isRadialLayoutSector} />}
 
-      <div className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
+      <div hidden={embedded && singleNodeTab !== "layout"} className="grid grid-cols-3 gap-1 border-b bg-muted/25 p-2">
         <Button
           variant="outline"
           size="sm"
@@ -6128,7 +6130,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {matrixRootNode && selectedNode && (
-          <Section label="Matrix table" visible={singleNodeTab === "layout"}>
+          <Section label="Matrix table" visible={singleNodeTab === (embedded ? "specific" : "layout")} defaultOpen>
             <MatrixLevelLayoutControls rootId={matrixRootNode.id} />
             <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-border/70 bg-muted/35 p-2">
               <div>
