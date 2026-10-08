@@ -187,14 +187,14 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
             const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
             return <div className="min-h-9 p-2 outline-none focus:ring-2 focus:ring-inset focus:ring-primary" tabIndex={editable ? 0 : undefined} role="group" aria-label={`Template text, ${sourceColumn.name}`} data-row={source.rowId} data-column={source.columnId}
               onPointerDownCapture={event => {
-                if (!editable || event.shiftKey || event.button !== 0 || (event.target as HTMLElement).closest("a")) return;
+                if (!editable || event.shiftKey || event.button !== 0 || (event.target as HTMLElement).closest("a, [data-template-toggle]")) return;
                 selectCell(address); openCell(source.columnId, source.rowId);
                 setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
                 setEditingCell(`${source.rowId}:${source.columnId}`);
               }}
-              onFocus={() => { selectCell(address); openCell(source.columnId, source.rowId); }}
+              onFocus={event => { if ((event.target as HTMLElement).closest("[data-template-toggle]")) return; selectCell(address); openCell(source.columnId, source.rowId); }}
               onDoubleClick={event => { if (editable) { event.stopPropagation(); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
-              onKeyDown={event => { if ((event.target as HTMLElement).closest("[contenteditable=true]")) return; if (editable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCell(source.columnId, source.rowId); } }}
+              onKeyDown={event => { if ((event.target as HTMLElement).closest("[contenteditable=true], [data-template-toggle]")) return; if (editable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCell(source.columnId, source.rowId); } }}
               style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
               <RichTextEditor templateText initialFocusPoint={editFocusPoint} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialContent={renderCardSections(template, card.sections).richText} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" onChange={html => {
                 const latest = current();

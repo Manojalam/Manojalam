@@ -242,6 +242,7 @@ export function sanitizePastedHtml(html: string, preserveBoundaries = false): st
           name === "style"
           || name === "data-pm-slice"
           || name === "data-pm-node"
+          || (element.tagName === "P" && ["data-template-row", "data-template-parent", "data-template-collapsible", "data-template-collapsed", "data-template-section-separator"].includes(name))
           || (element.tagName === "SPAN" && name === "data-template-role")
           || (element.tagName === "SPAN" && ["data-sample-field", "data-sample-label", "data-sample-name", "data-sample-width", "data-field-label", "data-field-owner", "data-field-name", "data-field-instance"].includes(name))
           || (internalSymbol && INTERNAL_SYMBOL_ATTRIBUTES.has(name))

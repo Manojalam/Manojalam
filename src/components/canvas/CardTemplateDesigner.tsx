@@ -70,6 +70,18 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
               {(["left", "center", "right", "justify"] as const).map(alignment => <Button key={alignment} type="button" size="sm" variant={(row.textAlign ?? "left") === alignment ? "default" : "outline"} aria-label={`Row ${index + 1} align ${alignment}`} aria-pressed={(row.textAlign ?? "left") === alignment} onClick={() => patchRow(row.id, { textAlign: alignment })}>{alignment[0].toUpperCase() + alignment.slice(1)}</Button>)}
             </div>
             <details className="rounded border p-2">
+              <summary className="cursor-pointer text-xs">Collapse / expand</summary>
+              <div className="mt-2 space-y-2 text-xs">
+                <label className="flex items-center gap-2"><input type="checkbox" aria-label={`Row ${index + 1} expandable heading`} checked={!!row.collapsible} onChange={event => patchRow(row.id, { collapsible: event.target.checked, collapsedByDefault: false })} />Use this row as an expandable heading</label>
+                {row.collapsible && <label className="flex items-center gap-2"><input type="checkbox" aria-label={`Row ${index + 1} start collapsed`} checked={!!row.collapsedByDefault} onChange={event => patchRow(row.id, { collapsedByDefault: event.target.checked })} />Start collapsed in new instances</label>}
+                <label className="block">Show inside<select aria-label={`Row ${index + 1} expandable parent`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={row.collapseParentId || ""} onChange={event => patchRow(row.id, { collapseParentId: event.target.value || undefined })}>
+                  <option value="">Always visible</option>
+                  {draft.rows.slice(0, index).filter(parent => parent.collapsible).map(parent => <option key={parent.id} value={parent.id}>Row {draft.rows.indexOf(parent) + 1} — {parent.fields[0]?.label || "Heading"}</option>)}
+                </select></label>
+                <p className="text-muted-foreground">For example, make the भवति row an expandable heading, then show the prakriyā rows inside it. Each filled object or cell expands independently.</p>
+              </div>
+            </details>
+            <details className="rounded border p-2">
               <summary className="cursor-pointer text-xs">Row styling</summary>
               <div className="mt-2 grid grid-cols-2 gap-2">
 
