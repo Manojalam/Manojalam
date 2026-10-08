@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useLayoutEffect, useRef, type TextareaHTMLAttributes } from "react";
+import { memo, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { NodeResizeControl, type NodeProps } from "@xyflow/react";
 import { Plus, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -11,7 +11,7 @@ import { renderCardSections } from "@/lib/canvas/card-templates";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
-import { tableMinimumWidth, tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
+import { TABLE_HEADER, TABLE_LABEL, tableRowOrder, tableMergeAt, tableRange, mergeTableCells, splitTableCells, addTableHeading, type TableAddress, tableMinimumWidth, tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
 
 function TableInput(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -33,6 +33,9 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
   const root = useRef<HTMLDivElement>(null);
   const tableElement = useRef<HTMLTableElement>(null);
   const table = normalizeTable(data.table);
+  const [selection, setSelection] = useState<{ start: TableAddress; end: TableAddress } | null>(null);
+  const range = selection ? tableRange(table, selection.start, selection.end) : undefined;
+  const activeRow = table.rows.find(row => row.id === selection?.start.rowId);
   const settings = useCanvasStore(state => state.settings);
   const viewer = useCanvasStore(state => state.board?.accessRole === "viewer");
   const layerLocked = useCanvasStore(state => state.layers.some(layer => layer.id === data.layerId && layer.locked));
@@ -61,7 +64,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
     }
   };
   const beginTyping = () => { if (!editingHistory.current && editable) { useCanvasStore.getState().pushHistory(); editingHistory.current = true; } };
-  const addRow = (after?: number) => { const next = addTableRow(current(), after); write(next); focus(next.rows[Math.min((after ?? next.rows.length - 2) + 1, next.rows.length - 1)].id, next.showRowLabels ? "" : next.columns[0].id); };
+  const addRow = (after?: number) => { const before = current(); const next = addTableRow(before, after); if (after !== undefined && before.rows[after]?.aboveHeader) { next.rows[after + 1].aboveHeader = true; next.rows[after + 1].header = true; } write(next); focus(next.rows[Math.min((after ?? next.rows.length - 2) + 1, next.rows.length - 1)].id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); };
   const color = typeof data.borderColor === "string" ? data.borderColor : "#94a3b8";
   const defaultFont = FONT_OPTIONS.find(font => font.label === settings.defaultFont)?.value ?? `${settings.defaultFont}, system-ui, sans-serif`;
   const minimumWidth = tableMinimumWidth(table, Number(data.fontSize) || settings.defaultFontSize);
@@ -77,8 +80,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
         if (!node || node.resizing) return;
         // Measure natural rows, not the fixed React Flow wrapper. Reserve the footer
         // even while deselected so selection does not repeatedly resize the node.
-        const header = element.previousElementSibling as HTMLElement | null;
-        const height = Math.ceil(element.offsetHeight + (header?.offsetHeight ?? 34) + 46);
+        const height = Math.ceil(element.offsetHeight + 76);
         const width = Math.max(Number(node.style?.width) || node.width || 0, minimumWidth);
         const minimumHeight = typeof node.data.tableMinHeight === "number" ? node.data.tableMinHeight : Number(node.style?.height) || node.height || 0;
         const nextHeight = width !== Number(node.style?.width)
@@ -93,6 +95,58 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
     fit();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [id, minimumWidth, data.tableMinHeight]);
+  const selectCell = (address: TableAddress, extend = false) => setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
+  const updateText = (address: TableAddress, text: string) => {
+    beginTyping();
+    const next = current();
+    if (address.rowId === TABLE_HEADER) {
+      write({ ...next, columns: next.columns.map(column => column.id === address.columnId ? { ...column, name: text } : column) }, false);
+    } else write({ ...next, rows: next.rows.map(row => row.id !== address.rowId ? row : address.columnId === TABLE_LABEL ? { ...row, label: text } : { ...row, cells: row.cells.map((value, index) => next.columns[index].id === address.columnId ? text : value) }) }, false);
+  };
+  const columns = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...table.columns.map(column => column.id)];
+  const rowOrder = tableRowOrder(table);
+  const renderCell = (rowId: string, columnId: string) => {
+    const address = { rowId, columnId };
+    const merge = tableMergeAt(table, address);
+    if (merge && (merge.rowIds[0] !== rowId || merge.columnIds[0] !== columnId)) return null;
+    const row = table.rows.find(row => row.id === rowId);
+    const header = rowId === TABLE_HEADER || row?.header || columnId === TABLE_LABEL;
+    const Cell = header ? "th" : "td";
+    const addresses = (merge?.rowIds ?? [rowId]).flatMap(r => (merge?.columnIds ?? [columnId]).map(c => ({ rowId: r, columnId: c })));
+    const highlighted = selected && range && range.rowIds.length * range.columnIds.length > 1 && range.rowIds.includes(rowId) && range.columnIds.includes(columnId);
+    return <Cell key={columnId} data-cell-row={rowId} data-cell-column={columnId} scope={header ? rowId === TABLE_HEADER ? "col" : "row" : undefined} rowSpan={merge?.rowIds.length} colSpan={merge?.columnIds.length}
+      className={`nodrag nopan relative border-b border-r align-top text-left last:border-r-0 ${header ? "bg-muted/50 font-semibold" : ""} ${highlighted ? "ring-2 ring-inset ring-primary" : ""}`}
+      style={{ borderColor: color }}
+      onPointerDownCapture={event => { if (editable && event.shiftKey) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
+      onClickCapture={event => { if (editable && event.shiftKey) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
+      onClick={event => { if (event.shiftKey || !editable || (event.target as HTMLElement).closest("button, a")) return; selectCell(address); if (rowId !== TABLE_HEADER && columnId !== TABLE_LABEL) openCell(columnId, rowId); }}>
+      {addresses.map((source, index) => {
+        const sourceRow = table.rows.find(row => row.id === source.rowId);
+        const columnIndex = table.columns.findIndex(column => column.id === source.columnId);
+        const sourceColumn = table.columns[columnIndex];
+        const text = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? "Row label" : sourceColumn.name : source.columnId === TABLE_LABEL ? sourceRow?.label ?? "" : sourceRow?.cells[columnIndex] ?? "";
+        const card = sourceRow?.templates?.[source.columnId];
+        if (index && !text && !card) return null;
+        const label = source.rowId === TABLE_HEADER ? `Column ${columnIndex + 1} name` : sourceRow?.aboveHeader ? `Heading ${table.rows.filter(row => row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}${index ? ` part ${index + 1}` : ""}` : source.columnId === TABLE_LABEL ? `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1} label` : `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}, ${sourceColumn.name || `column ${columnIndex + 1}`}`;
+        return <div key={`${source.rowId}:${source.columnId}`}>
+          {card && (() => {
+            const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
+            return <div className="min-h-9 p-2 outline-none focus:ring-2 focus:ring-inset focus:ring-primary" tabIndex={editable ? 0 : undefined} role="group" aria-label={`Template text, ${sourceColumn.name}`} data-row={source.rowId} data-column={source.columnId}
+              onFocus={() => { selectCell(address); openCell(source.columnId, source.rowId); }}
+              onKeyDown={event => { if (editable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCell(source.columnId, source.rowId); } }}
+              style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
+              <div className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" dangerouslySetInnerHTML={{ __html: renderCardSections(template, card.sections).richText }} />
+            </div>;
+          })()}
+          {source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL ? <span className="block px-2 py-2">Row label</span> : (!card || text) && <TableInput aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
+            onFocus={() => selectCell(address)} onBlur={() => { editingHistory.current = false; }} onChange={event => updateText(source, event.target.value)}
+            onPaste={event => { if (!editable || source.rowId === TABLE_HEADER || source.columnId === TABLE_LABEL) return; const text = event.clipboardData.getData("text/plain"); if (!text.includes("\t")) return; event.preventDefault(); write(pasteTableCells(current(), table.rows.findIndex(row => row.id === source.rowId), columnIndex, parseTablePaste(text))); }} />}
+        </div>;
+      })}
+      {rowId === TABLE_HEADER && columnId !== TABLE_LABEL && selected && editable && <button data-export-ignore type="button" title="Delete column" aria-label={`Delete column ${table.columns.findIndex(column => column.id === columnId) + 1}`} disabled={table.columns.length <= 1} className="absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), columnId))}><Trash2 size={12} /></button>}
+    </Cell>;
+  };
+  const renderRow = (rowId: string) => <tr key={rowId}>{columns.map(columnId => renderCell(rowId, columnId))}</tr>;
   return <div ref={root} className="relative h-full w-full" onFocus={() => {
     if (!editable) return;
     const state = useCanvasStore.getState();
@@ -102,7 +156,6 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
     <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, backgroundColor: typeof data.fillColor === "string" ? data.fillColor : undefined }}>
-      <div className="shrink-0 cursor-grab border-b px-3 py-2 text-xs font-semibold text-muted-foreground" style={{ borderColor: color }}>Table · {table.rows.length} rows × {table.columns.length} columns</div>
       <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table" onKeyDown={event => {
         if (!editable || event.nativeEvent.isComposing) return;
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
@@ -111,14 +164,21 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
           if (!target.matches('[data-table-input], [role="group"][data-row]')) return;
           const backwards = event.key === "ArrowLeft" || event.key === "ArrowUp";
           if (target instanceof HTMLTextAreaElement && (target.selectionStart !== target.selectionEnd || target.selectionStart !== (backwards ? 0 : target.value.length))) return;
-          const cell = target.closest("th, td") as HTMLTableCellElement | null;
-          const row = cell?.parentElement as HTMLTableRowElement | null;
-          if (!cell || !row) return;
+          const cell = target.closest<HTMLElement>("[data-cell-row]");
+          if (!cell) return;
           const vertical = event.key === "ArrowUp" || event.key === "ArrowDown";
-          const nextRow = vertical ? tableElement.current?.rows[row.rowIndex + (backwards ? -1 : 1)] : row;
-          const nextCell = nextRow?.cells[cell.cellIndex + (vertical ? 0 : backwards ? -1 : 1)];
-          const next = nextCell?.querySelector<HTMLElement>('[data-table-input], [role="group"][data-row]');
-          if (next) { event.preventDefault(); event.stopPropagation(); next.focus(); }
+          let r = rowOrder.indexOf(cell.dataset.cellRow!), c = columns.indexOf(cell.dataset.cellColumn!);
+          while (r >= 0 && c >= 0 && r < rowOrder.length && c < columns.length) {
+            if (vertical) r += backwards ? -1 : 1; else c += backwards ? -1 : 1;
+            if (r < 0 || c < 0 || r >= rowOrder.length || c >= columns.length) break;
+            const merge = tableMergeAt(table, { rowId: rowOrder[r], columnId: columns[c] });
+            const targetRow = merge?.rowIds[0] ?? rowOrder[r], targetColumn = merge?.columnIds[0] ?? columns[c];
+            const nextCell = Array.from(tableElement.current?.querySelectorAll<HTMLElement>("[data-cell-row]") ?? []).find(item => item.dataset.cellRow === targetRow && item.dataset.cellColumn === targetColumn);
+            if (nextCell === cell) continue;
+            const next = nextCell?.querySelector<HTMLElement>('[data-table-input], [role="group"][data-row]');
+            if (next) { event.preventDefault(); event.stopPropagation(); next.focus(); }
+            break;
+          }
           return;
         }
         if (event.key !== "Tab") return;
@@ -129,45 +189,20 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
         if (next) { event.preventDefault(); next.focus(); }
         else if (!event.shiftKey && table.rows.length < MAX_TABLE_ROWS) { event.preventDefault(); addRow(); }
       }}>
-        <thead><tr>{table.showRowLabels && <th scope="col" className="border-b border-r bg-muted/50 px-2 text-left" style={{ borderColor: color }}>Row label</th>}{table.columns.map((column, columnIndex) => <th key={column.id} scope="col" className="relative border-b border-r bg-muted/50 text-left font-semibold last:border-r-0" style={{ borderColor: color }}>
-          <TableInput aria-label={`Column ${columnIndex + 1} name`} value={column.name} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), columns: current().columns.map(item => item.id === column.id ? { ...item, name: event.target.value } : item) }, false); }} />
-          {selected && editable && <button data-export-ignore type="button" title={`Delete column ${columnIndex + 1}`} aria-label={`Delete column ${columnIndex + 1}`} disabled={table.columns.length <= 1} className="nodrag nopan absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), column.id))}><Trash2 size={12} /></button>}
-        </th>)}</tr></thead>
-        <tbody>{table.rows.map((row, rowIndex) => <tr key={row.id}>{table.showRowLabels && <th scope="row" className="border-b border-r bg-muted/50 text-left font-semibold align-top" style={{ borderColor: color }}><TableInput data-row={row.id} data-column="" aria-label={`Row ${rowIndex + 1} label`} value={row.label ?? ""} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, label: event.target.value } : item) }, false); }} /></th>}{row.cells.map((cell, columnIndex) => <td key={table.columns[columnIndex].id} className="nodrag nopan relative border-b border-r align-top last:border-r-0" style={{ borderColor: color }}
-              onKeyDown={event => {
-                if (!editable || !(event.target as HTMLElement).matches('[role="group"][data-row]')) return;
-                if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCell(table.columns[columnIndex].id, row.id); }
-
-              }}
-          onClick={event => { if (!(event.target as HTMLElement).closest("a, button, [data-export-ignore]")) openCell(table.columns[columnIndex].id, row.id); }}>
-
-          {row.templates?.[table.columns[columnIndex].id] && (() => {
-            const card = row.templates![table.columns[columnIndex].id];
-            const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
-            const rendered = renderCardSections(template, card.sections);
-            return <div className="min-h-9 p-2 outline-none focus:ring-2 focus:ring-inset focus:ring-primary" tabIndex={editable ? 0 : undefined} role="group" aria-label={`Template text, ${table.columns[columnIndex].name}`} data-row={row.id} data-column={table.columns[columnIndex].id}
-              onFocus={() => openCell(table.columns[columnIndex].id, row.id)}
-              style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
-              <div className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" dangerouslySetInnerHTML={{ __html: rendered.richText }} />
-            </div>;
-          })()}
-          {(!row.templates?.[table.columns[columnIndex].id] || cell) && <TableInput aria-label={`Row ${rowIndex + 1}, ${table.columns[columnIndex].name || `column ${columnIndex + 1}`}`} data-row={row.id} data-column={table.columns[columnIndex].id} value={cell} readOnly={!editable} onBlur={() => { editingHistory.current = false; }} onChange={event => { beginTyping(); write({ ...current(), rows: current().rows.map(item => item.id === row.id ? { ...item, cells: item.cells.map((value, index) => index === columnIndex ? event.target.value : value) } : item) }, false); }} onPaste={event => {
-            if (!editable) return;
-            const text = event.clipboardData.getData("text/plain");
-            if (!text.includes("\t")) return;
-            event.preventDefault(); write(pasteTableCells(current(), rowIndex, columnIndex, parseTablePaste(text)));
-          }} />}
-          {columnIndex === table.columns.length - 1 && selected && editable && <div data-export-ignore className="nodrag nopan absolute -right-14 top-1 flex rounded border bg-background shadow-sm">
-            <button type="button" aria-label={`Insert row after ${rowIndex + 1}`} title="Insert row below" disabled={table.rows.length >= MAX_TABLE_ROWS} className="p-1 hover:bg-accent disabled:opacity-30" onClick={() => addRow(rowIndex)}><Plus size={14} /></button>
-            <button type="button" aria-label={`Delete row ${rowIndex + 1}`} title="Delete row" disabled={table.rows.length <= 1} className="p-1 hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), row.id))}><Trash2 size={14} /></button>
-          </div>}
-        </td>)}</tr>)}</tbody>
+        <thead>{table.rows.filter(row => row.aboveHeader).map(row => renderRow(row.id))}{renderRow(TABLE_HEADER)}</thead>
+        <tbody>{table.rows.filter(row => !row.aboveHeader).map(row => renderRow(row.id))}</tbody>
       </table>
       {selected && editable && <div data-export-ignore className="nodrag nopan flex shrink-0 flex-wrap items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
+        <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="hover:text-foreground disabled:opacity-30" onClick={() => { const next = addTableHeading(current()); write(next); const heading = next.rows.filter(row => row.aboveHeader).at(-1)!; focus(heading.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add heading</button>
+        <button type="button" disabled={!range || range.rowIds.length * range.columnIds.length < 2} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(mergeTableCells(current(), selection.start, selection.end)); }}>Merge cells</button>
+        <button type="button" disabled={!selection || !tableMergeAt(table, selection.start)} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(splitTableCells(current(), selection.start)); }}>Split cells</button>
+        {activeRow && <><label className="flex items-center gap-1"><input type="checkbox" aria-label="Header row" checked={!!activeRow.header} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, header: event.target.checked } : row) })} />Header row</label>
+          <button type="button" className="hover:text-foreground" onClick={() => addRow(table.rows.findIndex(row => row.id === activeRow.id))}>Insert row below</button>
+          <button type="button" disabled={table.rows.length <= 1} className="hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), activeRow.id))}>Delete row</button></>}
         <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => addRow()}><Plus size={14} />Add row</button>
         <button type="button" disabled={table.columns.length >= MAX_TABLE_COLUMNS} className="flex items-center gap-1 hover:text-foreground disabled:opacity-30" onClick={() => write(addTableColumn(current()))}><Plus size={14} />Add column</button>
-        <label className="flex items-center gap-1"><input type="checkbox" checked={!!table.showRowLabels} onChange={event => write({ ...current(), showRowLabels: event.target.checked })} />Row labels</label>
-        <span>Tab / arrows → navigate · Enter → new line</span>
+        <label className="flex items-center gap-1"><input type="checkbox" aria-label="Row labels" checked={!!table.showRowLabels} onChange={event => write({ ...current(), showRowLabels: event.target.checked })} />Row labels</label>
+        <span>Shift-click cells to select a range · Tab / arrows → navigate · Enter → new line</span>
       </div>}
     </div>
   </div>;

@@ -1,7 +1,7 @@
 import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCellTemplate, cellSections, updateCellSections, tableTemplateDesign, addTableColumn, addTableRow, createTable, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText } from "./table";
+import { addTableHeading, tableDisplayRows, TABLE_HEADER, TABLE_LABEL, mergeTableCells, splitTableCells, tableMergeAt, tableRange, applyCellTemplate, cellSections, updateCellSections, tableTemplateDesign, addTableColumn, addTableRow, createTable, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText } from "./table";
 import { normalizePersistedNode } from "./node-persistence";
 import { editableNodeText } from "../export/powerpoint-layout";
 import { clearNodeContent } from "./clipboard";
@@ -151,4 +151,59 @@ test("cells in the same column hold unrelated template instances", () => {
   assert.deepEqual(table.rows[1], other);
   assert.equal(cellSections(table, column, second).length, 1);
   assert.equal(applyCellTemplate(table, newHomeworkTemplate("no target")), table);
+});
+
+
+test("explicit rectangle merges retain all values, templates and restore cells on split", () => {
+  const original = createTable(3,3);
+  original.rows[0].cells[0] = "भू";
+  original.rows[1].cells[1] = "लट्";
+  const table = applyCellTemplate(original, newHomeworkTemplate("sutra"), original.columns[1].id, original.rows[0].id);
+  const start = { rowId: table.rows[0].id, columnId: table.columns[0].id };
+  const end = { rowId: table.rows[1].id, columnId: table.columns[1].id };
+  const merged = mergeTableCells(table,start,end);
+  assert.deepEqual(merged.rows,table.rows);
+  assert.deepEqual(merged.columns,table.columns);
+  assert.equal(merged.merges?.[0].rowIds.length,2);
+  assert.equal(merged.merges?.[0].columnIds.length,2);
+  const display = tableDisplayRows(merged);
+  assert.equal(display[1][0].rowspan,2);
+  assert.equal(display[1][0].colspan,2);
+  assert.match(display[1][0].text,/भू\nलट्/);
+  assert.equal(display[2].length,1);
+  assert.deepEqual(normalizeTable(JSON.parse(JSON.stringify(merged))),merged);
+  const split = splitTableCells(merged,end);
+  assert.deepEqual(split.rows,table.rows);
+  assert.equal(split.merges?.length,0);
+  assert.equal(tableDisplayRows(split)[2].length,3);
+});
+
+test("dynamic headings appear before column headers and survive save as design", () => {
+  const table = createTable(2,3); table.showRowLabels = true;
+  const next = addTableHeading(addTableHeading(table));
+  const headings = next.rows.filter(row => row.aboveHeader);
+  headings[0].label = "भू लट् परस्मैपदम्";
+  headings[1].label = "Second heading";
+  const display = tableDisplayRows(next);
+  assert.equal(display[0][0].text,headings[0].label);
+  assert.equal(display[0][0].colspan,4);
+  assert.equal(display[1][0].text,"Second heading");
+  assert.equal(display[2][1].text,"Column 1");
+  assert.equal(tableTemplateDesign(next).rows[0].label,headings[0].label);
+  assert.equal(tableRange(next,{rowId:headings[0].id,columnId:TABLE_LABEL},{rowId:table.rows[0].id,columnId:table.columns[0].id}),undefined);
+});
+
+test("span repair never drops contents and rejects overlaps or invalid rectangles", () => {
+  let table = createTable(3,3);
+  const address = {rowId:table.rows[0].id,columnId:table.columns[0].id};
+  table = mergeTableCells(table,address,{rowId:table.rows[1].id,columnId:table.columns[1].id});
+  const expanded = mergeTableCells(table,{rowId:table.rows[1].id,columnId:table.columns[1].id},{rowId:table.rows[2].id,columnId:table.columns[2].id});
+  assert.equal(expanded.merges?.length,1);
+  assert.equal(expanded.merges?.[0].rowIds.length,3);
+  assert.equal(expanded.merges?.[0].columnIds.length,3);
+  assert.equal(normalizeTable({...table,merges:[...table.merges!,...table.merges!]}).merges?.length,1);
+  assert.equal(tableMergeAt(removeTableRow(table,table.rows[0].id),{rowId:table.rows[1].id,columnId:table.columns[0].id})?.rowIds.length,1);
+  assert.equal(addTableRow(table,0).merges,undefined);
+  const top = mergeTableCells(table,{rowId:TABLE_HEADER,columnId:table.columns[0].id},{rowId:TABLE_HEADER,columnId:table.columns[2].id});
+  assert.equal(tableDisplayRows(top)[0][0].colspan,3);
 });

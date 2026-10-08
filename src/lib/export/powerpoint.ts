@@ -1,5 +1,5 @@
 import PptxGenJS from "pptxgenjs";
-import { normalizeTable, tableCellText } from "../canvas/table";
+import { normalizeTable, tableDisplayRows } from "../canvas/table";
 import type { Edge, Node } from "@xyflow/react";
 import type {
   FrameNodeData,
@@ -940,11 +940,7 @@ function renderRelationshipDiagram(context: RenderContext, node: Node, rect: Pow
 function renderSpecialNode(context: RenderContext, node: Node, rect: PowerPointRect): boolean {
   if (node.type === "table") {
     const table = normalizeTable(node.data.table);
-    const headerNames = [...(table.showRowLabels ? ["Row label"] : []), ...table.columns.map(column => column.name)];
-    const tableRows: PptxGenJS.TableRow[] = [
-      headerNames.map(text => ({ text, options: { bold: true, fill: { color: "E2E8F0" } } })),
-      ...table.rows.map((row, rowIndex) => [...(table.showRowLabels ? [{ text: row.label ?? "" }] : []), ...row.cells.map((_, columnIndex) => ({ text: tableCellText(table, rowIndex, columnIndex) }))]),
-    ];
+    const tableRows: PptxGenJS.TableRow[] = tableDisplayRows(table).map(row => row.map(cell => ({ text: cell.text, options: { rowspan: cell.rowspan, colspan: cell.colspan, ...(cell.header ? { bold: true, fill: { color: "E2E8F0" } } : {}) } })));
     context.slide.addTable(tableRows, {
       x: rect.x, y: rect.y, w: rect.width, h: rect.height,
       colW: Array.from({ length: table.columns.length + (table.showRowLabels ? 1 : 0) }, () => rect.width / (table.columns.length + (table.showRowLabels ? 1 : 0))),
