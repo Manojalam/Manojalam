@@ -11,6 +11,7 @@ import { TemplateRowCollapse } from "@/lib/canvas/template-row-collapse";
 import { FieldLabel } from "@/lib/canvas/field-label";
 import { flexibleCardLabels } from "@/lib/canvas/flexible-card";
 import { SampleField } from "@/lib/canvas/sample-field";
+import { TextToolGroup, TextToolPanel } from "./TextToolbarLayout";
 import { SampleTagDialog } from "./SampleTagDialog";
 import StarterKit from "@tiptap/starter-kit";
 import { Color } from "@tiptap/extension-color";
@@ -78,13 +79,7 @@ import {
 import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, IndentDecrease, IndentIncrease, Link2, Paintbrush, Palette, RefreshCw, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ColorPickerPanel } from "@/components/canvas/AppColorPicker";
@@ -1788,13 +1783,13 @@ export function RichTextEditor({
   // Measure the toolbar and place its BOTTOM fully above the selection top,
   // so it never covers the highlighted words. Skips when manually dragged.
   useLayoutEffect(() => {
-    if (!anchor || drag) return;
+    if (!anchor || drag || dockedToolbar) return;
     const h = toolbarRef.current?.offsetHeight ?? 40;
     const w = toolbarRef.current?.offsetWidth ?? 620;
     const above = anchor.top - h - TOOLBAR_GAP;
     setAutoTop(above >= 8 ? above : Math.max(8, Math.min(window.innerHeight - h - 8, anchor.bottom + TOOLBAR_GAP)));
     setAutoLeft(Math.max(w / 2 + 8, Math.min(window.innerWidth - w / 2 - 8, anchor.left)));
-  }, [anchor, drag, showColors, showFonts, showHighlights, showLink, showSizes]);
+  }, [anchor, drag, dockedToolbar, showColors, showFonts, showHighlights, showLink, showSizes]);
 
   // ── Dragging the toolbar ──
   const onGripDown = useCallback((e: React.PointerEvent) => {
@@ -2303,7 +2298,7 @@ export function RichTextEditor({
         <div
           ref={toolbarRef}
           data-universal-text-tools="editor-toolbar"
-          className={cn("nodrag nopan nowheel flex flex-wrap items-center gap-1 bg-popover p-2 text-popover-foreground", dockedToolbar ? "relative w-full rounded border" : "fixed z-[9999] w-max max-w-[min(94vw,920px)] rounded-lg border border-border shadow-2xl")}
+          className={cn("nodrag nopan nowheel flex flex-wrap items-center gap-1 bg-popover p-2 text-popover-foreground", dockedToolbar ? "relative w-full min-w-0 flex-col items-stretch gap-3" : "fixed z-[9999] w-max max-w-[min(94vw,920px)] rounded-lg border border-border shadow-2xl")}
           style={
             dockedToolbar ? undefined : drag
               ? { top: drag.top, left: drag.left }
@@ -2374,7 +2369,7 @@ export function RichTextEditor({
             <GripVertical className="h-4 w-4" />
           </div>}
 
-          <div className="mx-0.5 h-4 w-px bg-border/70" />
+          <div hidden={!!dockedToolbar} className="mx-0.5 h-4 w-px bg-border/70" />
 
           {additiveSelectionRanges.length > 1 && (
             <>
@@ -2384,10 +2379,11 @@ export function RichTextEditor({
               >
                 {additiveSelectionRanges.length} selections
               </span>
-              <div className="mx-0.5 h-4 w-px bg-border/70" />
+              <div hidden={!!dockedToolbar} className="mx-0.5 h-4 w-px bg-border/70" />
             </>
           )}
 
+          <TextToolGroup docked={!!dockedToolbar} label="Character">
           {/* Inline marks */}
           <FormatButton active={boldState === "present"} mixed={boldState === "mixed"} onAction={toggleBold} title="Bold"><b className="text-xs">B</b></FormatButton>
           <FormatButton active={italicState === "present"} mixed={italicState === "mixed"} onAction={toggleItalic} title="Italic"><i className="text-xs">I</i></FormatButton>
@@ -2396,7 +2392,7 @@ export function RichTextEditor({
           <FormatButton active={superscriptState === "present"} mixed={superscriptState === "mixed"} onAction={toggleSuperscript} title="Superscript"><span className="text-xs">x<sup>2</sup></span></FormatButton>
           <FormatButton active={subscriptState === "present"} mixed={subscriptState === "mixed"} onAction={toggleSubscript} title="Subscript"><span className="text-xs">x<sub>2</sub></span></FormatButton>
 
-          <div className="relative">
+          <div className={dockedToolbar ? "contents" : "relative"}>
             <button
               type="button"
               aria-expanded={showLink}
@@ -2420,23 +2416,28 @@ export function RichTextEditor({
             </button>
           </div>
 
-          <div className="mx-0.5 h-4 w-px bg-border/70" />
+          {!dockedToolbar && <div hidden={!!dockedToolbar} className="mx-0.5 h-4 w-px bg-border/70" />}
 
+          </TextToolGroup>
+          <TextToolGroup docked={!!dockedToolbar} label="Paragraph">
           {/* Alignment */}
           <FormatButton active={editor.isActive({ textAlign: "left" })} onAction={alignLeft} title="Left"><AlignLeft className="h-4 w-4" /></FormatButton>
           <FormatButton active={editor.isActive({ textAlign: "center" })} onAction={alignCenter} title="Center"><AlignCenter className="h-4 w-4" /></FormatButton>
           <FormatButton active={editor.isActive({ textAlign: "right" })} onAction={alignRight} title="Right"><AlignRight className="h-4 w-4" /></FormatButton>
           <FormatButton active={editor.isActive({ textAlign: "justify" })} onAction={() => applySelectionCommand(chain => chain.setTextAlign("justify"))} title="Justify"><span className="text-xs">☰</span></FormatButton>
 
-          <div className="mx-0.5 h-4 w-px bg-border/70" />
+          {!dockedToolbar && <div hidden={!!dockedToolbar} className="mx-0.5 h-4 w-px bg-border/70" />}
 
+          {dockedToolbar && <><div className="w-full" /><span className="mr-1 text-[10px] text-muted-foreground">Line spacing</span></>}
           <Input type="number" aria-label="Line spacing" title="Line spacing" min={1} max={4} step="any" className="h-8 w-16 px-1 text-[11px]" key={String(paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing))} defaultValue={paragraphValue("lineSpacing", editor.state.selection.$from.parent.attrs.lineSpacing)} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={event => { const value = paragraphValue("lineSpacing", event.currentTarget.value); applySelectionCommand(chain => chain.updateAttributes("paragraph", { lineSpacing: value }).updateAttributes("heading", { lineSpacing: value })); }} />
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(-1)))} title="Decrease indent (Ctrl/Cmd+[)"><IndentDecrease className="h-4 w-4" /></FormatButton>
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(1)))} title="Increase indent (Ctrl/Cmd+])"><IndentIncrease className="h-4 w-4" /></FormatButton>
 
+          </TextToolGroup>
+          <TextToolGroup docked={!!dockedToolbar} label="Font & size">
           {/* Font family */}
-          <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowSizes(false); setShowLink(false); }}
+          <div className={dockedToolbar ? "contents" : "relative"}>
+            <button aria-label="Font family" aria-expanded={showFonts} onMouseDown={(e) => { e.preventDefault(); setShowFonts((v) => !v); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowSizes(false); setShowLink(false); }}
               className="flex h-8 max-w-[140px] items-center gap-1 rounded-md border border-border px-2.5 text-[11px] hover:bg-muted">
               <span className="truncate" style={{ fontFamily: currentFamily ?? undefined }}>
                 {selectedFamily === "mixed" ? "Mixed" : currentFamily ? FONT_OPTIONS.find((f) => f.value === currentFamily)?.label ?? "Custom" : "Font"}
@@ -2444,9 +2445,9 @@ export function RichTextEditor({
               <span className="text-muted-foreground">▾</span>
             </button>
             {showFonts && (
-              <div className={cn(
-                "absolute left-0 z-10 max-h-64 w-52 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-xl",
-                openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1"
+              <div data-text-option-panel className={cn(
+                dockedToolbar ? "order-last mt-2 max-h-80 w-full min-w-0 basis-full overflow-y-auto rounded border" : "absolute left-0 z-10 max-h-64 w-52 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-xl",
+                !dockedToolbar && (openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1")
               )}>
                 {[...fontGroups.entries()].map(([cat, fonts]) => (
                   <div key={cat}>
@@ -2481,15 +2482,15 @@ export function RichTextEditor({
             }));
           }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">−</button>
 
-          <div className="relative">
-            <button onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowLink(false); }}
-              className={cn("flex h-8 items-center justify-center rounded-md border border-border px-2 text-xs hover:bg-muted", selectedFontSize === "mixed" ? "w-14" : "w-10")}>
-              {selectedFontSize === "mixed" ? "Mixed" : currentFontSize ?? "—"}
+          <div className={dockedToolbar ? "contents" : "relative"}>
+            <button aria-label="Font size presets" aria-expanded={showSizes} onMouseDown={(e) => { e.preventDefault(); setShowSizes((v) => !v); setShowFonts(false); setTextColorPickerOpen(false); setHighlightPickerOpen(false); setShowLink(false); }}
+              className={cn("flex h-8 items-center justify-center rounded-md border border-border px-2 text-xs hover:bg-muted", dockedToolbar ? "w-8" : selectedFontSize === "mixed" ? "w-14" : "w-10")}>
+              {dockedToolbar ? "▾" : selectedFontSize === "mixed" ? "Mixed" : currentFontSize ?? "—"}
             </button>
             {showSizes && (
-              <div className={cn(
-                "absolute left-1/2 z-10 grid w-40 -translate-x-1/2 grid-cols-4 gap-1 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-xl",
-                openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1"
+              <div data-text-option-panel className={cn(
+                dockedToolbar ? "order-last mt-2 grid w-full basis-full grid-cols-5 gap-1 rounded border p-2" : "absolute left-1/2 z-10 grid w-40 -translate-x-1/2 grid-cols-4 gap-1 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-xl",
+                !dockedToolbar && (openPopoversBelow ? "top-full mt-1" : "bottom-full mb-1")
               )}>
                 {SIZE_PRESETS.map((s) => (
                   <button key={s} onMouseDown={(e) => {
@@ -2514,12 +2515,15 @@ export function RichTextEditor({
             }));
           }} className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-xs hover:bg-muted">+</button>
 
-          <div className="mx-0.5 h-4 w-px bg-border/70" />
+          {!dockedToolbar && <div hidden={!!dockedToolbar} className="mx-0.5 h-4 w-px bg-border/70" />}
 
+          </TextToolGroup>
+          <TextToolGroup docked={!!dockedToolbar} label="Colour">
           {/* Text color */}
-          <div className="relative">
+          <div className={dockedToolbar ? "contents" : "relative"}>
             <button
               type="button"
+              aria-expanded={showColors}
               title={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"}
               aria-label={selectedColor === "mixed" ? "Text color: Mixed" : "Text color"}
               onPointerDown={capturePickerSelectionRanges}
@@ -2547,9 +2551,10 @@ export function RichTextEditor({
             {showColors && (
               <div
                 data-app-color-picker="true"
+                data-text-option-panel
                 className={cn(
-                  "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
-                  openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+                  dockedToolbar ? "order-last mt-2 w-full min-w-0 basis-full rounded border p-2" : "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                  !dockedToolbar && (openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2")
                 )}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -2582,6 +2587,7 @@ export function RichTextEditor({
                   </div>
                 </div>
                 <ColorPickerPanel
+                  compact={!!dockedToolbar}
                   value={textColorPickerValue ?? undefined}
                   mixed={capturedPickerTextColor === "mixed"}
                   extraColors={textColorSwatches}
@@ -2597,9 +2603,10 @@ export function RichTextEditor({
           </div>
 
           {/* Highlight color */}
-          <div className="relative">
+          <div className={dockedToolbar ? "contents" : "relative"}>
             <button
               type="button"
+              aria-expanded={showHighlights}
               title={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"}
               aria-label={selectedHighlight === "mixed" ? "Highlight: Mixed" : "Highlight color"}
               onPointerDown={capturePickerSelectionRanges}
@@ -2627,9 +2634,10 @@ export function RichTextEditor({
             {showHighlights && (
               <div
                 data-app-color-picker="true"
+                data-text-option-panel
                 className={cn(
-                  "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
-                  openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2"
+                  dockedToolbar ? "order-last mt-2 w-full min-w-0 basis-full rounded border p-2" : "absolute right-0 z-10 max-h-[min(70vh,36rem)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-xl",
+                  !dockedToolbar && (openPopoversBelow ? "top-full mt-2" : "bottom-full mb-2")
                 )}
               >
                 <div className="mb-2 flex items-center justify-between">
@@ -2649,6 +2657,7 @@ export function RichTextEditor({
                   </button>
                 </div>
                 <ColorPickerPanel
+                  compact={!!dockedToolbar}
                   value={highlightPickerValue ?? "#fde68a"}
                   extraColors={highlightColorSwatches}
                   savedColors={customColors}
@@ -2662,6 +2671,8 @@ export function RichTextEditor({
             )}
           </div>
 
+          </TextToolGroup>
+          <TextToolGroup docked={!!dockedToolbar} label="Tools">
           {/* Clear formatting */}
           <FormatButton active={!!inlineFormatPainter} onAction={useFormatPainter}
             title={inlineFormatPainter ? "Apply copied formatting" : "Copy formatting"}>
@@ -2675,35 +2686,15 @@ export function RichTextEditor({
             <span className="text-sm font-semibold leading-none" aria-hidden="true">Ω</span>
           </FormatButton>
           <FormatButton onAction={clearFormatting} title="Clear formatting"><Eraser className="h-4 w-4" /></FormatButton>
+          </TextToolGroup>
         </div>,
         dockedToolbar ?? document.body
       )}
 
       {mounted && editor && (
-        <Dialog
-          open={showLink}
-          onOpenChange={(open) => {
-            if (!open && linkDialogOpenRef.current) closeLinkEditor();
-          }}
-        >
-          <DialogContent
-            className="w-[min(92vw,28rem)]"
-            onOpenAutoFocus={(event) => {
-              event.preventDefault();
-              requestAnimationFrame(() => {
-                linkTextInputRef.current?.focus();
-                linkTextInputRef.current?.select();
-              });
-            }}
-            onCloseAutoFocus={(event) => event.preventDefault()}
-          >
-            <DialogHeader>
-              <DialogTitle>{linkEditing ? "Edit link" : "Add link"}</DialogTitle>
-              <DialogDescription>
-                Choose the text people will see and where the link should open.
-              </DialogDescription>
-            </DialogHeader>
-
+        <TextToolPanel host={dockedToolbar} open={showLink} onClose={closeLinkEditor}
+          title={linkEditing ? "Edit link" : "Add link"} description="Choose the text people will see and where the link should open."
+          onOpenAutoFocus={event => { event.preventDefault(); requestAnimationFrame(() => { linkTextInputRef.current?.focus(); linkTextInputRef.current?.select(); }); }}>
             <form
               aria-label={linkEditing ? "Edit link" : "Add link"}
               className="space-y-4"
@@ -2765,29 +2756,12 @@ export function RichTextEditor({
                 </Button>
               </div>
             </form>
-          </DialogContent>
-        </Dialog>
+        </TextToolPanel>
       )}
 
       {mounted && editor && (
-        <Dialog
-          open={showColorReplace}
-          onOpenChange={(open) => {
-            if (!open && colorReplaceDialogOpenRef.current) closeColorReplace();
-          }}
-        >
-          <DialogContent
-            className="max-h-[min(88vh,48rem)] w-[min(94vw,36rem)] overflow-y-auto"
-            onCloseAutoFocus={(event) => event.preventDefault()}
-          >
-            <DialogHeader>
-              <DialogTitle>Replace text color throughout shape</DialogTitle>
-              <DialogDescription>
-                Every explicitly colored word using the source color will change.
-                Other text styling stays intact.
-              </DialogDescription>
-            </DialogHeader>
-
+        <TextToolPanel host={dockedToolbar} open={showColorReplace} onClose={closeColorReplace}
+          title="Replace text color throughout shape" description="Every explicitly colored word using the source color will change. Other text styling stays intact.">
             <div className="space-y-5">
               <section className="space-y-2">
                 <Label>Color to replace</Label>
@@ -2823,6 +2797,7 @@ export function RichTextEditor({
                 <Label>Replacement color</Label>
                 <div className="rounded-lg border border-border p-3">
                   <ColorPickerPanel
+                  compact={!!dockedToolbar}
                     value={replaceToColor}
                     extraColors={textColorSwatches}
                     savedColors={customColors}
@@ -2852,8 +2827,7 @@ export function RichTextEditor({
                 </Button>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
+        </TextToolPanel>
       )}
 
       <div
