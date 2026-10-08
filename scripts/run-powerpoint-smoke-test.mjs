@@ -271,6 +271,18 @@ try {
   assert.match(tableXml, /Meaning two/);
   assert.equal((tableXml.match(/<a:tr\b/g) ?? []).length, 3);
   console.log("Verified Table exports as a native editable PowerPoint table with headers and every cell.");
+  const { addTableHeading, mergeTableCells } = require(join(outputDirectory, "lib", "canvas", "table.js"));
+  const mergedTable = addTableHeading(mergeTableCells(tableNode.data.table, {rowId:"one",columnId:"sutra"}, {rowId:"two",columnId:"meaning"}));
+  mergedTable.rows.find(row => row.aboveHeader).cells[0] = "भू लट् परस्मैपदम्";
+  const mergedOutput = join(outputDirectory, "merged-table.pptx");
+  await downloadEditablePowerPoint({ boardTitle: "Merged table", nodes: [{...tableNode, data:{table:mergedTable}}], edges: [], relationships: [], stops: [{ id: "table-stop", kind: "overview", title: "Merged table", nodeIds: ["table"] }], filename: mergedOutput });
+  const mergedArchive = await JSZip.loadAsync(await readFile(mergedOutput));
+  const mergedXml = await mergedArchive.file("ppt/slides/slide1.xml").async("string");
+  assert.match(mergedXml, /भू लट् परस्मैपदम्/);
+  assert.match(mergedXml, /Meaning two/);
+  assert.match(mergedXml, /rowSpan="2"/);
+  assert.match(mergedXml, /gridSpan="2"/);
+  console.log("Verified heading text and merged cell spans in native PowerPoint output.");
   if (keepArtifacts) console.log(`Kept verification deck at ${outputFile}`);
   if (keepArtifacts) console.log(`Kept folded Matrix verification deck at ${foldedOutputFile}`);
 } finally {

@@ -2,8 +2,12 @@ import type { BoardCardTemplate, CardSection } from "../types";
 import { cardSections, normalizeCardTemplates, renderCardSections } from "./card-templates";
 export interface TableTemplateContent { template: BoardCardTemplate; sections: CardSection[]; independent?: true }
 export interface TableColumn { id: string; name: string; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
-export interface TableRow { id: string; cells: string[]; label?: string; templates?: Record<string, TableTemplateContent> }
-export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean }
+export interface TableRow { id: string; cells: string[]; label?: string; header?: boolean; aboveHeader?: boolean; templates?: Record<string, TableTemplateContent> }
+export interface TableMerge { rowIds: string[]; columnIds: string[] }
+export interface TableAddress { rowId: string; columnId: string }
+export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; merges?: TableMerge[] }
+export const TABLE_HEADER = "$table-header";
+export const TABLE_LABEL = "$row-label";
 export const MAX_TABLE_COLUMNS = 30;
 export const MAX_TABLE_ROWS = 500;
 const id = () => crypto.randomUUID();
@@ -40,7 +44,7 @@ export function normalizeTable(value: unknown): CanvasTable {
       const template = normalizeCardTemplates([content?.template])[0];
       if (template) templates[column.id] = { template, sections: independentSections(content), independent: true };
     });
-    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
+    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
   });
   // Recover old column content without changing the table grid or dropping answers.
   sourceColumns.forEach((column, i) => {
@@ -54,26 +58,39 @@ export function normalizeTable(value: unknown): CanvasTable {
       row.templates = { ...row.templates, [columns[i].id]: { template, independent: true, sections: [...(previous?.sections ?? []), section] } };
     });
   });
-  return { columns, rows, ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
+  const table: CanvasTable = { columns, rows, ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
+  const rowOrder = tableRowOrder(table);
+  const columnOrder = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...columns.map(column => column.id)];
+  const merges: TableMerge[] = [];
+  for (const merge of Array.isArray(source?.merges) ? source.merges : []) {
+    if (!Array.isArray(merge?.rowIds) || !Array.isArray(merge?.columnIds)) continue;
+    const rowIds = rowOrder.filter(id => merge.rowIds.includes(id));
+    const columnIds = columnOrder.filter(id => merge.columnIds.includes(id));
+    if (!rowIds.length || !columnIds.length || rowIds.length * columnIds.length < 2 || crossesTableHeading(table, rowIds)) continue;
+    if (rowOrder.indexOf(rowIds.at(-1)!) - rowOrder.indexOf(rowIds[0]) + 1 !== rowIds.length || columnOrder.indexOf(columnIds.at(-1)!) - columnOrder.indexOf(columnIds[0]) + 1 !== columnIds.length) continue;
+    if (merges.some(item => item.rowIds.some(id => rowIds.includes(id)) && item.columnIds.some(id => columnIds.includes(id)))) continue;
+    merges.push({ rowIds, columnIds });
+  }
+  return { ...table, ...(merges.length ? { merges } : {}) };
 }
 
 export function addTableRow(table: CanvasTable, after = table.rows.length - 1): CanvasTable {
   if (table.rows.length >= MAX_TABLE_ROWS) return table;
   const rows = [...table.rows];
   rows.splice(Math.max(0, Math.min(rows.length, after + 1)), 0, { id: id(), cells: table.columns.map(() => "") });
-  return { ...table, rows };
+  return normalizeTable({ ...table, rows });
 }
 export function addTableColumn(table: CanvasTable): CanvasTable {
   if (table.columns.length >= MAX_TABLE_COLUMNS) return table;
   return { ...table, columns: [...table.columns, { id: id(), name: `Column ${table.columns.length + 1}` }], rows: table.rows.map(row => ({ ...row, cells: [...row.cells, ""] })) };
 }
 export function removeTableRow(table: CanvasTable, rowId: string): CanvasTable {
-  return table.rows.length <= 1 ? table : { ...table, rows: table.rows.filter(row => row.id !== rowId) };
+  return table.rows.length <= 1 ? table : normalizeTable({ ...table, rows: table.rows.filter(row => row.id !== rowId) });
 }
 export function removeTableColumn(table: CanvasTable, columnId: string): CanvasTable {
   const index = table.columns.findIndex(column => column.id === columnId);
   if (index < 0 || table.columns.length <= 1) return table;
-  return { ...table, columns: table.columns.filter(column => column.id !== columnId), rows: table.rows.map(row => ({ ...row, templates: Object.fromEntries(Object.entries(row.templates ?? {}).filter(([key]) => key !== columnId)), cells: row.cells.filter((_, i) => i !== index) })) };
+  return normalizeTable({ ...table, columns: table.columns.filter(column => column.id !== columnId), rows: table.rows.map(row => ({ ...row, templates: Object.fromEntries(Object.entries(row.templates ?? {}).filter(([key]) => key !== columnId)), cells: row.cells.filter((_, i) => i !== index) })) });
 }
 
 /** Excel/Sheets TSV, including quoted newlines and escaped quotes. */
@@ -109,13 +126,30 @@ export function tableCellText(table: CanvasTable, rowIndex: number, columnIndex:
   return [row?.cells[columnIndex] ?? "", card ? renderCardSections(card.template, independentSections(card)).text : ""].filter(Boolean).join("\n");
 }
 export function tablePlainText(table: CanvasTable): string {
-  return [[...(table.showRowLabels ? ["Row label"] : []), ...table.columns.map(column => column.name)].join("\t"), ...table.rows.map((row, rowIndex) => [...(table.showRowLabels ? [row.label ?? ""] : []), ...row.cells.map((_, columnIndex) => tableCellText(table, rowIndex, columnIndex))].join("\t"))].join("\n");
+  return tableDisplayRows(table).map(row => row.map(cell => cell.text).join("\t")).join("\n");
+}
+
+/** The same spans and text order used by the screen, for structured exports. */
+export function tableDisplayRows(table: CanvasTable): { text: string; header: boolean; rowspan: number; colspan: number }[][] {
+  const columns = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...table.columns.map(column => column.id)];
+  const textAt = (rowId: string, columnId: string) => {
+    const columnIndex = table.columns.findIndex(column => column.id === columnId);
+    if (rowId === TABLE_HEADER) return columnId === TABLE_LABEL ? "Row label" : table.columns[columnIndex].name;
+    const rowIndex = table.rows.findIndex(row => row.id === rowId);
+    return columnId === TABLE_LABEL ? table.rows[rowIndex].label ?? "" : tableCellText(table, rowIndex, columnIndex);
+  };
+  return tableRowOrder(table).map(rowId => columns.flatMap(columnId => {
+    const merge = tableMergeAt(table, { rowId, columnId });
+    if (merge && (merge.rowIds[0] !== rowId || merge.columnIds[0] !== columnId)) return [];
+    const text = merge ? merge.rowIds.flatMap(r => merge.columnIds.map(c => textAt(r,c))).filter(Boolean).join("\n") : textAt(rowId,columnId);
+    return [{ text, header: rowId === TABLE_HEADER || columnId === TABLE_LABEL || !!table.rows.find(row => row.id === rowId)?.header, rowspan: merge?.rowIds.length ?? 1, colspan: merge?.columnIds.length ?? 1 }];
+  }));
 }
 
 /** Save structure and headings, never another card's answers. */
 export function tableTemplateDesign(value: unknown): CanvasTable {
   const table = normalizeTable(value);
-  return { ...table, rows: table.rows.map(row => ({ ...row, cells: table.columns.map(() => ""), ...(row.templates ? { templates: Object.fromEntries(Object.entries(row.templates).map(([key, content]) => [key, { ...content, sections: [{ id: "first", values: {}, extraRows: [] }] }])) } : {}) })) };
+  return { ...table, rows: table.rows.map(row => ({ ...row, cells: row.header ? [...row.cells] : table.columns.map(() => ""), ...(row.templates ? { templates: Object.fromEntries(Object.entries(row.templates).map(([key, content]) => [key, { ...content, sections: [{ id: "first", values: {}, extraRows: [] }] }])) } : {}) })) };
 }
 
 
@@ -142,4 +176,56 @@ export function updateCellSections(table: CanvasTable, columnId: string, rowId: 
     const content = row.templates?.[columnId];
     return row.id !== rowId || !content ? row : { ...row, templates: { ...row.templates, [columnId]: { ...content, template: structuredClone(template ?? content.template), independent: true, sections: structuredClone(sections) } } };
   }) };
+}
+
+
+export function tableMergeAt(table: CanvasTable, address: TableAddress): TableMerge | undefined {
+  return table.merges?.find(merge => merge.rowIds.includes(address.rowId) && merge.columnIds.includes(address.columnId));
+}
+
+/** Expand selections around existing spans so merging never leaves overlapping cells. */
+export function tableRange(table: CanvasTable, start: TableAddress, end: TableAddress): TableMerge | undefined {
+  const rows = tableRowOrder(table);
+  const columns = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...table.columns.map(column => column.id)];
+  const r = [rows.indexOf(start.rowId), rows.indexOf(end.rowId)], c = [columns.indexOf(start.columnId), columns.indexOf(end.columnId)];
+  if ([...r, ...c].some(index => index < 0)) return;
+  let top = Math.min(...r), bottom = Math.max(...r), left = Math.min(...c), right = Math.max(...c);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const merge of table.merges ?? []) {
+      const t = rows.indexOf(merge.rowIds[0]), b = rows.indexOf(merge.rowIds.at(-1)!);
+      const l = columns.indexOf(merge.columnIds[0]), rr = columns.indexOf(merge.columnIds.at(-1)!);
+      if (t > bottom || b < top || l > right || rr < left) continue;
+      if (t < top || b > bottom || l < left || rr > right) { top = Math.min(top,t); bottom = Math.max(bottom,b); left = Math.min(left,l); right = Math.max(right,rr); expanded = true; }
+    }
+  }
+  if (crossesTableHeading(table, rows.slice(top, bottom + 1))) return;
+  return { rowIds: rows.slice(top, bottom + 1), columnIds: columns.slice(left, right + 1) };
+}
+
+export function mergeTableCells(table: CanvasTable, start: TableAddress, end: TableAddress): CanvasTable {
+  const range = tableRange(table, start, end);
+  if (!range || range.rowIds.length * range.columnIds.length < 2) return table;
+  return { ...table, merges: [...(table.merges ?? []).filter(merge => !merge.rowIds.some(id => range.rowIds.includes(id)) || !merge.columnIds.some(id => range.columnIds.includes(id))), range] };
+}
+
+export function splitTableCells(table: CanvasTable, address: TableAddress): CanvasTable {
+  const merge = tableMergeAt(table, address);
+  if (!merge) return table;
+  return { ...table, merges: table.merges!.filter(item => item !== merge) };
+}
+
+export function tableRowOrder(table: CanvasTable): string[] {
+  return [...table.rows.filter(row => row.aboveHeader).map(row => row.id), TABLE_HEADER, ...table.rows.filter(row => !row.aboveHeader).map(row => row.id)];
+}
+function crossesTableHeading(table: CanvasTable, rowIds: string[]): boolean {
+  const headings = new Set([TABLE_HEADER, ...table.rows.filter(row => row.aboveHeader).map(row => row.id)]);
+  return rowIds.some(id => headings.has(id)) && rowIds.some(id => !headings.has(id));
+}
+export function addTableHeading(table: CanvasTable): CanvasTable {
+  if (table.rows.length >= MAX_TABLE_ROWS) return table;
+  const row: TableRow = { id: id(), cells: table.columns.map(() => ""), header: true, aboveHeader: true };
+  const next = { ...table, rows: [...table.rows.filter(item => item.aboveHeader), row, ...table.rows.filter(item => !item.aboveHeader)] };
+  return mergeTableCells(next, { rowId: row.id, columnId: table.showRowLabels ? TABLE_LABEL : table.columns[0].id }, { rowId: row.id, columnId: table.columns.at(-1)!.id });
 }

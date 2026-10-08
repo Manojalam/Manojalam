@@ -3,7 +3,7 @@ import type { BoardCardTemplate, SampleCardTemplate } from "../types";
 import { plainTextToRichText } from "./rich-text-paste";
 import { cardTemplateNodeData } from "./card-templates";
 import { sampleCardData, sampleTemplateCopyData } from "./sample-templates";
-import { applyCellTemplate, normalizeTable, tableMinimumWidth, tablePlainText, type CanvasTable } from "./table";
+import { TABLE_HEADER, TABLE_LABEL, applyCellTemplate, normalizeTable, tableMinimumWidth, tablePlainText, type CanvasTable } from "./table";
 
 export function supportsContentTemplate(node: Node): boolean {
   return ["table", "shape", "text", "sticky", "mindmap"].includes(node.type ?? "") && !(node.data.radialChart as { enabled?: boolean } | undefined)?.enabled;
@@ -21,13 +21,20 @@ export function mergeTableTemplate(current: CanvasTable, design: CanvasTable): C
   const rows = Array.from({ length: Math.max(current.rows.length, design.rows.length) }, (_, i) => ({
     id: current.rows[i]?.id ?? design.rows[i].id,
     label: design.rows[i]?.label || current.rows[i]?.label,
+    header: design.rows[i]?.header ?? current.rows[i]?.header,
+    aboveHeader: design.rows[i]?.aboveHeader ?? current.rows[i]?.aboveHeader,
     templates: Object.fromEntries(columns.flatMap((column, j) => {
       const content = current.rows[i]?.templates?.[current.columns[j]?.id] ?? design.rows[i]?.templates?.[design.columns[j]?.id];
       return content ? [[column.id, content]] : [];
     })),
     cells: columns.map((_, j) => current.rows[i]?.cells[j] || design.rows[i]?.cells[j] || ""),
   }));
-  return normalizeTable({ columns, rows, showRowLabels: design.showRowLabels || current.showRowLabels });
+  const source = design.merges?.length ? design : current;
+  const merges = source.merges?.map(merge => ({
+    rowIds: merge.rowIds.map(id => id === TABLE_HEADER ? id : rows[source.rows.findIndex(row => row.id === id)]?.id).filter((id): id is string => !!id),
+    columnIds: merge.columnIds.map(id => id === TABLE_LABEL ? id : columns[source.columns.findIndex(column => column.id === id)]?.id).filter((id): id is string => !!id),
+  }));
+  return normalizeTable({ columns, rows, merges, showRowLabels: design.showRowLabels || current.showRowLabels });
 }
 
 export function applyContentTemplate(node: Node, template: BoardCardTemplate | SampleCardTemplate, kind: "card" | "sample", columnId?: string, rowId?: string): Node {

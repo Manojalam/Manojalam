@@ -63,7 +63,7 @@ try {
   await tab(); assert.equal(await active(), 'Template text, Column 0');
   await tab(true); assert.equal(await active(), 'Row 2 label');
   await page.screenshot({path:'.tmp/table-row-labels.png'});
-  await page.locator('label').filter(el => el.textContent === 'Row labels').click();
+  await page.locator('[aria-label="Row labels"]').click();
   await page.focus('[aria-label="Row 1, Column 2"]');
   await tab(); assert.equal(await active(), 'Template text, Column 0');
   assert.deepEqual(errors, []);
