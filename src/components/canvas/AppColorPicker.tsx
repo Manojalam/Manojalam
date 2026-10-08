@@ -40,6 +40,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
 interface ColorPickerPanelProps {
+  compact?: boolean;
   mixed?: boolean;
   value?: string;
   onChange: (color: string) => void;
@@ -202,6 +203,7 @@ function LabeledPaletteColor({
 
 /** The shared palette body used by popovers and rich-text toolbar color menus. */
 export function ColorPickerPanel({
+  compact = false,
   value,
   mixed = false,
   onChange,
@@ -311,11 +313,11 @@ export function ColorPickerPanel({
         contentClassName="space-y-1.5"
       >
         {COLOR_SWATCH_GROUPS.map((group) => (
-          <section key={group.name} className="grid grid-cols-[2.5rem_1fr] items-center gap-1.5">
+          <section key={group.name} className={compact ? "space-y-1" : "grid grid-cols-[2.5rem_1fr] items-center gap-1.5"}>
             <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
               {group.name}
             </p>
-            <div className="grid grid-cols-10 gap-1">
+            <div className={cn("grid gap-1", compact ? "grid-cols-[repeat(auto-fit,minmax(1.25rem,1fr))]" : "grid-cols-10")}>
               {group.colors.map((color) => (
                 <ColorSwatch
                   key={color}
@@ -332,7 +334,7 @@ export function ColorPickerPanel({
       </CollapsibleColorSection>
 
       <CollapsibleColorSection label="Metal colors" hint="Gold, silver, copper & more" defaultOpen={false} preserveCurrentFocus={selectionSafe}>
-        <div className="grid grid-cols-10 gap-1">{METALLIC_COLORS.map(color => <ColorSwatch key={color} color={color} selected={!mixed && draftColor === color} title={`Metal · ${color}`} onSelect={() => selectSwatch(color)} selectionSafe={selectionSafe} />)}</div>
+        <div className={cn("grid gap-1", compact ? "grid-cols-[repeat(auto-fit,minmax(1.25rem,1fr))]" : "grid-cols-10")}>{METALLIC_COLORS.map(color => <ColorSwatch key={color} color={color} selected={!mixed && draftColor === color} title={`Metal · ${color}`} onSelect={() => selectSwatch(color)} selectionSafe={selectionSafe} />)}</div>
       </CollapsibleColorSection>
 
       {usedColors.length > 0 && (
