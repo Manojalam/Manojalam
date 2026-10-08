@@ -30,20 +30,23 @@ try{
  assert.ok(await page.$('[aria-label="Selected item width"]'));
  // Select template text, then open Properties and Text without losing the range.
  await page.click('[aria-label="Template text, B"]');
- await page.waitForSelector('tbody .ProseMirror[contenteditable=true]');
- await page.evaluate(()=>{
-  const editor=document.querySelector('tbody .ProseMirror[contenteditable=true]');editor.focus();
+ await page.waitForSelector('[aria-label="Template text, B"] .ProseMirror[contenteditable=true]');
+ const wordPoint=await page.$eval('[aria-label="Template text, B"] .ProseMirror',editor=>{
   const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);let text;while(text=walker.nextNode()){if(text.textContent.includes('भवति'))break;}
-  const range=document.createRange();range.selectNodeContents(text);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);document.dispatchEvent(new Event('selectionchange'));
+  const range=document.createRange();range.selectNodeContents(text);const box=range.getBoundingClientRect();return {x:box.x+box.width/2,y:box.y+box.height/2};
  });
+ await page.mouse.click(wordPoint.x,wordPoint.y,{count:2});
  await new Promise(r=>setTimeout(r,150));
  await page.click('[aria-label="Object properties"]');await button('Text');
  assert.equal(await page.evaluate(()=>window.getSelection().toString()),'भवति');
- await page.click('#board-properties [aria-label="Underline"]');
- await page.waitForFunction(()=>document.querySelector('tbody .ProseMirror u'));
+ await page.click('#board-properties button[title="Underline"]');
+ await page.waitForFunction(()=>document.querySelector('[aria-label="Template text, B"] .ProseMirror u'));
+
  await page.click('#board-properties button[title="Right"]');
- await page.waitForFunction(()=>document.querySelector('tbody .ProseMirror p')?.style.textAlign==='right');
+ await page.waitForFunction(()=>document.querySelector('[aria-label="Template text, B"] .ProseMirror p')?.style.textAlign==='right');
  assert.equal(await page.evaluate(()=>window.getSelection().toString()),'भवति');
+ assert.ok(await page.$('[data-template-accessory]'));
+ assert.ok(await page.$('#board-properties [aria-label="Selected text controls"]'));
  assert.deepEqual(errors,[]);await page.screenshot({path:'.tmp/inspector-controls.png'});
  console.log('PASS direct Text controls, no duplicates, table alignment, Style/Size, preserved template selection and inline underline/alignment');
 }catch(e){await page.screenshot({path:'.tmp/inspector-controls-failure.png'});throw e}finally{await browser.close()}

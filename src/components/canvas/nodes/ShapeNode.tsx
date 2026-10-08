@@ -1,4 +1,5 @@
 "use client";
+import { textEntryPoint } from "@/lib/canvas/text-entry";
 
 import { memo, useState, useEffect, useRef, useCallback, useMemo, useId, type CSSProperties, type ReactNode } from "react";
 import { NodeResizer, useViewport, type NodeProps } from "@xyflow/react";
@@ -1294,12 +1295,13 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       <div
         className="group relative flex h-full w-full items-center justify-center"
         onDoubleClick={(event) => {
+            if ((event.target as HTMLElement).closest("[contenteditable=true], input, textarea")) return;
           event.stopPropagation();
           if (d.locked || (d.sampleTemplateId && !d.freeCardLayout)) return;
           if (isDrawing || radialChart?.enabled) return;
           editHistoryCaptured.current = false;
           editDirty.current = false;
-          setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
+          setEditFocusPoint(textEntryPoint(event));
           setEditing(true);
         }}
       >

@@ -1,4 +1,5 @@
 "use client";
+import { objectTextDefaults, OBJECT_TEXT_DEFAULTS_CLASS } from "@/lib/canvas/object-text-style";
 
 import { memo, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { NodeResizeControl, type NodeProps } from "@xyflow/react";
@@ -7,6 +8,8 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { NodeHandles } from "./NodeHandles";
 import { NodeQuickActions } from "./NodeQuickActions";
+import { plainTextToRichText, richTextToPlainText } from "@/lib/canvas/rich-text-paste";
+import { textEntryPoint } from "@/lib/canvas/text-entry";
 import { RichTextEditor } from "../RichTextEditor";
 import { cardSectionsFromText, renderCardSections } from "@/lib/canvas/card-templates";
 import { convertTableLayout, type TableConversion } from "@/lib/canvas/table-transform";
@@ -195,6 +198,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         const columnIndex = table.columns.findIndex(column => column.id === source.columnId);
         const sourceColumn = table.columns[columnIndex];
         const text = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? "Row label" : sourceColumn.name : source.columnId === TABLE_LABEL ? sourceRow?.label ?? "" : sourceRow?.cells[columnIndex] ?? "";
+        const rich = source.rowId === TABLE_HEADER ? sourceColumn?.richText : source.columnId === TABLE_LABEL ? sourceRow?.labelRichText : sourceRow?.richCells?.[source.columnId];
         const card = sourceRow?.templates?.[source.columnId];
         if (index && !text && !card) return null;
         const label = source.rowId === TABLE_HEADER ? `Column ${columnIndex + 1} name` : sourceRow?.footer ? `Footer ${table.rows.filter(row => row.footer).findIndex(row => row.id === source.rowId) + 1}` : sourceRow?.aboveHeader ? `Heading ${table.rows.filter(row => row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}${index ? ` part ${index + 1}` : ""}` : source.columnId === TABLE_LABEL ? `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1} label` : `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}, ${sourceColumn.name || `column ${columnIndex + 1}`}`;
@@ -203,13 +207,13 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
             const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
             return <div className="min-h-9 p-2 outline-none focus:ring-2 focus:ring-inset focus:ring-primary" tabIndex={editable ? 0 : undefined} role="group" aria-label={`Template text, ${sourceColumn.name}`} data-row={source.rowId} data-column={source.columnId}
               onPointerDownCapture={event => {
-                if (!editable || event.shiftKey || event.button !== 0 || (event.target as HTMLElement).closest("a, [data-template-toggle]")) return;
+                if (!editable || event.shiftKey || event.button !== 0 || (event.target as HTMLElement).closest("a, button, input, select, [contenteditable=true], [data-universal-text-tools], [data-template-toggle]")) return;
                 selectCell(address); openCell(source.columnId, source.rowId);
                 setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
                 setEditingCell(`${source.rowId}:${source.columnId}`);
               }}
               onFocus={event => { if ((event.target as HTMLElement).closest("[data-template-toggle]")) return; selectCell(address); openCell(source.columnId, source.rowId); }}
-              onDoubleClick={event => { if (editable) { event.stopPropagation(); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
+              onDoubleClick={event => { if (editable && !(event.target as HTMLElement).closest("[data-universal-text-tools], [data-template-toggle]")) { event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
               onKeyDown={event => { if ((event.target as HTMLElement).closest("[contenteditable=true], [data-template-toggle]")) return; if (editable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCell(source.columnId, source.rowId); } }}
               style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
               <RichTextEditor templateText initialFocusPoint={editFocusPoint} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialContent={renderCardSections(template, card.sections).richText} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" onChange={html => {
@@ -222,7 +226,20 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
               }} onBlur={() => { setEditingCell(null); editingHistory.current = false; }} />
             </div>;
           })()}
-          {source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL ? <span className="block px-2 py-2">Row label</span> : (!card || text) && <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
+          {!card && !(source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL) ? <div role="group" tabIndex={editable ? 0 : undefined} data-row={source.rowId} data-column={source.columnId} aria-label={label} style={objectTextDefaults(data)} className={`nodrag nopan min-h-10 px-2 py-2 outline-none [&_p]:m-0 ${OBJECT_TEXT_DEFAULTS_CLASS}`}
+            onFocus={event => { if (event.target === event.currentTarget && editable) { selectCell(address); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
+            onPointerDownCapture={event => { if (!editable || (event.target as HTMLElement).closest("[contenteditable=true], [data-universal-text-tools]")) return; selectCell(address); setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY }); setEditingCell(`${source.rowId}:${source.columnId}`); }}
+            onDoubleClick={event => { if (!editable || (event.target as HTMLElement).closest("[data-universal-text-tools]")) return; event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); }}>
+            <RichTextEditor nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(null); editingHistory.current = false; }} onChange={html => {
+              const next = current(); const target = next.rows.find(row => row.id === source.rowId);
+              const index = next.columns.findIndex(column => column.id === source.columnId);
+              if (source.rowId === TABLE_HEADER && index >= 0) next.columns[index] = { ...next.columns[index], name: richTextToPlainText(html), richText: html };
+              else if (target && source.columnId === TABLE_LABEL) { target.label = richTextToPlainText(html); target.labelRichText = html; }
+              else if (target && index >= 0) { target.cells[index] = richTextToPlainText(html); target.richCells = { ...target.richCells, [source.columnId]: html }; }
+              else return;
+              write(next, !editingHistory.current); editingHistory.current = true;
+            }} />
+          </div> : source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL ? <span className="block px-2 py-2">Row label</span> : (!card || text) && <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
             onFocus={() => selectCell(address)} onBlur={() => { editingHistory.current = false; }} onChange={event => updateText(source, event.target.value)}
             onPaste={event => { if (!editable || source.rowId === TABLE_HEADER || source.columnId === TABLE_LABEL) return; const text = event.clipboardData.getData("text/plain"); if (!text.includes("\t")) return; event.preventDefault(); write(pasteTableCells(current(), table.rows.findIndex(row => row.id === source.rowId), columnIndex, parseTablePaste(text))); }} />}
         </div>;
@@ -249,11 +266,26 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
     <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : undefined, borderStyle: (data.borderStyle as React.CSSProperties["borderStyle"]) || "solid", backgroundColor: resolveFillColor(data) }}>
-      <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table" onKeyDown={event => {
+      <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table" onPasteCapture={event => {
+        const text = event.clipboardData.getData("text/plain");
+        const cell = (event.target as HTMLElement).closest<HTMLElement>("[data-cell-row]");
+        if (!editable || !text.includes("\t") || !cell || cell.dataset.cellRow === TABLE_HEADER || cell.dataset.cellColumn === TABLE_LABEL) return;
+        event.preventDefault(); event.stopPropagation();
+        write(pasteTableCells(current(), table.rows.findIndex(row => row.id === cell.dataset.cellRow), table.columns.findIndex(column => column.id === cell.dataset.cellColumn), parseTablePaste(text)));
+      }} onKeyDownCapture={event => {
         if (!editable || event.nativeEvent.isComposing) return;
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
           if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-          const target = event.target as HTMLElement;
+          const rawTarget = event.target as HTMLElement;
+          const target = rawTarget.closest<HTMLElement>('[data-table-input], [role="group"][data-row]') ?? rawTarget;
+          const editor = rawTarget.closest<HTMLElement>('[contenteditable=true]');
+          if (editor) {
+            const selection = window.getSelection();
+            if (!selection?.isCollapsed || !selection.rangeCount) return;
+            const before = selection.getRangeAt(0).cloneRange(); before.selectNodeContents(editor); before.setEnd(selection.anchorNode!, selection.anchorOffset);
+            const backwards = event.key === "ArrowLeft" || event.key === "ArrowUp";
+            if (backwards ? before.toString().length !== 0 : before.toString().length !== (editor.textContent?.length ?? 0)) return;
+          }
           if (!target.matches('[data-table-input], [role="group"][data-row]')) return;
           const backwards = event.key === "ArrowLeft" || event.key === "ArrowUp";
           if (target instanceof HTMLTextAreaElement && (target.selectionStart !== target.selectionEnd || target.selectionStart !== (backwards ? 0 : target.value.length))) return;
@@ -276,10 +308,10 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         }
         if (event.key !== "Tab") return;
         const targets = Array.from(tableElement.current?.querySelectorAll<HTMLElement>('[data-table-input], [role="group"][data-row]') ?? []);
-        const index = targets.indexOf(event.target as HTMLElement);
+        const index = targets.indexOf((event.target as HTMLElement).closest<HTMLElement>('[data-table-input], [role="group"][data-row]') ?? event.target as HTMLElement);
         if (index < 0) return;
         const next = targets[index + (event.shiftKey ? -1 : 1)];
-        if (next) { event.preventDefault(); next.focus(); }
+        if (next) { event.preventDefault(); event.stopPropagation(); next.focus(); }
         else if (!event.shiftKey && table.rows.length < MAX_TABLE_ROWS) { event.preventDefault(); addRow(); }
       }}>
         <colgroup>{columns.map(columnId => {

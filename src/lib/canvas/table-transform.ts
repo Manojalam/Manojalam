@@ -1,7 +1,7 @@
 import { MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, type CanvasTable, type TableRow, type TableTemplateContent } from "./table";
 
 export type TableConversion = { kind: "transpose" } | { kind: "reshape"; columns: number; order: "rows" | "columns" };
-interface Cell { text: string; template?: TableTemplateContent; label: string; heading: string; width?: number; header: boolean }
+interface Cell { text: string; richText?: string; template?: TableTemplateContent; label: string; labelRichText?: string; heading: string; headingRichText?: string; width?: number; header: boolean }
 
 /** Move whole cells, including independent template instances. Never truncate an oversized result. */
 export function convertTableLayout(source: CanvasTable, operation: TableConversion): { table?: CanvasTable; error?: string } {
@@ -11,7 +11,7 @@ export function convertTableLayout(source: CanvasTable, operation: TableConversi
   const sideCount = source.rows.filter(row => row.aboveHeader || row.footer).reduce((sum, row) => sum + Math.ceil(Math.max(1, source.columns.filter((column, i) => row.cells[i] || row.templates?.[column.id]).length) / count), 0);
   const expectedRows = sideCount + (operation.kind === "transpose" ? source.columns.length : Math.ceil(body.length * source.columns.length / count));
   if (expectedRows > MAX_TABLE_ROWS) return { error: `This would create ${expectedRows} rows. The limit is ${MAX_TABLE_ROWS}; use more columns.` };
-  const cell = (row: TableRow, column: number): Cell => ({ text: row.cells[column] || "", template: row.templates?.[source.columns[column].id], label: row.label || "", heading: source.columns[column].name, width: source.columns[column].width, header: !!(row.header || row.cellHeaders?.includes(source.columns[column].id)) });
+  const cell = (row: TableRow, column: number): Cell => ({ text: row.cells[column] || "", richText: row.richCells?.[source.columns[column].id], template: row.templates?.[source.columns[column].id], label: row.label || "", labelRichText: row.labelRichText, heading: source.columns[column].name, headingRichText: source.columns[column].richText, width: source.columns[column].width, header: !!(row.header || row.cellHeaders?.includes(source.columns[column].id)) });
   const unique = (values: string[]) => [...new Set(values.filter(Boolean))].join(" / ");
   const chunks = (cells: Cell[]) => Array.from({ length: Math.ceil(cells.length / count) }, (_, i) => cells.slice(i * count, (i + 1) * count));
   let groups: Cell[][];
@@ -20,10 +20,12 @@ export function convertTableLayout(source: CanvasTable, operation: TableConversi
     const cells = operation.order === "rows" ? body.flatMap(row => source.columns.map((_, column) => cell(row, column))) : source.columns.flatMap((_, column) => body.map(row => cell(row, column)));
     groups = chunks(cells);
   }
-  const columns = Array.from({ length: count }, (_, index) => ({ id: crypto.randomUUID(), name: operation.kind === "transpose" ? body[index].label || `Row ${index + 1}` : unique(groups.map(group => group[index]?.heading || "")) || `Column ${index + 1}`, width: Math.max(120, ...groups.map(group => group[index]?.width || 120)) }));
+  const columns = Array.from({ length: count }, (_, index) => ({ id: crypto.randomUUID(), name: operation.kind === "transpose" ? body[index].label || `Row ${index + 1}` : unique(groups.map(group => group[index]?.heading || "")) || `Column ${index + 1}`, richText: operation.kind === "transpose" ? body[index].labelRichText : groups.every(group => group[index]?.heading === groups[0]?.[index]?.heading) ? groups[0]?.[index]?.headingRichText : undefined, width: Math.max(120, ...groups.map(group => group[index]?.width || 120)) }));
   const makeRow = (cells: Cell[], flags: Partial<TableRow> = {}): TableRow => ({
     id: crypto.randomUUID(), cells: columns.map((_, i) => cells[i]?.text || ""),
     label: unique(cells.map(value => value.label)),
+    labelRichText: cells.every(value => value.label === cells[0]?.label) ? cells[0]?.labelRichText : undefined,
+    richCells: Object.fromEntries(columns.flatMap((column, i) => cells[i]?.richText ? [[column.id, cells[i].richText!]] : [])),
     ...(cells.length && cells.every(value => value.header) ? { header: true } : {}),
     // Header styling attached to individual cells survives mixing headers with ordinary values.
     cellHeaders: columns.filter((_, i) => cells[i]?.header).map(column => column.id),
@@ -37,7 +39,7 @@ export function convertTableLayout(source: CanvasTable, operation: TableConversi
   };
   const headings = source.rows.filter(row => row.aboveHeader).flatMap(side);
   const footers = source.rows.filter(row => row.footer).flatMap(side);
-  const rows = [...headings, ...groups.map((group, index) => makeRow(group, operation.kind === "transpose" ? { label: source.columns[index].name } : {})), ...footers];
+  const rows = [...headings, ...groups.map((group, index) => makeRow(group, operation.kind === "transpose" ? { label: source.columns[index].name, labelRichText: source.columns[index].richText } : {})), ...footers];
   if (rows.length > MAX_TABLE_ROWS) return { error: `This would create ${rows.length} rows. The limit is ${MAX_TABLE_ROWS}; use more columns.` };
   if (!rows.length) return { error: "Add a body row before converting the table." };
   const showRowLabels = operation.kind === "transpose" || source.showRowLabels;

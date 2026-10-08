@@ -1,3 +1,4 @@
+import { objectCapabilities } from "./object-capabilities";
 import type { Node } from "@xyflow/react";
 
 import type {
@@ -15,20 +16,6 @@ export type SelectionTextStyleKey =
   | "fontWeight"
   | "fontStyle"
   | "textColor";
-
-const TEXT_NODE_TYPES = new Set([
-  "table",
-  "mindmap",
-  "sticky",
-  "text",
-  "shape",
-  "sanskrit",
-  "shloka",
-  "grammar",
-  "frame",
-  "sunburst",
-  "relationshipDiagram",
-]);
 
 const RELATIONSHIP_SPEC_KEY: Record<
   SelectionTextStyleKey,
@@ -151,7 +138,7 @@ function patchRelationshipDiagram(
 }
 
 export function supportsSelectionTextStyle(node: Node): boolean {
-  return TEXT_NODE_TYPES.has(node.type ?? "");
+  return objectCapabilities(node.type).text;
 }
 
 export function selectionNodeTextStyleValue(

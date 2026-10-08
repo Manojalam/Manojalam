@@ -1,4 +1,5 @@
 "use client";
+import { textEntryPoint } from "@/lib/canvas/text-entry";
 
 import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { NodeResizer, type NodeProps } from "@xyflow/react";
@@ -222,11 +223,12 @@ function TextBlockNodeComponent({
             ...objectRotationStyle("text", dd),
           }}
           onDoubleClick={(event) => {
+            if ((event.target as HTMLElement).closest("[contenteditable=true], input, textarea")) return;
             event.stopPropagation();
             if (isDrawing) return;
             editHistoryCaptured.current = false;
             editDirty.current = false;
-            setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY });
+            setEditFocusPoint(textEntryPoint(event));
             setEditing(true);
           }}
         >

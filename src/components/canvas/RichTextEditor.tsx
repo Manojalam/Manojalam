@@ -598,7 +598,7 @@ interface RichTextEditorProps {
   /** Whole-object alignment from the inspector; applied to ALL paragraphs when it changes */
   blockAlign?: "left" | "center" | "right" | "justify";
   /** Canvas pointer location that initiated this editing session. */
-  initialFocusPoint?: { clientX: number; clientY: number } | null;
+  initialFocusPoint?: { clientX: number; clientY: number; selection?: "all" | "word"; textOffset?: number } | null;
   onChange: (html: string) => void;
   onContentSizeChange?: (size: ContentMeasurement, reason: ContentResizeReason) => void;
   onBlur?: () => void;
@@ -628,6 +628,9 @@ export function RichTextEditor({
   onContentSizeChange,
   onBlur,
 }: RichTextEditorProps) {
+  const textToolbarHost = useUIStore(state => state.inlineTextToolbarHost);
+  const propertiesOpen = useUIStore(state => state.boardPanel === "selection" || state.boardPanel === "templates");
+  const dockedToolbar = textToolbarHost && textToolbarHost.nodeId === nodeId && !valueInput ? textToolbarHost.element : null;
   const setActiveTextSelection = useUIStore((state) => state.setActiveTextSelection);
   const inlineFormatPainter = useUIStore((state) => state.inlineFormatPainter);
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
@@ -1619,12 +1622,26 @@ export function RichTextEditor({
       if (valueInput) return;
       const frame = requestAnimationFrame(() => {
         if (editor.isDestroyed) return;
-        const position = initialFocusPoint
+        let position = initialFocusPoint
           ? editor.view.posAtCoords({ left: initialFocusPoint.clientX, top: initialFocusPoint.clientY })
           : null;
-        if (selectAllOnEntryRef.current) {
+        if (initialFocusPoint?.textOffset !== undefined) {
+          let offset = initialFocusPoint.textOffset; let found = false;
+          editor.state.doc.descendants((node, pos) => {
+            if (found || !node.isText) return;
+            if (offset <= node.nodeSize) { position = { pos: pos + offset, inside: pos }; found = true; }
+            else offset -= node.nodeSize;
+          });
+        }
+        if (selectAllOnEntryRef.current || initialFocusPoint?.selection === "all") {
           selectAllOnEntryRef.current = false;
           editor.chain().selectAll().focus(undefined, { scrollIntoView: false }).run();
+        } else if (position && initialFocusPoint?.selection === "word") {
+          const resolved = editor.state.doc.resolve(position.pos);
+          const text = resolved.parent.textContent;
+          const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+          const segment = [...segmenter.segment(text)].find(part => part.isWordLike && part.index <= resolved.parentOffset && part.index + part.segment.length >= resolved.parentOffset);
+          editor.chain().setTextSelection(segment ? { from: resolved.start() + segment.index, to: resolved.start() + segment.index + segment.segment.length } : position.pos).focus(undefined, { scrollIntoView: false }).run();
         } else if (position) {
           editor.chain()
             .setTextSelection(position.pos)
@@ -2282,12 +2299,13 @@ export function RichTextEditor({
 
   return (
     <>
-      {mounted && anchor && editor && createPortal(
+      {mounted && anchor && editor && (dockedToolbar || valueInput || !nodeId || !propertiesOpen) && createPortal(
         <div
           ref={toolbarRef}
-          className="nodrag nopan nowheel fixed z-[9999] flex w-max max-w-[min(94vw,920px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-2xl"
+          data-universal-text-tools="editor-toolbar"
+          className={cn("nodrag nopan nowheel flex flex-wrap items-center gap-1 bg-popover p-2 text-popover-foreground", dockedToolbar ? "relative w-full rounded border" : "fixed z-[9999] w-max max-w-[min(94vw,920px)] rounded-lg border border-border shadow-2xl")}
           style={
-            drag
+            dockedToolbar ? undefined : drag
               ? { top: drag.top, left: drag.left }
               : { top: autoTop, left: autoLeft, transform: "translateX(-50%)" }
           }
@@ -2345,8 +2363,8 @@ export function RichTextEditor({
               bold: Number(css.fontWeight) >= 600, italic: css.fontStyle === "italic", underline: css.textDecorationLine.includes("underline"),
             } : {} });
           }}>Label selected text</Button>}
-          {/* Drag grip */}
-          <div
+          {/* Dragging is only useful for a floating toolbar. */}
+          {!dockedToolbar && <div
             title="Drag to move"
             onPointerDown={onGripDown}
             onPointerMove={onGripMove}
@@ -2354,7 +2372,7 @@ export function RichTextEditor({
             className="flex h-8 w-5 cursor-move items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
           >
             <GripVertical className="h-4 w-4" />
-          </div>
+          </div>}
 
           <div className="mx-0.5 h-4 w-px bg-border/70" />
 
@@ -2658,7 +2676,7 @@ export function RichTextEditor({
           </FormatButton>
           <FormatButton onAction={clearFormatting} title="Clear formatting"><Eraser className="h-4 w-4" /></FormatButton>
         </div>,
-        document.body
+        dockedToolbar ?? document.body
       )}
 
       {mounted && editor && (

@@ -70,6 +70,7 @@ interface UIState {
   boardExportRequest: BoardExportRequest | null;
   openBoardExport: (request?: BoardExportRequest) => void;
   closeBoardExport: () => void;
+  inlineTextToolbarHost: { nodeId: string; element: HTMLDivElement } | null;
   activeTextSelection: ActiveTextSelection | null;
   setActiveTextSelection: (selection: ActiveTextSelection | null) => void;
   inlineFormatPainter: InlineTextFormatSnapshot | null;
@@ -216,6 +217,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     },
   }),
   closeBoardExport: () => set({ boardExportRequest: null }),
+  inlineTextToolbarHost: null,
   activeTextSelection: null,
   setActiveTextSelection: (selection) => set((state) =>
     sameActiveTextSelection(state.activeTextSelection, selection)

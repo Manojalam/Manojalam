@@ -1,8 +1,8 @@
 import type { BoardCardTemplate, CardSection } from "../types";
 import { cardSections, normalizeCardTemplates, renderCardSections } from "./card-templates";
 export interface TableTemplateContent { template: BoardCardTemplate; sections: CardSection[]; independent?: true }
-export interface TableColumn { id: string; name: string; width?: number; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
-export interface TableRow { id: string; cells: string[]; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; cellHeaders?: string[]; templates?: Record<string, TableTemplateContent> }
+export interface TableColumn { id: string; name: string; richText?: string; width?: number; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
+export interface TableRow { id: string; cells: string[]; richCells?: Record<string, string>; labelRichText?: string; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; cellHeaders?: string[]; templates?: Record<string, TableTemplateContent> }
 export interface TableMerge { rowIds: string[]; columnIds: string[] }
 export interface TableAddress { rowId: string; columnId: string }
 export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelWidth?: number; merges?: TableMerge[] }
@@ -36,7 +36,7 @@ export function normalizeTable(value: unknown): CanvasTable {
     used.add(result); return result;
   };
   const sourceColumns = (Array.isArray(source?.columns) && source.columns.length ? source.columns : [{ id: "column_0", name: "Column 1" }]).slice(0, MAX_TABLE_COLUMNS);
-  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}`, ...(typeof column?.width === "number" && Number.isFinite(column.width) ? { width: Math.max(60, Math.min(4000, column.width)) } : {}) }));
+  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}`, ...(typeof column?.richText === "string" ? { richText: column.richText } : {}), ...(typeof column?.width === "number" && Number.isFinite(column.width) ? { width: Math.max(60, Math.min(4000, column.width)) } : {}) }));
   const rows: TableRow[] = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => {
     const templates: Record<string, TableTemplateContent> = {};
     columns.forEach((column, i) => {
@@ -44,7 +44,7 @@ export function normalizeTable(value: unknown): CanvasTable {
       const template = normalizeCardTemplates([content?.template])[0];
       if (template) templates[column.id] = { template, sections: independentSections(content), independent: true };
     });
-    return { id: safeId(row?.id, `row_${index}`), ...(Array.isArray(row?.cellHeaders) && row.cellHeaders.length ? { cellHeaders: columns.filter((column, i) => row.cellHeaders!.includes(sourceColumns[i].id)).map(column => column.id) } : {}), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), ...(row?.footer === true && !row?.aboveHeader ? { footer: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
+    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.labelRichText === "string" ? { labelRichText: row.labelRichText } : {}), richCells: Object.fromEntries(columns.flatMap((column, i) => typeof row?.richCells?.[sourceColumns[i].id] === "string" ? [[column.id, row.richCells[sourceColumns[i].id]]] : [])), ...(Array.isArray(row?.cellHeaders) && row.cellHeaders.length ? { cellHeaders: columns.filter((column, i) => row.cellHeaders!.includes(sourceColumns[i].id)).map(column => column.id) } : {}), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), ...(row?.footer === true && !row?.aboveHeader ? { footer: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
   });
   // Recover old column content without changing the table grid or dropping answers.
   sourceColumns.forEach((column, i) => {
