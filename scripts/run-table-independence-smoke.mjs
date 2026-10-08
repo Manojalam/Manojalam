@@ -38,15 +38,16 @@ try{
    await page.keyboard.type(text);
    assert.equal(await page.$eval(selector+' .ProseMirror',el=>el.textContent),text);
    assert.equal(await page.$eval(selector,el=>el.dataset.cellSelected),'true');
-   assert.equal(await page.$('[data-template-accessory]'),null,'Plain cells do not enter template filling');
+   assert.equal(await page.$('#properties-template [data-card-fill-panel]'),null,'Plain cells do not enter template filling');
    await page.click('[aria-label="Template text, A"]');
    await page.waitForSelector('[aria-label="Template text, A"] [contenteditable=true]');
  }
  await page.click('[aria-label="Object properties"]');
- const summary=await page.$('[data-template-accessory] > summary');await summary.click();
- assert.equal(await page.$eval('[data-template-accessory]',el=>el.open),false);
- assert.ok(await page.$('#board-properties [aria-label="Object properties tabs"]'));
- await summary.click();
+ const chooseTab=async label=>{const el=await page.waitForFunction(label=>[...document.querySelectorAll('[role="tab"]')].find(el=>el.textContent===label),{},label);await el.asElement().click()};
+ await chooseTab('Style');
+ assert.equal(await page.$eval('#properties-template',el=>el.getBoundingClientRect().height),0);
+ assert.ok(await page.$('#board-properties [aria-label="Properties tabs"]'));
+ await chooseTab('Template');
  const size=()=>page.$eval('[data-cell-column="A"][data-cell-row="one"]',el=>({width:el.offsetWidth,height:el.offsetHeight}));
  const before=await size();
  assert.equal(await page.$eval('[data-template-toggle]',el=>el.textContent),'−');

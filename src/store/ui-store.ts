@@ -39,6 +39,8 @@ export interface BoardExportRequest {
 }
 
 interface UIState {
+  propertiesTab: "style" | "text" | "shape" | "layout" | "data" | "template" | "specific";
+  objectToolsHost: { nodeId: string; element: HTMLDivElement } | null;
   boardPanel: "selection" | "templates" | "board" | null;
   setBoardPanel: (panel: "selection" | "templates" | "board" | null) => void;
   activeTool: CanvasTool;
@@ -142,8 +144,10 @@ function sameActiveTextSelection(
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
+  propertiesTab: "style",
+  objectToolsHost: null,
   boardPanel: "selection",
-  setBoardPanel: (boardPanel) => set({ boardPanel, layoutPanelOpen: false, layersPanelOpen: false }),
+  setBoardPanel: (boardPanel) => set({ boardPanel, ...(boardPanel === "templates" ? { propertiesTab: "template" as const } : {}), layoutPanelOpen: false, layersPanelOpen: false }),
   activeTool: "select",
   setActiveTool: (tool) => set({
     activeTool: tool,
