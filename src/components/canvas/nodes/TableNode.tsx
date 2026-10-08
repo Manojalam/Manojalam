@@ -5,12 +5,12 @@ import { NodeResizeControl, type NodeProps } from "@xyflow/react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
-import { QuickTextFormat } from "../QuickTextFormat";
 import { NodeHandles } from "./NodeHandles";
 import { NodeQuickActions } from "./NodeQuickActions";
 import { RichTextEditor } from "../RichTextEditor";
 import { cardSectionsFromText, renderCardSections } from "@/lib/canvas/card-templates";
 import { convertTableLayout, type TableConversion } from "@/lib/canvas/table-transform";
+import { resolveFillColor } from "@/lib/style-utils";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
@@ -28,7 +28,7 @@ function TableInput(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     observer.observe(input);
     return () => observer.disconnect();
   }, [props.value]);
-  return <textarea {...props} ref={ref} data-table-input rows={1} className="nodrag nopan nowheel block w-full resize-none overflow-hidden bg-transparent px-2 py-2 outline-none focus:bg-primary/5 focus:ring-2 focus:ring-inset focus:ring-primary" style={{ font: "inherit", lineHeight: 1.5, ...props.style }} />;
+  return <textarea {...props} ref={ref} data-table-input rows={1} className="nodrag nopan nowheel block w-full resize-none overflow-hidden bg-transparent px-2 py-2 outline-none focus:bg-primary/5 focus:ring-2 focus:ring-inset focus:ring-primary" style={{ font: "inherit", lineHeight: "inherit", textAlign: "inherit", ...props.style }} />;
 }
 
 function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps) {
@@ -186,7 +186,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const highlighted = selected && range && range.rowIds.length * range.columnIds.length > 1 && range.rowIds.includes(rowId) && range.columnIds.includes(columnId);
     return <Cell key={columnId} data-cell-row={rowId} data-cell-column={columnId} scope={header ? rowId === TABLE_HEADER ? "col" : "row" : undefined} rowSpan={merge?.rowIds.length} colSpan={merge?.columnIds.length}
       className={`nodrag nopan relative border-b border-r align-top text-left last:border-r-0 ${header ? "bg-muted/50 font-semibold" : ""} ${highlighted ? "ring-2 ring-inset ring-primary" : ""}`}
-      style={{ borderColor: color }}
+      style={{ borderColor: color, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", verticalAlign: data.textVerticalAlign === "middle" ? "middle" : data.textVerticalAlign === "bottom" ? "bottom" : "top" }}
       onPointerDownCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClickCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClick={event => { if (event.shiftKey || !editable || (event.target as HTMLElement).closest("button, a, [contenteditable=true]")) return; selectCell(address); if (rowId !== TABLE_HEADER && columnId !== TABLE_LABEL) openCell(columnId, rowId); }}>
@@ -222,7 +222,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
               }} onBlur={() => { setEditingCell(null); editingHistory.current = false; }} />
             </div>;
           })()}
-          {source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL ? <span className="block px-2 py-2">Row label</span> : (!card || text) && <TableInput aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
+          {source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL ? <span className="block px-2 py-2">Row label</span> : (!card || text) && <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
             onFocus={() => selectCell(address)} onBlur={() => { editingHistory.current = false; }} onChange={event => updateText(source, event.target.value)}
             onPaste={event => { if (!editable || source.rowId === TABLE_HEADER || source.columnId === TABLE_LABEL) return; const text = event.clipboardData.getData("text/plain"); if (!text.includes("\t")) return; event.preventDefault(); write(pasteTableCells(current(), table.rows.findIndex(row => row.id === source.rowId), columnIndex, parseTablePaste(text))); }} />}
         </div>;
@@ -244,11 +244,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     if (!editable) return;
     const state = useCanvasStore.getState();
     if (!state.selectedNodeIds.includes(id)) useCanvasStore.setState({ nodes: state.nodes.map(node => ({ ...node, selected: node.id === id })), selectedNodeIds: [id], selectedEdgeIds: [] });
-  }} style={{ ...objectRotationStyle("table", data), fontFamily: String(data.fontFamily || defaultFont), fontSize: Number(data.fontSize) || settings.defaultFontSize, fontWeight: data.fontWeight === "bold" ? 700 : undefined, fontStyle: data.fontStyle === "italic" ? "italic" : undefined, color: typeof data.textColor === "string" ? data.textColor : undefined }}>
+  }} style={{ ...objectRotationStyle("table", data), fontFamily: String(data.fontFamily || defaultFont), fontSize: Number(data.fontSize) || settings.defaultFontSize, fontWeight: data.fontWeight === "bold" ? 700 : undefined, fontStyle: data.fontStyle === "italic" ? "italic" : undefined, color: typeof data.textColor === "string" ? data.textColor : undefined, lineHeight: Number(data.lineSpacing) || 1.5, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", tabSize: Number(data.tabSize) || 4 }}>
     {selected && editable && <NodeResizeControl minWidth={minimumWidth} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResizeEnd={(event, params) => { useCanvasStore.getState().updateNodeData(id, { tableMinHeight: params.height }); resizeControls.onResizeEnd(event, params); }} />}
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
-    <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, backgroundColor: typeof data.fillColor === "string" ? data.fillColor : undefined }}>
+    <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : undefined, borderStyle: (data.borderStyle as React.CSSProperties["borderStyle"]) || "solid", backgroundColor: resolveFillColor(data) }}>
       <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table" onKeyDown={event => {
         if (!editable || event.nativeEvent.isComposing) return;
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
@@ -298,7 +298,6 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
           const end = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", end); target.removeEventListener("pointercancel", end); };
           target.addEventListener("pointermove", move); target.addEventListener("pointerup", end); target.addEventListener("pointercancel", end);
         }}><GripVertical size={16} /></button>
-        <QuickTextFormat nodes={[{ id, type: "table", position: { x: 0, y: 0 }, data }]} />
         {selection && <div className="flex items-center gap-2" role="group" aria-label="Column sizing and order">
           <label>Width <input key={`${selection.start.columnId}:${selectedWidth}`} aria-label="Column width" type="number" min={60} max={4000} className="w-16 rounded border bg-background px-1" defaultValue={selectedWidth} onBlur={event => { if (event.target.value) resizeColumn(selection.start.columnId, Number(event.target.value)); }} onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
           <button type="button" onClick={() => fitColumn(selection.start.columnId)}>Fit content</button>

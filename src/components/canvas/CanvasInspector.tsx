@@ -413,26 +413,28 @@ const CONVERT_TYPES = [
 
 const rememberedInspectorSections = new Map<string, boolean>();
 
-function Section({ label, children, visible = true, preserveTextSelection = false, defaultOpen = false }: {
+function Section({ label, children, visible = true, preserveTextSelection = false, defaultOpen = false, flat = false }: {
   label: string;
   children: React.ReactNode;
   visible?: boolean;
   preserveTextSelection?: boolean;
   defaultOpen?: boolean;
+  flat?: boolean;
 }) {
   const [open, setOpen] = useState(() => rememberedInspectorSections.get(label) ?? defaultOpen);
   if (!visible) return null;
   return (
     <div>
-      <button onClick={() => setOpen((o) => { rememberedInspectorSections.set(label, !o); return !o; })}
+      {!flat && <button onClick={() => setOpen((o) => { rememberedInspectorSections.set(label, !o); return !o; })}
         className="flex w-full items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
         {label}
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-      </button>
-      {open && (
+      </button>}
+      {(flat || open) && (
         <div
           data-universal-text-tools={preserveTextSelection ? "inspector" : undefined}
-          className="space-y-2.5 px-3 pb-3"
+          onMouseDown={event => { if (preserveTextSelection && (event.target as HTMLElement).closest("button")) event.preventDefault(); }}
+          className={cn("space-y-2.5 px-3 pb-3", flat && "pt-3")}
         >
           {children}
         </div>
@@ -681,6 +683,7 @@ const EXACT_DIMENSION_NODE_TYPES = new Set([
   "shloka",
   "grammar",
   "audio",
+  "table",
   "frame",
 ]);
 const FIXED_ASPECT_COLUMN_SHAPES = new Set(["circle", "diamond", "star", "flower"]);
@@ -1167,6 +1170,7 @@ export function fieldPatch(data: Record<string, unknown>, key: string, value: un
 
 const INLINE_TEXT_FIELDS = new Set<InlineTextFormatKey>([
   ...PARAGRAPH_KEYS,
+  "underline", "strike", "superscript", "subscript",
   "fontWeight",
   "fontStyle",
   "fontSize",
@@ -5112,6 +5116,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
       return;
     }
     if (value === undefined) return;
+    if (selectedNode.type === "table" && axis === "height") updateNodeData(selectedNode.id, { tableMinHeight: value });
     const fixedAspect = hasFixedAspectRatio(selectedNode);
     setNodeSize(selectedNode.id, axis === "width"
       ? {
@@ -5245,6 +5250,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         {INSPECTOR_TABS.filter((tab) => !isRadialLayoutSector || tab.id !== "shape").map((tab) => (
           <button
             key={tab.id}
+            data-universal-text-tools="inspector-tab"
+            onMouseDown={event => event.preventDefault()}
             onClick={() => setSingleNodeTab(tab.id)}
             className={cn(
               "rounded-md px-1.5 py-1.5 text-[10px] font-medium transition-colors",
@@ -5885,6 +5892,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         {(isContentNode || nodeType === "table" || isEditableFrame || isRadialLayoutSector) && (
           <Section
             label="Text"
+            flat
             defaultOpen={initialTab === "text"}
             visible={singleNodeTab === "text"}
             preserveTextSelection
@@ -5901,7 +5909,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 {selectedTextRange ? "Inline" : "All text"}
               </span>
             </div>
-            {isContentNode && !isRadialLayoutSector && !radialChart?.enabled && (
+            {(isContentNode || nodeType === "table") && !isRadialLayoutSector && !radialChart?.enabled && (
               <div className="grid grid-cols-2 gap-2">
                 {PARAGRAPH_KEYS.map(key => {
                   const spec = PARAGRAPH_FIELDS[key];
@@ -6000,6 +6008,10 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               </IconBtn>
             </Row>
 
+            <div className="flex flex-wrap gap-1" data-universal-text-tools="inspector">
+              {([['underline', 'Underline'], ['strike', 'Strikethrough'], ['superscript', 'Superscript'], ['subscript', 'Subscript']] as const).map(([key, label]) => <button key={key} type="button" disabled={!selectedTextRange} title={selectedTextRange ? label : `Select text to apply ${label.toLowerCase()}`} aria-label={label} aria-pressed={!!selectedTextRange?.[key]} className="rounded border px-2 py-1 text-xs disabled:opacity-40 aria-pressed:bg-primary/15" onClick={() => setField(key, !selectedTextRange?.[key])}>{label}</button>)}
+            </div>
+
             {/* Font size */}
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Size</p>
@@ -6010,7 +6022,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               />
             </div>
 
-            {!selectedTextRange && !matrixRootNode && !isEditableFrame && (
+            {!selectedTextRange && !matrixRootNode && !isEditableFrame && nodeType !== "table" && (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/25 p-2">
                 <div>
                   <p className="text-[10px] font-medium text-foreground">Auto-fit text</p>
@@ -7180,7 +7192,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {/* ── Fill ── */}
-        {isContentNode && !isRadialLayoutSector && (
+        {(isContentNode || nodeType === "table") && !isRadialLayoutSector && (
           <Section label="Fill" visible={singleNodeTab === "style"}>
             <ColorSwatchPicker
               value={resolveFillSourceColor(d) ?? ""}
@@ -8002,7 +8014,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {/* ── Border ── */}
-        {isContentNode && !isRadialLayoutSector && (
+        {(isContentNode || nodeType === "table") && !isRadialLayoutSector && (
           <Section label="Border" visible={singleNodeTab === "style"}>
             {matrixRootNode && (
               <p className="rounded-md border border-border bg-muted/20 p-2 text-[9px] leading-snug text-muted-foreground">

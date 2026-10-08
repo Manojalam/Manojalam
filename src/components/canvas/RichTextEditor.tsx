@@ -1210,6 +1210,10 @@ export function RichTextEditor({
       hasSelection: !editor.state.selection.empty || additiveSelectionRangesRef.current.length > 0,
       bold: editor.isActive("bold"),
       italic: editor.isActive("italic"),
+      underline: editor.isActive("underline"),
+      strike: editor.isActive("strike"),
+      superscript: editor.isActive("superscript"),
+      subscript: editor.isActive("subscript"),
       fontSize: Number.isFinite(parsedFontSize) ? parsedFontSize : undefined,
       fontFamily: editor.getAttributes("textStyle").fontFamily as string | undefined,
       textColor: visibleColor && visibleColor !== "mixed" ? visibleColor : undefined,
@@ -1236,6 +1240,11 @@ export function RichTextEditor({
       pendingReportReasonRef.current = "format";
       runAcrossTextSelectionRanges((chain) => {
         switch (detail.key) {
+          case "underline":
+          case "strike":
+          case "superscript":
+          case "subscript":
+            return detail.value ? chain.setMark(detail.key) : chain.unsetMark(detail.key);
           case "fontWeight":
             return detail.value === "bold" ? chain.setBold() : chain.unsetBold();
           case "fontStyle":

@@ -159,6 +159,10 @@ export interface LayoutVisualStyle {
 }
 
 export interface ActiveTextSelection {
+  underline?: boolean;
+  strike?: boolean;
+  superscript?: boolean;
+  subscript?: boolean;
   textColorMixed?: boolean;
   lineSpacing?: number;
   paragraphIndent?: number;
@@ -191,6 +195,10 @@ export interface InlineTextFormatSnapshot {
 }
 
 export type InlineTextFormatKey =
+  | "underline"
+  | "strike"
+  | "superscript"
+  | "subscript"
   | "fontWeight"
   | "fontStyle"
   | "fontSize"

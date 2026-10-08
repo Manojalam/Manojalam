@@ -123,6 +123,15 @@ function sameActiveTextSelection(
     && current.hasSelection === next.hasSelection
     && current.bold === next.bold
     && current.italic === next.italic
+    && current.underline === next.underline
+    && current.strike === next.strike
+    && current.superscript === next.superscript
+    && current.subscript === next.subscript
+    && current.lineSpacing === next.lineSpacing
+    && current.paragraphIndent === next.paragraphIndent
+    && current.firstLineIndent === next.firstLineIndent
+    && current.tabSize === next.tabSize
+    && current.textColorMixed === next.textColorMixed
     && current.fontSize === next.fontSize
     && current.fontFamily === next.fontFamily
     && current.textColor === next.textColor
