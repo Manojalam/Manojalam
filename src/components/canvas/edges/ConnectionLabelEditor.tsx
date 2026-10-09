@@ -114,9 +114,11 @@ export function ConnectionLabelEditor({
     selectedEdgeIds: state.selectedEdgeIds,
     logicalEdgeIds: findLogicalConnectorEdgeIds(state.edges, toolbarEdgeId),
   }));
-  const storedLabelData = useCanvasStore((state) => (
-    state.edges.find((edge) => edge.id === edgeId)?.data ?? {}
-  )) as VidyaEdgeData;
+  // Return the stored reference (or undefined) from the subscription. A new
+  // fallback object on every snapshot loops when a legacy edge has no data.
+  const storedLabelData = (useCanvasStore((state) => (
+    state.edges.find((edge) => edge.id === edgeId)?.data
+  )) ?? {}) as VidyaEdgeData;
   const storedLabelOffset = useCanvasStore((state) => (
     state.edges.find((edge) => edge.id === edgeId)?.data as Record<string, unknown> | undefined
   )?.labelOffset) as { x?: unknown; y?: unknown } | undefined;

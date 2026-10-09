@@ -5,6 +5,7 @@ import { Pin, X, Lock, Unlock, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { CanvasInspector, type InspectorTab } from "./CanvasInspector";
+import { CrossBoardTemplateLibrary } from "./CrossBoardTemplateLibrary";
 import { SampleTemplatesPanel } from "./SampleTemplatesPanel";
 import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
 import { TemplateLauncher } from "./TemplateLauncher";
@@ -60,8 +61,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const editing = !auxiliary && ui.boardPanel !== "board";
   const labels = selected.map(node => objectPropertiesLabel(node, nodes, edges));
   const specific = labels.length && labels.every(label => label === labels[0]) && (selected.length === 1 || labels[0] === "Matrix") ? labels[0] : null;
-  const supportsText = !selected.length || selected.some(node => objectCapabilities(node.type).text);
-  const supportsStyle = !selected.length || selected.some(node => objectCapabilities(node.type).surface);
+  const supportsText = !!edgeIds.length || !selected.length || selected.some(node => objectCapabilities(node.type).text);
+  const supportsStyle = !!edgeIds.length || !selected.length || selected.some(node => objectCapabilities(node.type).surface);
 
   // Old saved Size selections resolve to their new home.
   const requestedTab = ui.propertiesTab === "shape" ? (specific ? "specific" : "layout") : ui.propertiesTab === "specific" && !specific ? "layout" : ui.propertiesTab;
@@ -92,6 +93,11 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     { id: "layout", label: "Arrange" }, { id: "data", label: "More" },
   ];
   const activeTab = tabs.some(tab => tab.id === requestedTab) ? requestedTab : tabs[0]?.id ?? "data";
+  // Portalled action groups read the store tab too. Keep it aligned with the
+  // visible tab when a previous selection's contextual tab no longer exists.
+  useEffect(() => {
+    if (ui.propertiesTab !== activeTab) useUIStore.setState({ propertiesTab: activeTab });
+  }, [activeTab, ui.propertiesTab]);
   return <>
     <header className="shrink-0 border-b bg-background" data-properties-header>
       <div className="flex items-center justify-between px-3 py-2">
@@ -117,7 +123,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       {cell ? <TableCellFillPanel /> : card ? <FillCardDialog embedded key={card.id} nodeId={card.id} onClose={() => { ui.setFillingCardNodeId(null); useUIStore.setState({ propertiesTab: "style" }); }} /> : null}
     </div>
     <div role="tabpanel" id={`properties-${activeTab === "template" ? "style" : activeTab}`} aria-label={specific && activeTab === "specific" ? specific : activeTab} className={editing && activeTab !== "template" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
-      {activeTab === "specific" && <ChildOrderControls />}
+      {(activeTab === "specific" || (!specific && activeTab === "layout")) && <ChildOrderControls />}
       {activeTab === "layout" && candidate && <ObjectPosition nodeId={candidate.id} />}
       <div>
         {selected.length || edgeIds.length ? <CanvasInspector embedded tab={activeTab === "template" ? "style" : activeTab} onTabChange={changeInspectorTab} showTemplates={false} /> : <p className="p-4 text-sm text-muted-foreground">Select an object to edit it.</p>}
@@ -125,8 +131,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       {candidate?.type === "table" && <ObjectToolsSlot nodeId={candidate.id} hidden={activeTab !== "specific"} />}
       {selected.length === 1 && activeTab === "style" && <div className="border-b px-2"><SaveBoxTemplateButton node={selected[0]} /></div>}
       {activeTab === "style" && <>
-        <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Saved appearances</summary><SampleTemplatesPanel /></details>
-        <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Shared styles</summary><BoardStyleTemplatesPanel /></details>
+        <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Saved appearances</summary><SampleTemplatesPanel /><CrossBoardTemplateLibrary kind="sample" /></details>
+        <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Shared styles</summary><BoardStyleTemplatesPanel /><CrossBoardTemplateLibrary kind="style" /></details>
       </>}
       <div hidden={activeTab === "template"} ref={setToolbarHost} className="board-selection-dock" />
     </div>

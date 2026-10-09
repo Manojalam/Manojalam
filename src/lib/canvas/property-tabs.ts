@@ -7,7 +7,7 @@ export function objectPropertiesLabel(node: Node | undefined, nodes: Node[] = []
   if (!node) return null;
   const d = node.data;
   if (node.type === "table") return "Table";
-  if (d.layoutMode === "matrix" || d.matrixRootId) return "Matrix";
+  if (d.layoutMode === "matrix" || d.matrixRootId || d.matrixCell === true) return "Matrix";
   if (node.type === "sunburst" || d.sunburstHiddenFor || d.layoutMode === "radial" || (d.radialChart as { enabled?: boolean } | undefined)?.enabled) return "Radial";
   if (node.type === "relationshipDiagram") return "Diagram";
   if (d.layoutMode === "list") return "List";

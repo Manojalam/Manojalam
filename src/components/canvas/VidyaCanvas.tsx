@@ -1144,7 +1144,10 @@ function VidyaCanvasInner({
     useCanvasStore.setState((state) => {
       const logicalEdgeIds = findLogicalConnectorEdgeIds(state.edges, edge.id);
       const selectedEdgeIds = new Set(additive ? state.selectedEdgeIds : []);
-      const logicalConnectorSelected = logicalEdgeIds.every((edgeId) => selectedEdgeIds.has(edgeId));
+      // React Flow applies its selection change before invoking this callback.
+      // The event edge is the pre-click snapshot; reading the updated store here
+      // would immediately undo an additive selection (and reselect a removal).
+      const logicalConnectorSelected = edge.selected === true;
       if (additive && logicalConnectorSelected) {
         logicalEdgeIds.forEach((edgeId) => selectedEdgeIds.delete(edgeId));
       } else {

@@ -744,5 +744,7 @@ mark { border-radius: 2px; padding: 0 2px; }
 #board-properties[hidden] { display: none; }
 #board-properties .layout-panel, #board-properties .layers-panel { width: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 
-/* The editing panel owns scrolling; nested inspector bodies must not collapse. */
-#board-properties .canvas-inspector-panel > .overflow-y-auto { flex: none; overflow: visible; }
+/* The Properties body owns scrolling on every screen size. Nested legacy
+   inspectors must not inherit their old floating-panel height limits. */
+#board-properties .canvas-inspector-panel { max-height: none; }
+#board-properties .canvas-inspector-panel > .overflow-y-auto { overflow: visible; flex: none; }
