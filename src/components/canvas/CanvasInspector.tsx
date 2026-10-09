@@ -5336,6 +5336,12 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
       </div>
 
+      {embedded && singleNodeTab === "specific" && isRadialLayoutSector && radialChartNode && (
+        <div className="border-b p-3"><Button size="sm" variant="outline" onClick={() => selectNodesById([radialChartNode.id])}>
+          <Maximize2 className="mr-1 h-3.5 w-3.5" />Select whole radial chart
+        </Button></div>
+      )}
+
       {isRadialLayoutSector && selectedRelationshipSourceIds.length > 0 && (
         <div className="border-b bg-muted/25 p-2">
           <Button

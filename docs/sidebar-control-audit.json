@@ -1,0 +1,114 @@
+{
+  "baseline": "2cbd24b^ (before board tool regrouping)",
+  "scope": "Historical source comparison of inspector, selection toolbar, left toolbar, top bar, layout and text editor; current rendered reachability across all 13 registered object types and selected regression scenarios.",
+  "findings": [
+    {
+      "issue": "Lock/unlock became hard to reach and saved locked objects could be unselectable",
+      "status": "Fixed in PR 528; browser recovery test rerun"
+    },
+    {
+      "issue": "Saved appearances and shared styles from other boards disappeared from the filtered template library",
+      "status": "Restored separate filtered libraries under Style"
+    },
+    {
+      "issue": "Text children under a free-form parent had no contextual tab, hiding Child order",
+      "status": "Child order available under Arrange when no contextual tab exists"
+    },
+    {
+      "issue": "Standalone legacy matrixCell objects could be classified as Shape, hiding multi-cell matrix controls",
+      "status": "matrixCell flag explicitly resolves to Matrix"
+    },
+    {
+      "issue": "Mixed non-text object and connector selection could hide Style and Text for the connector",
+      "status": "Selected connectors now contribute to tab capabilities"
+    },
+    {
+      "issue": "Visible fallback tab could disagree with the tab used by portalled tool groups",
+      "status": "Canonical tab synchronized to the visible selection"
+    },
+    {
+      "issue": "Select-whole-chart action was inside a header hidden in embedded mode",
+      "status": "Restored under Radial for a selected sector"
+    },
+    {
+      "issue": "Docked inspectors inherited floating-panel height caps on small screens",
+      "status": "Properties body owns scrolling; inner inspector height cap removed"
+    },
+    {
+      "issue": "React Flow selection was toggled again by the connector click handler, undoing additive selection",
+      "status": "Use the event edge pre-click selection snapshot; regression checks addition and removal"
+    },
+    {
+      "issue": "Legacy edges without data caused a fresh store snapshot on every render and an infinite rendering loop",
+      "status": "Move empty fallback outside the store subscription; mixed-selection fixture verifies no runtime errors"
+    }
+  ],
+  "movedNotDeleted": {
+    "Surface effect": "Effects supports multiple effects",
+    "Move before/after sibling": "Child order / Move earlier and Move later",
+    "Import": "Left toolbar / Import file",
+    "Move shape toolbar": "Intentionally removed when tools docked; no longer a floating toolbar",
+    "Child and Sibling": "Contextual tab, or More for plain text/sticky objects",
+    "Copy, Duplicate, Clear, export selected, copy to another board": "More",
+    "Align objects, distribute, group, rotate, stacking": "Arrange",
+    "Font, paragraph spacing/alignment, inline formatting": "Text",
+    "Fill, borders, effects, appearances, shared styles": "Style",
+    "Geometry and layout": "Table/Matrix/Radial/Diagram or Arrange according to object",
+    "Templates and filled values": "Template",
+    "Connections": "Style appearance, Text labels, Arrange paths"
+  },
+  "literalLabelComparison": [
+    {
+      "file": "src/components/canvas/CanvasInspector.tsx",
+      "baselineLiteralLabels": 133,
+      "currentLiteralLabels": 134,
+      "removedLiteralLabels": [
+        "Surface effect"
+      ]
+    },
+    {
+      "file": "src/components/canvas/SelectionToolbar.tsx",
+      "baselineLiteralLabels": 31,
+      "currentLiteralLabels": 39,
+      "removedLiteralLabels": [
+        "Move after next sibling",
+        "Move before previous sibling",
+        "Move shape toolbar"
+      ]
+    },
+    {
+      "file": "src/components/canvas/CanvasToolbar.tsx",
+      "baselineLiteralLabels": 11,
+      "currentLiteralLabels": 15,
+      "removedLiteralLabels": []
+    },
+    {
+      "file": "src/components/canvas/CanvasTopbar.tsx",
+      "baselineLiteralLabels": 8,
+      "currentLiteralLabels": 7,
+      "removedLiteralLabels": [
+        "Import"
+      ]
+    },
+    {
+      "file": "src/components/canvas/LayoutPanel.tsx",
+      "baselineLiteralLabels": 1,
+      "currentLiteralLabels": 1,
+      "removedLiteralLabels": []
+    },
+    {
+      "file": "src/components/canvas/RichTextEditor.tsx",
+      "baselineLiteralLabels": 20,
+      "currentLiteralLabels": 30,
+      "removedLiteralLabels": []
+    }
+  ],
+  "verification": [
+    "Production build including TypeScript",
+    "run-control-audit-smoke.mjs: registered object types, mixed selections, child reorder, cross-board libraries and narrow viewport",
+    "run-properties-tabs-smoke.mjs: template/table and inherited List/Mind map/Tree/Radial controls",
+    "run-sidebar-text-tools-smoke.mjs: font/size/color/highlight/link panels and preserved Sanskrit selection",
+    "run-unlock-controls-smoke.mjs: selection, recovery, unlock-all, saved state"
+  ],
+  "limits": "Literal label counts are not counts of distinct controls. Browser tests check representative fixtures and key actions; they do not prove every parameter combination or every production board. Audio and junction retain their existing limited capabilities; legacy mindmap nodes migrate to shapes."
+}
