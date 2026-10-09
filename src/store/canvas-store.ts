@@ -4147,6 +4147,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   setNodeLocked: (nodeId, locked) => {
+    if (get().board?.accessRole === "viewer") return;
     const node = get().nodes.find((candidate) => candidate.id === nodeId);
     if (!node || ((node.data ?? {}) as Record<string, unknown>).locked === locked) return;
     get().pushHistory();
@@ -4155,6 +4156,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ? {
             ...candidate,
             draggable: !locked,
+            selectable: true,
             data: { ...(candidate.data ?? {}), locked },
           }
         : candidate),

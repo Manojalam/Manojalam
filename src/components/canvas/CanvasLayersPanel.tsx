@@ -31,6 +31,8 @@ export function CanvasLayersPanel() {
   const setOpen = useUIStore((state) => state.setLayersPanelOpen);
   const layers = useCanvasStore((state) => state.layers);
   const nodes = useCanvasStore((state) => state.nodes);
+  const viewer = useCanvasStore(state => state.board?.accessRole === "viewer");
+  const lockedObjects = nodes.filter(node => node.data.locked === true);
   const edges = useCanvasStore((state) => state.edges);
   const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
   const selectedEdgeIds = useCanvasStore((state) => state.selectedEdgeIds);
@@ -114,6 +116,22 @@ export function CanvasLayersPanel() {
         </button>
       </div>
 
+      {(lockedObjects.length > 0 || layers.some(layer => layer.locked)) && <section aria-label="Unlock objects and layers" className="space-y-2 border-b p-3">
+        <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-semibold">Locked objects and layers</h3>
+          <button type="button" disabled={viewer} className="rounded border px-2 py-1 text-xs disabled:opacity-50" onClick={() => {
+            const state = useCanvasStore.getState();
+            if (state.board?.accessRole === "viewer") return;
+            state.pushHistory();
+            useCanvasStore.setState({ nodes: state.nodes.map(node => node.data.locked ? { ...node, draggable: true, selectable: true, data: { ...node.data, locked: false } } : node), layers: state.layers.map(layer => ({ ...layer, locked: false })), saveStatus: "unsaved" });
+          }}>Unlock all</button>
+        </div>
+        <p className="text-[10px] text-muted-foreground">Unlock here even when you cannot select the object on the board.</p>
+        {lockedObjects.map(node => <div key={node.id} className="flex items-center justify-between gap-2 text-xs">
+          <span className="truncate">{String(node.data.text || node.data.label || node.data.title || node.type || "Object").slice(0, 60)}</span>
+          <button type="button" disabled={viewer} className="shrink-0 rounded border px-2 py-1 disabled:opacity-50" aria-label={`Unlock object ${node.id}`} onClick={() => useCanvasStore.getState().setNodeLocked(node.id, false)}>Unlock</button>
+        </div>)}
+        {layers.filter(layer => layer.locked).map(layer => <div key={layer.id} className="flex items-center justify-between gap-2 text-xs"><span className="truncate">Layer: {layer.name}</span><button type="button" disabled={viewer} className="rounded border px-2 py-1 disabled:opacity-50" onClick={() => setLayerLocked(layer.id, false)}>Unlock layer</button></div>)}
+      </section>}
       <div className="grid grid-cols-2 gap-1.5 border-b p-2">
         <button
           type="button"
