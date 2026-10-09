@@ -427,6 +427,7 @@ function VidyaCanvasInner({
           ? {
               ...node,
               draggable: false,
+              selectable: !layerLocked,
               ...(layerLocked ? { selectable: false, connectable: false } : {}),
             }
           : node;
@@ -434,6 +435,7 @@ function VidyaCanvasInner({
       return {
         ...node,
         draggable: !locked,
+        ...(locked ? { selectable: !layerLocked } : {}),
         ...(layerLocked ? { selectable: false, connectable: false } : {}),
         resizable: true,
       };

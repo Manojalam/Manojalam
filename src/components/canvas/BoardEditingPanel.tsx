@@ -49,6 +49,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const ids = useCanvasStore(state => state.selectedNodeIds);
   const edgeIds = useCanvasStore(state => state.selectedEdgeIds);
   const selected = nodes.filter(node => ids.includes(node.id));
+  const viewer = useCanvasStore(state => state.board?.accessRole === "viewer");
+  const anyLocked = selected.some(node => node.data.locked === true);
   const candidate = selected.length === 1 ? selected[0] : undefined;
   const card = nodes.find(node => node.id === ui.fillingCardNodeId) ?? (candidate?.data.cardTemplateId ? candidate : undefined);
   const target = ui.fillingTableColumn;
@@ -95,7 +97,13 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       <div className="flex items-center justify-between px-3 py-2">
         <h2 className="text-sm font-semibold">{ui.boardPanel === "board" ? "Board settings" : "Properties"}</h2>
         <div className="flex gap-1">
-          {candidate && <><button type="button" aria-label={candidate.data.locked ? "Unlock element" : "Lock element"} className="rounded p-1.5 hover:bg-accent" onClick={() => useCanvasStore.getState().setNodeLocked(candidate.id, !candidate.data.locked)}>{candidate.data.locked ? <Lock size={14} /> : <Unlock size={14} />}</button><button type="button" aria-label="Delete selected object" className="rounded p-1.5 text-destructive hover:bg-accent" onClick={() => useCanvasStore.getState().deleteSelected()}><Trash2 size={14} /></button></>}
+          {!!selected.length && <button type="button" disabled={viewer} title={anyLocked ? "Unlock selected objects" : "Lock selected objects"} aria-label={anyLocked ? "Unlock selected objects" : "Lock selected objects"} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-accent disabled:opacity-50" onClick={() => {
+            const state = useCanvasStore.getState();
+            if (state.board?.accessRole === "viewer") return;
+            state.pushHistory();
+            state.setNodes(items => items.map(node => ids.includes(node.id) ? { ...node, draggable: anyLocked, selectable: true, data: { ...node.data, locked: !anyLocked } } : node));
+          }}>{anyLocked ? <Unlock size={14} /> : <Lock size={14} />}{anyLocked ? "Unlock" : "Lock"}</button>}
+          {candidate && <button type="button" disabled={viewer} aria-label="Delete selected object" className="rounded p-1.5 text-destructive hover:bg-accent" onClick={() => useCanvasStore.getState().deleteSelected()}><Trash2 size={14} /></button>}
           <button type="button" title="Close panel" aria-label="Close editing panel" onClick={close} className="rounded p-1.5 hover:bg-accent"><X size={16} /></button>
         </div>
       </div>
