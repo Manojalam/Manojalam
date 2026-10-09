@@ -20,7 +20,7 @@ export function CrossBoardTemplateLibrary() {
   useEffect(() => {
     let active = true;
     listTemplateSources().then(sources => {
-      if (active) { setEntries(collectBoardTemplates(sources, boardId)); setError(false); setLoading(false); }
+      if (active) { setEntries(collectBoardTemplates(sources, boardId).filter(entry => entry.kind === "card")); setError(false); setLoading(false); }
     }, () => { if (active) { setError(true); setLoading(false); } });
     return () => { active = false; };
   }, [boardId, refresh]);
@@ -41,7 +41,7 @@ export function CrossBoardTemplateLibrary() {
   };
   return <section aria-label="Templates from all boards" className="space-y-2 border-b p-3">
     <h3 className="text-xs font-semibold">Templates from all boards</h3>
-    <p className="text-[10px] text-muted-foreground">Reuse saved templates and linked styles from your other boards. Each board keeps its own editable copy.</p>
+    <p className="text-[10px] text-muted-foreground">Reuse text templates from your other boards. Each board keeps its own editable copy.</p>
     {loading ? <p className="text-xs">Loading your templates...</p> : error ? <p role="alert" className="text-xs">Could not load your templates. Try refreshing.</p> : selected ? <>
       <select aria-label="Template from any board" className="h-8 w-full rounded border bg-background px-2 text-xs" value={selected.key} onChange={event => setChosen(event.target.value)}>
         {entries.map(entry => <option key={entry.key} value={entry.key}>{entry.template.name} - {entry.kind === "style" ? "Linked style" : entry.kind === "card" ? "Text template" : "Sample"} ({entry.sourceTitle})</option>)}

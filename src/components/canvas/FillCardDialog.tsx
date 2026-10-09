@@ -81,8 +81,8 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   const content = <>
     <header className="space-y-1"><h3 className="text-sm font-semibold">{template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
-      <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4" onSubmit={event => event.preventDefault()}>
-        <div className="space-y-4 overflow-y-auto pr-1">
+      <form className={embedded ? "space-y-4" : "grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4"} onSubmit={event => event.preventDefault()}>
+        <div className={embedded ? "space-y-4" : "space-y-4 overflow-y-auto pr-1"}>
         <div className="space-y-2 rounded-md border p-3">
           <label className="block text-sm font-medium">Section to fill<select aria-label="Section to fill" className="mt-1 h-9 w-full rounded-md border bg-background px-2" value={section.id} onChange={event => setActiveId(event.target.value)}>{sections.map((item, index) => <option key={item.id} value={item.id}>Section {index + 1} of {sections.length}</option>)}</select></label>
           <details><summary className="cursor-pointer text-xs font-medium">Reorder or move sections</summary><div className="mt-2 flex gap-2">
@@ -151,7 +151,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
         </div>
       </form>
   </>;
-  if (embedded) return <section data-card-fill-panel aria-label="Fill template" className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3" onKeyDown={event => event.stopPropagation()}>{content}</section>;
+  if (embedded) return <section data-card-fill-panel aria-label="Fill template" className="space-y-3 p-3" onKeyDown={event => event.stopPropagation()}>{content}</section>;
   return <Dialog open modal={false} onOpenChange={open => { if (!open && !savingNext) onClose(); }}>
     <DialogContent data-card-fill-panel onCloseAutoFocus={event => event.preventDefault()} className="top-4 bottom-4 right-4 left-auto w-[calc(100vw-2rem)] max-w-md translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden" onInteractOutside={event => event.preventDefault()}>
       <DialogTitle className="sr-only">Fill template</DialogTitle><DialogDescription className="sr-only">Edit template fields. Changes save automatically.</DialogDescription>{content}

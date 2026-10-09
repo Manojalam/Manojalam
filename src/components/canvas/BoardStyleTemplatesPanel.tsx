@@ -37,7 +37,7 @@ export function BoardStyleTemplatesPanel() {
   const patch = (value: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => { if (template) update(template.id, value); };
 
   return <><section aria-label="Linked styles" className="space-y-3 border-b p-3">
-    <h3 className="text-xs font-semibold">Linked styles</h3>
+    <h3 className="text-xs font-semibold">Shared styles</h3>
     <p className="text-[10px] text-muted-foreground">Keep colors, fonts, borders and text roles consistent across linked boxes. Edit a style here to update all boxes using it.</p>
     {selected.length === 1 && <form className="flex gap-1" onSubmit={event => {
       event.preventDefault();const id = create(selected[0].id, name);if (id) { setEditingId(id);setName(""); }

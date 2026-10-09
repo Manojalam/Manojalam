@@ -29,7 +29,7 @@ export function SampleTemplatesPanel() {
   const patchLabel = (patch: Partial<SampleLabel>) => { if (template && label) update(template.id, { labels: template.labels.map(item => item.id === label.id ? { ...item, ...patch } : item) }); };
   const eligible = selected && ["table", "shape", "text", "sticky", "mindmap"].includes(selected.type ?? "") && !selected.data.cardTemplateId && !selected.data.sampleTemplateId && !selected.data.sampleDesignId && !selected.data.locked;
   return <section aria-label="Sample templates" className="space-y-3 border-b p-3">
-    <h3 className="text-xs font-semibold">Saved object designs</h3>
+    <h3 className="text-xs font-semibold">Saved appearances</h3>
     <p className="text-[11px] text-muted-foreground">Reuse saved tables and boxes. Optionally tag text with labels to make fillable cards.</p>
     {eligible ? <form className="flex gap-1" onSubmit={event => { event.preventDefault(); const id = create(selected.id, name); if (id) { setChosen(id); setName(""); } }}>
       <Input aria-label="Sample template name" placeholder="Object design name" value={name} onChange={event => setName(event.target.value)} />

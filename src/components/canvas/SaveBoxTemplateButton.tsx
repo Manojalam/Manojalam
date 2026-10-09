@@ -16,7 +16,7 @@ export function SaveBoxTemplateButton({ node }: { node: Node }) {
     const text = String(node.data.text ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
     const name = text || `Template ${(state.settings.sampleTemplates?.length ?? 0) + 1}`;
     const id = state.createSampleTemplate(node.id, name);
-    if (id) toast.success("Object design saved", { description: "Find it under Templates → Saved object designs." });
+    if (id) toast.success("Object design saved", { description: "Find it under Style → Saved appearances." });
     else toast.error("This box can no longer be used as a template.");
   }}><LayoutTemplate className="h-4 w-4" />Save object design</button>;
 }
