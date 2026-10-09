@@ -1,6 +1,8 @@
 "use client";
 
 import { TemplateUseActions } from "./TemplateUseActions";
+import { useUIStore } from "@/store/ui-store";
+import { normalizeTable } from "@/lib/canvas/table";
 import { useState } from "react";
 import type { BoardCardTemplate } from "@/lib/types";
 import { generateId } from "@/lib/utils";
@@ -12,13 +14,16 @@ import { CardTemplateDesigner } from "./CardTemplateDesigner";
 export function CardTemplatesPanel() {
   const templates = useCanvasStore(state => state.settings.cardTemplates);
   const selected = useCanvasStore(state => state.selectedNodeIds.length === 1 ? state.nodes.find(node => node.id === state.selectedNodeIds[0]) : undefined);
+  const cell = useUIStore(state => state.selectedTableCell ?? state.fillingTableColumn);
+  const cellTemplate = selected?.type === "table" && cell?.nodeId === selected.id
+    ? normalizeTable(selected.data.table).rows.find(row => row.id === cell.rowId)?.templates?.[cell.columnId]?.template : undefined;
   const remove = useCanvasStore(state => state.deleteCardTemplate);
   const [chosen, setChosen] = useState("");
   const [design, setDesign] = useState<BoardCardTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const template = templates?.find(item => item.id === (chosen || selected?.data.cardTemplateId)) ?? templates?.[0];
+  const template = templates?.find(item => item.id === (chosen || cellTemplate?.id || selected?.data.cardTemplateId)) ?? templates?.[0];
   return <section aria-label="Templates" className="space-y-2 border-b p-3">
-    <p className="text-[10px] text-muted-foreground">Create repeatable sets of text fields. Use them in an object or table column; style the object separately.</p>
+    <p className="text-[10px] text-muted-foreground">Create repeatable sets of text fields. Use them in any supported text object or individual cell.</p>
     <div className="flex flex-wrap gap-1">
       <Button size="sm" className="h-8 text-xs" onClick={() => {
         const blank = newHomeworkTemplate(generateId());
@@ -32,7 +37,7 @@ export function CardTemplatesPanel() {
       </select>
       <div className="flex flex-wrap gap-1">
         <TemplateUseActions kind="card" template={template} />
-        <Button size="sm" variant="outline" onClick={() => setDesign(structuredClone(template))}>Edit template</Button>
+        <Button size="sm" variant="outline" onClick={() => setDesign(structuredClone(template))}>Update template</Button>
         <Button size="sm" variant="ghost" onClick={() => setDesign({ ...structuredClone(template), id: generateId(), name: `${template.name} copy` })}>Duplicate template</Button>
       </div>
       {deleting ? <div className="space-y-1 text-xs"><p>Delete the template? Existing objects keep their displayed content.</p><Button size="sm" variant="destructive" onClick={() => { remove(template.id); setDeleting(false); setChosen(""); }}>Delete template</Button><Button size="sm" variant="ghost" onClick={() => setDeleting(false)}>Cancel</Button></div>

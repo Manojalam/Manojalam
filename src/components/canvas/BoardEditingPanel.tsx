@@ -5,6 +5,8 @@ import { Pin, X, Lock, Unlock, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { CanvasInspector, type InspectorTab } from "./CanvasInspector";
+import { SampleTemplatesPanel } from "./SampleTemplatesPanel";
+import { BoardStyleTemplatesPanel } from "./BoardStyleTemplatesPanel";
 import { TemplateLauncher } from "./TemplateLauncher";
 import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 import { LayoutPanel } from "./LayoutPanel";
@@ -101,9 +103,10 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
     {ui.boardPanel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
-    <div id="properties-template" role="tabpanel" aria-label="Template" className={editing && activeTab === "template" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+    <div id="properties-template" role="tabpanel" aria-label="Template" className={editing && activeTab === "template" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
+      <TemplateLauncher />
       {card && !cell && <button className="m-2 flex shrink-0 items-center gap-1 text-xs" aria-label="Keep this template open" aria-pressed={!!ui.fillingCardNodeId} onClick={() => ui.setFillingCardNodeId(ui.fillingCardNodeId ? null : card.id)}><Pin size={12} />Keep open while copying</button>}
-      {cell ? <TableCellFillPanel /> : card ? <FillCardDialog embedded key={card.id} nodeId={card.id} onClose={() => { ui.setFillingCardNodeId(null); useUIStore.setState({ propertiesTab: "style" }); }} /> : <div className="min-h-0 flex-1 overflow-y-auto"><TemplateLauncher /></div>}
+      {cell ? <TableCellFillPanel /> : card ? <FillCardDialog embedded key={card.id} nodeId={card.id} onClose={() => { ui.setFillingCardNodeId(null); useUIStore.setState({ propertiesTab: "style" }); }} /> : null}
     </div>
     <div role="tabpanel" id={`properties-${activeTab === "template" ? "style" : activeTab}`} aria-label={specific && activeTab === "specific" ? specific : activeTab} className={editing && activeTab !== "template" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
       {activeTab === "specific" && <ChildOrderControls />}
@@ -113,6 +116,10 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       </div>
       {candidate?.type === "table" && <ObjectToolsSlot nodeId={candidate.id} hidden={activeTab !== "specific"} />}
       {selected.length === 1 && activeTab === "style" && <div className="border-b px-2"><SaveBoxTemplateButton node={selected[0]} /></div>}
+      {activeTab === "style" && <>
+        <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Saved appearances</summary><SampleTemplatesPanel /></details>
+        <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Shared styles</summary><BoardStyleTemplatesPanel /></details>
+      </>}
       <div hidden={activeTab === "template"} ref={setToolbarHost} className="board-selection-dock" />
     </div>
   </>;
