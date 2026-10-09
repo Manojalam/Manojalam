@@ -374,11 +374,11 @@ body {
 .ProseMirror u                      { text-decoration: underline; }
 .ProseMirror s                      { text-decoration: line-through; }
 .ProseMirror a {
-  /* Diagram fills span the full palette, so the theme blue can lose contrast.
-     Reuse the label's chosen foreground color and signal links with decoration. */
+  /* Keep authored link colours. Underlining is an explicit text/template mark,
+     not an automatic consequence of attaching a link. */
   color: inherit;
   cursor: pointer;
-  text-decoration: underline;
+  text-decoration: none;
   text-decoration-color: currentColor;
   text-decoration-thickness: max(1px, 0.045em);
   text-underline-position: under;
