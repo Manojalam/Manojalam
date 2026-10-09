@@ -179,10 +179,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         // Editor tools live outside the table and do not affect its content bounds.
         const height = Math.ceil(element.offsetHeight + 2);
         const width = Math.max(Number(node.style?.width) || node.width || 0, minimumWidth);
-        const minimumHeight = typeof node.data.tableMinHeight === "number" ? node.data.tableMinHeight : Number(node.style?.height) || node.height || 0;
-        const nextHeight = width !== Number(node.style?.width)
-          ? Number(node.style?.height) || node.height || height
-          : Math.max(minimumHeight, height);
+        // A saved outer height is a measurement, not an explicit minimum. In
+        // particular, loading an already-collapsed template must shrink too.
+        const collapsed = element.querySelector('[data-template-collapsed="true"]');
+        const minimumHeight = !collapsed && typeof node.data.tableMinHeight === "number" ? node.data.tableMinHeight : 0;
+        const nextHeight = Math.max(minimumHeight, height);
         if (width === Number(node.style?.width) && nextHeight === Number(node.style?.height)) return;
         state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, data: { ...item.data, tableMinHeight: minimumHeight }, style: { ...item.style, width, height: nextHeight } } : item));
       });
@@ -191,7 +192,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     observer.observe(element);
     fit();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
-  }, [id, minimumWidth, data.tableMinHeight]);
+  }, [id, minimumWidth, nodeWidth, data.tableMinHeight]);
   const selectCell = (address: TableAddress, extend = false) => {
     setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
     useUIStore.setState({ selectedTableCell: !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL ? { nodeId: id, ...address } : null });
