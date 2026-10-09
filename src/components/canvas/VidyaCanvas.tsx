@@ -1,4 +1,5 @@
 "use client";
+import { TEMPLATE_CLIPBOARD_MIME, copyTemplateContent, parseTemplateClipboard, pasteTemplateContent } from "@/lib/canvas/template-clipboard";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1680,6 +1681,50 @@ function VidyaCanvasInner({
   }, [screenToFlowPosition]);
 
   useEffect(() => {
+    // Only canvas targets qualify. Sidebar inputs and highlighted text keep native clipboard behavior.
+    const templateTarget = (event: ClipboardEvent) => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      if (window.getSelection()?.toString()) return;
+      const element = event.target instanceof Element ? event.target : active;
+      const owner = element?.closest<HTMLElement>(".react-flow__node");
+      if (!owner && !shouldHandleCanvasClipboard(event.target, active)) return;
+      const store = useCanvasStore.getState();
+      if (store.selectedNodeIds.length > 1) return;
+      const node = owner ? store.nodes.find(item => item.id === owner.dataset.id) : store.selectedNodeIds.length === 1 ? store.nodes.find(item => item.id === store.selectedNodeIds[0]) : undefined;
+      if (!node) return;
+      const cellElement = element?.closest<HTMLElement>("[data-cell-row][data-cell-column]");
+      const selectedCell = useUIStore.getState().selectedTableCell;
+      const cell = cellElement ? { rowId: cellElement.dataset.cellRow!, columnId: cellElement.dataset.cellColumn! } : selectedCell?.nodeId === node.id ? selectedCell : undefined;
+      return { node, cell };
+    };
+    const copyTemplate = (event: ClipboardEvent) => {
+      if (useUIStore.getState().presentationMode || !event.clipboardData) return;
+      const target = templateTarget(event);
+      if (!target) return;
+      const content = copyTemplateContent(target.node, useCanvasStore.getState().settings.cardTemplates ?? [], target.cell);
+      if (!content) return;
+      const textNode = pasteTemplateContent({ id: "template-copy", type: "text", position: { x: 0, y: 0 }, data: {} }, content);
+      event.clipboardData.setData(TEMPLATE_CLIPBOARD_MIME, JSON.stringify(content));
+      event.clipboardData.setData(MANOJALAM_NODES_MIME, serializeManojalamClipboard(createManojalamClipboardPayload([target.node.type === "table" ? textNode : target.node], [], [target.node.type === "table" ? textNode.id : target.node.id])));
+      event.clipboardData.setData("text/plain", String(textNode.data.text ?? ""));
+      event.clipboardData.setData("text/html", String(textNode.data.richText ?? ""));
+      event.preventDefault(); event.stopImmediatePropagation();
+    };
+    const pasteTemplate = (event: ClipboardEvent) => {
+      if (!canEdit || useUIStore.getState().presentationMode || !event.clipboardData) return;
+      const content = parseTemplateClipboard(event.clipboardData.getData(TEMPLATE_CLIPBOARD_MIME));
+      const target = templateTarget(event);
+      if (!content || !target) return;
+      const store = useCanvasStore.getState();
+      if (store.layers.some(layer => layer.id === target.node.data.layerId && layer.locked)) return;
+      const next = pasteTemplateContent(target.node, content, target.cell);
+      if (next === target.node) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      store.pushHistory();
+      store.updateNodeData(next.id, next.data);
+      toast.success("Pasted template and values.");
+    };
     const handleCopy = (event: ClipboardEvent) => {
       if (useUIStore.getState().presentationMode) return;
       if (!shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
@@ -1732,9 +1777,13 @@ function VidyaCanvasInner({
       pastePlainTextOnCanvas(plainText);
     };
 
+    window.addEventListener("copy", copyTemplate, true);
+    window.addEventListener("paste", pasteTemplate, true);
     window.addEventListener("copy", handleCopy);
     window.addEventListener("paste", handlePaste);
     return () => {
+      window.removeEventListener("copy", copyTemplate, true);
+      window.removeEventListener("paste", pasteTemplate, true);
       window.removeEventListener("copy", handleCopy);
       window.removeEventListener("paste", handlePaste);
     };
