@@ -218,8 +218,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const Cell = header ? "th" : "td";
     const addresses = (merge?.rowIds ?? [rowId]).flatMap(r => (merge?.columnIds ?? [columnId]).map(c => ({ rowId: r, columnId: c })));
     const highlighted = selected && range && range.rowIds.includes(rowId) && range.columnIds.includes(columnId);
+    // The outer rounded frame owns the bottom edge, including cells spanning
+    // the final row. Only interior row boundaries need a cell border.
+    const reachesBottom = (merge?.rowIds.at(-1) ?? rowId) === rowOrder.at(-1);
     return <Cell key={columnId} data-cell-row={rowId} data-cell-column={columnId} data-cell-selected={highlighted ? "true" : undefined} scope={header ? rowId === TABLE_HEADER ? "col" : "row" : undefined} rowSpan={merge?.rowIds.length} colSpan={merge?.columnIds.length}
-      className={`nodrag nopan relative border-b border-r align-top text-left last:border-r-0 ${header ? "bg-muted/50 font-semibold" : ""} ${highlighted ? "ring-2 ring-inset ring-primary" : ""}`}
+      className={`nodrag nopan relative ${reachesBottom ? "" : "border-b"} border-r align-top text-left last:border-r-0 ${header ? "bg-muted/50 font-semibold" : ""} ${highlighted ? "ring-2 ring-inset ring-primary" : ""}`}
       style={{ borderColor: color, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", verticalAlign: data.textVerticalAlign === "middle" ? "middle" : data.textVerticalAlign === "bottom" ? "bottom" : "top" }}
       onPointerDownCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClickCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
