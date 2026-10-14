@@ -299,3 +299,15 @@ test("cell rich text survives normalization and reshaping independently of templ
   const stacked = convertTableLayout(restored, { kind: "reshape", columns: 1, order: "rows" }).table!;
   assert.equal(stacked.rows[1].richCells?.[stacked.columns[0].id], table.rows[0].richCells[column]);
 });
+test("custom row-label heading survives persistence, designs, layout conversion and exports", () => {
+  const table = normalizeTable({ ...createTable(2, 2), showRowLabels: true, labelHeader: "Case", labelHeaderRichText: "<p><strong>Case</strong></p>" });
+  const restored = normalizeTable(JSON.parse(JSON.stringify(table)));
+  assert.equal(restored.labelHeader, "Case");
+  assert.equal(restored.labelHeaderRichText, table.labelHeaderRichText);
+  assert.equal(tableDisplayRows(restored)[0][0].text, "Case");
+  assert.ok(tablePlainText(restored).startsWith("Case\t"));
+  assert.equal(tableTemplateDesign(restored).labelHeader, "Case");
+  assert.equal(convertTableLayout(restored, { kind: "transpose" }).table?.labelHeader, "Case");
+  assert.equal(tableDisplayRows(normalizeTable({ ...table, labelHeader: "" }))[0][0].text, "");
+  assert.equal(tableDisplayRows(normalizeTable({ ...createTable(1, 1), showRowLabels: true }))[0][0].text, "Row label");
+});

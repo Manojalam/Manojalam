@@ -234,11 +234,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         const sourceRow = table.rows.find(row => row.id === source.rowId);
         const columnIndex = table.columns.findIndex(column => column.id === source.columnId);
         const sourceColumn = table.columns[columnIndex];
-        const text = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? "Row label" : sourceColumn.name : source.columnId === TABLE_LABEL ? sourceRow?.label ?? "" : sourceRow?.cells[columnIndex] ?? "";
-        const rich = source.rowId === TABLE_HEADER ? sourceColumn?.richText : source.columnId === TABLE_LABEL ? sourceRow?.labelRichText : sourceRow?.richCells?.[source.columnId];
+        const text = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? table.labelHeader ?? "Row label" : sourceColumn.name : source.columnId === TABLE_LABEL ? sourceRow?.label ?? "" : sourceRow?.cells[columnIndex] ?? "";
+        const rich = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? table.labelHeaderRichText : sourceColumn?.richText : source.columnId === TABLE_LABEL ? sourceRow?.labelRichText : sourceRow?.richCells?.[source.columnId];
         const card = sourceRow?.templates?.[source.columnId];
         if (index && !text && !card) return null;
-        const label = source.rowId === TABLE_HEADER ? `Column ${columnIndex + 1} name` : sourceRow?.footer ? `Footer ${table.rows.filter(row => row.footer).findIndex(row => row.id === source.rowId) + 1}` : sourceRow?.aboveHeader ? `Heading ${table.rows.filter(row => row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}${index ? ` part ${index + 1}` : ""}` : source.columnId === TABLE_LABEL ? `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1} label` : `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}, ${sourceColumn.name || `column ${columnIndex + 1}`}`;
+        const label = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? "Row label heading" : `Column ${columnIndex + 1} name` : sourceRow?.footer ? `Footer ${table.rows.filter(row => row.footer).findIndex(row => row.id === source.rowId) + 1}` : sourceRow?.aboveHeader ? `Heading ${table.rows.filter(row => row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}${index ? ` part ${index + 1}` : ""}` : source.columnId === TABLE_LABEL ? `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1} label` : `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}, ${sourceColumn.name || `column ${columnIndex + 1}`}`;
         return <div key={`${source.rowId}:${source.columnId}`}>
           {card && (() => {
             const template = settings.cardTemplates?.find(item => item.id === card.template.id) ?? card.template;
@@ -263,20 +263,21 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
               }} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} />
             </div>;
           })()}
-          {!card && !(source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL) ? <div role="group" tabIndex={editable ? 0 : undefined} data-row={source.rowId} data-column={source.columnId} aria-label={label} style={objectTextDefaults(data)} className={`nodrag nopan min-h-10 px-2 py-2 outline-none [&_p]:m-0 ${OBJECT_TEXT_DEFAULTS_CLASS}`}
+          {!card ? <div role="group" tabIndex={editable ? 0 : undefined} data-row={source.rowId} data-column={source.columnId} aria-label={label} style={objectTextDefaults(data)} className={`nodrag nopan min-h-10 px-2 py-2 outline-none [&_p]:m-0 ${OBJECT_TEXT_DEFAULTS_CLASS}`}
             onFocus={event => { if (event.target === event.currentTarget && editable) { selectCell(address); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
             onPointerDownCapture={event => { if (!editable || (event.target as HTMLElement).closest("[contenteditable=true], [data-universal-text-tools]")) return; selectCell(address); setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY }); setEditingCell(`${source.rowId}:${source.columnId}`); }}
             onDoubleClick={event => { if (!editable || (event.target as HTMLElement).closest("[data-universal-text-tools]")) return; event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); }}>
             <RichTextEditor nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} onChange={html => {
               const next = current(); const target = next.rows.find(row => row.id === source.rowId);
               const index = next.columns.findIndex(column => column.id === source.columnId);
-              if (source.rowId === TABLE_HEADER && index >= 0) next.columns[index] = { ...next.columns[index], name: richTextToPlainText(html), richText: html };
+              if (source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL) { next.labelHeader = richTextToPlainText(html); next.labelHeaderRichText = html; }
+              else if (source.rowId === TABLE_HEADER && index >= 0) next.columns[index] = { ...next.columns[index], name: richTextToPlainText(html), richText: html };
               else if (target && source.columnId === TABLE_LABEL) { target.label = richTextToPlainText(html); target.labelRichText = html; }
               else if (target && index >= 0) { target.cells[index] = richTextToPlainText(html); target.richCells = { ...target.richCells, [source.columnId]: html }; }
               else return;
               write(next, !editingHistory.current); editingHistory.current = true;
             }} />
-          </div> : source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL ? <span className="block px-2 py-2">Row label</span> : (!card || text) && <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
+          </div> : (!card || text) && <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
             onFocus={() => selectCell(address)} onBlur={() => { editingHistory.current = false; }} onChange={event => updateText(source, event.target.value)}
             onPaste={event => { if (!editable || source.rowId === TABLE_HEADER || source.columnId === TABLE_LABEL) return; const text = event.clipboardData.getData("text/plain"); if (!text.includes("\t")) return; event.preventDefault(); write(pasteTableCells(current(), table.rows.findIndex(row => row.id === source.rowId), columnIndex, parseTablePaste(text))); }} />}
         </div>;
