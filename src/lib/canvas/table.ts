@@ -5,7 +5,7 @@ export interface TableColumn { id: string; name: string; richText?: string; widt
 export interface TableRow { id: string; cells: string[]; richCells?: Record<string, string>; labelRichText?: string; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; cellHeaders?: string[]; templates?: Record<string, TableTemplateContent> }
 export interface TableMerge { rowIds: string[]; columnIds: string[] }
 export interface TableAddress { rowId: string; columnId: string }
-export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelWidth?: number; merges?: TableMerge[] }
+export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelHeader?: string; labelHeaderRichText?: string; labelWidth?: number; merges?: TableMerge[] }
 export const TABLE_HEADER = "$table-header";
 export const TABLE_LABEL = "$row-label";
 export const MAX_TABLE_COLUMNS = 30;
@@ -58,7 +58,7 @@ export function normalizeTable(value: unknown): CanvasTable {
       row.templates = { ...row.templates, [columns[i].id]: { template, independent: true, sections: [...(previous?.sections ?? []), section] } };
     });
   });
-  const table: CanvasTable = { columns, rows, ...(typeof source?.labelWidth === "number" && Number.isFinite(source.labelWidth) ? { labelWidth: Math.max(60, Math.min(4000, source.labelWidth)) } : {}), ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
+  const table: CanvasTable = { columns, rows, ...(typeof source?.labelHeader === "string" ? { labelHeader: source.labelHeader } : {}), ...(typeof source?.labelHeaderRichText === "string" ? { labelHeaderRichText: source.labelHeaderRichText } : {}), ...(typeof source?.labelWidth === "number" && Number.isFinite(source.labelWidth) ? { labelWidth: Math.max(60, Math.min(4000, source.labelWidth)) } : {}), ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
   const rowOrder = tableRowOrder(table);
   const columnOrder = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...columns.map(column => column.id)];
   const merges: TableMerge[] = [];
@@ -134,7 +134,7 @@ export function tableDisplayRows(table: CanvasTable): { text: string; header: bo
   const columns = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...table.columns.map(column => column.id)];
   const textAt = (rowId: string, columnId: string) => {
     const columnIndex = table.columns.findIndex(column => column.id === columnId);
-    if (rowId === TABLE_HEADER) return columnId === TABLE_LABEL ? "Row label" : table.columns[columnIndex].name;
+    if (rowId === TABLE_HEADER) return columnId === TABLE_LABEL ? table.labelHeader ?? "Row label" : table.columns[columnIndex].name;
     const rowIndex = table.rows.findIndex(row => row.id === rowId);
     return columnId === TABLE_LABEL ? table.rows[rowIndex].label ?? "" : tableCellText(table, rowIndex, columnIndex);
   };

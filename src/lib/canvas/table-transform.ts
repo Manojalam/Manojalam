@@ -44,5 +44,5 @@ export function convertTableLayout(source: CanvasTable, operation: TableConversi
   if (!rows.length) return { error: "Add a body row before converting the table." };
   const showRowLabels = operation.kind === "transpose" || source.showRowLabels;
   const sideMerges = [...headings, ...footers].filter(row => row.cells.slice(1).every(value => !value) && columns.slice(1).every(column => !row.templates?.[column.id]) && columns.length > 1).map(row => ({ rowIds: [row.id], columnIds: columns.map(column => column.id) }));
-  return { table: normalizeTable({ columns, rows, showRowLabels, labelWidth: source.labelWidth, merges: sideMerges }) };
+  return { table: normalizeTable({ columns, rows, showRowLabels, labelHeader: source.labelHeader, labelHeaderRichText: source.labelHeaderRichText, labelWidth: source.labelWidth, merges: sideMerges }) };
 }
