@@ -42,9 +42,8 @@ export function CanvasHandwriting() {
   useEffect(() => {
     gesture.current = null; setDraft(null);
     session.current = tool === "pen" ? selected?.id ?? null : null;
-    // Only switching tools starts/ends a handwriting session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool]);
+    // Undo can restore an erased note while the pen remains active.
+  }, [tool, selected?.id]);
   const point = (event: { clientX: number; clientY: number; pressure: number; pointerType: string }): InkPoint => ({
     ...screenToFlowPosition({ x: event.clientX, y: event.clientY }),
     pressure: event.pointerType === "pen" ? Math.max(0.1, event.pressure) : 0.5,
