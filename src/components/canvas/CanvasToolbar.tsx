@@ -4,7 +4,7 @@ import { ImportDialog } from "./ImportDialog";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { useState } from "react";
 import {
-  MousePointer2, SquareDashedMousePointer, Hand, StickyNote, Type, Spline, Frame,
+  PenLine, MousePointer2, SquareDashedMousePointer, Hand, StickyNote, Type, Spline, Frame,
   BookOpen, Scroll, GraduationCap, ChevronRight,
   Network, Table2, LayoutTemplate, PanelRight, Settings2, Upload,
 } from "lucide-react";
@@ -278,6 +278,7 @@ export function CanvasToolbar() {
 
         {/* Creation */}
         <ToolBtn tool="sticky" icon={<StickyNote className="h-[18px] w-[18px] stroke-[1.5]" />}   label="Sticky Note" shortcut="S" />
+        <ToolBtn tool="pen" icon={<PenLine className="h-5 w-5" />} label="Handwriting" />
         <ToolBtn tool="text"   icon={<Type className="h-[18px] w-[18px] stroke-[1.5]" />}          label="Text" shortcut="T" />
         {/* Shapes (with popover) */}
         <ShapesBtn />
