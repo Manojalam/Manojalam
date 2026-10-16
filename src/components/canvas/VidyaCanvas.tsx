@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { Focus, Minus, Plus } from "lucide-react";
 
 import { nodeTypes } from "./nodes";
+import { CanvasHandwriting } from "./CanvasHandwriting";
 import { createTable, tablePlainText } from "@/lib/canvas/table";
 import { edgeTypes } from "./edges/VidyaEdge";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -1956,7 +1957,7 @@ function VidyaCanvasInner({
     lastPointerScreenRef.current = { x: event.clientX, y: event.clientY };
     if (!isTouchDevice || (event.pointerType !== "touch" && event.pointerType !== "pen")) return;
     if (touchSelectionMode) return;
-    if (!event.isPrimary || activeTool === "connector" || useUIStore.getState().drawingModeNodeId) return;
+    if (!event.isPrimary || activeTool === "pen" || activeTool === "connector" || useUIStore.getState().drawingModeNodeId) return;
     if (shouldSkipLongPressPan(event.target)) return;
 
     clearLongPressPan();
@@ -2017,7 +2018,7 @@ function VidyaCanvasInner({
   }, []);
 
   const onTouchStartCapture = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if (!isTouchDevice || event.touches.length !== 2) return;
+    if (useUIStore.getState().activeTool === "pen" || !isTouchDevice || event.touches.length !== 2) return;
     clearLongPressPan();
     const pair = touchPair(event.touches);
     if (!pair || pair.distance <= 0) return;
@@ -2147,6 +2148,7 @@ function VidyaCanvasInner({
       {bgVariant !== undefined && (
         <AdaptiveBackground variant={bgVariant} baseGap={gridSpacing} color={gridColor} />
       )}
+      {canEdit && !presentationMode && <CanvasHandwriting />}
       <ListTreeConnectors />
       <StructuredTreeConnectors />
       {canEdit && !presentationMode && !relationshipSelection && <SelectionToolbar />}

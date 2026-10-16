@@ -374,3 +374,11 @@ test("object paste targets one editable selected cell, never an ambiguous or gen
     assert.equal(objectPasteParent([{...cell,type}],["cell"]),undefined);
   }
 });
+test("clearing handwriting removes only strokes and leaves the undo source intact", () => {
+  const ink = { width: 100, height: 60, strokes: [{ id: "stroke", color: "#123456", width: 2, points: [{ x: 3, y: 4, pressure: 0.5 }] }] };
+  const node: Node = { id: "ink", type: "handwriting", position: { x: 10, y: 20 }, data: { ink } };
+  const result = clearSelectedNodeContents([node], new Set(["ink"]));
+  assert.deepEqual(result.clearedNodeIds, ["ink"]);
+  assert.deepEqual(result.nodes[0].data.ink, { width: 100, height: 60, strokes: [] });
+  assert.equal(ink.strokes.length, 1);
+});

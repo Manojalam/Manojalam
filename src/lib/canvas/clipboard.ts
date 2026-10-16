@@ -205,7 +205,7 @@ export function prepareDuplicatedNodeData(
 }
 
 export function hasNodeContent(data: Record<string, unknown>): boolean {
-  return NODE_CONTENT_FIELDS.some((field) =>
+  return !!(data.ink as { strokes?: unknown[] } | undefined)?.strokes?.length || NODE_CONTENT_FIELDS.some((field) =>
     typeof data[field] === "string" && data[field].length > 0
   ) || NODE_CONTENT_COLLECTIONS.some((field) =>
     Array.isArray(data[field]) && data[field].length > 0
@@ -215,6 +215,7 @@ export function hasNodeContent(data: Record<string, unknown>): boolean {
 /** Clear authored content while retaining every style, geometry, and hierarchy field. */
 export function clearNodeContent(data: Record<string, unknown>): Record<string, unknown> {
   const next = structuredClone(data);
+  if (next.ink && typeof next.ink === "object") next.ink = { ...next.ink, strokes: [] };
   for (const field of NODE_CONTENT_FIELDS) {
     if (field in next) next[field] = "";
   }

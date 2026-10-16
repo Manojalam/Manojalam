@@ -1,3 +1,4 @@
+import { inkSvg, type InkData } from "../canvas/handwriting";
 import PptxGenJS from "pptxgenjs";
 import { normalizeTable, tableDisplayRows } from "../canvas/table";
 import type { Edge, Node } from "@xyflow/react";
@@ -938,6 +939,13 @@ function renderRelationshipDiagram(context: RenderContext, node: Node, rect: Pow
 }
 
 function renderSpecialNode(context: RenderContext, node: Node, rect: PowerPointRect): boolean {
+  if (node.type === "handwriting" && node.data.ink) {
+    context.slide.addImage({ data: "data:image/svg+xml;base64," + btoa(inkSvg(node.data.ink as InkData)),
+      x: rect.x, y: rect.y, w: rect.width, h: rect.height, objectName: "Handwriting" });
+    context.objectCount += 1;
+    return true;
+  }
+
   if (node.type === "table") {
     const table = normalizeTable(node.data.table);
     const tableRows: PptxGenJS.TableRow[] = tableDisplayRows(table).map(row => row.map(cell => ({ text: cell.text, options: { rowspan: cell.rowspan, colspan: cell.colspan, ...(cell.header ? { bold: true, fill: { color: "E2E8F0" } } : {}) } })));
