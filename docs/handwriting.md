@@ -36,3 +36,15 @@ Limits: one handwriting object per conversion; eraser removes entire touched str
 ## Checks
 
 `HANDWRITING_TEST_STUB=1 node scripts/run-handwriting-smoke.mjs` checks the editor/undo/review/persistence/sidebar flow with a stubbed recognition response. It is **not** an accuracy test. Without that flag it uses the installed local model for the drawn English sample. The recognition unit tests cover local-only requests, cloud rejection, wrong-script/truncated output and cancellation. Actual handwritten images must be tested separately through `transcribeHandwritingImage`; rendered fonts and manually corrected drafts are not handwriting accuracy evidence.
+
+## Current validation status — not ready to merge
+
+The shared Properties sidebar and English draw/review/accept/cancel/undo/persistence flow passed browser checks. The real local Gemma model read the drawn English `HELLO` sample. This does not establish Sanskrit support.
+
+Local tests of the user's handwritten screenshot failed on 2026-10-21:
+
+- `gemma3:4b` returned unrelated Devanagari fragments.
+- `qwen3-vl:4b` exhausted the output limit without a final transcription.
+- `qwen3-vl:4b-instruct` returned `अप्परि` in Sanskrit mode and `aH2rI` in mixed mode.
+
+The same handwriting crop and transcription-only prompt were used without providing an expected answer. The adapter remains an unmerged experiment; the setup above is not a recommendation for reliable Sanskrit handwriting. No tested model met that requirement. Do not mark this feature fixed based on unit tests or the English sample.

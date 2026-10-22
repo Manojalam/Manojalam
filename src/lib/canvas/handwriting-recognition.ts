@@ -3,7 +3,7 @@ import { inkPng, type InkData } from "./handwriting";
 // Never accept a remote host: handwriting stays on this device.
 export const HANDWRITING_MODEL = "gemma3:4b";
 const LOCAL_URL = "http://127.0.0.1:11434";
-const setupMessage = "Start Ollama on this computer and install gemma3:4b. Allow this site's origin in OLLAMA_ORIGINS and allow Chrome's local-network permission. Your handwriting is unchanged.";
+const setupMessage = `Start Ollama on this computer and install ${HANDWRITING_MODEL}. Allow this site's origin in OLLAMA_ORIGINS and allow Chrome's local-network permission. Your handwriting is unchanged.`;
 
 async function localRequest(path: string, body: object, signal: AbortSignal) {
   signal.throwIfAborted();
@@ -26,7 +26,7 @@ export async function transcribeHandwritingImage(image: string, language: string
   // Check the model before sending an image, including cloud models served via localhost.
   const model = await localRequest("show", { model: HANDWRITING_MODEL }, signal);
   if (model.remote_host || model.remote_model || !model.capabilities?.includes("vision")) {
-    throw new Error("Recognition requires the locally installed gemma3:4b vision model. Cloud models are not allowed.");
+    throw new Error(`Recognition requires the locally installed ${HANDWRITING_MODEL} vision model. Cloud models are not allowed.`);
   }
   const script = language === "en" ? "English" : language === "sa" ? "Sanskrit in Devanagari script" : "English and/or Sanskrit in Devanagari script";
   const result = await localRequest("generate", {

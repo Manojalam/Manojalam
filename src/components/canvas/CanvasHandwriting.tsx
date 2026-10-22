@@ -9,6 +9,7 @@ import { InkPaths } from "./nodes/HandwritingNode";
 import { normalizeInk, strokeNear, MAX_INK_POINTS, type InkData, type InkPoint, type InkStroke } from "@/lib/canvas/handwriting";
 import { resolveObjectRotation } from "@/lib/canvas/object-rotation";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
+import { HANDWRITING_MODEL, recognizeHandwriting } from "@/lib/canvas/handwriting-recognition";
 export function CanvasHandwriting() {
   const tool = useUIStore(s => s.activeTool);
   const toolsHost = useUIStore(s => s.objectToolsHost?.nodeId === "handwriting-tools" ? s.objectToolsHost.element : null);
@@ -99,7 +100,6 @@ export function CanvasHandwriting() {
     useUIStore.getState().setActiveTool("select");
     const timeout = window.setTimeout(() => { controller.abort(); setError("Conversion took too long. Try a shorter passage; the handwriting is unchanged."); }, 180000);
     try {
-      const { recognizeHandwriting } = await import("@/lib/canvas/handwriting-recognition");
       controller.signal.throwIfAborted();
       const text = await recognizeHandwriting(ink, language, controller.signal);
       if (!controller.signal.aborted) setReview({ id: selected.id, ink, text });
@@ -169,7 +169,7 @@ export function CanvasHandwriting() {
       </>}
       <details className="border-t pt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Local recognition setup</summary>
         <ol className="mt-2 list-decimal space-y-2 pl-4">
-          <li>Install <a className="underline" href="https://ollama.com/download" target="_blank" rel="noreferrer">Ollama</a> and run <code>ollama pull gemma3:4b</code> (several GB, downloaded once).</li>
+          <li>Install <a className="underline" href="https://ollama.com/download" target="_blank" rel="noreferrer">Ollama</a> and run <code>ollama pull {HANDWRITING_MODEL}</code> (several GB, downloaded once).</li>
           <li>Set <code>OLLAMA_NO_CLOUD=1</code> and <code>OLLAMA_ORIGINS</code> to this website’s exact origin, then restart Ollama. Keep it listening on localhost.</li>
           <li>Allow local-network access if Chrome asks. Ollama must be running on this device.</li>
         </ol>
