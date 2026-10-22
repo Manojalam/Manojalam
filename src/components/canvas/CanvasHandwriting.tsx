@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/button";
 import { useReactFlow, useViewport } from "@xyflow/react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -9,6 +11,7 @@ import { resolveObjectRotation } from "@/lib/canvas/object-rotation";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 export function CanvasHandwriting() {
   const tool = useUIStore(s => s.activeTool);
+  const toolsHost = useUIStore(s => s.objectToolsHost?.nodeId === "handwriting-tools" ? s.objectToolsHost.element : null);
   const boardId = useCanvasStore(s => s.board?.id);
   const nodes = useCanvasStore(s => s.nodes);
   const ids = useCanvasStore(s => s.selectedNodeIds);
@@ -24,7 +27,6 @@ export function CanvasHandwriting() {
   const [review, setReview] = useState<{ id: string; ink: InkData; text: string } | null>(null);
   const [keep, setKeep] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
   const selected = ids.length === 1 ? nodes.find(n => n.id === ids[0] && n.type === "handwriting") : undefined;
@@ -35,6 +37,12 @@ export function CanvasHandwriting() {
       (!id || (!!node && !node.data.locked && !state.layers.some(l => l.id === node.data.layerId && l.locked)));
   };
   useEffect(() => () => abort.current?.abort(), []);
+  useEffect(() => {
+    abort.current?.abort(); setReview(null); setError("");
+  }, [selected?.id]);
+  useEffect(() => {
+    if (tool === "pen") useUIStore.setState({ boardPanel: "selection", propertiesTab: "specific", layoutPanelOpen: false, layersPanelOpen: false });
+  }, [tool]);
   useEffect(() => {
     abort.current?.abort(); setReview(null); setError(""); setBusy(false);
     gesture.current = null; setDraft(null); session.current = null;
@@ -87,12 +95,13 @@ export function CanvasHandwriting() {
     const ink = selected.data.ink as InkData;
     if (!ink?.strokes.some(s => !s.highlighter)) { setError("Write with the pen before converting."); return; }
     const controller = new AbortController(); abort.current = controller;
-    setError(""); setBusy(true); setProgress(0); setReview(null);
-    const timeout = window.setTimeout(() => { controller.abort(); setError("Conversion took too long. Try a shorter passage; the handwriting is unchanged."); }, 60000);
+    setError(""); setBusy(true); setReview(null);
+    useUIStore.getState().setActiveTool("select");
+    const timeout = window.setTimeout(() => { controller.abort(); setError("Conversion took too long. Try a shorter passage; the handwriting is unchanged."); }, 180000);
     try {
       const { recognizeHandwriting } = await import("@/lib/canvas/handwriting-recognition");
       controller.signal.throwIfAborted();
-      const text = await recognizeHandwriting(ink, language, controller.signal, setProgress);
+      const text = await recognizeHandwriting(ink, language, controller.signal);
       if (!controller.signal.aborted) setReview({ id: selected.id, ink, text });
     } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Conversion failed."); }
     finally { window.clearTimeout(timeout); if (abort.current === controller) { setBusy(false); abort.current = null; } }
@@ -141,24 +150,31 @@ export function CanvasHandwriting() {
       onLostPointerCapture={() => { gesture.current = null; setDraft(null); }}>
       {draft && mode !== "eraser" && <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}><InkPaths strokes={[draft]} /></g>}
     </svg>}
-    <section data-export-ignore aria-label="Handwriting tools" className="nodrag nopan nowheel absolute left-16 top-3 z-40 max-h-[80%] w-[min(440px,calc(100%-5rem))] space-y-3 overflow-auto rounded-lg border bg-background p-3 shadow-lg" onPointerDown={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-      <div className="flex items-center justify-between"><strong>Handwriting</strong><button onClick={() => { abort.current?.abort(); setReview(null); setError(""); useUIStore.getState().setActiveTool("select"); useCanvasStore.setState({ selectedNodeIds: [], nodes: useCanvasStore.getState().nodes.map(n => ({ ...n, selected: false })) }); }}>Close</button></div>
+    {toolsHost && createPortal(<section data-export-ignore aria-label="Handwriting tools" className="nodrag nopan nowheel space-y-3 p-3 text-sm font-sans" onPointerDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+
       {review ? <>
         <p className="text-xs text-muted-foreground">Review and correct the text. Your original handwriting is unchanged.</p>
         <textarea aria-label="Recognized text" className="min-h-36 w-full rounded border bg-background p-2" value={review.text} onChange={e => setReview({ ...review, text: e.target.value })} />
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={keep} onChange={e => setKeep(e.target.checked)} />Keep handwriting beside the text</label>
-        <div className="flex gap-3"><button disabled={!canChange(review.id) || !review.text.trim()} onClick={accept}>Accept conversion</button><button onClick={() => { setReview(null); setError(""); }}>Cancel conversion</button></div>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={!canChange(review.id) || !review.text.trim()} onClick={accept}>Accept conversion</Button><Button size="sm" variant="outline" onClick={() => { setReview(null); setError(""); }}>Cancel conversion</Button></div>
       </> : <>
         <div className="flex flex-wrap gap-2">
-          {(["pen","highlighter","eraser"] as const).map(value => <button key={value} aria-pressed={mode === value && tool === "pen"} className="rounded border px-2 py-1 aria-pressed:bg-primary aria-pressed:text-primary-foreground" disabled={disabled || busy} onClick={() => { setMode(value); useUIStore.getState().setActiveTool("pen"); }}>{value === "pen" ? "Pen" : value === "eraser" ? "Stroke eraser" : "Highlighter"}</button>)}
+          {(["pen","highlighter","eraser"] as const).map(value => <Button size="sm" variant="outline" key={value} aria-pressed={mode === value && tool === "pen"} className="rounded border px-2 py-1 aria-pressed:bg-primary aria-pressed:text-primary-foreground" disabled={disabled || busy} onClick={() => { setMode(value); useUIStore.getState().setActiveTool("pen"); }}>{value === "pen" ? "Pen" : value === "eraser" ? "Stroke eraser" : "Highlighter"}</Button>)}
           <label>Colour <input aria-label="Ink colour" type="color" value={color} onChange={e => setColor(e.target.value)} /></label>
           <label>Width <input aria-label="Pen width" className="w-14 rounded border" type="number" min={1} max={20} value={width} onChange={e => setWidth(Math.max(1, Math.min(20, Number(e.target.value) || 1)))} /></label>
         </div>
-        <div className="flex gap-3"><button disabled={busy} onClick={() => { session.current = null; setError(""); useCanvasStore.setState({ selectedNodeIds: [], nodes: useCanvasStore.getState().nodes.map(n => ({ ...n, selected: false })) }); useUIStore.getState().setActiveTool("pen"); }}>New handwriting</button><button onClick={() => useUIStore.getState().setActiveTool("select")}>Done writing</button><button disabled={busy || disabled} onClick={() => useCanvasStore.getState().undo()}>Undo</button></div>
-        <div className="flex gap-2"><select aria-label="Handwriting language" disabled={busy} value={language} onChange={e => setLanguage(e.target.value)}><option value="mixed">English + Sanskrit</option><option value="en">English</option><option value="sa">Sanskrit</option></select><button disabled={!selected || disabled || busy} onClick={convert}>{busy ? `Converting… ${Math.round(progress * 100)}%` : "Convert to text"}</button>{busy && <button onClick={() => abort.current?.abort()}>Cancel</button>}</div>
-        <p className="text-xs text-muted-foreground">Experimental local conversion: best with clear, separate characters. Cursive and Sanskrit may need substantial correction. Nothing is uploaded for recognition.</p>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={() => { session.current = null; setError(""); useCanvasStore.setState({ selectedNodeIds: [], nodes: useCanvasStore.getState().nodes.map(n => ({ ...n, selected: false })) }); useUIStore.getState().setActiveTool("pen"); }}>New handwriting</Button><Button size="sm" variant="outline" onClick={() => useUIStore.getState().setActiveTool("select")}>Done writing</Button></div>
+        <div className="flex flex-wrap gap-2"><select className="w-full rounded border bg-background p-2" aria-label="Handwriting language" disabled={busy} value={language} onChange={e => setLanguage(e.target.value)}><option value="mixed">English + Sanskrit</option><option value="en">English</option><option value="sa">Sanskrit</option></select><Button size="sm" variant="outline" disabled={!selected || disabled || busy} onClick={convert}>{busy ? "Reading locally…" : "Convert to text"}</Button>{busy && <Button size="sm" variant="outline" onClick={() => abort.current?.abort()}>Cancel</Button>}</div>
+        <p className="text-xs text-muted-foreground">Local vision transcription requires Ollama on this computer. Review every result: handwriting, especially Sanskrit conjuncts, can be misread. Recognition never sends your writing to a cloud service.</p>
       </>}
+      <details className="border-t pt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Local recognition setup</summary>
+        <ol className="mt-2 list-decimal space-y-2 pl-4">
+          <li>Install <a className="underline" href="https://ollama.com/download" target="_blank" rel="noreferrer">Ollama</a> and run <code>ollama pull gemma3:4b</code> (several GB, downloaded once).</li>
+          <li>Set <code>OLLAMA_NO_CLOUD=1</code> and <code>OLLAMA_ORIGINS</code> to this website’s exact origin, then restart Ollama. Keep it listening on localhost.</li>
+          <li>Allow local-network access if Chrome asks. Ollama must be running on this device.</li>
+        </ol>
+      </details>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    </section>
+    </section>, toolsHost)}
   </>;
 }

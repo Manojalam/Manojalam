@@ -5,9 +5,20 @@ const browser = await puppeteer.launch({ executablePath: process.env.BOARD_TEST_
 const page = await browser.newPage(), errors = [], uploads = [];
 page.on("pageerror", e => { errors.push(e.message); console.log("PAGE ERROR", e.message); });
 page.on("requestfailed", r => console.log("REQUEST FAILED", r.url(), r.failure()));
-page.on("request", r => { if (r.method() === "POST" && !r.url().startsWith(base)) uploads.push(r.url()); });
+page.on("request", r => { if (r.method() === "POST" && !r.url().startsWith(base) && !r.url().startsWith("http://127.0.0.1:11434/")) uploads.push(r.url()); });
 const click = async text => { const handle = await page.waitForFunction(text => [...document.querySelectorAll('[aria-label="Handwriting tools"] button')].find(b => b.textContent === text), {}, text); await handle.asElement().click(); };
 try {
+  // Exercise the editor deterministically without claiming recognition accuracy.
+  // Omit this flag to run against the installed local model.
+  if (process.env.HANDWRITING_TEST_STUB === "1") {
+    await page.setRequestInterception(true);
+    page.on("request", async request => {
+      if (!request.url().startsWith("http://127.0.0.1:11434/")) return void request.continue();
+      const headers = { "Access-Control-Allow-Origin": base, "Access-Control-Allow-Headers": "content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
+      if (request.url().endsWith("generate")) await new Promise(resolve => setTimeout(resolve, 1500));
+      await request.respond({ status: 200, headers, contentType: "application/json", body: JSON.stringify(request.url().endsWith("show") ? { capabilities: ["vision"] } : { response: "HELLO", done: true }) }).catch(() => {});
+    });
+  }
   await page.setViewport({width:1600,height:1000}); await page.goto(base);
   await page.evaluate(async () => {
     const db = await new Promise(resolve => { const r=indexedDB.open("manojalam-guest-boards",1);r.onupgradeneeded=()=>r.result.createObjectStore("boards",{keyPath:"id"});r.onsuccess=()=>resolve(r.result); });
@@ -16,6 +27,10 @@ try {
   await page.goto(base+"/app/boards/guest-ink",{waitUntil:"networkidle0"});
   await page.click('[aria-label="Handwriting"]');
   await page.waitForSelector('[aria-label="Handwriting canvas"]');
+  assert.ok(await page.$('#board-properties [aria-label="Handwriting tools"]'));
+  assert.ok(!(await page.$eval('body', el => el.innerText)).includes('Pen (placeholder)'));
+  await page.click('[role="tab"][aria-controls="properties-layout"]');
+  await page.click('[role="tab"][aria-controls="properties-specific"]');
   const draw = async points => { await page.mouse.move(...points[0]);await page.mouse.down();for(const p of points.slice(1))await page.mouse.move(...p,{steps:8});await page.mouse.up(); };
   // Hand-printed HELLO, expressed as pen strokes rather than a rendered font.
   for (const p of [
@@ -29,7 +44,7 @@ try {
   const beforeErase = await page.$$eval('.react-flow__node-handwriting svg > g', els => els.length);
   await click("Stroke eraser"); await draw([[650,465],[655,465]]);
   assert.ok(await page.$$eval('.react-flow__node-handwriting svg > g', els => els.length) < beforeErase);
-  await click("Undo"); await click("Done writing");
+  await page.keyboard.down("Control"); await page.keyboard.press("z"); await page.keyboard.up("Control"); await click("Done writing");
   assert.equal(await page.$$eval('.react-flow__node-handwriting svg > g', els => els.length), beforeErase);
   const original = await page.$eval('.react-flow__node-handwriting svg', el => el.innerHTML);
   await page.select('[aria-label="Handwriting language"]',"en");
@@ -37,7 +52,7 @@ try {
   await page.waitForSelector('[aria-label="Recognized text"]',{timeout:120000});
   const recognized = await page.$eval('[aria-label="Recognized text"]',el=>el.value);
   assert.match(recognized, /HELLO/i);
-  console.log("Local English recognition:", recognized);
+  console.log(process.env.HANDWRITING_TEST_STUB === "1" ? "Stubbed workflow draft:" : "Local English recognition:", recognized);
   assert.equal(await page.$eval('.react-flow__node-handwriting svg',el=>el.innerHTML),original);
   await click("Cancel conversion");
   assert.equal(await page.$$('.react-flow__node-text').then(ns=>ns.length),0);
@@ -73,5 +88,5 @@ try {
   await page.waitForSelector('.react-flow__node-handwriting');
   assert.deepEqual(uploads,[]);assert.deepEqual(errors,[]);
   await page.screenshot({path:".tmp/handwriting.png"});
-  console.log("PASS drawing, local OCR, cancel preserves ink, accept keeps original, reload, no external uploads");
+  console.log("PASS drawing, local vision, cancel preserves ink, accept keeps original, reload, no external uploads");
 } catch (error) { await page.screenshot({path:".tmp/ink-failure.png"}); console.log(await page.$eval("body", el => el.innerText)); console.log(errors); throw error; } finally { await browser.close(); }

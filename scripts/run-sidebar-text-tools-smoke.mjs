@@ -28,11 +28,11 @@ try{
  assert.equal(await page.$$eval('#board-properties [aria-label="Object properties tabs"]',els=>els.filter(el=>el.getBoundingClientRect().height).length),0);
  await page.screenshot({path:'.tmp/properties-template-tabs.png'});
  assert.deepEqual(await page.$$eval('[data-properties-header] [role=tab]',els=>els.map(el=>el.textContent)),['Style','Text','Template','Table','Arrange','More']);
- await tab('Table');assert.ok(await page.$('#board-properties [aria-label="Selected item width"]'));await page.waitForSelector('#properties-table-tools [aria-label="Table tools"]');
- assert.ok(await page.$eval('#properties-table-tools',el=>el.getBoundingClientRect().height>100));
- assert.ok(await page.$eval('#properties-table-tools',el=>el.scrollWidth<=el.clientWidth+1),'Table controls fit the sidebar');
+ await tab('Table');assert.ok(await page.$('#board-properties [aria-label="Selected item width"]'));await page.waitForSelector('#properties-object-tools [aria-label="Table tools"]');
+ assert.ok(await page.$eval('#properties-object-tools',el=>el.getBoundingClientRect().height>100));
+ assert.ok(await page.$eval('#properties-object-tools',el=>el.scrollWidth<=el.clientWidth+1),'Table controls fit the sidebar');
  assert.equal(await page.$$eval('.react-flow__node [aria-label="Table tools"]',els=>els.length),0,'Table controls leave the canvas');
- await tab('Style');assert.equal(await page.$eval('#properties-table-tools',el=>el.getBoundingClientRect().height),0);
+ await tab('Style');assert.equal(await page.$eval('#properties-object-tools',el=>el.getBoundingClientRect().height),0);
  assert.equal(await page.$$eval('#board-properties h3',els=>els.filter(el=>el.getBoundingClientRect().height&&el.textContent==='table').length),0);
  await tab('Template');
  await page.click('[aria-label="Template text, B"]');

@@ -209,7 +209,7 @@ export default function BoardEditorPage() {
     >
       {!presentationMode && <CanvasTopbar />}
 
-      {canEdit && !presentationMode && activeTool !== "select" && <p role="status" className="shrink-0 border-b bg-primary/5 px-3 py-1 text-xs">{activeTool === "pan" ? "Hand tool: drag to pan the board." : activeTool === "connector" ? "Connect: click or drag from one shape’s edge to another shape’s edge." : `Place ${activeTool}: click an empty area of the board.`} Press Esc to return to Select.</p>}
+      {canEdit && !presentationMode && activeTool !== "select" && <p role="status" className="shrink-0 border-b bg-primary/5 px-3 py-1 text-xs">{activeTool === "pen" ? "Handwriting: drag to write on the board." : activeTool === "pan" ? "Hand tool: drag to pan the board." : activeTool === "connector" ? "Connect: click or drag from one shape’s edge to another shape’s edge." : `Place ${activeTool}: click an empty area of the board.`} Press Esc to return to Select.</p>}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {canEdit && !presentationMode && !isPhone && !relationshipSelection && <aside aria-label="Create and navigate" className="shrink-0 overflow-y-auto border-r bg-background px-1 py-2"><CanvasToolbar /></aside>}
       <div className="relative min-w-0 flex-1 overflow-hidden">
