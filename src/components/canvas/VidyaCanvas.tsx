@@ -73,6 +73,7 @@ import {
 import { normalizeHexColor } from "@/lib/canvas/custom-colors";
 import { boardColorCssValue } from "@/lib/canvas/board-colors";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
+import { addBoardImages } from "@/lib/canvas/add-board-images";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import {
   isExternalNoteNode,
@@ -1773,6 +1774,22 @@ function VidyaCanvasInner({
         toast.success("Pasted copied objects.", {
           action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
         });
+        return;
+      }
+
+      // Native clipboard files must win over accompanying text/HTML (e.g. Copy image).
+      const images = Array.from(clipboard.files).filter(file => file.type.startsWith("image/"));
+      if (!images.length) {
+        for (const item of Array.from(clipboard.items)) {
+          if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+          const file = item.getAsFile();
+          if (file) images.push(file);
+        }
+      }
+      if (images.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        void addBoardImages(images);
         return;
       }
 

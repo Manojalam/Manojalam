@@ -22,6 +22,19 @@ try {
  await page.waitForFunction(()=>!document.querySelector('.react-flow__node-image'));
  await page.keyboard.down('Control');await page.keyboard.down('Shift');await page.keyboard.press('z');await page.keyboard.up('Shift');await page.keyboard.up('Control');
  await page.waitForSelector('.react-flow__node-image img');
+ // Exercise the real browser clipboard and keyboard shortcut, not a synthetic paste event.
+ await browser.defaultBrowserContext().overridePermissions(base, ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']);
+ await page.evaluate(async png => {
+   const bytes=Uint8Array.from(atob(png),c=>c.charCodeAt(0));
+   await navigator.clipboard.write([new ClipboardItem({'image/png':new Blob([bytes],{type:'image/png'})})]);
+ },png);
+ await page.click('.react-flow__pane',{offset:{x:450,y:150}});
+ await page.keyboard.down('Control');await page.keyboard.press('v');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image img').length===2);
+ await page.keyboard.down('Control');await page.keyboard.press('z');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image img').length===1);
+ await page.keyboard.down('Control');await page.keyboard.down('Shift');await page.keyboard.press('z');await page.keyboard.up('Shift');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image img').length===2);
  await page.click('.react-flow__node[data-id="target"]');
  await page.click('[aria-label="Object properties"]');
  const trigger='[data-properties-header] [aria-label="Add image or audio"]';await page.waitForSelector(trigger);await page.click(trigger);
@@ -32,6 +45,7 @@ try {
  await new Promise(resolve=>setTimeout(resolve,1500));
  await page.reload({waitUntil:'networkidle0'});
  await page.waitForSelector('.react-flow__node-image img');await page.waitForSelector('[data-node-media-layer="target"] img');
+ assert.equal(await page.$$eval('.react-flow__node-image img',els=>els.length),2);
  assert.equal(await page.$eval('.react-flow__node[data-id="target"]',el=>el.textContent.includes('Attach here')),true);
  await page.click('.react-flow__node[data-id="target"]');
  await page.click('[role="tab"][aria-controls="properties-text"]');
@@ -41,5 +55,6 @@ try {
  await page.click('[aria-label="Unlock selected objects"]');
  await page.screenshot({path:'.tmp/image-attachments.png'});
  assert.deepEqual(errors,[]);
- console.log('PASS: board image picker/rendering, undo/redo, visible element attachment picker, original text retained, both persist after reload.');
+ console.log('PASS: board image picker/rendering, native Ctrl+V image paste, undo/redo, visible element attachment picker, original text retained, both persist after reload.');
 } finally {await browser.close();}
+
