@@ -3,7 +3,7 @@ import { placeTemplateField } from "./template-field-order";
 import type { CardSection } from "../types";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { expandedCardRows, insertCardRowRepeat, cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
+import { clearTemplateValues, expandedCardRows, insertCardRowRepeat, cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
 
 test("row and field styles survive persistence and repeated sections without changing answers", () => {
   const template = newHomeworkTemplate("styled");
@@ -476,4 +476,21 @@ test("row visibility follows only its own ancestors and does not hide orphaned r
   assert.deepEqual([...hiddenTemplateRows(rows)], ["b", "c"]);
   rows[0].collapsed = false;
   assert.equal(hiddenTemplateRows(rows).size, 0);
+});
+
+
+test("clearing values preserves template structure and removes rich text, links and manual edits", () => {
+  const template = newHomeworkTemplate("clear");
+  const original: CardSection[] = [{ id: "one", values: { question: { text: "Question", richText: "<b>Question</b>" }, answer: { text: "Answer", href: "https://example.com" } }, extraRows: ["My note"], editedText: { html: "<p>Manual text</p>", baseline: "<p>Question</p>" }, rowRepeats: [{ id: "repeat", rowId: template.rows[0].id, newLine: true, position: "after", values: { question: { text: "Repeated question" } } }] }, { id: "two", values: { question: { text: "Second section" } }, extraRows: [] }];
+  const snapshot = structuredClone(original);
+  const cleared = clearTemplateValues(original);
+  assert.deepEqual(original, snapshot, "source/undo data is not mutated");
+  assert.deepEqual(cleared.map(section => section.id), ["one", "two"]);
+  assert.deepEqual(cleared[0].rowRepeats, [{ ...original[0].rowRepeats![0], values: {} }]);
+  assert.deepEqual(cleared[0].extraRows, [""]);
+  assert.equal(renderCardSections(template, cleared).text, "");
+  assert.equal(cleared[0].editedText, undefined);
+  const data = cardTemplateNodeData(template, undefined, undefined, cleared);
+  assert.equal(data.cardTemplateId, template.id);
+  assert.deepEqual(data.cardTemplateSnapshot, template);
 });

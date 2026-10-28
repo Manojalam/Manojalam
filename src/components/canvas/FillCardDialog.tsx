@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
-import { templateInputFields, cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
+import { clearTemplateValues, templateInputFields, cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
 import { cellSections, normalizeTable, tablePlainText, updateCellSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -81,6 +81,10 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   const content = <>
     <header className="space-y-1"><h3 className="text-sm font-semibold">{template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
+      <div className="space-y-1">
+        <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={() => setSections(clearTemplateValues)}>Clear template values</Button>
+        <p className="text-xs text-muted-foreground">Clears all sections in this {columnId ? "cell" : "object"}. Keeps the template and repeated rows. Undo restores the values.</p>
+      </div>
       <form className={embedded ? "space-y-4" : "grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4"} onSubmit={event => event.preventDefault()}>
         <div className={embedded ? "space-y-4" : "space-y-4 overflow-y-auto pr-1"}>
         <div className="space-y-2 rounded-md border p-3">

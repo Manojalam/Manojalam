@@ -197,6 +197,16 @@ export function cardSections(data: Record<string, unknown>): CardSection[] {
   return [{ id: "first", values: structuredClone((data.cardFieldValues ?? {}) as CardFieldValues), extraRows: Array.isArray(data.cardExtraRows) ? data.cardExtraRows.filter((row: unknown) => typeof row === "string") : [] }];
 }
 
+/** Clear an instance's content without detaching its template or changing its structure. */
+export function clearTemplateValues(sections: CardSection[]): CardSection[] {
+  return sections.map(section => ({
+    id: section.id,
+    values: {},
+    extraRows: section.extraRows.map(() => ""),
+    ...(section.rowRepeats ? { rowRepeats: section.rowRepeats.map(repeat => ({ ...repeat, values: {} })) } : {}),
+  }));
+}
+
 export function renderCardSections(template: BoardCardTemplate, sections: CardSection[]) {
   const content = sections.map(section => {
     const generated = renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats, section.id);
