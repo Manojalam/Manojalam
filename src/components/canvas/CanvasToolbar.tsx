@@ -1,8 +1,8 @@
 "use client";
 
-import { toast } from "sonner";
 import { useCanvasStore } from "@/store/canvas-store";
-import { createMediaAttachment, IMAGE_FILE_ACCEPT } from "@/lib/canvas/node-media";
+import { IMAGE_FILE_ACCEPT } from "@/lib/canvas/node-media";
+import { addBoardImages } from "@/lib/canvas/add-board-images";
 import { ImportDialog } from "./ImportDialog";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
 import { useRef, useState } from "react";
@@ -271,31 +271,9 @@ export function CanvasToolbar() {
   const viewer = useCanvasStore(s => s.board?.accessRole === "viewer");
   const addImages = async (files: File[]) => {
     if (!files.length || addingImage || viewer) return;
-    const boardId = useCanvasStore.getState().board?.id;
-    const canvas = document.querySelector(".react-flow")?.getBoundingClientRect();
-    const viewport = useCanvasStore.getState().viewport;
-    const position = { x: ((canvas?.width ?? innerWidth) / 2 - viewport.x) / viewport.zoom, y: ((canvas?.height ?? innerHeight) / 2 - viewport.y) / viewport.zoom };
     setAddingImage(true);
-    try {
-      const images = [];
-      for (const file of files) images.push(await createMediaAttachment(file, "image"));
-      const state = useCanvasStore.getState();
-      if (state.board?.id !== boardId || state.board?.accessRole === "viewer") return;
-      const added = images.map((image, index) => {
-        const scale = Math.min(1, 480 / Math.max(image.width!, image.height!));
-        const width = image.width! * scale, height = image.height! * scale;
-        return { id: crypto.randomUUID(), type: "image", selected: true,
-          position: { x: position.x - width / 2 + index * 24, y: position.y - height / 2 + index * 24 },
-          style: { width, height }, data: { image } };
-      });
-      state.pushHistory();
-      state.setNodes(nodes => [...nodes.map(n => ({ ...n, selected: false })), ...added]);
-      useCanvasStore.setState({ selectedNodeIds: added.map(n => n.id), selectedEdgeIds: [] });
-      useUIStore.getState().setActiveTool("select");
-      toast.success(added.length === 1 ? "Image added to board" : "Images added to board");
-    } catch (error) {
-      toast.error("Could not add image", { description: error instanceof Error ? error.message : "Choose another file." });
-    } finally { setAddingImage(false); }
+    try { await addBoardImages(files); }
+    finally { setAddingImage(false); }
   };
   const { setActiveTool } = useUIStore();
 
