@@ -283,6 +283,19 @@ try {
   assert.match(mergedXml, /rowSpan="2"/);
   assert.match(mergedXml, /gridSpan="2"/);
   console.log("Verified heading text and merged cell spans in native PowerPoint output.");
+  const imageOutput = join(outputDirectory, "board-image.pptx");
+  const imageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5E8AAAAASUVORK5CYII=", "base64");
+  const imageNode = { id: "photo", type: "image", position: { x: 0, y: 0 }, style: { width: 200, height: 100 }, data: { image: {
+    id: "file", name: "photo.png", kind: "image", mimeType: "image/png", size: imageBytes.length,
+    dataUrl: "data:image/png;base64," + imageBytes.toString("base64"), createdAt: "2026-10-27T00:00:00Z", width: 1, height: 1,
+  } } };
+  await downloadEditablePowerPoint({ boardTitle: "Image", nodes: [imageNode], edges: [], relationships: [], stops: [{ id: "image-stop", kind: "overview", title: "Image", nodeIds: ["photo"] }], filename: imageOutput });
+  const imageArchive = await JSZip.loadAsync(await readFile(imageOutput));
+  assert.match(await imageArchive.file("ppt/slides/slide1.xml").async("string"), /<p:pic>/);
+  const embeddedImage = Object.keys(imageArchive.files).find(path => path.startsWith("ppt/media/") && path.endsWith(".png"));
+  assert.ok(embeddedImage, "board image is embedded in the PowerPoint");
+  assert.deepEqual(await imageArchive.file(embeddedImage).async("nodebuffer"), imageBytes);
+  console.log("Verified board image exports as an embedded picture with original bytes.");
   if (keepArtifacts) console.log(`Kept verification deck at ${outputFile}`);
   if (keepArtifacts) console.log(`Kept folded Matrix verification deck at ${foldedOutputFile}`);
 } finally {

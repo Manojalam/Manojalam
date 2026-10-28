@@ -1,3 +1,4 @@
+import { ImageNode } from "./ImageNode";
 import { HandwritingNode } from "./HandwritingNode";
 import { StickyNoteNode } from "./StickyNoteNode";
 import { TextBlockNode } from "./TextBlockNode";
@@ -13,6 +14,7 @@ import { AudioNode } from "./AudioNode";
 import { TableNode } from "./TableNode";
 
 export const nodeTypes = {
+  image: ImageNode,
   handwriting: HandwritingNode,
   table: TableNode,
   // Legacy "mindmap" nodes are migrated to shapes on load; alias to ShapeNode

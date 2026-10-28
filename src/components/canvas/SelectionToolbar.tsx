@@ -77,7 +77,6 @@ import {
   createCrossBoardDiagramPayload,
   type CrossBoardDiagramPayload,
 } from "@/lib/canvas/cross-board-copy";
-import { MediaAttachmentMenu } from "@/components/canvas/MediaAttachmentMenu";
 import { RelationshipDiagramItemMediaMenu } from "@/components/canvas/RelationshipDiagramItemMediaMenu";
 import {
   buildRelationshipGroupsForSpec,
@@ -876,17 +875,13 @@ export function SelectionToolbar() {
       )}
 
 
-      {singleId && (
+      {singleId && selectedRelationshipDiagramItem && (
         <>
-          {selectedRelationshipDiagramItem ? (
-            <RelationshipDiagramItemMediaMenu
-              diagramNodeId={singleId}
-              itemId={selectedRelationshipDiagramItem.itemId}
-              itemLabel={selectedRelationshipDiagramItem.itemLabel ?? selectedRelationshipDiagramItem.sourceLabel}
-            />
-          ) : (
-            <MediaAttachmentMenu node={selected[0]} />
-          )}
+          <RelationshipDiagramItemMediaMenu
+            diagramNodeId={singleId}
+            itemId={selectedRelationshipDiagramItem.itemId}
+            itemLabel={selectedRelationshipDiagramItem.itemLabel ?? selectedRelationshipDiagramItem.sourceLabel}
+          />
           <Divider />
         </>
       )}

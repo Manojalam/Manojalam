@@ -38,6 +38,7 @@ import { RecordedAudioAttachmentControl } from "./RecordedAudioAttachmentControl
 
 type MediaAttachmentMenuProps = {
   objectLabel?: string;
+  showLabel?: boolean;
   triggerClassName?: string;
 } & ({
   node: Node;
@@ -57,6 +58,7 @@ export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const node = "node" in props ? props.node : null;
+  const readOnly = useCanvasStore(s => s.board?.accessRole === "viewer" || !!node?.data.locked || s.layers.some(layer => layer.id === node?.data.layerId && layer.locked));
   const itemTarget = "attachments" in props ? props : null;
   const attachments = node
     ? normalizeMediaAttachments(((node.data ?? {}) as Record<string, unknown>).mediaAttachments)
@@ -81,6 +83,7 @@ export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
   }, [itemTarget, node]);
 
   const persistAttachments = useCallback((nextAttachments: MediaAttachment[]) => {
+    if (readOnly) return;
     if (node) {
       const store = useCanvasStore.getState();
       store.pushHistory();
@@ -88,7 +91,7 @@ export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
       return;
     }
     itemTarget?.onAttachmentsChange(nextAttachments);
-  }, [itemTarget, node]);
+  }, [itemTarget, node, readOnly]);
 
   const addFiles = useCallback(async (kind: MediaAttachmentKind, files: File[]) => {
     if (!files.length) return;
@@ -194,6 +197,7 @@ export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
       <PopoverTrigger asChild>
         <button
           type="button"
+          disabled={readOnly}
           title={attachments.length
             ? `${isDefaultObjectLabel ? "Media" : `${objectLabel} media`} attachments (${attachments.length})`
             : `Add image or audio${isDefaultObjectLabel ? "" : ` to ${objectLabel}`}`}
@@ -204,10 +208,11 @@ export function MediaAttachmentMenu(props: MediaAttachmentMenuProps) {
           onClick={(event) => event.stopPropagation()}
           className={cn(
             "relative flex h-9 w-9 items-center justify-center rounded-md text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            props.showLabel && "w-auto gap-1 px-2 text-xs",
             triggerClassName
           )}
         >
-          <Paperclip className="h-4 w-4" /><span className="board-action-label hidden">Attachments</span>
+          <Paperclip className="h-4 w-4" /><span className={props.showLabel ? "" : "board-action-label hidden"}>Attach</span>
           {attachments.length > 0 && (
             <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold leading-none text-primary-foreground">
               {attachments.length}
