@@ -17,6 +17,7 @@ import { normalizeTable } from "@/lib/canvas/table";
 import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { TableCellFillPanel } from "./TableCellFillPanel";
+import { MediaAttachmentMenu } from "./MediaAttachmentMenu";
 import { FillCardDialog } from "./FillCardDialog";
 
 function ObjectToolsSlot({ nodeId, hidden }: { nodeId: string; hidden: boolean }) {
@@ -103,6 +104,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       <div className="flex items-center justify-between px-3 py-2">
         <h2 className="text-sm font-semibold">{ui.boardPanel === "board" ? "Board settings" : "Properties"}</h2>
         <div className="flex gap-1">
+          {candidate && ui.boardPanel !== "board" && <MediaAttachmentMenu key={candidate.id} node={candidate} showLabel />}
           {!!selected.length && <button type="button" disabled={viewer} title={anyLocked ? "Unlock selected objects" : "Lock selected objects"} aria-label={anyLocked ? "Unlock selected objects" : "Lock selected objects"} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-accent disabled:opacity-50" onClick={() => {
             const state = useCanvasStore.getState();
             if (state.board?.accessRole === "viewer") return;

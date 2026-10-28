@@ -1,3 +1,4 @@
+import { normalizeMediaAttachments } from "../canvas/node-media";
 import { inkSvg, type InkData } from "../canvas/handwriting";
 import PptxGenJS from "pptxgenjs";
 import { normalizeTable, tableDisplayRows } from "../canvas/table";
@@ -939,6 +940,19 @@ function renderRelationshipDiagram(context: RenderContext, node: Node, rect: Pow
 }
 
 function renderSpecialNode(context: RenderContext, node: Node, rect: PowerPointRect): boolean {
+  if (node.type === "image") {
+    const image = normalizeMediaAttachments([node.data.image])[0];
+    if (image?.kind === "image") {
+      const scale = Math.min(rect.width / (image.width || 1), rect.height / (image.height || 1));
+      const w = (image.width || 1) * scale, h = (image.height || 1) * scale;
+      context.slide.addImage({ data: image.dataUrl,
+        x: rect.x + (rect.width - w) / 2, y: rect.y + (rect.height - h) / 2, w, h,
+        objectName: image.name });
+      context.objectCount += 1;
+    }
+    return true;
+  }
+
   if (node.type === "handwriting" && node.data.ink) {
     context.slide.addImage({ data: "data:image/svg+xml;base64," + btoa(inkSvg(node.data.ink as InkData)),
       x: rect.x, y: rect.y, w: rect.width, h: rect.height, objectName: "Handwriting" });
