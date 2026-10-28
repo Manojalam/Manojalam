@@ -190,7 +190,12 @@ export function normalizeMediaAttachments(value: unknown): MediaAttachment[] {
     const sizeLimit = kind === "image" ? MAX_IMAGE_STORED_BYTES : MAX_AUDIO_BYTES;
     if (!Number.isFinite(actualSize) || actualSize <= 0 || actualSize > sizeLimit) continue;
 
+    const placement = item.placement as MediaAttachment["placement"];
+    const validPlacement = placement && [placement.x, placement.y, placement.width, placement.height].every(Number.isFinite)
+      && placement.x >= 0 && placement.y >= 0 && placement.width > 0 && placement.height > 0
+      && placement.x + placement.width <= 1.000001 && placement.y + placement.height <= 1.000001;
     normalized.push({
+      ...(kind === "image" && validPlacement ? { placement: { ...placement } } : {}),
       id: item.id,
       kind,
       name: item.name.trim().slice(0, 180),
@@ -360,4 +365,14 @@ export function formattedMediaSize(size: number): string {
   if (size < 1024) return `${size} B`;
   if (size < MEBIBYTE) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / MEBIBYTE).toFixed(size < 10 * MEBIBYTE ? 1 : 0)} MB`;
+}
+
+/** Shared placement for the canvas and exports; legacy attachments need no migration. */
+export function imageAttachmentPlacement(image: MediaAttachment, index: number, count: number, width: number, height: number): NonNullable<MediaAttachment["placement"]> {
+  if (image.placement) return image.placement;
+  width = Math.max(1, width); height = Math.max(1, height);
+  const columns = count > 1 ? 2 : 1, rows = Math.max(1, Math.ceil(count / columns));
+  const scale = Math.min(width * .8 / columns / (image.width || 1), height * .8 / rows / (image.height || 1));
+  const w = (image.width || 1) * scale / width, h = (image.height || 1) * scale / height;
+  return { x: .1 + (index % columns) * .8 / columns + (.8 / columns - w) / 2, y: .1 + Math.floor(index / columns) * .8 / rows + (.8 / rows - h) / 2, width: w, height: h };
 }

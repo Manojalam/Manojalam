@@ -1,4 +1,4 @@
-import { normalizeMediaAttachments } from "../canvas/node-media";
+import { normalizeMediaAttachments, imageAttachmentPlacement } from "../canvas/node-media";
 import { inkSvg, type InkData } from "../canvas/handwriting";
 import PptxGenJS from "pptxgenjs";
 import { normalizeTable, tableDisplayRows } from "../canvas/table";
@@ -1346,6 +1346,12 @@ function renderTeachingStop(
   for (const node of stopNodes.filter((candidate) => candidate.type !== "frame")) {
     const rect = rectByNodeId.get(node.id)!;
     if (!renderSpecialNode(context, node, rect)) renderGenericNode(context, node, rect);
+    const images = normalizeMediaAttachments(node.data.mediaAttachments).filter(a => a.kind === "image");
+    images.forEach((image, index) => {
+      const placement = imageAttachmentPlacement(image, index, images.length, rect.width, rect.height);
+      slide.addImage({ data: image.dataUrl, x: rect.x + placement.x * rect.width, y: rect.y + placement.y * rect.height, w: placement.width * rect.width, h: placement.height * rect.height, objectName: image.name });
+      context.objectCount += 1;
+    });
   }
   slide.addNotes(`Teaching stop: ${stop.title}. Every diagram element on this slide is a native editable PowerPoint shape, line, or text box.`);
   return context.objectCount;

@@ -296,6 +296,15 @@ try {
   assert.ok(embeddedImage, "board image is embedded in the PowerPoint");
   assert.deepEqual(await imageArchive.file(embeddedImage).async("nodebuffer"), imageBytes);
   console.log("Verified board image exports as an embedded picture with original bytes.");
+  const attachedOutput = join(outputDirectory, "attached-image.pptx");
+  const owner = { id: "owner", type: "shape", position: { x: 0, y: 0 }, style: { width: 500, height: 300 }, data: { text: "Owner", mediaAttachments: [{ ...imageNode.data.image, placement: { x: .2, y: .1, width: .4, height: .5 } }] } };
+  await downloadEditablePowerPoint({ boardTitle: "Attachment", nodes: [owner], edges: [], relationships: [], stops: [{ id: "attached-stop", kind: "overview", title: "Attachment", nodeIds: ["owner"] }], filename: attachedOutput });
+  const attachedArchive = await JSZip.loadAsync(await readFile(attachedOutput));
+  assert.match(await attachedArchive.file("ppt/slides/slide1.xml").async("string"), /<p:pic>/);
+  const attachedMedia = Object.keys(attachedArchive.files).find(path => path.startsWith("ppt/media/") && path.endsWith(".png"));
+  assert.ok(attachedMedia, "inline attachment is embedded in PowerPoint");
+  assert.deepEqual(await attachedArchive.file(attachedMedia).async("nodebuffer"), imageBytes);
+  console.log("Verified inline attachment exports with original image bytes.");
   if (keepArtifacts) console.log(`Kept verification deck at ${outputFile}`);
   if (keepArtifacts) console.log(`Kept folded Matrix verification deck at ${foldedOutputFile}`);
 } finally {
