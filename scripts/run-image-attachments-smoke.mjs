@@ -57,4 +57,3 @@ try {
  assert.deepEqual(errors,[]);
  console.log('PASS: board image picker/rendering, native Ctrl+V image paste, undo/redo, visible element attachment picker, original text retained, both persist after reload.');
 } finally {await browser.close();}
-
