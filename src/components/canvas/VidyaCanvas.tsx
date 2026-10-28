@@ -1760,6 +1760,34 @@ function VidyaCanvasInner({
       store.copySelected();
     };
 
+    // Capture image paste before a node's text editor can consume or ignore it.
+    // Ordinary text and sidebar fields retain their own native paste behavior.
+    const pasteImages = (event: ClipboardEvent) => {
+      if (!canEdit || event.defaultPrevented || useUIStore.getState().presentationMode) return;
+      const clipboard = event.clipboardData;
+      if (!clipboard || clipboard.getData(MANOJALAM_NODES_MIME) || clipboard.getData(TEMPLATE_CLIPBOARD_MIME)) return;
+      const element = event.target instanceof Element ? event.target : document.activeElement;
+      const owner = element?.closest<HTMLElement>(".react-flow__node");
+      if (!owner && !shouldHandleCanvasClipboard(event.target, document.activeElement)) return;
+      const images = Array.from(clipboard.files).filter(file => file.type.startsWith("image/"));
+      if (!images.length) {
+        for (const item of Array.from(clipboard.items)) {
+          if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+          const file = item.getAsFile();
+          if (file) images.push(file);
+        }
+      }
+      if (!images.length) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const ids = useCanvasStore.getState().selectedNodeIds;
+      if (ids.length > 1) {
+        toast.error("Select one element to attach the image, or click empty canvas to paste it on the board.");
+        return;
+      }
+      void addBoardImages(images, ids[0] ?? owner?.dataset.id);
+    };
+
     const handlePaste = (event: ClipboardEvent) => {
       if (!canEdit) return;
       if (useUIStore.getState().presentationMode) return;
@@ -1777,22 +1805,6 @@ function VidyaCanvasInner({
         return;
       }
 
-      // Native clipboard files must win over accompanying text/HTML (e.g. Copy image).
-      const images = Array.from(clipboard.files).filter(file => file.type.startsWith("image/"));
-      if (!images.length) {
-        for (const item of Array.from(clipboard.items)) {
-          if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
-          const file = item.getAsFile();
-          if (file) images.push(file);
-        }
-      }
-      if (images.length) {
-        event.preventDefault();
-        event.stopPropagation();
-        void addBoardImages(images);
-        return;
-      }
-
       const plainText = clipboard.getData("text/plain");
       if (!plainText.trim()) return;
       event.preventDefault();
@@ -1801,11 +1813,13 @@ function VidyaCanvasInner({
     };
 
     window.addEventListener("copy", copyTemplate, true);
+    window.addEventListener("paste", pasteImages, true);
     window.addEventListener("paste", pasteTemplate, true);
     window.addEventListener("copy", handleCopy);
     window.addEventListener("paste", handlePaste);
     return () => {
       window.removeEventListener("copy", copyTemplate, true);
+      window.removeEventListener("paste", pasteImages, true);
       window.removeEventListener("paste", pasteTemplate, true);
       window.removeEventListener("copy", handleCopy);
       window.removeEventListener("paste", handlePaste);
