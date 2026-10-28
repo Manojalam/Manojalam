@@ -333,7 +333,7 @@ export const TOOL_LABELS: Record<CanvasTool, string> = {
   table: "Table",
   connector: "Connector",
   frame: "Frame",
-  pen: "Pen (placeholder)",
+  pen: "Handwriting",
   image: "Image (placeholder)",
   sanskrit: "Sanskrit Card",
   shloka: "Śloka Card",

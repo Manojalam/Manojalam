@@ -1,26 +1,49 @@
-import { createLocalOcrWorker } from "@/lib/import/raster";
 import { inkPng, type InkData } from "./handwriting";
-/** Local only: all model/worker assets are served from this application's origin. */
-export async function recognizeHandwriting(ink: InkData, language: string, signal: AbortSignal, progress: (value: number) => void) {
+
+// Never accept a remote host: handwriting stays on this device.
+export const HANDWRITING_MODEL = "gemma3:4b";
+const LOCAL_URL = "http://127.0.0.1:11434";
+const setupMessage = `Start Ollama on this computer and install ${HANDWRITING_MODEL}. Allow this site's origin in OLLAMA_ORIGINS and allow Chrome's local-network permission. Your handwriting is unchanged.`;
+
+async function localRequest(path: string, body: object, signal: AbortSignal) {
   signal.throwIfAborted();
-  let worker: Awaited<ReturnType<typeof createLocalOcrWorker>> | undefined;
-  let rejectAbort: (reason: unknown) => void = () => {};
-  const cancelled = new Promise<never>((_, reject) => { rejectAbort = reject; });
-  const cancel = () => { rejectAbort(new DOMException("Conversion cancelled", "AbortError")); void worker?.terminate(); };
-  signal.addEventListener("abort", cancel, { once: true });
-  const work = async () => {
-    try {
-      worker = await createLocalOcrWorker({ signal, onProgress: p => progress(p.progress) });
-      signal.throwIfAborted();
-      const { OEM, PSM } = await import("tesseract.js");
-      await worker.reinitialize(language === "en" ? "eng" : language === "sa" ? "san" : "san+eng", OEM.LSTM_ONLY);
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK, preserve_interword_spaces: "1" });
-      const result = await worker.recognize("data:image/png;base64," + inkPng(ink));
-      signal.throwIfAborted();
-      if (!result.data.text.trim()) throw new Error("No text recognized. Try larger, separate characters or a shorter passage.");
-      return result.data.text;
-    } finally { await worker?.terminate(); }
-  };
-  try { return await Promise.race([work(), cancelled]); }
-  finally { signal.removeEventListener("abort", cancel); }
+  let response: Response;
+  try {
+    response = await fetch(`${LOCAL_URL}/api/${path}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body), signal, credentials: "omit", redirect: "error",
+    });
+  } catch (error) {
+    signal.throwIfAborted();
+    throw new Error(setupMessage, { cause: error });
+  }
+  if (!response.ok) throw new Error(response.status === 404 ? setupMessage : `Local recognition failed (${response.status}). ${setupMessage}`);
+  return response.json();
+}
+
+/** Used by the canvas and real-image checks. Never mutates board content. */
+export async function transcribeHandwritingImage(image: string, language: string, signal: AbortSignal) {
+  // Check the model before sending an image, including cloud models served via localhost.
+  const model = await localRequest("show", { model: HANDWRITING_MODEL }, signal);
+  if (model.remote_host || model.remote_model || !model.capabilities?.includes("vision")) {
+    throw new Error(`Recognition requires the locally installed ${HANDWRITING_MODEL} vision model. Cloud models are not allowed.`);
+  }
+  const script = language === "en" ? "English" : language === "sa" ? "Sanskrit in Devanagari script" : "English and/or Sanskrit in Devanagari script";
+  const result = await localRequest("generate", {
+    model: HANDWRITING_MODEL, images: [image], stream: false,
+    prompt: `Transcribe only the handwritten text in this image. The language is ${script}. Preserve the original script, spelling, diacritics and line breaks. Do not translate, transliterate, explain, complete or correct the writing. Mark illegible portions with [?]. Return only the transcription.`,
+    options: { temperature: 0, num_predict: 2048, num_ctx: 4096 },
+  }, signal);
+  signal.throwIfAborted();
+  const text = typeof result.response === "string" ? result.response.trim() : "";
+  if (result.done_reason === "length") throw new Error("The transcription was cut off. Convert a shorter passage; your handwriting is unchanged.");
+  if (!text || text === "[?]" || (language === "sa" && !/[\u0900-\u097f]/u.test(text))) {
+    throw new Error("The model could not read this handwriting in the selected language. Your original is unchanged.");
+  }
+  return text;
+}
+
+export async function recognizeHandwriting(ink: InkData, language: string, signal: AbortSignal) {
+  signal.throwIfAborted();
+  return transcribeHandwritingImage(inkPng(ink), language, signal);
 }

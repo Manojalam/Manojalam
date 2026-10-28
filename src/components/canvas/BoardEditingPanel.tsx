@@ -25,7 +25,7 @@ function ObjectToolsSlot({ nodeId, hidden }: { nodeId: string; hidden: boolean }
     if (element) useUIStore.setState({ objectToolsHost: { nodeId, element } });
     else if (useUIStore.getState().objectToolsHost?.nodeId === nodeId) useUIStore.setState({ objectToolsHost: null });
   }, [nodeId]);
-  return <div id="properties-table-tools" ref={attach} hidden={hidden} />;
+  return <div id="properties-object-tools" ref={attach} hidden={hidden} />;
 }
 
 function ObjectPosition({ nodeId }: { nodeId: string }) {
@@ -54,6 +54,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const viewer = useCanvasStore(state => state.board?.accessRole === "viewer");
   const anyLocked = selected.some(node => node.data.locked === true);
   const candidate = selected.length === 1 ? selected[0] : undefined;
+  const handwriting = ui.activeTool === "pen" || candidate?.type === "handwriting";
   const card = nodes.find(node => node.id === ui.fillingCardNodeId) ?? (candidate?.data.cardTemplateId ? candidate : undefined);
   const target = ui.fillingTableColumn;
   const table = normalizeTable(nodes.find(node => node.id === target?.nodeId)?.data.table);
@@ -61,7 +62,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const auxiliary = ui.layoutPanelOpen || ui.layersPanelOpen;
   const editing = !auxiliary && ui.boardPanel !== "board";
   const labels = selected.map(node => objectPropertiesLabel(node, nodes, edges));
-  const specific = labels.length && labels.every(label => label === labels[0]) && (selected.length === 1 || labels[0] === "Matrix") ? labels[0] : null;
+  const specific = handwriting ? "Handwriting" : labels.length && labels.every(label => label === labels[0]) && (selected.length === 1 || labels[0] === "Matrix") ? labels[0] : null;
   const supportsText = !!edgeIds.length || !selected.length || selected.some(node => objectCapabilities(node.type).text);
   const supportsStyle = !!edgeIds.length || !selected.length || selected.some(node => objectCapabilities(node.type).surface);
 
@@ -75,7 +76,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       const node = next.selectedNodeIds.length === 1 ? next.nodes.find(node => node.id === next.selectedNodeIds[0]) : undefined;
       if (!state.layoutPanelOpen && !state.layersPanelOpen && (next.selectedNodeIds.length || next.selectedEdgeIds.length)) {
         state.setBoardPanel("selection");
-        if (!state.fillingCardNodeId) useUIStore.setState({ propertiesTab: node?.data.cardTemplateId ? "template" : "style" });
+        if (!state.fillingCardNodeId) useUIStore.setState({ propertiesTab: node?.type === "handwriting" ? "specific" : node?.data.cardTemplateId ? "template" : "style" });
       }
       if (state.selectedTableCell && !next.selectedNodeIds.includes(state.selectedTableCell.nodeId)) useUIStore.setState({ selectedTableCell: null });
       if (state.fillingTableColumn && !next.selectedNodeIds.includes(state.fillingTableColumn.nodeId)) useUIStore.setState({ fillingTableColumn: null });
@@ -86,7 +87,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     });
     return () => { selection(); filling(); useUIStore.setState({ fillingTableColumn: null, selectedTableCell: null, fillingCardNodeId: null, objectToolsHost: null }); };
   }, []);
-  const close = () => { ui.setBoardPanel(null); ui.setLayoutPanelOpen(false); ui.setLayersPanelOpen(false); ui.setFillingCardNodeId(null); useUIStore.setState({ fillingTableColumn: null }); };
+  const close = () => { if (ui.activeTool === "pen") ui.setActiveTool("select"); ui.setBoardPanel(null); ui.setLayoutPanelOpen(false); ui.setLayersPanelOpen(false); ui.setFillingCardNodeId(null); useUIStore.setState({ fillingTableColumn: null }); };
   const tabs: { id: typeof ui.propertiesTab; label: string }[] = [
     ...(supportsStyle ? [{ id: "style" as const, label: "Style" }] : []), ...(supportsText ? [{ id: "text" as const, label: "Text" }] : []),
     ...(supportsText && !edgeIds.length ? [{ id: "template" as const, label: "Template" }] : []),
@@ -128,9 +129,9 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       {(activeTab === "specific" || (!specific && activeTab === "layout")) && <ChildOrderControls />}
       {activeTab === "layout" && candidate && <ObjectPosition nodeId={candidate.id} />}
       <div>
-        {selected.length || edgeIds.length ? <CanvasInspector embedded tab={activeTab === "template" ? "style" : activeTab} onTabChange={changeInspectorTab} showTemplates={false} /> : <p className="p-4 text-sm text-muted-foreground">Select an object to edit it.</p>}
+        {handwriting && activeTab === "specific" ? null : selected.length || edgeIds.length ? <CanvasInspector embedded tab={activeTab === "template" ? "style" : activeTab} onTabChange={changeInspectorTab} showTemplates={false} /> : <p className="p-4 text-sm text-muted-foreground">Select an object to edit it.</p>}
       </div>
-      {candidate?.type === "table" && <ObjectToolsSlot nodeId={candidate.id} hidden={activeTab !== "specific"} />}
+      {(handwriting || candidate?.type === "table") && <ObjectToolsSlot nodeId={handwriting ? "handwriting-tools" : candidate!.id} hidden={activeTab !== "specific"} />}
       {selected.length === 1 && activeTab === "style" && <div className="border-b px-2"><SaveBoxTemplateButton node={selected[0]} /></div>}
       {activeTab === "style" && <>
         <details className="border-b"><summary className="cursor-pointer p-3 text-xs font-semibold">Saved appearances</summary><SampleTemplatesPanel /><CrossBoardTemplateLibrary kind="sample" /></details>
