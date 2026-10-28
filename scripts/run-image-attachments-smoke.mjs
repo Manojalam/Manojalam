@@ -42,6 +42,23 @@ try {
  const chooseAttachment=page.waitForFileChooser();await add.asElement().click();await (await chooseAttachment).accept(['.tmp/attachment-test.png']);
  await page.waitForSelector('[data-node-media-layer="target"] img');
  await page.keyboard.press('Escape');
+ // Selection directs image paste to attachments, never to a new board image.
+ await page.click('.react-flow__node[data-id="target"]');
+ await page.keyboard.down('Control');await page.keyboard.press('v');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('[data-node-media-layer="target"] img').length===2);
+ assert.equal(await page.$$eval('.react-flow__node-image',els=>els.length),2);
+ await page.keyboard.down('Control');await page.keyboard.press('z');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('[data-node-media-layer="target"] img').length===1);
+ await page.keyboard.down('Control');await page.keyboard.down('Shift');await page.keyboard.press('z');await page.keyboard.up('Shift');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('[data-node-media-layer="target"] img').length===2);
+ // The same action must work with an active text editor inside the selected element.
+ await page.$eval('.react-flow__node[data-id="target"] .group', el=>el.dispatchEvent(new MouseEvent("dblclick",{bubbles:true})));
+ await page.waitForSelector('.react-flow__node[data-id="target"] [contenteditable="true"]');
+ await page.focus('.react-flow__node[data-id="target"] [contenteditable="true"]');
+ await page.keyboard.down('Control');await page.keyboard.press('v');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.querySelectorAll('[data-node-media-layer="target"] img').length===3);
+ assert.equal(await page.$$eval('.react-flow__node-image',els=>els.length),2);
+ await page.keyboard.press('Escape');
  await new Promise(resolve=>setTimeout(resolve,1500));
  await page.reload({waitUntil:'networkidle0'});
  await page.waitForSelector('.react-flow__node-image img');await page.waitForSelector('[data-node-media-layer="target"] img');
@@ -49,11 +66,15 @@ try {
  assert.equal(await page.$eval('.react-flow__node[data-id="target"]',el=>el.textContent.includes('Attach here')),true);
  await page.click('.react-flow__node[data-id="target"]');
  await page.click('[role="tab"][aria-controls="properties-text"]');
- assert.ok(await page.$( '[data-properties-header] [aria-label="Manage 1 media attachments"]'));
+ assert.ok(await page.$( '[data-properties-header] [aria-label="Manage 3 media attachments"]'));
  await page.click('[aria-label="Lock selected objects"]');
- assert.equal(await page.$eval('[data-properties-header] [aria-label="Manage 1 media attachments"]',el=>el.disabled),true);
+ assert.equal(await page.$eval('[data-properties-header] [aria-label="Manage 3 media attachments"]',el=>el.disabled),true);
+ await page.keyboard.down('Control');await page.keyboard.press('v');await page.keyboard.up('Control');
+ await page.waitForFunction(()=>document.body.textContent.includes('Unlock the selected element before attaching'));
+ assert.equal(await page.$$eval('.react-flow__node-image',els=>els.length),2);
+ assert.equal(await page.$$eval('[data-node-media-layer="target"] img',els=>els.length),3);
  await page.click('[aria-label="Unlock selected objects"]');
  await page.screenshot({path:'.tmp/image-attachments.png'});
  assert.deepEqual(errors,[]);
- console.log('PASS: board image picker/rendering, native Ctrl+V image paste, undo/redo, visible element attachment picker, original text retained, both persist after reload.');
-} finally {await browser.close();}
+ console.log('PASS: board image picker/rendering, native Ctrl+V to canvas, selected element and active editor, undo/redo, visible element attachment picker, original text retained, both persist after reload.');
+} catch (error) { await page.screenshot({path:".tmp/paste-failure.png"}); console.error(await page.evaluate(()=>({active:document.activeElement?.outerHTML, images:document.querySelectorAll(".react-flow__node-image").length, media:document.querySelectorAll("[data-node-media-layer] img").length, alerts:[...document.querySelectorAll("[data-sonner-toast]")].map(e=>e.textContent)}))); throw error; } finally {await browser.close();}
