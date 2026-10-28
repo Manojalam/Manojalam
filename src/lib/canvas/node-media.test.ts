@@ -154,3 +154,12 @@ test("stores media on one relationship item without disturbing its styling", () 
     "#334155"
   );
 });
+
+test("image placements survive normalization and invalid placements fall back inside the owner", () => {
+  const image = { id: "placed", kind: "image", name: "shot.png", mimeType: "image/png", dataUrl: ONE_BYTE_PNG, size: 1, createdAt: "2026-10-28", width: 300, height: 160 };
+  const placement = { x: .1, y: .2, width: .5, height: .4 };
+  assert.deepEqual(normalizeMediaAttachments([{ ...image, placement }])[0].placement, placement);
+  for (const invalid of [{ ...placement, x: -.1 }, { ...placement, width: 2 }, { ...placement, height: NaN }]) {
+    assert.equal(normalizeMediaAttachments([{ ...image, placement: invalid }])[0].placement, undefined);
+  }
+});

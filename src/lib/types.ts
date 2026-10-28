@@ -660,6 +660,8 @@ export interface MediaAttachment {
   createdAt: string;
   width?: number;
   height?: number;
+  /** Fractions of the owning element; follows its movement and size. */
+  placement?: { x: number; y: number; width: number; height: number };
 }
 
 export interface BaseNodeData extends Record<string, unknown> {

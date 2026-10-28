@@ -689,9 +689,9 @@ function applyExportLayoutAdjustment(
 
     const nodeIds = new Set(translation.nodeIds);
     for (const element of Array.from(clone.querySelectorAll<HTMLElement>(
-      ".react-flow__node[data-id]"
+      ".react-flow__node[data-id], [data-node-media-layer][data-export-node-id]"
     ))) {
-      if (!nodeIds.has(element.getAttribute("data-id") ?? "")) continue;
+      if (!nodeIds.has(element.getAttribute("data-id") ?? element.getAttribute("data-export-node-id") ?? "")) continue;
       element.style.setProperty(
         "transform",
         translatedExportTransform(

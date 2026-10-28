@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { InlineImageAttachment } from "./InlineImageAttachment";
 import { useEffect, useRef, useState } from "react";
 import { ViewportPortal, type Node } from "@xyflow/react";
 import { Download, Pause, Play } from "lucide-react";
@@ -268,12 +269,14 @@ export function MediaAttachmentPreviewStrip({
 }
 
 function NodeMediaStrip({ node }: { node: Node }) {
+  const [activeImage, setActiveImage] = useState<string | null>(null);
   const data = (node.data ?? {}) as Record<string, unknown>;
   const attachments = normalizeMediaAttachments(data.mediaAttachments);
   if (!attachments.length) return null;
 
   const rect = getNodeRect(node);
   const compact = rect.width < 130 || rect.height < 90;
+  const images = attachments.filter(a => a.kind === "image");
 
   return (
     <div
@@ -283,11 +286,13 @@ function NodeMediaStrip({ node }: { node: Node }) {
         top: rect.top,
         width: rect.width,
         height: rect.height,
-        zIndex: Math.max(40, (node.zIndex ?? 0) + 40),
+        zIndex: Math.max(node.selected ? 1040 : 40, (node.zIndex ?? 0) + 40),
         ...objectRotationStyle(node.type, data),
       }}
       data-node-media-layer={node.id}
+      data-export-node-id={node.id}
     >
+      {images.map((attachment, index) => <InlineImageAttachment key={attachment.id} node={node} attachment={attachment} index={index} count={images.length} active={activeImage === attachment.id} onSelect={() => setActiveImage(attachment.id)} width={rect.width} height={rect.height} />)}
       <div
         className={cn(
           "nodrag nopan nowheel pointer-events-auto absolute bottom-1.5 right-1.5 flex max-w-[calc(100%-0.75rem)] items-end justify-end gap-1",
@@ -296,7 +301,7 @@ function NodeMediaStrip({ node }: { node: Node }) {
         onPointerDown={stopCanvasInteraction}
         onDoubleClick={stopCanvasInteraction}
       >
-        <MediaAttachmentPreviewStrip attachments={attachments} compact={compact} />
+        <MediaAttachmentPreviewStrip attachments={attachments.filter(a => a.kind !== "image")} compact={compact} />
       </div>
     </div>
   );
