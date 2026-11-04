@@ -1,4 +1,5 @@
 "use client";
+import { imageNotePairs } from "@/lib/canvas/image-note-pairs";
 
 import { Input } from "@/components/ui/input";
 
@@ -758,7 +759,8 @@ export function SelectionToolbar() {
   const singleHasChildren = singleId
     ? (hierarchy.get(singleId)?.childIds.length ?? 0) > 0
     : false;
-  const singleCanMoveOnly = singleHasChildren
+  const singleImageNotePair = !!singleId && imageNotePairs(nodes).some(pair => pair.image.id === singleId || pair.note.id === singleId);
+  const singleCanMoveOnly = (singleHasChildren || singleImageNotePair)
     && !singleLocked
     && ((selected[0]?.data ?? {}) as Record<string, unknown>).matrixCell !== true
     && ((selected[0]?.data ?? {}) as Record<string, unknown>).layoutMode !== "list";
@@ -941,7 +943,7 @@ export function SelectionToolbar() {
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
           {singleCanMoveOnly && (
             <ActionButton
-              label={moveOnlyNodeId === singleId
+              label={singleImageNotePair ? (moveOnlyNodeId === singleId ? "Move this item only is ready" : "Adjust spacing: move this item only (or Alt-drag)") : moveOnlyNodeId === singleId
                 ? "Move parent only is ready — click to cancel"
                 : "Move parent only on the next drag"}
               active={moveOnlyNodeId === singleId}
@@ -949,8 +951,8 @@ export function SelectionToolbar() {
                 const nextNodeId = moveOnlyNodeId === singleId ? null : singleId;
                 setMoveOnlyNodeId(nextNodeId);
                 if (nextNodeId) {
-                  toast.info("Move parent only is ready.", {
-                    description: "Drag the parent once; its children and notes will stay in place.",
+                  toast.info(singleImageNotePair ? "Adjust spacing on the next drag." : "Move parent only is ready.", {
+                    description: singleImageNotePair ? "The other item stays in place. The link is kept." : "Drag the parent once; its children and notes will stay in place.",
                   });
                 }
               }}

@@ -1,5 +1,6 @@
 "use client";
 
+import { imageNotePairs } from "./image-note-pairs";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 import { getNodeRect } from "@/lib/layout";
@@ -13,6 +14,7 @@ export function attachDroppedImage(imageId: string, movedIds: Set<string>): bool
   if (!imageNode || imageNode.type !== "image" || movedIds.size !== 1 || state.board?.accessRole === "viewer" || useUIStore.getState().presentationMode) return false;
   // Connected/grouped images carry structure that must not be discarded by attachment.
   if (imageNode.data.locked || imageNode.data.groupId || imageNode.parentId || state.edges.some(edge => edge.source === imageId || edge.target === imageId)) return false;
+  if (imageNotePairs(state.nodes).some(pair => pair.image.id === imageId)) return false;
   const image = normalizeMediaAttachments([imageNode.data.image])[0];
   if (!image || image.kind !== "image") return false;
   const source = getNodeRect(imageNode);

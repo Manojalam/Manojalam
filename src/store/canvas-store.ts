@@ -1,4 +1,5 @@
 "use client";
+import { closeDeletedImageNoteGaps } from "@/lib/canvas/image-note-pairs";
 
 import { applyContentTemplate, supportsContentTemplate } from "@/lib/canvas/apply-content-template";
 import { normalizeTable, tableTemplateDesign, tablePlainText } from "@/lib/canvas/table";
@@ -3433,6 +3434,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           data: nextData,
         };
       });
+    const compactedNodes = closeDeletedImageNoteGaps(nodes, nextNodes, new Set(get().layers.filter(layer => layer.locked).map(layer => layer.id)));
     let nextEdges = hierarchyMutation.edges
       .filter((edge) => !selectedEdges.has(edge.id))
       .map((edge) => {
@@ -3477,7 +3479,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         )
       : edge);
     set({
-      nodes: nextNodes,
+      nodes: compactedNodes,
       edges: nextEdges,
       relationships: nextRelationships,
       relationshipFans: nextRelationshipFans,

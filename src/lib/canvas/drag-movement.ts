@@ -1,3 +1,4 @@
+import { imageNotePairs } from "./image-note-pairs";
 import type { Edge, Node } from "@xyflow/react";
 import { buildHierarchy } from "../layout/hierarchy";
 import { includeAttachedExternalNoteIds } from "./node-note";
@@ -78,14 +79,8 @@ export function planNodeDragMovement(
   if (!moveOnlyDraggedNode || movesWholeMatrix) {
     // Image-note pairs share movement, not selection or editing state.
     const paired = new Set(movingIds);
-    for (const note of nodes) {
-      if (typeof note.data.imageNotesFor !== "string" || isLocked(note)) continue;
-      const owner = typeof note.data.noteForNodeId === "string"
-        ? byId.get(note.data.noteForNodeId)
-        : nodes.find(candidate => candidate.type === "image"
-          && (candidate.data.image as { name?: string } | undefined)?.name === note.data.imageNotesFor
-          && Math.abs(candidate.position.y - note.position.y) < 1 && candidate.position.x < note.position.x);
-      if (!owner || isLocked(owner)) continue;
+    for (const { image: owner, note } of imageNotePairs(nodes)) {
+      if (isLocked(note) || isLocked(owner)) continue;
       if (paired.has(note.id) || paired.has(owner.id)) { paired.add(note.id); paired.add(owner.id); }
     }
     movingIds = [...paired];
