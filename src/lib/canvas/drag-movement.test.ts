@@ -1,4 +1,4 @@
-import { closeDeletedImageNoteGaps } from "./image-note-pairs";
+import { closeDeletedImageNoteGaps, imageNoteInsertion } from "./image-note-pairs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
@@ -162,4 +162,21 @@ test("deleting complete image-note rows closes gaps and retains adjusted note of
   assert.deepEqual(after.find(node => node.id === "n2")!.position, { x: 500, y: 280 });
   assert.deepEqual(closeDeletedImageNoteGaps(rows, rows.filter(node => node.id !== "n1")), rows.filter(node => node.id !== "n1"), "partial deletion leaves row space");
   assert.deepEqual(closeDeletedImageNoteGaps(rows, rows), rows);
+});
+
+
+test("image insertion resolves first, middle and last slots without targeting notes or other columns", () => {
+  const rows = [0, 268, 536].flatMap((y, i) => [
+    positionedNode(`i${i}`, "image", 0, y, 300, 180, { imageNotesBatchId: "batch" }),
+    positionedNode(`n${i}`, "shape", 500, y + 12, 400, 220, { imageNotesFor: `${i}.png`, noteForNodeId: `i${i}` }),
+  ]);
+  const middle = imageNoteInsertion(rows, { x: 100, y: 250 })!;
+  assert.deepEqual(middle.following.map(pair => pair.image.id), ["i1", "i2"]);
+  assert.equal(middle.y, 280, "reserves the adjusted preceding note height and gap");
+  assert.equal(middle.x, 0);
+  assert.equal(imageNoteInsertion(rows, { x: 100, y: -20 })!.following.length, 3);
+  assert.equal(imageNoteInsertion(rows, { x: 100, y: 780 })!.following.length, 0);
+  assert.equal(imageNoteInsertion(rows, { x: 550, y: 250 }), null, "notes are not insertion columns");
+  assert.equal(imageNoteInsertion(rows, { x: 100, y: 1100 }), null);
+  assert.equal(imageNoteInsertion(rows.map(node => ({ ...node, hidden: true })), { x: 100, y: 250 }), null);
 });

@@ -1,4 +1,5 @@
 import type { Node } from "@xyflow/react";
+import { getNodeRect } from "../layout/geometry";
 
 export function imageNotePairs(nodes: Node[]) {
   const byId = new Map(nodes.map(node => [node.id, node]));
@@ -31,4 +32,27 @@ export function closeDeletedImageNoteGaps(before: Node[], after: Node[], lockedL
     });
   }
   return after.map(node => shifts.has(node.id) ? { ...node, position: { ...node.position, y: node.position.y - shifts.get(node.id)! } } : node);
+}
+
+/** Find the insertion slot in an image column, never in its separately editable notes. */
+export function imageNoteInsertion(nodes: Node[], point: { x: number; y: number }) {
+  const batches = new Map<string, ReturnType<typeof imageNotePairs>>();
+  for (const pair of imageNotePairs(nodes.filter(node => !node.hidden))) {
+    batches.set(pair.batch, [...(batches.get(pair.batch) ?? []), pair]);
+  }
+  for (const pairs of batches.values()) {
+    pairs.sort((a, b) => a.image.position.y - b.image.position.y);
+    const rects = pairs.map(pair => getNodeRect(pair.image));
+    const left = Math.min(...rects.map(rect => rect.left));
+    const right = Math.max(...rects.map(rect => rect.right));
+    const bottom = Math.max(...pairs.flatMap(pair => [getNodeRect(pair.image).bottom, getNodeRect(pair.note).bottom]));
+    if (point.x < left - 24 || point.x > right + 24 || point.y < rects[0].top - 48 || point.y > bottom + 96) continue;
+    const index = pairs.findIndex(pair => point.y < getNodeRect(pair.image).top + getNodeRect(pair.image).height / 2);
+    const reference = pairs[index < 0 ? pairs.length - 1 : index];
+    const previous = index > 0 ? pairs[index - 1] : index < 0 ? pairs[pairs.length - 1] : undefined;
+    const previousBottom = previous ? Math.max(getNodeRect(previous.image).bottom, getNodeRect(previous.note).bottom) + 48 : -Infinity;
+    const y = index < 0 ? bottom + 48 : Math.max(reference.image.position.y, previousBottom);
+    return { pairs, following: index < 0 ? [] : pairs.slice(index), reference, x: reference.image.position.x, y };
+  }
+  return null;
 }
