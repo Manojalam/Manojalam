@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MAX_AUDIO_BYTES,
+  fitImageBounds,
+  imageAttachmentPlacement,
   estimatedDataUrlBytes,
   mediaAttachmentBaseName,
   mediaFileMimeType,
@@ -162,4 +164,11 @@ test("image placements survive normalization and invalid placements fall back in
   for (const invalid of [{ ...placement, x: -.1 }, { ...placement, width: 2 }, { ...placement, height: NaN }]) {
     assert.equal(normalizeMediaAttachments([{ ...image, placement: invalid }])[0].placement, undefined);
   }
+});
+
+
+test("image bounds remove letterboxing without changing visible size or center", () => {
+  assert.deepEqual(fitImageBounds(1000, 100, 300, 100), { x: 350, y: 0, width: 300, height: 100 });
+  const image = normalizeMediaAttachments([{ id: "image", kind: "image", name: "shot.png", mimeType: "image/png", dataUrl: ONE_BYTE_PNG, size: 1, createdAt: "2026-11-04", width: 300, height: 100, placement: { x: 0, y: 0, width: 1, height: 1 } }])[0];
+  assert.deepEqual(imageAttachmentPlacement(image, 0, 1, 1000, 100), { x: .35, y: 0, width: .3, height: 1 });
 });
