@@ -131,3 +131,21 @@ test("dragging a standalone frame carries the cards owned by that frame", () => 
   assert.deepEqual(new Set(plan.movingIds), new Set(["lane", "card"]));
   assert.equal(plan.moveAsGroup, true);
 });
+
+
+test("image-note pairs move together from either member without changing selection", () => {
+  const image = { ...node("image"), type: "image", selected: true, data: { image: { name: "page.png" } } };
+  const noteBox = node("notes", { imageNotesFor: "page.png", noteForNodeId: "image" });
+  const nodes = [image, noteBox, node("other")];
+  for (const id of ["image", "notes"]) assert.deepEqual(new Set(planNodeDragMovement(nodes, [], id, [id]).movingIds), new Set(["image", "notes"]));
+  assert.equal(noteBox.selected, undefined);
+  assert.deepEqual(planNodeDragMovement(nodes, [], "image", ["image"], true).movingIds, ["image"]);
+  noteBox.data.locked = true;
+  assert.deepEqual(planNodeDragMovement(nodes, [], "image", ["image"]).movingIds, ["image"]);
+});
+
+test("older folder imports pair by filename and aligned row", () => {
+  const image = { ...node("image"), type: "image", data: { image: { name: "page.png" } } };
+  const noteBox = { ...node("notes", { imageNotesFor: "page.png" }), position: { x: 688, y: 0 } };
+  assert.deepEqual(new Set(planNodeDragMovement([image, noteBox], [], "notes", ["notes"]).movingIds), new Set(["image", "notes"]));
+});

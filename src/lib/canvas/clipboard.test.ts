@@ -382,3 +382,13 @@ test("clearing handwriting removes only strokes and leaves the undo source intac
   assert.deepEqual(result.nodes[0].data.ink, { width: 100, height: 60, strokes: [] });
   assert.equal(ink.strokes.length, 1);
 });
+
+test("copied image notes link only to the copied image", () => {
+  const data = { imageNotesFor: "page.png", noteForNodeId: "image", text: "My note" };
+  const pair = prepareDuplicatedNodeData(data, "note", new Map([["note", "note-copy"], ["image", "image-copy"]]));
+  assert.equal(pair.noteForNodeId, "image-copy");
+  const alone = prepareDuplicatedNodeData(data, "note", new Map([["note", "note-copy"]]));
+  assert.equal(alone.noteForNodeId, undefined);
+  assert.equal(alone.imageNotesFor, undefined);
+  assert.equal(alone.text, "My note");
+});

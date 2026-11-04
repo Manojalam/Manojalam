@@ -24,11 +24,24 @@ try {
  assert.equal(notes.length,3);for(let i=0;i<3;i++){assert.ok(notes[i].x>rows[i].x+rows[i].width);assert.ok(Math.abs(notes[i].y-rows[i].y)<2);}
  await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===0);
  await page.click('button[title^="Redo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ const bounds=async selector=>page.$eval(selector,e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};});
+ const drag=async(r,dx,dy)=>{await page.mouse.move(r.x+12,r.y+12);await page.mouse.down();await page.mouse.move(r.x+12+dx,r.y+12+dy,{steps:12});await page.mouse.up();await new Promise(r=>setTimeout(r,200));};
+ const imageBefore=await bounds('.react-flow__node-image'), noteBefore=await bounds('.react-flow__node-shape');
+ await drag(imageBefore,-35,-25);
+ const imageAfter=await bounds('.react-flow__node-image'), noteAfter=await bounds('.react-flow__node-shape');
+ assert.ok(Math.abs(imageAfter.x-imageBefore.x)>10);
+ assert.ok(Math.abs(noteAfter.x-noteBefore.x-(imageAfter.x-imageBefore.x))<2 && Math.abs(noteAfter.y-noteBefore.y-(imageAfter.y-imageBefore.y))<2,'note follows image');
+ assert.equal(await page.$$eval('.react-flow__node.selected',e=>e.length),1,'image selection stays individual');
+ await drag(noteAfter,35,25);
+ const imageAfterNote=await bounds('.react-flow__node-image'), noteAfterNote=await bounds('.react-flow__node-shape');
+ assert.ok(Math.abs(noteAfterNote.x-noteAfter.x)>10);
+ assert.ok(Math.abs(imageAfterNote.x-imageAfter.x-(noteAfterNote.x-noteAfter.x))<2 && Math.abs(imageAfterNote.y-imageAfter.y-(noteAfterNote.y-noteAfter.y))<2,'image follows note');
+ assert.equal(await page.$$eval('.react-flow__node.selected',e=>e.length),1,'note selection stays individual');
  await page.click('.react-flow__node-shape');await new Promise(r=>setTimeout(r,200));await page.$eval('.react-flow__node-shape .group',e=>e.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})));await page.screenshot({path:'.tmp/folder-edit.png'});
  await page.waitForSelector('[contenteditable="true"]');await page.$eval('[contenteditable="true"]',e=>e.focus());await page.keyboard.type('My notes alongside page one');await new Promise(r=>setTimeout(r,600));await page.mouse.click(1400,900);
  await new Promise(r=>setTimeout(r,1700));await page.reload({waitUntil:'networkidle0'});
  await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image').length===3);
  await page.waitForFunction(()=>document.querySelector('.react-flow__viewport')?.textContent.includes('My notes alongside page one'),{timeout:5000});
- console.log('PASS folder picker, natural filename ordering, vertical spacing, side-by-side editable notes, undo/redo and reload.');
+ console.log('PASS bidirectional paired dragging with separate selection/editing, folder picker, natural filename ordering, vertical spacing, side-by-side editable notes, undo/redo and reload.');
 } catch(error) { console.log(await page.url(), (await page.$eval("body", e=>e.innerText)).slice(0,1800));throw error; } finally {await browser.close();}
 
