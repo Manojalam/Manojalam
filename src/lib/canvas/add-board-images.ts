@@ -61,10 +61,11 @@ export async function addBoardImages(files: File[], targetNodeId?: string, layou
         const scale = Math.min(1, 640 / image.width!, 900 / image.height!);
         const width = image.width! * scale, height = image.height! * scale;
         const rowHeight = Math.max(220, height);
+        const imageId = crypto.randomUUID();
         const nodes: Node[] = [
-          { id: crypto.randomUUID(), type: "image", position: { x, y }, style: { width, height }, data: { image } },
+          { id: imageId, type: "image", position: { x, y }, style: { width, height }, data: { image } },
           { id: crypto.randomUUID(), type: "shape", position: { x: x + imageColumnWidth + 48, y }, style: { width: 400, height: rowHeight },
-            data: { shapeType: "rounded", text: "", fontSize: 22, textAlign: "left", textVerticalAlign: "top", autoSizeMode: "fixed", userSize: { width: 400, height: rowHeight }, imageNotesFor: image.name } },
+            data: { shapeType: "rounded", text: "", fontSize: 22, textAlign: "left", textVerticalAlign: "top", autoSizeMode: "fixed", userSize: { width: 400, height: rowHeight }, imageNotesFor: image.name, noteForNodeId: imageId } },
         ];
         y += rowHeight + 48;
         return nodes;

@@ -196,6 +196,10 @@ export function prepareDuplicatedNodeData(
       next.layoutVisualStyle = { ...visualStyle, rootId: duplicatedRootId };
     }
   }
+  if (typeof next.imageNotesFor === "string" && (typeof next.noteForNodeId !== "string" || !idMap.has(next.noteForNodeId))) {
+    delete next.noteForNodeId;
+    delete next.imageNotesFor;
+  }
   if (typeof next.noteForNodeId === "string" && idMap.has(next.noteForNodeId)) {
     next.noteForNodeId = idMap.get(next.noteForNodeId)!;
   }

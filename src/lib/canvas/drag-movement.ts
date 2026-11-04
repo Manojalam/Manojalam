@@ -76,6 +76,20 @@ export function planNodeDragMovement(
   }
 
   if (!moveOnlyDraggedNode || movesWholeMatrix) {
+    // Image-note pairs share movement, not selection or editing state.
+    const paired = new Set(movingIds);
+    for (const note of nodes) {
+      if (typeof note.data.imageNotesFor !== "string" || isLocked(note)) continue;
+      const owner = typeof note.data.noteForNodeId === "string"
+        ? byId.get(note.data.noteForNodeId)
+        : nodes.find(candidate => candidate.type === "image"
+          && (candidate.data.image as { name?: string } | undefined)?.name === note.data.imageNotesFor
+          && Math.abs(candidate.position.y - note.position.y) < 1 && candidate.position.x < note.position.x);
+      if (!owner || isLocked(owner)) continue;
+      if (paired.has(note.id) || paired.has(owner.id)) { paired.add(note.id); paired.add(owner.id); }
+    }
+    movingIds = [...paired];
+    moveAsGroup ||= movingIds.length > 1;
     movingIds = includeAttachedExternalNoteIds(nodes, movingIds);
   }
 
