@@ -35,7 +35,7 @@ try {
  await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image img').length===1);
  await page.keyboard.down('Control');await page.keyboard.down('Shift');await page.keyboard.press('z');await page.keyboard.up('Shift');await page.keyboard.up('Control');
  await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image img').length===2);
- await page.click('.react-flow__node[data-id="target"]');
+ { const r=await page.$eval('.react-flow__node[data-id="target"]',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y};});await page.mouse.click(r.x+12,r.y+12); }
  await page.click('[aria-label="Object properties"]');
  const trigger='[data-properties-header] [aria-label="Add image or audio"]';await page.waitForSelector(trigger);await page.click(trigger);
  const add=await page.waitForFunction(()=>[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()==='Add image'));
@@ -43,7 +43,7 @@ try {
  await page.waitForSelector('[data-node-media-layer="target"] img');
  await page.keyboard.press('Escape');
  // Selection directs image paste to attachments, never to a new board image.
- await page.click('.react-flow__node[data-id="target"]');
+ { const r=await page.$eval('.react-flow__node[data-id="target"]',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y};});await page.mouse.click(r.x+12,r.y+12); }
  await page.keyboard.down('Control');await page.keyboard.press('v');await page.keyboard.up('Control');
  await page.waitForFunction(()=>document.querySelectorAll('[data-node-media-layer="target"] img').length===2);
  assert.equal(await page.$$eval('.react-flow__node-image',els=>els.length),2);
@@ -64,7 +64,7 @@ try {
  await page.waitForSelector('.react-flow__node-image img');await page.waitForSelector('[data-node-media-layer="target"] img');
  assert.equal(await page.$$eval('.react-flow__node-image img',els=>els.length),2);
  assert.equal(await page.$eval('.react-flow__node[data-id="target"]',el=>el.textContent.includes('Attach here')),true);
- await page.click('.react-flow__node[data-id="target"]');
+ { const r=await page.$eval('.react-flow__node[data-id="target"]',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y};});await page.mouse.click(r.x+12,r.y+12); }
  await page.click('[role="tab"][aria-controls="properties-text"]');
  assert.ok(await page.$( '[data-properties-header] [aria-label="Manage 3 media attachments"]'));
  await page.click('[aria-label="Lock selected objects"]');

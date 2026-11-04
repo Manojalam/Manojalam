@@ -9,7 +9,7 @@ import { useRef, useState } from "react";
 import {
   PenLine, MousePointer2, SquareDashedMousePointer, Hand, StickyNote, Type, Spline, Frame,
   BookOpen, Scroll, GraduationCap, ChevronRight,
-  ImagePlus, Network, Table2, LayoutTemplate, PanelRight, Settings2, Upload,
+  FolderInput, ImagePlus, Network, Table2, LayoutTemplate, PanelRight, Settings2, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -266,13 +266,20 @@ function TouchMultiSelectBtn() {
 /* ── Main toolbar ── */
 export function CanvasToolbar() {
   const [importOpen, setImportOpen] = useState(false);
+  const folderInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const [addingImage, setAddingImage] = useState(false);
   const viewer = useCanvasStore(s => s.board?.accessRole === "viewer");
-  const addImages = async (files: File[]) => {
+  const addImages = async (files: File[], folder = false) => {
     if (!files.length || addingImage || viewer) return;
     setAddingImage(true);
-    try { await addBoardImages(files); }
+    try {
+      const added = await addBoardImages(files, undefined, folder ? "vertical-notes" : undefined);
+      if (folder && added?.length) {
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        window.dispatchEvent(new CustomEvent("vidya:fitview", { detail: { nodeIds: added.slice(0, 2).map(node => node.id) } }));
+      }
+    }
     finally { setAddingImage(false); }
   };
   const { setActiveTool } = useUIStore();
@@ -293,6 +300,7 @@ export function CanvasToolbar() {
         <ToolBtn tool="pen" icon={<PenLine className="h-5 w-5" />} label="Handwriting" />
         <ToolBtn tool="text"   icon={<Type className="h-[18px] w-[18px] stroke-[1.5]" />}          label="Text" shortcut="T" />
         {!viewer && <ToolBtn icon={<ImagePlus className="h-[18px] w-[18px]" />} label={addingImage ? "Adding image…" : "Add image to board"} onClick={() => { if (!addingImage) imageInput.current?.click(); }} />}
+        {!viewer && <ToolBtn icon={<FolderInput className="h-[18px] w-[18px]" />} label={addingImage ? "Importing images…" : "Import image folder with notes"} onClick={() => { if (!addingImage) folderInput.current?.click(); }} />}
         {/* Shapes (with popover) */}
         <ShapesBtn />
         <ToolBtn tool="table" icon={<Table2 className="h-[18px] w-[18px] stroke-[1.5]" />} label="Table" />
@@ -321,6 +329,7 @@ export function CanvasToolbar() {
         <ToolBtn icon={<Upload className="h-[18px] w-[18px]" />} label="Import file" onClick={() => setImportOpen(true)} />
       </div>
       <input ref={imageInput} type="file" accept={IMAGE_FILE_ACCEPT} multiple hidden aria-label="Board image files" onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addImages(files); }} />
+      <input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: "", directory: "" }} aria-label="Image folder" onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addImages(files, true); }} />
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </TooltipProvider>
   );
