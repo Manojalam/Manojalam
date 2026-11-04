@@ -296,3 +296,23 @@ test("a custom parent anchor follows owner movement and resizing", () => {
     { x: 325, y: 380 }
   );
 });
+
+
+test("image-specific notes follow attachment movement and detachment without coupling other notes", () => {
+  const image = { id: "photo", kind: "image", name: "photo.png", mimeType: "image/png", dataUrl: "data:image/png;base64,YQ==", createdAt: "2026-01-01", width: 100, height: 100, placement: { x: .1, y: .1, width: .2, height: .2 } };
+  const owner = { ...source, style: { width: 500, height: 400 }, data: { mediaAttachments: [image] } };
+  const note = { ...createExternalNoteNode(owner, [owner], "note", "plain"), data: { externalNote: true, noteForNodeId: owner.id, noteForAttachmentId: image.id } };
+  const other = { ...note, id: "other", data: { externalNote: true, noteForNodeId: owner.id } };
+  const movedOwner = { ...owner, data: { mediaAttachments: [{ ...image, placement: { ...image.placement, x: .2, y: .2 } }] } };
+  const result = preserveAttachedExternalNoteOffsets([owner, note, other], [movedOwner, note, other]);
+  assert.equal(result[1].position.x, note.position.x + 50);
+  assert.equal(result[1].position.y, note.position.y + 40);
+  assert.deepEqual(result[2].position, other.position);
+  const detached: Node = { id: "detached", type: "image", position: { x: 300, y: 280 }, style: { width: 100, height: 80 }, data: { image } };
+  const reattachedNote = { ...note, data: { externalNote: true, noteForNodeId: detached.id } };
+  const detachedResult = preserveAttachedExternalNoteOffsets([owner, note], [{ ...owner, data: {} }, reattachedNote, detached]);
+  assert.equal(detachedResult[1].position.x, note.position.x + 140);
+  assert.equal(detachedResult[1].position.y, note.position.y + 160);
+  const manuallyMoved = { ...note, position: { x: 900, y: 700 } };
+  assert.deepEqual(preserveAttachedExternalNoteOffsets([owner,note],[movedOwner,manuallyMoved])[1].position, manuallyMoved.position);
+});

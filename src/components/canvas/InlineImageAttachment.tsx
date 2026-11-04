@@ -16,6 +16,7 @@ export function InlineImageAttachment({ node, attachment, index, count, width, h
   const [draft, setDraft] = useState<Placement | null>(null);
   const latestDraft = useRef<Placement | null>(null);
   const gesture = useRef<{ x: number; y: number; placement: Placement; resize: string | null; boardId?: string } | null>(null);
+  const hasLinkedNote = useCanvasStore(s => s.nodes.some(n => n.data.noteForNodeId === node.id && n.data.noteForAttachmentId === attachment.id));
   const presenting = useUIStore(s => s.presentationMode);
   const readonly = useCanvasStore(s => s.board?.accessRole === "viewer" || !!node.data.locked || s.layers.some(l => l.id === node.data.layerId && l.locked));
   const placement = draft ?? imageAttachmentPlacement(attachment, index, count, width, height);
@@ -69,11 +70,18 @@ export function InlineImageAttachment({ node, attachment, index, count, width, h
           const cy = (draft.y + draft.height / 2) * height - height / 2;
           const image = { ...attachment }; delete image.placement;
           const id = crypto.randomUUID();
-          state.setNodes(nodes => [...nodes.map(n => n.id === node.id ? { ...n, selected: false, data: { ...n.data, mediaAttachments: attachments.filter(a => a.id !== attachment.id) } } : n), {
+          state.setNodes(nodes => [...nodes.map(n => {
+            if (n.data.noteForNodeId === node.id && n.data.noteForAttachmentId === attachment.id) {
+              const data: Record<string, unknown> = { ...n.data, noteForNodeId: id, imageNotesFor: attachment.name, imageNotesBatchId: id };
+              delete data.noteForAttachmentId;
+              return { ...n, data };
+            }
+            return n.id === node.id ? { ...n, selected: false, data: { ...n.data, mediaAttachments: attachments.filter(a => a.id !== attachment.id) } } : n;
+          }), {
             id, type: "image", selected: true,
             position: { x: rect.centerX + cx * Math.cos(angle) - cy * Math.sin(angle) - w / 2, y: rect.centerY + cx * Math.sin(angle) + cy * Math.cos(angle) - h / 2 },
             style: { width: w, height: h },
-            data: { image, layerId: target.data.layerId, objectRotation: resolveObjectRotation(target.type, target.data) },
+            data: { image, imageNotesBatchId: id, layerId: target.data.layerId, objectRotation: resolveObjectRotation(target.type, target.data) },
           }]);
           useCanvasStore.setState({ selectedNodeIds: [id], selectedEdgeIds: [] });
         } else state.updateNodeData(node.id, { mediaAttachments: attachments.map(a => a.id === attachment.id ? { ...a, placement: draft } : a) });
@@ -88,6 +96,7 @@ export function InlineImageAttachment({ node, attachment, index, count, width, h
     onLostPointerCapture={() => { gesture.current = null; setDraft(null); }} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={attachment.dataUrl} alt={attachment.name} draggable={false} className="h-full w-full select-none object-contain" />
+    {controls && <button type="button" data-export-ignore className="absolute -top-9 left-0 rounded border bg-background px-2 py-1 text-xs text-foreground shadow-sm" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); useCanvasStore.getState().createNodeNote(node.id, undefined, attachment.id); }}>{hasLinkedNote ? "Edit linked note" : "Add linked note"}</button>}
     {controls && <div data-export-ignore className="pointer-events-none absolute inset-0 border-2 border-primary">
       {(["top-left", "top-right", "bottom-left", "bottom-right"] as const).map(corner => <button key={corner} type="button" data-image-resize={corner} aria-label={`Resize image ${attachment.name} ${corner}`} className="pointer-events-auto absolute h-4 w-4 border-2 border-primary bg-white" style={{ [corner.includes("left") ? "left" : "right"]: -8, [corner.includes("top") ? "top" : "bottom"]: -8, cursor: corner === "top-left" || corner === "bottom-right" ? "nwse-resize" : "nesw-resize" }} />)}
     </div>}
