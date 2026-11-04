@@ -1,4 +1,6 @@
 "use client";
+import { useUIStore } from "./ui-store";
+import { attachmentImageNode } from "@/lib/canvas/attachment-image-node";
 import { closeDeletedImageNoteGaps } from "@/lib/canvas/image-note-pairs";
 
 import { applyContentTemplate, supportsContentTemplate } from "@/lib/canvas/apply-content-template";
@@ -334,7 +336,7 @@ interface CanvasState {
   createChildNode: (parentId: string) => void;
   createChildNodes: (parentId: string, count: number, keepParentSelected?: boolean) => void;
   createSiblingNode: (nodeId: string) => string | null;
-  createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }) => string | null;
+  createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }, attachmentId?: string) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   resetMatrixLayout: (rootId: string) => boolean;
@@ -399,6 +401,22 @@ function requestNodeTextEdit(nodeId: string, selectAll = false): void {
   requestAnimationFrame(() => {
     window.dispatchEvent(new CustomEvent("vidya:edit-node", { detail: { nodeId, selectAll } }));
   });
+}
+
+function focusImageNote(note: Node, sourceId: string, viewport: { x: number; y: number; zoom: number }): void {
+  const canvas = typeof document === "undefined" ? null : document.querySelector(".react-flow")?.getBoundingClientRect();
+  const panel = typeof document === "undefined" ? null : document.querySelector("[data-properties-header]")?.getBoundingClientRect();
+  const rect = getNodeRect(note);
+  const visibleRight = canvas && panel && panel.left > canvas.left ? Math.min(canvas.right, panel.left) : canvas?.right;
+  if (canvas && (canvas.left + viewport.x + rect.right * viewport.zoom > (visibleRight ?? canvas.right)
+    || canvas.left + viewport.x + rect.left * viewport.zoom < canvas.left
+    || canvas.top + viewport.y + rect.bottom * viewport.zoom > canvas.bottom
+    || canvas.top + viewport.y + rect.top * viewport.zoom < canvas.top)) {
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent("vidya:fitview", { detail: { nodeIds: [sourceId, note.id] } }));
+      window.setTimeout(() => requestNodeTextEdit(note.id), 450);
+    });
+  } else requestNodeTextEdit(note.id);
 }
 
 function cancelPendingLayoutReflows(): void {
@@ -3587,30 +3605,51 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
-  createNodeNote: (nodeId, nearPoint) => {
+  createNodeNote: (nodeId, nearPoint, attachmentId) => {
     const { nodes, edges, settings } = get();
     const source = nodes.find((node) => node.id === nodeId);
     if (!source || ["junction", "frame", "sunburst", "relationshipDiagram"].includes(source.type ?? "")) {
       return null;
     }
+    if (get().board?.accessRole === "viewer" || useUIStore.getState().presentationMode || source.data.locked || get().layers.some(layer => layer.id === source.data.layerId && layer.locked)) return null;
+    const imageSource = attachmentId ? attachmentImageNode(source, attachmentId) : source;
+    if (!imageSource) return null;
+    const isImage = imageSource.type === "image";
+    const existing = isImage ? nodes.find(node => node.data.noteForNodeId === nodeId && (attachmentId ? node.data.noteForAttachmentId === attachmentId : typeof node.data.imageNotesFor === "string")) : undefined;
+    if (existing) {
+      set({ nodes: nodes.map(node => ({ ...node, selected: node.id === existing.id })), selectedNodeIds: [existing.id], selectedEdgeIds: [] });
+      focusImageNote(existing, nodeId, get().viewport);
+      return existing.id;
+    }
     get().pushHistory();
     const noteId = generateId();
     const note = createExternalNoteNode(
-      source,
+      imageSource,
       nodes,
       noteId,
       settings.defaultScriptMode,
       nearPoint,
       settings.defaultFontSize
     );
+    if (isImage) {
+      note.data = { ...note.data, text: "", textColor: source.data.textColor,
+        ...(attachmentId ? { noteForAttachmentId: attachmentId } : {
+          imageNotesFor: String((source.data.image as { name?: string })?.name ?? "Image"),
+          imageNotesBatchId: source.data.imageNotesBatchId ?? source.id,
+        }),
+      };
+    }
     set({
-      nodes: [...nodes.map((node) => ({ ...node, selected: false })), note],
+      nodes: [...nodes.map((node) => ({ ...node, selected: false,
+        ...(node.id === nodeId && isImage && !attachmentId ? { data: { ...node.data, imageNotesBatchId: source.data.imageNotesBatchId ?? source.id } } : {}),
+      })), note],
       edges: edges.map((edge) => ({ ...edge, selected: false })),
       selectedNodeIds: [noteId],
       selectedEdgeIds: [],
       saveStatus: "unsaved",
     });
-    requestNodeTextEdit(noteId);
+    if (isImage) focusImageNote(note, nodeId, get().viewport);
+    else requestNodeTextEdit(noteId);
     return noteId;
   },
 
@@ -4069,7 +4108,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         }
         return changed ? { ...node, data: nextData } : node;
       });
-      return { nodes, saveStatus: "unsaved" };
+      return { nodes: data.mediaAttachments !== undefined || data.objectRotation !== undefined
+        ? preserveAttachedExternalNoteOffsets(state.nodes, nodes) : nodes, saveStatus: "unsaved" };
     });
     // Most direct formatting remains local. Matrix fill edits are the
     // exception: a manual parent fill anchors the automatic shades of its

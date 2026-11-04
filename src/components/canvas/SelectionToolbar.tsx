@@ -934,12 +934,12 @@ export function SelectionToolbar() {
 
       {singleId && !singleIsRelationshipDiagram && !singleIsSunburst && !singleIsJunction && !singleIsExternalNote && (
         <>
-          <ActionButton
+          {selected[0].type !== "image" && <ActionButton
             label="Add note outside box"
             onClick={() => createNodeNote(singleId)}
           >
             <MessageSquarePlus className="h-4 w-4" />
-          </ActionButton>
+          </ActionButton>}
           <ActionButton label="Layout branch" onClick={() => setLayoutPanelOpen(true)}><Network className="h-4 w-4" /></ActionButton>
           {singleCanMoveOnly && (
             <ActionButton

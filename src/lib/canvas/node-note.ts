@@ -1,3 +1,4 @@
+import { attachmentImageNode } from "./attachment-image-node";
 import type { Node } from "@xyflow/react";
 import type { ScriptMode, TextCalloutOwnerAnchor } from "../types";
 import {
@@ -98,6 +99,10 @@ export function attachedExternalNoteCalloutAnchor(
   const sourceId = noteData.noteForNodeId;
   if (sourceId !== source.id) return null;
 
+  if (typeof noteData.noteForAttachmentId === "string") {
+    source = attachmentImageNode(source, noteData.noteForAttachmentId);
+    if (!source) return null;
+  }
   const sourceRect = getNodeRect(source);
   const ownerAnchor = normalizeTextCalloutOwnerAnchor(noteData.textCalloutOwnerAnchor);
   if (ownerAnchor) {
@@ -147,8 +152,10 @@ export function preserveAttachedExternalNoteOffsets(
     if (!sourceId) return note;
 
     const previousNote = previousById.get(note.id);
-    const previousSource = previousById.get(sourceId);
-    const nextSource = nextById.get(sourceId);
+    const previousOwner = previousById.get(String(previousNote?.data.noteForNodeId));
+    const nextOwner = nextById.get(sourceId);
+    const previousSource = previousOwner && typeof previousNote?.data.noteForAttachmentId === "string" ? attachmentImageNode(previousOwner, previousNote.data.noteForAttachmentId) : previousOwner;
+    const nextSource = nextOwner && typeof noteData.noteForAttachmentId === "string" ? attachmentImageNode(nextOwner, noteData.noteForAttachmentId) : nextOwner;
     if (!previousNote || !previousSource || !nextSource) return note;
 
     const previousSourceRect = getNodeRect(previousSource);
