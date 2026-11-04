@@ -25,7 +25,7 @@ try {
  await drag(initial.x+initial.width/2,initial.y+initial.height/2,-25,-20);
  assert.deepEqual(await rect('.react-flow__node[data-id="box"]'),box,'dragging image does not move owner');
  let moved=await rect(inline);assert.ok(moved.x<initial.x-20&&moved.y<initial.y-15);
- let handle=await rect('[data-image-resize]');await drag(handle.x+8,handle.y+8,-65,-35);
+ let handle=await rect('[data-image-resize="bottom-right"]');await drag(handle.x+8,handle.y+8,-65,-35);
  assert.deepEqual(await rect('.react-flow__node[data-id="box"]'),box,'resizing image leaves owner unchanged');
  const resized=await rect(inline);assert.ok(resized.width<moved.width-40,'resize handle changes image size');
  assert.ok(Math.abs(resized.width/resized.height-300/160)<.02,'resize preserves image ratio');
@@ -46,8 +46,24 @@ try {
  await page.click('[aria-label="Unlock selected objects"]');await page.click(inline+' img');
  assert.equal(await page.$('.react-flow__node.selected'),null,'selecting image clears previously selected owner');
  await page.waitForSelector('[data-image-resize]');
+ const beforeCorner=await rect(inline);
+ const topLeft=await rect('[data-image-resize="top-left"]');await drag(topLeft.x+8,topLeft.y+8,30,20);
+ const afterCorner=await rect(inline);assert.ok(afterCorner.width<beforeCorner.width-20,'top-left corner resizes');
+ assert.ok(Math.abs(afterCorner.x+afterCorner.width-beforeCorner.x-beforeCorner.width)<2,'opposite corner stays anchored');
+ await key(false);await page.waitForFunction(w=>Math.abs(document.querySelector('[data-inline-image]').getBoundingClientRect().width-w)<2,{},beforeCorner.width);
+ const ownerBeforeDetach=await rect('.react-flow__node[data-id="box"]');
+ const attached=await rect(inline);await drag(attached.x+attached.width/2,attached.y+attached.height/2,550,0);
+ assert.equal(await page.$(inline),null,'drag outside removes inline attachment');
+ const detachedSelector='.react-flow__node-image.selected';await page.waitForSelector(detachedSelector);
+ const detached=await rect(detachedSelector);assert.ok(Math.abs(detached.x-attached.x-550)<3,'detaching preserves drop position');
+ assert.ok(Math.abs(detached.width-attached.width)<2,'detaching preserves size');
+ assert.deepEqual(await rect('.react-flow__node[data-id="box"]'),ownerBeforeDetach,'detaching leaves box unchanged');
+ await key(false);await page.waitForSelector(inline);assert.equal(await page.$$eval('.react-flow__node-image',e=>e.length),1,'undo restores attachment without duplicate image');
+ await key(true);await page.waitForFunction(()=>!document.querySelector('[data-inline-image]'));
+ await new Promise(r=>setTimeout(r,1500));await page.reload({waitUntil:'networkidle0'});
+ assert.equal(await page.$(inline),null);assert.equal(await page.$$eval('.react-flow__node-image',e=>e.length),2,'detached image persists');
  await fs.mkdir('.tmp',{recursive:true});await page.screenshot({path:'.tmp/inline-images.png'});
- assert.deepEqual(errors,[]);console.log('PASS independent image selection, parent unchanged by image drag/resize, Escape/outside deselection, legacy images inside box, drag, aspect-preserving resize, undo/redo, parent movement, reload persistence, locked state and standalone resize handles.');
+ assert.deepEqual(errors,[]);console.log('PASS four-corner resize, drag outside, detached position/size, detach undo/redo/reload, independent image selection, parent unchanged by image drag/resize, Escape/outside deselection, legacy images inside box, drag, aspect-preserving resize, undo/redo, parent movement, reload persistence, locked state and standalone resize handles.');
 } catch(e){await fs.mkdir('.tmp',{recursive:true});await page.screenshot({path:'.tmp/inline-image-failure.png'});throw e;}finally{await browser.close();}
 
 
