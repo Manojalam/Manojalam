@@ -1,4 +1,5 @@
 "use client";
+import { attachDroppedImage } from "@/lib/canvas/attach-dropped-image";
 import { TEMPLATE_CLIPBOARD_MIME, copyTemplateContent, parseTemplateClipboard, pasteTemplateContent } from "@/lib/canvas/template-clipboard";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1018,6 +1019,14 @@ function VidyaCanvasInner({
     const drag = dragStartRef.current;
     const movedIds = new Set(drag?.positions.keys() ?? []);
     let state = useCanvasStore.getState();
+    if (attachDroppedImage(draggedNode.id, movedIds)) {
+      setReparentTargetId(null);
+      dragStartRef.current = null;
+      useUIStore.getState().setCanvasDragging(false);
+      useUIStore.getState().setMoveOnlyNodeId(null);
+      state.setSaveStatus("unsaved");
+      return;
+    }
     const pointer = dragEventClientPoint(event);
     const dropPoint = pointer ? screenToFlowPosition(pointer) : null;
     const dropTargetId = dropPoint

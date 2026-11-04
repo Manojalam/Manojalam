@@ -63,8 +63,22 @@ try {
  await key(true);await page.waitForFunction(()=>!document.querySelector('[data-inline-image]'));
  await new Promise(r=>setTimeout(r,1500));await page.reload({waitUntil:'networkidle0'});
  assert.equal(await page.$(inline),null);assert.equal(await page.$$eval('.react-flow__node-image',e=>e.length),2,'detached image persists');
+ const looseSelector='.react-flow__node-image:not([data-id="standalone"])';
+ const loose=await rect(looseSelector), destination=await rect('.react-flow__node[data-id="box"]');
+ await drag(loose.x+loose.width/2,loose.y+loose.height/2,destination.x+destination.width/2-loose.x-loose.width/2,destination.y+destination.height/2-loose.y-loose.height/2);
+ await page.waitForSelector('[data-inline-image]');
+ assert.equal(await page.$$eval('.react-flow__node-image',e=>e.length),1,'drop into box reattaches without duplicate');
+ assert.deepEqual(await rect('.react-flow__node[data-id="box"]'),destination,'reattachment leaves box unchanged');
+ await key(false);await page.waitForSelector(looseSelector);assert.equal(await page.$('[data-inline-image]'),null,'undo reattachment restores board image');
+ await key(true);await page.waitForSelector('[data-inline-image]');
+ await page.click('[data-inline-image] img');await page.waitForSelector('[data-image-resize="bottom-right"]');
+ assert.equal(await page.$('.react-flow__node.selected'),null,'reattached image selects independently');
+ const reattached=await rect('[data-inline-image]');handle=await rect('[data-image-resize="bottom-right"]');await drag(handle.x+8,handle.y+8,-30,-20);
+ const reattachedSize=await rect('[data-inline-image]');assert.ok(reattachedSize.width<reattached.width-20,'reattached image resizes independently');
+ await new Promise(r=>setTimeout(r,1500));await page.reload({waitUntil:'networkidle0'});await page.waitForSelector('[data-inline-image]');
+ assert.ok(Math.abs((await rect('[data-inline-image]')).width-reattachedSize.width)<2,'reattached resize persists');
  await fs.mkdir('.tmp',{recursive:true});await page.screenshot({path:'.tmp/inline-images.png'});
- assert.deepEqual(errors,[]);console.log('PASS four-corner resize, drag outside, detached position/size, detach undo/redo/reload, independent image selection, parent unchanged by image drag/resize, Escape/outside deselection, legacy images inside box, drag, aspect-preserving resize, undo/redo, parent movement, reload persistence, locked state and standalone resize handles.');
+ assert.deepEqual(errors,[]);console.log('PASS reattach by drag, independent reattached selection/resize, reattach undo/redo/reload, four-corner resize, drag outside, detached position/size, detach undo/redo/reload, independent image selection, parent unchanged by image drag/resize, Escape/outside deselection, legacy images inside box, drag, aspect-preserving resize, undo/redo, parent movement, reload persistence, locked state and standalone resize handles.');
 } catch(e){await fs.mkdir('.tmp',{recursive:true});await page.screenshot({path:'.tmp/inline-image-failure.png'});throw e;}finally{await browser.close();}
 
 
