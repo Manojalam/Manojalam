@@ -13,10 +13,11 @@ try {
   const c=document.createElement('canvas');c.width=300;c.height=160;const ctx=c.getContext('2d');ctx.fillStyle='#fef3c7';ctx.fillRect(0,0,300,160);ctx.fillStyle='#172554';ctx.font='28px sans-serif';ctx.fillText('Inside the box',25,85);
   const image={id:'legacy',kind:'image',name:'Screenshot.png',mimeType:'image/png',dataUrl:c.toDataURL(),size:100,createdAt:new Date().toISOString(),width:300,height:160};
   const db=await new Promise(resolve=>{const r=indexedDB.open('manojalam-guest-boards',1);r.onupgradeneeded=()=>r.result.createObjectStore('boards',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);});
-  await new Promise(resolve=>{const tx=db.transaction('boards','readwrite');tx.oncomplete=resolve;tx.objectStore('boards').put({id:'guest-inline-image',title:'Inline images',storageMode:'local',accessRole:'owner',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),content:{nodes:[{id:'box',type:'shape',position:{x:150,y:150},style:{width:500,height:320},data:{shapeType:'rounded',text:'',autoSizeMode:'fixed',userSize:{width:500,height:320},mediaAttachments:[image]}},{id:'standalone',type:'image',position:{x:800,y:150},style:{width:240,height:128},data:{image}}],edges:[],settings:{},viewport:{x:0,y:0,zoom:1}}});});db.close();
+  await new Promise(resolve=>{const tx=db.transaction('boards','readwrite');tx.oncomplete=resolve;tx.objectStore('boards').put({id:'guest-inline-image',title:'Inline images',storageMode:'local',accessRole:'owner',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),content:{nodes:[{id:'box',type:'shape',position:{x:150,y:150},style:{width:500,height:320},data:{shapeType:'rounded',text:'',autoSizeMode:'fixed',userSize:{width:500,height:320},mediaAttachments:[image]}},{id:'standalone',type:'image',position:{x:800,y:150},style:{width:600,height:128},data:{image}}],edges:[],settings:{},viewport:{x:0,y:0,zoom:1}}});});db.close();
  });
  await page.goto(base+'/app/boards/guest-inline-image',{waitUntil:'networkidle0'});
  const inline='[data-inline-image="legacy"]';await page.waitForSelector(inline+' img');
+ await page.waitForFunction(()=>Math.abs(document.querySelector('.react-flow__node[data-id="standalone"]').getBoundingClientRect().width-240)<2);
  const box=await rect('.react-flow__node[data-id="box"]');const initial=await rect(inline);
  assert.ok(initial.width>box.width*.5,'legacy image is full content, not a corner thumbnail');
  assert.ok(initial.x>=box.x&&initial.y>=box.y&&initial.x+initial.width<=box.x+box.width+1&&initial.y+initial.height<=box.y+box.height+1);

@@ -369,10 +369,22 @@ export function formattedMediaSize(size: number): string {
 
 /** Shared placement for the canvas and exports; legacy attachments need no migration. */
 export function imageAttachmentPlacement(image: MediaAttachment, index: number, count: number, width: number, height: number): NonNullable<MediaAttachment["placement"]> {
-  if (image.placement) return image.placement;
+  if (image.placement) {
+    const p = image.placement;
+    const fitted = fitImageBounds(p.width * width, p.height * height, image.width, image.height);
+    return { x: p.x + fitted.x / width, y: p.y + fitted.y / height, width: fitted.width / width, height: fitted.height / height };
+  }
   width = Math.max(1, width); height = Math.max(1, height);
   const columns = count > 1 ? 2 : 1, rows = Math.max(1, Math.ceil(count / columns));
   const scale = Math.min(width * .8 / columns / (image.width || 1), height * .8 / rows / (image.height || 1));
   const w = (image.width || 1) * scale / width, h = (image.height || 1) * scale / height;
   return { x: .1 + (index % columns) * .8 / columns + (.8 / columns - w) / 2, y: .1 + Math.floor(index / columns) * .8 / rows + (.8 / rows - h) / 2, width: w, height: h };
+}
+
+/** Bounds of the pixels rendered by object-fit: contain, centered in their container. */
+export function fitImageBounds(width: number, height: number, naturalWidth?: number, naturalHeight?: number) {
+  if (!naturalWidth || !naturalHeight || width <= 0 || height <= 0) return { x: 0, y: 0, width, height };
+  const scale = Math.min(width / naturalWidth, height / naturalHeight);
+  const fittedWidth = naturalWidth * scale, fittedHeight = naturalHeight * scale;
+  return { x: (width - fittedWidth) / 2, y: (height - fittedHeight) / 2, width: fittedWidth, height: fittedHeight };
 }
