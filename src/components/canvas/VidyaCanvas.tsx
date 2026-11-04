@@ -75,7 +75,7 @@ import {
 import { normalizeHexColor } from "@/lib/canvas/custom-colors";
 import { boardColorCssValue } from "@/lib/canvas/board-colors";
 import { boardTextureStyle } from "@/lib/canvas/board-textures";
-import { addBoardImages } from "@/lib/canvas/add-board-images";
+import { addBoardImages, rememberImageInsertionPoint } from "@/lib/canvas/add-board-images";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import {
   isExternalNoteNode,
@@ -1801,7 +1801,7 @@ function VidyaCanvasInner({
         toast.error("Select one element to attach the image, or click empty canvas to paste it on the board.");
         return;
       }
-      void addBoardImages(images, ids[0] ?? owner?.dataset.id);
+      void addBoardImages(images, ids[0] ?? owner?.dataset.id, undefined, lastPointerScreenRef.current ? screenToFlowPosition(lastPointerScreenRef.current) : undefined);
     };
 
     const handlePaste = (event: ClipboardEvent) => {
@@ -1840,7 +1840,7 @@ function VidyaCanvasInner({
       window.removeEventListener("copy", handleCopy);
       window.removeEventListener("paste", handlePaste);
     };
-  }, [canEdit, pastePlainTextOnCanvas]);
+  }, [canEdit, pastePlainTextOnCanvas, screenToFlowPosition]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────
   // CRITICAL FIX: use getState() instead of subscribing to `store`
@@ -2002,6 +2002,11 @@ function VidyaCanvasInner({
 
   const onPointerDownCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     lastPointerScreenRef.current = { x: event.clientX, y: event.clientY };
+    const target = event.target instanceof Element ? event.target : null;
+    const boardId = useCanvasStore.getState().board?.id;
+    if (boardId && (target?.closest(".react-flow__node") || target?.classList.contains("react-flow__pane"))) {
+      rememberImageInsertionPoint(boardId, screenToFlowPosition(lastPointerScreenRef.current));
+    }
     if (!isTouchDevice || (event.pointerType !== "touch" && event.pointerType !== "pen")) return;
     if (touchSelectionMode) return;
     if (!event.isPrimary || activeTool === "pen" || activeTool === "connector" || useUIStore.getState().drawingModeNodeId) return;
@@ -2024,7 +2029,7 @@ function VidyaCanvasInner({
       active: false,
       timeout,
     };
-  }, [activeTool, clearLongPressPan, getViewport, isTouchDevice, touchSelectionMode]);
+  }, [activeTool, clearLongPressPan, getViewport, isTouchDevice, touchSelectionMode, screenToFlowPosition]);
 
   const onPointerMoveCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     lastPointerScreenRef.current = { x: event.clientX, y: event.clientY };

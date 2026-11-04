@@ -22,6 +22,39 @@ try {
  assert.ok(rows[1].y>rows[0].y+rows[0].height && rows[2].y>rows[1].y+rows[1].height,'images do not overlap');
  const notes=await page.$$eval('.react-flow__node-shape',nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}).sort((a,b)=>a.y-b.y));
  assert.equal(notes.length,3);for(let i=0;i<3;i++){assert.ok(notes[i].x>rows[i].x+rows[i].width);assert.ok(Math.abs(notes[i].y-rows[i].y)<2);}
+ // Insert at the gap using the clipboard, preserving downstream image-note offsets.
+ const gap = { x: rows[0].x + 30, y: (notes[0].y + notes[0].height + rows[1].y) / 2 };
+ const originalRows = await page.$$eval('.react-flow__node', nodes => nodes.map(n => ({id:n.dataset.id,x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));
+ const pasteImage = async () => page.evaluate(async png => {
+   const blob = await (await fetch('data:image/png;base64,'+png)).blob();
+   const data = new DataTransfer(); data.items.add(new File([blob], 'inserted.png', {type:'image/png'}));
+   document.querySelector('.react-flow__pane').dispatchEvent(new ClipboardEvent('paste', {clipboardData:data,bubbles:true,cancelable:true}));
+ }, png);
+ const freePoint={x:rows[0].x-40,y:rows[0].y+30};
+ await page.mouse.click(freePoint.x,freePoint.y); await pasteImage();
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image').length===4);
+ const freeImage=await page.$eval('.react-flow__node-image.selected',n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y}));
+ assert.ok(Math.abs(freeImage.x-freePoint.x)<2 && Math.abs(freeImage.y-freePoint.y)<2,'free image starts at cursor under board zoom');
+ await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ await page.mouse.click(gap.x,gap.y); await pasteImage();
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===8);
+ const insertedRows=await page.$$eval('.react-flow__node-image',nodes=>nodes.map(n=>({name:n.querySelector('img').alt,y:n.getBoundingClientRect().y})).sort((a,b)=>a.y-b.y));
+ assert.deepEqual(insertedRows.map(n=>n.name),['page1.png','inserted.png','page2.png','page10.png']);
+ assert.equal(await page.$$eval('.react-flow__node.selected', nodes=>nodes.length),1,'only inserted image is selected');
+ await page.screenshot({path:'.tmp/image-note-insertion.png'});
+ const afterInsert=await page.$$eval('.react-flow__node',nodes=>nodes.map(n=>({id:n.dataset.id,x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));
+ const shifts=originalRows.map(n=>({y:n.y,delta:afterInsert.find(a=>a.id===n.id).y-n.y}));
+ for(const shift of shifts) assert.ok(shift.y<rows[1].y-1 ? Math.abs(shift.delta)<2 : shift.delta>100);
+ const moved=shifts.filter(n=>n.delta>2); assert.ok(moved.every(n=>Math.abs(n.delta-moved[0].delta)<2),'following images and notes move equally');
+ await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ await page.click('button[title^="Redo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===8);
+ await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ // The image picker remembers the clicked gap even after the pointer leaves for the toolbar.
+ await page.mouse.click(gap.x,gap.y);
+ const imagePicker=await page.$('input[aria-label="Board image files"]');
+ await imagePicker.uploadFile(path.join(folder,'page1.png'));
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===8);
+ await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
  await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===0);
  await page.click('button[title^="Redo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
  const bounds=async selector=>page.$eval(selector,e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};});
@@ -59,6 +92,11 @@ try {
  await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
  assert.ok(Math.abs((await bounds(`.react-flow__node[data-id="${imageRows[2].id}"]`)).y-imageRows[2].y)<3,'undo restores row positions');
  await page.click('button[title^="Redo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===4);
- console.log('PASS Alt-drag spacing with retained link, deleted-row reflow/undo/redo, bidirectional paired dragging with separate selection/editing, folder picker, natural filename ordering, vertical spacing, side-by-side editable notes, undo/redo and reload.');
+ const survivors=await page.$$eval('.react-flow__node-image',nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y,height:n.getBoundingClientRect().height})).sort((a,b)=>a.y-b.y));
+ await page.mouse.click(survivors[0].x+30,survivors[1].y-10);await pasteImage();
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ await new Promise(r=>setTimeout(r,1800));await page.reload({waitUntil:'networkidle0'});
+ await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ assert.ok(await page.$('.react-flow__node-image img[alt="inserted.png"]'),'inserted row persists after reload');
+ console.log('PASS cursor insertion via paste and picker, downstream pair reflow, insertion undo/redo, Alt-drag spacing with retained link, deleted-row reflow/undo/redo, bidirectional paired dragging with separate selection/editing, folder picker, natural filename ordering, vertical spacing, side-by-side editable notes, undo/redo and reload.');
 } catch(error) { console.log(await page.url(), (await page.$eval("body", e=>e.innerText)).slice(0,1800));throw error; } finally {await browser.close();}
-
