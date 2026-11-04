@@ -37,11 +37,28 @@ try {
  assert.ok(Math.abs(noteAfterNote.x-noteAfter.x)>10);
  assert.ok(Math.abs(imageAfterNote.x-imageAfter.x-(noteAfterNote.x-noteAfter.x))<2 && Math.abs(imageAfterNote.y-imageAfter.y-(noteAfterNote.y-noteAfter.y))<2,'image follows note');
  assert.equal(await page.$$eval('.react-flow__node.selected',e=>e.length),1,'note selection stays individual');
+ const independentImage=await bounds('.react-flow__node-image'), independentNote=await bounds('.react-flow__node-shape');
+ await page.keyboard.down('Alt');await drag(independentNote,45,15);await page.keyboard.up('Alt');
+ assert.deepEqual(await bounds('.react-flow__node-image'),independentImage,'Alt-drag adjusts note alone');
+ const spacedNote=await bounds('.react-flow__node-shape');assert.ok(spacedNote.x>independentNote.x+20);
+ await drag(spacedNote,-20,-15);
+ const linkedImage=await bounds('.react-flow__node-image'), linkedNote=await bounds('.react-flow__node-shape');
+ assert.ok(Math.abs(linkedImage.x-independentImage.x-(linkedNote.x-spacedNote.x))<2,'link survives spacing adjustment');
  await page.click('.react-flow__node-shape');await new Promise(r=>setTimeout(r,200));await page.$eval('.react-flow__node-shape .group',e=>e.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})));await page.screenshot({path:'.tmp/folder-edit.png'});
  await page.waitForSelector('[contenteditable="true"]');await page.$eval('[contenteditable="true"]',e=>e.focus());await page.keyboard.type('My notes alongside page one');await new Promise(r=>setTimeout(r,600));await page.mouse.click(1400,900);
  await new Promise(r=>setTimeout(r,1700));await page.reload({waitUntil:'networkidle0'});
  await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node-image').length===3);
  await page.waitForFunction(()=>document.querySelector('.react-flow__viewport')?.textContent.includes('My notes alongside page one'),{timeout:5000});
- console.log('PASS bidirectional paired dragging with separate selection/editing, folder picker, natural filename ordering, vertical spacing, side-by-side editable notes, undo/redo and reload.');
+ const addresses=await page.$$eval('.react-flow__node',nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {id:n.dataset.id,image:n.classList.contains('react-flow__node-image'),x:r.x,y:r.y};}));
+ const imageRows=addresses.filter(n=>n.image).sort((a,b)=>a.y-b.y), noteRows=addresses.filter(n=>!n.image).sort((a,b)=>a.y-b.y);
+ await page.mouse.click(imageRows[1].x+12,imageRows[1].y+12);await page.keyboard.down('Control');await page.mouse.click(noteRows[1].x+12,noteRows[1].y+12);await page.keyboard.up('Control');
+ assert.equal(await page.$$eval('.react-flow__node.selected',n=>n.length),2);
+ await page.keyboard.press('Delete');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===4);
+ const lastImage=await bounds(`.react-flow__node[data-id="${imageRows[2].id}"]`);
+ assert.ok(Math.abs(lastImage.y-imageRows[1].y)<3,'later row closes deleted gap');
+ await page.click('button[title^="Undo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===6);
+ assert.ok(Math.abs((await bounds(`.react-flow__node[data-id="${imageRows[2].id}"]`)).y-imageRows[2].y)<3,'undo restores row positions');
+ await page.click('button[title^="Redo"]');await page.waitForFunction(()=>document.querySelectorAll('.react-flow__node').length===4);
+ console.log('PASS Alt-drag spacing with retained link, deleted-row reflow/undo/redo, bidirectional paired dragging with separate selection/editing, folder picker, natural filename ordering, vertical spacing, side-by-side editable notes, undo/redo and reload.');
 } catch(error) { console.log(await page.url(), (await page.$eval("body", e=>e.innerText)).slice(0,1800));throw error; } finally {await browser.close();}
 

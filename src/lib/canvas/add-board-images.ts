@@ -56,6 +56,7 @@ export async function addBoardImages(files: File[], targetNodeId?: string, layou
       const existing = state.nodes.filter(node => !node.hidden).map(getNodeRect);
       const x = existing.length ? Math.max(...existing.map(rect => rect.right)) + 80 : position.x - 520;
       let y = existing.length ? Math.min(...existing.map(rect => rect.top)) : position.y - 160;
+      const imageNotesBatchId = crypto.randomUUID();
       const imageColumnWidth = Math.max(...images.map(image => image.width! * Math.min(1, 640 / image.width!, 900 / image.height!)));
       added = images.flatMap(image => {
         const scale = Math.min(1, 640 / image.width!, 900 / image.height!);
@@ -63,9 +64,9 @@ export async function addBoardImages(files: File[], targetNodeId?: string, layou
         const rowHeight = Math.max(220, height);
         const imageId = crypto.randomUUID();
         const nodes: Node[] = [
-          { id: imageId, type: "image", position: { x, y }, style: { width, height }, data: { image } },
+          { id: imageId, type: "image", position: { x, y }, style: { width, height }, data: { image, imageNotesBatchId } },
           { id: crypto.randomUUID(), type: "shape", position: { x: x + imageColumnWidth + 48, y }, style: { width: 400, height: rowHeight },
-            data: { shapeType: "rounded", text: "", fontSize: 22, textAlign: "left", textVerticalAlign: "top", autoSizeMode: "fixed", userSize: { width: 400, height: rowHeight }, imageNotesFor: image.name, noteForNodeId: imageId } },
+            data: { shapeType: "rounded", text: "", fontSize: 22, textAlign: "left", textVerticalAlign: "top", autoSizeMode: "fixed", userSize: { width: 400, height: rowHeight }, imageNotesFor: image.name, noteForNodeId: imageId, imageNotesBatchId } },
         ];
         y += rowHeight + 48;
         return nodes;

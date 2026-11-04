@@ -1,3 +1,4 @@
+import { closeDeletedImageNoteGaps } from "./image-note-pairs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
@@ -148,4 +149,17 @@ test("older folder imports pair by filename and aligned row", () => {
   const image = { ...node("image"), type: "image", data: { image: { name: "page.png" } } };
   const noteBox = { ...node("notes", { imageNotesFor: "page.png" }), position: { x: 688, y: 0 } };
   assert.deepEqual(new Set(planNodeDragMovement([image, noteBox], [], "notes", ["notes"]).movingIds), new Set(["image", "notes"]));
+});
+
+
+test("deleting complete image-note rows closes gaps and retains adjusted note offsets", () => {
+  const rows = [0, 268, 536].flatMap((y, i) => [
+    positionedNode(`i${i}`, "image", 0, y, 300, 180, { imageNotesBatchId: "batch" }),
+    positionedNode(`n${i}`, "shape", 500, y + 12, 400, 220, { imageNotesFor: `${i}.png`, noteForNodeId: `i${i}` }),
+  ]);
+  const after = closeDeletedImageNoteGaps(rows, rows.filter(node => !["i1", "n1"].includes(node.id)));
+  assert.equal(after.find(node => node.id === "i2")!.position.y, 268);
+  assert.deepEqual(after.find(node => node.id === "n2")!.position, { x: 500, y: 280 });
+  assert.deepEqual(closeDeletedImageNoteGaps(rows, rows.filter(node => node.id !== "n1")), rows.filter(node => node.id !== "n1"), "partial deletion leaves row space");
+  assert.deepEqual(closeDeletedImageNoteGaps(rows, rows), rows);
 });

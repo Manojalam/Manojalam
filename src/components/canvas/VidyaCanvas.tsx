@@ -1,4 +1,5 @@
 "use client";
+import { imageNotePairs } from "@/lib/canvas/image-note-pairs";
 import { attachDroppedImage } from "@/lib/canvas/attach-dropped-image";
 import { TEMPLATE_CLIPBOARD_MIME, copyTemplateContent, parseTemplateClipboard, pasteTemplateContent } from "@/lib/canvas/template-clipboard";
 
@@ -809,7 +810,7 @@ function VidyaCanvasInner({
     [canEdit, setNodes]
   );
 
-  const onNodeDragStart = useCallback((_: MouseEvent | TouchEvent, draggedNode: Node) => {
+  const onNodeDragStart = useCallback((event: MouseEvent | TouchEvent, draggedNode: Node) => {
     if (useUIStore.getState().relationshipSelection) return;
     const state = useCanvasStore.getState();
     const storedDraggedNode = state.nodes.find((node) => node.id === draggedNode.id);
@@ -817,8 +818,14 @@ function VidyaCanvasInner({
     state.pushHistory();
     const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
     const byId = new Map(state.nodes.map((node) => [node.id, node]));
-    const moveOnly = useUIStore.getState().moveOnlyNodeId === draggedNode.id
-      && state.selectedNodeIds.length === 1;
+    const pairs = imageNotePairs(state.nodes);
+    const paired = pairs.some(pair => pair.image.id === draggedNode.id || pair.note.id === draggedNode.id);
+    // Persist legacy links before an individual spacing adjustment changes their alignment.
+    if (paired) state.setNodes(nodes => nodes.map(node => {
+      const pair = pairs.find(pair => pair.note.id === node.id || pair.image.id === node.id);
+      return pair ? { ...node, data: { ...node.data, imageNotesBatchId: pair.batch, ...(pair.note.id === node.id ? { noteForNodeId: pair.image.id } : {}) } } : node;
+    }));
+    const moveOnly = (event.altKey && paired) || (useUIStore.getState().moveOnlyNodeId === draggedNode.id && state.selectedNodeIds.length === 1);
     const { movingIds, matrixRootId, moveAsGroup } = planNodeDragMovement(
       state.nodes,
       state.edges,

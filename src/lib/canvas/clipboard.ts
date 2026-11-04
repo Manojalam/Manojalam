@@ -196,6 +196,7 @@ export function prepareDuplicatedNodeData(
       next.layoutVisualStyle = { ...visualStyle, rootId: duplicatedRootId };
     }
   }
+  if (typeof next.imageNotesBatchId === "string") next.imageNotesBatchId = `${next.imageNotesBatchId}:copy:${idMap.values().next().value}`;
   if (typeof next.imageNotesFor === "string" && (typeof next.noteForNodeId !== "string" || !idMap.has(next.noteForNodeId))) {
     delete next.noteForNodeId;
     delete next.imageNotesFor;
