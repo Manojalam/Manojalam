@@ -21,9 +21,12 @@ try {
  assert.ok(initial.width>box.width*.5,'legacy image is full content, not a corner thumbnail');
  assert.ok(initial.x>=box.x&&initial.y>=box.y&&initial.x+initial.width<=box.x+box.width+1&&initial.y+initial.height<=box.y+box.height+1);
  await page.click(inline+' img');await page.waitForSelector('[data-image-resize]');
+ assert.equal(await page.$('.react-flow__node.selected'),null,'image selection does not select its owner');
  await drag(initial.x+initial.width/2,initial.y+initial.height/2,-25,-20);
+ assert.deepEqual(await rect('.react-flow__node[data-id="box"]'),box,'dragging image does not move owner');
  let moved=await rect(inline);assert.ok(moved.x<initial.x-20&&moved.y<initial.y-15);
  let handle=await rect('[data-image-resize]');await drag(handle.x+8,handle.y+8,-65,-35);
+ assert.deepEqual(await rect('.react-flow__node[data-id="box"]'),box,'resizing image leaves owner unchanged');
  const resized=await rect(inline);assert.ok(resized.width<moved.width-40,'resize handle changes image size');
  assert.ok(Math.abs(resized.width/resized.height-300/160)<.02,'resize preserves image ratio');
  await key(false);await page.waitForFunction(w=>Math.abs(document.querySelector('[data-inline-image]').getBoundingClientRect().width-w)<2,{},moved.width);
@@ -31,16 +34,20 @@ try {
  await drag(box.x+12,box.y+12,40,30);
  const followed=await rect(inline);const movedBox=await rect('.react-flow__node[data-id="box"]');assert.ok(movedBox.x>box.x+20);assert.ok(Math.abs(followed.x-resized.x-(movedBox.x-box.x))<3&&Math.abs(followed.y-resized.y-(movedBox.y-box.y))<3,'image follows parent');
  await page.click('.react-flow__node[data-id="standalone"] img');
+ assert.equal(await page.$('[data-image-resize]'),null,'selecting another object clears inline image controls');
  const resize='.react-flow__node[data-id="standalone"] .react-flow__resize-control.bottom.right.handle';await page.waitForSelector(resize);
  const before=await rect('.react-flow__node[data-id="standalone"]');handle=await rect(resize);await drag(handle.x+handle.width/2,handle.y+handle.height/2,60,32);
  const after=await rect('.react-flow__node[data-id="standalone"]');assert.ok(after.width>before.width+40,'standalone image has working resize handles');
  await new Promise(r=>setTimeout(r,1500));await page.reload({waitUntil:'networkidle0'});await page.waitForSelector(inline);
  const persisted=await rect(inline);assert.ok(Math.abs(persisted.width-resized.width)<2);assert.ok(Math.abs(persisted.x-followed.x)<2);
- await page.click(inline+' img');await page.click('[aria-label="Object properties"]');await page.click('[aria-label="Lock selected objects"]');
+ await page.click(inline+' img');await page.keyboard.press('Escape');assert.equal(await page.$('[data-image-resize]'),null,'Escape clears image selection');
+ const owner=await rect('.react-flow__node[data-id="box"]');await page.mouse.click(owner.x+12,owner.y+12);await page.click('[aria-label="Object properties"]');await page.click('[aria-label="Lock selected objects"]');
  assert.equal(await page.$('[data-image-resize]'),null,'locked attachments have no edit controls');
  await page.click('[aria-label="Unlock selected objects"]');await page.click(inline+' img');
+ assert.equal(await page.$('.react-flow__node.selected'),null,'selecting image clears previously selected owner');
+ await page.waitForSelector('[data-image-resize]');
  await fs.mkdir('.tmp',{recursive:true});await page.screenshot({path:'.tmp/inline-images.png'});
- assert.deepEqual(errors,[]);console.log('PASS legacy images inside box, drag, aspect-preserving resize, undo/redo, parent movement, reload persistence, locked state and standalone resize handles.');
+ assert.deepEqual(errors,[]);console.log('PASS independent image selection, parent unchanged by image drag/resize, Escape/outside deselection, legacy images inside box, drag, aspect-preserving resize, undo/redo, parent movement, reload persistence, locked state and standalone resize handles.');
 } catch(e){await fs.mkdir('.tmp',{recursive:true});await page.screenshot({path:'.tmp/inline-image-failure.png'});throw e;}finally{await browser.close();}
 
 

@@ -17,15 +17,15 @@ export function InlineImageAttachment({ node, attachment, index, count, width, h
   const gesture = useRef<{ x: number; y: number; placement: Placement; resize: boolean; boardId?: string } | null>(null);
   const presenting = useUIStore(s => s.presentationMode);
   const readonly = useCanvasStore(s => s.board?.accessRole === "viewer" || !!node.data.locked || s.layers.some(l => l.id === node.data.layerId && l.locked));
-  const selected = useCanvasStore(s => s.selectedNodeIds.includes(node.id));
   const placement = draft ?? imageAttachmentPlacement(attachment, index, count, width, height);
   const begin = (event: PointerEvent<HTMLDivElement>, resize: boolean) => {
     event.stopPropagation();
     if (readonly || presenting || event.button !== 0) return;
     event.preventDefault();
     const state = useCanvasStore.getState();
-    state.setNodes(nodes => nodes.map(n => ({ ...n, selected: n.id === node.id })));
-    useCanvasStore.setState({ selectedNodeIds: [node.id], selectedEdgeIds: [] });
+    state.setNodes(nodes => nodes.map(n => n.selected ? { ...n, selected: false } : n));
+    state.setEdges(edges => edges.map(edge => edge.selected ? { ...edge, selected: false } : edge));
+    useCanvasStore.setState({ selectedNodeIds: [], selectedEdgeIds: [] });
     onSelect();
     latestDraft.current = null;
     gesture.current = { x: event.clientX, y: event.clientY, placement, resize, boardId: state.board?.id };
@@ -60,7 +60,7 @@ export function InlineImageAttachment({ node, attachment, index, count, width, h
     }
     setDraft(null);
   };
-  const controls = active && selected && !readonly && !presenting;
+  const controls = active && !readonly && !presenting;
   return <div data-inline-image={attachment.id} aria-label={`Image: ${attachment.name}`} className="nodrag nopan absolute pointer-events-auto" style={{ left: `${placement.x * 100}%`, top: `${placement.y * 100}%`, width: `${placement.width * 100}%`, height: `${placement.height * 100}%`, cursor: readonly || presenting ? "default" : "move", touchAction: "none" }}
     onPointerDown={e => begin(e, (e.target as HTMLElement).hasAttribute("data-image-resize"))}
     onPointerMove={move} onPointerUp={finish} onPointerCancel={() => { gesture.current = null; setDraft(null); }}

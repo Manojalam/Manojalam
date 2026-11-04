@@ -268,8 +268,7 @@ export function MediaAttachmentPreviewStrip({
   );
 }
 
-function NodeMediaStrip({ node }: { node: Node }) {
-  const [activeImage, setActiveImage] = useState<string | null>(null);
+function NodeMediaStrip({ node, activeImage, onSelectImage }: { node: Node; activeImage: string | null; onSelectImage: (id: string) => void }) {
   const data = (node.data ?? {}) as Record<string, unknown>;
   const attachments = normalizeMediaAttachments(data.mediaAttachments);
   if (!attachments.length) return null;
@@ -286,13 +285,13 @@ function NodeMediaStrip({ node }: { node: Node }) {
         top: rect.top,
         width: rect.width,
         height: rect.height,
-        zIndex: Math.max(node.selected ? 1040 : 40, (node.zIndex ?? 0) + 40),
+        zIndex: Math.max(node.selected || activeImage ? 1040 : 40, (node.zIndex ?? 0) + 40),
         ...objectRotationStyle(node.type, data),
       }}
       data-node-media-layer={node.id}
       data-export-node-id={node.id}
     >
-      {images.map((attachment, index) => <InlineImageAttachment key={attachment.id} node={node} attachment={attachment} index={index} count={images.length} active={activeImage === attachment.id} onSelect={() => setActiveImage(attachment.id)} width={rect.width} height={rect.height} />)}
+      {images.map((attachment, index) => <InlineImageAttachment key={attachment.id} node={node} attachment={attachment} index={index} count={images.length} active={activeImage === attachment.id} onSelect={() => onSelectImage(attachment.id)} width={rect.width} height={rect.height} />)}
       <div
         className={cn(
           "nodrag nopan nowheel pointer-events-auto absolute bottom-1.5 right-1.5 flex max-w-[calc(100%-0.75rem)] items-end justify-end gap-1",
@@ -308,6 +307,21 @@ function NodeMediaStrip({ node }: { node: Node }) {
 }
 
 export function NodeMediaLayer({ nodes }: { nodes: Node[] }) {
+  const [selection, setSelection] = useState<{ nodeId: string; imageId: string } | null>(null);
+  useEffect(() => {
+    const clearOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-inline-image]")) setSelection(null);
+    };
+    const clearOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelection(null);
+    };
+    document.addEventListener("pointerdown", clearOutside, true);
+    document.addEventListener("keydown", clearOnEscape, true);
+    return () => {
+      document.removeEventListener("pointerdown", clearOutside, true);
+      document.removeEventListener("keydown", clearOnEscape, true);
+    };
+  }, []);
   const mediaNodes = nodes.filter((node) =>
     !node.hidden
     && normalizeMediaAttachments(
@@ -318,7 +332,7 @@ export function NodeMediaLayer({ nodes }: { nodes: Node[] }) {
 
   return (
     <ViewportPortal>
-      {mediaNodes.map((node) => <NodeMediaStrip key={node.id} node={node} />)}
+      {mediaNodes.map((node) => <NodeMediaStrip key={node.id} node={node} activeImage={selection?.nodeId === node.id ? selection.imageId : null} onSelectImage={imageId => setSelection({ nodeId: node.id, imageId })} />)}
     </ViewportPortal>
   );
 }
