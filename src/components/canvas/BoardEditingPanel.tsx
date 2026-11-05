@@ -12,6 +12,7 @@ import { TemplateLauncher } from "./TemplateLauncher";
 import { SaveBoxTemplateButton } from "./SaveBoxTemplateButton";
 import { LayoutPanel } from "./LayoutPanel";
 import { CanvasLayersPanel } from "./CanvasLayersPanel";
+import { MatrixFoldPanel } from "./MatrixFoldPanel";
 import { ChildOrderControls } from "./ChildOrderControls";
 import { normalizeTable } from "@/lib/canvas/table";
 import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
@@ -129,6 +130,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       {cell ? <TableCellFillPanel /> : card ? <FillCardDialog embedded key={card.id} nodeId={card.id} onClose={() => { ui.setFillingCardNodeId(null); useUIStore.setState({ propertiesTab: "style" }); }} /> : null}
     </div>
     <div role="tabpanel" id={`properties-${activeTab === "template" ? "style" : activeTab}`} aria-label={specific && activeTab === "specific" ? specific : activeTab} className={editing && activeTab !== "template" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
+      {activeTab === "specific" && specific === "Matrix" && <MatrixFoldPanel />}
       {(activeTab === "specific" || (!specific && activeTab === "layout")) && <ChildOrderControls />}
       {activeTab === "layout" && candidate && <ObjectPosition nodeId={candidate.id} />}
       <div>
