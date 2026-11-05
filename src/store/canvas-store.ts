@@ -1,7 +1,7 @@
 "use client";
 import { useUIStore } from "./ui-store";
 import { attachmentImageNode } from "@/lib/canvas/attachment-image-node";
-import { closeDeletedImageNoteGaps } from "@/lib/canvas/image-note-pairs";
+import { closeDeletedImageNoteGaps, reflowImageNoteRows, imageNotePairs } from "@/lib/canvas/image-note-pairs";
 
 import { applyContentTemplate, supportsContentTemplate } from "@/lib/canvas/apply-content-template";
 import { normalizeTable, tableTemplateDesign, tablePlainText } from "@/lib/canvas/table";
@@ -336,7 +336,7 @@ interface CanvasState {
   createChildNode: (parentId: string) => void;
   createChildNodes: (parentId: string, count: number, keepParentSelected?: boolean) => void;
   createSiblingNode: (nodeId: string) => string | null;
-  createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }, attachmentId?: string) => string | null;
+  createNodeNote: (nodeId: string, nearPoint?: { x: number; y: number }, attachmentId?: string, newColumn?: boolean) => string | null;
   moveSiblingNode: (nodeId: string, direction: -1 | 1) => void;
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
   resetMatrixLayout: (rootId: string) => boolean;
@@ -1718,7 +1718,7 @@ function contentFitSize(
     borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : 2,
     cornerRadius: typeof data.borderRadius === "number"
       ? data.borderRadius
-      : effectiveCornerRadius(data.cornerRadiusPercent, { width: currentWidth, height: currentHeight }, 20),
+      : effectiveCornerRadius(data.cornerRadiusPercent, { width: currentWidth, height: currentHeight }, node.type === "shape" ? shapeType === "rectangle" ? 0 : 40 : 20),
     textPadding: node.type === "shape" && typeof data.textPadding === "number"
       ? data.textPadding
       : undefined,
@@ -2357,7 +2357,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setNodes: (nodesOrFn) =>
     set((state) => {
       const requestedNodes = typeof nodesOrFn === "function" ? nodesOrFn(state.nodes) : nodesOrFn;
-      const nodes = preserveAttachedExternalNoteOffsets(state.nodes, requestedNodes);
+      const nodes = reflowImageNoteRows(state.nodes, preserveAttachedExternalNoteOffsets(state.nodes, requestedNodes), new Set(state.layers.filter(layer => layer.locked).map(layer => layer.id)));
       const relationshipState = normalizeRelationshipState(
         nodes,
         state.relationships,
@@ -3605,7 +3605,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
   },
 
-  createNodeNote: (nodeId, nearPoint, attachmentId) => {
+  createNodeNote: (nodeId, nearPoint, attachmentId, newColumn = false) => {
     const { nodes, edges, settings } = get();
     const source = nodes.find((node) => node.id === nodeId);
     if (!source || ["junction", "frame", "sunburst", "relationshipDiagram"].includes(source.type ?? "")) {
@@ -3616,11 +3616,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!imageSource) return null;
     const isImage = imageSource.type === "image";
     const existing = isImage ? nodes.find(node => node.data.noteForNodeId === nodeId && (attachmentId ? node.data.noteForAttachmentId === attachmentId : typeof node.data.imageNotesFor === "string")) : undefined;
-    if (existing) {
+    if (existing && !newColumn) {
       set({ nodes: nodes.map(node => ({ ...node, selected: node.id === existing.id })), selectedNodeIds: [existing.id], selectedEdgeIds: [] });
       focusImageNote(existing, nodeId, get().viewport);
       return existing.id;
     }
+    const rowBatch = imageNotePairs(nodes).find(pair => pair.image.id === nodeId)?.batch ?? source.data.imageNotesBatchId ?? source.id;
     get().pushHistory();
     const noteId = generateId();
     const note = createExternalNoteNode(
@@ -3635,14 +3636,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       note.data = { ...note.data, text: "", textColor: source.data.textColor,
         ...(attachmentId ? { noteForAttachmentId: attachmentId } : {
           imageNotesFor: String((source.data.image as { name?: string })?.name ?? "Image"),
-          imageNotesBatchId: source.data.imageNotesBatchId ?? source.id,
+          imageNotesBatchId: rowBatch,
         }),
       };
     }
+    if (newColumn && existing) {
+      const siblings = nodes.filter(node => node.data.noteForNodeId === nodeId && (attachmentId ? node.data.noteForAttachmentId === attachmentId : typeof node.data.imageNotesFor === "string"));
+      const reference = siblings.reduce((last,node) => getNodeRect(node).right > getNodeRect(last).right ? node : last,existing);
+      const rect = getNodeRect(reference);
+      note.type = reference.type;
+      note.position = { x: Math.max(getNodeRect(imageSource).right,...siblings.map(node => getNodeRect(node).right)) + 32, y: reference.position.y };
+      note.style = { width: rect.width, height: Math.max(220,rect.height) };
+      for (const key of ["shapeType","fontFamily","fontSize","textColor","fillColor","fillOpacity","borderColor","borderWidth","borderRadius","textAlign","textVerticalAlign"]) {
+        if (reference.data[key] !== undefined) note.data[key] = reference.data[key];
+        else delete note.data[key];
+      }
+      note.data.autoSizeMode = "height-only";
+      note.data.userSize = { width: rect.width, height: Math.max(220,rect.height) };
+    }
+    const nextNodes = [...nodes.map((node) => ({ ...node, selected: false,
+      ...(node.id === nodeId && isImage && !attachmentId ? { data: { ...node.data, imageNotesBatchId: rowBatch } } : {}),
+    })), note];
     set({
-      nodes: [...nodes.map((node) => ({ ...node, selected: false,
-        ...(node.id === nodeId && isImage && !attachmentId ? { data: { ...node.data, imageNotesBatchId: source.data.imageNotesBatchId ?? source.id } } : {}),
-      })), note],
+      nodes: reflowImageNoteRows(nodes,nextNodes,new Set(get().layers.filter(layer => layer.locked).map(layer => layer.id))),
       edges: edges.map((edge) => ({ ...edge, selected: false })),
       selectedNodeIds: [noteId],
       selectedEdgeIds: [],
@@ -4376,7 +4392,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       height = side;
     }
     set((state) => ({
-      nodes: state.nodes.map((candidate) => candidate.id === nodeId
+      nodes: reflowImageNoteRows(state.nodes, state.nodes.map((candidate) => candidate.id === nodeId
         ? resetNodeDimensions({
             ...candidate,
             data: {
@@ -4385,7 +4401,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
               userSize: { width, height },
             },
           }, width, height)
-        : candidate),
+        : candidate), new Set(state.layers.filter(layer => layer.locked).map(layer => layer.id))),
       saveStatus: "unsaved",
     }));
     requestNodeInternalsRefresh([nodeId]);
@@ -4415,7 +4431,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       fitted = fitNodeAfterContentChange(fitted, content, "fit", "smart");
     }
     set((state) => ({
-      nodes: state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate),
+      nodes: reflowImageNoteRows(state.nodes, state.nodes.map((candidate) => candidate.id === nodeId ? fitted : candidate), new Set(state.layers.filter(layer => layer.locked).map(layer => layer.id))),
       saveStatus: "unsaved",
     }));
     requestNodeInternalsRefresh([nodeId]);
@@ -4535,7 +4551,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (!geometryChanged && !intrinsicChanged) return {};
 
       return {
-        nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),
+        nodes: reflowImageNoteRows(state.nodes, state.nodes.map((n) => (n.id === nodeId ? fitted : n)), new Set(state.layers.filter(layer => layer.locked).map(layer => layer.id))),
         saveStatus: "unsaved" as SaveStatus,
       };
     });
@@ -4600,7 +4616,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }, width, height);
 
       return {
-        nodes: state.nodes.map((n) => (n.id === nodeId ? fitted : n)),
+        nodes: reflowImageNoteRows(state.nodes, state.nodes.map((n) => (n.id === nodeId ? fitted : n)), new Set(state.layers.filter(layer => layer.locked).map(layer => layer.id))),
         saveStatus: "unsaved" as SaveStatus,
       };
     });

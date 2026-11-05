@@ -775,3 +775,13 @@ test("rounded labels keep a straight edge inside large corners", () => {
     }
   }
 });
+
+
+test("tall rounded notes fit inside the same corner inset used by rendering", () => {
+  const content = { width: 165, height: 968, lineCount: 32, lineHeight: 30.25 };
+  const size = computeAutoSize({ mode: "height-only", currentSize: {width:400,height:400}, content,
+    nodeType:"shape",shapeType:"rounded",cornerRadius:80,borderWidth:2,reason:"input" });
+  const interior = shapeTextFlowLayout("rounded",size,{cornerRadius:80});
+  assert.equal(size.width,400);
+  assert.ok(interior.box.height >= content.height);
+});

@@ -687,7 +687,7 @@ function shapeSafeSize(shapeType: string, box: Size, cornerRadius = 0): Size {
     case "capsule":
       return { width: Math.max(box.width + box.height, box.height * 2), height: box.height };
     case "rounded": {
-      const inset = Math.min(12, Math.max(0, cornerRadius) * 0.22);
+      const inset = Math.max(0, cornerRadius) * (1 - Math.SQRT1_2);
       return { width: box.width + inset * 2, height: box.height + inset * 2 };
     }
     default:

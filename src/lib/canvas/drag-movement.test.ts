@@ -1,4 +1,4 @@
-import { closeDeletedImageNoteGaps, imageNoteInsertion } from "./image-note-pairs";
+import { closeDeletedImageNoteGaps, imageNoteInsertion, reflowImageNoteRows } from "./image-note-pairs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
@@ -179,4 +179,44 @@ test("image insertion resolves first, middle and last slots without targeting no
   assert.equal(imageNoteInsertion(rows, { x: 550, y: 250 }), null, "notes are not insertion columns");
   assert.equal(imageNoteInsertion(rows, { x: 100, y: 1100 }), null);
   assert.equal(imageNoteInsertion(rows.map(node => ({ ...node, hidden: true })), { x: 100, y: 250 }), null);
+});
+
+
+test("image rows grow for tall notes, close on shrink, and retain every column's offset", () => {
+  const rows = [0,268,536].flatMap((y,i) => [
+    positionedNode(`i${i}`, "image", 0,y,300,180,{ imageNotesBatchId: "batch" }),
+    positionedNode(`n${i}`, "shape", 350,y,400,220,{ imageNotesFor: `${i}.png`,noteForNodeId:`i${i}` }),
+    positionedNode(`extra${i}`, "shape", 782,y+8,250,200,{ imageNotesFor: `${i}.png`,noteForNodeId:`i${i}` }),
+  ]);
+  const tall = rows.map(node => node.id === "n0" ? {...node,style:{width:400,height:500}} : node);
+  const flowed = reflowImageNoteRows(rows,tall);
+  assert.equal(flowed.find(node=>node.id==="i1")!.position.y,548);
+  assert.equal(flowed.find(node=>node.id==="extra1")!.position.y,556);
+  assert.equal(flowed.find(node=>node.id==="i2")!.position.y,816);
+  assert.deepEqual(flowed[0],rows[0],"image itself is not resized");
+  const shrunk = flowed.map(node => node.id==="n0" ? rows[1] : node);
+  assert.deepEqual(reflowImageNoteRows(flowed,shrunk),rows);
+  const wider = rows.map(node => node.id==="n0" ? {...node,style:{width:600,height:220}} : node);
+  assert.equal(reflowImageNoteRows(rows,wider).find(node=>node.id==="extra0")!.position.x,982);
+  assert.deepEqual(new Set(planNodeDragMovement(rows,[],"extra0",["extra0"]).movingIds),new Set(["i0","n0","extra0"]));
+  const partial = rows.filter(node => node.id!=="n0");
+  assert.deepEqual(closeDeletedImageNoteGaps(rows,partial),partial);
+  const removed = closeDeletedImageNoteGaps(rows,rows.filter(node=>!["i0","n0","extra0"].includes(node.id)));
+  assert.equal(removed.find(node=>node.id==="i1")!.position.y,0);
+  const inserted = imageNoteInsertion(flowed,{x:100,y:520})!;
+  assert.equal(inserted.reference.image.id,"i1");
+  assert.equal(inserted.y,548);
+  assert.equal(inserted.following[0].notes.length,2);
+});
+
+test("row resizing respects locked rows and leaves ordinary movement alone",()=>{
+  const rows = [0,268,536].flatMap((y,i)=>[
+    positionedNode(`i${i}`,"image",0,y,300,180,{imageNotesBatchId:"batch",...(i===1?{layerId:"locked"}:{})}),
+    positionedNode(`n${i}`,"shape",350,y,400,220,{imageNotesFor:`${i}.png`,noteForNodeId:`i${i}`}),
+  ]);
+  const changed=rows.map(node=>node.id==="n0"?{...node,style:{width:400,height:500}}:node);
+  assert.equal(reflowImageNoteRows(rows,changed,new Set(["locked"]))[2].position.y,268);
+  assert.equal(reflowImageNoteRows(rows,changed,new Set(["locked"]))[4].position.y,536);
+  const moved=rows.map(node=>node.id==="n0"?{...node,position:{x:700,y:22}}:node);
+  assert.deepEqual(reflowImageNoteRows(rows,moved),moved);
 });
