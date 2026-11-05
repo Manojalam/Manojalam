@@ -41,7 +41,7 @@ export function useBoardRealtime(boardId: string) {
             table: "boards",
             filter: `id=eq.${boardId}`,
           },
-          (payload) => {
+          async (payload) => {
             if (!active) return;
             const row = payload.new as RealtimeBoardRow;
             if (!row.id || row.id !== boardId) return;
@@ -69,7 +69,11 @@ export function useBoardRealtime(boardId: string) {
               return;
             }
 
-            const nextBoard = rowToBoard(row, state.board.accessRole);
+            let nextBoard;
+            try { nextBoard = await rowToBoard(row, state.board.accessRole); }
+            catch { toast.error("Could not load the collaborator’s images. Your current board was kept."); return; }
+            const latest = useCanvasStore.getState();
+            if (!active || latest.board?.id !== boardId || latest.saveStatus !== "saved" || lastRemoteUpdateRef.current !== row.updated_at) return;
             state.setBoard(nextBoard);
             useCanvasStore.getState().pushHistory();
             toast.info("This board was updated by a collaborator.");

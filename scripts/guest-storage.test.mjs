@@ -15,7 +15,24 @@ let uploadError = null;
 let afterUpload = null;
 let failRead = false;
 const cloud = new Map();
+const assets = new Map();
+let assetUploads = 0;
+let failAssetAfter = Infinity;
+globalThis.FileReader = class {
+  readAsDataURL(blob) { blob.arrayBuffer().then(bytes => { this.result = `data:${blob.type};base64,${Buffer.from(bytes).toString("base64")}`; this.onload(); }).catch(() => this.onerror()); }
+};
 const client = {
+  storage: { from(bucket) {
+    assert.equal(bucket, "board-images");
+    return {
+      async upload(path, blob) {
+        if (assetUploads >= failAssetAfter) return { error: { message: "Upload unavailable", statusCode: "503" } };
+        if (assets.has(path)) return { error: { message: "The resource already exists", statusCode: "409" } };
+        assets.set(path, blob); assetUploads++; return { error: null };
+      },
+      async download(path) { return assets.has(path) ? { data: assets.get(path), error: null } : { data: null, error: new Error("Image not found") }; },
+    };
+  } },
   auth: {
     getSession: async () => ({ data: { session: user ? { user } : null }, error: authError }),
     getUser: async () => ({ data: { user }, error: authError }),
@@ -75,7 +92,7 @@ const boards = load(resolve("src/lib/storage/board-store.ts").replaceAll("\\", "
 const local = load(resolve("src/lib/storage/local-boards.ts").replaceAll("\\", "/"));
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
-  user = null; configured = true; authError = null; uploadError = null; afterUpload = null; failRead = false; cloud.clear();
+  user = null; configured = true; authError = null; uploadError = null; afterUpload = null; failRead = false; cloud.clear(); assets.clear(); assetUploads = 0; failAssetAfter = Infinity;
 });
 
 test("guest create, rename, save, reopen, export, import, duplicate and delete", async () => {
@@ -196,4 +213,86 @@ test("guests cannot load cloud boards or upload to an account", async () => {
 test("unavailable browser storage reports an actionable error", async () => {
   globalThis.indexedDB = undefined;
   await assert.rejects(boards.createBoard(), /Browser storage is unavailable/);
+});
+
+const recovery = load(resolve("src/lib/storage/board-backup.ts").replaceAll("\\", "/"));
+function imageContent(board, count, bytes = 1024) {
+  return { ...board.content, nodes: Array.from({ length: count }, (_, i) => ({
+    id: `image-${i}`, type: "image", position: { x: 0, y: i * 400 },
+    data: { image: { id: `asset-${i}`, kind: "image", name: `Slide ${i}.png`, mimeType: "image/png",
+      dataUrl: `data:image/png;base64,${Buffer.concat([Buffer.from(String(i)), Buffer.alloc(bytes, i % 256)]).toString("base64")}`,
+      size: bytes, createdAt: new Date().toISOString(), width: 640, height: 360 } },
+  })) };
+}
+test("140 large images: small cloud board, one upload per asset, lossless reload and portable export", async () => {
+  user = { id: "large-images-user" };
+  const board = await boards.createBoard(undefined, "140 slides");
+  const content = imageContent(board, 140, 256 * 1024);
+  const key = recovery.backupKey(user.id, board.id);
+  const backup = await recovery.writeBoardBackup(key, { ...board, content });
+  await boards.updateBoard(board.id, { content });
+  assert.equal(assetUploads, 140);
+  assert.ok(JSON.stringify(content).length > 45_000_000);
+  const cloudBytes = JSON.stringify(cloud.get(board.id).content).length;
+  assert.ok(cloudBytes < 100_000, `Cloud payload ${cloudBytes}`);
+  await boards.updateBoard(board.id, { content });
+  assert.equal(assetUploads, 140, "unchanged images are not uploaded again");
+  const reopened = await boards.getBoard(board.id);
+  assert.equal(reopened.content.nodes.length, 140);
+  for (let i = 0; i < 140; i++) assert.equal(reopened.content.nodes[i].data.image.dataUrl, content.nodes[i].data.image.dataUrl);
+  assert.ok((await boards.exportBoard(board.id)).includes("data:image/png;base64,"));
+  assert.equal((await recovery.readBoardBackup(key)).board.content.nodes.length, 140);
+  await recovery.acknowledgeBoardBackup(key, backup.revision);
+  assert.equal((await recovery.readBoardBackup(key)).pending, false);
+});
+test("interrupted image upload retains old cloud board and local draft; retry resumes safely", async () => {
+  user = { id: "retry-user" };
+  const board = await boards.createBoard();
+  const content = imageContent(board, 10);
+  const key = recovery.backupKey(user.id, board.id);
+  await recovery.writeBoardBackup(key, { ...board, content });
+  failAssetAfter = 4;
+  await assert.rejects(boards.updateBoard(board.id, { content }), { message: "Upload unavailable" });
+  assert.equal(cloud.get(board.id).content.nodes.length, 1);
+  assert.equal((await recovery.readBoardBackup(key)).pending, true);
+  assert.equal((await recovery.readBoardBackup(key)).board.content.nodes.length, 10);
+  failAssetAfter = Infinity;
+  await boards.updateBoard(board.id, { content });
+  assert.equal(assetUploads, 10);
+  assert.equal((await boards.getBoard(board.id)).content.nodes.length, 10);
+});
+test("old save acknowledgements cannot clear new edits; backups are account scoped", async () => {
+  const board = await boards.createBoard();
+  const key = recovery.backupKey("one", board.id);
+  const first = await recovery.writeBoardBackup(key, board);
+  await recovery.writeBoardBackup(key, { ...board, title: "New edits" });
+  await recovery.acknowledgeBoardBackup(key, first.revision);
+  assert.equal((await recovery.readBoardBackup(key)).pending, true);
+  assert.equal((await recovery.readBoardBackup(key)).board.title, "New edits");
+  assert.equal(await recovery.readBoardBackup(recovery.backupKey("two", board.id)), null);
+});
+test("local backup transaction failure is reported, not acknowledged", async () => {
+  const board = await boards.createBoard();
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function () { throw new DOMException("Quota exceeded", "QuotaExceededError"); };
+  try { await assert.rejects(recovery.writeBoardBackup("quota", board), /Quota exceeded/); }
+  finally { IDBObjectStore.prototype.put = put; }
+  assert.equal(await recovery.readBoardBackup("quota"), null);
+  assert.equal(recovery.saveErrorMessage({ message: "Request too large", code: "413", hint: "Retry" }), "Request too large · Retry · (413)");
+});
+
+test("cloud imports and guest uploads also separate images; attachments survive cross-board copy", async () => {
+  const guest = await boards.createBoard();
+  const content = imageContent(guest, 3);
+  content.nodes.push({ id: "box", type: "shape", position: { x: 700, y: 0 }, data: { shapeType: "rounded", text: "Attached", mediaAttachments: [content.nodes[0].data.image] } });
+  await boards.updateBoard(guest.id, { content });
+  user = { id: "import-user" };
+  const moved = await boards.moveGuestBoardToAccount(guest.id);
+  assert.equal(assetUploads, 3, "duplicate attachment shares a board asset");
+  assert.ok(!JSON.stringify(cloud.get(moved.id).content).includes("data:image/"));
+  assert.ok(moved.content.nodes[3].data.mediaAttachments[0].dataUrl.startsWith("data:image/"));
+  const imported = await boards.createBoardFromContent("Imported", moved.content);
+  assert.ok(!JSON.stringify(cloud.get(imported.id).content).includes("data:image/"));
+  assert.equal((await boards.getBoard(imported.id)).content.nodes[0].data.image.dataUrl, content.nodes[0].data.image.dataUrl);
+  assert.equal(assetUploads, 6, "copied board has its own authorized assets");
 });
