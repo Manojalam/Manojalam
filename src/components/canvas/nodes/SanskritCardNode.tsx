@@ -17,9 +17,8 @@ import {
   resolveBorderColor,
   resolveBorderStyle,
   resolveBorderWidth,
-  resolveFillColor,
+  resolveSurfaceStyle,
   resolveLayoutVisualStyle,
-  themeAwareNodeFillColor,
 } from "@/lib/style-utils";
 import { useNodeManualResize } from "./useNodeManualResize";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
@@ -36,13 +35,13 @@ function SanskritCardNodeComponent({ id, data, selected }: NodeProps) {
   const hierarchyNumber = typeof dd.hierarchyNumber === "string" ? dd.hierarchyNumber : undefined;
   const layoutStyle = resolveLayoutVisualStyle(dd);
   const accentColor = resolveBorderColor(dd) ?? "#d97706";
-  const generatedStyle = layoutStyle ? {
-    background: themeAwareNodeFillColor(resolveFillColor(dd)),
+  const generatedStyle = {
+    ...resolveSurfaceStyle(dd),
     borderColor: resolveBorderColor(dd),
     borderStyle: resolveBorderStyle(dd),
-    borderWidth: resolveBorderWidth(dd),
+    borderWidth: layoutStyle || dd.borderWidth !== undefined ? resolveBorderWidth(dd) : undefined,
     color: getTextStyle(dd).color,
-  } : {};
+  };
   const authoredTextStyle = getAuthoredTextStyle(dd);
   const resizeControls = useNodeManualResize(id);
 

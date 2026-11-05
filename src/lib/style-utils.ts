@@ -1,3 +1,4 @@
+import { surfaceEffectStyle } from "./canvas/surface-effects";
 import type { CSSProperties } from "react";
 import type { BorderLayer, LayoutVisualStyle } from "./types";
 import {
@@ -613,4 +614,15 @@ export function computeBorderLayerBoxes(
     });
   }
   return out;
+}
+
+/** Compose paint once: authored/automatic fill is the base, effects sit above it.
+ * An explicit fill also suppresses any decorative CSS preset gradient.
+ */
+export function resolveSurfaceStyle(d: Record<string, unknown>, fallback?: string): CSSProperties {
+  const fill = resolveFillColor(d) ?? fallback;
+  return {
+    ...(fill !== undefined ? { backgroundColor: fill, backgroundImage: "none" } : {}),
+    ...surfaceEffectStyle(resolveSurfaceEffectData(d), resolveBorderColor(d), resolveLayoutFillGradient(d)),
+  };
 }

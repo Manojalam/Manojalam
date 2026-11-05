@@ -1,4 +1,5 @@
 "use client";
+import { resolveSurfaceStyle } from "@/lib/style-utils";
 import { objectTextDefaults, OBJECT_TEXT_DEFAULTS_CLASS } from "@/lib/canvas/object-text-style";
 
 import { memo, useEffectEvent, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
@@ -14,7 +15,6 @@ import { textEntryPoint } from "@/lib/canvas/text-entry";
 import { RichTextEditor } from "../RichTextEditor";
 import { cardSectionsFromText, renderCardSections } from "@/lib/canvas/card-templates";
 import { convertTableLayout, type TableConversion } from "@/lib/canvas/table-transform";
-import { resolveFillColor } from "@/lib/style-utils";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
@@ -344,7 +344,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     {selected && editable && <NodeResizeControl minWidth={minimumWidth} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResizeEnd={(event, params) => { useCanvasStore.getState().updateNodeData(id, { tableMinHeight: params.height }); resizeControls.onResizeEnd(event, params); }} />}
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
-    <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : undefined, borderStyle: (data.borderStyle as React.CSSProperties["borderStyle"]) || "solid", backgroundColor: resolveFillColor(data) }}>
+    <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : undefined, borderStyle: (data.borderStyle as React.CSSProperties["borderStyle"]) || "solid", ...resolveSurfaceStyle(data) }}>
       <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table" onPasteCapture={event => {
         const text = event.clipboardData.getData("text/plain");
         const cell = (event.target as HTMLElement).closest<HTMLElement>("[data-cell-row]");

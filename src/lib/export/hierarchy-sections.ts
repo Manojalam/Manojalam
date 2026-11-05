@@ -224,7 +224,7 @@ function rootHeaderStyle(root: Node, bounds: ExportBounds): ExportHeaderOverlay 
     : Math.max(0, finiteDimension(data.borderWidth) ?? 0);
   const effectData = resolveSurfaceEffectData(data);
   const effectStyle = surfaceEffectStyle(effectData, borderColor, resolveLayoutFillGradient(data));
-  const exportEffectStyle = surfaceEffectExportStyle(effectData, borderColor);
+  const exportEffectStyle = surfaceEffectExportStyle(effectData, borderColor, resolveLayoutFillGradient(data));
   const surfaceEffectShadowLayers = surfaceEffectExportShadowLayers(
     effectData,
     borderColor

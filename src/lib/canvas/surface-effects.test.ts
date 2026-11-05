@@ -227,3 +227,14 @@ for (const preset of ["flat", "soft", "raised", "bevel", "glass", "metallic", "g
     assert.equal(composed.backdropFilter, effect.backdropFilter);
   });
 }
+
+test("export paint retains the same gradient and blend layers as live paint", () => {
+  const gradient = "linear-gradient(100deg, #ffbfff, #bfbfff)";
+  for (const preset of ["soft", "raised", "bevel", "glass", "metallic", "glow"] as const) {
+    const data = surfaceEffectPresetPatch(preset);
+    const live = surfaceEffectStyle(data, "#123456", gradient);
+    const exported = surfaceEffectExportStyle(data, "#123456", gradient);
+    assert.equal(exported.backgroundImage, live.backgroundImage);
+    assert.equal(exported.backgroundBlendMode, live.backgroundBlendMode);
+  }
+});
