@@ -1,5 +1,5 @@
 "use client";
-import { imageNotePairs } from "@/lib/canvas/image-note-pairs";
+import { imageNotePairs, reflowImageNoteRows } from "@/lib/canvas/image-note-pairs";
 import { attachDroppedImage } from "@/lib/canvas/attach-dropped-image";
 import { TEMPLATE_CLIPBOARD_MIME, copyTemplateContent, parseTemplateClipboard, pasteTemplateContent } from "@/lib/canvas/template-clipboard";
 
@@ -771,10 +771,10 @@ function VidyaCanvasInner({
       } else {
         // Dimension / position / select — update nodes WITHOUT touching saveStatus
         useCanvasStore.setState((state) => ({
-          nodes: preserveAttachedExternalNoteOffsets(
+          nodes: reflowImageNoteRows(state.nodes, preserveAttachedExternalNoteOffsets(
             state.nodes,
             applySynchronizedNodeChanges(acceptedChanges, state.nodes)
-          ),
+          ), new Set(state.layers.filter(layer => layer.locked).map(layer => layer.id))),
         }));
       }
 

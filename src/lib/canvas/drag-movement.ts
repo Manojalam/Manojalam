@@ -79,7 +79,11 @@ export function planNodeDragMovement(
   if (!moveOnlyDraggedNode || movesWholeMatrix) {
     // Image-note pairs share movement, not selection or editing state.
     const paired = new Set(movingIds);
-    for (const { image: owner, note } of imageNotePairs(nodes)) {
+    const imagePairs = imageNotePairs(nodes);
+    for (const { image: owner, note } of imagePairs) {
+      if (paired.has(note.id) && !isLocked(owner) && !isLocked(note)) paired.add(owner.id);
+    }
+    for (const { image: owner, note } of imagePairs) {
       if (isLocked(note) || isLocked(owner)) continue;
       if (paired.has(note.id) || paired.has(owner.id)) { paired.add(note.id); paired.add(owner.id); }
     }

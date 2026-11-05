@@ -85,12 +85,12 @@ export async function addBoardImages(files: File[], targetNodeId?: string, layou
         return nodes;
       });
       if (insertion) {
-        const moving = new Set(insertion.following.flatMap(pair => [pair.image.id, pair.note.id]));
-        const shift = insertion.following.length ? y - Math.min(insertion.following[0].image.position.y, insertion.following[0].note.position.y) : 0;
+        const moving = new Set(insertion.following.flatMap(pair => [pair.image.id, ...pair.notes.map(note => note.id)]));
+        const shift = insertion.following.length ? y - Math.min(insertion.following[0].image.position.y, ...insertion.following[0].notes.map(note => note.position.y)) : 0;
         shifted = state.nodes.map(node => {
-          const pair = insertion.pairs.find(pair => pair.image.id === node.id || pair.note.id === node.id);
+          const pair = insertion.pairs.find(pair => pair.image.id === node.id || pair.notes.some(note => note.id === node.id));
           return pair ? { ...node, position: moving.has(node.id) ? { ...node.position, y: node.position.y + shift } : node.position,
-            data: { ...node.data, imageNotesBatchId, ...(pair.note.id === node.id ? { noteForNodeId: pair.image.id } : {}) } } : node;
+            data: { ...node.data, imageNotesBatchId, ...(pair.notes.some(note => note.id === node.id) ? { noteForNodeId: pair.image.id } : {}) } } : node;
         });
       }
     } else {
