@@ -402,8 +402,8 @@ export function layoutBranchAnchorColor(
   const [defaultStartHue, requestedEndHue] = scheme.matrixHueRange;
   const customAnchor = parseColor(startColor);
   const startHue = customAnchor?.h ?? defaultStartHue;
-  const startSaturation = customAnchor ? Math.min(customAnchor.s, 58) : scheme.saturation;
-  const lightness = clamp(targetLightness, 26, 78);
+  const startSaturation = customAnchor?.s ?? scheme.saturation;
+  const lightness = customAnchor?.l ?? clamp(targetLightness, 26, 78);
   const progress = layoutColorPatternProgress(pattern, index, count);
 
   if (pattern === "duotone" || pattern === "alternating" || pattern === "sectioned") {
@@ -412,17 +412,19 @@ export function layoutBranchAnchorColor(
       s: startSaturation,
       l: lightness,
     };
-    const endAnchor = layoutSecondaryAnchor(scheme, endColor);
+    const endAnchor = parseColor(endColor) ?? {
+      ...layoutSecondaryAnchor(scheme), l: clamp(targetLightness, 26, 78),
+    };
+    if (progress === 0 && customAnchor) return startColor!;
+    if (progress === 1 && parseColor(endColor)) return endColor!;
     return hslString({
       h: startAnchor.h + shortestHueDelta(startAnchor.h, endAnchor.h) * progress,
-      s: clamp(
-        startAnchor.s + (Math.min(endAnchor.s, 58) - startAnchor.s) * progress,
-        0,
-        58
-      ),
-      l: lightness,
+      s: startAnchor.s + (endAnchor.s - startAnchor.s) * progress,
+      l: startAnchor.l + (endAnchor.l - startAnchor.l) * progress,
     });
   }
+
+  if (index === 0 && customAnchor) return startColor!;
 
   if (pattern === "curated") {
     const paletteStartHue = scheme.hues[0] ?? defaultStartHue;
@@ -549,14 +551,14 @@ export function radialSectorColors(
     l: clamp(anchor.l + depthOffset + siblingLightness, 26, preferLighterDepth ? 100 : 78),
   };
   const override = parseColor(fillOverride);
-  const start = override ?? derived;
+  const start = override ?? (depth <= 1 ? anchor : derived);
   const text = readableTextColor(start);
   const gradientDirection = text === "#ffffff" ? -1 : 1;
   const end: HslColor = {
     ...start,
     l: clamp(start.l + gradientDirection * (depth <= 1 ? 3 : 4), 20, 90),
   };
-  const fill = fillOverride && !override ? fillOverride : hslString(start);
+  const fill = fillOverride || (depth <= 1 && parseColor(branchBaseColor) ? branchBaseColor! : hslString(start));
   const fillEnd = fillOverride && !override ? fillOverride : hslString(end);
   const borderLightness = clamp(Math.min(start.l, end.l) - 18, 18, 68);
   return {
