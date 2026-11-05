@@ -23,6 +23,7 @@ import {
   layoutColorPattern,
   layoutColorPatternProgress,
   layoutRootPaletteGradient,
+  layoutRootPaletteColors,
   layoutTextTreatment,
   radialColorScheme,
   radialSectorColors,
@@ -275,7 +276,10 @@ export function buildLayoutVisualStyles(
           depth
         ),
         textColor: automaticLayoutTextColor(
-          manualColors?.text ?? scheme.rootText,
+          manualColors?.text ?? (mode === "matrix"
+            ? uniformLayoutTextColor(layoutRootPaletteColors(scheme, branchCount,
+                layoutStartColor, colorPattern, layoutEndColor, branchLightness))
+            : scheme.rootText),
           layoutStartColor ?? scheme.rootBorder,
           textTreatment,
           depth
