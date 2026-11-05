@@ -1130,6 +1130,11 @@ function LayoutBorderControls({
 
 
 export function fieldPatch(data: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+  if (key === "fillColor" && value === undefined) {
+    return data.layoutVisualStyle
+      ? { fillColor: undefined, fillOpacity: undefined, layoutAutoFill: undefined }
+      : { fillColor: "transparent" };
+  }
   let patch: Record<string, unknown>;
   if (isParagraphField(key)) patch = paragraphFormatPatch(data, key, value);
   else if (key === "fontSize") patch = normalizeWholeBoxFontSize(data, Number(value));
@@ -3519,7 +3524,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               value={(commonFillColorValue as string) ?? ""}
               mixed={fillColorMixed}
               onChange={(v) => setSelectedField("fillColor", v || undefined)}
-              onClear={() => setSelectedField("fillColor", "transparent")}
+              onClear={() => setSelectedField("fillColor", undefined)}
             />
             {!isRadialMultiSelection && (
               <Button
@@ -6882,7 +6887,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               <ColorSwatchPicker
                 value={(d.radialFillColor as string) ?? ""}
                 onChange={(value) => setField("radialFillColor", value || undefined)}
-                onClear={() => setField("radialFillColor", "transparent")}
+                onClear={() => setField("radialFillColor", undefined)}
               />
               {selectedRadialDepth === 1 && (
                 <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
@@ -7206,7 +7211,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             <ColorSwatchPicker
               value={resolveFillSourceColor(d) ?? ""}
               onChange={(v) => setField("fillColor", v || undefined)}
-              onClear={() => setField("fillColor", "transparent")}
+              onClear={() => setField("fillColor", undefined)}
             />
             <div className={cn(
               "grid gap-1.5",

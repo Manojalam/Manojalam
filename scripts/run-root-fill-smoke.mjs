@@ -35,5 +35,16 @@ try {
   await hasColor('root', 'rgb(255, 230, 255)');
   await hasColor('one', 'rgb(255, 191, 191)');
   await hasColor('two', 'rgb(255, 255, 0)');
-  console.log('PASS: root fill changes independently; alternating children survive editing and reload.');
+  await page.click('.react-flow__node[data-id="root"]');
+  await page.click('[role="tab"]::-p-text(Style)');
+  await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Fill')?.click());
+  await page.evaluate(() => [...document.querySelectorAll('[data-app-color-picker] button')].find(b => b.textContent.trim() === 'Clear').click());
+  const hasGradient = () => page.waitForFunction(() => [...document.querySelectorAll('.react-flow__node[data-id="root"] *')].some(el => getComputedStyle(el).backgroundImage.includes('linear-gradient')));
+  await hasGradient();
+  await hasColor('one', 'rgb(255, 191, 191)');
+  await hasColor('two', 'rgb(255, 255, 0)');
+  await page.waitForFunction(() => document.body.innerText.includes('Saved on this device'));
+  await page.reload({waitUntil:'networkidle0'});
+  await hasGradient();
+  console.log('PASS: independent root fill; Clear restores automatic gradient and preserves alternating children across reload.');
 } finally { await browser.close(); }
