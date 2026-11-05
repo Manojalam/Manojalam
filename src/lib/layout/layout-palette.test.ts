@@ -1057,3 +1057,21 @@ test("each selected purple shade survives every automatic pattern at the first b
     }
   }
 });
+
+
+test("manual chart root fill leaves alternating children and descendants unchanged", () => {
+  for (const mode of ["matrix", "list", "mindMap", "horizontal", "vertical", "topDown", "linear"] as const) {
+    const { nodes, edges } = hierarchyFixture();
+    Object.assign(nodes[0].data, { layoutMode: mode, layoutColorPattern: "alternating",
+      layoutStartColor: "#8cffff", layoutEndColor: "#8cc6ff" });
+    const hierarchy = buildHierarchy(nodes, edges);
+    const before = buildLayoutVisualStyles("root", hierarchy, mode, "spectrum", nodes);
+    for (const fillColor of ["#8000ff", "#ffffff", "#000000"]) {
+      const changed = nodes.map(n => n.id === "root" ? {...n, data: {...n.data, fillColor, layoutAutoFill: false}} : n);
+      const after = buildLayoutVisualStyles("root", hierarchy, mode, "spectrum", JSON.parse(JSON.stringify(changed)));
+      assert.equal(after.get("root")!.fillColor, fillColor);
+      assert.equal(after.get("root")!.fillGradient, undefined);
+      for (const node of nodes.slice(1)) assert.deepEqual(after.get(node.id), before.get(node.id), `${mode}: ${node.id}`);
+    }
+  }
+});
