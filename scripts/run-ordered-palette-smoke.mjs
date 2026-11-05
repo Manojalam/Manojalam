@@ -26,6 +26,9 @@ try {
   await page.waitForSelector(grid, { visible: true });
   assert.equal(await page.$eval(grid, el => el.querySelectorAll('section').length), 14);
   assert.equal(await page.$eval(grid, el => el.querySelectorAll('button').length), 140);
+  const paletteBounds = await page.$eval(grid, el => ({height:el.getBoundingClientRect().height, width:el.getBoundingClientRect().width, scrollWidth:el.scrollWidth}));
+  assert.ok(paletteBounds.height <= 360, 'all 14 families fit in a compact panel');
+  assert.ok(await page.$eval(grid, el => [...el.querySelectorAll('button')].every(button => button.getBoundingClientRect().right <= el.getBoundingClientRect().right + 1)), 'all swatches fit within the panel');
   const rows = await page.$eval(grid, el => [...el.querySelectorAll('section')].map(row => [...row.querySelectorAll('button')].map(b => {const r=b.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right};})));
   assert.ok(rows.every(row => row.length === 10 && row.every(b => Math.abs(b.y-row[0].y)<1)), 'each family stays on one row');
   await page.click(grid + ' [aria-label="Select color #ff0000"]');
