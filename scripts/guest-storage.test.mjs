@@ -17,6 +17,7 @@ let failRead = false;
 const cloud = new Map();
 const assets = new Map();
 let assetUploads = 0;
+let activeDownloads = 0, maxDownloads = 0, downloadCount = 0, downloadDelay = 0;
 let failAssetAfter = Infinity;
 globalThis.FileReader = class {
   readAsDataURL(blob) { blob.arrayBuffer().then(bytes => { this.result = `data:${blob.type};base64,${Buffer.from(bytes).toString("base64")}`; this.onload(); }).catch(() => this.onerror()); }
@@ -30,7 +31,13 @@ const client = {
         if (assets.has(path)) return { error: { message: "The resource already exists", statusCode: "409" } };
         assets.set(path, blob); assetUploads++; return { error: null };
       },
-      async download(path) { return assets.has(path) ? { data: assets.get(path), error: null } : { data: null, error: new Error("Image not found") }; },
+      async download(path) {
+        downloadCount++; activeDownloads++; maxDownloads = Math.max(maxDownloads, activeDownloads);
+        try {
+          if (downloadDelay) await new Promise(resolve => setTimeout(resolve, downloadDelay));
+          return assets.has(path) ? { data: assets.get(path), error: null } : { data: null, error: new Error("Image not found") };
+        } finally { activeDownloads--; }
+      },
     };
   } },
   auth: {
@@ -92,7 +99,7 @@ const boards = load(resolve("src/lib/storage/board-store.ts").replaceAll("\\", "
 const local = load(resolve("src/lib/storage/local-boards.ts").replaceAll("\\", "/"));
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
-  user = null; configured = true; authError = null; uploadError = null; afterUpload = null; failRead = false; cloud.clear(); assets.clear(); assetUploads = 0; failAssetAfter = Infinity;
+  user = null; configured = true; authError = null; uploadError = null; afterUpload = null; failRead = false; cloud.clear(); assets.clear(); assetUploads = 0; failAssetAfter = Infinity; activeDownloads = 0; maxDownloads = 0; downloadCount = 0; downloadDelay = 0;
 });
 
 test("guest create, rename, save, reopen, export, import, duplicate and delete", async () => {
@@ -295,4 +302,33 @@ test("cloud imports and guest uploads also separate images; attachments survive 
   assert.ok(!JSON.stringify(cloud.get(imported.id).content).includes("data:image/"));
   assert.equal((await boards.getBoard(imported.id)).content.nodes[0].data.image.dataUrl, content.nodes[0].data.image.dataUrl);
   assert.equal(assetUploads, 6, "copied board has its own authorized assets");
+});
+
+test("cloud reload downloads concurrently with a six-request limit", async () => {
+  user = { id: "parallel-reader" };
+  const board = await boards.createBoard();
+  const content = imageContent(board, 20);
+  await boards.updateBoard(board.id, { content });
+  downloadDelay = 10;
+  const loaded = await boards.getBoard(board.id);
+  assert.equal(loaded.content.nodes.length, 20);
+  assert.equal(downloadCount, 20);
+  assert.equal(maxDownloads, 6);
+});
+test("reload reuses only hash-matching images from the local backup", async () => {
+  user = { id: "cached-reader" };
+  const board = await boards.createBoard();
+  const content = imageContent(board, 20);
+  await boards.updateBoard(board.id, { content });
+  const stale = structuredClone(content);
+  stale.nodes[0].data.image.dataUrl = "data:image/png;base64,c3RhbGU=";
+  await recovery.writeBoardBackup(recovery.backupKey(user.id, board.id), { ...board, content: stale });
+  const loaded = await boards.getBoard(board.id);
+  assert.equal(downloadCount, 1, "only the changed image downloads");
+  assert.equal(loaded.content.nodes[0].data.image.dataUrl, content.nodes[0].data.image.dataUrl);
+});
+test("a stalled load times out instead of leaving an endless spinner", async () => {
+  const { withLoadTimeout } = load(resolve("src/lib/storage/load-timeout.ts").replaceAll("\\", "/"));
+  await assert.rejects(withLoadTimeout(new Promise(() => {}), 10, "Image timed out"), /Image timed out/);
+  assert.equal(await withLoadTimeout(Promise.resolve("loaded"), 10, "timeout"), "loaded");
 });

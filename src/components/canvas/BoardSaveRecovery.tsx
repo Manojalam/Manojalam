@@ -9,6 +9,7 @@ import type { BoardContent } from "@/lib/types";
 import { BOARD_CONTENT_VERSION } from "@/lib/config";
 
 export function BoardSaveRecovery() {
+  const readOnly = useCanvasStore(s => s.board?.accessRole === "viewer");
   const boardId = useCanvasStore(s => s.board?.id);
   const error = useCanvasStore(s => s.saveError);
   const status = useCanvasStore(s => s.saveStatus);
@@ -39,9 +40,10 @@ export function BoardSaveRecovery() {
     {(status === "error" || error) && <>
       <span>{backupStatus === "saved" ? "A recovery copy is saved on this device." : "Local backup is not confirmed. Download a backup before leaving."}</span>
       <button className="underline" onClick={() => {
+        if (readOnly) { window.location.reload(); return; }
         useCanvasStore.setState({ saveStatus: "unsaved", hasUserChangedBoard: true });
         window.dispatchEvent(new Event("vidya:retry-save"));
-      }}>Retry save</button>
+      }}>{readOnly ? "Retry loading board" : "Retry save"}</button>
       <button className="underline" onClick={currentBackup}>Download current board</button>
     </>}
   </div>;

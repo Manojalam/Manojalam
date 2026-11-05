@@ -1,3 +1,4 @@
+import { withLoadTimeout } from "./load-timeout";
 import { requireSupabaseClient } from "../supabase/client";
 
 const BUCKET = "board-images";
@@ -45,24 +46,54 @@ export async function storeBoardImages<T>(boardId: string, content: T): Promise<
   }) as T;
 }
 
-export async function loadBoardImages<T>(content: T): Promise<T> {
+export async function loadBoardImages<T>(content: T, cachedContent?: unknown): Promise<T> {
+  const references = new Set<string>();
+  await mapImages(content, async image => { if (image.startsWith(PREFIX)) references.add(image); return image; });
+  if (!references.size) return content;
+  for (const reference of references) {
+    if (!/^[0-9a-f-]{36}\/[0-9a-f]{64}$/.test(reference.slice(PREFIX.length))) throw new Error("Invalid board image reference.");
+  }
   const replacements = new Map<string, string>();
-  return await mapImages(content, async image => {
-    if (!image.startsWith(PREFIX)) return image;
-    const existing = replacements.get(image);
-    if (existing) return existing;
-    const path = image.slice(PREFIX.length);
-    if (!/^[0-9a-f-]{36}\/[0-9a-f]{64}$/.test(path)) throw new Error("Invalid board image reference.");
-    const { data, error } = await requireSupabaseClient().storage.from(BUCKET).download(path);
-    if (error || !data) throw error ?? new Error("An image could not be loaded. Retry before editing this board.");
-    const result = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error("Could not read a board image."));
-      reader.readAsDataURL(data);
-    });
-    uploaded.add(path);
-    replacements.set(image, result);
-    return result;
-  }) as T;
+  const cached = new Set<string>();
+  if (cachedContent) await mapImages(cachedContent, async image => { if (image.startsWith("data:image/")) cached.add(image); return image; });
+  const byHash = new Map([...references].map(reference => [reference.split("/").at(-1)!, reference]));
+  for (const image of cached) {
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(image))), byte => byte.toString(16).padStart(2, "0")).join("");
+    const reference = byHash.get(hash);
+    if (reference) {
+      replacements.set(reference, image);
+      // The authorized cloud row already references this immutable object.
+      uploaded.add(reference.slice(PREFIX.length));
+    }
+  }
+  const pending = [...references].filter(reference => !replacements.has(reference));
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < pending.length) {
+      const image = pending[next++];
+      const path = image.slice(PREFIX.length);
+      if (!/^[0-9a-f-]{36}\/[0-9a-f]{64}$/.test(path)) throw new Error("Invalid board image reference.");
+      const controller = new AbortController();
+      try {
+        const { data, error } = await withLoadTimeout(
+          requireSupabaseClient().storage.from(BUCKET).download(path, {}, { signal: controller.signal }),
+          20_000, "An image download timed out. Your saved board is unchanged. Please retry."
+        );
+        if (error || !data) throw error ?? new Error("An image could not be loaded. Please retry.");
+        const result = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("Could not read a board image."));
+          reader.readAsDataURL(data);
+        });
+        uploaded.add(path);
+        replacements.set(image, result);
+      } catch (error) { failed = true; throw error; }
+      finally { controller.abort(); }
+    }
+  };
+  // Bound concurrency; do not serialize a long board or start hundreds of requests.
+  await Promise.all(Array.from({ length: Math.min(6, pending.length) }, worker));
+  return await mapImages(content, async image => replacements.get(image) ?? image) as T;
 }
