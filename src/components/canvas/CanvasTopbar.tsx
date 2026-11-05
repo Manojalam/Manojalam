@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BoardSaveRecovery } from "./BoardSaveRecovery";
 import Link from "next/link";
 import {
   Undo2, Redo2, Download, Search,
@@ -359,6 +360,7 @@ export function CanvasTopbar() {
         </button>
       </div>
     </header>
+    <BoardSaveRecovery key={board?.id} />
     {board?.storageMode === "local" && (
       <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100" role="status">
         <span>{saveStatus === "saved" ? "Saved on this device." : saveStatus === "error" ? "Saving failed - download a backup before leaving." : "Changes are not yet saved."} Only in this browser; clearing browser data can erase this board.</span>

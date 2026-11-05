@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BoardToolbarHost, BoardToolCategoryContext } from "@/components/canvas/BoardToolDock";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { getBoard } from "@/lib/storage/board-store";
+import { backupKey, readBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
+import { getBoard, getRecoveryUserId } from "@/lib/storage/board-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CanvasTopbar } from "@/components/canvas/CanvasTopbar";
 import { CanvasToolbar } from "@/components/canvas/CanvasToolbar";
@@ -69,17 +70,33 @@ export default function BoardEditorPage() {
 
     beginBoardHydration();
     getBoard(boardId)
-      .then((board) => {
+      .then(async (board) => {
         if (!active) return;
         if (board) {
-          setBoard(board);
+          const user = await getRecoveryUserId();
+          const backup = await readBoardBackup(backupKey(user, boardId)).catch(() => null);
+          if (!active) return;
+          // Recover before mounting the editor: its viewport/layout updates must
+          // not overwrite a pending draft with the older cloud version.
+          const recovered = backup?.pending && board.accessRole !== "viewer" ? backup : null;
+          setBoard(recovered ? { ...board, title: recovered.board.title, content: recovered.board.content } : board);
           pushHistory();
+          if (recovered) useCanvasStore.setState({ saveStatus: "error", backupStatus: "saved", hasUserChangedBoard: true, saveError: "Recovered unsynced changes from this device. Retry save to sync them to the cloud." });
         } else {
           setNotFound(true);
         }
       })
-      .catch(() => {
-        if (active) setNotFound(true);
+      .catch(async (error) => {
+        // An offline reload may still recover this account's last local board.
+        const user = await getRecoveryUserId().catch(() => null);
+        const backup = (user || boardId.startsWith("guest-"))
+          ? await readBoardBackup(backupKey(user, boardId)).catch(() => null) : null;
+        if (!active) return;
+        if (backup) {
+          setBoard(backup.board);
+          pushHistory();
+          useCanvasStore.setState({ saveStatus: "error", saveError: `Cloud board could not be loaded: ${saveErrorMessage(error)}`, backupStatus: "saved", hasUserChangedBoard: true });
+        } else setNotFound(true);
       })
       .finally(() => {
         if (active) setLoading(false);

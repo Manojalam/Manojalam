@@ -1,3 +1,5 @@
+import { backupKey, writeBoardBackup, acknowledgeBoardBackup } from "./board-backup";
+import { storeBoardImages, loadBoardImages } from "./board-images";
 import { BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
 import type { BoardAccessRole, BoardContent, VidyaBoard } from "@/lib/types";
@@ -45,17 +47,17 @@ function normalizeBoardContent(content: BoardContent): BoardContent {
   };
 }
 
-export function rowToBoard(
+export async function rowToBoard(
   row: BoardRow,
   accessRole: BoardAccessRole = "owner"
-): VidyaBoard {
+): Promise<VidyaBoard> {
   return {
     id: row.id,
     userId: row.user_id,
     accessRole,
     title: row.title,
     description: row.description,
-    content: normalizeBoardContent(row.content),
+    content: normalizeBoardContent(await loadBoardImages(row.content)),
     thumbnailUrl: row.thumbnail_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -88,6 +90,16 @@ function createEmptyContent(title = "Untitled Board"): BoardContent {
     viewport: { x: 0, y: 0, zoom: 1 },
     settings: { ...DEFAULT_BOARD_SETTINGS },
   };
+}
+
+/** Device-only recovery must work when the network is unavailable. This identity
+ * scopes local data only; cloud access still verifies the user and uses RLS. */
+export async function getRecoveryUserId(): Promise<string | null> {
+  const client = createClient();
+  if (!client) return null;
+  const { data: { session }, error } = await client.auth.getSession();
+  if (error) throw error;
+  return session?.user.id ?? null;
 }
 
 /** Verification errors must not silently switch cloud accounts to device storage. */
@@ -168,7 +180,7 @@ export async function listBoards(): Promise<VidyaBoard[]> {
   if (error) throw error;
   const rows = (data ?? []) as BoardRow[];
   const roles = await rolesForBoards(rows, currentUserId);
-  return [...local, ...rows.map((row) => rowToBoard(row, roles.get(row.id) ?? "viewer"))]
+  return [...local, ...await Promise.all(rows.map((row) => rowToBoard(row, roles.get(row.id) ?? "viewer")))]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
@@ -186,7 +198,8 @@ export async function getBoard(id: string): Promise<VidyaBoard | null> {
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error) throw error;
+  if (!data) return null;
   const row = data as BoardRow;
   const roles = await rolesForBoards([row], currentUserId);
   return rowToBoard(row, roles.get(row.id) ?? "viewer");
@@ -222,7 +235,7 @@ export async function createBoard(
     .single();
 
   if (error) throw error;
-  const board = rowToBoard(data as BoardRow, "owner");
+  const board = await rowToBoard(data as BoardRow, "owner");
 
   // A template must never navigate to a silently empty board. If an insert
   // response ever loses its JSON payload, repair it once and verify the row.
@@ -246,19 +259,12 @@ export async function createBoardFromContent(
   const boardTitle = title.trim() || "Imported Board";
   const userId = await getStorageUserId();
   if (!userId) return createLocalBoard(boardTitle, content);
-  const supabase = requireSupabaseClient();
-  const { data, error } = await supabase
-    .from("boards")
-    .insert({
-      user_id: userId,
-      title: boardTitle,
-      content: normalizeBoardContent(content),
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return rowToBoard(data as BoardRow, "owner");
+  const board = await createBoard(undefined, boardTitle);
+  const backup = await writeBoardBackup(backupKey(userId, board.id), { ...board, content });
+  const saved = await updateBoard(board.id, { content });
+  if (!saved) throw new Error("Imported board could not be saved.");
+  await acknowledgeBoardBackup(backup.id, backup.revision);
+  return saved;
 }
 
 export async function updateBoard(
@@ -275,7 +281,7 @@ export async function updateBoard(
     .update({
       ...(partial.title !== undefined && { title: partial.title }),
       ...(partial.description !== undefined && { description: partial.description }),
-      ...(partial.content !== undefined && { content: normalizeBoardContent(partial.content) }),
+      ...(partial.content !== undefined && { content: await storeBoardImages(id, normalizeBoardContent(partial.content)) }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -287,7 +293,7 @@ export async function updateBoard(
   const row = data as BoardRow;
   const currentUserId = await getCurrentUserId();
   const role: BoardAccessRole = row.user_id === currentUserId ? "owner" : "editor";
-  return rowToBoard(row, role);
+  return rowToBoard(partial.content ? { ...row, content: partial.content } : row, role);
 }
 
 /** Convenience wrapper used by autosave. */
@@ -370,12 +376,13 @@ export async function saveSnapshot(boardId: string, name?: string): Promise<void
   const supabase = requireSupabaseClient();
   const userId = await getCurrentUserId();
 
-  await supabase.from("board_snapshots").insert({
+  const { error } = await supabase.from("board_snapshots").insert({
     board_id: boardId,
     user_id: userId,
-    content: board.content,
+    content: await storeBoardImages(boardId, board.content),
     snapshot_name: name ?? `Snapshot ${new Date().toLocaleString()}`,
   });
+  if (error) throw error;
 }
 
 /** Stable upload IDs make retries safe without overwriting existing cloud boards. */
@@ -388,10 +395,15 @@ export async function moveGuestBoardToAccount(id: string): Promise<VidyaBoard> {
   const cloudId = id.slice("guest-".length);
   const { error } = await supabase.from("boards").upsert({
     id: cloudId, user_id: userId, title: local.title, description: local.description,
-    content: local.content, created_at: local.createdAt,
+    // A small resumable placeholder establishes storage authorization. The
+    // device board is retained until every image and the final board verify.
+    content: { ...createEmptyContent(local.title), nodes: [], deviceImportSource: id }, created_at: local.createdAt,
   }, { onConflict: "id", ignoreDuplicates: true });
   if (error) throw error;
-  const cloud = await getBoard(cloudId);
+  let cloud = await getBoard(cloudId);
+  if (cloud?.userId === userId && (cloud.content as BoardContent & { deviceImportSource?: string }).deviceImportSource === id) {
+    cloud = await updateBoard(cloudId, { title: local.title, description: local.description, content: local.content });
+  }
   if (!cloud || cloud.userId !== userId || !sameBoardData(local, cloud)) {
     throw new Error("The cloud copy differs from this device board. Your device copy is safe; duplicate it to upload a separate copy.");
   }

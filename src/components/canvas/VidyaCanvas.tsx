@@ -1,4 +1,7 @@
 "use client";
+import { backupKey, writeBoardBackup, acknowledgeBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
+import { getRecoveryUserId } from "@/lib/storage/board-store";
+
 import { imageNotePairs, reflowImageNoteRows } from "@/lib/canvas/image-note-pairs";
 import { attachDroppedImage } from "@/lib/canvas/attach-dropped-image";
 import { TEMPLATE_CLIPBOARD_MIME, copyTemplateContent, parseTemplateClipboard, pasteTemplateContent } from "@/lib/canvas/template-clipboard";
@@ -553,6 +556,54 @@ function VidyaCanvasInner({
   // Serialize saves so an edit made during an in-flight request cannot be
   // overwritten by an older response. Every queued job verifies its board id
   // before reading the global store, which also prevents cross-board writes.
+  const backupQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const backupEditRef = useRef(0);
+  const preserveBackup = useCallback((snapshot: ReturnType<typeof useCanvasStore.getState>) => {
+    const edit = backupEditRef.current;
+    const job = backupQueueRef.current.catch(() => undefined).then(async () => {
+      const userId = await getRecoveryUserId();
+      const board = snapshot.board!;
+      const backup = await writeBoardBackup(backupKey(userId, board.id), {
+        ...board,
+        content: { version: BOARD_CONTENT_VERSION, nodes: snapshot.nodes, edges: snapshot.edges,
+          relationships: snapshot.relationships, relationshipFans: snapshot.relationshipFans,
+          layers: snapshot.layers, viewport: snapshot.viewport, settings: snapshot.settings } as BoardContent,
+      });
+      if (useCanvasStore.getState().board?.id === board.id && edit === backupEditRef.current) useCanvasStore.setState({ backupStatus: "saved" });
+      return backup;
+    });
+    backupQueueRef.current = job;
+    return job;
+  }, []);
+
+  // Local persistence is independent of network progress, including edits made
+  // while a large initial image upload is still running.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let queued: ReturnType<typeof useCanvasStore.getState> | undefined;
+    const flush = () => {
+      clearTimeout(timer);
+      const snapshot = queued;
+      queued = undefined;
+      if (snapshot) void preserveBackup(snapshot).catch(error => {
+        if (useCanvasStore.getState().board?.id === boardId) useCanvasStore.setState({ backupStatus: "error", saveError: `Local backup failed: ${saveErrorMessage(error)}` });
+      });
+    };
+    const unsubscribe = useCanvasStore.subscribe((state, previous) => {
+      if (!canEdit || state.board?.id !== boardId || !state.hasHydratedBoard || state.saveStatus !== "unsaved") return;
+      if (state.nodes === previous.nodes && state.edges === previous.edges && state.settings === previous.settings && state.board === previous.board && state.viewport === previous.viewport && state.relationships === previous.relationships && state.relationshipFans === previous.relationshipFans && state.layers === previous.layers) return;
+      backupEditRef.current++;
+      queued = state;
+      useCanvasStore.setState({ backupStatus: "pending" });
+      clearTimeout(timer);
+      timer = setTimeout(flush, 200);
+    });
+    const onHidden = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("beforeunload", flush);
+    return () => { unsubscribe(); document.removeEventListener("visibilitychange", onHidden); window.removeEventListener("beforeunload", flush); flush(); };
+  }, [boardId, canEdit, preserveBackup]);
+
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const saveTimerRef = useRef<number | null>(null);
   const enqueueSave = useCallback(() => {
@@ -574,17 +625,29 @@ function VidyaCanvasInner({
         viewport: snapshot.viewport, settings: snapshot.settings,
       } as BoardContent;
       if (current.board?.id === boardId) current.setSaveStatus("saving");
+      let backup;
+      try { backup = await preserveBackup(snapshot); }
+      catch (error) {
+        if (useCanvasStore.getState().board?.id === boardId) useCanvasStore.setState({ backupStatus: "error", saveError: `Local backup failed: ${saveErrorMessage(error)}` });
+      }
       try {
         const saved = await updateBoard(boardId, { title, content });
         if (!saved) throw new Error("Board could not be saved.");
+        if (backup) await acknowledgeBoardBackup(backup.id, backup.revision);
         const latest = useCanvasStore.getState();
-        if (latest.board?.id === boardId && latest.saveStatus === "saving") latest.setSaveStatus("saved");
-      } catch {
+        if (latest.board?.id === boardId && latest.saveStatus === "saving") {
+          latest.setSaveStatus("saved");
+          if (backup) useCanvasStore.setState({ saveError: null });
+        }
+      } catch (error) {
         const latest = useCanvasStore.getState();
-        if (latest.board?.id === boardId && latest.saveStatus !== "unsaved") latest.setSaveStatus("error");
+        if (latest.board?.id === boardId) {
+          useCanvasStore.setState({ saveError: saveErrorMessage(error) });
+          if (latest.saveStatus !== "unsaved") latest.setSaveStatus("error");
+        }
       }
     });
-  }, [boardId, canEdit]);
+  }, [boardId, canEdit, preserveBackup]);
 
   const flushSave = useCallback(() => {
     if (saveTimerRef.current !== null) {
@@ -623,9 +686,13 @@ function VidyaCanvasInner({
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("beforeunload", onUnload);
+    window.addEventListener("vidya:retry-save", flushSave);
+    window.addEventListener("online", flushSave);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("beforeunload", onUnload);
+      window.removeEventListener("vidya:retry-save", flushSave);
+      window.removeEventListener("online", flushSave);
       flushSave();
     };
   }, [boardId, canEdit, flushSave]);

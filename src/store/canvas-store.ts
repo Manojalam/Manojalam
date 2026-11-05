@@ -243,6 +243,8 @@ interface CanvasState {
   selectedNodeIds: string[];
   selectedEdgeIds: string[];
   saveStatus: SaveStatus;
+  saveError: string | null;
+  backupStatus: "pending" | "saved" | "error";
   isBoardLoading: boolean;
   hasHydratedBoard: boolean;
   hasUserChangedBoard: boolean;
@@ -2145,6 +2147,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   selectedNodeIds: [],
   selectedEdgeIds: [],
   saveStatus: "saved",
+  saveError: null,
+  backupStatus: "pending",
   isBoardLoading: true,
   hasHydratedBoard: false,
   hasUserChangedBoard: false,
@@ -2164,6 +2168,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       hasUserChangedBoard: false,
       pendingMigration: false,
       saveStatus: "saved",
+      saveError: null,
+      backupStatus: "pending",
       selectedNodeIds: [],
       selectedEdgeIds: [],
       layers: [],
@@ -2345,6 +2351,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       viewport: board.content.viewport ?? { x: 0, y: 0, zoom: 1 },
       settings,
       saveStatus: "saved",
+      saveError: null,
+      backupStatus: "pending",
       isBoardLoading: false,
       hasHydratedBoard: true,
       hasUserChangedBoard: false,
