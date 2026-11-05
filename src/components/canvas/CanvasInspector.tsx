@@ -5711,8 +5711,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           {renderWholeFlowchartSettings()}
         </Section>
 
-        {canFoldSelectedBranch && (
-          <Section label="Fold branch" visible={singleNodeTab === hierarchyTab}>
+        {canFoldSelectedBranch && !(embedded && foldsMatrixTerminalRows) && (
+          <Section label={matrixRootNode ? "Fold selected branch" : "Fold branch"} visible={singleNodeTab === hierarchyTab}>
             <FoldBranchControls
               parentId={selectedNode.id}
               parentData={d}
