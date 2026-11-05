@@ -2625,7 +2625,13 @@ export function computeMatrixLayout(
     terminalIds,
     rootFoldSectionCount
   );
-  if (rootFoldSectionCount > 1) {
+  // Terminal siblings wrap into a grid. Paginating their original full-width
+  // strip preserves empty x offsets and multiplies the width for every fold.
+  // Hierarchical matrices (and explicitly divided roots) still need sections.
+  const compactRootFold = rootData.matrixFoldRootMode !== "divided"
+    && terminalIds.length > 0
+    && terminalIds.every(id => hierarchy.get(id)?.parentId === rootId);
+  if (rootFoldSectionCount > 1 && !compactRootFold) {
     const unfoldedRootData = { ...rootData };
     delete unfoldedRootData.layoutFoldCount;
     delete unfoldedRootData.layoutFoldBreakAfter;
