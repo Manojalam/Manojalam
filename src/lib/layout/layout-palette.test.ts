@@ -1075,3 +1075,15 @@ test("manual chart root fill leaves alternating children and descendants unchang
     }
   }
 });
+
+
+test("automatic root gradient preserves pastel shades instead of forcing dark colors", () => {
+  const {nodes, edges} = hierarchyFixture();
+  Object.assign(nodes[0].data, {layoutMode: "matrix", layoutColorPattern: "alternating",
+    layoutStartColor: "#ffbfff", layoutEndColor: "#bfbfff"});
+  const styles = buildLayoutVisualStyles("root", buildHierarchy(nodes, edges), "matrix", "spectrum", nodes);
+  assert.match(styles.get("root")!.fillGradient!, /87\.5%/);
+  assert.equal(styles.get("root")!.textColor, "#020617");
+  assert.equal(styles.get("branch-a")!.fillColor, "#ffbfff");
+  assert.equal(styles.get("branch-b")!.fillColor, "#bfbfff");
+});

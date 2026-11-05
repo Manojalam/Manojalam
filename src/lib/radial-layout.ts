@@ -470,14 +470,14 @@ export function matrixRowAnchorColor(
 }
 
 /** Dark summary treatment for the complete automatic branch flow. */
-export function layoutRootPaletteGradient(
+export function layoutRootPaletteColors(
   scheme: RadialColorSchemeDefinition,
   branchCount: number,
   startColor?: string,
   pattern: LayoutColorPattern = DEFAULT_LAYOUT_COLOR_PATTERN,
   endColor?: string,
   targetLightness = DEFAULT_LAYOUT_BRANCH_LIGHTNESS
-): string {
+): string[] {
   const count = Math.max(1, Math.floor(branchCount));
   const stopCount = Math.min(7, Math.max(2, count));
   const stops = Array.from({ length: stopCount }, (_, stopIndex) => {
@@ -494,14 +494,17 @@ export function layoutRootPaletteGradient(
         targetLightness
       )
     )!;
-    const darkAnchor = hslString({
-      h: anchor.h,
-      s: Math.min(anchor.s, 52),
-      l: 30 + (stopIndex % 2 === 0 ? 0 : 2),
-    });
-    return `${darkAnchor} ${(progress * 100).toFixed(1)}%`;
+    return hslString(anchor);
   });
-  return `linear-gradient(100deg, ${stops.join(", ")})`;
+  return stops;
+}
+
+export function layoutRootPaletteGradient(
+  ...args: Parameters<typeof layoutRootPaletteColors>
+): string {
+  const colors = layoutRootPaletteColors(...args);
+  return `linear-gradient(100deg, ${colors.map((color, i) =>
+    `${color} ${(i / (colors.length - 1) * 100).toFixed(1)}%`).join(", ")})`;
 }
 
 /** @deprecated Use layoutRootPaletteGradient. */

@@ -41,10 +41,18 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('[data-app-color-picker] button')].find(b => b.textContent.trim() === 'Clear').click());
   const hasGradient = () => page.waitForFunction(() => [...document.querySelectorAll('.react-flow__node[data-id="root"] *')].some(el => getComputedStyle(el).backgroundImage.includes('linear-gradient')));
   await hasGradient();
+  assert.ok(await page.$eval('.react-flow__node[data-id="root"]', el => [...el.querySelectorAll('*')].some(surface => {
+    const gradient = getComputedStyle(surface).backgroundImage;
+    return gradient.includes('rgb(255, 191, 191)') && gradient.includes('rgb(255, 255, 0)');
+  })), 'root gradient retains selected light shades');
   await hasColor('one', 'rgb(255, 191, 191)');
   await hasColor('two', 'rgb(255, 255, 0)');
   await page.waitForFunction(() => document.body.innerText.includes('Saved on this device'));
   await page.reload({waitUntil:'networkidle0'});
   await hasGradient();
+  assert.ok(await page.$eval('.react-flow__node[data-id="root"]', el => [...el.querySelectorAll('*')].some(surface => {
+    const gradient = getComputedStyle(surface).backgroundImage;
+    return gradient.includes('rgb(255, 191, 191)') && gradient.includes('rgb(255, 255, 0)');
+  })), 'root gradient retains selected light shades');
   console.log('PASS: independent root fill; Clear restores automatic gradient and preserves alternating children across reload.');
 } finally { await browser.close(); }
