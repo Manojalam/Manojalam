@@ -17,6 +17,7 @@ import {
   resolveFillSourceColor,
   resolveLayoutFillGradient,
   resolveSurfaceEffectData,
+  resolveSurfaceStyle,
   stickyNoteFoldColor,
   themeAwareLayoutConnectorColor,
   themeAwareNodeFillColor,
@@ -264,4 +265,23 @@ test("authored effect lists override automatic layout effects, including explici
   assert.equal(resolveSurfaceEffectData(data), data);
   const flat = { ...data, surfaceEffects: [] };
   assert.equal(resolveSurfaceEffectData(flat), flat);
+});
+
+for (const preset of ["soft", "raised", "bevel", "glass", "metallic", "glow"]) {
+  test(`${preset} does not mutate authored paint or replace automatic paint`, () => {
+    const data = { fillColor: "#bfbfff", fillOpacity: 0.7, surfaceEffects: [{ preset }], layoutVisualStyle: automaticLayoutStyle };
+    const original = JSON.stringify(data);
+    const automatic = resolveSurfaceStyle(data);
+    assert.equal(automatic.backgroundColor, automaticLayoutStyle.fillColor);
+    assert.ok(automatic.backgroundImage?.endsWith(automaticLayoutStyle.fillGradient));
+    const manual = resolveSurfaceStyle({ ...data, layoutAutoFill: false });
+    assert.equal(manual.backgroundColor, "rgba(191, 191, 255, 0.7)");
+    assert.ok(!manual.backgroundImage?.includes(automaticLayoutStyle.fillGradient));
+    assert.equal(JSON.stringify(data), original);
+  });
+}
+test("explicit fills suppress CSS preset gradients, including transparent Clear", () => {
+  assert.equal(resolveSurfaceStyle({fillColor: "transparent"}).backgroundImage, "none");
+  assert.equal(resolveSurfaceStyle({fillColor: "#bfbfff", fillOpacity: 1}).backgroundColor, "rgba(191, 191, 255, 1)");
+  assert.deepEqual(resolveSurfaceStyle({}), {});
 });

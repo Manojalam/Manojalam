@@ -1,4 +1,5 @@
 "use client";
+import { resolveLayoutFillGradient } from "@/lib/style-utils";
 import { textEntryPoint } from "@/lib/canvas/text-entry";
 
 import { memo, useState, useEffect, useRef, useCallback } from "react";
@@ -134,7 +135,8 @@ function TextBlockNodeComponent({
   const hasTextFrame = textFrameStyle !== "plain";
   const exportEffectStyle = surfaceEffectExportStyle(
     hasTextFrame ? {} : surfaceEffectData,
-    borderColor
+    borderColor,
+    resolveLayoutFillGradient(dd)
   );
   const exportShadowLayers = surfaceEffectExportShadowLayers(
     hasTextFrame ? {} : surfaceEffectData,
@@ -218,7 +220,7 @@ function TextBlockNodeComponent({
               backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
               border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
               borderRadius: bRadius,
-              ...surfaceEffectStyle(surfaceEffectData, borderColor),
+              ...surfaceEffectStyle(surfaceEffectData, borderColor, resolveLayoutFillGradient(dd)),
             }),
             ...objectRotationStyle("text", dd),
           }}
@@ -240,6 +242,7 @@ function TextBlockNodeComponent({
             style={textFrameStyle}
             direction={renderedTextCalloutDirection}
             fillColor={themeAwareNodeFillColor(fillColor) ?? "var(--card)"}
+            paint={surfaceEffectStyle(surfaceEffectData, borderColor, resolveLayoutFillGradient(dd))}
             borderColor={borderColor ?? "var(--border)"}
             borderWidth={bWidth}
             borderStyle={bStyle}

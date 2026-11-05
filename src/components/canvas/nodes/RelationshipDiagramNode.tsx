@@ -1,4 +1,5 @@
 "use client";
+import { resolveSurfaceStyle } from "@/lib/style-utils";
 
 import {
   memo,
@@ -201,7 +202,7 @@ function RelationshipDiagramNodeComponent({ id, data, selected }: NodeProps) {
           ? "relative h-full w-full cursor-default overflow-visible"
           : "relative h-full w-full cursor-move overflow-visible"}
         style={{
-          background: spec.background || "transparent",
+          ...resolveSurfaceStyle(d as Record<string, unknown>, spec.background || "transparent"),
           ...objectRotationStyle("relationshipDiagram", d as Record<string, unknown>),
         }}
         aria-label={spec.title || "Relationship diagram"}

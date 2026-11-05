@@ -1,4 +1,5 @@
 "use client";
+import { resolveLayoutFillGradient } from "@/lib/style-utils";
 import { textEntryPoint } from "@/lib/canvas/text-entry";
 
 import { memo, useState, useEffect, useRef, useCallback } from "react";
@@ -69,7 +70,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const palette  = STICKY_PALETTES[d.color ?? "yellow"] ?? STICKY_PALETTES.yellow;
   const bg       = resolveLayoutVisualStyle(dd) && dd.layoutAutoFill !== false
     ? resolveFillColor(dd) ?? palette.bg
-    : (dd.fillColor as string) ?? palette.bg;
+    : typeof dd.fillColor === "string" ? resolveFillColor({ ...dd, color: undefined, fillOpacity: typeof dd.fillOpacity === "number" ? dd.fillOpacity : 1 }) ?? palette.bg : palette.bg;
   const surfaceEffectData = resolveSurfaceEffectData(dd);
   const border   = resolveBorderColor(dd) ?? palette.border;
   const foldColor = stickyNoteFoldColor(bg, palette.bg, palette.shadow);
@@ -89,7 +90,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
   const fillOpacity  = resolveFillOpacity(dd);
   const fillRegions  = (dd.internalFillRegions as InternalFillRegion[]) ?? [];
   const hasSurfaceEffect = typeof surfaceEffectData.surfaceEffect === "string";
-  const exportEffectStyle = surfaceEffectExportStyle(surfaceEffectData, border);
+  const exportEffectStyle = surfaceEffectExportStyle(surfaceEffectData, border, resolveLayoutFillGradient(dd));
   const exportShadowLayers = surfaceEffectExportShadowLayers(surfaceEffectData, border);
   const foldEffectStyle = surfaceEffectFillStyle(surfaceEffectData, border);
 
@@ -177,7 +178,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
             backgroundColor: themeAwareNodeFillColor(bg),
             border: `${bWidth}px ${bStyle} ${border}`,
             borderRadius: bRadius,
-            ...surfaceEffectStyle(surfaceEffectData, border),
+            ...surfaceEffectStyle(surfaceEffectData, border, resolveLayoutFillGradient(dd)),
             ...objectRotationStyle("sticky", dd),
           }}
           onDoubleClick={(event) => {

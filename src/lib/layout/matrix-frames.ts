@@ -12,6 +12,7 @@ import {
   resolveBorderWidth,
   resolveFillColor,
   resolveLayoutFillGradient,
+  resolveSurfaceEffectData,
 } from "../style-utils";
 import {
   surfaceEffectExportShadowLayers,
@@ -219,9 +220,9 @@ function repeatedCellRenderData(
   const textStyle = getTextStyle(data, background);
   const content = repeatedCellText(repeated.source);
   const borderColor = resolveBorderColor(data);
-  const effectStyle = surfaceEffectStyle(data, borderColor, resolveLayoutFillGradient(data));
-  const exportEffectStyle = surfaceEffectExportStyle(data, borderColor);
-  const exportShadowLayers = surfaceEffectExportShadowLayers(data, borderColor);
+  const effectStyle = surfaceEffectStyle(resolveSurfaceEffectData(data), borderColor, resolveLayoutFillGradient(data));
+  const exportEffectStyle = surfaceEffectExportStyle(resolveSurfaceEffectData(data), borderColor, resolveLayoutFillGradient(data));
+  const exportShadowLayers = surfaceEffectExportShadowLayers(resolveSurfaceEffectData(data), borderColor);
   const textAlign = data.textAlign === "left"
     || data.textAlign === "right"
     || data.textAlign === "justify"

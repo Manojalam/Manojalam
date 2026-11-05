@@ -383,11 +383,12 @@ function splitCssLayers(value: string): string[] {
  */
 export function surfaceEffectExportStyle(
   data: Record<string, unknown>,
-  accentColor?: string
+  accentColor?: string,
+  baseGradient?: string
 ): SurfaceEffectStyle {
   if (surfaceEffectExportShadowLayers(data, accentColor).length === 0) return {};
 
-  const { boxShadow, ...surfaceStyle } = surfaceEffectStyle(data, accentColor);
+  const { boxShadow, ...surfaceStyle } = surfaceEffectStyle(data, accentColor, baseGradient);
   const insetShadow = boxShadow
     ? splitCssLayers(boxShadow)
         .filter((layer) => /(?:^|\s)inset(?:\s|$)/i.test(layer))

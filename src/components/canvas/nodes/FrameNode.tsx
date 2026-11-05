@@ -12,7 +12,7 @@ import {
   MATRIX_GRID_RADIUS,
   matrixCellBorderRadius,
 } from "@/lib/layout/matrix-presentation";
-import { getAuthoredTextStyle } from "@/lib/style-utils";
+import { getAuthoredTextStyle, resolveSurfaceStyle } from "@/lib/style-utils";
 import { useCanvasStore } from "@/store/canvas-store";
 
 function matrixGridDashArray(
@@ -138,6 +138,7 @@ function FrameNodeComponent({
           borderColor: d.color ?? "#6366f1",
           borderStyle: d.borderStyle ?? "dashed",
           backgroundColor: d.background ?? `${d.color ?? "#6366f1"}08`,
+          ...(!isMatrixFrame ? resolveSurfaceStyle({ ...d, color: undefined }, d.background ?? `${d.color ?? "#6366f1"}08`) : {}),
           ...objectRotationStyle("frame", d as Record<string, unknown>),
         }}
       >

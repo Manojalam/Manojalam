@@ -1,4 +1,5 @@
 "use client";
+import { SvgSurfacePaint } from "../SvgSurfacePaint";
 import { textEntryPoint } from "@/lib/canvas/text-entry";
 
 import { memo, useState, useEffect, useRef, useCallback, useMemo, useId, type CSSProperties, type ReactNode } from "react";
@@ -841,6 +842,7 @@ function RadialChartLayer({
 function SvgShapeSurface({
   shapeType,
   fillColor,
+  paint,
   borderColor,
   borderWidth,
   borderStyle,
@@ -849,12 +851,27 @@ function SvgShapeSurface({
 }: {
   shapeType: string;
   fillColor?: string;
+  paint?: CSSProperties;
   borderColor: string;
   borderWidth: number;
   borderStyle: string;
   selected?: boolean;
   petalCount?: number;
 }) {
+  const paintId = `surface-${useId().replace(/:/g, "")}`;
+  const paintedFill = paint?.backgroundImage ? "transparent" : fillColor ?? "transparent";
+  const clipOutline = SHAPE_POLYGON_POINTS[shapeType as ShapeType]
+    ? <polygon points={SHAPE_POLYGON_POINTS[shapeType as ShapeType]} />
+    : shapeType === "flower" ? <>
+      {Array.from({ length: normalizeShapePetalCount(petalCount) }, (_, i) => <ellipse key={i}
+        cx={FLOWER_SHAPE.centerX} cy={FLOWER_SHAPE.petalCenterY}
+        rx={FLOWER_SHAPE.petalRadiusX} ry={FLOWER_SHAPE.petalRadiusY}
+        transform={`rotate(${360 * i / normalizeShapePetalCount(petalCount)} ${FLOWER_SHAPE.centerX} ${FLOWER_SHAPE.centerY})`} />)}
+      <circle cx={FLOWER_SHAPE.centerX} cy={FLOWER_SHAPE.centerY} r={FLOWER_SHAPE.centerRadius} />
+    </> : shapeType === "predefinedProcess"
+      ? <rect x={PREDEFINED_PROCESS_SHAPE.x} y={PREDEFINED_PROCESS_SHAPE.y} width={PREDEFINED_PROCESS_SHAPE.width} height={PREDEFINED_PROCESS_SHAPE.height} rx={PREDEFINED_PROCESS_SHAPE.radius} />
+      : <path d={SHAPE_SVG_PATHS[shapeType as ShapeType]} />;
+  const paintDefinition = <SvgSurfacePaint id={paintId} fill={fillColor} paint={paint} outline={clipOutline} />;
   const strokeWidth = borderWidth > 0 ? borderWidth : 0;
   const stroke = borderWidth > 0 ? borderColor : "none";
   const strokeDasharray = dashArray(borderStyle, Math.max(1, borderWidth));
@@ -880,7 +897,8 @@ function SvgShapeSurface({
     const points = SHAPE_POLYGON_POINTS[shapeType as ShapeType];
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-        <polygon points={points} fill={fillColor ?? "transparent"} {...commonStroke} />
+        {paintDefinition}
+        <polygon points={points} fill={paintedFill} {...commonStroke} />
         {selected && <polygon points={points} {...selectedStroke} />}
       </svg>
     );
@@ -892,6 +910,7 @@ function SvgShapeSurface({
     const petals = Array.from({ length: normalizeShapePetalCount(petalCount) }, (_, i) => i);
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
+        {paintDefinition}
         {petals.map((petal) => (
           <ellipse
             key={petal}
@@ -900,7 +919,7 @@ function SvgShapeSurface({
             rx={FLOWER_SHAPE.petalRadiusX}
             ry={FLOWER_SHAPE.petalRadiusY}
             transform={`rotate(${(360 / petals.length) * petal} ${FLOWER_SHAPE.centerX} ${FLOWER_SHAPE.centerY})`}
-            fill={fillColor ?? "transparent"}
+            fill={paintedFill}
             {...commonStroke}
           />
         ))}
@@ -908,7 +927,7 @@ function SvgShapeSurface({
           cx={FLOWER_SHAPE.centerX}
           cy={FLOWER_SHAPE.centerY}
           r={FLOWER_SHAPE.centerRadius}
-          fill={fillColor ?? "transparent"}
+          fill={paintedFill}
           {...commonStroke}
         />
         {selected && <circle cx="50" cy="50" r="47" {...selectedStroke} />}
@@ -919,13 +938,14 @@ function SvgShapeSurface({
   if (shapeType === "predefinedProcess") {
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
+        {paintDefinition}
         <rect
           x={PREDEFINED_PROCESS_SHAPE.x}
           y={PREDEFINED_PROCESS_SHAPE.y}
           width={PREDEFINED_PROCESS_SHAPE.width}
           height={PREDEFINED_PROCESS_SHAPE.height}
           rx={PREDEFINED_PROCESS_SHAPE.radius}
-          fill={fillColor ?? "transparent"}
+          fill={paintedFill}
           {...commonStroke}
         />
         <line
@@ -959,7 +979,8 @@ function SvgShapeSurface({
   if (shapeType === "database") {
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-        <path d={path} fill={fillColor ?? "transparent"} {...commonStroke} />
+        {paintDefinition}
+        <path d={path} fill={paintedFill} {...commonStroke} />
         <path d="M10 22 C10 36 90 36 90 22" fill="none" {...commonStroke} />
         {selected && <path d={path} {...selectedStroke} />}
       </svg>
@@ -969,7 +990,8 @@ function SvgShapeSurface({
   if (path) {
     return (
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-        <path d={path} fill={fillColor ?? "transparent"} {...commonStroke} />
+        {paintDefinition}
+        <path d={path} fill={paintedFill} {...commonStroke} />
         {shapeType === "document" && <path d="M6 80 C18 92 28 72 46 83 C66 94 76 66 94 76" fill="none" {...commonStroke} />}
         {shapeType === "leaf" && <path d="M50 10 C46 32 48 68 50 92" fill="none" {...commonStroke} />}
         {selectedShapeStroke(shapeType, <path d={path} {...selectedStroke} />, selected)}
@@ -1005,7 +1027,7 @@ export function ShapeSurface({
 }) {
   const renderedFillColor = themeAwareNodeFillColor(fillColor);
   const effectStyle = effectData ? surfaceEffectStyle(effectData, borderColor, fillGradient) : {};
-  const exportEffectStyle = surfaceEffectExportStyle(effectData ?? {}, borderColor);
+  const exportEffectStyle = surfaceEffectExportStyle(effectData ?? {}, borderColor, fillGradient);
   const exportShadowLayers = surfaceEffectExportShadowLayers(effectData ?? {}, borderColor);
   if (isSvgShapeType(shapeType)) {
     return (
@@ -1016,6 +1038,7 @@ export function ShapeSurface({
         <SvgShapeSurface
           shapeType={shapeType}
           fillColor={renderedFillColor}
+          paint={{ ...effectStyle, backgroundImage: effectStyle.backgroundImage ?? fillGradient }}
           borderColor={borderColor}
           borderWidth={borderWidth}
           borderStyle={borderStyle}

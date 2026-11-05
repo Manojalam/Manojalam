@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { SvgSurfacePaint } from "./SvgSurfacePaint";
+import { useId, type CSSProperties, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
 import type {
   TextCalloutDirection,
@@ -20,6 +21,7 @@ interface TextCalloutSurfaceProps {
   style: Exclude<TextFrameStyle, "plain">;
   direction: TextCalloutDirection;
   fillColor: string;
+  paint?: CSSProperties;
   borderColor: string;
   borderWidth: number;
   borderStyle: "solid" | "dashed" | "dotted";
@@ -36,6 +38,7 @@ export function TextCalloutSurface({
   style,
   direction,
   fillColor,
+  paint,
   borderColor,
   borderWidth,
   borderStyle,
@@ -47,13 +50,14 @@ export function TextCalloutSurface({
   onTailDragStart,
   onTailTipChange,
 }: TextCalloutSurfaceProps) {
+  const paintId = `callout-${useId().replace(/:/g, "")}`;
   const { screenToFlowPosition } = useReactFlow();
   const anchorPointerIdRef = useRef<number | null>(null);
   const strokeDasharray = borderStyle === "dashed"
     ? `${Math.max(1, borderWidth) * 2.5} ${Math.max(1, borderWidth) * 1.5}`
     : borderStyle === "dotted" ? `0.1 ${Math.max(1, borderWidth) * 2}` : undefined;
   const outline = {
-    fill: fillColor,
+    fill: paint?.backgroundImage ? "transparent" : fillColor,
     stroke: borderWidth > 0 ? borderColor : "none",
     strokeWidth: Math.max(0, borderWidth),
     strokeDasharray,
@@ -94,6 +98,14 @@ export function TextCalloutSurface({
         className="h-full w-full overflow-visible"
         aria-hidden="true"
       >
+        <SvgSurfacePaint id={paintId} fill={fillColor} paint={paint}
+          bounds={style === "speech" ? {
+            x: Math.min(0, tailTip.x - 20), y: Math.min(0, tailTip.y - 20),
+            width: Math.max(size.width, tailTip.x + 20) - Math.min(0, tailTip.x - 20),
+            height: Math.max(size.height, tailTip.y + 20) - Math.min(0, tailTip.y - 20),
+          } : { x: -10, y: -10, width: 120, height: 120 }} outline={style === "speech"
+          ? <path d={speechPath} />
+          : <><rect x={thoughtBody.x} y={thoughtBody.y} width={thoughtBody.width} height={thoughtBody.height} rx="14" />{dots.map((dot, index) => <circle key={index} {...dot} />)}</>} />
         {style === "speech" ? (
           <>
             <path

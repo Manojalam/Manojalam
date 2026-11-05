@@ -674,7 +674,7 @@ function supportsCornerRadius(node: Node): boolean {
 }
 
 function supportsSurfaceEffects(node: Node): boolean {
-  return ["mindmap", "shape", "sticky", "text"].includes(node.type ?? "");
+  return ["mindmap", "shape", "sticky", "text", "table", "sanskrit", "shloka", "grammar", "frame", "relationshipDiagram"].includes(node.type ?? "");
 }
 
 const CONTENT_SIZED_COLUMN_NODE_TYPES = new Set(["mindmap", "shape", "sticky", "text"]);
@@ -7277,7 +7277,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
         )}
 
-        {isContentNode && !isRadialLayoutSector && (
+        {supportsSurfaceEffects(selectedNode) && !isRadialLayoutSector && (
           <Section label="Effects" visible={singleNodeTab === "style"}>
             <SurfaceEffectsControl data={[d]} onChange={makePatch => {
               pushHistory();
