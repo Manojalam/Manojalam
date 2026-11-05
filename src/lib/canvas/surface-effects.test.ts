@@ -213,3 +213,17 @@ test("combined Raised and Metal retain the base gradient as the bottom layer", (
     backgroundImage: gradient, backgroundBlendMode: "normal",
   });
 });
+
+
+for (const preset of ["flat", "soft", "raised", "bevel", "glass", "metallic", "glow"] as const) {
+  test(`${preset} preserves the underlying fill gradient`, () => {
+    const data = surfaceEffectPresetPatch(preset);
+    const gradient = "linear-gradient(100deg, #ffbfff, #bfbfff)";
+    const effect = surfaceEffectStyle(data);
+    const composed = surfaceEffectStyle(data, undefined, gradient);
+    assert.equal(composed.backgroundImage, effect.backgroundImage ? `${effect.backgroundImage},${gradient}` : gradient);
+    assert.equal(composed.backgroundBlendMode, effect.backgroundBlendMode ? `${effect.backgroundBlendMode},normal` : "normal");
+    assert.equal(composed.boxShadow, effect.boxShadow);
+    assert.equal(composed.backdropFilter, effect.backdropFilter);
+  });
+}
