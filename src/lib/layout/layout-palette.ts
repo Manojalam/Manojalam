@@ -190,7 +190,11 @@ function manualFillAnchors(
     const manualColor = manualLayoutFillColor(dataById.get(nodeId) ?? {});
     const anchor = manualColor ? { color: manualColor, depth } : inherited;
     if (anchor) anchors.set(nodeId, anchor);
-    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) visit(childId, anchor);
+    // The chart header is styled independently of its branch palette.
+    // A manual branch fill can still seed shades within that branch.
+    for (const childId of hierarchy.get(nodeId)?.childIds ?? []) {
+      visit(childId, nodeId === rootId ? null : anchor);
+    }
   };
 
   visit(rootId, null);
