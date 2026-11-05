@@ -831,8 +831,8 @@ function LayoutColorPatternControls({
       </div>
       <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
         {matrixRows
-          ? "The root summarizes the full palette; its first child row starts at this hue."
-          : "Sets the first top-level branch hue; descendants remain related."}
+          ? "The root summarizes the full palette; its first child row uses this exact shade."
+          : "Sets the exact first branch color; descendants use related shades."}
       </p>
       <div className="mt-2 overflow-hidden rounded border border-border/70">
         {matrixRows && (
@@ -895,10 +895,10 @@ function LayoutColorPatternControls({
           </div>
           <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
             {pattern === "duotone"
-              ? `${matrixRows ? "Rows" : "Branches"} blend toward this hue.`
+              ? `${matrixRows ? "Rows" : "Branches"} blend toward this color.`
               : pattern === "alternating"
-                ? `Every second ${itemKind} uses this hue.`
-                : `Neighboring ${matrixRows ? "rows" : "branches"} form up to four color sections between these hues.`}
+                ? `Every second ${itemKind} uses this exact shade.`
+                : `Neighboring ${matrixRows ? "rows" : "branches"} form up to four color sections between these colors.`}
           </p>
           <div className="mt-2">
             <ColorSwatchPicker

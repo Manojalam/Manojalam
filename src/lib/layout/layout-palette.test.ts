@@ -1,3 +1,4 @@
+import { hexToHsv } from "../canvas/custom-colors";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Edge, Node } from "@xyflow/react";
@@ -524,6 +525,7 @@ test("Matrix automatic colors use branch hues with one shade per depth", () => {
 });
 
 function hueFromHsl(color: string): number {
+  if (color.startsWith("#")) return hexToHsv(color)!.h;
   const hue = color.match(/^hsl\(([\d.]+),/)?.[1];
   assert.ok(hue, `Expected an HSL color, received ${color}`);
   return Number(hue);
@@ -791,7 +793,8 @@ test("a custom Matrix start color rotates the row flow and persists on the root"
   assert.match(rootStyle.fillGradient ?? "", /^linear-gradient\(100deg,/);
   assert.equal(rootStyle.textColor, "#ffffff");
   assert.ok(firstHue >= 216 && firstHue <= 218);
-  assert.equal(firstRowStyle.textColor, "#020617");
+  assert.equal(firstRowStyle.fillColor, "#3b82f6");
+  assert.equal(firstRowStyle.textColor, "#ffffff");
 });
 
 test("neutral Matrix start colors remain neutral while descendants lighten", () => {
@@ -800,8 +803,8 @@ test("neutral Matrix start colors remain neutral while descendants lighten", () 
   const parent = radialSectorColors(scheme, 0, 1, 0, 1, anchor);
   const child = radialSectorColors(scheme, 0, 2, 0, 1, anchor);
 
-  assert.match(parent.fill, /^hsl\([\d.]+, 0\.0%, 64\.0%\)$/);
-  assert.match(child.fill, /^hsl\([\d.]+, 0\.0%, 68\.0%\)$/);
+  assert.equal(parent.fill, "#808080");
+  assert.match(child.fill, /^hsl\([\d.]+, 0\.0%, 54\.2%\)$/);
   assert.equal(parent.text, "#020617");
   assert.equal(child.text, "#020617");
 });
@@ -1030,4 +1033,27 @@ test("Free Form keeps automatic colors without moving the diagram", () => {
     freeForm.nodes.map((node) => node.position),
     nodes.map((node) => node.position)
   );
+});
+
+
+test("custom alternating shades retain exact RGB values, including same-hue pairs", () => {
+  const scheme = RADIAL_COLOR_SCHEMES[0];
+  for (const [first, second] of [["#ffbfbf", "#ff5959"], ["#dfbfff", "#8000ff"], ["#ffffff", "#000000"]]) {
+    for (const i of [0, 1, 2, 3]) {
+      const expected = i % 2 ? second : first;
+      const anchor = layoutBranchAnchorColor(scheme, i, 4, first, "alternating", second);
+      assert.equal(anchor, expected);
+      assert.equal(radialSectorColors(scheme, i, 1, 0, 1, anchor).fill, expected);
+    }
+  }
+});
+
+test("each selected purple shade survives every automatic pattern at the first branch", () => {
+  for (const color of ["#f2e6ff", "#dfbfff", "#8000ff", "#1c0038"]) {
+    for (const pattern of ["flow", "gentle", "curated", "alternating", "duotone", "sectioned"] as const) {
+      const scheme = RADIAL_COLOR_SCHEMES[0];
+      const anchor = layoutBranchAnchorColor(scheme, 0, 6, color, pattern, "#ff0000");
+      assert.equal(radialSectorColors(scheme, 0, 1, 0, 1, anchor).fill, color);
+    }
+  }
 });
