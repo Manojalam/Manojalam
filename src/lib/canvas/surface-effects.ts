@@ -114,12 +114,22 @@ function layerData(layer: SurfaceEffectSettings): Record<string, unknown> {
   return { surfaceEffect: layer.preset, surfaceEffectDepth: layer.depth, surfaceEffectStrength: layer.strength, surfaceEffectAngle: layer.angle };
 }
 
-export function surfaceEffectStyle(data: Record<string, unknown>, accentColor?: string): SurfaceEffectStyle {
+export function surfaceEffectStyle(
+  data: Record<string, unknown>, accentColor?: string, baseGradient?: string
+): SurfaceEffectStyle {
   const styles = normalizeSurfaceEffects(data).map(layer => singleSurfaceEffectStyle(layerData(layer), accentColor));
   const result: SurfaceEffectStyle = {};
   for (const key of ["backgroundImage", "backgroundBlendMode", "boxShadow", "backdropFilter"] as const) {
     const values = styles.map(style => style[key]).filter(Boolean);
     if (values.length) result[key] = values.join(key === "backdropFilter" ? " " : ",");
+  }
+  // CSS background layers paint front to back. Keep the authored/generated
+  // fill beneath highlights; spreading an effect must never replace it.
+  if (baseGradient) {
+    result.backgroundImage = result.backgroundImage
+      ? `${result.backgroundImage},${baseGradient}` : baseGradient;
+    result.backgroundBlendMode = result.backgroundBlendMode
+      ? `${result.backgroundBlendMode},normal` : "normal";
   }
   return result;
 }

@@ -1004,7 +1004,7 @@ export function ShapeSurface({
   effectData?: Record<string, unknown>;
 }) {
   const renderedFillColor = themeAwareNodeFillColor(fillColor);
-  const effectStyle = effectData ? surfaceEffectStyle(effectData, borderColor) : {};
+  const effectStyle = effectData ? surfaceEffectStyle(effectData, borderColor, fillGradient) : {};
   const exportEffectStyle = surfaceEffectExportStyle(effectData ?? {}, borderColor);
   const exportShadowLayers = surfaceEffectExportShadowLayers(effectData ?? {}, borderColor);
   if (isSvgShapeType(shapeType)) {
