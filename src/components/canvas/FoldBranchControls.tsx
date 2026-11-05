@@ -57,6 +57,8 @@ export function FoldBranchControls({
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const sectionCount = resolvedFoldSectionCount(parentData, childIds.length);
   const manualBreakAfter = resolvedManualFoldBreakAfter(parentData, childIds, sectionCount);
+  const terminalSiblingGrid = terminalItems && childIds.length > 0
+    && childIds.every(id => hierarchy.get(id)?.parentId === parentId);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
   const commit = (patch: Record<string, unknown>) => {
@@ -80,7 +82,9 @@ export function FoldBranchControls({
         Fold into sections
       </div>
       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">
-        {terminalItems
+        {terminalSiblingGrid && parentData.matrixFoldRootMode !== "divided"
+          ? "Wrap cells into a compact grid. For nine cells, three sections makes three rows and three columns."
+          : terminalItems
           ? parentData.matrixFoldRootMode === "divided"
             ? "Automatic balances rendered Matrix row heights and flows whole rows into the next section. Continued ancestors and the root repeat in each section."
             : "Automatic balances rendered Matrix row heights and flows whole rows into the next section. Continued ancestors repeat beneath one shared root."
@@ -133,7 +137,7 @@ export function FoldBranchControls({
                 }}
                 className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary"
               >
-                <option value="continuous">Continuous · one root across sections</option>
+                <option value="continuous">{terminalSiblingGrid ? "Compact grid · one shared root" : "Continuous · one root across sections"}</option>
                 <option value="divided">Divided · repeat root per section</option>
               </select>
               <p className="mt-1 text-[9px] leading-snug text-muted-foreground">

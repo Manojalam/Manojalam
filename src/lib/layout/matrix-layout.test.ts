@@ -1592,19 +1592,10 @@ test("Fold continues a long Matrix branch in an adjacent vertical block", () => 
   const first = result.cells.find((cell) => cell.nodeId === "child-0")!;
   const sixth = result.cells.find((cell) => cell.nodeId === "child-5")!;
   assert.equal(first.y, sixth.y);
-  assert.equal(sixth.x - (first.x + first.width), MATRIX_FOLD_SECTION_GAP);
-  assert.equal(result.foldSections?.length, 2);
-  assert.deepEqual(result.foldSections?.map((section) => section.terminalIds.length), [5, 5]);
+  assert.equal(sixth.x - (first.x + first.width), MATRIX_DENSITY_SETTINGS.comfortable.cellGap);
+  assert.equal(new Set(result.cells.map(cell => cell.x)).size, 2);
+  assert.equal(new Set(result.cells.map(cell => cell.y)).size, 5);
   assert.equal(result.header.width, result.bounds.width);
-  assert.equal(
-    result.foldSections![0].width * 2 + MATRIX_FOLD_SECTION_GAP,
-    result.header.width
-  );
-  assert.equal(
-    result.foldSections?.[1].repeatedCells.some((cell) =>
-      cell.role === "header" && cell.sourceNodeId === "root"),
-    false
-  );
   assertClean(result);
 });
 
@@ -1896,7 +1887,7 @@ test("Matrix Auto Fold leaves an uneven terminal-row remainder only in the final
     })),
   ]);
   const nodes = fixture.nodes.map((node) => node.id === "root"
-    ? { ...node, data: { ...node.data, layoutFoldCount: 4 } }
+    ? { ...node, data: { ...node.data, layoutFoldCount: 4, matrixFoldRootMode: "divided" } }
     : node);
   const hierarchy = buildHierarchy(nodes, fixture.edges);
   const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map((node) => [node.id, node])));
@@ -2016,66 +2007,19 @@ test("Matrix Auto Fold does not split terminals that share one rendered row", ()
   assertClean(folded);
 });
 
-test("manual top-level Fold breaks paginate the selected terminal rows", () => {
-  const fixture = buildTree([
+test("manual terminal grid breaks preserve groups without multiplying the table width", () => {
+  const { nodes, edges } = buildTree([
     { id: "root", parentId: null, matrixTableWidth: 640 },
-    ...Array.from({ length: 7 }, (_, index) => ({
-      id: `child-${index}`,
-      parentId: "root",
-    })),
+    ...Array.from({ length: 7 }, (_, i) => ({ id: `child-${i}`, parentId: "root" })),
   ]);
-  const foldedNodes = fixture.nodes.map((node) => node.id === "root"
-    ? {
-        ...node,
-        data: {
-          ...node.data,
-          layoutFoldCount: 3,
-          layoutFoldBreakAfter: ["child-0", "child-4"],
-        },
-      }
-    : node);
-  const unfoldedHierarchy = buildHierarchy(fixture.nodes, fixture.edges);
-  const foldedHierarchy = buildHierarchy(foldedNodes, fixture.edges);
-  const unfolded = computeMatrixLayout(
-    "root",
-    unfoldedHierarchy,
-    new Map(fixture.nodes.map((node) => [node.id, node]))
-  );
-  const folded = computeMatrixLayout(
-    "root",
-    foldedHierarchy,
-    new Map(foldedNodes.map((node) => [node.id, node]))
-  );
-  const unfoldedCells = new Map(unfolded.cells.map((cell) => [cell.nodeId, cell]));
-  const foldedCells = new Map(folded.cells.map((cell) => [cell.nodeId, cell]));
-  const stride = unfolded.header.width + MATRIX_FOLD_SECTION_GAP;
-
-  assert.equal(folded.header.width, folded.bounds.width);
-  assert.equal(folded.bounds.width, unfolded.header.width * 3 + MATRIX_FOLD_SECTION_GAP * 2);
-  assert.equal(foldedCells.get("child-1")!.x - foldedCells.get("child-0")!.x, stride);
-  assert.equal(foldedCells.get("child-5")!.x - foldedCells.get("child-1")!.x, stride);
-  assert.equal(foldedCells.get("child-0")!.y, foldedCells.get("child-1")!.y);
-  assert.equal(foldedCells.get("child-1")!.y, foldedCells.get("child-5")!.y);
-  assert.deepEqual(
-    folded.foldSections?.map((section) => section.terminalIds),
-    [["child-0"], ["child-1", "child-2", "child-3", "child-4"], ["child-5", "child-6"]]
-  );
-  for (const [nodeId, before] of unfoldedCells) {
-    const after = foldedCells.get(nodeId)!;
-    assert.equal(after.width, before.width, `${nodeId} width changed`);
-    assert.equal(after.height, before.height, `${nodeId} height changed`);
-  }
-  const frames = buildMatrixFrameNodes(
-    renderedMatrixNodes(folded, foldedHierarchy, foldedNodes),
-    "root"
-  );
-  assert.equal(frames.length, 3);
-  assert.equal(
-    frames.every((frame) =>
-      (frame.data as Record<string, unknown>).matrixFrameFor === "root"),
-    true
-  );
-  assertClean(folded);
+  Object.assign(nodes[0].data, { layoutFoldCount: 3, layoutFoldBreakAfter: ["child-0", "child-4"] });
+  const hierarchy = buildHierarchy(nodes, edges);
+  const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map(n => [n.id, n])));
+  assert.equal(result.header.width, 640);
+  const columns = [...new Set(result.cells.map(c => c.x))].sort((a, b) => a - b);
+  assert.deepEqual(columns.map(x => result.cells.filter(c => c.x === x).map(c => c.nodeId)),
+    [["child-0"], ["child-1", "child-2", "child-3", "child-4"], ["child-5", "child-6"]]);
+  assertClean(result);
 });
 
 test("a stretched nested Fold keeps its section columns equally wide", () => {
@@ -3651,3 +3595,25 @@ test("Matrix defaults use depth relative to a nested Matrix root", () => {
   assert.equal(effective.get("matrix")!.data.matrixChildFlow, "row");
   assert.equal(effective.get("child")!.data.matrixChildFlow, "column");
 });
+
+
+for (const childFlow of ["row", "column"] as const) {
+  test(`terminal root folds into a compact 3 by 3 grid (${childFlow})`, () => {
+    const { nodes, edges } = buildTree([
+      { id: "root", parentId: null, childFlow },
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `cell-${i}`, parentId: "root" })),
+    ]);
+    nodes[0].data.layoutFoldCount = 3;
+    const hierarchy = buildHierarchy(nodes, edges);
+    const result = computeMatrixLayout("root", hierarchy, new Map(nodes.map(n => [n.id, n])));
+    assertClean(result);
+    assert.equal(new Set(result.cells.map(c => c.x)).size, 3);
+    assert.equal(new Set(result.cells.map(c => c.y)).size, 3);
+    assert.equal(result.cells.length, 9);
+    assert.ok(result.header.width < 1000, "no original strip width or blank offsets retained");
+    assert.ok(!result.foldSections?.length, "grid is not separate full-width pages");
+    const ordered = [...result.cells].sort((a, b) => childFlow === "row"
+      ? a.y - b.y || a.x - b.x : a.x - b.x || a.y - b.y);
+    assert.deepEqual(ordered.map(c => c.nodeId), nodes.slice(1).map(n => n.id));
+  });
+}
