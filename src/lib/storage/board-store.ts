@@ -1,4 +1,4 @@
-import { backupKey, writeBoardBackup, acknowledgeBoardBackup } from "./board-backup";
+import { backupKey, readBoardBackup, writeBoardBackup, acknowledgeBoardBackup } from "./board-backup";
 import { storeBoardImages, loadBoardImages } from "./board-images";
 import { BOARD_CONTENT_VERSION } from "@/lib/config";
 import { DEFAULT_BOARD_SETTINGS } from "@/lib/types";
@@ -49,7 +49,8 @@ function normalizeBoardContent(content: BoardContent): BoardContent {
 
 export async function rowToBoard(
   row: BoardRow,
-  accessRole: BoardAccessRole = "owner"
+  accessRole: BoardAccessRole = "owner",
+  cachedContent?: BoardContent
 ): Promise<VidyaBoard> {
   return {
     id: row.id,
@@ -57,7 +58,7 @@ export async function rowToBoard(
     accessRole,
     title: row.title,
     description: row.description,
-    content: normalizeBoardContent(await loadBoardImages(row.content)),
+    content: normalizeBoardContent(await loadBoardImages(row.content, cachedContent)),
     thumbnailUrl: row.thumbnail_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -202,7 +203,8 @@ export async function getBoard(id: string): Promise<VidyaBoard | null> {
   if (!data) return null;
   const row = data as BoardRow;
   const roles = await rolesForBoards([row], currentUserId);
-  return rowToBoard(row, roles.get(row.id) ?? "viewer");
+  const backup = await readBoardBackup(backupKey(currentUserId, id)).catch(() => null);
+  return rowToBoard(row, roles.get(row.id) ?? "viewer", backup?.board.content);
 }
 
 export async function createBoard(

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BoardToolbarHost, BoardToolCategoryContext } from "@/components/canvas/BoardToolDock";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { backupKey, readBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
+import { withLoadTimeout } from "@/lib/storage/load-timeout";
 import { getBoard, getRecoveryUserId } from "@/lib/storage/board-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CanvasTopbar } from "@/components/canvas/CanvasTopbar";
@@ -37,6 +38,7 @@ export default function BoardEditorPage() {
   })();
   const [loading, setLoading] = useState(!hasPrefetchedTemplateBoard);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null);
   const panel = useUIStore(state => state.boardPanel);
   const activeTool = useUIStore(state => state.activeTool);
@@ -69,12 +71,12 @@ export default function BoardEditorPage() {
     }
 
     beginBoardHydration();
-    getBoard(boardId)
+    withLoadTimeout(getBoard(boardId), 45_000, "Loading the board timed out. Your saved data has not been changed.")
       .then(async (board) => {
         if (!active) return;
         if (board) {
-          const user = await getRecoveryUserId();
-          const backup = await readBoardBackup(backupKey(user, boardId)).catch(() => null);
+          const user = await withLoadTimeout(getRecoveryUserId(), 3000, "Session lookup timed out");
+          const backup = await withLoadTimeout(readBoardBackup(backupKey(user, boardId)), 5000, "Local recovery lookup timed out").catch(() => null);
           if (!active) return;
           // Recover before mounting the editor: its viewport/layout updates must
           // not overwrite a pending draft with the older cloud version.
@@ -88,15 +90,16 @@ export default function BoardEditorPage() {
       })
       .catch(async (error) => {
         // An offline reload may still recover this account's last local board.
-        const user = await getRecoveryUserId().catch(() => null);
+        const user = await withLoadTimeout(getRecoveryUserId(), 3000, "Session lookup timed out").catch(() => null);
         const backup = (user || boardId.startsWith("guest-"))
-          ? await readBoardBackup(backupKey(user, boardId)).catch(() => null) : null;
+          ? await withLoadTimeout(readBoardBackup(backupKey(user, boardId)), 5000, "Local recovery lookup timed out").catch(() => null) : null;
         if (!active) return;
         if (backup) {
-          setBoard(backup.board);
+          // A possibly older offline copy must not overwrite newer cloud work.
+          setBoard({ ...backup.board, accessRole: "viewer" });
           pushHistory();
-          useCanvasStore.setState({ saveStatus: "error", saveError: `Cloud board could not be loaded: ${saveErrorMessage(error)}`, backupStatus: "saved", hasUserChangedBoard: true });
-        } else setNotFound(true);
+          useCanvasStore.setState({ saveStatus: "error", saveError: `Cloud board could not be loaded: ${saveErrorMessage(error)}`, backupStatus: "saved", hasUserChangedBoard: false });
+        } else { setLoadError(saveErrorMessage(error)); setNotFound(true); }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -201,10 +204,11 @@ export default function BoardEditorPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-background p-6">
         <div className="max-w-sm rounded-2xl border bg-card p-8 text-center shadow-sm">
-          <h1 className="text-lg font-semibold">Board not found</h1>
+          <h1 className="text-lg font-semibold">{loadError ? "Could not load board" : "Board not found"}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Board not found or you do not have access. Device boards are available only in the browser where they were created.
+            {loadError ?? "Board not found or you do not have access. Device boards are available only in the browser where they were created."}
           </p>
+          {loadError && <button className="mt-4 block w-full text-primary underline" onClick={() => window.location.reload()}>Retry loading board</button>}
           <Link href="/app/boards" className="mt-4 inline-block text-sm text-primary hover:underline">
             Back to your boards
           </Link>
