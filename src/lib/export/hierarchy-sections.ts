@@ -223,7 +223,7 @@ function rootHeaderStyle(root: Node, bounds: ExportBounds): ExportHeaderOverlay 
     ? 0
     : Math.max(0, finiteDimension(data.borderWidth) ?? 0);
   const effectData = resolveSurfaceEffectData(data);
-  const effectStyle = surfaceEffectStyle(effectData, borderColor);
+  const effectStyle = surfaceEffectStyle(effectData, borderColor, resolveLayoutFillGradient(data));
   const exportEffectStyle = surfaceEffectExportStyle(effectData, borderColor);
   const surfaceEffectShadowLayers = surfaceEffectExportShadowLayers(
     effectData,
@@ -234,7 +234,7 @@ function rootHeaderStyle(root: Node, bounds: ExportBounds): ExportHeaderOverlay 
     bounds,
     text: nodeLabel(root, "Matrix"),
     backgroundColor: fillColor,
-    backgroundImage: effectStyle.backgroundImage ?? resolveLayoutFillGradient(data),
+    backgroundImage: effectStyle.backgroundImage,
     backgroundBlendMode: effectStyle.backgroundBlendMode,
     backdropFilter: effectStyle.backdropFilter,
     boxShadow: effectStyle.boxShadow,

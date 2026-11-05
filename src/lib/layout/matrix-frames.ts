@@ -219,7 +219,7 @@ function repeatedCellRenderData(
   const textStyle = getTextStyle(data, background);
   const content = repeatedCellText(repeated.source);
   const borderColor = resolveBorderColor(data);
-  const effectStyle = surfaceEffectStyle(data, borderColor);
+  const effectStyle = surfaceEffectStyle(data, borderColor, resolveLayoutFillGradient(data));
   const exportEffectStyle = surfaceEffectExportStyle(data, borderColor);
   const exportShadowLayers = surfaceEffectExportShadowLayers(data, borderColor);
   const textAlign = data.textAlign === "left"
@@ -238,7 +238,7 @@ function repeatedCellRenderData(
     html: content.html,
     text: content.text,
     background,
-    backgroundImage: effectStyle.backgroundImage ?? resolveLayoutFillGradient(data),
+    backgroundImage: effectStyle.backgroundImage,
     backgroundBlendMode: effectStyle.backgroundBlendMode,
     backdropFilter: effectStyle.backdropFilter,
     boxShadow: effectStyle.boxShadow,

@@ -199,3 +199,17 @@ test("choosing metal again keeps its customization and existing glow", () => {
   assert.deepEqual(normalizeSurfaceEffects(data).map(layer => layer.preset), ["glow", "metallic"]);
   assert.equal(normalizeSurfaceEffects(data)[1].strength, 33);
 });
+
+
+test("combined Raised and Metal retain the base gradient as the bottom layer", () => {
+  const data = surfaceEffectLayerPatch(surfaceEffectLayerPatch({}, "raised", true), "metallic", true);
+  const gradient = "linear-gradient(100deg, #ffbfff, #bfbfff)";
+  const effects = surfaceEffectStyle(data);
+  const composed = surfaceEffectStyle(data, undefined, gradient);
+  assert.equal(composed.backgroundImage, `${effects.backgroundImage},${gradient}`);
+  assert.equal(composed.backgroundBlendMode, `${effects.backgroundBlendMode},normal`);
+  assert.equal(composed.boxShadow, effects.boxShadow);
+  assert.deepEqual(surfaceEffectStyle({surfaceEffects: []}, undefined, gradient), {
+    backgroundImage: gradient, backgroundBlendMode: "normal",
+  });
+});
