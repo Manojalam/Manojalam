@@ -1,5 +1,6 @@
 "use client";
 
+import { GeneralColorGrid } from "./GeneralColorGrid";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -16,7 +17,7 @@ import { CollapsibleColorSection } from "@/components/canvas/CollapsibleColorSec
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   arrangeColorPalette,
-  COLOR_SWATCH_GROUPS,
+  GENERAL_COLOR_PALETTE,
   METALLIC_COLORS,
   colorSwatchHex,
   colorsUsedOnBoard,
@@ -308,29 +309,15 @@ export function ColorPickerPanel({
 
       <CollapsibleColorSection
         label="General colors"
-        hint="70 solid colours"
+        hint={`${GENERAL_COLOR_PALETTE.length} solid colours`}
         preserveCurrentFocus={selectionSafe}
         contentClassName="space-y-1.5"
       >
-        {COLOR_SWATCH_GROUPS.map((group) => (
-          <section key={group.name} className={compact ? "space-y-1" : "grid grid-cols-[2.5rem_1fr] items-center gap-1.5"}>
-            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-              {group.name}
-            </p>
-            <div className={cn("grid gap-1", compact ? "grid-cols-[repeat(auto-fit,minmax(1.25rem,1fr))]" : "grid-cols-10")}>
-              {group.colors.map((color) => (
-                <ColorSwatch
-                  key={color}
-                  color={color}
-                  selected={!mixed && draftColor === color}
-                  title={`${group.name} · ${color}`}
-                  onSelect={() => selectSwatch(color)}
-                  selectionSafe={selectionSafe}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        <GeneralColorGrid renderSwatch={(color, family) => (
+          <ColorSwatch color={color} selected={!mixed && draftColor === color}
+            title={`${family} · ${color}`} onSelect={() => selectSwatch(color)}
+            selectionSafe={selectionSafe} />
+        )} />
       </CollapsibleColorSection>
 
       <CollapsibleColorSection label="Metal colors" hint="Gold, silver, copper & more" defaultOpen={false} preserveCurrentFocus={selectionSafe}>

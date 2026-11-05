@@ -84,12 +84,12 @@ test("collects board colors once and returns them in neutral then hue order", ()
 
 test("general palettes offer varied solid colors separately from metals", () => {
   assert.deepEqual(COLOR_SWATCH_GROUPS.map(({ name }) => name),
-    ["Bright", "Light", "Strong", "Neutral", "Pastel", "Deep", "Earth"]);
-  assert.equal(GENERAL_COLOR_PALETTE.length, 70);
-  assert.equal(new Set(GENERAL_COLOR_PALETTE).size, 70);
+    ["Neutral", "Red", "Orange", "Yellow", "Lime", "Green", "Emerald", "Cyan", "Azure", "Blue", "Violet", "Magenta", "Rose", "Earth"]);
+  assert.equal(GENERAL_COLOR_PALETTE.length, 140);
+  assert.equal(new Set(GENERAL_COLOR_PALETTE).size, 140);
   assert.ok(GENERAL_COLOR_PALETTE.every(color => /^#[0-9a-f]{6}$/.test(color)));
   assert.ok(METALLIC_COLORS.every(color => !GENERAL_COLOR_PALETTE.includes(color)));
-  for (const color of ["#ffffff", "#000000", "#ff3b30", "#16b364", "#2878ff", "#fda4af", "#7f1d1d", "#a0522d"]) {
+  for (const color of ["#ffffff", "#000000", "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", "#a0522d"]) {
     assert.ok(GENERAL_COLOR_PALETTE.includes(color));
   }
 });
@@ -169,4 +169,18 @@ test("removes only the requested saved color", () => {
     forgetCustomColor(["#aabbcc"], "not-a-color"),
     ["#aabbcc"]
   );
+});
+
+
+test("hue families cover the wheel with ten consistently light-to-dark shades", () => {
+  COLOR_SWATCH_GROUPS.slice(1, -1).forEach((group, index) => {
+    assert.equal(group.colors.length, 10);
+    const shades = group.colors.map(color => hexToHsv(color)!);
+    assert.ok(shades.every(shade => Math.abs(shade.h - index * 30) < 2));
+    const luminance = group.colors.map(color => {
+      const rgb = hexToRgb(color)!;
+      return 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+    });
+    assert.ok(luminance.every((value, i) => i === 0 || value <= luminance[i - 1]));
+  });
 });

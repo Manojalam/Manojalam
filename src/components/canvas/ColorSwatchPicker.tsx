@@ -1,5 +1,6 @@
 "use client";
 
+import { GeneralColorGrid } from "./GeneralColorGrid";
 import { useMemo } from "react";
 import { Check, X } from "lucide-react";
 
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
 
-const HUE_SORTED_GENERAL_COLORS = arrangeColorPalette(GENERAL_COLOR_PALETTE);
+
 
 interface ColorSwatchPickerProps {
   value?: string;
@@ -249,17 +250,13 @@ export function ColorSwatchPicker({
           <span className="ml-auto font-mono uppercase">{normalizedValue}</span>
         </div>
       )}
-      <PaletteSection
-        label="General colors"
-        hint="70 solid colours"
-        colors={HUE_SORTED_GENERAL_COLORS}
-        value={value}
-        mixed={mixed}
-        compact={compact}
-        defaultOpen={defaultSectionsOpen}
-        selectionSafe={selectionSafe}
-        onChange={onChange}
-      />
+      <CollapsibleColorSection label="General colors"
+        hint={`${GENERAL_COLOR_PALETTE.length} solid colours`}
+        defaultOpen={defaultSectionsOpen} preserveCurrentFocus={selectionSafe}>
+        <GeneralColorGrid renderSwatch={color => <DirectColorOption color={color}
+          value={value} mixed={mixed} compact={compact} selectionSafe={selectionSafe}
+          onSelect={() => onChange(color)} />} />
+      </CollapsibleColorSection>
 
       <PaletteSection
         label="Saved palette"

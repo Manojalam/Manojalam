@@ -12,49 +12,23 @@ export const METALLIC_COLORS = [
 
 const METALLIC_COLOR_SET = new Set<string>(METALLIC_COLORS);
 
-/** General-purpose swatches grouped by visual family. */
-export const COLOR_SWATCH_GROUPS = [
-  {
-    name: "Bright",
-    colors: [
-      "#ff3b30", "#ff7a00", "#f5c400", "#a3d900", "#16b364",
-      "#00a88f", "#00a8e8", "#2878ff", "#6f5cff", "#e83e8c",
-    ],
-  },
-  {
-    name: "Light",
-    colors: [
-      "#ffd8d6", "#ffe3c2", "#fff1a8", "#e8f7b2", "#c9f3d8",
-      "#bff2e8", "#c8efff", "#d6e4ff", "#e3ddff", "#ffd6e8",
-    ],
-  },
-  {
-    name: "Strong",
-    colors: [
-      "#d92d20", "#dc6803", "#ca8504", "#65a30d", "#087f5b",
-      "#0f766e", "#0369a1", "#155eef", "#5925dc", "#c11574",
-    ],
-  },
-  {
-    name: "Neutral",
-    colors: [
-      "#ffffff", "#f8fafc", "#e2e8f0", "#cbd5e1", "#94a3b8",
-      "#64748b", "#475569", "#334155", "#0f172a", "#000000",
-    ],
-  },
-  {
-    name: "Pastel",
-    colors: ["#fda4af", "#fdba74", "#fde047", "#bef264", "#86efac", "#5eead4", "#7dd3fc", "#93c5fd", "#c4b5fd", "#f9a8d4"],
-  },
-  {
-    name: "Deep",
-    colors: ["#7f1d1d", "#9a3412", "#854d0e", "#365314", "#14532d", "#134e4a", "#0c4a6e", "#1e3a8a", "#4c1d95", "#831843"],
-  },
-  {
-    name: "Earth",
-    colors: ["#a0522d", "#8b4513", "#d2b48c", "#deb887", "#8a9a5b", "#556b2f", "#5f7f7a", "#708090", "#80697d", "#a66a6a"],
-  },
+/** Hue families follow the wheel; each row runs from pale to vivid to dark. */
+const HUE_FAMILIES = ["Red", "Orange", "Yellow", "Lime", "Green", "Emerald",
+  "Cyan", "Azure", "Blue", "Violet", "Magenta", "Rose"] as const;
+const SHADE_STEPS = [
+  [10, 100], [25, 100], [45, 100], [65, 100], [85, 100],
+  [100, 100], [100, 80], [100, 60], [100, 40], [100, 22],
 ] as const;
+
+export const COLOR_SWATCH_GROUPS: readonly { name: string; colors: readonly string[] }[] = [
+  { name: "Neutral", colors: ["#ffffff", "#f5f5f5", "#e5e5e5", "#d4d4d4", "#a3a3a3",
+    "#808080", "#666666", "#404040", "#202020", "#000000"] },
+  ...HUE_FAMILIES.map((name, index) => ({ name,
+    colors: SHADE_STEPS.map(([s, v]) => hsvToHex({ h: index * 30, s, v })),
+  })),
+  { name: "Earth", colors: ["#fff8e7", "#f5e6ce", "#deb887", "#d2b48c", "#bc8f6f",
+    "#a0522d", "#8b4513", "#704214", "#4b3621", "#2b1d14"] },
+];
 
 /** Shared solid-colour choices. Metals are offered only in their own section. */
 export const GENERAL_COLOR_PALETTE: readonly string[] = COLOR_SWATCH_GROUPS.flatMap(group => [...group.colors]);
