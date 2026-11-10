@@ -36,6 +36,8 @@ try {
   };
   await choose('1.3.1');
   const first=await page.$eval('#card-field-sutra',el=>el.textContent);
+  assert.equal(await page.$eval('#card-field-sutra a',el=>el.href),'https://ashtadhyayi.com/sutraani/1/3/1');
+  assert.equal(await page.$eval('.react-flow__node[data-id="target"] .tiptap a',el=>el.href),'https://ashtadhyayi.com/sutraani/1/3/1');
   await choose('3.2.123');
   const both=await page.$eval('#card-field-sutra',el=>el.textContent);
   assert.ok(both.startsWith(first+', '));

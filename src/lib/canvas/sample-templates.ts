@@ -71,7 +71,7 @@ export function sampleEntryHtml(template: SampleCardTemplate, entry: SampleCardE
       field.dataset.sampleSlot = `${entry.id}:${id}`;
       return;
     }
-    const href = safeCardLink(value?.href);
+    const href = /<a\b/i.test(value?.richText || "") ? undefined : safeCardLink(value?.href);
     const content = document.createElement(href ? "a" : "span");
     if (href) { content.setAttribute("href", href); content.setAttribute("target", "_blank"); content.setAttribute("rel", "noopener noreferrer"); }
     if (value?.richText) content.innerHTML = sanitizePastedHtml(value.richText);
