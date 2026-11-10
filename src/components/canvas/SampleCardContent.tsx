@@ -1,4 +1,5 @@
 "use client";
+import { appendSutra } from "@/lib/canvas/append-sutra";
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -9,14 +10,14 @@ import { safeCardLink } from "@/lib/canvas/card-templates";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SutraLookup } from "./SutraLookup";
 
-function SampleInput({ nodeId, entryId, fieldId, label, value, locked }: { nodeId: string; entryId: string; fieldId: string; label: SampleLabel; value: { text: string; href?: string }; locked: boolean }) {
+function SampleInput({ nodeId, entryId, fieldId, label, value, locked }: { nodeId: string; entryId: string; fieldId: string; label: SampleLabel; value: { text: string; href?: string; richText?: string }; locked: boolean }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const dirty = useRef(false);
   const [lookup, setLookup] = useState(false);
   useLayoutEffect(() => {
     if (input.current) { input.current.style.height = "0px"; input.current.style.height = `${input.current.scrollHeight}px`; }
   }, [value.text, label.fontSize, label.lineHeight]);
-  const change = (next: { text: string; href?: string }) => {
+  const change = (next: { text: string; href?: string; richText?: string }) => {
     const state = useCanvasStore.getState();
     if (!dirty.current) { state.pushHistory(); dirty.current = true; }
     const entries = state.nodes.find(node => node.id === nodeId)?.data.sampleEntries as SampleCardEntry[] ?? [];
@@ -27,7 +28,7 @@ function SampleInput({ nodeId, entryId, fieldId, label, value, locked }: { nodeI
     <label htmlFor={id} data-export-ignore className="sr-only">{label.name}</label>
     <textarea ref={input} id={id} data-sample-input data-sample-href={safeCardLink(value.href)} aria-label={label.name} rows={1} readOnly={locked} placeholder={label.name} value={value.text}
       className="block w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 outline-none placeholder:opacity-40" style={{ font: "inherit", color: "inherit", lineHeight: "inherit", textDecoration: "inherit" }}
-      onChange={event => change({ ...value, text: event.target.value })} onBlur={() => { dirty.current = false; }}
+      onChange={event => change({ ...value, text: event.target.value, richText: undefined })} onBlur={() => { dirty.current = false; }}
       onKeyDown={event => {
         event.stopPropagation();
         if (event.key === "Tab") {
@@ -38,7 +39,7 @@ function SampleInput({ nodeId, entryId, fieldId, label, value, locked }: { nodeI
       }} />
     {label.kind === "sutra" && !locked && <button type="button" data-export-ignore className="block text-[10px] leading-4 underline" onClick={() => setLookup(true)}>Find sūtra</button>}
     {safeCardLink(value.href) && <a data-export-ignore className="block text-[10px] leading-4 underline" href={safeCardLink(value.href)} target="_blank" rel="noopener noreferrer">Open source</a>}
-    {lookup && <Dialog open onOpenChange={setLookup}><DialogContent onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}><DialogHeader><DialogTitle>Find sūtra · {label.name}</DialogTitle><DialogDescription>Choose a result to insert its number, text and link into this field.</DialogDescription></DialogHeader><SutraLookup label={label.name} onChoose={next => { change(next); setLookup(false); }} /></DialogContent></Dialog>}
+    {lookup && <Dialog open onOpenChange={setLookup}><DialogContent onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}><DialogHeader><DialogTitle>Find sūtra · {label.name}</DialogTitle><DialogDescription>Choose results to append them, separated by commas. You can edit or remove the text yourself.</DialogDescription></DialogHeader><SutraLookup label={label.name} onChoose={next => { change(appendSutra(value, next)); }} /></DialogContent></Dialog>}
   </span>;
 }
 

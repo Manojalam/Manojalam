@@ -83,6 +83,6 @@ export function SutraLookup({ label, onChoose }: { label: string; onChoose: (val
           <span className="mr-2 text-muted-foreground">{entry.number}</span>{" "}{entry.text}
         </button>) : <p role="status" className="p-2 text-xs text-muted-foreground">No matching sūtra. Try its number or a shorter phrase.</p>}
       </div>}
-    <p className="text-[10px] text-muted-foreground">Choose a result to fill its number, text and link. Source: <a href="https://ashtadhyayi.com" target="_blank" rel="noopener noreferrer" className="underline">Ashtadhyayi.com</a></p>
+    <p className="text-[10px] text-muted-foreground">Choose results to append them, separated by commas. Edit or remove entries in the text below. Source: <a href="https://ashtadhyayi.com" target="_blank" rel="noopener noreferrer" className="underline">Ashtadhyayi.com</a></p>
   </div>;
 }
