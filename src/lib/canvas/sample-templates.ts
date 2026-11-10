@@ -74,7 +74,8 @@ export function sampleEntryHtml(template: SampleCardTemplate, entry: SampleCardE
     const href = safeCardLink(value?.href);
     const content = document.createElement(href ? "a" : "span");
     if (href) { content.setAttribute("href", href); content.setAttribute("target", "_blank"); content.setAttribute("rel", "noopener noreferrer"); }
-    content.textContent = text || "\u00a0";
+    if (value?.richText) content.innerHTML = sanitizePastedHtml(value.richText);
+    else content.textContent = text || "\u00a0";
     field.append(content);
   });
   return root.innerHTML;

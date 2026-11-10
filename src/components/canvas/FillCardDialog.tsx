@@ -1,4 +1,5 @@
 "use client";
+import { appendSutra } from "@/lib/canvas/append-sutra";
 
 import { useCallback, useRef, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
@@ -68,9 +69,12 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
   const [savingNext, setSavingNext] = useState(false);
   const create = useCanvasStore(state => state.createCardFromTemplate);
   const available = useCanvasStore(state => !!state.settings.cardTemplates?.some(item => item.id === template.id));
-  const patch = (id: string, value: Partial<CardFieldValues[string]>, repeatId: string) => setSections(current => current.map(item => {
+  const patch = (id: string, value: Partial<CardFieldValues[string]> | ((current: CardFieldValues[string] | undefined) => Partial<CardFieldValues[string]>), repeatId: string) => setSections(current => current.map(item => {
     if (item.id !== section.id) return item;
-    const patchValues = (values: CardFieldValues) => ({ ...values, [id]: { ...(values[id] ?? { text: "" }), ...(value.text !== undefined && value.richText === undefined ? { richText: undefined } : {}), ...value } });
+    const patchValues = (values: CardFieldValues) => {
+      const next = typeof value === "function" ? value(values[id]) : value;
+      return { ...values, [id]: { ...(values[id] ?? { text: "" }), ...(next.text !== undefined && next.richText === undefined ? { richText: undefined } : {}), ...next } };
+    };
     return repeatId
       ? { ...item, rowRepeats: item.rowRepeats?.map(repeat => repeat.id === repeatId ? { ...repeat, values: patchValues(repeat.values) } : repeat) }
       : { ...item, values: patchValues(item.values) };
@@ -111,7 +115,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
             </div>
             {templateInputFields(row.fields).filter(field => field.kind !== "constant").map(field => <div key={field.id} className="space-y-1">
               <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
-              {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, value, repeatId)} />}
+              {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, current => appendSutra(current, value), repeatId)} />}
               <TemplateValueEditor id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} label={field.label || "Unlabelled field"} value={values[field.id]} disabled={locked || savingNext} onChange={value => patch(field.id, value, repeatId)} />
               {(field.kind === "link" || field.kind === "sutra") && <>
                 <Input aria-label={`${field.label} link`} placeholder="Optional link (https://…)" value={values[field.id]?.href ?? ""} onChange={event => patch(field.id, { href: event.target.value }, repeatId)} />
