@@ -137,7 +137,7 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 async function rolesForBoards(
-  rows: BoardRow[],
+  rows: Pick<BoardRow, "id" | "user_id">[],
   currentUserId: string
 ): Promise<Map<string, BoardAccessRole>> {
   const roles = new Map<string, BoardAccessRole>();
@@ -164,6 +164,28 @@ async function rolesForBoards(
     }
   });
   return roles;
+}
+
+/** List entries deliberately cannot be used as editable board content. */
+export type BoardSummary = Omit<VidyaBoard, "content"> & { nodeCount?: number };
+
+/** Fetch only listing metadata. Opening a board is the image-loading boundary. */
+export async function listBoardSummaries(): Promise<BoardSummary[]> {
+  const currentUserId = await getStorageUserId();
+  const local: BoardSummary[] = (await listLocalBoards()).map(({ content, ...metadata }) => ({ ...metadata, nodeCount: content.nodes.length }));
+  if (!currentUserId) return local.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const { data, error } = await requireSupabaseClient().from("boards")
+    .select("id,user_id,title,description,thumbnail_url,created_at,updated_at")
+    .eq("is_archived", false).order("updated_at", { ascending: false });
+  if (error) throw error;
+  const rows = (data ?? []) as Omit<BoardRow, "content">[];
+  const roles = await rolesForBoards(rows, currentUserId);
+  const summaries: BoardSummary[] = rows.map(row => ({
+    id: row.id, userId: row.user_id, title: row.title, description: row.description,
+    thumbnailUrl: row.thumbnail_url, createdAt: row.created_at, updatedAt: row.updated_at,
+    storageMode: "supabase", accessRole: roles.get(row.id) ?? "viewer",
+  }));
+  return [...local, ...summaries].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /** All owned and shared boards for the current user, newest first. */

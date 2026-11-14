@@ -19,6 +19,7 @@ const assets = new Map();
 let assetUploads = 0;
 let activeDownloads = 0, maxDownloads = 0, downloadCount = 0, downloadDelay = 0;
 let failAssetAfter = Infinity;
+let listColumns;
 globalThis.FileReader = class {
   readAsDataURL(blob) { blob.arrayBuffer().then(bytes => { this.result = `data:${blob.type};base64,${Buffer.from(bytes).toString("base64")}`; this.onload(); }).catch(() => this.onerror()); }
 };
@@ -49,8 +50,9 @@ const client = {
     let id;
     let operation = "read";
     let payload;
+    let columns = "*";
     const query = {
-      select() { return query; },
+      select(value = "*") { columns = value; return query; },
       eq(key, value) { if (key === "id") id = value; return query; },
       order() { return query; },
       insert(row) { operation = "insert"; payload = row; return query; },
@@ -74,7 +76,7 @@ const client = {
         cloud.set(row.id, row);
         return { data: row, error: null };
       },
-      then(done, reject) { return Promise.resolve({ data: [...cloud.values()].filter(row => row.user_id === user?.id), error: null }).then(done, reject); },
+      then(done, reject) { listColumns = columns; return Promise.resolve({ data: [...cloud.values()].filter(row => row.user_id === user?.id).map(row => columns === "*" ? row : Object.fromEntries(columns.split(",").map(key => [key, row[key]]))), error: null }).then(done, reject); },
     };
     return query;
   },
@@ -331,4 +333,27 @@ test("a stalled load times out instead of leaving an endless spinner", async () 
   const { withLoadTimeout } = load(resolve("src/lib/storage/load-timeout.ts").replaceAll("\\", "/"));
   await assert.rejects(withLoadTimeout(new Promise(() => {}), 10, "Image timed out"), /Image timed out/);
   assert.equal(await withLoadTimeout(Promise.resolve("loaded"), 10, "timeout"), "loaded");
+});
+
+
+test("listing hundreds of image references needs no image downloads or board content", async () => {
+ user = { id: crypto.randomUUID() };
+ const board = await boards.createBoard(undefined,"Large image board");
+ const row=cloud.get(board.id);
+ row.content.nodes=Array.from({length:300},(_,i)=>({id:String(i),type:"image",position:{x:0,y:i*200},data:{src:`board-image:${board.id}/${i.toString(16).padStart(64,"0")}`}}));
+ // All assets are unavailable: listing must still succeed, with no download attempts.
+ const summaries=await boards.listBoardSummaries();
+ assert.equal(summaries.length,1);assert.equal(summaries[0].title,"Large image board");
+ assert.equal(summaries[0].accessRole,"owner");
+ assert.equal("content" in summaries[0],false);assert.equal(downloadCount,0);
+ assert.ok(!listColumns.includes("content") && !listColumns.includes("*"), "list query must not transfer board content");
+ await assert.rejects(boards.getBoard(board.id),/Image not found/);
+ assert.ok(downloadCount>0,"opening the chosen board still resolves images");
+});
+
+test("device summaries retain titles and counts without exposing content", async()=>{
+ const board=await boards.createBoard(undefined,"Local board");
+ const [summary]=await boards.listBoardSummaries();
+ assert.equal(summary.id,board.id);assert.equal(summary.nodeCount,board.content.nodes.length);
+ assert.equal("content" in summary,false);
 });
