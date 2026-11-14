@@ -5,17 +5,17 @@ import Link from "next/link";
 import { Plus, LayoutTemplate, Lightbulb, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { listBoards } from "@/lib/storage/board-store";
+import { listBoardSummaries } from "@/lib/storage/board-store";
 import { formatRelativeDate } from "@/lib/utils";
-import type { VidyaBoard } from "@/lib/types";
+import type { BoardSummary } from "@/lib/storage/board-store";
 
 export function DashboardContent() {
-  const [boards, setBoards] = useState<VidyaBoard[]>([]);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listBoards()
+    listBoardSummaries()
       .then(setBoards)
       .catch((error) => setError(error instanceof Error ? error.message : "Could not load boards."))
       .finally(() => setLoading(false));
@@ -74,7 +74,7 @@ export function DashboardContent() {
                   )}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {formatRelativeDate(board.updatedAt)} · {board.content.nodes.length} nodes
+                  {formatRelativeDate(board.updatedAt)}{board.nodeCount !== undefined ? ` · ${board.nodeCount} nodes` : ""}
                 </p>
               </Link>
             ))}

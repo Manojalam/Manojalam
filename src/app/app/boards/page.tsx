@@ -6,9 +6,9 @@ import { Plus, Copy, Trash2, Users, FolderPlus, Pencil } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { listBoards, deleteBoard, duplicateBoard, getStorageUserId, moveGuestBoardToAccount } from "@/lib/storage/board-store";
+import { listBoardSummaries, deleteBoard, duplicateBoard, getStorageUserId, moveGuestBoardToAccount } from "@/lib/storage/board-store";
 import { formatRelativeDate } from "@/lib/utils";
-import type { VidyaBoard } from "@/lib/types";
+import type { BoardSummary } from "@/lib/storage/board-store";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -16,7 +16,7 @@ import { changeOrganization, loadOrganization, canParentFolder, folderOptions, f
 import { filterBoards, type BoardSort } from "@/lib/storage/board-list";
 
 export default function BoardsPage() {
-  const [boards, setBoards] = useState<VidyaBoard[]>([]);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [signedIn, setSignedIn] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export default function BoardsPage() {
     } finally { setMoving(null); }
   };
 
-  const refresh = () => listBoards().then((boards) => { setBoards(boards); setError(null); }).catch((error) => setError(error instanceof Error ? error.message : "Could not load boards. Please retry."));
+  const refresh = () => listBoardSummaries().then((boards) => { setBoards(boards); setError(null); }).catch((error) => setError(error instanceof Error ? error.message : "Could not load boards. Please retry."));
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
@@ -206,7 +206,7 @@ export default function BoardsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Updated {formatRelativeDate(board.updatedAt)} · {board.content.nodes.length} nodes
+                    Updated {formatRelativeDate(board.updatedAt)}{board.nodeCount !== undefined ? ` · ${board.nodeCount} nodes` : ""}
                   </p>
                   {board.description && <p className="mt-1 truncate text-sm text-muted-foreground">{board.description}</p>}
                 </div>

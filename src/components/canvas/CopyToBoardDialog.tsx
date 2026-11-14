@@ -20,10 +20,10 @@ import {
 } from "@/components/ui/select";
 import {
   copyDiagramToBoard,
-  listBoards,
+  listBoardSummaries,
 } from "@/lib/storage/board-store";
 import type { CrossBoardDiagramPayload } from "@/lib/canvas/cross-board-copy";
-import type { VidyaBoard } from "@/lib/types";
+import type { BoardSummary } from "@/lib/storage/board-store";
 
 interface CopyToBoardDialogProps {
   open: boolean;
@@ -47,7 +47,7 @@ export function CopyToBoardDialog({
   objectOnlyPayload,
 }: CopyToBoardDialogProps) {
   const [includeDescendants, setIncludeDescendants] = useState(true);
-  const [boards, setBoards] = useState<VidyaBoard[]>([]);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [destinationId, setDestinationId] = useState("");
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -62,7 +62,7 @@ export function CopyToBoardDialog({
   useEffect(() => {
     if (!open) return;
     let active = true;
-    listBoards()
+    listBoardSummaries()
       .then((nextBoards) => {
         if (!active) return;
         setBoards(nextBoards);

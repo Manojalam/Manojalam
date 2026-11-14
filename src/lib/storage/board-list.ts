@@ -2,7 +2,7 @@ import type { VidyaBoard } from "../types";
 import type { BoardOrganization } from "./board-organization";
 
 export type BoardSort = "updated" | "created" | "title-asc" | "title-desc";
-export function filterBoards(boards: VidyaBoard[], organization: BoardOrganization, folder: string, query: string, sort: BoardSort): VidyaBoard[] {
+export function filterBoards<T extends Pick<VidyaBoard, "id" | "title" | "description" | "createdAt" | "updatedAt">>(boards: T[], organization: BoardOrganization, folder: string, query: string, sort: BoardSort): T[] {
   const search = query.trim().toLocaleLowerCase();
   return boards.filter((board) => {
     const assigned = organization.assignments[board.id];
