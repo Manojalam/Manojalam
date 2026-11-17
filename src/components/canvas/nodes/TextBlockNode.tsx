@@ -14,6 +14,7 @@ import {
 } from "@/lib/style-utils";
 import {
   shapeTextContentSize,
+  resolveShapeTextPadding,
 } from "@/lib/canvas/shape-fitting";
 import {
   normalizeTextCalloutDirection,
@@ -121,9 +122,10 @@ function TextBlockNodeComponent({
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
+  const textPadding = resolveShapeTextPadding(dd.textPadding, nodeSize);
   const availableTextSize = textFrameStyle === "plain"
-    ? shapeTextContentSize("rectangle", nodeSize, "text")
-    : textFrameContentSize(nodeSize, textFrameStyle, renderedTextCalloutDirection);
+    ? shapeTextContentSize("rectangle", nodeSize, "text", { textPadding })
+    : textFrameContentSize(nodeSize, textFrameStyle, renderedTextCalloutDirection, typeof dd.textPadding === "number" ? textPadding : 8);
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
@@ -217,6 +219,7 @@ function TextBlockNodeComponent({
           data-export-surface-effect-shadow={exportEffectStyle.boxShadow}
           style={{
             ...(hasTextFrame ? {} : {
+              padding: textPadding,
               backgroundColor: themeAwareNodeFillColor(fillColor) ?? "transparent",
               border: bWidth > 0 ? `${bWidth}px ${bStyle} ${borderColor ?? (matrixCell ? "#94a3b8" : "transparent")}` : undefined,
               borderRadius: bRadius,
@@ -306,6 +309,7 @@ function TextBlockNodeComponent({
             editing ? "nodrag nopan cursor-text" : "cursor-grab active:cursor-grabbing"
           )}
           style={hasTextFrame ? {
+            padding: typeof dd.textPadding === "number" ? textPadding : 8,
             left: `${textFrameBody.x}%`,
             top: `${textFrameBody.y}%`,
             width: `${textFrameBody.width}%`,

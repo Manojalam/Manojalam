@@ -388,7 +388,7 @@ function shapeContentPadding(
   textPadding?: number
 ): Size {
   void shapeType;
-  if (nodeType === "shape" && typeof textPadding === "number" && Number.isFinite(textPadding)) {
+  if (["shape", "text", "sticky", "mindmap"].includes(nodeType ?? "") && typeof textPadding === "number" && Number.isFinite(textPadding)) {
     const totalPadding = Math.max(0, textPadding) * 2;
     return { width: totalPadding, height: totalPadding };
   }

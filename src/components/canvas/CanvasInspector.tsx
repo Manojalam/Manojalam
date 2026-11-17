@@ -1,6 +1,6 @@
 "use client";
 
-import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
+import { objectPropertiesLabel, supportsShapePadding } from "@/lib/canvas/property-tabs";
 import { InlineTextControls } from "./InlineTextControls";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { normalizeWholeTextFormat } from "@/lib/canvas/whole-text-format";
@@ -1638,9 +1638,9 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   const selectedTextLayoutNodes = selectedTextNodes.filter((node) =>
     ["mindmap", "sticky", "text", "shape", "sunburst"].includes(node.type ?? "")
   );
-  const selectedShapeNodes = selectedNodes.filter((node) => node.type === "shape");
+  const selectedShapeNodes = selectedNodes.filter(supportsShapePadding);
   const selectedShapeTransformNodes = selectedNodes.filter(supportsShapeTransform);
-  const allShapeNodes = nodes.filter((node) => node.type === "shape" && !node.hidden);
+  const allShapeNodes = nodes.filter((node) => supportsShapePadding(node) && !node.hidden);
   const selectedShapePaddingMax = selectedShapeNodes.length
     ? Math.floor(Math.min(...selectedShapeNodes.map((node) => maximumShapeTextPadding(getNodeDimensions(node)))))
     : 0;
@@ -1871,7 +1871,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     return null;
   })();
   const specificLabel = objectPropertiesLabel(selectedNode ?? undefined, nodes, edges);
-  const hierarchyTab = embedded ? (specificLabel && specificLabel !== "Table" ? "specific" : "data") : "layout";
+  const hierarchyTab = embedded ? (specificLabel === "Shape" ? "shape" : specificLabel && specificLabel !== "Table" ? "specific" : "data") : "layout";
   const dimensionsTab = embedded ? (["Table", "Matrix", "Radial", "Diagram"].includes(specificLabel ?? "") ? "specific" : "layout") : "shape";
   const structuredLayoutRootData = (structuredLayoutRootNode?.data ?? {}) as Record<string, unknown>;
   const structuredLayoutMode = structuredLayoutRootData.layoutMode as LayoutMode | undefined;
@@ -2167,7 +2167,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   };
 
   const updateShapePadding = (targets: Node[], value: number | undefined) => {
-    const targetIds = new Set(targets.filter((node) => node.type === "shape").map((node) => node.id));
+    const targetIds = new Set(targets.filter(supportsShapePadding).map((node) => node.id));
     if (!targetIds.size) return;
     pushHistory();
     useCanvasStore.setState((state) => ({
@@ -2179,7 +2179,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
   };
 
   const updateShapePaddingDuringDrag = (targets: Node[], value: number) => {
-    const targetIds = new Set(targets.filter((node) => node.type === "shape").map((node) => node.id));
+    const targetIds = new Set(targets.filter(supportsShapePadding).map((node) => node.id));
     if (!targetIds.size) return;
     useCanvasStore.setState((state) => ({
       nodes: state.nodes.map((node) => targetIds.has(node.id)
@@ -3291,8 +3291,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               </label>
             </Section>
           )}
-          {!isRadialMultiSelection && selectedShapeTransformNodes.length > 0 && (
-            <Section label="Shape type" visible={!embedded || singleNodeTab === "style"} defaultOpen>
+          <Section label="Shape padding" flat visible={!embedded || singleNodeTab === "shape"}>
             {selectedShapeNodes.length > 0 && (
               <div className="rounded-md border border-border bg-muted/25 p-2">
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -3324,15 +3323,18 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                   disabled={!allShapeNodes.length}
                   onClick={() => updateShapePadding(allShapeNodes, firstSelectedShapePadding)}
                 >
-                  Apply to all shape objects
+                  Apply to all text boxes
                 </Button>
                 <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                  The slider applies to selected shapes; the button copies that value to every visible shape.
+                  The slider applies to selected text boxes; the button copies that value to every visible text box.
                 </p>
               </div>
             )}
 
 
+          </Section>
+          {!isRadialMultiSelection && selectedShapeTransformNodes.length > 0 && (
+            <Section label="Shape type" visible={!embedded || singleNodeTab === "shape"} defaultOpen>
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Applies to {selectedShapeTransformNodes.length} selected shape object{
                   selectedShapeTransformNodes.length === 1 ? "" : "s"
@@ -7362,7 +7364,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {supportsTextFrame && !isRadialLayoutSector && (
-          <Section label="Text frame" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
+          <Section label="Text frame" visible={singleNodeTab === (supportsShapePadding(selectedNode) ? "shape" : embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Frame
@@ -7478,8 +7480,8 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           </Section>
         )}
 
-            {isShapeNode && !radialChart?.enabled && (
-              <Section label="Shape padding" flat visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
+            {supportsShapePadding(selectedNode) && !radialChart?.enabled && (
+              <Section label="Shape padding" flat visible={singleNodeTab === "shape"} defaultOpen>
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                     Shape padding
@@ -7493,7 +7495,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                         className="h-6 px-2 text-[9px]"
                         onClick={() => updateShapePadding(allShapeNodes, shapeTextPadding)}
                       >
-                        All shapes
+                        All text boxes
                       </Button>
                     )}
                     <Button
@@ -7525,7 +7527,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
         {/* Matrix cells of any node type can be converted to an authored shape. */}
         {canChooseShapeType && !isRadialLayoutSector && (
-          <Section label="Shape type" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
+          <Section label="Shape type" visible={singleNodeTab === (supportsShapePadding(selectedNode) ? "shape" : embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div className="grid grid-cols-3 gap-1">
               {SHAPE_TYPES.map(({ label, value }) => (
                 <button key={value}
@@ -7581,7 +7583,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {isShapeNode && !isRadialLayoutSector && (
-          <Section label="Concentric" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
+          <Section label="Concentric" visible={singleNodeTab === (supportsShapePadding(selectedNode) ? "shape" : embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <span className="text-[10px] text-muted-foreground">{concentricLayers.length} inner shapes</span>
               <Button
@@ -7700,7 +7702,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
         )}
 
         {isShapeNode && !isRadialLayoutSector && (
-          <Section label="Split chart" visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
+          <Section label="Split chart" visible={singleNodeTab === (supportsShapePadding(selectedNode) ? "shape" : embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
             <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1.5">
               <Label className="text-xs">Radial split</Label>
               <Switch

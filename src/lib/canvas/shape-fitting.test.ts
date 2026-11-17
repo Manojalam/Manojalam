@@ -785,3 +785,15 @@ test("tall rounded notes fit inside the same corner inset used by rendering", ()
   assert.equal(size.width,400);
   assert.ok(interior.box.height >= content.height);
 });
+
+for (const nodeType of ["text", "sticky", "mindmap"]) {
+  test(`${nodeType} padding uses the same inner size and auto-fit allowance as shapes`, () => {
+    const rendered = { width: 320, height: 190 };
+    assert.deepEqual(shapeTextContentSize("rectangle", rendered, nodeType, { textPadding: 24 }), { width: 272, height: 142 });
+    const content = { width: 200, height: 80 };
+    const original = fitShapeToContent("rectangle", content, { nodeType });
+    const padded = fitShapeToContent("rectangle", content, { nodeType, textPadding: 24 });
+    assert.equal(padded.width - original.width, 40);
+    assert.equal(padded.height - original.height, 40);
+  });
+}
