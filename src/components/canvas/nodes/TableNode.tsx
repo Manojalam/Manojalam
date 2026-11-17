@@ -341,6 +341,17 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const state = useCanvasStore.getState();
     if (!state.selectedNodeIds.includes(id)) useCanvasStore.setState({ nodes: state.nodes.map(node => ({ ...node, selected: node.id === id })), selectedNodeIds: [id], selectedEdgeIds: [] });
   }} style={{ ...objectRotationStyle("table", data), fontFamily: String(data.fontFamily || defaultFont), fontSize: Number(data.fontSize) || settings.defaultFontSize, fontWeight: data.fontWeight === "bold" ? 700 : undefined, fontStyle: data.fontStyle === "italic" ? "italic" : undefined, color: typeof data.textColor === "string" ? data.textColor : undefined, lineHeight: Number(data.lineSpacing) || 1.5, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", tabSize: Number(data.tabSize) || 4 }}>
+    {editable && <button
+      type="button"
+      data-export-ignore
+      aria-label="Move table"
+      title="Drag to move the whole table"
+      className="nopan absolute bottom-full left-0 z-20 mb-2 flex h-7 touch-none select-none items-center gap-1 rounded-md border border-border bg-popover px-2 text-xs font-medium text-popover-foreground shadow-sm cursor-grab active:cursor-grabbing"
+      onPointerDown={() => {
+        (document.activeElement as HTMLElement | null)?.blur();
+        setEditingCell(null);
+      }}
+    ><GripVertical className="h-4 w-4" />Move table</button>}
     {selected && editable && <NodeResizeControl minWidth={minimumWidth} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResizeEnd={(event, params) => { useCanvasStore.getState().updateNodeData(id, { tableMinHeight: params.height }); resizeControls.onResizeEnd(event, params); }} />}
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
