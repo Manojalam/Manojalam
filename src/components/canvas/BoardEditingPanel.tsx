@@ -15,7 +15,7 @@ import { CanvasLayersPanel } from "./CanvasLayersPanel";
 import { MatrixFoldPanel } from "./MatrixFoldPanel";
 import { ChildOrderControls } from "./ChildOrderControls";
 import { normalizeTable } from "@/lib/canvas/table";
-import { objectPropertiesLabel } from "@/lib/canvas/property-tabs";
+import { objectPropertiesLabel, supportsShapePadding } from "@/lib/canvas/property-tabs";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { TableCellFillPanel } from "./TableCellFillPanel";
 import { MediaAttachmentMenu } from "./MediaAttachmentMenu";
@@ -68,8 +68,11 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const supportsText = !!edgeIds.length || !selected.length || selected.some(node => objectCapabilities(node.type).text);
   const supportsStyle = !!edgeIds.length || !selected.length || selected.some(node => objectCapabilities(node.type).surface);
 
-  // Old saved Size selections resolve to their new home.
-  const requestedTab = ui.propertiesTab === "shape" ? (specific ? "specific" : "layout") : ui.propertiesTab === "specific" && !specific ? "layout" : ui.propertiesTab;
+  const supportsShape = !edgeIds.length && selected.some(supportsShapePadding);
+  // Shape controls stay available even when a layout supplies its own tab.
+  const requestedTab = ui.propertiesTab === "specific" && specific === "Shape" ? "shape"
+    : ui.propertiesTab === "shape" && !supportsShape ? (specific ? "specific" : "layout")
+    : ui.propertiesTab === "specific" && !specific ? "layout" : ui.propertiesTab;
   const changeInspectorTab = useCallback((tab: InspectorTab) => useUIStore.setState({ propertiesTab: tab }), []);
   useEffect(() => {
     const selection = useCanvasStore.subscribe((next, previous) => {
@@ -93,7 +96,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   const tabs: { id: typeof ui.propertiesTab; label: string }[] = [
     ...(supportsStyle ? [{ id: "style" as const, label: "Style" }] : []), ...(supportsText ? [{ id: "text" as const, label: "Text" }] : []),
     ...(supportsText && !edgeIds.length ? [{ id: "template" as const, label: "Template" }] : []),
-    ...(specific ? [{ id: "specific" as const, label: specific }] : []),
+    ...(supportsShape ? [{ id: "shape" as const, label: "Shape" }] : []),
+    ...(specific && specific !== "Shape" ? [{ id: "specific" as const, label: specific }] : []),
     { id: "layout", label: "Arrange" }, { id: "data", label: "More" },
   ];
   const activeTab = tabs.some(tab => tab.id === requestedTab) ? requestedTab : tabs[0]?.id ?? "data";
@@ -131,7 +135,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     </div>
     <div role="tabpanel" id={`properties-${activeTab === "template" ? "style" : activeTab}`} aria-label={specific && activeTab === "specific" ? specific : activeTab} className={editing && activeTab !== "template" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
       {activeTab === "specific" && specific === "Matrix" && <MatrixFoldPanel />}
-      {(activeTab === "specific" || (!specific && activeTab === "layout")) && <ChildOrderControls />}
+      {(activeTab === "specific" || (activeTab === "shape" && specific === "Shape") || (!specific && activeTab === "layout")) && <ChildOrderControls />}
       {activeTab === "layout" && candidate && <ObjectPosition nodeId={candidate.id} />}
       <div>
         {selected.length || edgeIds.length ? <CanvasInspector embedded tab={activeTab === "template" ? "style" : activeTab} onTabChange={changeInspectorTab} showTemplates={false} /> : <p className="p-4 text-sm text-muted-foreground">Select an object to edit it.</p>}

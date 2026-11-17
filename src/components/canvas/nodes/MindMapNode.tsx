@@ -12,6 +12,7 @@ import {
 } from "@/lib/style-utils";
 import {
   shapeTextContentSize,
+  resolveShapeTextPadding,
 } from "@/lib/canvas/shape-fitting";
 import { shouldConstrainTextToNode } from "@/lib/canvas/node-sizing";
 import type { MindMapNodeData, InternalFillRegion, BorderLayer } from "@/lib/types";
@@ -62,7 +63,8 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
   const [editing, setEditing] = useState(false);
   const [editFocusPoint, setEditFocusPoint] = useState<{ clientX: number; clientY: number } | null>(null);
   const initialContent = (dd.richText as string) || d.text || "";
-  const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "mindmap");
+  const textPadding = resolveShapeTextPadding(dd.textPadding, nodeSize);
+  const availableTextSize = shapeTextContentSize("rectangle", nodeSize, "mindmap", { textPadding });
   const textPresentation = getFittedTextPresentation(dd, availableTextSize.width, 14, {
     availableHeight: availableTextSize.height,
     constrain: shouldConstrainTextToNode(dd, nodeSize),
@@ -128,6 +130,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
           d.locked && "opacity-75"
         )}
         style={{
+          padding: textPadding,
           backgroundColor: themeAwareNodeFillColor(fillColor),
           border: `${borderWidth}px ${bStyle} ${borderColor ?? nodeColor}`,
           borderRadius,

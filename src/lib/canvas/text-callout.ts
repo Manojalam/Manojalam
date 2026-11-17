@@ -265,11 +265,12 @@ export function textFrameBodyBox(
 export function textFrameContentSize(
   renderedSize: Size,
   style: TextFrameStyle,
-  direction: TextCalloutDirection
+  direction: TextCalloutDirection,
+  padding = 8
 ): Size {
   const body = textFrameBodyBox(style, direction);
   return {
-    width: Math.max(8, renderedSize.width * body.width / 100 - 16),
-    height: Math.max(8, renderedSize.height * body.height / 100 - 16),
+    width: Math.max(8, renderedSize.width * body.width / 100 - padding * 2),
+    height: Math.max(8, renderedSize.height * body.height / 100 - padding * 2),
   };
 }

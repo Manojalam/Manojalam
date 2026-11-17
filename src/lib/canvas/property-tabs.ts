@@ -27,3 +27,8 @@ export function objectPropertiesLabel(node: Node | undefined, nodes: Node[] = []
   if (node.type === "frame") return "Frame";
   return null;
 }
+
+/** Objects with an editable text box and an adjustable inner inset. */
+export function supportsShapePadding(node: Node | undefined): boolean {
+  return !!node && ["shape", "text", "sticky", "mindmap"].includes(node.type ?? "");
+}
