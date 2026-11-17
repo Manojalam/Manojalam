@@ -13,7 +13,7 @@ import { flexibleCardLabels } from "@/lib/canvas/flexible-card";
 import { SampleField } from "@/lib/canvas/sample-field";
 import { TextToolGroup, TextToolPanel } from "./TextToolbarLayout";
 import { SampleTagDialog } from "./SampleTagDialog";
-import StarterKit from "@tiptap/starter-kit";
+import { LiteralDashStarterKit } from "@/lib/canvas/literal-dash-starter-kit";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { FontFamily } from "@tiptap/extension-font-family";
@@ -299,7 +299,7 @@ const AdditiveTextSelection = Extension.create({
 
 // ── Stable extension list ──────────────────────────────────────────────────
 const EXTENSIONS = [
-  StarterKit.configure({
+  LiteralDashStarterKit.configure({
     underline: false,
     link: {
       defaultProtocol: "https",
