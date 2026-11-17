@@ -76,7 +76,7 @@ import {
   UPADHMANIYA_CHARACTER,
   type TextToolAction,
 } from "@/lib/text-tools";
-import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, IndentDecrease, IndentIncrease, Link2, Paintbrush, Palette, RefreshCw, Unlink2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Eraser, GripVertical, Highlighter, IndentDecrease, IndentIncrease, List, ListOrdered, Link2, Paintbrush, Palette, RefreshCw, Unlink2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
@@ -1223,6 +1223,20 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (!editor || !nodeId) return;
+    const applyList = (event: Event) => {
+      const detail = (event as CustomEvent<{ nodeId: string; kind: "bullet" | "ordered" }>).detail;
+      if (detail?.nodeId !== nodeId || !["bullet", "ordered"].includes(detail.kind)) return;
+      pendingReportReasonRef.current = "format";
+      const chain = editor.chain().selectAll();
+      (detail.kind === "bullet" ? chain.toggleBulletList() : chain.toggleOrderedList()).run();
+      scheduleContentReport(editor, "format");
+    };
+    window.addEventListener("vidya:apply-whole-text-list", applyList);
+    return () => window.removeEventListener("vidya:apply-whole-text-list", applyList);
+  }, [editor, nodeId, scheduleContentReport]);
+
+  useEffect(() => {
+    if (!editor || !nodeId) return;
     const applyFormat = (event: Event) => {
       const detail = (event as CustomEvent<InlineTextFormatDetail>).detail;
       if (!detail || detail.nodeId !== nodeId) return;
@@ -1749,7 +1763,7 @@ export function RichTextEditor({
       selectedNodeIds,
       editorEditable: editor.isEditable,
       editorFocused: editor.isFocused || !!toolbarRef.current,
-      hasTextSelection: selectedRanges.length > 0,
+      hasTextSelection: selectedRanges.length > 0 || (propertiesOpen && !valueInput),
     })) {
       hideToolbar();
       return;
@@ -1771,6 +1785,8 @@ export function RichTextEditor({
     nodeId,
     publishTextSelection,
     selectedNodeIds,
+    propertiesOpen,
+    valueInput,
   ]);
 
   useEffect(() => {
@@ -1831,7 +1847,7 @@ export function RichTextEditor({
       preservedRanges,
       maximumPosition: editor.state.doc.content.size,
     });
-    if (!ranges.length && valueInput) return command(editor.chain().focus()).run();
+    if (!ranges.length && (valueInput || editor.isEditable)) return command(editor.chain().focus()).run();
     return applyRichTextCommandAcrossRanges(editor, ranges, command);
   }, [currentTextSelectionRanges, editor, valueInput]);
 
@@ -2418,6 +2434,10 @@ export function RichTextEditor({
 
           {!dockedToolbar && <div hidden={!!dockedToolbar} className="mx-0.5 h-4 w-px bg-border/70" />}
 
+          </TextToolGroup>
+          <TextToolGroup docked={!!dockedToolbar} label="Lists">
+            <FormatButton active={editor.isActive("bulletList")} onAction={() => { pendingReportReasonRef.current = "format"; editor.chain().focus().toggleBulletList().run(); }} title="Bulleted list"><List className="h-4 w-4" /><span className="ml-1 text-xs">Bullets</span></FormatButton>
+            <FormatButton active={editor.isActive("orderedList")} onAction={() => { pendingReportReasonRef.current = "format"; editor.chain().focus().toggleOrderedList().run(); }} title="Numbered list"><ListOrdered className="h-4 w-4" /><span className="ml-1 text-xs">Numbering</span></FormatButton>
           </TextToolGroup>
           <TextToolGroup docked={!!dockedToolbar} label="Paragraph">
           {/* Alignment */}
