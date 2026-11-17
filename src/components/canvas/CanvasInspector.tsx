@@ -3293,6 +3293,46 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
           )}
           {!isRadialMultiSelection && selectedShapeTransformNodes.length > 0 && (
             <Section label="Shape type" visible={!embedded || singleNodeTab === "style"} defaultOpen>
+            {selectedShapeNodes.length > 0 && (
+              <div className="rounded-md border border-border bg-muted/25 p-2">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium text-foreground">Shape padding</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[9px]"
+                    onClick={() => updateShapePadding(selectedShapeNodes, undefined)}
+                  >
+                    Reset selected
+                  </Button>
+                </div>
+                <ThicknessControl
+                  value={firstSelectedShapePadding}
+                  min={0}
+                  max={selectedShapePaddingMax}
+                  step={1}
+                  mixed={selectedShapePaddingIsMixed}
+                  onChangeStart={pushHistory}
+                  onChange={(value) => updateShapePaddingDuringDrag(selectedShapeNodes, value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 h-7 w-full text-[9px]"
+                  disabled={!allShapeNodes.length}
+                  onClick={() => updateShapePadding(allShapeNodes, firstSelectedShapePadding)}
+                >
+                  Apply to all shape objects
+                </Button>
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  The slider applies to selected shapes; the button copies that value to every visible shape.
+                </p>
+              </div>
+            )}
+
+
               <p className="text-[9px] leading-snug text-muted-foreground">
                 Applies to {selectedShapeTransformNodes.length} selected shape object{
                   selectedShapeTransformNodes.length === 1 ? "" : "s"
@@ -3402,44 +3442,6 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 aria-label="Auto-fit text for selected nodes"
               />
             </div>}
-            {selectedShapeNodes.length > 0 && (
-              <div className="rounded-md border border-border bg-muted/25 p-2">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-medium text-foreground">Shape text padding</p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[9px]"
-                    onClick={() => updateShapePadding(selectedShapeNodes, undefined)}
-                  >
-                    Reset selected
-                  </Button>
-                </div>
-                <ThicknessControl
-                  value={firstSelectedShapePadding}
-                  min={0}
-                  max={selectedShapePaddingMax}
-                  step={1}
-                  mixed={selectedShapePaddingIsMixed}
-                  onChangeStart={pushHistory}
-                  onChange={(value) => updateShapePaddingDuringDrag(selectedShapeNodes, value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 h-7 w-full text-[9px]"
-                  disabled={!allShapeNodes.length}
-                  onClick={() => updateShapePadding(allShapeNodes, firstSelectedShapePadding)}
-                >
-                  Apply to all shape objects
-                </Button>
-                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                  The slider applies to selected shapes; the button copies that value to every visible shape.
-                </p>
-              </div>
-            )}
             {isRadialMultiSelection && (
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -5970,49 +5972,6 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               </Row>
             )}
 
-            {isShapeNode && !radialChart?.enabled && !selectedTextRange && (
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Shape text padding
-                  </p>
-                  <div className="flex items-center gap-1">
-                    {allShapeNodes.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[9px]"
-                        onClick={() => updateShapePadding(allShapeNodes, shapeTextPadding)}
-                      >
-                        All shapes
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-[9px]"
-                      onClick={() => setField("textPadding", undefined)}
-                    >
-                      Reset
-                    </Button>
-                  </div>
-                </div>
-                <ThicknessControl
-                  value={shapeTextPadding}
-                  min={0}
-                  max={shapeTextPaddingMax}
-                  step={1}
-                  onChangeStart={pushHistory}
-                  onChange={(value) => updateNodeData(selectedNode.id, { textPadding: value })}
-                />
-                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
-                  Insets both the label guide and text from the actual shape outline.
-                </p>
-              </div>
-            )}
-
             {/* Bold / Italic */}
             <Row label="Style">
               <IconBtn active={d.fontWeight === "bold"}
@@ -7518,6 +7477,51 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             )}
           </Section>
         )}
+
+            {isShapeNode && !radialChart?.enabled && (
+              <Section label="Shape padding" flat visible={singleNodeTab === (embedded ? (specificLabel ? "specific" : "layout") : "shape")} defaultOpen>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Shape padding
+                  </p>
+                  <div className="flex items-center gap-1">
+                    {allShapeNodes.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[9px]"
+                        onClick={() => updateShapePadding(allShapeNodes, shapeTextPadding)}
+                      >
+                        All shapes
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[9px]"
+                      onClick={() => setField("textPadding", undefined)}
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+                <ThicknessControl
+                  value={shapeTextPadding}
+                  min={0}
+                  max={shapeTextPaddingMax}
+                  step={1}
+                  onChangeStart={pushHistory}
+                  onChange={(value) => updateNodeData(selectedNode.id, { textPadding: value })}
+                />
+                <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                  Space inside the shape, between its border and text, on all four sides.
+                </p>
+              </Section>
+            )}
+
+
 
         {/* Matrix cells of any node type can be converted to an authored shape. */}
         {canChooseShapeType && !isRadialLayoutSector && (
