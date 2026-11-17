@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Trash2, ChevronDown, ChevronRight, Eraser, Lock, Unlock,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowDown, ArrowLeft, ArrowRight, Share2,
+  Bold, Italic, List, ListOrdered, Plus, Minus, Pencil, StopCircle, Copy, Rows3, ArrowDown, ArrowLeft, ArrowRight, Share2,
   ArrowUp,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
@@ -5951,6 +5951,16 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 <p className="col-span-2 text-[9px] text-muted-foreground">Tab inserts a tab; Shift+Tab removes it or reduces indent. In lists, Tab nests items.</p>
               </div>
             )}
+            <Row label="Lists">
+              {([ ["bullet", "Bulleted list", <List key="bullet" className="h-4 w-4" />], ["ordered", "Numbered list", <ListOrdered key="ordered" className="h-4 w-4" />] ] as const).map(([kind, title, icon]) => (
+                <button key={kind} type="button" title={title} aria-label={title} disabled={nodeType === "table"}
+                  className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                  onClick={() => window.dispatchEvent(new CustomEvent("vidya:apply-whole-text-list", { detail: { nodeId: selectedNode.id, kind } }))}>
+                  {icon}{kind === "bullet" ? "Bullets" : "Numbering"}
+                </button>
+              ))}
+            </Row>
+            {nodeType === "table" && <p className="text-[10px] text-muted-foreground">Click inside a cell to format its list.</p>}
             {/* Alignment */}
             <Row label="Align">
               {([
