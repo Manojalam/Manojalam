@@ -770,6 +770,7 @@ function VidyaCanvasInner({
         forceFit?: boolean;
         searchFocus?: boolean;
         query?: string;
+        occurrence?: number;
       }>).detail;
       const nodeIds = detail?.nodeIds;
       const state = useCanvasStore.getState();
@@ -781,7 +782,8 @@ function VidyaCanvasInner({
             && isCanvasItemLayerVisible(node, currentLayersById)
           )
         : undefined;
-      if (detail?.searchFocus && targetNodes?.length) {
+      if (detail?.searchFocus) {
+        if (!targetNodes?.length) return;
         const node = targetNodes[0];
         let x = node.position.x, y = node.position.y;
         let parentId = node.parentId;
@@ -801,9 +803,13 @@ function VidyaCanvasInner({
             if (generation !== searchGeneration) return;
             const element = document.querySelector(`.react-flow__node[data-id="${CSS.escape(node.id)}"]`);
             if (!element) continue;
-            const ranges = highlightBoardSearch(element, detail.query ?? "");
+            const ranges = highlightBoardSearch(element, detail.query ?? "", detail.occurrence ?? 0);
             if (!ranges.length) continue;
-            const rect = ranges[0].getBoundingClientRect();
+            const occurrence = Math.min(detail.occurrence ?? 0, ranges.length - 1);
+            window.dispatchEvent(new CustomEvent("vidya:search-match-count", {
+              detail: { nodeId: node.id, query: detail.query, count: ranges.length },
+            }));
+            const rect = ranges[occurrence].getBoundingClientRect();
             const point = screenToFlowPosition({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
             await setCenter(point.x, point.y, { zoom: 1, duration: 250 });
             return;
@@ -823,12 +829,15 @@ function VidyaCanvasInner({
     const clear = (event: KeyboardEvent) => {
       if (event.key === "Escape") { searchGeneration++; clearBoardSearchHighlight(); }
     };
+    const cancelSearch = () => { searchGeneration++; clearBoardSearchHighlight(); };
+    window.addEventListener("vidya:clear-search", cancelSearch);
     window.addEventListener("keydown", clear);
     return () => {
       searchGeneration++;
       clearBoardSearchHighlight();
       window.removeEventListener("vidya:fitview", handler);
       window.removeEventListener("keydown", clear);
+      window.removeEventListener("vidya:clear-search", cancelSearch);
     };
   }, [fitView, setCenter, screenToFlowPosition]);
 
@@ -1959,6 +1968,7 @@ function VidyaCanvasInner({
   // so this effect only runs once (fitView/zoom are stable from useReactFlow)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (!shouldHandleCanvasClipboard(e.target, document.activeElement)) return;
       if (useUIStore.getState().presentationMode) return;
 
@@ -1967,6 +1977,12 @@ function VidyaCanvasInner({
       const mod = e.metaKey || e.ctrlKey;
       const cs  = useCanvasStore.getState();
       const ui  = useUIStore.getState();
+
+      if (mod && e.key.toLowerCase() === "f" && !e.shiftKey) {
+        e.preventDefault();
+        ui.setSearchPanelOpen(true);
+        return;
+      }
 
       if (!canEdit) {
         if (e.key === "f" || e.key === "F") {
@@ -2054,7 +2070,7 @@ function VidyaCanvasInner({
         }
       }
       else if (e.key === "Escape") { ui.setActiveTool("select"); ui.setTouchSelectionMode(false); }
-      else if (e.key === "f" || e.key === "F") { fitView({ padding: 0.2 }); }
+      else if (!mod && (e.key === "f" || e.key === "F")) { fitView({ padding: 0.2 }); }
       else if (e.key === "+" || e.key === "=") { zoomByStep(0.1); }
       else if (e.key === "-")                  { zoomByStep(-0.1); }
       else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key) && cs.selectedNodeIds.length) {
@@ -2082,7 +2098,6 @@ function VidyaCanvasInner({
       }
 
       if (mod && e.key === "k") { e.preventDefault(); ui.setCommandPaletteOpen(true); }
-      if (mod && e.key === "f" && !e.shiftKey) { e.preventDefault(); ui.setSearchPanelOpen(true); }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => { if (e.code === "Space") setSpacePressed(false); };

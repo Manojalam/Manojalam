@@ -25,12 +25,15 @@ export function searchTextOffsets(text: string, query: string): [number, number]
 }
 
 export function clearBoardSearchHighlight() {
-  if (typeof CSS !== "undefined" && CSS.highlights) CSS.highlights.delete(BOARD_SEARCH_HIGHLIGHT);
+  if (typeof CSS !== "undefined" && CSS.highlights) {
+    CSS.highlights.delete(BOARD_SEARCH_HIGHLIGHT);
+    CSS.highlights.delete("board-search-active");
+  }
   document.getElementById("board-search-highlight-style")?.remove();
 }
 
 /** Paint matches without editing rich text, creating undo entries, or saving markup. */
-export function highlightBoardSearch(root: Element, query: string): Range[] {
+export function highlightBoardSearch(root: Element, query: string, activeIndex = 0): Range[] {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       return node.parentElement?.closest('button, script, style, [aria-hidden="true"]')
@@ -58,10 +61,14 @@ export function highlightBoardSearch(root: Element, query: string): Range[] {
       // Runtime rule avoids older CSS build parsers dropping the Highlight API selector.
       const style = document.createElement("style");
       style.id = "board-search-highlight-style";
-      style.textContent = "::highlight(board-search-match) { background-color: #ffe066; color: #171717; }";
+      style.textContent = "::highlight(board-search-match) { background-color: #ffe066; color: #171717; } ::highlight(board-search-active) { background-color: #ff9f43; color: #111111; text-decoration: underline; }";
       document.head.append(style);
     }
     CSS.highlights.set(BOARD_SEARCH_HIGHLIGHT, new Highlight(...ranges));
+    const active = ranges[Math.min(Math.max(activeIndex, 0), ranges.length - 1)];
+    const highlight = new Highlight(...(active ? [active] : []));
+    highlight.priority = 1;
+    CSS.highlights.set("board-search-active", highlight);
   }
   return ranges;
 }
