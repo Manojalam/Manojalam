@@ -165,6 +165,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   const addRow = (after?: number) => { const before = current(); const next = addTableRow(before, after); if (after !== undefined && before.rows[after]?.aboveHeader) { next.rows[after + 1].aboveHeader = true; next.rows[after + 1].header = true; } write(next); focus(next.rows[Math.min((after ?? next.rows.length - 2) + 1, next.rows.length - 1)].id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); };
   const color = typeof data.borderColor === "string" ? data.borderColor : "#94a3b8";
   const defaultFont = FONT_OPTIONS.find(font => font.label === settings.defaultFont)?.value ?? `${settings.defaultFont}, system-ui, sans-serif`;
+  const tableBorderWidth = typeof data.borderWidth === "number" ? Math.max(0, data.borderWidth) : 1;
   const minimumWidth = tableMinimumWidth(table, Number(data.fontSize) || settings.defaultFontSize);
   useLayoutEffect(() => {
     const element = tableElement.current;
@@ -177,12 +178,16 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         const node = state.nodes.find(item => item.id === id);
         if (!node || node.resizing) return;
         // Editor tools live outside the table and do not affect its content bounds.
-        const height = Math.ceil(element.offsetHeight + 2);
         const width = Math.max(Number(node.style?.width) || node.width || 0, minimumWidth);
         // A saved outer height is a measurement, not an explicit minimum. In
         // particular, loading an already-collapsed template must shrink too.
         const collapsed = element.querySelector('[data-template-collapsed="true"]');
         const minimumHeight = !collapsed && typeof node.data.tableMinHeight === "number" ? node.data.tableMinHeight : 0;
+        // Apply the authored height to the cell grid as well as the outer node.
+        // An explicit height distributes spare space among rows; "auto" lets
+        // collapsed content shrink without feeding the measured height back in.
+        element.style.height = minimumHeight > 0 ? `${Math.max(0, minimumHeight - tableBorderWidth * 2)}px` : "";
+        const height = Math.ceil(element.offsetHeight + tableBorderWidth * 2);
         const nextHeight = Math.max(minimumHeight, height);
         if (width === Number(node.style?.width) && nextHeight === Number(node.style?.height)) return;
         state.setNodes(nodes => nodes.map(item => item.id === id ? { ...item, data: { ...item.data, tableMinHeight: minimumHeight }, style: { ...item.style, width, height: nextHeight } } : item));
@@ -192,7 +197,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     observer.observe(element);
     fit();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
-  }, [id, minimumWidth, nodeWidth, data.tableMinHeight]);
+  }, [id, minimumWidth, nodeWidth, data.tableMinHeight, tableBorderWidth]);
   const selectCell = (address: TableAddress, extend = false) => {
     setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
     useUIStore.setState({ selectedTableCell: !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL ? { nodeId: id, ...address } : null });
@@ -352,11 +357,13 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         setEditingCell(null);
       }}
     ><GripVertical className="h-4 w-4" />Move table</button>}
-    {selected && editable && <NodeResizeControl minWidth={minimumWidth} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResizeEnd={(event, params) => { useCanvasStore.getState().updateNodeData(id, { tableMinHeight: params.height }); resizeControls.onResizeEnd(event, params); }} />}
+    {selected && editable && <NodeResizeControl minWidth={minimumWidth} minHeight={(table.rows.length + 1) * 38 + 70} position="bottom-right" onResizeStart={resizeControls.onResizeStart} onResize={(_event, params) => {
+      if (tableElement.current) tableElement.current.style.height = `${Math.max(0, params.height - tableBorderWidth * 2)}px`;
+    }} onResizeEnd={(event, params) => { useCanvasStore.getState().updateNodeData(id, { tableMinHeight: params.height }); resizeControls.onResizeEnd(event, params); }} />}
     <NodeHandles nodeId={id} color={color} selected={selected} />
     {editable && <NodeQuickActions nodeId={id} color={color} selected={selected} />}
     <div className={`flex h-full flex-col rounded-lg border bg-background shadow-sm ${selected ? "ring-2 ring-primary" : ""}`} style={{ borderColor: color, borderWidth: typeof data.borderWidth === "number" ? data.borderWidth : undefined, borderStyle: (data.borderStyle as React.CSSProperties["borderStyle"]) || "solid", ...resolveSurfaceStyle(data) }}>
-      <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed" }} aria-label="Editable table" onPasteCapture={event => {
+      <table ref={tableElement} className="w-full shrink-0 border-collapse" style={{ tableLayout: "fixed", height: typeof data.tableMinHeight === "number" && data.tableMinHeight > 0 ? Math.max(0, data.tableMinHeight - tableBorderWidth * 2) : undefined }} aria-label="Editable table" onPasteCapture={event => {
         const text = event.clipboardData.getData("text/plain");
         const cell = (event.target as HTMLElement).closest<HTMLElement>("[data-cell-row]");
         if (!editable || !text.includes("\t") || !cell || cell.dataset.cellRow === TABLE_HEADER || cell.dataset.cellColumn === TABLE_LABEL) return;
