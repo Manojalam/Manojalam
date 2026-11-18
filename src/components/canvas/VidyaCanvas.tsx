@@ -1968,7 +1968,7 @@ function VidyaCanvasInner({
   // so this effect only runs once (fitView/zoom are stable from useReactFlow)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || useUIStore.getState().searchPanelOpen) return;
       if (!shouldHandleCanvasClipboard(e.target, document.activeElement)) return;
       if (useUIStore.getState().presentationMode) return;
 

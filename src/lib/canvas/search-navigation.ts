@@ -12,6 +12,29 @@ export function nextSearchIndex(index: number, direction: number, total: number)
   return total > 0 ? ((index + direction) % total + total) % total : -1;
 }
 
+/** Persisted ownership, not arbitrary connectors between separate sections. */
+function searchParentId(node: Node): string | undefined {
+  const value = node.parentId ?? node.data.parentId ?? node.data.noteForNodeId;
+  return typeof value === "string" ? value : undefined;
+}
+
+export function searchScopeIds(selected: readonly string[], nodes: readonly Node[]): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const node of nodes) {
+    const parent = searchParentId(node);
+    if (parent) children.set(parent, [...(children.get(parent) ?? []), node.id]);
+  }
+  const scope = new Set<string>();
+  const pending = [...selected];
+  while (pending.length) {
+    const id = pending.pop()!;
+    if (scope.has(id)) continue;
+    scope.add(id);
+    pending.push(...(children.get(id) ?? []));
+  }
+  return scope;
+}
+
 /** Board reading order, independent of creation, import, or stacking order. */
 export function orderSearchResults(ids: readonly string[], nodes: readonly Node[], edges: readonly Edge[]): string[] {
   const byId = new Map(nodes.map(node => [node.id, node]));
@@ -31,6 +54,20 @@ export function orderSearchResults(ids: readonly string[], nodes: readonly Node[
     }
     return { x, y };
   };
+  const sectionId = (id: string): string => {
+    let current = byId.get(id);
+    if (!current) return id;
+    const seen = new Set<string>();
+    while (current) {
+      if (seen.has(current.id)) return [...seen].sort()[0];
+      seen.add(current.id);
+      const parentId = searchParentId(current);
+      const parent = parentId ? byId.get(parentId) : undefined;
+      if (!parent) return current.id;
+      current = parent;
+    }
+    return id;
+  };
   const positions = new Map(ids.map(id => {
     let position = point(id);
     const edge = edgeById.get(id);
@@ -41,6 +78,12 @@ export function orderSearchResults(ids: readonly string[], nodes: readonly Node[
     return [id, position ?? { x: Infinity, y: Infinity }] as const;
   }));
   return [...ids].sort((a, b) => {
+    const firstSection = sectionId(a), secondSection = sectionId(b);
+    if (firstSection !== secondSection) {
+      const first = point(firstSection) ?? positions.get(a)!;
+      const second = point(secondSection) ?? positions.get(b)!;
+      return (first.y - second.y) || (first.x - second.x) || firstSection.localeCompare(secondSection);
+    }
     const first = positions.get(a)!, second = positions.get(b)!;
     return (first.y - second.y) || (first.x - second.x) || a.localeCompare(b);
   });

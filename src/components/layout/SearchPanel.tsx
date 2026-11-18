@@ -1,10 +1,9 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchTextOffsets } from "@/lib/canvas/search-highlight";
 import { boardSearchText } from "@/lib/canvas/board-search";
-import { nextSearchIndex, searchOccurrenceText, orderSearchResults } from "@/lib/canvas/search-navigation";
+import { nextSearchIndex, searchOccurrenceText, orderSearchResults, searchScopeIds } from "@/lib/canvas/search-navigation";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -16,49 +15,82 @@ export function SearchPanel() {
   const { searchQuery, searchResults, performSearch, nodes, edges, board } = useCanvasStore();
   const [active, setActive] = useState<Match | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [selection, setSelection] = useState<string[]>([]);
+  const [scope, setScope] = useState<"selection" | "board">("board");
+  const [composing, setComposing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const lastAutomatic = useRef("");
+
+  const clearHighlight = useCallback(() => {
+    setActive(null);
+    lastAutomatic.current = "";
+    window.dispatchEvent(new Event("vidya:clear-search"));
+  }, []);
+  const close = useCallback(() => {
+    clearHighlight();
+    setSearchPanelOpen(false);
+  }, [clearHighlight, setSearchPanelOpen]);
+
+  // Freeze the user's selection when search opens. Visiting matches changes canvas
+  // selection, but must never silently shrink or change the search scope.
+  useEffect(() => {
+    if (!searchPanelOpen) return;
+    const store = useCanvasStore.getState();
+    const selected = [...store.selectedNodeIds, ...store.selectedEdgeIds];
+    setSelection(selected);
+    setScope(selected.length ? "selection" : "board");
+    clearHighlight();
+    input.current?.focus();
+    input.current?.select();
+  }, [searchPanelOpen, board?.id, clearHighlight]);
 
   useEffect(() => {
     if (searchPanelOpen) performSearch(searchQuery);
   }, [searchPanelOpen, searchQuery, nodes, edges, performSearch]);
-
-  const clear = useCallback(() => {
-    setActive(null);
-    window.dispatchEvent(new Event("vidya:clear-search"));
-  }, []);
-
   useEffect(() => {
-    clear();
+    clearHighlight();
     setCounts({});
-  }, [searchQuery, board?.id, clear]);
+  }, [searchQuery, scope, board?.id, clearHighlight]);
 
+  const scopeIds = useMemo(() => scope === "selection" ? searchScopeIds(selection, nodes) : null, [scope, selection, nodes]);
   const results = useMemo(() => orderSearchResults(searchResults, nodes, edges).flatMap(id => {
     const node = nodes.find(item => item.id === id);
     const edge = edges.find(item => item.id === id);
     if (!node && !edge) return [];
+    if (scopeIds && !scopeIds.has(id) && !(edge && scopeIds.has(edge.source) && scopeIds.has(edge.target))) return [];
     const text = node ? boardSearchText(node.data) : String(edge?.data?.label ?? edge?.label ?? "Connector");
-    const visibleText = node ? searchOccurrenceText(node.data) : text;
-    return [{ id, node, edge, text, count: counts[id] ?? Math.max(1, searchTextOffsets(visibleText, searchQuery).length) }];
-  }), [searchResults, nodes, edges, searchQuery, counts]);
+    return [{ id, count: counts[id] ?? Math.max(1, searchTextOffsets(node ? searchOccurrenceText(node.data) : text, searchQuery).length) }];
+  }), [searchResults, nodes, edges, searchQuery, counts, scopeIds]);
   const matches = useMemo(() => results.flatMap(result => Array.from({ length: result.count }, (_, occurrence) => ({ id: result.id, occurrence }))), [results]);
   const activeIndex = active ? matches.findIndex(match => match.id === active.id && match.occurrence === active.occurrence) : -1;
-
   const navigate = useCallback((match: Match | undefined) => {
     if (!match) return;
     const node = nodes.find(item => item.id === match.id);
     const edge = edges.find(item => item.id === match.id);
     if (!node && !edge) return;
+    lastAutomatic.current = JSON.stringify([board?.id, searchQuery, scope, selection]);
     setActive(match);
-    setSearchPanelOpen(false);
     const store = useCanvasStore.getState();
     store.setSelectedNodeIds(node ? [match.id] : []);
     store.setSelectedEdgeIds(edge ? [match.id] : []);
     window.dispatchEvent(new CustomEvent("vidya:fitview", {
       detail: { searchFocus: true, query: searchQuery, occurrence: match.occurrence, nodeIds: node ? [match.id] : edge ? [edge.source, edge.target] : [] },
     }));
-  }, [nodes, edges, searchQuery, setSearchPanelOpen]);
+  }, [nodes, edges, searchQuery, board?.id, scope, selection]);
   const step = useCallback((direction: number) => {
-    navigate(matches[nextSearchIndex(activeIndex, direction, matches.length)]);
+    navigate(matches[activeIndex < 0 ? 0 : nextSearchIndex(activeIndex, direction, matches.length)]);
   }, [navigate, matches, activeIndex]);
+
+  useEffect(() => {
+    const key = JSON.stringify([board?.id, searchQuery, scope, selection]);
+    if (!searchPanelOpen || composing || !searchQuery.trim() || !matches.length || lastAutomatic.current === key) return;
+    const timer = window.setTimeout(() => {
+      if (lastAutomatic.current === key) return;
+      lastAutomatic.current = key;
+      navigate(matches[0]);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchPanelOpen, composing, searchQuery, scope, selection, board?.id, matches, navigate]);
 
   useEffect(() => {
     const onCount = (event: Event) => {
@@ -69,59 +101,41 @@ export function SearchPanel() {
         ? { ...previous, occurrence: Math.max(0, detail.count - 1) } : previous);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") clear();
-      if (event.key === "F3" && active) {
-        event.preventDefault();
+      if (!searchPanelOpen || event.isComposing) return;
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopPropagation(); close();
+      } else if (event.key === "Tab" || event.key === "F3") {
+        // Capture before canvas shortcuts or native focus traversal can create nodes.
+        event.preventDefault(); event.stopPropagation();
         step(event.shiftKey ? -1 : 1);
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault(); event.stopPropagation(); input.current?.focus(); input.current?.select();
       }
     };
     window.addEventListener("vidya:search-match-count", onCount);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("vidya:search-match-count", onCount);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
-  }, [searchQuery, active, step, clear]);
+  }, [searchPanelOpen, searchQuery, step, close]);
 
-  return <>
-    {!searchPanelOpen && activeIndex >= 0 && <div
-      role="search" aria-label="Board match navigation"
-      className="fixed left-20 top-24 z-50 flex max-w-[calc(100vw-6rem)] items-center gap-2 rounded-lg border border-border bg-card p-2 text-sm shadow-lg"
+  if (!searchPanelOpen) return null;
+  return <div role="search" aria-label="Board match navigation"
+    className="fixed left-20 top-24 z-50 flex max-w-[calc(100vw-6rem)] flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 text-sm shadow-lg">
+    <Input ref={input} className="mr-8 w-52" placeholder="Search this board..." aria-label="Search board" name="board-search"
+      value={searchQuery} onChange={event => performSearch(event.target.value)}
+      onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
       onKeyDown={event => {
-        if (event.key === "Enter") { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
-      }}
-    >
-      <button className="max-w-40 truncate px-2" title="Edit search" onClick={() => setSearchPanelOpen(true)}>{searchQuery}</button>
-      <span role="status" aria-live="polite" className="whitespace-nowrap">{activeIndex + 1} of {matches.length}</span>
-      <button className="rounded border px-2 py-1" aria-label="Previous match" title="Previous match (Shift+F3)" onClick={() => step(-1)}>Previous</button>
-      <button className="rounded border px-2 py-1" aria-label="Next match" title="Next match (F3)" onClick={() => step(1)}>Next</button>
-      <button className="px-2 py-1" aria-label="Close search" title="Close search (Escape)" onClick={clear}>×</button>
-    </div>}
-    <Dialog open={searchPanelOpen} onOpenChange={setSearchPanelOpen}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Search Board</DialogTitle></DialogHeader>
-        <Input
-          placeholder="Search nodes, tags, Sanskrit text..." aria-label="Search board" name="board-search"
-          value={searchQuery} onChange={event => performSearch(event.target.value)} autoFocus
-          onKeyDown={event => {
-            if (event.key === "Enter") { event.preventDefault(); navigate(matches[0]); }
-          }}
-        />
-        <div className="max-h-64 space-y-1 overflow-y-auto">
-          {results.length === 0 && searchQuery && <p className="py-4 text-center text-sm text-muted-foreground">No matches</p>}
-          {results.map(({ id, node, text, count }) => {
-            const match = searchTextOffsets(text, searchQuery)[0];
-            const start = match ? Math.max(0, match[0] - 45) : 0;
-            return <button key={id} className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => navigate({ id, occurrence: 0 })}>
-              <span className="text-xs text-muted-foreground">{node?.type ?? "connector"} · {count} {count === 1 ? "match" : "matches"}</span>
-              <p className="truncate">
-                {start > 0 ? "…" : ""}
-                {match ? <>{text.slice(start, match[0])}<mark className="bg-yellow-200 text-black">{text.slice(match[0], match[1])}</mark>{text.slice(match[1], match[1] + 80)}</> : text.slice(0, 120)}
-              </p>
-            </button>;
-          })}
-        </div>
-      </DialogContent>
-    </Dialog>
-  </>;
+        if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
+      }} />
+    <select aria-label="Search scope" className="rounded border border-border bg-card px-2 py-1" value={scope} onChange={event => setScope(event.target.value as "selection" | "board")}>
+      <option value="selection" disabled={!selection.length}>Selected object{selection.length > 1 ? "s" : ""}</option>
+      <option value="board">Entire board</option>
+    </select>
+    <span role="status" aria-live="polite" className="whitespace-nowrap">{activeIndex >= 0 ? `${activeIndex + 1} of ${matches.length}` : searchQuery.trim() ? "No matches" : "Type to search"}</span>
+    <button disabled={!matches.length} className="rounded border px-2 py-1 disabled:opacity-40" aria-label="Previous match" title="Previous match (Shift+Tab or Shift+F3)" onClick={() => step(-1)}>Previous</button>
+    <button disabled={!matches.length} className="rounded border px-2 py-1 disabled:opacity-40" aria-label="Next match" title="Next match (Tab or F3)" onClick={() => step(1)}>Next</button>
+    <button className="px-2 py-1" aria-label="Close search" title="Close search (Escape)" onClick={close}>×</button>
+  </div>;
 }

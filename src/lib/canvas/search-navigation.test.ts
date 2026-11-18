@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { nextSearchIndex, searchOccurrenceText, orderSearchResults } from "./search-navigation";
+import { nextSearchIndex, searchOccurrenceText, orderSearchResults, searchScopeIds } from "./search-navigation";
 import { searchTextOffsets } from "./search-highlight";
 
 test("next and previous wrap, including one or no matches", () => {
@@ -37,4 +37,28 @@ test("uses board coordinates for nested nodes and non-default origins", () => {
     { id: "centered", position: { x: 0, y: 600 }, width: 100, height: 400, origin: [0.5, 0.5] as [number, number], data: {} },
   ];
   assert.deepEqual(orderSearchResults(["nested", "visible-first", "centered"], nodes, []), ["centered", "visible-first", "nested"]);
+});
+
+test("finishes each matrix/section before the adjacent section", () => {
+  const nodes = [
+    { id: "left", position: { x: 0, y: 0 }, data: {} },
+    { id: "right", position: { x: 600, y: 0 }, data: {} },
+    { id: "left-lower", position: { x: 0, y: 500 }, data: { parentId: "left" } },
+    { id: "right-upper", position: { x: 600, y: 100 }, data: { parentId: "right" } },
+    { id: "left-upper", position: { x: 0, y: 100 }, data: { parentId: "left" } },
+    { id: "right-lower", position: { x: 600, y: 500 }, data: { parentId: "right" } },
+  ];
+  const matches = ["right-upper", "left-lower", "right-lower", "left-upper"];
+  assert.deepEqual(orderSearchResults(matches, nodes, []), ["left-upper", "left-lower", "right-upper", "right-lower"]);
+  assert.deepEqual([...searchScopeIds(["left"], nodes)].sort(), ["left", "left-lower", "left-upper"]);
+  assert.deepEqual([...searchScopeIds(["left-lower"], nodes)], ["left-lower"]);
+});
+test("selection scope includes nested children and linked notes without escaping into other sections", () => {
+  const nodes = [
+    { id: "frame", position: { x: 0, y: 0 }, data: {} },
+    { id: "image", parentId: "frame", position: { x: 0, y: 0 }, data: {} },
+    { id: "note", position: { x: 200, y: 0 }, data: { noteForNodeId: "image" } },
+    { id: "elsewhere", position: { x: 300, y: 0 }, data: {} },
+  ];
+  assert.deepEqual([...searchScopeIds(["frame"], nodes)].sort(), ["frame", "image", "note"]);
 });
