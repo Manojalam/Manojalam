@@ -335,7 +335,7 @@ function VidyaCanvasInner({
   const isTouchDevice = device.input !== "mouse";
   const layersById = useMemo(() => canvasLayerById(layers), [layers]);
 
-  const { screenToFlowPosition, fitView, zoomTo, getViewport, setViewport: setFlowViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, fitBounds, zoomTo, getViewport, setViewport: setFlowViewport } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
@@ -764,6 +764,7 @@ function VidyaCanvasInner({
         mode?: LayoutMode;
         rootId?: string;
         forceFit?: boolean;
+        searchFocus?: boolean;
       }>).detail;
       const nodeIds = detail?.nodeIds;
       const state = useCanvasStore.getState();
@@ -775,6 +776,29 @@ function VidyaCanvasInner({
             && isCanvasItemLayerVisible(node, currentLayersById)
           )
         : undefined;
+      if (detail?.searchFocus && targetNodes?.length) {
+        const boxes = targetNodes.map(node => {
+          let x = node.position.x, y = node.position.y;
+          let parentId = node.parentId;
+          const visited = new Set([node.id]);
+          while (parentId && !visited.has(parentId)) {
+            visited.add(parentId);
+            const parent = state.nodes.find(item => item.id === parentId);
+            if (!parent) break;
+            x += parent.position.x; y += parent.position.y; parentId = parent.parentId;
+          }
+          return { x, y,
+            width: node.measured?.width ?? node.width ?? (Number(node.style?.width) || 300),
+            height: node.measured?.height ?? node.height ?? (Number(node.style?.height) || 150) };
+        });
+        const x = Math.min(...boxes.map(box => box.x));
+        const y = Math.min(...boxes.map(box => box.y));
+        void fitBounds({ x, y,
+          width: Math.max(...boxes.map(box => box.x + box.width)) - x,
+          height: Math.max(...boxes.map(box => box.y + box.height)) - y,
+        }, { padding: 0.2, duration: 400 });
+        return;
+      }
       const radialFit = detail?.mode === "radial";
       void fitView({
         padding: 0.2,
@@ -785,7 +809,7 @@ function VidyaCanvasInner({
     };
     window.addEventListener("vidya:fitview", handler);
     return () => window.removeEventListener("vidya:fitview", handler);
-  }, [fitView]);
+  }, [fitView, fitBounds]);
 
   // ── onNodesChange ──────────────────────────────────────────────────
   // KEY DESIGN:

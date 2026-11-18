@@ -1,4 +1,5 @@
 "use client";
+import { boardSearchText, boardSearchMatches } from "@/lib/canvas/board-search";
 import { useUIStore } from "./ui-store";
 import { attachmentImageNode } from "@/lib/canvas/attachment-image-node";
 import { closeDeletedImageNoteGaps, reflowImageNoteRows, imageNotePairs } from "@/lib/canvas/image-note-pairs";
@@ -5368,18 +5369,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       set({ searchResults: [], searchQuery: query });
       return;
     }
-    const q = query.toLowerCase();
     const results: string[] = [];
     for (const node of nodes) {
-      const text = getNodeText(node.data as Record<string, unknown>);
-      const tags = ((node.data as { tags?: string[] }).tags ?? []).join(" ");
-      if (text.toLowerCase().includes(q) || tags.toLowerCase().includes(q)) {
+      const text = boardSearchText(node.data as Record<string, unknown>);
+      if (boardSearchMatches(text, query)) {
         results.push(node.id);
       }
     }
     for (const edge of edges) {
-      const label = String((edge.data as { label?: string })?.label ?? "");
-      if (label.toLowerCase().includes(q)) {
+      const label = String((edge.data as { label?: string })?.label ?? edge.label ?? "");
+      if (boardSearchMatches(label, query)) {
         results.push(edge.id);
       }
     }
