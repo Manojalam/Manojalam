@@ -124,6 +124,7 @@ function sameActiveTextSelection(
   if (current === next) return true;
   if (!current || !next) return false;
   return current.nodeId === next.nodeId
+    && current.editorId === next.editorId
     && current.hasSelection === next.hasSelection
     && current.bold === next.bold
     && current.italic === next.italic

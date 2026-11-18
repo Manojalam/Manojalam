@@ -159,6 +159,8 @@ export interface LayoutVisualStyle {
 }
 
 export interface ActiveTextSelection {
+  /** Identifies the live editor, including cells sharing one table node. */
+  editorId?: string;
   underline?: boolean;
   strike?: boolean;
   superscript?: boolean;
