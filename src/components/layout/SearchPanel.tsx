@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { searchTextOffsets } from "@/lib/canvas/search-highlight";
 import { boardSearchText } from "@/lib/canvas/board-search";
-import { nextSearchIndex, searchOccurrenceText } from "@/lib/canvas/search-navigation";
+import { nextSearchIndex, searchOccurrenceText, orderSearchResults } from "@/lib/canvas/search-navigation";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -31,7 +31,7 @@ export function SearchPanel() {
     setCounts({});
   }, [searchQuery, board?.id, clear]);
 
-  const results = useMemo(() => searchResults.flatMap(id => {
+  const results = useMemo(() => orderSearchResults(searchResults, nodes, edges).flatMap(id => {
     const node = nodes.find(item => item.id === id);
     const edge = edges.find(item => item.id === id);
     if (!node && !edge) return [];
