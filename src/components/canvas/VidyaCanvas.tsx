@@ -1,4 +1,5 @@
 "use client";
+import { clearBoardSearchHighlight, highlightBoardSearch } from "@/lib/canvas/search-highlight";
 import { backupKey, writeBoardBackup, acknowledgeBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
 import { getRecoveryUserId } from "@/lib/storage/board-store";
 
@@ -335,7 +336,7 @@ function VidyaCanvasInner({
   const isTouchDevice = device.input !== "mouse";
   const layersById = useMemo(() => canvasLayerById(layers), [layers]);
 
-  const { screenToFlowPosition, fitView, fitBounds, zoomTo, getViewport, setViewport: setFlowViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, zoomTo, getViewport, setViewport: setFlowViewport } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const [spacePressed, setSpacePressed] = useState(false);
   const [guides, setGuides] = useState<Guides>({ h: [], v: [] });
@@ -758,13 +759,17 @@ function VidyaCanvasInner({
   // Viewport changes are explicit. Layout application never dispatches this
   // event; only visible Fit/Focus controls do.
   useEffect(() => {
+    let searchGeneration = 0;
     const handler = (event: Event) => {
+      const generation = ++searchGeneration;
+      clearBoardSearchHighlight();
       const detail = (event as CustomEvent<{
         nodeIds?: string[];
         mode?: LayoutMode;
         rootId?: string;
         forceFit?: boolean;
         searchFocus?: boolean;
+        query?: string;
       }>).detail;
       const nodeIds = detail?.nodeIds;
       const state = useCanvasStore.getState();
@@ -777,26 +782,33 @@ function VidyaCanvasInner({
           )
         : undefined;
       if (detail?.searchFocus && targetNodes?.length) {
-        const boxes = targetNodes.map(node => {
-          let x = node.position.x, y = node.position.y;
-          let parentId = node.parentId;
-          const visited = new Set([node.id]);
-          while (parentId && !visited.has(parentId)) {
-            visited.add(parentId);
-            const parent = state.nodes.find(item => item.id === parentId);
-            if (!parent) break;
-            x += parent.position.x; y += parent.position.y; parentId = parent.parentId;
+        const node = targetNodes[0];
+        let x = node.position.x, y = node.position.y;
+        let parentId = node.parentId;
+        const visited = new Set([node.id]);
+        while (parentId && !visited.has(parentId)) {
+          visited.add(parentId);
+          const parent = state.nodes.find(item => item.id === parentId);
+          if (!parent) break;
+          x += parent.position.x; y += parent.position.y; parentId = parent.parentId;
+        }
+        // Mount virtualized content at a readable zoom, then center the actual word.
+        // Fitting the whole object made large tables shrink to unreadable sizes.
+        void (async () => {
+          await setCenter(x + 150, y + 75, { zoom: 1 });
+          for (let attempt = 0; attempt < 90; attempt++) {
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            if (generation !== searchGeneration) return;
+            const element = document.querySelector(`.react-flow__node[data-id="${CSS.escape(node.id)}"]`);
+            if (!element) continue;
+            const ranges = highlightBoardSearch(element, detail.query ?? "");
+            if (!ranges.length) continue;
+            const rect = ranges[0].getBoundingClientRect();
+            const point = screenToFlowPosition({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+            await setCenter(point.x, point.y, { zoom: 1, duration: 250 });
+            return;
           }
-          return { x, y,
-            width: node.measured?.width ?? node.width ?? (Number(node.style?.width) || 300),
-            height: node.measured?.height ?? node.height ?? (Number(node.style?.height) || 150) };
-        });
-        const x = Math.min(...boxes.map(box => box.x));
-        const y = Math.min(...boxes.map(box => box.y));
-        void fitBounds({ x, y,
-          width: Math.max(...boxes.map(box => box.x + box.width)) - x,
-          height: Math.max(...boxes.map(box => box.y + box.height)) - y,
-        }, { padding: 0.2, duration: 400 });
+        })();
         return;
       }
       const radialFit = detail?.mode === "radial";
@@ -808,8 +820,17 @@ function VidyaCanvasInner({
       });
     };
     window.addEventListener("vidya:fitview", handler);
-    return () => window.removeEventListener("vidya:fitview", handler);
-  }, [fitView, fitBounds]);
+    const clear = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { searchGeneration++; clearBoardSearchHighlight(); }
+    };
+    window.addEventListener("keydown", clear);
+    return () => {
+      searchGeneration++;
+      clearBoardSearchHighlight();
+      window.removeEventListener("vidya:fitview", handler);
+      window.removeEventListener("keydown", clear);
+    };
+  }, [fitView, setCenter, screenToFlowPosition]);
 
   // ── onNodesChange ──────────────────────────────────────────────────
   // KEY DESIGN:

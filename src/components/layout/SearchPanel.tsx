@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useEffect } from "react";
+import { searchTextOffsets } from "@/lib/canvas/search-highlight";
 import { boardSearchText } from "@/lib/canvas/board-search";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/store/ui-store";
@@ -42,6 +43,8 @@ export function SearchPanel() {
             const node = nodes.find((n) => n.id === id);
             const edge = edges.find((item) => item.id === id);
             const text = node ? boardSearchText(node.data) : String(edge?.data?.label ?? edge?.label ?? "Connector");
+            const match = searchTextOffsets(text, searchQuery)[0];
+            const start = match ? Math.max(0, match[0] - 45) : 0;
             return (
               <button
                 key={id}
@@ -52,12 +55,15 @@ export function SearchPanel() {
                   store.setSelectedNodeIds(node ? [id] : []);
                   store.setSelectedEdgeIds(edge ? [id] : []);
                   window.dispatchEvent(new CustomEvent("vidya:fitview", {
-                    detail: { searchFocus: true, nodeIds: node ? [id] : edge ? [edge.source, edge.target] : [] },
+                    detail: { searchFocus: true, query: searchQuery, nodeIds: node ? [id] : edge ? [edge.source, edge.target] : [] },
                   }));
                 }}
               >
                 <span className="text-xs text-muted-foreground">{node?.type ?? "connector"}</span>
-                <p className="truncate">{text}</p>
+                <p className="truncate">
+                  {start > 0 ? "…" : ""}
+                  {match ? <>{text.slice(start, match[0])}<mark className="bg-yellow-200 text-black">{text.slice(match[0], match[1])}</mark>{text.slice(match[1], match[1] + 80)}</> : text.slice(0, 120)}
+                </p>
               </button>
             );
           })}
