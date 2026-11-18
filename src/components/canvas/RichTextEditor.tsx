@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useId, useRef, useState, useCallback, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, Mark, mergeAttributes, type Editor, type Command } from "@tiptap/core";
@@ -623,10 +623,21 @@ export function RichTextEditor({
   onContentSizeChange,
   onBlur,
 }: RichTextEditorProps) {
+  const editorId = useId();
+  const activeEditorId = useUIStore(state => state.activeTextSelection?.editorId);
   const textToolbarHost = useUIStore(state => state.inlineTextToolbarHost);
   const propertiesOpen = useUIStore(state => state.boardPanel === "selection" || state.boardPanel === "templates");
   const dockedToolbar = textToolbarHost && textToolbarHost.nodeId === nodeId && !valueInput ? textToolbarHost.element : null;
   const setActiveTextSelection = useUIStore((state) => state.setActiveTextSelection);
+  const clearOwnedTextSelection = useCallback(() => {
+    if (useUIStore.getState().activeTextSelection?.editorId === editorId) setActiveTextSelection(null);
+  }, [editorId, setActiveTextSelection]);
+  // A cell drops its nodeId when editing ends. Release only that editor's
+  // snapshot so the inspector cannot remain attached to a departed cell.
+  useEffect(() => {
+    if (!editable || !nodeId) clearOwnedTextSelection();
+    return clearOwnedTextSelection;
+  }, [editable, nodeId, clearOwnedTextSelection]);
   const inlineFormatPainter = useUIStore((state) => state.inlineFormatPainter);
   const setInlineFormatPainter = useUIStore((state) => state.setInlineFormatPainter);
   const activeStyleTemplate = useCanvasStore(state => {
@@ -894,6 +905,7 @@ export function RichTextEditor({
         colorReplaceDialogOpen: colorReplaceDialogOpenRef.current,
       })) return;
       hideToolbar();
+      clearOwnedTextSelection();
       onBlur?.();
     },
   });
@@ -1205,6 +1217,7 @@ export function RichTextEditor({
     setActiveTextSelection({
       ...Object.fromEntries(PARAGRAPH_KEYS.map(key => [key, paragraphValue(key, editor.state.selection.$from.parent.attrs[key])])),
       nodeId,
+      editorId,
       hasSelection: !editor.state.selection.empty || additiveSelectionRangesRef.current.length > 0,
       bold: editor.isActive("bold"),
       italic: editor.isActive("italic"),
@@ -1219,7 +1232,7 @@ export function RichTextEditor({
       highlightColor: editor.getAttributes("highlight").color as string | undefined,
       textAlign: (["left", "center", "right", "justify"] as const).find((align) => editor.isActive({ textAlign: align })),
     });
-  }, [editor, nodeId, setActiveTextSelection]);
+  }, [editor, nodeId, editorId, setActiveTextSelection]);
 
   useEffect(() => {
     if (!editor || !nodeId) return;
@@ -1793,8 +1806,9 @@ export function RichTextEditor({
     if (!editor) return;
     editor.on("selectionUpdate", updateToolbar);
     editor.on("transaction",     updateToolbar);
-    return () => { editor.off("selectionUpdate", updateToolbar); editor.off("transaction", updateToolbar); };
-  }, [editor, updateToolbar]);
+    const frame = requestAnimationFrame(updateToolbar);
+    return () => { cancelAnimationFrame(frame); editor.off("selectionUpdate", updateToolbar); editor.off("transaction", updateToolbar); };
+  }, [editor, updateToolbar, dockedToolbar]);
 
   // Measure the toolbar and place its BOTTOM fully above the selection top,
   // so it never covers the highlighted words. Skips when manually dragged.
@@ -2310,7 +2324,7 @@ export function RichTextEditor({
 
   return (
     <>
-      {mounted && anchor && editor && (dockedToolbar || valueInput || !nodeId || !propertiesOpen) && createPortal(
+      {mounted && editor && (anchor || (dockedToolbar && editable && activeEditorId === editorId)) && (dockedToolbar || valueInput || !nodeId || !propertiesOpen) && createPortal(
         <div
           ref={toolbarRef}
           data-universal-text-tools="editor-toolbar"
