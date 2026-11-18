@@ -13,3 +13,8 @@ test("preserves offsets through Unicode normalization and collapsed spaces", () 
  assert.equal(text.slice(...matches[0]), "s\u0301āstra   text");
  assert.deepEqual(searchTextOffsets(text, "  "), []);
 });
+
+test("Sanskrit substring highlights exclude unsearched suffixes", () => {
+ const text = "कृतिः प्रकृतिः";
+ assert.deepEqual(searchTextOffsets(text, "कृति").map(([a,b]) => text.slice(a,b)), ["कृति", "कृति"]);
+});

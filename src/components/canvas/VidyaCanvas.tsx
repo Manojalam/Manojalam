@@ -1,5 +1,5 @@
 "use client";
-import { clearBoardSearchHighlight, highlightBoardSearch } from "@/lib/canvas/search-highlight";
+import { clearBoardSearchHighlight, highlightBoardSearch, observeBoardSearch } from "@/lib/canvas/search-highlight";
 import { backupKey, writeBoardBackup, acknowledgeBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
 import { getRecoveryUserId } from "@/lib/storage/board-store";
 
@@ -760,8 +760,11 @@ function VidyaCanvasInner({
   // event; only visible Fit/Focus controls do.
   useEffect(() => {
     let searchGeneration = 0;
+    let stopWatching = () => {};
+    let lastSearchTarget = "";
     const handler = (event: Event) => {
       const generation = ++searchGeneration;
+      stopWatching();
       clearBoardSearchHighlight();
       const detail = (event as CustomEvent<{
         nodeIds?: string[];
@@ -797,21 +800,49 @@ function VidyaCanvasInner({
         // Mount virtualized content at a readable zoom, then center the actual word.
         // Fitting the whole object made large tables shrink to unreadable sizes.
         void (async () => {
-          await setCenter(x + 150, y + 75, { zoom: 1 });
+          const selector = `.react-flow__node[data-id="${CSS.escape(node.id)}"]`;
+          const searchTarget = JSON.stringify([node.id, detail.query]);
+          const sameObject = lastSearchTarget === searchTarget;
+          let revealed = false;
+          if (!document.querySelector(selector)) {
+            revealed = true;
+            await setCenter(x + 150, y + 75, { zoom: 1 });
+          }
           for (let attempt = 0; attempt < 90; attempt++) {
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
             if (generation !== searchGeneration) return;
-            const element = document.querySelector(`.react-flow__node[data-id="${CSS.escape(node.id)}"]`);
-            if (!element) continue;
-            const ranges = highlightBoardSearch(element, detail.query ?? "", detail.occurrence ?? 0);
-            if (!ranges.length) continue;
+            const element = document.querySelector(selector);
+            const ranges = element ? highlightBoardSearch(element, detail.query ?? "", detail.occurrence ?? 0) : [];
+            if (!element || !ranges.length) {
+              // A node can disappear between the initial DOM check and this frame.
+              if (!revealed) { revealed = true; await setCenter(x + 150, y + 75, { zoom: 1 }); }
+              continue;
+            }
             const occurrence = Math.min(detail.occurrence ?? 0, ranges.length - 1);
-            window.dispatchEvent(new CustomEvent("vidya:search-match-count", {
-              detail: { nodeId: node.id, query: detail.query, count: ranges.length },
-            }));
+            const report = (currentRanges: Range[]) => {
+              if (!currentRanges.length || generation !== searchGeneration) return;
+              window.dispatchEvent(new CustomEvent("vidya:search-match-count", {
+                detail: { nodeId: node.id, query: detail.query, count: currentRanges.length },
+              }));
+            };
+            report(ranges);
+            const container = element.closest(".react-flow__nodes");
+            if (container) stopWatching = observeBoardSearch(container, selector, detail.query ?? "", occurrence, report);
             const rect = ranges[occurrence].getBoundingClientRect();
-            const point = screenToFlowPosition({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
-            await setCenter(point.x, point.y, { zoom: 1, duration: 250 });
+            const canvas = element.closest(".react-flow")?.getBoundingClientRect();
+            const toolbar = document.querySelector('[aria-label="Board match navigation"]')?.getBoundingClientRect();
+            const visibleTop = Math.max(canvas?.top ?? 0, toolbar?.bottom ?? 0) + 24;
+            const alreadyVisible = canvas && rect.top >= visibleTop && rect.bottom <= canvas.bottom - 60
+              && rect.left >= canvas.left + 24 && rect.right <= canvas.right - 24;
+            lastSearchTarget = searchTarget;
+            if (!sameObject || !alreadyVisible) {
+              const point = screenToFlowPosition({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+              await setCenter(point.x, point.y, { zoom: 1, duration: 150 });
+            }
+            if (generation !== searchGeneration) return;
+            // Centering can cause an editor to remount: repaint against the final DOM.
+            const current = document.querySelector(selector);
+            if (current) report(highlightBoardSearch(current, detail.query ?? "", occurrence));
             return;
           }
         })();
@@ -827,13 +858,14 @@ function VidyaCanvasInner({
     };
     window.addEventListener("vidya:fitview", handler);
     const clear = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { searchGeneration++; clearBoardSearchHighlight(); }
+      if (event.key === "Escape") { searchGeneration++; stopWatching(); lastSearchTarget = ""; clearBoardSearchHighlight(); }
     };
-    const cancelSearch = () => { searchGeneration++; clearBoardSearchHighlight(); };
+    const cancelSearch = () => { searchGeneration++; stopWatching(); lastSearchTarget = ""; clearBoardSearchHighlight(); };
     window.addEventListener("vidya:clear-search", cancelSearch);
     window.addEventListener("keydown", clear);
     return () => {
       searchGeneration++;
+      stopWatching();
       clearBoardSearchHighlight();
       window.removeEventListener("vidya:fitview", handler);
       window.removeEventListener("keydown", clear);
