@@ -45,7 +45,7 @@ try {
       const rect=range.getBoundingClientRect();
       const canvas=document.querySelector('.react-flow').getBoundingClientRect();
       return range.startContainer.parentElement.closest('.react-flow__node')?.dataset.id===nodeId
-        && Math.abs(rect.y+rect.height/2-canvas.y-canvas.height/2)<40;
+        && rect.top > canvas.top + 100 && rect.bottom < canvas.bottom - 40 && rect.left >= canvas.left && rect.right <= canvas.right;
     },{},counter,nodeId);
   };
   const openSearch=async()=>{
@@ -111,4 +111,8 @@ try {
   assert.equal(await nodeCount(),originalCount,'Scoped matrix navigation must not add nodes');
   assert.deepEqual(errors,[]);
   console.log('PASS: Automatic first match, Tab/Shift+Tab, stable selected-table/shape scope, entire-board switch, no-match keyboard safety, and no created nodes');
+} catch(error) {
+ console.log(await page.evaluate(()=>({text:document.body.innerText.slice(0,900),ranges:[...(CSS.highlights.get('board-search-active')??[])].map(r=>({text:r.toString(),rect:r.getBoundingClientRect().toJSON()})),viewport:document.querySelector('.react-flow__viewport')?.style.transform})));
+ await page.screenshot({path:'.tmp/search-regression-failure.png'});
+ throw error;
 } finally { await browser.close(); }

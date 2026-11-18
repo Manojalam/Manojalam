@@ -15,7 +15,12 @@ export function searchTextOffsets(text: string, query: string): [number, number]
       continue;
     }
     normalized += value;
-    for (let i = 0; i < value.length; i++) { starts.push(index); ends.push(index + segment.length); }
+    for (let i = 0; i < value.length; i++) {
+      // Unchanged-length clusters retain exact offsets for substring searches
+      // (e.g. कृति inside कृतिः), not the whole grapheme including its suffix.
+      starts.push(index + (value.length === segment.length ? i : 0));
+      ends.push(index + (value.length === segment.length ? i + 1 : segment.length));
+    }
   }
   const matches: [number, number][] = [];
   for (let at = normalized.indexOf(needle); at !== -1; at = normalized.indexOf(needle, at + needle.length)) {
@@ -71,4 +76,32 @@ export function highlightBoardSearch(root: Element, query: string, activeIndex =
     CSS.highlights.set("board-search-active", highlight);
   }
   return ranges;
+}
+
+/** Refresh browser ranges when an editor replaces text nodes or virtualization remounts it. */
+export function observeBoardSearch(
+  container: Element,
+  selector: string,
+  query: string,
+  activeIndex: number,
+  onRefresh: (ranges: Range[]) => void,
+): () => void {
+  let frame = 0;
+  let stopped = false;
+  const refresh = () => {
+    frame = 0;
+    if (stopped) return;
+    const target = container.querySelector(selector);
+    if (!target) { clearBoardSearchHighlight(); return; }
+    onRefresh(highlightBoardSearch(target, query, activeIndex));
+  };
+  const observer = new MutationObserver(() => {
+    if (!frame) frame = requestAnimationFrame(refresh);
+  });
+  observer.observe(container, { childList: true, characterData: true, subtree: true });
+  return () => {
+    stopped = true;
+    observer.disconnect();
+    cancelAnimationFrame(frame);
+  };
 }
