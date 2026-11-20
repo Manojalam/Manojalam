@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchTextOffsets } from "@/lib/canvas/search-highlight";
+import { replaceNodeSearch, replaceSearchText } from "@/lib/canvas/search-replace";
 import { boardSearchText } from "@/lib/canvas/board-search";
 import { nextSearchIndex, searchOccurrenceText, orderSearchResults, searchScopeIds } from "@/lib/canvas/search-navigation";
 import { Input } from "@/components/ui/input";
@@ -18,8 +19,12 @@ export function SearchPanel() {
   const [selection, setSelection] = useState<string[]>([]);
   const [scope, setScope] = useState<"selection" | "board">("board");
   const [composing, setComposing] = useState(false);
+  const [showReplace, setShowReplace] = useState(false);
+  const [replacement, setReplacement] = useState("");
+  const [replaceMessage, setReplaceMessage] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const lastAutomatic = useRef("");
+  const afterReplace = useRef<number | null>(null);
 
   const clearHighlight = useCallback(() => {
     setActive(null);
@@ -50,6 +55,8 @@ export function SearchPanel() {
   useEffect(() => {
     clearHighlight();
     setCounts({});
+    afterReplace.current = null;
+    setReplaceMessage("");
   }, [searchQuery, scope, board?.id, clearHighlight]);
 
   const scopeIds = useMemo(() => scope === "selection" ? searchScopeIds(selection, nodes) : null, [scope, selection, nodes]);
@@ -81,13 +88,50 @@ export function SearchPanel() {
     navigate(matches[activeIndex < 0 ? 0 : nextSearchIndex(activeIndex, direction, matches.length)]);
   }, [navigate, matches, activeIndex]);
 
+  const replace = (all: boolean) => {
+    const store = useCanvasStore.getState();
+    if (store.board?.accessRole === "viewer" || !searchQuery.trim()) return;
+    const targets = all ? results.map(result => ({ id: result.id, occurrence: undefined })) : active ? [active] : [];
+    const patches: { id: string; patch: Record<string, unknown> }[] = [];
+    const edgePatches = new Map<string, string>();
+    let changed = 0, skipped = 0;
+    for (const target of targets) {
+      const node = store.nodes.find(node => node.id === target.id);
+      const edge = store.edges.find(edge => edge.id === target.id);
+      const data = node?.data ?? edge?.data ?? {};
+      if (data.locked || store.layers.some(layer => layer.id === data.layerId && layer.locked)
+        || data.sampleDesignId) { skipped++; continue; }
+      if (node) {
+        const result = replaceNodeSearch(node.data, searchQuery, replacement, target.occurrence);
+        if (result.count) { patches.push({ id: node.id, patch: result.patch }); changed += result.count; }
+        else skipped++;
+      } else if (edge) {
+        const result = replaceSearchText(String(edge.data?.label ?? edge.label ?? ""), searchQuery, replacement, target.occurrence);
+        if (result.count) { edgePatches.set(edge.id, result.value); changed += result.count; }
+      }
+    }
+    if (changed) {
+      clearHighlight();
+      afterReplace.current = all ? 0 : activeIndex + searchTextOffsets(replacement, searchQuery).length;
+      store.pushHistory();
+      patches.forEach(({ id, patch }) => store.updateNodeData(id, patch));
+      if (edgePatches.size) store.setEdges(edges => edges.map(edge => edgePatches.has(edge.id)
+        ? { ...edge, label: edgePatches.get(edge.id), data: { ...edge.data, label: edgePatches.get(edge.id) } } : edge));
+      setCounts({});
+      store.performSearch(searchQuery);
+    }
+    setReplaceMessage(`${changed} replacement${changed === 1 ? "" : "s"}${skipped ? `; ${skipped} locked, shared-design, or non-editable object(s) skipped` : ""}. Undo restores the previous text.`);
+  };
+
   useEffect(() => {
     const key = JSON.stringify([board?.id, searchQuery, scope, selection]);
     if (!searchPanelOpen || composing || !searchQuery.trim() || !matches.length || lastAutomatic.current === key) return;
     const timer = window.setTimeout(() => {
       if (lastAutomatic.current === key) return;
       lastAutomatic.current = key;
-      navigate(matches[0]);
+      const index = afterReplace.current ?? 0;
+      afterReplace.current = null;
+      navigate(matches[index < matches.length ? index : 0]);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [searchPanelOpen, composing, searchQuery, scope, selection, board?.id, matches, navigate]);
@@ -136,6 +180,14 @@ export function SearchPanel() {
     <span role="status" aria-live="polite" className="whitespace-nowrap">{activeIndex >= 0 ? `${activeIndex + 1} of ${matches.length}` : searchQuery.trim() ? "No matches" : "Type to search"}</span>
     <button disabled={!matches.length} className="rounded border px-2 py-1 disabled:opacity-40" aria-label="Previous match" title="Previous match (Shift+Tab or Shift+F3)" onClick={() => step(-1)}>Previous</button>
     <button disabled={!matches.length} className="rounded border px-2 py-1 disabled:opacity-40" aria-label="Next match" title="Next match (Tab or F3)" onClick={() => step(1)}>Next</button>
+    {board?.accessRole !== "viewer" && <button className="rounded border px-2 py-1" aria-expanded={showReplace} onClick={() => setShowReplace(value => !value)}>Replace…</button>}
     <button className="px-2 py-1" aria-label="Close search" title="Close search (Escape)" onClick={close}>×</button>
+    {showReplace && board?.accessRole !== "viewer" && <div className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-2">
+      <Input className="mr-8 w-52" placeholder="Replace with (empty deletes)" aria-label="Replace with" value={replacement} onChange={event => setReplacement(event.target.value)}
+        onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); replace(false); } }} />
+      <button disabled={!active || !matches.length} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => replace(false)}>Replace</button>
+      <button disabled={!matches.length} className="rounded border px-2 py-1 disabled:opacity-40" onClick={() => replace(true)}>Replace all</button>
+      <span aria-live="polite" className="text-xs text-muted-foreground">{replaceMessage || "Uses the search scope above. Tab / Shift+Tab navigate matches."}</span>
+    </div>}
   </div>;
 }
