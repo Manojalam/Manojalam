@@ -39,12 +39,12 @@ function decodeHtmlEntities(value: string): string {
 /** Convert authored rich text to the same readable plain text used by charts. */
 export function nodeRichTextPlainText(value: unknown): string {
   if (typeof value !== "string") return "";
-  return decodeHtmlEntities(value)
+  return decodeHtmlEntities(value
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .trim());
 }
 
 /**
