@@ -37,6 +37,7 @@ test("plain text aliases and rich-text caches remain synchronized", () => {
   assert.equal(result.count, 1);
   assert.equal(replaceNodeSearch({ text: "word", richText: "<p><b>word</b></p>" }, "word", "new").patch.text, "new");
   assert.equal(replaceNodeSearch({ text: "word", richText: "<p><b>word</b></p>" }, "word", "<new>").patch.text, "<new>");
+  assert.deepEqual(replaceNodeSearch({ richText: "<p>word</p>" }, "word", "new").patch, { text: "new", richText: "<p>new</p>" });
 });
 test("literal replacement remains searchable in table content", () => {
   assert.equal(boardSearchMatches(boardSearchText({ table: { columns: [{ name: '<new>' }], rows: [] } }), '<new>'), true);

@@ -73,7 +73,7 @@ export function replaceNodeSearch(data: Record<string, unknown>, query: string, 
     const result = edit(String(data.text ?? ""), data.richText);
     const patch: Record<string, unknown> = { richText: result.rich, text: result.plain };
     for (const field of NODE_TEXT_FIELDS) {
-      if (data[field] === data.text) patch[field] = result.plain;
+      if (typeof data[field] === "string" && data[field] === data.text) patch[field] = result.plain;
     }
     return { patch, count };
   }
