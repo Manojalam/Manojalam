@@ -1305,6 +1305,17 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
 
   return (
     <>
+      {selected && (d.cardTemplateId || d.sampleTemplateId) && !d.locked && <button
+        type="button"
+        data-export-ignore
+        aria-label="Move object"
+        title="Drag to move the object"
+        className="nopan absolute bottom-full left-0 z-30 mb-2 rounded-md border border-border bg-popover px-3 py-1 text-xs text-popover-foreground shadow-sm cursor-grab active:cursor-grabbing"
+        onPointerDown={() => {
+          (document.activeElement as HTMLElement | null)?.blur();
+          finishEditing();
+        }}
+      >Move object</button>}
       <NodeResizer
         minWidth={60}
         minHeight={60}
@@ -1513,7 +1524,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
           {!radialChart?.enabled && (
             <div
               onPointerDownCapture={event => {
-                if (!d.cardTemplateId || d.locked || event.button !== 0 || editing || (event.target as HTMLElement).closest("[data-template-toggle]")) return;
+                if (!d.cardTemplateId || d.locked || event.button !== 0 || editing || (event.target as HTMLElement).closest("a[href], button, [data-template-toggle]")) return;
                 const access = useCanvasStore.getState();
                 if (access.board?.accessRole === "viewer" || access.layers.some(layer => layer.id === d.layerId && layer.locked)) return;
                 event.stopPropagation();
