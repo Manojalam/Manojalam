@@ -867,6 +867,9 @@ export function RichTextEditor({
     extensions: EXTENSIONS,
     parseOptions: { preserveWhitespace: "full" },
     editorProps: {
+      // Canvas coordinates belong to React Flow. ProseMirror's browser scroll
+      // can scroll its transformed ancestors and make the entire board jump.
+      handleScrollToSelection: () => !!nodeId && !valueInput,
       attributes: inputId ? { id: inputId, role: "textbox", "aria-label": inputLabel || "Text", "aria-multiline": "true" } : {},
       handleKeyDown: (view, event) => {
         if (!valueInput || event.key !== "Tab") return false;
@@ -2870,6 +2873,17 @@ export function RichTextEditor({
         data-fillable-card={isFillableCard ? "" : undefined}
         data-rich-text-editor="true"
         data-template-sample={activeSampleTemplate ? "" : undefined}
+        onPointerDownCapture={event => {
+          if ((event.target as Element).closest("a[href]")) event.stopPropagation();
+        }}
+        onClickCapture={event => {
+          const link = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
+          if (!link || (editable && !event.ctrlKey && !event.metaKey)) return;
+          const href = normalizeLinkHref(link.getAttribute("href") || "");
+          event.preventDefault();
+          event.stopPropagation();
+          if (href) window.open(href, "_blank", "noopener,noreferrer");
+        }}
         className={cn(shapeTextFlow && "shape-text-flow-editor h-full w-full")}
         style={{ ...editorStyle, "--board-link-color": boardLinkColor ?? undefined } as CSSProperties}
       >
