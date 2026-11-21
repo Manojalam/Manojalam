@@ -1,4 +1,5 @@
 "use client";
+import { useBoardAppearance } from "./useBoardAppearance";
 import { clearBoardSearchHighlight, highlightBoardSearch, observeBoardSearch } from "@/lib/canvas/search-highlight";
 import { backupKey, writeBoardBackup, acknowledgeBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
 import { getRecoveryUserId } from "@/lib/storage/board-store";
@@ -319,6 +320,7 @@ function VidyaCanvasInner({
   const edges       = useCanvasStore((s) => s.edges);
   const layers      = useCanvasStore((s) => s.layers);
   const settings    = useCanvasStore((s) => s.settings);
+  useBoardAppearance();
   const saveStatus  = useCanvasStore((s) => s.saveStatus);
   const hasHydratedBoard = useCanvasStore((s) => s.hasHydratedBoard);
   const hasUserChangedBoard = useCanvasStore((s) => s.hasUserChangedBoard);

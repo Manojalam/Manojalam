@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { placeTemplateField } from "@/lib/canvas/template-field-order";
+import { boardColorCssValue } from "@/lib/canvas/board-colors";
+import { resolveFillColor, resolveLayoutFillGradient, resolveSurfaceEffectData } from "@/lib/style-utils";
+import { surfaceEffectStyle } from "@/lib/canvas/surface-effects";
 
 function move<T>(items: T[], index: number, delta: number): T[] {
   const next = [...items];
@@ -27,6 +30,15 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
   const save = useCanvasStore(state => state.saveCardTemplate);
   const saved = useCanvasStore(state => !!state.settings.cardTemplates?.some(template => template.id === initial.id));
   const linked = useCanvasStore(state => state.nodes.filter(node => node.data.cardTemplateId === initial.id).length);
+  const selected = useCanvasStore(state => state.nodes.find(node => state.selectedNodeIds.includes(node.id)));
+  const settings = useCanvasStore(state => state.settings);
+  const [previewBackground, setPreviewBackground] = useState(selected ? "object" : "board");
+  const boardBackground = boardColorCssValue(settings.canvasBackgroundColor, "canvas", settings.canvasBackgroundMode);
+  const objectFill = selected ? resolveFillColor(selected.data) : undefined;
+  const previewFill = previewBackground === "white" ? "#ffffff" : previewBackground === "dark" ? "#18181d"
+    : previewBackground === "template" ? draft.style.fillColor : previewBackground === "object" ? objectFill : "transparent";
+  const previewEffects = previewBackground === "object" && selected
+    ? surfaceEffectStyle(resolveSurfaceEffectData(selected.data), undefined, resolveLayoutFillGradient(selected.data)) : {};
   const patchRow = (id: string, patch: Partial<CardTemplateRow>) => setDraft(current => ({ ...current, rows: current.rows.map(row => row.id === id ? { ...row, ...patch } : row) }));
   const patchField = (row: CardTemplateRow, id: string, patch: Partial<CardTemplateField>) => patchRow(row.id, { fields: row.fields.map(field => field.id === id ? { ...field, ...patch } : field) });
   const newField = (): CardTemplateField => ({ id: generateId(), label: "New field", kind: "text", color: "" });
@@ -187,10 +199,18 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
         </div>
         <div className="min-w-0 space-y-3 lg:overflow-y-auto">
           <h3 className="font-medium">Text preview</h3>
+          <label className="flex flex-wrap items-center gap-2 text-sm">Preview background
+            <select aria-label="Preview background" className="h-9 rounded-md border bg-background px-2" value={previewBackground} onChange={event => setPreviewBackground(event.target.value)}>
+              <option value="object" disabled={!selected}>Selected object</option><option value="board">Board background</option><option value="template">Template fill</option><option value="white">White</option><option value="dark">Dark</option>
+            </select>
+          </label>
           <p className="text-xs text-muted-foreground">Field names below are sample text for previewing the design. Objects show only your filled values.</p>
-          <div className="rounded-md border p-2">
+          <div className="rounded-md border p-2" style={{ background: boardBackground }}>
+            <div data-template-preview-surface style={{ backgroundColor: previewFill || "transparent", ...previewEffects }}>
             <CardTemplatePreview template={draft} values={Object.fromEntries(draft.rows.flatMap(row => templateInputFields(row.fields).map(field => [field.id, { text: field.label || "Sample text" }])))}/>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground">Preview background does not change the template or your object colors.</p>
           {!!linked && <p className="text-xs text-muted-foreground">Saving updates the design of {linked} existing objects. Their field values are retained, including values of removed fields, so undo can restore them.</p>}
         </div>
       </div>
