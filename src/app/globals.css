@@ -63,7 +63,7 @@
 }
 
 /* ─── Light theme (default) ─── */
-:root, body[data-board-appearance="light"] {
+:root, body[data-board-appearance="light"], [data-picker-appearance="light"] {
   --radius: 0.625rem;
 
   --background:        #f0eeea;
@@ -103,7 +103,7 @@
 }
 
 /* ─── Dark theme ─── */
-.dark, body[data-board-appearance="dark"] {
+.dark, body[data-board-appearance="dark"], [data-picker-appearance="dark"] {
   --background:        #1c1c22;
   --foreground:        #f0eff0;
   --card:              #252529;
