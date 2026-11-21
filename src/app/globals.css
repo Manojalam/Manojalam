@@ -63,7 +63,7 @@
 }
 
 /* ─── Light theme (default) ─── */
-:root {
+:root, body[data-board-appearance="light"] {
   --radius: 0.625rem;
 
   --background:        #f0eeea;
@@ -103,7 +103,7 @@
 }
 
 /* ─── Dark theme ─── */
-.dark {
+.dark, body[data-board-appearance="dark"] {
   --background:        #1c1c22;
   --foreground:        #f0eff0;
   --card:              #252529;
@@ -129,6 +129,9 @@
   --shadow-md: 0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.2);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
 }
+
+body[data-board-appearance="light"] { color-scheme: light; }
+body[data-board-appearance="dark"] { color-scheme: dark; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

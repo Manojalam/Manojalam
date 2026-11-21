@@ -118,3 +118,19 @@ export function usesAutomaticBoardColor(
 ): boolean {
   return resolveBoardColorMode(value, mode, kind) === "auto";
 }
+
+/** Match editor surfaces to an explicit canvas background without changing app preferences. */
+export function boardAppearance(value: string | undefined, mode: BoardColorMode | undefined): BoardColorTheme | undefined {
+  const color = normalizeBoardColorOverride(value, "canvas", mode);
+  if (!color || isTransparentColor(color)) return undefined;
+  const channels = parseRgbChannels(color);
+  if (!channels) return undefined;
+  // Translucent backgrounds depend on the app surface underneath; keep its theme.
+  if (/^#[0-9a-f]{8}$/i.test(color) && !color.toLowerCase().endsWith("ff")) return undefined;
+  if (/^rgba/i.test(color)) return undefined;
+  const linear = channels.map(channel => {
+    const s = channel / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722 > 0.179 ? "light" : "dark";
+}

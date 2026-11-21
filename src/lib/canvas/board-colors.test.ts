@@ -3,10 +3,21 @@ import test from "node:test";
 
 import {
   boardColorCssValue,
+  boardAppearance,
   normalizeBoardColorOverride,
   resolvedBoardColor,
   resolveBoardColorMode,
 } from "./board-colors";
+
+test("explicit canvas brightness controls editor appearance, automatic and transparent preserve app theme", () => {
+  assert.equal(boardAppearance("#ffffff", "custom"), "light");
+  assert.equal(boardAppearance("#fff7dc", "custom"), "light");
+  assert.equal(boardAppearance("#18181d", "custom"), "dark");
+  assert.equal(boardAppearance("#ffffff", "auto"), undefined);
+  assert.equal(boardAppearance("#ffffff", undefined), undefined);
+  assert.equal(boardAppearance("transparent", "transparent"), undefined);
+  assert.equal(boardAppearance("#ffffff80", "custom"), undefined);
+});
 
 test("legacy light board defaults become automatic theme colors", () => {
   assert.equal(normalizeBoardColorOverride("#f0eeea", "canvas"), undefined);
