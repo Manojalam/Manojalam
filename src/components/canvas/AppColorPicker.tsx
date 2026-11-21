@@ -1,6 +1,7 @@
 "use client";
 
 import { GeneralColorGrid } from "./GeneralColorGrid";
+import { usePickerBackground } from "./usePickerBackground";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -218,6 +219,7 @@ export function ColorPickerPanel({
   stickyActions = false,
   selectionSafe = false,
 }: ColorPickerPanelProps) {
+  const pickerBackground = usePickerBackground();
   const exactColorInputId = useId();
   const normalizedValue = colorSwatchHex(value);
   const initialColor = normalizedValue ?? "#2878ff";
@@ -290,7 +292,11 @@ export function ColorPickerPanel({
   };
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div data-picker-appearance={pickerBackground.surface?.appearance} style={pickerBackground.style} className={cn("space-y-3 rounded-md", className)}>
+      {pickerBackground.surface && <div className="rounded-md border p-2" aria-label="Color preview on selected object" style={{ backgroundColor: pickerBackground.surface.color, backgroundImage: pickerBackground.surface.gradient }}>
+        <p className="text-[10px] text-foreground">Selected object background</p>
+        <p className="text-xl" style={{ color: draftColor }}>Aa · अ आ इ</p>
+      </div>}
       {mixed ? <p className="text-xs text-muted-foreground">Mixed text colors</p> : normalizedValue && (
         <div className="flex items-center gap-2 rounded-md border p-2 text-xs" aria-label={`Current color ${normalizedValue}`}>
           <span className="h-5 w-5 rounded border border-black/15" style={{ backgroundColor: normalizedValue }} />
@@ -584,6 +590,7 @@ export function AppColorPicker({
 }: AppColorPickerProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
+  const pickerBackground = usePickerBackground(open);
   const customColors = useUIStore((state) => state.appSettings.customColors);
   const updateAppSettings = useUIStore((state) => state.updateAppSettings);
   const setOpenState = (nextOpen: boolean) => {
@@ -607,6 +614,7 @@ export function AppColorPicker({
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         data-app-color-picker="true"
+        data-picker-appearance={pickerBackground.surface?.appearance}
         align={align}
         side={side}
         sideOffset={sideOffset}
@@ -615,7 +623,7 @@ export function AppColorPicker({
           "nodrag nopan nowheel z-[10000] w-[19rem] overflow-y-auto overscroll-contain p-3",
           contentClassName
         )}
-        style={{ maxHeight: "min(36rem, var(--radix-popover-content-available-height))" }}
+        style={{ ...pickerBackground.style, maxHeight: "min(36rem, var(--radix-popover-content-available-height))" }}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
         onWheel={(event) => event.stopPropagation()}
