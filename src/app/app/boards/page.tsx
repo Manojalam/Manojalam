@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { changeOrganization, loadOrganization, canParentFolder, folderOptions, folderPath, type BoardOrganization, type OrganizationAction } from "@/lib/storage/board-organization";
 import { filterBoards, type BoardSort } from "@/lib/storage/board-list";
+import { BoardFolderPicker } from "@/components/layout/BoardFolderPicker";
 
 export default function BoardsPage() {
   const [boards, setBoards] = useState<BoardSummary[]>([]);
@@ -77,6 +78,10 @@ export default function BoardsPage() {
   const refresh = () => listBoardSummaries().then((boards) => { setBoards(boards); setError(null); }).catch((error) => setError(error instanceof Error ? error.message : "Could not load boards. Please retry."));
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("manojalam-board-sort");
+      if (["updated", "created", "title-asc", "title-desc"].includes(saved ?? "")) setSort(saved as BoardSort);
+    } catch { /* Sorting remains available when browser preferences are disabled. */ }
     refresh().finally(() => setLoading(false));
     void loadOrganization().then(setOrganization).catch((error) => setFolderError(error instanceof Error ? error.message : "Could not load folders."));
     void getStorageUserId().then((id) => setSignedIn(Boolean(id))).catch(() => undefined);
@@ -124,14 +129,15 @@ export default function BoardsPage() {
             <FolderPlus className="mr-2 h-4 w-4" /> New folder
           </Button>
           <Button asChild>
-            <Link href="/app/boards/new"><Plus className="mr-2 h-4 w-4" /> New board</Link>
+            <Link href={selectedFolder ? `/app/boards/new?folder=${encodeURIComponent(selectedFolder.id)}` : "/app/boards/new"}><Plus className="mr-2 h-4 w-4" /> New board</Link>
           </Button>
           </div>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Input type="search" aria-label="Search boards" placeholder="Search boards by title or description…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-48 flex-1" />
-          <select aria-label="Sort boards" className={selectClass} value={sort} onChange={(event) => setSort(event.target.value as BoardSort)}>
+          <label htmlFor="sort-boards" className="text-sm font-medium">Sort by</label>
+          <select id="sort-boards" aria-label="Sort boards" className={selectClass} value={sort} onChange={(event) => { setSort(event.target.value as BoardSort); try { localStorage.setItem("manojalam-board-sort", event.target.value); } catch { /* Optional preference. */ } }}>
             <option value="updated">Recently updated</option><option value="created">Newest created</option>
             <option value="title-asc">Name: A–Z</option><option value="title-desc">Name: Z–A</option>
           </select>
@@ -211,10 +217,13 @@ export default function BoardsPage() {
                   {board.description && <p className="mt-1 truncate text-sm text-muted-foreground">{board.description}</p>}
                 </div>
                 <div className="relative z-10 flex flex-wrap items-center gap-1">
-                  <select aria-label={`Folder for ${board.title}`} className={`${selectClass} max-w-40`} disabled={busy || !!folderError} value={organization.assignments[board.id] ?? ""} onChange={(event) => void organize({ type: "move", boardId: board.id, folderId: event.target.value || null })}>
-                    <option value="">Unfiled</option>
-                    {destinations.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                  </select>
+                  <BoardFolderPicker label={`Folder for ${board.title}`} organization={organization} value={organization.assignments[board.id] ?? ""} disabled={busy || !!folderError}
+                    onCreated={async () => { setOrganization(await loadOrganization()); }}
+                    onChange={async id => {
+                      await changeOrganization({ type: "move", boardId: board.id, folderId: id || null });
+                      setOrganization(await loadOrganization());
+                      toast.success("Board moved");
+                    }} />
                   {board.storageMode === "local" && signedIn && (
                     <Button variant="outline" size="sm" disabled={moving !== null} onClick={() => void handleMove(board.id)}>
                       {moving === board.id ? "Uploading..." : "Save to account"}
