@@ -10,8 +10,24 @@ export function searchSutras(entries: SutraEntry[], query: string): SutraEntry[]
   if (!normalized) return [];
   const number = normalized.replace(/^https?:\/\/ashtadhyayi\.com\/sutraani\//, "").replace(/[\/।\s-]+/g, ".").replace(/\.$/, "");
   const words = normalized.split(/\s+/);
-  return entries.filter(entry => entry.number.startsWith(number) || words.every(word => normalizeSutraQuery(`${entry.text} ${entry.roman}`).includes(word)))
-    .sort((a, b) => Number(b.number === number) - Number(a.number === number)).slice(0, 30);
+  const phrase = (value: string) => normalizeSutraQuery(value).replace(/[।॥]+$/g, "").trim().replace(/\s+/g, " ");
+  const queryPhrase = phrase(query);
+  if (!queryPhrase) return [];
+  // Rank the full catalog before limiting results. Short complete sutras can
+  // otherwise disappear behind many earlier, incidental substring matches.
+  return entries.map(entry => {
+    const text = phrase(entry.text);
+    const roman = phrase(entry.roman);
+    const exactText = text === queryPhrase || roman.replace(/\s/g, "") === queryPhrase.replace(/\s/g, "");
+    const rank = entry.number === number ? 0
+      : exactText ? 1
+      : entry.number.startsWith(number) ? 2
+      : text.startsWith(queryPhrase) || roman.startsWith(queryPhrase) ? 3
+      : text.includes(queryPhrase) || roman.includes(queryPhrase) ? 4
+      : words.every(word => `${text} ${roman}`.includes(word)) ? 5 : Infinity;
+    return { entry, rank };
+  }).filter(result => Number.isFinite(result.rank))
+    .sort((a, b) => a.rank - b.rank).slice(0, 30).map(result => result.entry);
 }
 
 export function sutraFieldValue(entry: SutraEntry) {
