@@ -8151,7 +8151,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
 
         {/* ── Internal fill regions ── */}
         {isContentNode && !isRadialLayoutSector && !hasFramedTextObject && (
-          <Section label="Fill regions" visible={singleNodeTab === (embedded ? "style" : "shape")} defaultOpen>
+          <Section label="Fill regions" visible={singleNodeTab === (embedded ? "style" : "shape")}>
             {/* Region color */}
             <div>
               <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Region color</p>
