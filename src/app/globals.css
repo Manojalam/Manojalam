@@ -511,7 +511,9 @@ mark:not([data-vidya-explicit-highlight]):has(
 }
 .single-word-fit .ProseMirror,
 .single-word-fit .ProseMirror * {
-  white-space: nowrap !important;
+  /* Keep fitted words on one line without collapsing a newly typed space.
+     nowrap collapses whitespace while the text still qualifies as one word. */
+  white-space: pre !important;
   word-break: keep-all !important;
   overflow-wrap: normal !important;
 }
