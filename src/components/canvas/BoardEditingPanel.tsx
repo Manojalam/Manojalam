@@ -92,7 +92,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     });
     const filling = useUIStore.subscribe((next, previous) => {
       const key = (state: typeof next) => state.fillingCardNodeId || (state.fillingTableColumn ? JSON.stringify(state.fillingTableColumn) : "");
-      if (key(next) && key(next) !== key(previous)) useUIStore.setState({ propertiesTab: "template" });
+      if (key(next) && key(next) !== key(previous) && next.propertiesTab !== "text") useUIStore.setState({ propertiesTab: "template" });
     });
     return () => { selection(); filling(); useUIStore.setState({ fillingTableColumn: null, selectedTableCell: null, fillingCardNodeId: null, objectToolsHost: null }); };
   }, []);

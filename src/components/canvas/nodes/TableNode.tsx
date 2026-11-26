@@ -210,7 +210,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   }, [id, minimumWidth, nodeWidth, data.tableMinHeight, tableBorderWidth]);
   const selectCell = (address: TableAddress, extend = false, openTemplate = true) => {
     setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
-    useUIStore.setState({ selectedTableCell: !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL ? { nodeId: id, ...address } : null });
+    const target = !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL ? { nodeId: id, ...address } : null;
+    // Keep the form's target in step even when navigating in Text mode or
+    // focusing a cell's extra text without opening its template form.
+    const hasTemplate = target && current().rows.find(row => row.id === target.rowId)?.templates?.[target.columnId];
+    useUIStore.setState({ selectedTableCell: target, fillingTableColumn: hasTemplate ? target : null });
     if (openTemplate && !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL) openCell(address.columnId, address.rowId);
   };
   const updateText = (address: TableAddress, text: string) => {
