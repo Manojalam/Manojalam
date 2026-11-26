@@ -323,7 +323,8 @@ export function buildLayoutVisualStyles(
       fillAnchor || matrixDepthBand ? 1 : Math.max(1, parentChildren.length),
       branchBaseColor,
       manualColor,
-      !!fillAnchor
+      !!fillAnchor,
+      matrixDepthBand && !fillAnchor
     );
     styles.set(nodeId, {
       rootId,
