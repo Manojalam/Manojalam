@@ -3,11 +3,12 @@ import { TemplateRowPanel } from "./TemplateRowPanel";
 import { appendSutra } from "@/lib/canvas/append-sutra";
 
 import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
 import { clearTemplateValues, templateInputFields, cardSections, expandedCardRows, repeatCardSectionRow, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
-import { cellSections, normalizeTable, tablePlainText, updateCellSections } from "@/lib/canvas/table";
+import { cellSections, normalizeTable, removeCellTemplate, tablePlainText, updateCellSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,21 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
   const [focusRow, setFocusRow] = useState<string | null>(null);
   const [copyRepeatContents, setCopyRepeatContents] = useState(true);
+  const removeTemplate = () => {
+    const state = useCanvasStore.getState();
+    const node = state.nodes.find(item => item.id === nodeId);
+    if (!columnId || !cellRowId || !node || locked || node.data.locked || state.board?.accessRole === "viewer"
+      || state.layers.some(layer => layer.id === node.data.layerId && layer.locked)) return;
+    const current = normalizeTable(node.data.table);
+    const table = removeCellTemplate(current, columnId, cellRowId);
+    if (table === current) return;
+    state.pushHistory();
+    state.updateNodeData(nodeId, { table, text: tablePlainText(table) });
+    onClose();
+    toast.success("Template and contents removed from this cell.", {
+      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
+    });
+  };
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
     const node = state.nodes.find(item => item.id === nodeId);
@@ -106,6 +122,10 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
       <div className="space-y-1">
         <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={() => setSections(clearTemplateValues)}>Clear template values</Button>
         <p className="text-xs text-muted-foreground">Clears all sections in this {columnId ? "cell" : "object"}. Keeps the template and repeated rows. Undo restores the values.</p>
+        {columnId && <>
+          <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={removeTemplate}>Remove template and contents</Button>
+          <p className="text-xs text-muted-foreground">Leaves this cell empty. Keeps the cell and saved template design. Undo restores everything.</p>
+        </>}
       </div>
       <form className={embedded ? "space-y-4" : "grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4"} onSubmit={event => event.preventDefault()}>
         <div className={embedded ? "space-y-4" : "space-y-4 overflow-y-auto pr-1"}>

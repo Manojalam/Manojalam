@@ -1,5 +1,5 @@
 import { convertTableLayout } from "./table-transform";
-import { clearTableCells, tableRowOrder, moveTableColumn, addTableFooter } from "./table";
+import { removeCellTemplate, clearTableCells, tableRowOrder, moveTableColumn, addTableFooter } from "./table";
 import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -330,4 +330,25 @@ test("custom row-label heading survives persistence, designs, layout conversion 
   assert.equal(convertTableLayout(restored, { kind: "transpose" }).table?.labelHeader, "Case");
   assert.equal(tableDisplayRows(normalizeTable({ ...table, labelHeader: "" }))[0][0].text, "");
   assert.equal(tableDisplayRows(normalizeTable({ ...createTable(1, 1), showRowLabels: true }))[0][0].text, "Row label");
+});
+
+test("removing a cell template empties only that cell and preserves design and layout", () => {
+  let table = createTable(2, 2);
+  const template = newHomeworkTemplate("remove-test");
+  const column = table.columns[0].id, row = table.rows[0].id;
+  table = applyCellTemplate(table, template, column, row);
+  table = applyCellTemplate(table, template, table.columns[1].id, row);
+  table.rows[0].cells[0] = "extra text";
+  table.rows[0].richCells = { [column]: "<p>extra text</p>" };
+  table.rows[1].cells[0] = "Keep neighbor";
+  const original = structuredClone(table);
+  const result = removeCellTemplate(table, column, row);
+  assert.equal(result.rows[0].templates?.[column], undefined);
+  assert.equal(result.rows[0].cells[0], "");
+  assert.equal(result.rows[0].richCells?.[column], undefined);
+  assert.deepEqual(result.rows[0].templates?.[table.columns[1].id], original.rows[0].templates?.[table.columns[1].id]);
+  assert.deepEqual(result.rows[1], original.rows[1]);
+  assert.deepEqual(result.columns, original.columns);
+  assert.deepEqual(table, original);
+  assert.equal(removeCellTemplate(result, column, row), result);
 });
