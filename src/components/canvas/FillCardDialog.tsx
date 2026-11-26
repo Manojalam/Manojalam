@@ -144,7 +144,8 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
         </div>
         <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">How repeated fields work</summary>Repeated rows start on a new line automatically. Press Enter inside a field for additional lines.</details>
         <fieldset disabled={locked || savingNext} className="space-y-4">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={copyRepeatContents} onChange={event => setCopyRepeatContents(event.target.checked)} />Copy contents when repeating rows</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={copyRepeatContents} onChange={event => setCopyRepeatContents(event.target.checked)} />Copy enabled fields when repeating rows</label>
+          <p className="text-xs text-muted-foreground">Choose which values repeat in the template definition. Unchecked fields and parts start blank; constants follow their display rules.</p>
           <p className="text-xs text-muted-foreground">When checked, Repeat before/after copies that row's values, formatting, and links. Otherwise, the new inputs start empty. Both options keep the same design and fixed text rules.</p>
           {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <TemplateRowPanel key={section.id + (repeatId || row.id)} rowKey={repeatId || row.id} focusRow={focusRow} label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`}>
             <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>

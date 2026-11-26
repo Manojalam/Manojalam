@@ -112,6 +112,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                 <Input data-template-first-field={fieldIndex === 0 ? "" : undefined} aria-label={`Row ${index + 1} field ${fieldIndex + 1} label`} placeholder="Label (optional)" value={field.label} onChange={event => patchField(row, field.id, { label: event.target.value })} />
                 <ColorPicker label={(field.label || "Field") + " value color"} value={field.color || undefined} onChange={color => patchField(row, field.id, { color })} />
               </div>
+              {field.kind !== "constant" && field.kind !== "multipart" && <label className="flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`${field.label || "Field"} copy value when repeating`} checked={field.copyOnRepeat !== false} onChange={event => patchField(row, field.id, { copyOnRepeat: event.target.checked })} />Copy value when repeating</label>}
               <details className="rounded border p-2">
                 <summary className="cursor-pointer text-xs">Field styling</summary>
                 <div className="mt-2 space-y-2">
@@ -132,6 +133,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                   const patchPart = (patch: Partial<CardTemplateField>) => patchField(row, field.id, { parts: field.parts!.map(item => item.id === part.id ? { ...item, ...patch } : item) });
                   return <div key={part.id} className="space-y-2 rounded border p-2" aria-label={`Part ${partIndex + 1} of ${field.label}`}>
                     <span className="block text-xs font-semibold">Part {partIndex + 1}</span>
+                    {part.kind !== "constant" && <label className="flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`Part ${partIndex + 1} copy value when repeating`} checked={part.copyOnRepeat !== false} onChange={event => patchPart({ copyOnRepeat: event.target.checked })} />Copy value when repeating</label>}
                     {part.kind !== "constant" && <label className="block text-xs">Input name (shown when filling)<Input aria-label={`Part ${partIndex + 1} label`} value={part.label} onChange={event => patchPart({ label: event.target.value })} /></label>}
                     <label className="block text-xs">Part type<select aria-label={`Part ${partIndex + 1} type`} className="h-8 rounded border bg-background px-2 text-xs" value={part.kind} onChange={event => patchPart({ kind: event.target.value as CardTemplateField['kind'] })}>
                       <option value="text">Text</option><option value="multiline">Long text</option><option value="constant">Constant</option><option value="sutra">Sūtra lookup</option><option value="link">Link</option>

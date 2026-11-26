@@ -51,6 +51,7 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
         if (!field || typeof field.id !== "string" || !field.id || fieldIds.has(field.id) || typeof field.label !== "string") continue;
         fieldIds.add(field.id);
         fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra", "constant", ...(!nested ? ["multipart"] : [])].includes(field.kind) ? field.kind : "text",
+          ...(typeof field.copyOnRepeat === "boolean" ? { copyOnRepeat: field.copyOnRepeat } : {}),
           ...(field.kind === "multipart" && !nested ? { parts: readFields(Array.isArray(field.parts) ? field.parts : [], true) } : {}),
           ...(field.kind === "constant" ? { constantText: typeof field.constantText === "string" ? field.constantText : "", ...(field.constantAlways === true ? { constantAlways: true } : {}), ...(typeof field.constantWhenFieldId === "string" && field.constantWhenFieldId ? { constantWhenFieldId: field.constantWhenFieldId } : {}) } : {}),
           ...(typeof field.fontFamily === "string" && field.fontFamily ? { fontFamily: field.fontFamily } : {}),
@@ -113,9 +114,12 @@ export function repeatCardSectionRow(template: BoardCardTemplate, section: CardS
   if (!row) return section;
   const source = anchorId ? section.rowRepeats?.find(repeat => repeat.id === anchorId)?.values ?? {} : section.values;
   const values = copyContents ? Object.fromEntries(templateInputFields(row.fields)
-    .filter(field => field.kind !== "constant" && source[field.id]).map(field => [field.id, source[field.id]])) : {};
+    .filter(field => field.kind !== "constant" && field.copyOnRepeat !== false && source[field.id]).map(field => [field.id, source[field.id]])) : {};
   const next = { ...section, rowRepeats: insertCardRowRepeat(section.rowRepeats ?? [], rowId, anchorId, side, id, values) };
   if (!copyContents || !section.editedText || typeof DOMParser === "undefined") return next;
+  // Generate selective copies from their field values. Cloning the old visible
+  // row would also copy excluded text and constants whose dependencies are empty.
+  if (templateInputFields(row.fields).some(field => field.kind !== "constant" && field.copyOnRepeat === false)) return next;
   const body = new DOMParser().parseFromString(renderCardSections(template, [section]).richText, "text/html").body;
   const identity = (element: Element): string[] | undefined => {
     try { return JSON.parse(element.getAttribute("data-field-instance") || "null") ?? undefined; } catch { return undefined; }
