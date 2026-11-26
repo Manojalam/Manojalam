@@ -6,7 +6,7 @@ import { useCallback, useRef, useState } from "react";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
-import { clearTemplateValues, templateInputFields, cardSections, expandedCardRows, insertCardRowRepeat, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
+import { clearTemplateValues, templateInputFields, cardSections, expandedCardRows, repeatCardSectionRow, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
 import { cellSections, normalizeTable, tablePlainText, updateCellSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -86,12 +86,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
     const id = crypto.randomUUID();
     setSections(current => current.map(item => {
     if (item.id !== section.id) return item;
-    const source = anchorId ? item.rowRepeats?.find(repeat => repeat.id === anchorId)?.values ?? {} : item.values;
-    const row = template.rows.find(row => row.id === rowId);
-    const values = copyRepeatContents && row ? Object.fromEntries(templateInputFields(row.fields)
-      .filter(field => field.kind !== "constant" && source[field.id])
-      .map(field => [field.id, source[field.id]])) : {};
-    return { ...item, rowRepeats: insertCardRowRepeat(item.rowRepeats ?? [], rowId, anchorId, side, id, values) };
+    return repeatCardSectionRow(template, item, rowId, anchorId, side, id, copyRepeatContents);
   }));
     setFocusRow(id);
   };
