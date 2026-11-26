@@ -289,6 +289,8 @@ export interface CardTemplateField {
   kind: "text" | "multiline" | "link" | "sutra" | "constant" | "multipart";
   parts?: CardTemplateField[];
   constantText?: string;
+  /** Render fixed text even when the row has no filled inputs. */
+  constantAlways?: boolean;
   /** Omit to show when any input in this row is filled. */
   constantWhenFieldId?: string;
   fontFamily?: string;
