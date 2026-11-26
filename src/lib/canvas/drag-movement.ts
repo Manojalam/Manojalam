@@ -31,11 +31,10 @@ export function planNodeDragMovement(
   }
 
   const draggedData = (draggedNode.data ?? {}) as Record<string, unknown>;
-  const matrixRootId = typeof draggedData.matrixRootId === "string"
-    ? draggedData.matrixRootId
-    : null;
-  const movesWholeMatrix = draggedData.matrixCellRole === "header"
-    && matrixRootId === draggedNode.id;
+  const matrixRootId = draggedData.layoutMode === "matrix" ? draggedNode.id
+    : typeof draggedData.matrixRootId === "string" ? draggedData.matrixRootId : null;
+  const movesWholeMatrix = matrixRootId === draggedNode.id
+    && (draggedData.layoutMode === "matrix" || draggedData.matrixCellRole === "header");
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const selectedGroup = selectedNodeIds.length > 1 && selectedNodeIds.includes(draggedNode.id);
   let movingIds: string[];
@@ -74,6 +73,34 @@ export function planNodeDragMovement(
     };
     collectMovableBranch(draggedNode.id);
     moveAsGroup = movingIds.length > 1;
+  }
+
+  // React Flow moves every selected root itself. Include the contents of ALL
+  // selected matrices too, otherwise only the matrix under the pointer follows
+  // its header and the other selected headers tear away from their cells.
+  if ((selectedGroup && !moveOnlyDraggedNode) || movesWholeMatrix) {
+    const expanded = new Set([...movingIds, ...(selectedGroup ? selectedNodeIds.filter(id => !isLocked(byId.get(id))) : [])]);
+    const roots = new Set([...expanded].filter(id => {
+      const data = byId.get(id)?.data;
+      return data?.layoutMode === "matrix"
+        || (data?.matrixCellRole === "header" && data.matrixRootId === id);
+    }));
+    const hierarchy = buildHierarchy(nodes, edges);
+    const visited = new Set<string>();
+    const includeBranch = (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      for (const child of hierarchy.get(id)?.childIds ?? []) {
+        expanded.add(child);
+        includeBranch(child);
+      }
+    };
+    roots.forEach(includeBranch);
+    nodes.forEach(node => {
+      if (roots.has(String(node.data.matrixRootId)) || roots.has(String(node.data.matrixFrameFor))) expanded.add(node.id);
+    });
+    movingIds = [...expanded];
+    moveAsGroup = true;
   }
 
   if (!moveOnlyDraggedNode || movesWholeMatrix) {

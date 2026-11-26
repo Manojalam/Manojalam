@@ -120,6 +120,22 @@ test("a matrix cell can move its branch without dragging the generated frame", (
   assert.equal(plan.moveAsGroup, true);
 });
 
+test("dragging either of two selected matrix roots carries both matrices and frames", () => {
+  const nodes = [
+    node("a", { layoutMode: "matrix", matrixCellRole: "header", matrixRootId: "a" }),
+    node("ac", { parentId: "a", matrixRootId: "a" }),
+    node("af", { matrixFrameFor: "a" }),
+    node("b", { layoutMode: "matrix" }), // legacy root without generated metadata
+    node("bc", { parentId: "b" }),
+    node("bf", { matrixFrameFor: "b" }),
+    node("other"),
+  ];
+  for (const dragged of ["a", "b"]) {
+    const plan = planNodeDragMovement(nodes, [], dragged, ["a", "b"]);
+    assert.deepEqual(new Set(plan.movingIds), new Set(["a", "ac", "af", "b", "bc", "bf"]));
+  }
+});
+
 test("dragging a standalone frame carries the cards owned by that frame", () => {
   const nodes = [
     positionedNode("lane", "frame", 0, 0, 400, 600),
