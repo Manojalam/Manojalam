@@ -879,6 +879,7 @@ export function RichTextEditor({
         // false here lets the rich-text Tab shortcut insert another indent.
         const controls = Array.from(document.querySelectorAll<HTMLElement>('input, textarea, select, button, a[href], summary, [tabindex], [contenteditable="true"]'))
           .filter(element => element.tabIndex >= 0 && !element.matches(":disabled") && !element.closest('[inert], [aria-hidden="true"]')
+            && !element.parentElement?.closest('[contenteditable="true"]')
             && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden")
           .sort((a, b) => (a.tabIndex > 0 ? a.tabIndex : Infinity) - (b.tabIndex > 0 ? b.tabIndex : Infinity));
         const next = controls[controls.indexOf(view.dom) + (event.shiftKey ? -1 : 1)];

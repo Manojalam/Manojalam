@@ -157,7 +157,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
             </div>
             {templateInputFields(row.fields).filter(field => field.kind !== "constant").map(field => <div key={field.id} className="space-y-1">
               <label htmlFor={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} className="text-sm font-medium">{field.label || "Unlabelled field"}</label>
-              {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} onChoose={value => patch(field.id, current => appendSutra(current, value), repeatId)} />}
+              {field.kind === "sutra" && <SutraLookup label={field.label || "Unlabelled field"} nextInputId={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} onChoose={value => patch(field.id, current => appendSutra(current, value), repeatId)} />}
               <TemplateValueEditor id={`card-field-${field.id}${repeatId ? `-${repeatId}` : ""}`} label={field.label || "Unlabelled field"} value={values[field.id]} disabled={locked || savingNext} onChange={value => patch(field.id, value, repeatId)} />
               {(field.kind === "link" || field.kind === "sutra") && <>
                 <Input aria-label={`${field.label} link`} placeholder="Optional link (https://…)" value={values[field.id]?.href ?? ""} onChange={event => patch(field.id, { href: event.target.value }, repeatId)} />

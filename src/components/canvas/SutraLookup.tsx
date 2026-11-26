@@ -13,7 +13,7 @@ function loadCatalog() {
   return catalog;
 }
 
-export function SutraLookup({ label, onChoose }: { label: string; onChoose: (value: { text: string; href: string }) => void }) {
+export function SutraLookup({ label, onChoose, nextInputId }: { label: string; nextInputId?: string; onChoose: (value: { text: string; href: string }) => void }) {
   const [query, setQuery] = useState("");
   const [entries, setEntries] = useState<SutraEntry[]>([]);
   const [error, setError] = useState(false);
@@ -22,16 +22,19 @@ export function SutraLookup({ label, onChoose }: { label: string; onChoose: (val
   const [activeIndex, setActiveIndex] = useState(-1);
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open || !query.trim()) return;
     // Handle the search popup before a containing Radix dialog's document listener.
     const dismiss = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing || event.target !== inputRef.current) return;
+      if (event.key !== "Escape" || event.isComposing || !(event.target instanceof Node) || !rootRef.current?.contains(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       setOpen(false);
       setActiveIndex(-1);
+      inputRef.current?.focus();
+      setOpen(false);
     };
     window.addEventListener("keydown", dismiss, true);
     return () => window.removeEventListener("keydown", dismiss, true);
@@ -49,16 +52,22 @@ export function SutraLookup({ label, onChoose }: { label: string; onChoose: (val
     setQuery("");
     setActiveIndex(-1);
     setOpen(false);
+    requestAnimationFrame(() => {
+      const target = nextInputId ? document.getElementById(nextInputId) : inputRef.current;
+      (target ?? inputRef.current)?.focus();
+    });
   };
   useEffect(() => {
     if (expanded) listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, expanded]);
-  return <div className="space-y-1 rounded-md border p-2">
+  return <div ref={rootRef} className="space-y-1 rounded-md border p-2"
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) { setOpen(false); setActiveIndex(-1); } }}
+    onKeyDown={event => { if (["Tab", "Enter", " "].includes(event.key)) event.stopPropagation(); }}>
     <Input ref={inputRef} aria-label={`Find sūtra for ${label}`} placeholder="Find sūtra: 3.4.89, ३.४.८९, Sanskrit or Roman words" value={query}
       role="combobox" aria-autocomplete="list" aria-expanded={expanded} aria-controls={expanded ? listId : undefined}
       aria-activedescendant={active ? `${listId}-${active.number}` : undefined}
       onChange={event => { setQuery(event.target.value); setActiveIndex(-1); setOpen(true); }}
-      onFocus={() => setOpen(true)} onBlur={() => { setOpen(false); setActiveIndex(-1); }}
+      onFocus={() => setOpen(true)}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing) return;
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -71,14 +80,21 @@ export function SutraLookup({ label, onChoose }: { label: string; onChoose: (val
         } else if (event.key === "Enter" && query.trim()) {
           event.preventDefault();
           event.stopPropagation();
-          if (active) choose(active);
+          if (active ?? results[0]) choose((active ?? results[0])!);
         }
       }} />
     {error ? <p className="text-xs">Lookup unavailable. You can enter text and a link manually. <button type="button" className="underline" onClick={() => setRetry(value => value + 1)}>Retry</button></p>
       : !entries.length ? <p className="text-xs text-muted-foreground">Loading sūtras…</p>
       : expanded && <div ref={listRef} id={listId} role="listbox" className="max-h-44 overflow-y-auto" aria-label={`Sūtra results for ${label}`}>
-        {results.length ? results.map((entry, index) => <button key={entry.number} id={`${listId}-${entry.number}`} type="button" role="option" aria-selected={index === activeIndex} tabIndex={-1}
+        {results.length ? results.map((entry, index) => <button key={entry.number} id={`${listId}-${entry.number}`} type="button" role="option" aria-selected={index === activeIndex} tabIndex={0}
           className={`block w-full rounded px-2 py-2 text-left text-sm hover:bg-muted ${index === activeIndex ? "bg-muted ring-1 ring-inset ring-primary" : ""}`}
+          onFocus={() => setActiveIndex(index)}
+          onKeyDown={event => {
+            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+            event.preventDefault(); event.stopPropagation();
+            const options = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]');
+            options?.[Math.max(0, Math.min(results.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))]?.focus();
+          }}
           onMouseDown={event => event.preventDefault()} onClick={() => choose(entry)}>
           <span className="mr-2 text-muted-foreground">{entry.number}</span>{" "}{entry.text}
         </button>) : <p role="status" className="p-2 text-xs text-muted-foreground">No matching sūtra. Try its number or a shorter phrase.</p>}
