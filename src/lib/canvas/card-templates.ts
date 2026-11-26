@@ -107,6 +107,42 @@ export function insertCardRowRepeat(repeats: CardRowRepeat[], rowId: string, anc
     ...(position === "before" ? [...sameSide, ...otherSide] : [...otherSide, ...sameSide])];
 }
 
+/** Repeat stored answers and the row's visible inline edits, including constants and free text. */
+export function repeatCardSectionRow(template: BoardCardTemplate, section: CardSection, rowId: string, anchorId: string, side: "before" | "after", id: string, copyContents: boolean): CardSection {
+  const row = template.rows.find(row => row.id === rowId);
+  if (!row) return section;
+  const source = anchorId ? section.rowRepeats?.find(repeat => repeat.id === anchorId)?.values ?? {} : section.values;
+  const values = copyContents ? Object.fromEntries(templateInputFields(row.fields)
+    .filter(field => field.kind !== "constant" && source[field.id]).map(field => [field.id, source[field.id]])) : {};
+  const next = { ...section, rowRepeats: insertCardRowRepeat(section.rowRepeats ?? [], rowId, anchorId, side, id, values) };
+  if (!copyContents || !section.editedText || typeof DOMParser === "undefined") return next;
+  const body = new DOMParser().parseFromString(renderCardSections(template, [section]).richText, "text/html").body;
+  const identity = (element: Element): string[] | undefined => {
+    try { return JSON.parse(element.getAttribute("data-field-instance") || "null") ?? undefined; } catch { return undefined; }
+  };
+  const fields = new Set(templateInputFields(row.fields).map(field => field.id));
+  const belongs = (element: Element) => { const key = identity(element); return key?.[0] === section.id && key[1] === anchorId && fields.has(key[2]); };
+  const paragraphs = Array.from(body.querySelectorAll("p")).filter(paragraph => {
+    const spans = Array.from(paragraph.querySelectorAll("[data-field-instance]"));
+    return spans.some(belongs) || (!anchorId && !spans.length
+      && paragraph.getAttribute("data-template-row") === JSON.stringify([section.id, rowId]));
+  });
+  if (!paragraphs.length) return next;
+  const copies = paragraphs.map(paragraph => {
+    const clone = paragraph.cloneNode(true) as HTMLElement;
+    // Legacy rows may contain multiple inline repeats in the same paragraph.
+    for (const span of Array.from(clone.querySelectorAll("[data-field-instance]"))) {
+      if (!belongs(span)) { span.remove(); continue; }
+      const key = identity(span)!;
+      span.setAttribute("data-field-instance", JSON.stringify([key[0], id, key[2]]));
+    }
+    return clone;
+  });
+  if (side === "before") paragraphs[0].before(...copies);
+  else paragraphs.at(-1)!.after(...copies);
+  return { ...next, editedText: { html: body.innerHTML, baseline: renderCardTemplate(template, next.values, next.extraRows, next.rowRepeats, next.id).richText } };
+}
+
 /** Repeat the row design with independent answers on either side of its original. */
 export function expandedCardRows(template: BoardCardTemplate, values: CardFieldValues, repeats: CardRowRepeat[] = []) {
   return template.rows.flatMap((row, index) => {
