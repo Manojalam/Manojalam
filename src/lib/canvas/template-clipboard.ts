@@ -1,6 +1,6 @@
 import type { Node } from "@xyflow/react";
 import type { BoardCardTemplate, CardSection } from "../types";
-import { cardSections, cardTemplateNodeData, normalizeCardTemplates, renderCardSections } from "./card-templates";
+import { cardSections, cardTemplateNodeData, normalizeCardTemplates } from "./card-templates";
 import { normalizeTable, tablePlainText, type TableAddress } from "./table";
 import { supportsContentTemplate } from "./apply-content-template";
 
@@ -30,13 +30,16 @@ export function pasteTemplateContent(node: Node, content: TemplateClipboard, cel
   if (node.type === "table") {
     const table = normalizeTable(node.data.table);
     if (!cell || !table.columns.some(column => column.id === cell.columnId) || !table.rows.some(row => row.id === cell.rowId)) return node;
-    const rendered = renderCardSections(template, sections);
     const index = table.columns.findIndex(column => column.id === cell.columnId);
-    table.rows = table.rows.map(row => row.id !== cell.rowId ? row : {
-      ...row, cells: row.cells.map((text, i) => i === index ? rendered.text : text),
-      richCells: { ...row.richCells, [cell.columnId]: rendered.richText },
+    table.rows = table.rows.map(row => {
+      if (row.id !== cell.rowId) return row;
+      const richCells = { ...row.richCells };
+      delete richCells[cell.columnId];
+      return {
+      ...row, cells: row.cells.map((text, i) => i === index ? "" : text),
+      richCells,
       templates: { ...row.templates, [cell.columnId]: { template, sections, independent: true } },
-    });
+    }; });
     return { ...node, data: { ...node.data, table, text: tablePlainText(table) } };
   }
   return { ...node, data: { ...node.data, ...cardTemplateNodeData(template, undefined, undefined, sections), freeCardLayout: false } };
