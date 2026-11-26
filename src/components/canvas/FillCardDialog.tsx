@@ -29,7 +29,7 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
 export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, template, sections, locked, onClose, onNext, embedded = false }: { columnId?: string; cellRowId?: string; initialSectionId?: string; embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
   const [focusRow, setFocusRow] = useState<string | null>(null);
-  const [copyRepeatContents, setCopyRepeatContents] = useState(false);
+  const [copyRepeatContents, setCopyRepeatContents] = useState(true);
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
     const node = state.nodes.find(item => item.id === nodeId);
@@ -97,6 +97,15 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
   };
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
+  const clearRow = (rowId: string, repeatId: string) => setSections(current => current.map(item => {
+    if (item.id !== section.id) return item;
+    if (repeatId) return { ...item, rowRepeats: item.rowRepeats?.map(repeat => repeat.id === repeatId ? { ...repeat, values: {} } : repeat) };
+    const row = template.rows.find(row => row.id === rowId);
+    if (!row) return item;
+    const values = { ...item.values };
+    for (const field of templateInputFields(row.fields)) delete values[field.id];
+    return { ...item, values };
+  }));
   const content = <>
     <header className="space-y-1"><h3 className="text-sm font-semibold">{template.name}</h3><p className="text-xs text-muted-foreground">Changes save automatically. Enter adds a line; Tab moves between fields.</p></header>
       <div className="space-y-1">
@@ -126,6 +135,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
             <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id, repeatId, "before")}>Repeat before</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => clearRow(row.id, repeatId)}>Clear row contents</Button>
                 {repeatId && <Button type="button" size="sm" variant="ghost" onClick={() => removeRepeat(repeatId)}>Remove repeat</Button>}
               </div>
             </div>
