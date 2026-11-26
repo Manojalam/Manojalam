@@ -145,15 +145,22 @@ export function SearchPanel() {
         ? { ...previous, occurrence: Math.max(0, detail.count - 1) } : previous);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (!searchPanelOpen || event.isComposing) return;
+      if (event.isComposing) return;
+      // Find belongs to the board, even while a cell or sidebar editor has
+      // focus. Capture it before editor shortcuts and the canvas typing guard.
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault(); event.stopPropagation();
+        setSearchPanelOpen(true);
+        input.current?.focus(); input.current?.select();
+        return;
+      }
+      if (!searchPanelOpen) return;
       if (event.key === "Escape") {
         event.preventDefault(); event.stopPropagation(); close();
       } else if (event.key === "Tab" || event.key === "F3") {
         // Capture before canvas shortcuts or native focus traversal can create nodes.
         event.preventDefault(); event.stopPropagation();
         step(event.shiftKey ? -1 : 1);
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-        event.preventDefault(); event.stopPropagation(); input.current?.focus(); input.current?.select();
       }
     };
     window.addEventListener("vidya:search-match-count", onCount);
@@ -162,7 +169,7 @@ export function SearchPanel() {
       window.removeEventListener("vidya:search-match-count", onCount);
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [searchPanelOpen, searchQuery, step, close]);
+  }, [searchPanelOpen, searchQuery, step, close, setSearchPanelOpen]);
 
   if (!searchPanelOpen) return null;
   return <div role="search" aria-label="Board match navigation"
