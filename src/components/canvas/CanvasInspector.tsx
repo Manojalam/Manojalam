@@ -1,6 +1,7 @@
 "use client";
 
 import { objectPropertiesLabel, supportsShapePadding } from "@/lib/canvas/property-tabs";
+import { applyMatrixDimensions, copyMatrixDimensions, resetMatrixDimensions, type MatrixDimensions } from "@/lib/canvas/matrix-dimensions";
 import { InlineTextControls } from "./InlineTextControls";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { normalizeWholeTextFormat } from "@/lib/canvas/whole-text-format";
@@ -416,6 +417,7 @@ const CONVERT_TYPES = [
 // ── Section wrapper ────────────────────────────────────────────────────────
 
 const rememberedInspectorSections = new Map<string, boolean>();
+let matrixDimensionsClipboard: MatrixDimensions | null = null;
 
 function Section({ label, children, visible = true, preserveTextSelection = false, defaultOpen = false, flat = false }: {
   label: string;
@@ -1542,6 +1544,7 @@ function ConnectionInspectorSections({
 
 export function CanvasInspector({ compact = false, initialTab = "style", boardOnly = false, showTemplates = true, tab, onTabChange, embedded = false }: { compact?: boolean; initialTab?: InspectorTab; boardOnly?: boolean; showTemplates?: boolean; tab?: InspectorTab; onTabChange?: (tab: InspectorTab) => void; embedded?: boolean }) {
   const [automaticColorScope, setAutomaticColorScope] = useState<"branch" | "chart">("branch");
+  const [copiedMatrixDimensions, setCopiedMatrixDimensions] = useState<MatrixDimensions | null>(() => matrixDimensionsClipboard);
   const { resolvedTheme } = useTheme();
   const boardTheme: BoardColorTheme = resolvedTheme === "dark" ? "dark" : "light";
   const [localTab, setLocalTab] = useState<InspectorTab>(initialTab);
@@ -6487,7 +6490,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                   />
                 </label>
               </div>
-              {selectedNode.id !== matrixRootNode.id && selectedMatrixDimensions && (
+              {selectedMatrixDimensions && (
                 <div className="mb-1.5 rounded-md border border-border bg-muted/30 px-2 py-1.5">
                   <p className="text-[9px] font-medium text-muted-foreground">
                     Current rendered size
@@ -6508,14 +6511,14 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                   onClick={() => commitSelectedMatrixCellSize("height", undefined)}
                   className="flex items-center justify-center gap-1 rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <Rows3 className="h-3 w-3" /> Auto height
+                  <Rows3 className="h-3 w-3" /> Auto cell height
                 </button>
                 <button
                   type="button"
                   onClick={() => commitSelectedMatrixCellSize("width", undefined)}
                   className="flex items-center justify-center gap-1 rounded-md border border-border px-1 py-1.5 text-[9px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <ArrowLeftRight className="h-3 w-3" /> Auto width
+                  <ArrowLeftRight className="h-3 w-3" /> Auto cell width
                 </button>
               </div>
               {(matrixHeightOverrideCount > 1 || matrixWidthOverrideCount > 1) && (
@@ -6544,6 +6547,26 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
               <>
                 <div>
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Overall Matrix size</p>
+                  <div className="mb-2 grid grid-cols-2 gap-1">
+                    <Button size="sm" variant="outline" onClick={() => {
+                      matrixDimensionsClipboard = copyMatrixDimensions(matrixRootNode.id, hierarchy, nodes);
+                      setCopiedMatrixDimensions(matrixDimensionsClipboard);
+                      toast.success("Matrix dimensions copied. Select another Matrix and apply dimensions.");
+                    }}>Copy dimensions</Button>
+                    <Button size="sm" variant="outline" disabled={!copiedMatrixDimensions} onClick={() => {
+                      if (!copiedMatrixDimensions) return;
+                      const next = applyMatrixDimensions(copiedMatrixDimensions, matrixRootNode.id, hierarchy, nodes);
+                      if (!next) {
+                        toast.error("Choose a Matrix with the same number and arrangement of cells.");
+                        return;
+                      }
+                      pushHistory();
+                      useCanvasStore.getState().setNodes(next);
+                      useCanvasStore.getState().scheduleMatrixReflow(matrixRootNode.id);
+                      toast.success("Applied Matrix dimensions. Text and colors are unchanged.");
+                    }}>Apply dimensions</Button>
+                  </div>
+                  <p className="mb-2 text-[9px] text-muted-foreground">Copies visible header/cell sizes and arrangement to a matching Matrix, keeping its text and formatting. Locks the copied outer size.</p>
                   <p className="mb-1.5 text-[9px] leading-snug text-muted-foreground">
                     {matrixTableSizeLocked
                       ? "Locked at this outer size. Resizing a child or grandchild redistributes space inside the Matrix without changing its boundary."
@@ -6618,6 +6641,16 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                       Auto overall size
                     </Button>
                   </div>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    {(["width", "height"] as const).map(axis => (
+                      <Button key={axis} size="sm" variant="outline" onClick={() => {
+                        pushHistory();
+                        useCanvasStore.getState().setNodes(resetMatrixDimensions(matrixRootNode.id, hierarchy, nodes, axis));
+                        useCanvasStore.getState().scheduleMatrixReflow(matrixRootNode.id);
+                      }}>Auto Matrix {axis === "width" ? "widths" : "heights"}</Button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[9px] text-muted-foreground">Auto Matrix clears all saved cell sizes and the overall size on that axis. Automatic sizing follows text, font size, density, and wrapping, so different content can need different space.</p>
                 </div>
                 <div>
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Density</p>
