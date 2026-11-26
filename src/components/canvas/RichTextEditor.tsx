@@ -558,6 +558,8 @@ interface RichTextEditorProps {
   inputLabel?: string;
   valueInput?: boolean;
   templateText?: boolean;
+  /** With no text range, formatting applies to this cell's full text. */
+  tableCellText?: boolean;
   nodeId?: string;
   initialContent: string;
   editable: boolean;
@@ -601,7 +603,7 @@ interface RichTextEditorProps {
 
 export function RichTextEditor({
   inputId, inputLabel, valueInput = false,
-  templateText = false,
+  templateText = false, tableCellText = false,
   nodeId,
   initialContent,
   editable,
@@ -894,6 +896,9 @@ export function RichTextEditor({
     },
     onBlur({ editor, event }) {
       if (sampleTagOpen.current) return;
+      if (tableCellText && useUIStore.getState().propertiesTab === "text"
+        && nodeId && useCanvasStore.getState().selectedNodeIds.includes(nodeId)
+        && !(event.relatedTarget instanceof Element && event.relatedTarget.closest(".react-flow__node"))) return;
       reportContentSize(editor, "blur");
       const focusMovedToToolbar = toolbarRef.current?.contains(
         event.relatedTarget as globalThis.Node | null
@@ -1880,9 +1885,10 @@ export function RichTextEditor({
       preservedRanges,
       maximumPosition: editor.state.doc.content.size,
     });
+    if (!ranges.length && tableCellText && editor.isEditable) return command(editor.chain().selectAll().focus(undefined, { scrollIntoView: false })).run();
     if (!ranges.length && (valueInput || editor.isEditable)) return command(editor.chain().focus()).run();
     return applyRichTextCommandAcrossRanges(editor, ranges, command);
-  }, [currentTextSelectionRanges, editor, valueInput]);
+  }, [currentTextSelectionRanges, editor, valueInput, tableCellText]);
 
   const applyPickerSelectionCommand = useCallback((
     command: (chain: RichTextCommandChain) => RichTextCommandChain
@@ -2469,8 +2475,8 @@ export function RichTextEditor({
 
           </TextToolGroup>
           <TextToolGroup docked={!!dockedToolbar} label="Lists">
-            <FormatButton active={editor.isActive("bulletList")} onAction={() => { pendingReportReasonRef.current = "format"; editor.chain().focus().toggleBulletList().run(); }} title="Bulleted list"><List className="h-4 w-4" /><span className="ml-1 text-xs">Bullets</span></FormatButton>
-            <FormatButton active={editor.isActive("orderedList")} onAction={() => { pendingReportReasonRef.current = "format"; editor.chain().focus().toggleOrderedList().run(); }} title="Numbered list"><ListOrdered className="h-4 w-4" /><span className="ml-1 text-xs">Numbering</span></FormatButton>
+            <FormatButton active={editor.isActive("bulletList")} onAction={() => { pendingReportReasonRef.current = "format"; applySelectionCommand(chain => chain.toggleBulletList()); }} title="Bulleted list"><List className="h-4 w-4" /><span className="ml-1 text-xs">Bullets</span></FormatButton>
+            <FormatButton active={editor.isActive("orderedList")} onAction={() => { pendingReportReasonRef.current = "format"; applySelectionCommand(chain => chain.toggleOrderedList()); }} title="Numbered list"><ListOrdered className="h-4 w-4" /><span className="ml-1 text-xs">Numbering</span></FormatButton>
           </TextToolGroup>
           <TextToolGroup docked={!!dockedToolbar} label="Paragraph">
           {/* Alignment */}
