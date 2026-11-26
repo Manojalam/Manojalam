@@ -75,6 +75,28 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
     : ui.propertiesTab === "specific" && !specific ? "layout" : ui.propertiesTab;
   const changeInspectorTab = useCallback((tab: InspectorTab) => useUIStore.setState({ propertiesTab: tab }), []);
   useEffect(() => {
+    const revealSelection = () => {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) return;
+      const range = selection.getRangeAt(0);
+      const element = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+      const node = element?.closest<HTMLElement>(".react-flow__node[data-id]");
+      if (!node || !node.contains(range.endContainer)) return;
+      const mark = Array.from(node.querySelectorAll<HTMLElement>("[data-field-instance]")).find(item => range.intersectsNode(item));
+      if (!mark) { useUIStore.setState({ templateTextTarget: null }); return; }
+      try {
+        const identity: unknown = JSON.parse(mark.dataset.fieldInstance!);
+        if (!Array.isArray(identity) || identity.length !== 3 || !identity.every(value => typeof value === "string")) return;
+        const [sectionId, repeatId, fieldId] = identity;
+        const cell = mark.closest<HTMLElement>("[data-row][data-column]");
+        const target = { nodeId: node.dataset.id!, sectionId, repeatId, fieldId, columnId: cell?.dataset.column, rowId: cell?.dataset.row };
+        if (JSON.stringify(target) !== JSON.stringify(useUIStore.getState().templateTextTarget)) useUIStore.setState({ templateTextTarget: target });
+      } catch { /* Ignore text without valid template identity. */ }
+    };
+    document.addEventListener("selectionchange", revealSelection);
+    return () => { document.removeEventListener("selectionchange", revealSelection); useUIStore.setState({ templateTextTarget: null }); };
+  }, []);
+  useEffect(() => {
     const selection = useCanvasStore.subscribe((next, previous) => {
       if (next.selectedNodeIds.join() === previous.selectedNodeIds.join() && next.selectedEdgeIds.join() === previous.selectedEdgeIds.join()) return;
       const state = useUIStore.getState();
