@@ -511,9 +511,10 @@ mark:not([data-vidya-explicit-highlight]):has(
 }
 .single-word-fit .ProseMirror,
 .single-word-fit .ProseMirror * {
-  /* Keep fitted words on one line without collapsing a newly typed space.
-     nowrap collapses whitespace while the text still qualifies as one word. */
-  white-space: pre !important;
+  /* Preserve authored spaces, but let trailing whitespace hang at the line
+     edge instead of widening a fitted label and introducing scrollbars.
+     keep-all/normal below still prevent splitting a single Sanskrit word. */
+  white-space: pre-wrap !important;
   word-break: keep-all !important;
   overflow-wrap: normal !important;
 }

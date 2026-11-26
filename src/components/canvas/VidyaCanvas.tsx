@@ -1250,7 +1250,11 @@ function VidyaCanvasInner({
     ui.setCanvasDragging(false);
     if (ui.moveOnlyNodeId && movedIds.has(ui.moveOnlyNodeId)) ui.setMoveOnlyNodeId(null);
     state.setSaveStatus("unsaved");
-    if (drag?.matrixRootId) state.scheduleMatrixReflow(drag.matrixRootId);
+    // Translating a complete Matrix does not change its geometry. Reflowing
+    // here can apply newly measured text sizes and resize cells on mouse-up.
+    if (drag?.matrixRootId && !movedIds.has(drag.matrixRootId)) {
+      state.scheduleMatrixReflow(drag.matrixRootId);
+    }
   }, [reparentTargetId, screenToFlowPosition]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -2295,6 +2299,15 @@ function VidyaCanvasInner({
       onNodeDragStart={onNodeDragStart}
       onNodeDrag={onNodeDrag}
       onNodeDragStop={onNodeDragStop}
+      onSelectionDragStart={(event, selected) => {
+        if (selected[0]) onNodeDragStart(event.nativeEvent ?? event, selected[0]);
+      }}
+      onSelectionDrag={(event, selected) => {
+        if (selected[0]) onNodeDrag(event.nativeEvent ?? event, selected[0]);
+      }}
+      onSelectionDragStop={(event, selected) => {
+        if (selected[0]) onNodeDragStop(event.nativeEvent ?? event, selected[0]);
+      }}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       connectionMode={ConnectionMode.Loose}
