@@ -965,6 +965,22 @@ export function RichTextEditor({
     return applyRichTextCommandAcrossRanges(editor, ranges, command, options);
   }, [currentTextSelectionRanges, editor]);
 
+  useEffect(() => {
+    const clear = (event: Event) => {
+      const active = useUIStore.getState().activeTextSelection;
+      if (!editor || !editor.isEditable || (!editor.isFocused && active?.editorId !== editorId)
+        || !(event as CustomEvent<{ nodeIds: string[] }>).detail.nodeIds.includes(nodeId ?? "")) return;
+      const ranges = currentTextSelectionRanges().sort((a, b) => b.from - a.from);
+      if (!ranges.length) return;
+      event.preventDefault();
+      let chain = editor.chain();
+      for (const range of ranges) chain = chain.deleteRange(range);
+      chain.run();
+    };
+    window.addEventListener("vidya:clear-selected-text", clear);
+    return () => window.removeEventListener("vidya:clear-selected-text", clear);
+  }, [editor, editorId, nodeId, currentTextSelectionRanges]);
+
   const guidePresentation = `${measurementKey ?? ""}|${measurementWidth ?? ""}|${contentScale}`;
   const hasShapeTextFlow = !!shapeTextFlow;
   const flowVerticalAlign = shapeTextFlow?.verticalAlign ?? guideVerticalAlign;

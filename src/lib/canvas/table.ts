@@ -1,10 +1,30 @@
 import type { BoardCardTemplate, CardSection } from "../types";
-import { cardSections, normalizeCardTemplates, renderCardSections } from "./card-templates";
+import { cardSections, clearTemplateValues, normalizeCardTemplates, renderCardSections } from "./card-templates";
 export interface TableTemplateContent { template: BoardCardTemplate; sections: CardSection[]; independent?: true }
-export interface TableColumn { id: string; name: string; richText?: string; width?: number; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
-export interface TableRow { id: string; cells: string[]; richCells?: Record<string, string>; labelRichText?: string; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; cellHeaders?: string[]; templates?: Record<string, TableTemplateContent> }
+export interface TableColumn { id: string; textAlign?: "left" | "center" | "right" | "justify"; name: string; richText?: string; width?: number; /** Legacy storage, migrated to cells on read. */ card?: TableTemplateContent }
+export interface TableRow { id: string; minHeight?: number; cellAlign?: Record<string, "left" | "center" | "right" | "justify">; cells: string[]; richCells?: Record<string, string>; labelRichText?: string; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; cellHeaders?: string[]; templates?: Record<string, TableTemplateContent> }
 export interface TableMerge { rowIds: string[]; columnIds: string[] }
 export interface TableAddress { rowId: string; columnId: string }
+export function clearTableCells(table: CanvasTable, range: TableMerge): CanvasTable {
+  const next = structuredClone(table);
+  for (const rowId of range.rowIds) for (const columnId of range.columnIds) {
+    const index = next.columns.findIndex(column => column.id === columnId);
+    if (rowId === TABLE_HEADER) {
+      if (columnId === TABLE_LABEL) { next.labelHeader = ""; delete next.labelHeaderRichText; }
+      else if (index >= 0) { next.columns[index].name = ""; delete next.columns[index].richText; }
+      continue;
+    }
+    const row = next.rows.find(row => row.id === rowId);
+    if (!row) continue;
+    if (columnId === TABLE_LABEL) { row.label = ""; delete row.labelRichText; continue; }
+    if (index < 0) continue;
+    row.cells[index] = "";
+    if (row.richCells) delete row.richCells[columnId];
+    const card = row.templates?.[columnId];
+    if (card) card.sections = clearTemplateValues(card.sections);
+  }
+  return next;
+}
 export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelHeader?: string; labelHeaderRichText?: string; labelWidth?: number; merges?: TableMerge[] }
 export const TABLE_HEADER = "$table-header";
 export const TABLE_LABEL = "$row-label";
@@ -36,7 +56,7 @@ export function normalizeTable(value: unknown): CanvasTable {
     used.add(result); return result;
   };
   const sourceColumns = (Array.isArray(source?.columns) && source.columns.length ? source.columns : [{ id: "column_0", name: "Column 1" }]).slice(0, MAX_TABLE_COLUMNS);
-  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}`, ...(typeof column?.richText === "string" ? { richText: column.richText } : {}), ...(typeof column?.width === "number" && Number.isFinite(column.width) ? { width: Math.max(60, Math.min(4000, column.width)) } : {}) }));
+  const columns = sourceColumns.map((column, index) => ({ id: safeId(column?.id, `column_${index}`), name: typeof column?.name === "string" ? column.name : `Column ${index + 1}`, ...(column?.textAlign && ["left", "center", "right", "justify"].includes(column.textAlign) ? { textAlign: column.textAlign } : {}), ...(typeof column?.richText === "string" ? { richText: column.richText } : {}), ...(typeof column?.width === "number" && Number.isFinite(column.width) ? { width: Math.max(60, Math.min(4000, column.width)) } : {}) }));
   const rows: TableRow[] = (Array.isArray(source?.rows) && source.rows.length ? source.rows : [{ id: "row_0", cells: [] }]).slice(0, MAX_TABLE_ROWS).map((row, index) => {
     const templates: Record<string, TableTemplateContent> = {};
     columns.forEach((column, i) => {
@@ -44,7 +64,7 @@ export function normalizeTable(value: unknown): CanvasTable {
       const template = normalizeCardTemplates([content?.template])[0];
       if (template) templates[column.id] = { template, sections: independentSections(content), independent: true };
     });
-    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.labelRichText === "string" ? { labelRichText: row.labelRichText } : {}), ...(row?.richCells ? { richCells: Object.fromEntries(columns.flatMap((column, i) => typeof row?.richCells?.[sourceColumns[i].id] === "string" ? [[column.id, row.richCells[sourceColumns[i].id]]] : [])) } : {}), ...(Array.isArray(row?.cellHeaders) && row.cellHeaders.length ? { cellHeaders: columns.filter((column, i) => row.cellHeaders!.includes(sourceColumns[i].id)).map(column => column.id) } : {}), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), ...(row?.footer === true && !row?.aboveHeader ? { footer: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
+    return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.minHeight === "number" && Number.isFinite(row.minHeight) ? { minHeight: Math.max(0, Math.min(10000, row.minHeight)) } : {}), ...(row?.cellAlign ? { cellAlign: Object.fromEntries(columns.flatMap((column, i) => { const align = row.cellAlign?.[sourceColumns[i].id]; return align && ["left", "center", "right", "justify"].includes(align) ? [[column.id, align]] : []; })) } : {}), ...(typeof row?.labelRichText === "string" ? { labelRichText: row.labelRichText } : {}), ...(row?.richCells ? { richCells: Object.fromEntries(columns.flatMap((column, i) => typeof row?.richCells?.[sourceColumns[i].id] === "string" ? [[column.id, row.richCells[sourceColumns[i].id]]] : [])) } : {}), ...(Array.isArray(row?.cellHeaders) && row.cellHeaders.length ? { cellHeaders: columns.filter((column, i) => row.cellHeaders!.includes(sourceColumns[i].id)).map(column => column.id) } : {}), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), ...(row?.footer === true && !row?.aboveHeader ? { footer: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
   });
   // Older template paste wrote a generated mirror into the ordinary cell text.
   // Repair only an exact text AND HTML mirror; preserve separately authored notes.

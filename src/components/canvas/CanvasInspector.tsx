@@ -2045,6 +2045,11 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
     }
     const state = useCanvasStore.getState();
     if (state.board?.accessRole === "viewer" || selectedNode.data.locked || state.layers.some(layer => layer.id === selectedNode.data.layerId && layer.locked)) return;
+    if (selectedNode.type === "table" && key === "textAlign" && !selectedTextRange) {
+      const event = new CustomEvent("vidya:align-table-cells", { cancelable: true, detail: { nodeIds: [selectedNode.id], value } });
+      window.dispatchEvent(event);
+      if (event.defaultPrevented) return;
+    }
     pushHistory();
     if (selectedTextRange && INLINE_TEXT_FIELDS.has(key as InlineTextFormatKey)) {
       window.dispatchEvent(new CustomEvent("vidya:apply-inline-text-format", {

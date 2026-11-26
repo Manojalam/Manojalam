@@ -1,5 +1,5 @@
 import { convertTableLayout } from "./table-transform";
-import { tableRowOrder, moveTableColumn, addTableFooter } from "./table";
+import { clearTableCells, tableRowOrder, moveTableColumn, addTableFooter } from "./table";
 import { newHomeworkTemplate } from "./card-templates";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -8,6 +8,26 @@ import { normalizePersistedNode } from "./node-persistence";
 import { editableNodeText } from "../export/powerpoint-layout";
 import { clearNodeContent } from "./clipboard";
 import { buildOutlineDocument, serializeOutlineText } from "../export/outline";
+
+test("clear selected cells preserves other cells and template design", () => {
+  const table = createTable(2, 2);
+  const [a, b] = table.columns.map(column => column.id);
+  table.rows[0].cells = ["Clear", "Keep"];
+  table.rows[1].cells = ["Other row", "Keep too"];
+  table.rows[0].richCells = { [a]: "<p>Clear</p>" };
+  const template = newHomeworkTemplate("clear-cell");
+  table.rows[0].templates = { [a]: { template, sections: [{ id: "one", values: { question: { text: "Answer" } }, extraRows: [] }], independent: true } };
+  const cleared = clearTableCells(table, { rowIds: [table.rows[0].id], columnIds: [a] });
+  assert.deepEqual(cleared.rows[0].cells, ["", "Keep"]);
+  assert.equal(cleared.rows[0].richCells?.[a], undefined);
+  assert.deepEqual(cleared.rows[1], table.rows[1]);
+  assert.deepEqual(cleared.rows[0].templates?.[a].template, template);
+  assert.deepEqual(cleared.rows[0].templates?.[a].sections[0].values, {});
+  assert.equal(table.rows[0].cells[0], "Clear");
+  const sized = normalizeTable({ ...table, rows: [{ ...table.rows[0], minHeight: 120, cellAlign: { [a]: "right", [b]: "left" } }] });
+  assert.equal(sized.rows[0].minHeight, 120);
+  assert.equal(sized.rows[0].cellAlign?.[a], "right");
+});
 import type { VidyaBoard } from "../types";
 
 test("row/column changes retain cell alignment and identities without mutating previous history", () => {
