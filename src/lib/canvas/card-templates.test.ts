@@ -3,7 +3,7 @@ import { placeTemplateField } from "./template-field-order";
 import type { CardSection } from "../types";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clearTemplateValues, expandedCardRows, insertCardRowRepeat, cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
+import { repeatCardSectionRow, clearTemplateValues, expandedCardRows, insertCardRowRepeat, cardSections, cardTemplateNodeData, detachCardTemplateData, newHomeworkTemplate, normalizeCardTemplates, renderCardSections, renderCardTemplate, savedHomeworkTemplate } from "./card-templates";
 
 test("row and field styles survive persistence and repeated sections without changing answers", () => {
   const template = newHomeworkTemplate("styled");
@@ -536,4 +536,25 @@ test("template alignment and indent override stale instance layout without losin
   assert.doesNotMatch(result.richText, /padding-left: 5em|text-indent: 3em/);
   assert.match(result.richText, /padding-left: 2em/);
   assert.match(result.richText, /line-height: 2/);
+});
+
+test("repeat respects per-field and per-part copy settings after persistence", () => {
+  const template = newHomeworkTemplate("selective");
+  template.rows = [{id:"r",indent:0,fields:[
+    {id:"dhatu",label:"Dhatu",kind:"text",color:"",copyOnRepeat:true},
+    {id:"group",label:"Group",kind:"multipart",color:"",parts:[
+      {id:"pratyaya",label:"Pratyaya",kind:"text",color:""},
+      {id:"sutra",label:"Sutra",kind:"sutra",color:"",copyOnRepeat:false},
+      {id:"bracket",label:"Bracket",kind:"constant",color:"",constantText:"[",constantWhenFieldId:"sutra"}]},
+    {id:"explanation",label:"Explanation",kind:"multiline",color:"",copyOnRepeat:false}]}];
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.equal(saved.rows[0].fields[1].parts![1].copyOnRepeat,false);
+  const section: CardSection = {id:"s",extraRows:[],values:{dhatu:{text:"root",richText:"<strong>root</strong>"},pratyaya:{text:"suffix"},sutra:{text:"rule",href:"https://example.com"},explanation:{text:"explanation"}}};
+  const repeated = repeatCardSectionRow(saved,section,"r","","after","copy",true);
+  assert.deepEqual(repeated.rowRepeats![0].values,{dhatu:section.values.dhatu,pratyaya:section.values.pratyaya});
+  const again = repeatCardSectionRow(saved,repeated,"r","copy","before","again",true);
+  assert.deepEqual(again.rowRepeats!.find(row=>row.id==="again")!.values,repeated.rowRepeats![0].values);
+  repeated.rowRepeats![0].values.dhatu.text="independent";
+  assert.equal(section.values.dhatu.text,"root");
+  assert.deepEqual(repeatCardSectionRow(saved,section,"r","","after","blank",false).rowRepeats![0].values,{});
 });

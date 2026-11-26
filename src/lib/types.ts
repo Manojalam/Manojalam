@@ -288,6 +288,8 @@ export interface CardTemplateField {
   color: string;
   kind: "text" | "multiline" | "link" | "sutra" | "constant" | "multipart";
   parts?: CardTemplateField[];
+  /** Defaults to true for existing templates. Constants follow their display rules. */
+  copyOnRepeat?: boolean;
   constantText?: string;
   /** Render fixed text even when the row has no filled inputs. */
   constantAlways?: boolean;
