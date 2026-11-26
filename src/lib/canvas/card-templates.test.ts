@@ -452,11 +452,12 @@ test("explicit false part styling survives normalization instead of inheriting b
 });
 
 
-test("local paragraph formatting stays within the edited template row", () => {
+test("local line spacing stays within the row while template alignment wins", () => {
   const template = newHomeworkTemplate("paragraphs");
   const result = renderCardTemplate(template, { question: { text: "Question", paragraphStyle: "text-align: center; line-height: 2" }, answer: { text: "Answer" } });
   const paragraphs = result.richText.match(/<p[^>]*>/g)!;
-  assert.match(paragraphs[0], /text-align: center/);
+  assert.match(paragraphs[0], /text-align: left/);
+  assert.match(paragraphs[0], /line-height: 2/);
   assert.doesNotMatch(paragraphs[1], /text-align: center|line-height: 2/);
 });
 
@@ -518,4 +519,21 @@ test("clearing values preserves template structure and removes rich text, links 
   const data = cardTemplateNodeData(template, undefined, undefined, cleared);
   assert.equal(data.cardTemplateId, template.id);
   assert.deepEqual(data.cardTemplateSnapshot, template);
+});
+
+test("template alignment and indent override stale instance layout without losing edits", () => {
+  const template = newHomeworkTemplate("layout");
+  template.rows[0].textAlign = "center";
+  template.rows[0].indent = 0;
+  const sections: CardSection[] = [{ id: "first", values: { question: { text: "Heading", paragraphStyle: "text-align: left; padding-left: 4em; text-indent: 2em; line-height: 2" }, answer: { text: "Body", paragraphStyle: "padding-left: 0em; text-align: right" } }, extraRows: [] }];
+  const generated = renderCardSections(template, sections);
+  assert.match(generated.richText, /text-align: center/);
+  assert.doesNotMatch(generated.richText, /padding-left: 4em|text-indent: 2em|text-align: right/);
+  sections[0].editedText = { baseline: generated.richText, html: generated.richText.replace('text-align: center', 'text-align: left').replace('padding-left: 0em', 'padding-left: 5em; text-indent: 3em').replace('Heading', '<strong>Edited heading</strong>') };
+  const result = renderCardSections(template, sections);
+  assert.ok(result.richText.includes("<strong>Edited heading</strong>"));
+  assert.match(result.richText, /text-align: center; padding-left: 0em; text-indent: 0em/);
+  assert.doesNotMatch(result.richText, /padding-left: 5em|text-indent: 3em/);
+  assert.match(result.richText, /padding-left: 2em/);
+  assert.match(result.richText, /line-height: 2/);
 });
