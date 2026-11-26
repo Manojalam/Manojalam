@@ -3,6 +3,7 @@
 import { templateInputFields } from "@/lib/canvas/card-templates";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { ColorPicker } from "./ColorPicker";
+import { TemplateRowPanel } from "./TemplateRowPanel";
 import { useState } from "react";
 import type { BoardCardTemplate, CardTemplateField, CardTemplateRow } from "@/lib/types";
 import { generateId } from "@/lib/utils";
@@ -25,6 +26,7 @@ function move<T>(items: T[], index: number, delta: number): T[] {
 }
 
 export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: BoardCardTemplate; onClose: () => void; onSaved: (id: string) => void }) {
+  const [focusRow, setFocusRow] = useState<string | null>(null);
   const [draft, setDraft] = useState(() => structuredClone(initial));
   const [draggedField, setDraggedField] = useState<string | null>(null);
   const save = useCanvasStore(state => state.saveCardTemplate);
@@ -69,7 +71,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
           </div>
           <p className="text-xs text-muted-foreground">Field types: text, long text, link, searchable sūtra, or conditional constant. Labels guide filling and are never printed with the text.</p>
           <p className="text-xs text-muted-foreground">Drag a field by its handle to place it before another field or at the end of a row. Use Move field for precise placement with a keyboard or touch.</p>
-          {draft.rows.map((row, index) => <section key={row.id} aria-label={`Template row ${index + 1}`} className="space-y-2 rounded-lg border p-3">
+          {draft.rows.map((row, index) => <TemplateRowPanel key={row.id} rowKey={row.id} focusRow={focusRow} label={`Template row ${index + 1}`}>
             <div className="flex flex-wrap items-center gap-1">
               <strong className="mr-auto text-xs">Row {index + 1}</strong>
               <Button type="button" size="sm" variant="ghost" aria-label={`Move row ${index + 1} up`} disabled={index === 0} onClick={() => setDraft({ ...draft, rows: move(draft.rows, index, -1) })}>↑</Button>
@@ -107,7 +109,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
               <button type="button" draggable aria-label={`Drag ${field.label || "field"} to move`} className="cursor-grab text-xs text-muted-foreground active:cursor-grabbing"
                 onDragStart={event => { setDraggedField(field.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", field.id); }} onDragEnd={() => setDraggedField(null)}>⠿ Drag field</button>
               <div className="flex gap-1">
-                <Input aria-label={`Row ${index + 1} field ${fieldIndex + 1} label`} placeholder="Label (optional)" value={field.label} onChange={event => patchField(row, field.id, { label: event.target.value })} />
+                <Input data-template-first-field={fieldIndex === 0 ? "" : undefined} aria-label={`Row ${index + 1} field ${fieldIndex + 1} label`} placeholder="Label (optional)" value={field.label} onChange={event => patchField(row, field.id, { label: event.target.value })} />
                 <ColorPicker label={(field.label || "Field") + " value color"} value={field.color || undefined} onChange={color => patchField(row, field.id, { color })} />
               </div>
               <details className="rounded border p-2">
@@ -196,8 +198,8 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
               onDrop={event => { event.preventDefault(); placeField(draggedField, row.id); setDraggedField(null); }}>Drop at end of row {index + 1}</div>}
             <Button type="button" size="sm" variant="outline" onClick={() => patchRow(row.id, { fields: [...row.fields, newField()] })}>Add field to row {index + 1}</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => patchRow(row.id, { fields: [...row.fields, { ...newField(), label: "Constant", kind: "constant", constantText: "", constantAlways: true }] })}>Add constant to row {index + 1}</Button>
-          </section>)}
-          <Button type="button" variant="outline" onClick={() => setDraft({ ...draft, rows: [...draft.rows, { id: generateId(), indent: 0, fields: [newField()] }] })}>Add row</Button>
+          </TemplateRowPanel>)}
+          <Button type="button" variant="outline" onClick={() => { const id = generateId(); setDraft({ ...draft, rows: [...draft.rows, { id, indent: 0, fields: [newField()] }] }); setFocusRow(id); }}>Add row</Button>
         </div>
         <div className="min-w-0 space-y-3 lg:overflow-y-auto">
           <h3 className="font-medium">Text preview</h3>
