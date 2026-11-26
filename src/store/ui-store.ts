@@ -39,6 +39,7 @@ export interface BoardExportRequest {
 }
 
 interface UIState {
+  templateTextTarget: { nodeId: string; sectionId: string; repeatId: string; fieldId: string; columnId?: string; rowId?: string } | null;
   propertiesTab: "style" | "text" | "shape" | "layout" | "data" | "template" | "specific";
   objectToolsHost: { nodeId: string; element: HTMLDivElement } | null;
   boardPanel: "selection" | "templates" | "board" | null;
@@ -212,6 +213,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   }),
   selectedTableCell: null,
   fillingTableColumn: null,
+  templateTextTarget: null,
   fillingCardNodeId: null,
   setFillingCardNodeId: (id) => set({ fillingCardNodeId: id }),
   boardExportRequest: null,
