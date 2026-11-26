@@ -81,7 +81,11 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       const node = next.selectedNodeIds.length === 1 ? next.nodes.find(node => node.id === next.selectedNodeIds[0]) : undefined;
       if (!state.layoutPanelOpen && !state.layersPanelOpen && (next.selectedNodeIds.length || next.selectedEdgeIds.length)) {
         state.setBoardPanel("selection");
-        if (!state.fillingCardNodeId) useUIStore.setState({ propertiesTab: node?.data.cardTemplateId ? "template" : "style" });
+        const selectedNodes = next.nodes.filter(item => next.selectedNodeIds.includes(item.id));
+        const keepMatrixTab = state.propertiesTab === "specific" && !next.selectedEdgeIds.length
+          && selectedNodes.length > 0
+          && selectedNodes.every(item => objectPropertiesLabel(item, next.nodes, next.edges) === "Matrix");
+        if (!state.fillingCardNodeId && !keepMatrixTab) useUIStore.setState({ propertiesTab: node?.data.cardTemplateId ? "template" : "style" });
       }
       if (state.selectedTableCell && !next.selectedNodeIds.includes(state.selectedTableCell.nodeId)) useUIStore.setState({ selectedTableCell: null });
       if (state.fillingTableColumn && !next.selectedNodeIds.includes(state.fillingTableColumn.nodeId)) useUIStore.setState({ fillingTableColumn: null });
