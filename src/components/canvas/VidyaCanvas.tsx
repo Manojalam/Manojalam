@@ -40,6 +40,7 @@ import { Focus, Minus, Plus } from "lucide-react";
 
 import { nodeTypes } from "./nodes";
 import { CanvasHandwriting } from "./CanvasHandwriting";
+import { MatrixResizeHandles } from "./MatrixResizeHandles";
 import { createTable, tablePlainText } from "@/lib/canvas/table";
 import { edgeTypes } from "./edges/VidyaEdge";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -2378,6 +2379,7 @@ function VidyaCanvasInner({
       <ListTreeConnectors />
       <StructuredTreeConnectors />
       {canEdit && !presentationMode && !relationshipSelection && <SelectionToolbar />}
+      {canEdit && !presentationMode && !relationshipSelection && <MatrixResizeHandles />}
       <NodeMediaLayer nodes={displayNodes} />
       {canEdit && !presentationMode && <RelationshipSelectionToolbar />}
       {canEdit && !presentationMode && <AlignmentGuides guides={guides} />}
