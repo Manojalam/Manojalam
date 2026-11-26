@@ -5,6 +5,17 @@ export interface TableColumn { id: string; textAlign?: "left" | "center" | "righ
 export interface TableRow { id: string; minHeight?: number; cellAlign?: Record<string, "left" | "center" | "right" | "justify">; cells: string[]; richCells?: Record<string, string>; labelRichText?: string; label?: string; header?: boolean; aboveHeader?: boolean; footer?: boolean; cellHeaders?: string[]; templates?: Record<string, TableTemplateContent> }
 export interface TableMerge { rowIds: string[]; columnIds: string[] }
 export interface TableAddress { rowId: string; columnId: string }
+/** Remove one cell's template and all its text, retaining table structure and appearance. */
+export function removeCellTemplate(table: CanvasTable, columnId: string, rowId: string): CanvasTable {
+  const index = table.columns.findIndex(column => column.id === columnId);
+  if (index < 0 || !table.rows.find(row => row.id === rowId)?.templates?.[columnId]) return table;
+  const next = structuredClone(table);
+  const row = next.rows.find(row => row.id === rowId)!;
+  delete row.templates![columnId];
+  if (row.richCells) delete row.richCells[columnId];
+  row.cells[index] = "";
+  return next;
+}
 export function clearTableCells(table: CanvasTable, range: TableMerge): CanvasTable {
   const next = structuredClone(table);
   for (const rowId of range.rowIds) for (const columnId of range.columnIds) {
