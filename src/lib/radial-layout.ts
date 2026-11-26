@@ -532,7 +532,8 @@ export function radialSectorColors(
   siblingCount = 1,
   branchBaseColor?: string,
   fillOverride?: string,
-  preferLighterDepth = false
+  preferLighterDepth = false,
+  preserveAnchorTone = false
 ): { fill: string; fillEnd: string; text: string; border: string } {
   const automaticAnchor: HslColor = {
     h: scheme.hues[branchIndex % scheme.hues.length],
@@ -550,8 +551,12 @@ export function radialSectorColors(
   const saturationFloor = anchor.s < 12 ? 0 : 28;
   const derived: HslColor = {
     h: normalizeHue(anchor.h + siblingOffset),
-    s: clamp(anchor.s - Math.max(0, depth - 1) * 4, saturationFloor, 68),
-    l: clamp(anchor.l + depthOffset + siblingLightness, 26, preferLighterDepth ? 100 : 78),
+    s: preserveAnchorTone ? anchor.s : clamp(anchor.s - Math.max(0, depth - 1) * 4, saturationFloor, 68),
+    // Matrix columns fade from the authored shade. Fixed lightness/saturation
+    // caps made pale or vivid first-column colors jump to unrelated tones.
+    l: preserveAnchorTone
+      ? 100 - (100 - anchor.l) * Math.pow(0.94, Math.max(0, depth - 1))
+      : clamp(anchor.l + depthOffset + siblingLightness, 26, preferLighterDepth ? 100 : 78),
   };
   const override = parseColor(fillOverride);
   const start = override ?? (depth <= 1 ? anchor : derived);

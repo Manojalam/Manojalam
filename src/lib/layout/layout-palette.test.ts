@@ -1087,3 +1087,22 @@ test("automatic root gradient preserves pastel shades instead of forcing dark co
   assert.equal(styles.get("branch-a")!.fillColor, "#ffbfff");
   assert.equal(styles.get("branch-b")!.fillColor, "#bfbfff");
 });
+
+test("Matrix column shading preserves pale and vivid selected tones at every depth", () => {
+  for (const [color, lightness] of [["#e6ffff", 95.1], ["#ffbfff", 87.5], ["#800080", 25.1], ["#808080", 50.2]] as const) {
+    const {nodes, edges} = hierarchyFixture();
+    Object.assign(nodes[0].data, {layoutMode: "matrix", layoutColorPattern: "alternating", layoutStartColor: color, layoutEndColor: color});
+    const styles = buildLayoutVisualStyles("root", buildHierarchy(nodes, edges), "matrix", "spectrum", nodes);
+    assert.equal(styles.get("branch-a")!.fillColor, color);
+    let previous: number = lightness;
+    for (const id of ["a-1", "a-1-child"]) {
+      const fill = styles.get(id)!.fillColor;
+      const match = fill.match(/^hsl\([\d.]+, ([\d.]+)%, ([\d.]+)%\)$/)!;
+      const next = Number(match[2]);
+      assert.ok(next >= previous, `${color}: ${id} must not abruptly darken`);
+      assert.ok(next - previous < 5, `${color}: ${id} fades gradually`);
+      assert.equal(Number(match[1]), color === "#808080" ? 0 : 100, "keep the selected saturation");
+      previous = next;
+    }
+  }
+});
