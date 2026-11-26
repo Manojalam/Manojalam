@@ -66,7 +66,16 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   const viewer = useCanvasStore(state => state.board?.accessRole === "viewer");
   const layerLocked = useCanvasStore(state => state.layers.some(layer => layer.id === data.layerId && layer.locked));
   const presentation = useUIStore(state => state.presentationMode);
+  const propertiesTab = useUIStore(state => state.propertiesTab);
   const editable = !viewer && !layerLocked && !data.locked && !presentation;
+  useEffect(() => {
+    if (!selected || !editable || propertiesTab !== "text" || !selection) return;
+    const source = tableMergeAt(table, selection.start);
+    const rowId = source?.rowIds[0] ?? selection.start.rowId;
+    const columnId = source?.columnIds[0] ?? selection.start.columnId;
+    setEditFocusPoint(null);
+    setEditingCell(`${rowId}:${columnId}`);
+  }, [selected, editable, propertiesTab, selection?.start.rowId, selection?.start.columnId]);
   const editingHistory = useRef(false);
   const focus = (rowId: string, columnId: string) => requestAnimationFrame(() => {
     const target = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-row][data-column]") ?? []).find(input => input.dataset.row === rowId && input.dataset.column === columnId);
@@ -74,6 +83,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   });
   const openCell = (columnId: string, rowId: string) => {
     if (!editable) return;
+    if (useUIStore.getState().propertiesTab === "text") return;
     if (!table.rows.find(row => row.id === rowId)?.templates?.[columnId]) {
       useUIStore.setState({ fillingTableColumn: null, boardPanel: "selection" });
       return;
@@ -273,6 +283,8 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         const text = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? table.labelHeader ?? "Row label" : sourceColumn.name : source.columnId === TABLE_LABEL ? sourceRow?.label ?? "" : sourceRow?.cells[columnIndex] ?? "";
         const rich = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? table.labelHeaderRichText : sourceColumn?.richText : source.columnId === TABLE_LABEL ? sourceRow?.labelRichText : sourceRow?.richCells?.[source.columnId];
         const card = sourceRow?.templates?.[source.columnId];
+        const activeTextCell = selected && propertiesTab === "text" && selection?.start.rowId === source.rowId && selection?.start.columnId === source.columnId;
+        const cellEditing = activeTextCell || editingCell === `${source.rowId}:${source.columnId}`;
         if (index && !text && !card) return null;
         const label = source.rowId === TABLE_HEADER ? source.columnId === TABLE_LABEL ? "Row label heading" : `Column ${columnIndex + 1} name` : sourceRow?.footer ? `Footer ${table.rows.filter(row => row.footer).findIndex(row => row.id === source.rowId) + 1}` : sourceRow?.aboveHeader ? `Heading ${table.rows.filter(row => row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}${index ? ` part ${index + 1}` : ""}` : source.columnId === TABLE_LABEL ? `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1} label` : `Row ${table.rows.filter(row => !row.aboveHeader).findIndex(row => row.id === source.rowId) + 1}, ${sourceColumn.name || `column ${columnIndex + 1}`}`;
         return <div key={`${source.rowId}:${source.columnId}`}>
@@ -289,7 +301,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
               onDoubleClick={event => { if (editable && !(event.target as HTMLElement).closest("[data-universal-text-tools], [data-template-toggle]")) { event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
               onKeyDown={event => { if ((event.target as HTMLElement).closest("[contenteditable=true], [data-template-toggle]")) return; if (editable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCell(source.columnId, source.rowId); } }}
               style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
-              <RichTextEditor blockAlign={source.rowId === TABLE_HEADER ? sourceColumn?.textAlign : sourceRow?.cellAlign?.[source.columnId]} templateText initialFocusPoint={editFocusPoint} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialContent={renderCardSections(template, card.sections).richText} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" onChange={html => {
+              <RichTextEditor tableCellText blockAlign={source.rowId === TABLE_HEADER ? sourceColumn?.textAlign : sourceRow?.cellAlign?.[source.columnId]} templateText initialFocusPoint={editFocusPoint} nodeId={cellEditing ? id : undefined} initialContent={renderCardSections(template, card.sections).richText} editable={editable && cellEditing} className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" onChange={html => {
                 const latest = current();
                 const content = latest.rows.find(row => row.id === source.rowId)?.templates?.[source.columnId];
                 if (!content) return;
@@ -303,7 +315,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
             onFocus={event => { if (event.target === event.currentTarget && editable) { selectCell(address); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
             onPointerDownCapture={event => { if (!editable || (event.target as HTMLElement).closest("[contenteditable=true], [data-universal-text-tools]")) return; selectCell(address); setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY }); setEditingCell(`${source.rowId}:${source.columnId}`); }}
             onDoubleClick={event => { if (!editable || (event.target as HTMLElement).closest("[data-universal-text-tools]")) return; event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); }}>
-            <RichTextEditor blockAlign={source.rowId === TABLE_HEADER ? sourceColumn?.textAlign : sourceRow?.cellAlign?.[source.columnId]} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} onChange={html => {
+            <RichTextEditor tableCellText blockAlign={source.rowId === TABLE_HEADER ? sourceColumn?.textAlign : sourceRow?.cellAlign?.[source.columnId]} nodeId={cellEditing ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && cellEditing} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} onChange={html => {
               const next = current(); const target = next.rows.find(row => row.id === source.rowId);
               const index = next.columns.findIndex(column => column.id === source.columnId);
               if (source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL) { next.labelHeader = richTextToPlainText(html); next.labelHeaderRichText = html; }
