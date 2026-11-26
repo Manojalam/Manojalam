@@ -39,6 +39,31 @@ test("invalid row and field styles normalize safely", () => {
 });
 import { searchSutras, sutraFieldValue } from "../sanskrit/sutra-search";
 
+test("always-visible row constants survive saving and render without answers", () => {
+  const template = newHomeworkTemplate("constants");
+  template.rows = [{ id: "fixed", indent: 0, fields: [{ id: "label", label: "Label", color: "#000000", kind: "constant", constantText: "Example: ", constantAlways: true }] }];
+  const saved = normalizeCardTemplates(JSON.parse(JSON.stringify([template])))[0];
+  assert.equal(saved.rows[0].fields[0].constantAlways, true);
+  assert.match(renderCardTemplate(saved, {}).text, /Example:/);
+  const repeats = insertCardRowRepeat([], "fixed", "", "after", "copy");
+  assert.equal(renderCardTemplate(saved, {}, [], repeats).text.split("Example:").length, 3);
+  delete saved.rows[0].fields[0].constantAlways;
+  assert.equal(renderCardTemplate(saved, {}).text, "");
+});
+
+test("repeat can copy formatted linked answers independently while default stays empty", () => {
+  const source = { answer: { text: "Answer", href: "https://example.com", richText: "<p><strong>Answer</strong></p>" } };
+  const copies = insertCardRowRepeat([], "row", "", "after", "copy", source);
+  assert.deepEqual(copies[0].values, source);
+  copies[0].values.answer.text = "Edited copy";
+  assert.equal(source.answer.text, "Answer");
+  const next = insertCardRowRepeat(copies, "row", "copy", "before", "second", copies[0].values);
+  assert.equal(next[0].values.answer.text, "Edited copy");
+  next[0].values.answer.text = "Second edit";
+  assert.equal(copies[0].values.answer.text, "Edited copy");
+  assert.deepEqual(insertCardRowRepeat([], "row", "", "after", "blank")[0].values, {});
+});
+
 test("card layout renders custom labels, rows, indentation and safe sūtra links", () => {
   const template = newHomeworkTemplate("homework");
   template.rows[0].fields[0].label = "मम प्रश्नः <script>";

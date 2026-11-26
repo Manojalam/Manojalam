@@ -162,8 +162,9 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
                 <Button type="button" size="sm" variant="outline" onClick={() => patchField(row, field.id, { parts: [...(field.parts ?? []), { ...newField(), label: 'New part' }] })}>Add part</Button>
               </div>}
               {field.kind === "constant" && <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={field.constantAlways === true} onChange={event => patchField(row, field.id, { constantAlways: event.target.checked })} />Always show this constant, even in an empty row</label>
                 <label className="block text-xs">Constant text<textarea aria-label={`${field.label || "Field"} constant text`} className="mt-1 w-full rounded border bg-background p-2" rows={1} placeholder=" + , [ , ] , → …" value={field.constantText ?? ""} onChange={event => patchField(row, field.id, { constantText: event.target.value })} /></label>
-                <label className="block text-xs">Show only when<select aria-label={`${field.label || "Field"} show when`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={field.constantWhenFieldId ?? ""} onChange={event => patchField(row, field.id, { constantWhenFieldId: event.target.value || undefined })}>
+                <label className="block text-xs">Show only when<select disabled={field.constantAlways === true} aria-label={`${field.label || "Field"} show when`} className="mt-1 h-9 w-full rounded border bg-background px-2" value={field.constantWhenFieldId ?? ""} onChange={event => patchField(row, field.id, { constantWhenFieldId: event.target.value || undefined })}>
                   <option value="">Any input in this row is filled</option>
                   {field.constantWhenFieldId && !row.fields.some(input => input.kind !== "constant" && input.id === field.constantWhenFieldId) && <option value={field.constantWhenFieldId}>Field missing — choose another</option>}
                   {row.fields.filter(input => input.kind !== "constant").map(input => <option key={input.id} value={input.id}>{input.label || "Unlabelled field"} is filled</option>)}
@@ -194,6 +195,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
               onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
               onDrop={event => { event.preventDefault(); placeField(draggedField, row.id); setDraggedField(null); }}>Drop at end of row {index + 1}</div>}
             <Button type="button" size="sm" variant="outline" onClick={() => patchRow(row.id, { fields: [...row.fields, newField()] })}>Add field to row {index + 1}</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => patchRow(row.id, { fields: [...row.fields, { ...newField(), label: "Constant", kind: "constant", constantText: "", constantAlways: true }] })}>Add constant to row {index + 1}</Button>
           </section>)}
           <Button type="button" variant="outline" onClick={() => setDraft({ ...draft, rows: [...draft.rows, { id: generateId(), indent: 0, fields: [newField()] }] })}>Add row</Button>
         </div>

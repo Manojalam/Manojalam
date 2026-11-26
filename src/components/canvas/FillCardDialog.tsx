@@ -27,6 +27,7 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
 
 export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, template, sections, locked, onClose, onNext, embedded = false }: { columnId?: string; cellRowId?: string; initialSectionId?: string; embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
+  const [copyRepeatContents, setCopyRepeatContents] = useState(false);
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
     const node = state.nodes.find(item => item.id === nodeId);
@@ -79,8 +80,15 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
       ? { ...item, rowRepeats: item.rowRepeats?.map(repeat => repeat.id === repeatId ? { ...repeat, values: patchValues(repeat.values) } : repeat) }
       : { ...item, values: patchValues(item.values) };
   }), section.id + ":" + repeatId + ":" + id);
-  const repeatRow = (rowId: string, anchorId: string, side: "before" | "after") => setSections(current => current.map(item => item.id === section.id
-    ? { ...item, rowRepeats: insertCardRowRepeat(item.rowRepeats ?? [], rowId, anchorId, side, crypto.randomUUID()) } : item));
+  const repeatRow = (rowId: string, anchorId: string, side: "before" | "after") => setSections(current => current.map(item => {
+    if (item.id !== section.id) return item;
+    const source = anchorId ? item.rowRepeats?.find(repeat => repeat.id === anchorId)?.values ?? {} : item.values;
+    const row = template.rows.find(row => row.id === rowId);
+    const values = copyRepeatContents && row ? Object.fromEntries(templateInputFields(row.fields)
+      .filter(field => field.kind !== "constant" && source[field.id])
+      .map(field => [field.id, source[field.id]])) : {};
+    return { ...item, rowRepeats: insertCardRowRepeat(item.rowRepeats ?? [], rowId, anchorId, side, crypto.randomUUID(), values) };
+  }));
   const removeRepeat = (id: string) => setSections(current => current.map(item => item.id === section.id
     ? { ...item, rowRepeats: item.rowRepeats?.filter(repeat => repeat.id !== id) } : item));
   const content = <>
@@ -106,6 +114,8 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
         </div>
         <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">How repeated fields work</summary>Repeated rows start on a new line automatically. Press Enter inside a field for additional lines.</details>
         <fieldset disabled={locked || savingNext} className="space-y-4">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={copyRepeatContents} onChange={event => setCopyRepeatContents(event.target.checked)} />Copy contents when repeating rows</label>
+          <p className="text-xs text-muted-foreground">When checked, Repeat before/after copies that row's values, formatting, and links. Otherwise, the new inputs start empty. Both options keep the same design and fixed text rules.</p>
           {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <div key={repeatId || row.id} role="group" aria-label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`} className="space-y-3 rounded-md border p-3">
             <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>
               <div className="flex flex-wrap gap-2">

@@ -52,7 +52,7 @@ export function normalizeCardTemplates(value: unknown): BoardCardTemplate[] {
         fieldIds.add(field.id);
         fields.push({ id: field.id, label: field.label, color: templateColor(field.color, "#334155"), kind: ["link", "multiline", "sutra", "constant", ...(!nested ? ["multipart"] : [])].includes(field.kind) ? field.kind : "text",
           ...(field.kind === "multipart" && !nested ? { parts: readFields(Array.isArray(field.parts) ? field.parts : [], true) } : {}),
-          ...(field.kind === "constant" ? { constantText: typeof field.constantText === "string" ? field.constantText : "", ...(typeof field.constantWhenFieldId === "string" && field.constantWhenFieldId ? { constantWhenFieldId: field.constantWhenFieldId } : {}) } : {}),
+          ...(field.kind === "constant" ? { constantText: typeof field.constantText === "string" ? field.constantText : "", ...(field.constantAlways === true ? { constantAlways: true } : {}), ...(typeof field.constantWhenFieldId === "string" && field.constantWhenFieldId ? { constantWhenFieldId: field.constantWhenFieldId } : {}) } : {}),
           ...(typeof field.fontFamily === "string" && field.fontFamily ? { fontFamily: field.fontFamily } : {}),
           ...(typeof field.fontSize === "number" && Number.isFinite(field.fontSize) ? { fontSize: bounded(field.fontSize, 22, 8, 100) } : {}),
           ...Object.fromEntries((["strike", "superscript", "subscript"] as const).filter(key => typeof field[key] === "boolean").map(key => [key, field[key]])),
@@ -93,7 +93,7 @@ export function safeCardLink(href: string | undefined): string | undefined {
 }
 
 /** Insert beside either the original row or one of its copies without parent dependencies. */
-export function insertCardRowRepeat(repeats: CardRowRepeat[], rowId: string, anchorId: string, side: "before" | "after", id: string): CardRowRepeat[] {
+export function insertCardRowRepeat(repeats: CardRowRepeat[], rowId: string, anchorId: string, side: "before" | "after", id: string, values: CardFieldValues = {}): CardRowRepeat[] {
   const group = repeats.filter(repeat => repeat.rowId === rowId);
   const anchor = anchorId ? group.findIndex(repeat => repeat.id === anchorId) : -1;
   if (anchorId && anchor < 0) return repeats;
@@ -101,7 +101,7 @@ export function insertCardRowRepeat(repeats: CardRowRepeat[], rowId: string, anc
   const sameSide = group.filter(repeat => (repeat.position ?? "after") === position);
   const index = anchor >= 0 ? sameSide.findIndex(repeat => repeat.id === anchorId) + (side === "after" ? 1 : 0)
     : side === "before" ? sameSide.length : 0;
-  sameSide.splice(index, 0, { id, rowId, position, newLine: true, values: {} });
+  sameSide.splice(index, 0, { id, rowId, position, newLine: true, values: structuredClone(values) });
   const otherSide = group.filter(repeat => (repeat.position ?? "after") !== position);
   return [...repeats.filter(repeat => repeat.rowId !== rowId),
     ...(position === "before" ? [...sameSide, ...otherSide] : [...otherSide, ...sameSide])];
@@ -133,6 +133,7 @@ function fieldEntries(row: CardTemplateRow, values: CardFieldValues) {
 /** Constants depend on actual input in the same row/copy, never other constants or stale values. */
 function fieldValue(field: CardTemplateField, row: CardTemplateRow, values: CardFieldValues): { text: string; href?: string; richText?: string } | undefined {
   if (field.kind !== "constant") return values[field.id];
+  if (field.constantAlways) return { text: field.constantText ?? "" };
   const dependency = row.fields.find(input => input.id === field.constantWhenFieldId);
   const populated = templateInputFields(dependency ? [dependency] : row.fields).some(input => input.kind !== "constant"
     && (!field.constantWhenFieldId || !!dependency || input.id === field.constantWhenFieldId)
@@ -145,7 +146,7 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
   const rows = expandedCardRows(template, values, repeats);
   const paragraphs: (typeof rows)[] = [];
   for (const entry of rows) {
-    if (!templateInputFields(entry.row.fields).some(field => field.kind !== "constant" && entry.values[field.id]?.text.trim())) continue;
+    if (!fieldEntries(entry.row, entry.values).some(({ value }) => value?.text.trim())) continue;
     const previous = paragraphs.at(-1);
     if (!previous || previous[0].row.id !== entry.row.id || entry.newLine || previous.at(-1)!.newLine) paragraphs.push([entry]);
     else previous.push(entry);
