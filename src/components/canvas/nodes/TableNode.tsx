@@ -198,17 +198,23 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     fit();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [id, minimumWidth, nodeWidth, data.tableMinHeight, tableBorderWidth]);
-  const selectCell = (address: TableAddress, extend = false) => {
+  const selectCell = (address: TableAddress, extend = false, openTemplate = true) => {
     setSelection(previous => ({ start: extend && previous ? previous.start : address, end: address }));
     useUIStore.setState({ selectedTableCell: !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL ? { nodeId: id, ...address } : null });
-    if (!extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL) openCell(address.columnId, address.rowId);
+    if (openTemplate && !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL) openCell(address.columnId, address.rowId);
   };
   const updateText = (address: TableAddress, text: string) => {
     beginTyping();
     const next = current();
     if (address.rowId === TABLE_HEADER) {
       write({ ...next, columns: next.columns.map(column => column.id === address.columnId ? { ...column, name: text } : column) }, false);
-    } else write({ ...next, rows: next.rows.map(row => row.id !== address.rowId ? row : address.columnId === TABLE_LABEL ? { ...row, label: text } : { ...row, cells: row.cells.map((value, index) => next.columns[index].id === address.columnId ? text : value) }) }, false);
+    } else write({ ...next, rows: next.rows.map(row => {
+      if (row.id !== address.rowId) return row;
+      if (address.columnId === TABLE_LABEL) return { ...row, label: text };
+      const richCells = { ...row.richCells };
+      delete richCells[address.columnId];
+      return { ...row, richCells, cells: row.cells.map((value, index) => next.columns[index].id === address.columnId ? text : value) };
+    }) }, false);
   };
   const columns = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...table.columns.map(column => column.id)];
   const rowOrder = tableRowOrder(table);
@@ -232,7 +238,10 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
       onPointerDownCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClickCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClick={event => {
-        if (event.shiftKey || !editable || (event.target as HTMLElement).closest("button, a, input, select, [data-universal-text-tools]")) return;
+        // Selection can reveal controls and move the cell between pointerdown
+        // and click. Keep the textarea that received focus active in that case.
+        if (document.activeElement instanceof HTMLTextAreaElement && event.currentTarget.contains(document.activeElement)) return;
+        if (event.shiftKey || !editable || (event.target as HTMLElement).closest("button, a, input, textarea, select, [data-universal-text-tools]")) return;
         selectCell(address);
         if ((event.target as HTMLElement).closest("[contenteditable=true]")) return;
         const editor = event.currentTarget.querySelector<HTMLElement>('[role="group"][data-row]');
@@ -285,9 +294,12 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
               else return;
               write(next, !editingHistory.current); editingHistory.current = true;
             }} />
-          </div> : (!card || text) && <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
-            onFocus={() => selectCell(address)} onBlur={() => { editingHistory.current = false; }} onChange={event => updateText(source, event.target.value)}
-            onPaste={event => { if (!editable || source.rowId === TABLE_HEADER || source.columnId === TABLE_LABEL) return; const text = event.clipboardData.getData("text/plain"); if (!text.includes("\t")) return; event.preventDefault(); write(pasteTableCells(current(), table.rows.findIndex(row => row.id === source.rowId), columnIndex, parseTablePaste(text))); }} />}
+          </div> : !!text && <div>
+            {editable && selected && <button type="button" data-export-ignore className="nodrag nopan mx-2 rounded border px-2 py-1 text-xs text-muted-foreground hover:text-destructive" onClick={() => { editingHistory.current = false; updateText(source, ""); editingHistory.current = false; }}>Remove extra text below template</button>}
+            <TableInput style={{ textIndent: `${Number(data.firstLineIndent) || 0}em`, paddingLeft: `calc(0.5rem + ${Number(data.paragraphIndent) || 0}em)`, backgroundColor: typeof data.textHighlightColor === "string" ? data.textHighlightColor : undefined }} aria-label={label} data-row={source.rowId} data-column={source.columnId} value={text} readOnly={!editable}
+            onFocus={() => { setEditingCell(null); selectCell(address, false, false); }} onBlur={() => { editingHistory.current = false; }} onChange={event => updateText(source, event.target.value)}
+            onPaste={event => { if (!editable || source.rowId === TABLE_HEADER || source.columnId === TABLE_LABEL) return; const text = event.clipboardData.getData("text/plain"); if (!text.includes("\t")) return; event.preventDefault(); write(pasteTableCells(current(), table.rows.findIndex(row => row.id === source.rowId), columnIndex, parseTablePaste(text))); }} />
+          </div>}
         </div>;
       })}
       {rowId === TABLE_HEADER && selected && editable && <div data-export-ignore role="separator" aria-label={`Resize ${columnId === TABLE_LABEL ? "row labels" : table.columns.find(column => column.id === columnId)?.name}`} aria-orientation="vertical" className="nodrag nopan absolute right-0 top-0 z-20 h-full w-2 translate-x-1/2 cursor-col-resize hover:bg-primary/40" onDoubleClick={event => { event.stopPropagation(); fitColumn(columnId); }} onPointerDown={event => {
