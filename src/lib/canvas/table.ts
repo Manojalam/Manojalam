@@ -46,6 +46,16 @@ export function normalizeTable(value: unknown): CanvasTable {
     });
     return { id: safeId(row?.id, `row_${index}`), ...(typeof row?.labelRichText === "string" ? { labelRichText: row.labelRichText } : {}), ...(row?.richCells ? { richCells: Object.fromEntries(columns.flatMap((column, i) => typeof row?.richCells?.[sourceColumns[i].id] === "string" ? [[column.id, row.richCells[sourceColumns[i].id]]] : [])) } : {}), ...(Array.isArray(row?.cellHeaders) && row.cellHeaders.length ? { cellHeaders: columns.filter((column, i) => row.cellHeaders!.includes(sourceColumns[i].id)).map(column => column.id) } : {}), ...(typeof row?.label === "string" ? { label: row.label } : {}), ...(row?.header === true ? { header: true } : {}), ...(row?.aboveHeader === true ? { aboveHeader: true } : {}), ...(row?.footer === true && !row?.aboveHeader ? { footer: true } : {}), cells: columns.map((_, i) => typeof row?.cells?.[i] === "string" ? row.cells[i] : ""), ...(Object.keys(templates).length ? { templates } : {}) };
   });
+  // Older template paste wrote a generated mirror into the ordinary cell text.
+  // Repair only an exact text AND HTML mirror; preserve separately authored notes.
+  for (const row of rows) columns.forEach((column, index) => {
+    const card = row.templates?.[column.id];
+    if (!card || !row.richCells?.[column.id]) return;
+    const rendered = renderCardSections(card.template, card.sections);
+    if (row.cells[index] !== rendered.text || row.richCells[column.id] !== rendered.richText) return;
+    row.cells[index] = "";
+    delete row.richCells[column.id];
+  });
   // Recover old column content without changing the table grid or dropping answers.
   sourceColumns.forEach((column, i) => {
     const content = column.card;
