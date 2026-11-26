@@ -215,7 +215,7 @@ export function renderCardTemplate(template: BoardCardTemplate, values: CardFiel
       const style = `color: ${field.color || template.style.textColor || "inherit"}${fontStyle}`;
       return `<span ${Object.entries(attributes).map(([name, value]) => `${name}="${escapeHtml(value)}"`).join(" ")} style="${style}">${decorateTemplateValue(styledContent, attributes, style)}</span>`;
     }).join("")).join("");
-    const localParagraph = entries.flatMap(entry => templateInputFields(entry.row.fields).map(field => entry.values[field.id]).filter(Boolean)).map(value => valueParagraphStyle(value.paragraphStyle || "")).filter(Boolean).at(-1) || "";
+    const localParagraph = entries.flatMap(entry => templateInputFields(entry.row.fields).map(field => entry.values[field.id]).filter(Boolean)).map(value => valueParagraphStyle(value.paragraphStyle || "").split(";").filter(rule => !/^\s*(text-align|padding-left|text-indent)\s*:/.test(rule)).join(";")).filter(Boolean).at(-1) || "";
     const rowKey = escapeHtml(JSON.stringify([sectionId, row.id]));
     const parent = row.collapseParentId && template.rows.slice(0, template.rows.indexOf(row)).find(candidate => candidate.id === row.collapseParentId && candidate.collapsible);
     const collapse = ` data-template-row="${rowKey}"${row.collapsible ? ` data-template-collapsible="true" data-template-collapsed="${row.collapsedByDefault === true}"` : ""}${parent ? ` data-template-parent="${escapeHtml(JSON.stringify([sectionId, parent.id]))}"` : ""}`;
@@ -244,11 +244,29 @@ export function clearTemplateValues(sections: CardSection[]): CardSection[] {
   }));
 }
 
+/** Template rows own horizontal layout, including instances edited directly on the canvas. */
+function templateRowAlignment(html: string, template: BoardCardTemplate): string {
+  const decode = (value: string) => value.replace(/&quot;|&#34;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&");
+  return html.replace(/<p\b([^>]*)>([\s\S]*?)<\/p>/gi, (paragraph, attributes: string, content: string) => {
+    const key = attributes.match(/data-template-row=(?:"([^"]*)"|'([^']*)')/i);
+    let rowId: string | undefined;
+    try { rowId = key ? JSON.parse(decode(key[1] ?? key[2]))[1] : undefined; } catch { /* Legacy markup can still identify its field. */ }
+    const field = content.match(/data-field-label=(?:"([^"]*)"|'([^']*)')/i);
+    const row = template.rows.find(row => row.id === rowId) ?? (!key && field
+      ? template.rows.find(row => templateInputFields(row.fields).some(input => input.id === decode(field[1] ?? field[2]))) : undefined);
+    if (!row) return paragraph;
+    const style = attributes.match(/\sstyle=(?:"([^"]*)"|'([^']*)')/i);
+    const kept = (style?.[1] ?? style?.[2] ?? "").split(";").filter(rule => !/^\s*(text-align|padding-left|text-indent)\s*:/i.test(rule)).join(";");
+    const next = attributes.replace(/\sstyle=(?:"[^"]*"|'[^']*')/i, "");
+    return '<p' + next + ' style="' + kept + '; text-align: ' + (row.textAlign || "left") + '; padding-left: ' + row.indent + 'em; text-indent: 0em">' + content + '</p>';
+  });
+}
+
 export function renderCardSections(template: BoardCardTemplate, sections: CardSection[]) {
   const content = sections.map(section => {
     const generated = renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats, section.id);
     if (!section.editedText) return generated;
-    const richText = refreshEditedTemplate(section.editedText.html, section.editedText.baseline, generated.richText);
+    const richText = templateRowAlignment(refreshEditedTemplate(section.editedText.html, section.editedText.baseline, generated.richText), template);
     return { richText, text: templateValueText(richText) };
   }).filter(section => section.text.trim());
   return {
