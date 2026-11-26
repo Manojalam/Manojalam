@@ -3223,6 +3223,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   clearSelectedContent: () => {
     const { nodes, selectedNodeIds } = get();
     if (!selectedNodeIds.length) return;
+    if (typeof window !== "undefined") {
+      for (const name of ["vidya:clear-selected-text", "vidya:clear-table-cells"]) {
+        const event = new CustomEvent(name, { cancelable: true, detail: { nodeIds: selectedNodeIds } });
+        window.dispatchEvent(event);
+        if (event.defaultPrevented) return;
+      }
+    }
     const cleared = clearSelectedNodeContents(nodes, new Set(selectedNodeIds));
     if (!cleared.clearedNodeIds.length) return;
     get().pushHistory();

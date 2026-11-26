@@ -2,7 +2,7 @@
 import { resolveSurfaceStyle } from "@/lib/style-utils";
 import { objectTextDefaults, OBJECT_TEXT_DEFAULTS_CLASS } from "@/lib/canvas/object-text-style";
 
-import { memo, useEffectEvent, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import { NodeResizeControl, type NodeProps } from "@xyflow/react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
@@ -18,7 +18,7 @@ import { convertTableLayout, type TableConversion } from "@/lib/canvas/table-tra
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { objectRotationStyle } from "@/lib/canvas/object-rotation";
 import { useNodeManualResize } from "./useNodeManualResize";
-import { addTableFooter, moveTableColumn, updateCellSections, TABLE_HEADER, TABLE_LABEL, tableRowOrder, tableMergeAt, tableRange, mergeTableCells, splitTableCells, addTableHeading, type TableAddress, tableMinimumWidth, tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
+import { clearTableCells, addTableFooter, moveTableColumn, updateCellSections, TABLE_HEADER, TABLE_LABEL, tableRowOrder, tableMergeAt, tableRange, mergeTableCells, splitTableCells, addTableHeading, type TableAddress, tableMinimumWidth, tableTemplateDesign, addTableColumn, addTableRow, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS, normalizeTable, parseTablePaste, pasteTableCells, removeTableColumn, removeTableRow, tablePlainText, type CanvasTable } from "@/lib/canvas/table";
 
 function TableInput(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -220,6 +220,25 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
   const rowOrder = tableRowOrder(table);
   const columnWeights = columns.map(id => id === TABLE_LABEL ? table.labelWidth ?? 120 : table.columns.find(column => column.id === id)?.width ?? 120);
   const selectedWidth = selection ? Math.round((nodeWidth || minimumWidth) * columnWeights[columns.indexOf(selection.start.columnId)] / columnWeights.reduce((sum, width) => sum + width, 0)) : 120;
+  const handleCellCommand = useEffectEvent((event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (!selected || !detail?.nodeIds?.includes(id)) return;
+    event.preventDefault();
+    if (!editable || !selection) return;
+    const next = current();
+    const selectedRange = tableRange(next, selection.start, selection.end);
+    if (!selectedRange) return;
+    if (event.type === "vidya:clear-table-cells") write(clearTableCells(next, selectedRange));
+    else if (["left", "center", "right", "justify"].includes(detail.value)) {
+      write({ ...next, columns: selectedRange.rowIds.includes(TABLE_HEADER) ? next.columns.map(column => selectedRange.columnIds.includes(column.id) ? { ...column, textAlign: detail.value } : column) : next.columns, rows: next.rows.map(row => !selectedRange.rowIds.includes(row.id) ? row : { ...row, cellAlign: { ...row.cellAlign, ...Object.fromEntries(selectedRange.columnIds.map(columnId => [columnId, detail.value])) } }) });
+    }
+  });
+  useEffect(() => {
+    const handle = (event: Event) => handleCellCommand(event);
+    window.addEventListener("vidya:clear-table-cells", handle);
+    window.addEventListener("vidya:align-table-cells", handle);
+    return () => { window.removeEventListener("vidya:clear-table-cells", handle); window.removeEventListener("vidya:align-table-cells", handle); };
+  }, []);
   const renderCell = (rowId: string, columnId: string) => {
     const address = { rowId, columnId };
     const merge = tableMergeAt(table, address);
@@ -270,7 +289,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
               onDoubleClick={event => { if (editable && !(event.target as HTMLElement).closest("[data-universal-text-tools], [data-template-toggle]")) { event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
               onKeyDown={event => { if ((event.target as HTMLElement).closest("[contenteditable=true], [data-template-toggle]")) return; if (editable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openCell(source.columnId, source.rowId); } }}
               style={{ fontWeight: "normal", fontStyle: "normal", color: template.style.textColor || undefined, fontSize: template.style.fontSize, fontFamily: template.style.fontFamily || undefined }}>
-              <RichTextEditor templateText initialFocusPoint={editFocusPoint} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialContent={renderCardSections(template, card.sections).richText} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" onChange={html => {
+              <RichTextEditor blockAlign={source.rowId === TABLE_HEADER ? sourceColumn?.textAlign : sourceRow?.cellAlign?.[source.columnId]} templateText initialFocusPoint={editFocusPoint} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialContent={renderCardSections(template, card.sections).richText} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} className="[&_p]:m-0 [&_a]:underline [&_a]:decoration-current" onChange={html => {
                 const latest = current();
                 const content = latest.rows.find(row => row.id === source.rowId)?.templates?.[source.columnId];
                 if (!content) return;
@@ -284,7 +303,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
             onFocus={event => { if (event.target === event.currentTarget && editable) { selectCell(address); setEditingCell(`${source.rowId}:${source.columnId}`); } }}
             onPointerDownCapture={event => { if (!editable || (event.target as HTMLElement).closest("[contenteditable=true], [data-universal-text-tools]")) return; selectCell(address); setEditFocusPoint({ clientX: event.clientX, clientY: event.clientY }); setEditingCell(`${source.rowId}:${source.columnId}`); }}
             onDoubleClick={event => { if (!editable || (event.target as HTMLElement).closest("[data-universal-text-tools]")) return; event.stopPropagation(); setEditFocusPoint(textEntryPoint(event)); setEditingCell(`${source.rowId}:${source.columnId}`); }}>
-            <RichTextEditor nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} onChange={html => {
+            <RichTextEditor blockAlign={source.rowId === TABLE_HEADER ? sourceColumn?.textAlign : sourceRow?.cellAlign?.[source.columnId]} nodeId={editingCell === `${source.rowId}:${source.columnId}` ? id : undefined} initialFocusPoint={editFocusPoint} editable={editable && editingCell === `${source.rowId}:${source.columnId}`} initialContent={rich && richTextToPlainText(rich) === text ? rich : plainTextToRichText(text)} onBlur={() => { setEditingCell(active => active === `${source.rowId}:${source.columnId}` ? null : active); editingHistory.current = false; }} onChange={html => {
               const next = current(); const target = next.rows.find(row => row.id === source.rowId);
               const index = next.columns.findIndex(column => column.id === source.columnId);
               if (source.rowId === TABLE_HEADER && source.columnId === TABLE_LABEL) { next.labelHeader = richTextToPlainText(html); next.labelHeaderRichText = html; }
@@ -314,8 +333,8 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
       {rowId === TABLE_HEADER && columnId !== TABLE_LABEL && selected && editable && <button data-export-ignore type="button" title="Delete column" aria-label={`Delete column ${table.columns.findIndex(column => column.id === columnId) + 1}`} disabled={table.columns.length <= 1} className="absolute -top-5 right-1 rounded bg-background p-1 text-muted-foreground hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableColumn(current(), columnId))}><Trash2 size={12} /></button>}
     </Cell>;
   };
-  const renderRow = (rowId: string) => <tr key={rowId}>{columns.map(columnId => renderCell(rowId, columnId))}</tr>;
-  const tableTools = selected && editable ? <div ref={toolbar} data-export-ignore role="toolbar" aria-label="Table tools" className={dockedTools ? "nodrag nopan nowheel flex flex-wrap items-center gap-3 p-3 text-xs [&_button]:rounded [&_button]:border [&_button]:px-2 [&_button]:py-1" : `nodrag nopan nowheel absolute ${toolbarBelow ? "top-full mt-3" : "bottom-full mb-3"} left-0 z-30 flex w-max max-w-[900px] flex-wrap items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl`} style={dockedTools ? undefined : { transform: `translate(${toolbarOffset.x}px, ${toolbarOffset.y}px)` }} onPointerDown={event => event.stopPropagation()}>
+  const renderRow = (rowId: string) => <tr key={rowId} style={{ height: table.rows.find(row => row.id === rowId)?.minHeight || undefined }}>{columns.map(columnId => renderCell(rowId, columnId))}</tr>;
+  const tableTools = selected && editable ? <div ref={toolbar} data-universal-text-tools data-export-ignore role="toolbar" aria-label="Table tools" className={dockedTools ? "nodrag nopan nowheel flex flex-wrap items-center gap-3 p-3 text-xs [&_button]:rounded [&_button]:border [&_button]:px-2 [&_button]:py-1" : `nodrag nopan nowheel absolute ${toolbarBelow ? "top-full mt-3" : "bottom-full mb-3"} left-0 z-30 flex w-max max-w-[900px] flex-wrap items-center gap-3 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-xl`} style={dockedTools ? undefined : { transform: `translate(${toolbarOffset.x}px, ${toolbarOffset.y}px)` }} onPointerDown={event => event.stopPropagation()}>
         <button hidden={!!dockedTools} type="button" aria-label="Move table toolbar" title="Drag toolbar" className="cursor-grab" onPointerDown={event => {
           event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
           const start = { x: event.clientX, y: event.clientY }, origin = toolbarOffset, target = event.currentTarget, zoom = useCanvasStore.getState().viewport.zoom;
@@ -333,6 +352,8 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         <button type="button" disabled={table.rows.length >= MAX_TABLE_ROWS} onClick={() => { const next = addTableFooter(current()); write(next); const footer = next.rows.at(-1)!; focus(footer.id, next.showRowLabels ? TABLE_LABEL : next.columns[0].id); }}>Add footer</button>
         <button type="button" disabled={!range || range.rowIds.length * range.columnIds.length < 2} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(mergeTableCells(current(), selection.start, selection.end)); }}>Merge cells</button>
         <button type="button" disabled={!selection || !tableMergeAt(table, selection.start)} className="hover:text-foreground disabled:opacity-30" onClick={() => { if (selection) write(splitTableCells(current(), selection.start)); }}>Split cells</button>
+        {selection && <div className="flex items-center gap-1"><span>Selected cells</span>{(["left", "center", "right", "justify"] as const).map(align => <button key={align} type="button" aria-label={"Align selected cells " + align} onClick={() => window.dispatchEvent(new CustomEvent("vidya:align-table-cells", { detail: { nodeIds: [id], value: align } }))}>{align}</button>)}<button type="button" onClick={() => useCanvasStore.getState().clearSelectedContent()}>Clear selected content</button></div>}
+        {activeRow && <><label className="flex items-center gap-1">Row minimum height<input aria-label="Row minimum height" type="number" min={0} max={10000} className="w-20 rounded border bg-background p-1" value={activeRow.minHeight ?? 0} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, minHeight: Math.max(0, Math.min(10000, Number(event.target.value))) } : row) })} /></label><button type="button" onClick={() => { write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, minHeight: undefined } : row) }); useCanvasStore.getState().updateNodeData(id, { tableMinHeight: 0 }); }}>Auto-fit row</button></>}
         {activeRow && <><label className="flex items-center gap-1"><input type="checkbox" aria-label="Header row" checked={!!activeRow.header} onChange={event => write({ ...current(), rows: current().rows.map(row => row.id === activeRow.id ? { ...row, header: event.target.checked, cellHeaders: undefined } : row) })} />Header row</label>
           <button type="button" className="hover:text-foreground" onClick={() => addRow(table.rows.findIndex(row => row.id === activeRow.id))}>Insert row below</button>
           <button type="button" disabled={table.rows.length <= 1} className="hover:text-destructive disabled:opacity-30" onClick={() => write(removeTableRow(current(), activeRow.id))}>Delete row</button></>}

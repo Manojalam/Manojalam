@@ -211,6 +211,9 @@ export function sanitizePastedHtml(html: string, preserveBoundaries = false): st
 
   const parsed = new DOMParser().parseFromString(boundedHtml, "text/html");
   const internalTipTapCopy = parsed.body.querySelector("[data-pm-slice]") !== null;
+  // A browser selection from a displayed template may not carry TipTap's
+  // clipboard slice. Keep its appearance, without copying field identities.
+  const formattedCopy = internalTipTapCopy || parsed.body.querySelector('[data-template-row], [data-field-owner^="card:"]') !== null;
 
   parsed.body.querySelectorAll(UNSAFE_PASTE_ELEMENTS.join(",")).forEach((element) => element.remove());
 
@@ -221,11 +224,11 @@ export function sanitizePastedHtml(html: string, preserveBoundaries = false): st
       && element.tagName === "SPAN"
       && element.getAttribute("data-vidya-symbol") === "true";
 
-    const paragraphIndent = internalTipTapCopy && /^(P|H[1-6])$/.test(element.tagName)
+    const paragraphIndent = formattedCopy && /^(P|H[1-6])$/.test(element.tagName)
       ? element.style.paddingLeft : "";
     for (const property of LAYOUT_STYLE_PROPERTIES) element.style.removeProperty(property);
     if (paragraphIndent) element.style.paddingLeft = paragraphIndent;
-    if (!internalTipTapCopy) {
+    if (!formattedCopy) {
       for (const property of EXTERNAL_TYPOGRAPHY_PROPERTIES) element.style.removeProperty(property);
       const keepItalic = fontStyle === "italic" || fontStyle === "oblique";
       const numericWeight = Number.parseInt(fontWeight, 10);
