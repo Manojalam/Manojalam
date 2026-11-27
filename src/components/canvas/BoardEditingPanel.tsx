@@ -112,6 +112,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
           && selectedNodes.every(item => objectPropertiesLabel(item, next.nodes, next.edges) === "Matrix");
         if (!state.fillingCardNodeId && !keepMatrixTab) useUIStore.setState({ propertiesTab: node?.data.cardTemplateId ? "template" : "style" });
       }
+      if (state.tableTextCell && !next.selectedNodeIds.includes(state.tableTextCell.nodeId)) useUIStore.setState({ tableTextCell: null });
       if (state.selectedTableCell && !next.selectedNodeIds.includes(state.selectedTableCell.nodeId)) useUIStore.setState({ selectedTableCell: null });
       if (state.fillingTableColumn && !next.selectedNodeIds.includes(state.fillingTableColumn.nodeId)) useUIStore.setState({ fillingTableColumn: null });
     });
@@ -119,7 +120,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       const key = (state: typeof next) => state.fillingCardNodeId || (state.fillingTableColumn ? JSON.stringify(state.fillingTableColumn) : "");
       if (key(next) && key(next) !== key(previous) && next.propertiesTab !== "text") useUIStore.setState({ propertiesTab: "template" });
     });
-    return () => { selection(); filling(); useUIStore.setState({ fillingTableColumn: null, selectedTableCell: null, fillingCardNodeId: null, objectToolsHost: null }); };
+    return () => { selection(); filling(); useUIStore.setState({ fillingTableColumn: null, selectedTableCell: null, tableTextCell: null, fillingCardNodeId: null, objectToolsHost: null }); };
   }, []);
   const close = () => { ui.setBoardPanel(null); ui.setLayoutPanelOpen(false); ui.setLayersPanelOpen(false); ui.setFillingCardNodeId(null); useUIStore.setState({ fillingTableColumn: null }); };
   const tabs: { id: typeof ui.propertiesTab; label: string }[] = [
