@@ -19,6 +19,7 @@ try {
  await page.waitForSelector('details[aria-label="Row 1"]');
  assert.equal(await page.$eval('details[aria-label="Row 1"]',e=>e.open),false);
  await page.click('details[aria-label="Row 1"] > summary');
+ await page.waitForSelector('details[aria-label="Row 1"] [role=textbox][aria-label=Answer]');
 
  await page.focus('details[aria-label="Row 1"] [role=textbox][aria-label=Answer]');
  await page.keyboard.press('Tab');

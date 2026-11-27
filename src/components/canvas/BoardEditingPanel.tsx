@@ -82,7 +82,10 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       const element = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
       const node = element?.closest<HTMLElement>(".react-flow__node[data-id]");
       if (!node || !node.contains(range.endContainer)) return;
-      const mark = Array.from(node.querySelectorAll<HTMLElement>("[data-field-instance]")).find(item => range.intersectsNode(item));
+      // Most selections start inside a field. Avoid scanning a large table's
+      // entire rendered template on every selectionchange while dragging.
+      const mark = element?.closest<HTMLElement>("[data-field-instance]")
+        ?? Array.from((element?.closest("p") ?? node).querySelectorAll<HTMLElement>("[data-field-instance]")).find(item => range.intersectsNode(item));
       if (!mark) { useUIStore.setState({ templateTextTarget: null }); return; }
       try {
         const identity: unknown = JSON.parse(mark.dataset.fieldInstance!);
