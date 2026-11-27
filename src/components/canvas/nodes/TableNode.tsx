@@ -396,7 +396,22 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
         </details>
         <span>Shift-click cells to select a range · Tab / arrows → navigate · Enter → new line</span>
       </div> : null;
-  return <div ref={root} className="relative h-full w-full" onFocus={() => {
+  // Modified clicks select whole objects before cell editors can take focus.
+  // Shift within an already selected table still extends its cell range.
+  const selectsWholeTable = (event: React.MouseEvent | React.PointerEvent) => event.ctrlKey || event.metaKey || (event.shiftKey && (!selected || !!(event.target as HTMLElement).closest('[aria-label="Move table"]')));
+  return <div ref={root} className="relative h-full w-full"
+    onPointerDownCapture={event => {
+      if (!selectsWholeTable(event)) return;
+      event.preventDefault(); event.stopPropagation();
+    }}
+    onClickCapture={event => {
+      if (!selectsWholeTable(event)) return;
+      event.preventDefault(); event.stopPropagation();
+      const state = useCanvasStore.getState();
+      const ids = new Set(state.selectedNodeIds);
+      if (ids.has(id)) ids.delete(id); else ids.add(id);
+      useCanvasStore.setState({ nodes: state.nodes.map(node => ({ ...node, selected: ids.has(node.id) })), selectedNodeIds: [...ids] });
+    }} onFocus={() => {
     if (!editable) return;
     const state = useCanvasStore.getState();
     if (!state.selectedNodeIds.includes(id)) useCanvasStore.setState({ nodes: state.nodes.map(node => ({ ...node, selected: node.id === id })), selectedNodeIds: [id], selectedEdgeIds: [] });
