@@ -1,4 +1,5 @@
 "use client";
+import { boardNodeRect, resizeAlignmentGuides } from "@/lib/canvas/resize-alignment-guides";
 import { useBoardAppearance } from "./useBoardAppearance";
 import { clearBoardSearchHighlight, highlightBoardSearch, observeBoardSearch } from "@/lib/canvas/search-highlight";
 import { backupKey, writeBoardBackup, acknowledgeBoardBackup, saveErrorMessage } from "@/lib/storage/board-backup";
@@ -247,11 +248,11 @@ function AlignmentGuides({ guides }: { guides: Guides }) {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 9998 }}>
       {guides.h.map((fy, i) => (
-        <div key={`h${i}`} className="absolute left-0 right-0"
+        <div data-alignment-guide="horizontal" key={`h${i}`} className="absolute left-0 right-0"
           style={{ top: fy * vp.zoom + vp.y, height: 1, background: "#ef4444", opacity: 0.85 }} />
       ))}
       {guides.v.map((fx, i) => (
-        <div key={`v${i}`} className="absolute top-0 bottom-0"
+        <div data-alignment-guide="vertical" key={`v${i}`} className="absolute top-0 bottom-0"
           style={{ left: fx * vp.zoom + vp.x, width: 1, background: "#ef4444", opacity: 0.85 }} />
       ))}
     </div>
@@ -882,6 +883,19 @@ function VidyaCanvasInner({
     };
   }, [fitView, setCenter, screenToFlowPosition]);
 
+  useEffect(() => {
+    const preview = (event: Event) => {
+      const detail = (event as CustomEvent<{ rect: ReturnType<typeof getNodeRect>; excludedIds: string[] } | null>).detail;
+      if (!detail) { setGuides({ h: [], v: [] }); return; }
+      const state = useCanvasStore.getState();
+      const layers = canvasLayerById(state.layers);
+      const others = state.nodes.filter(node => !detail.excludedIds.includes(node.id) && !node.hidden && node.type !== "frame" && isCanvasItemLayerVisible(node, layers));
+      setGuides(resizeAlignmentGuides(detail.rect, others.map(node => boardNodeRect(node, state.nodes)), alignmentSnapThreshold(getViewport().zoom, 4)));
+    };
+    window.addEventListener("canvas-resize-preview", preview);
+    return () => window.removeEventListener("canvas-resize-preview", preview);
+  }, [getViewport]);
+
   // ── onNodesChange ──────────────────────────────────────────────────
   // KEY DESIGN:
   // - "dimensions" and "select" changes come from React Flow internally on
@@ -941,6 +955,16 @@ function VidyaCanvasInner({
       }
 
       const stateAfterChanges = useCanvasStore.getState();
+      const resizeChanges = acceptedChanges.filter(change => change.type === "dimensions" && change.resizing !== undefined);
+      if (resizeChanges.length) {
+        const resizing = stateAfterChanges.nodes.filter(node => node.resizing);
+        if (!resizing.length) setGuides({ h: [], v: [] });
+        else {
+          const others = stateAfterChanges.nodes.filter(node => !node.resizing && !node.hidden && node.type !== "frame" && isCanvasItemLayerVisible(node, currentLayersById));
+          const matches = resizing.map(node => resizeAlignmentGuides(boardNodeRect(node, stateAfterChanges.nodes), others.map(other => boardNodeRect(other, stateAfterChanges.nodes)), alignmentSnapThreshold(getViewport().zoom, 4)));
+          setGuides({ h: [...new Set(matches.flatMap(match => match.h))], v: [...new Set(matches.flatMap(match => match.v))] });
+        }
+      }
       const canReflowMeasuredLayouts = stateAfterChanges.hasUserChangedBoard
         || stateAfterChanges.saveStatus === "unsaved";
       if (canReflowMeasuredLayouts) {
@@ -969,7 +993,7 @@ function VidyaCanvasInner({
         }
       }
     },
-    [canEdit, setNodes]
+    [canEdit, setNodes, getViewport]
   );
 
   const onNodeDragStart = useCallback((event: MouseEvent | TouchEvent, draggedNode: Node) => {

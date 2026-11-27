@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { ViewportPortal, useReactFlow, useViewport } from "@xyflow/react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { buildHierarchy, getSubtree } from "@/lib/layout/hierarchy";
-import { getNodeRect } from "@/lib/layout/geometry";
+import { createNodeRect, getNodeRect } from "@/lib/layout/geometry";
 
 type Size = { width: number; height: number };
 type Axis = "both" | "width" | "height";
@@ -64,18 +64,20 @@ export function MatrixResizeHandles() {
           drag.next = { width: drag.axis === "height" ? drag.size.width : Math.max(160, width),
             height: drag.axis === "width" ? drag.size.height : Math.max(100, height) };
           setPreview(drag.next);
+          window.dispatchEvent(new CustomEvent("canvas-resize-preview", { detail: { rect: createNodeRect(root.id, left, top, drag.next.width, drag.next.height), excludedIds: [...ids] } }));
         }}
         onPointerUp={event => {
           event.stopPropagation();
           const drag = gesture.current;
           gesture.current = null; setPreview(null);
+          window.dispatchEvent(new CustomEvent("canvas-resize-preview", { detail: null }));
           if (!drag || (Math.abs(drag.next.width - drag.size.width) < 1 && Math.abs(drag.next.height - drag.size.height) < 1)) return;
           const state = useCanvasStore.getState();
           state.pushHistory();
           state.updateNodeData(drag.rootId, { matrixTableWidthOverride: drag.next.width, matrixTableHeightOverride: drag.next.height, matrixTableSizeLocked: true });
           state.scheduleMatrixReflow(drag.rootId);
         }}
-        onPointerCancel={() => { gesture.current = null; setPreview(null); }}
+        onPointerCancel={() => { gesture.current = null; setPreview(null); window.dispatchEvent(new CustomEvent("canvas-resize-preview", { detail: null })); }}
       />)}
       {preview && <span className="absolute left-0 top-full whitespace-nowrap rounded bg-background px-1 text-primary"
         style={{ fontSize: 12 / zoom }}>{Math.round(preview.width)} × {Math.round(preview.height)} px</span>}
