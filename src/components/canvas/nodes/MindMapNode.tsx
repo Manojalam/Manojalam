@@ -117,7 +117,7 @@ function MindMapNodeComponent({ id, data, selected, width, height }: NodeProps) 
       <NodeResizer
         minWidth={matrixCell ? 80 : 120}
         minHeight={40}
-        isVisible={selected && !editing && !isDrawing}
+        isVisible={selected && !isDrawing}
         lineStyle={{ borderRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}

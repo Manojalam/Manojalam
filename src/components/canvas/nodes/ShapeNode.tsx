@@ -1319,7 +1319,7 @@ function ShapeNodeComponent({ id, data, selected, width, height }: NodeProps) {
       <NodeResizer
         minWidth={60}
         minHeight={60}
-        isVisible={selected && !editing && !isDrawing}
+        isVisible={selected && !isDrawing}
         keepAspectRatio={SQUARE_ASPECT_SHAPES.has(renderedShapeType)}
         lineStyle={{ borderRadius: bRadius }}
         onResizeStart={resizeControls.onResizeStart}

@@ -9,6 +9,7 @@ export function useNodeManualResize(nodeId: string) {
   const finishManualNodeResize = useCanvasStore((state) => state.finishManualNodeResize);
 
   const onResizeStart = useCallback(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
     beginManualNodeResize(nodeId);
   }, [beginManualNodeResize, nodeId]);
 

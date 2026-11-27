@@ -25,6 +25,15 @@ test("template clipboard transfers independent values between objects and cells 
   const cell = { rowId: table.rows[0].id, columnId: table.columns[1].id };
   const pasted = pasteTemplateContent(target, content, cell);
   assert.deepEqual(copyTemplateContent(pasted, [], cell), content);
+  const fromCell = copyTemplateContent(pasted, [], cell)!;
+  for (const type of ["shape", "text", "sticky", "mindmap"]) {
+    const object: Node = { id: type, type, position: { x: 20, y: 30 }, style: { width: 400, height: 300 }, data: { fillColor: "red" } };
+    const result = pasteTemplateContent(object, fromCell);
+    assert.equal(result.type, type);
+    assert.equal(result.data.table, undefined);
+    assert.deepEqual(result.style, object.style);
+    assert.equal(result.data.fillColor, "red");
+  }
   const result = normalizeTable(pasted.data.table);
   assert.equal(result.rows[0].cells[1], "");
   assert.equal(result.rows[0].richCells?.[cell.columnId], undefined);
