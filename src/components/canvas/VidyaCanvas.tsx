@@ -562,6 +562,7 @@ function VidyaCanvasInner({
   // before reading the global store, which also prevents cross-board writes.
   const backupQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const backupEditRef = useRef(0);
+  const flushLocalBackupRef = useRef<() => void>(() => {});
   const preserveBackup = useCallback((snapshot: ReturnType<typeof useCanvasStore.getState>) => {
     const edit = backupEditRef.current;
     const job = backupQueueRef.current.catch(() => undefined).then(async () => {
@@ -593,6 +594,7 @@ function VidyaCanvasInner({
         if (useCanvasStore.getState().board?.id === boardId) useCanvasStore.setState({ backupStatus: "error", saveError: `Local backup failed: ${saveErrorMessage(error)}` });
       });
     };
+    flushLocalBackupRef.current = flush;
     const unsubscribe = useCanvasStore.subscribe((state, previous) => {
       if (!canEdit || state.board?.id !== boardId || !state.hasHydratedBoard || state.saveStatus !== "unsaved") return;
       if (state.nodes === previous.nodes && state.edges === previous.edges && state.settings === previous.settings && state.board === previous.board && state.viewport === previous.viewport && state.relationships === previous.relationships && state.relationshipFans === previous.relationshipFans && state.layers === previous.layers) return;
@@ -605,7 +607,7 @@ function VidyaCanvasInner({
     const onHidden = () => { if (document.visibilityState === "hidden") flush(); };
     document.addEventListener("visibilitychange", onHidden);
     window.addEventListener("beforeunload", flush);
-    return () => { unsubscribe(); document.removeEventListener("visibilitychange", onHidden); window.removeEventListener("beforeunload", flush); flush(); };
+    return () => { unsubscribe(); document.removeEventListener("visibilitychange", onHidden); window.removeEventListener("beforeunload", flush); flush(); flushLocalBackupRef.current = () => {}; };
   }, [boardId, canEdit, preserveBackup]);
 
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -621,6 +623,10 @@ function VidyaCanvasInner({
       const current = useCanvasStore.getState();
       const snapshot = current.board?.id === boardId ? current : captured;
       if (snapshot.saveStatus === "saved") return;
+      // Drain the debounced local write before creating the upload's backup.
+      // Otherwise that older timer can replace the acknowledged revision after
+      // a fast save and falsely resurrect an unsynced draft on the next load.
+      flushLocalBackupRef.current();
       const title = snapshot.board!.title;
       const content = {
         version: BOARD_CONTENT_VERSION,
