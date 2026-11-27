@@ -181,7 +181,7 @@ function TextBlockNodeComponent({
       <NodeResizer
         minWidth={matrixCell ? 80 : 160}
         minHeight={40}
-        isVisible={selected && !editing && !isDrawing}
+        isVisible={selected && !isDrawing}
         lineStyle={{ borderRadius: bRadius }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd}

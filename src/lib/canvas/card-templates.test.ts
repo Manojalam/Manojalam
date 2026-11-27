@@ -1,3 +1,4 @@
+import { removeAppliedTemplateData } from "./remove-applied-template";
 import { hiddenTemplateRows } from "./template-row-collapse";
 import { placeTemplateField } from "./template-field-order";
 import type { CardSection } from "../types";
@@ -557,4 +558,20 @@ test("repeat respects per-field and per-part copy settings after persistence", (
   repeated.rowRepeats![0].values.dhatu.text="independent";
   assert.equal(section.values.dhatu.text,"root");
   assert.deepEqual(repeatCardSectionRow(saved,section,"r","","after","blank",false).rowRepeats![0].values,{});
+});
+
+
+test("removing an object template clears its content and metadata but preserves its container", () => {
+  const template = newHomeworkTemplate("remove-object");
+  const data = { ...cardTemplateNodeData(template, { question: { text: "Answer" } }), freeCardLayout: true, fillColor: "#112233", shapeType: "rounded", custom: { keep: true } };
+  const removed = removeAppliedTemplateData(data);
+  assert.equal(removed.cardTemplateId, undefined);
+  assert.equal(removed.cardTemplateSnapshot, undefined);
+  assert.equal(removed.cardSections, undefined);
+  assert.equal(removed.freeCardLayout, undefined);
+  assert.equal(removed.text, ""); assert.equal(removed.richText, "");
+  assert.equal(removed.fillColor, "#112233"); assert.equal(removed.shapeType, "rounded");
+  assert.deepEqual(removed.custom, { keep: true });
+  assert.equal(data.cardTemplateId, template.id);
+  assert.equal(removeAppliedTemplateData(removed), removed);
 });

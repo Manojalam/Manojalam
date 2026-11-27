@@ -141,7 +141,7 @@ function StickyNoteNodeComponent({ id, data, selected, width, height }: NodeProp
 
   return (
     <>
-      <NodeResizer minWidth={matrixCell ? 80 : 140} minHeight={matrixCell ? 40 : 80} isVisible={selected && !editing && !isDrawing}
+      <NodeResizer minWidth={matrixCell ? 80 : 140} minHeight={matrixCell ? 40 : 80} isVisible={selected && !isDrawing}
         lineStyle={{ borderColor: border, borderRadius: bRadius }} handleStyle={{ borderColor: border, backgroundColor: "white" }}
         onResizeStart={resizeControls.onResizeStart}
         onResizeEnd={resizeControls.onResizeEnd} />

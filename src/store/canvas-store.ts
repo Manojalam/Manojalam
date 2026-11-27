@@ -5,6 +5,7 @@ import { attachmentImageNode } from "@/lib/canvas/attachment-image-node";
 import { closeDeletedImageNoteGaps, reflowImageNoteRows, imageNotePairs } from "@/lib/canvas/image-note-pairs";
 
 import { applyContentTemplate, supportsContentTemplate } from "@/lib/canvas/apply-content-template";
+import { removeAppliedTemplateData } from "@/lib/canvas/remove-applied-template";
 import { normalizeTable, tableTemplateDesign, tablePlainText } from "@/lib/canvas/table";
 import { plainTextToRichText } from "@/lib/canvas/rich-text-paste";
 import { applyStyleTemplate, captureTemplateStyle, detachTemplateData, normalizeBoardStyleTemplates, supportsStyleTemplate, templateRolesFromHtml, bindTemplateRoles, refreshTemplateRoles } from "@/lib/canvas/board-style-templates";
@@ -278,6 +279,7 @@ interface CanvasState {
   updateCardSections: (nodeId: string, sections: CardSection[], history?: boolean) => void;
   moveCardSectionsToNewBox: (nodeId: string, sectionId: string) => string | null;
   detachCardTemplate: (nodeId: string) => void;
+  removeAppliedTemplate: (nodeId: string, cell?: { rowId: string; columnId: string }) => boolean;
   deleteCardTemplate: (id: string) => void;
   updateStyleTemplate: (id: string, patch: Partial<Pick<BoardStyleTemplate, "name" | "style" | "roles">>) => void;
   applyStyleTemplate: (id: string, nodeIds: string[]) => void;
@@ -2589,6 +2591,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       selectedNodeIds: [id], selectedEdgeIds: [], saveStatus: "unsaved",
     });
     return id;
+  },
+  removeAppliedTemplate: (nodeId, cell) => {
+    const state = get();
+    const node = state.nodes.find(item => item.id === nodeId);
+    if (!node || node.data.locked || state.board?.accessRole === "viewer" || state.layers.some(layer => layer.id === node.data.layerId && layer.locked)) return false;
+    if (cell && node.type !== "table") return false;
+    const data = removeAppliedTemplateData(node.data, cell);
+    if (data === node.data) return false;
+    state.pushHistory();
+    set({ nodes: state.nodes.map(item => item.id === nodeId ? { ...item, data } : item), saveStatus: "unsaved" });
+    return true;
   },
   detachCardTemplate: (nodeId) => {
     const state = get();

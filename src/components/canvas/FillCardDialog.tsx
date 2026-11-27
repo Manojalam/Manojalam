@@ -1,4 +1,5 @@
 "use client";
+import { RemoveAppliedTemplate } from "./RemoveAppliedTemplate";
 import { TemplateRowPanel } from "./TemplateRowPanel";
 import { appendSutra } from "@/lib/canvas/append-sutra";
 
@@ -8,7 +9,7 @@ import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { BoardCardTemplate, CardFieldValues, CardSection } from "@/lib/types";
 import { clearTemplateValues, templateInputFields, cardSections, expandedCardRows, repeatCardSectionRow, normalizeCardTemplates, safeCardLink } from "@/lib/canvas/card-templates";
-import { cellSections, normalizeTable, removeCellTemplate, tablePlainText, updateCellSections } from "@/lib/canvas/table";
+import { cellSections, normalizeTable, tablePlainText, updateCellSections } from "@/lib/canvas/table";
 import { CardTemplatePreview } from "./CardTemplatePreview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,8 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
   const savedTemplate = useCanvasStore(state => state.settings.cardTemplates?.find(item => item.id === node?.data.cardTemplateId));
   const template = savedTemplate ?? normalizeCardTemplates([node?.data.cardTemplateSnapshot])[0];
   if (!node || !template) return null;
-  if (node.data.freeCardLayout && embedded) return <div className="space-y-2 p-3"><p className="text-sm">This object uses a free layout. Edit its text directly on the board.</p><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit text on object</Button></div>;
-  if (node.data.freeCardLayout) return <Dialog open modal={false} onOpenChange={open => { if (!open) onClose(); }}><DialogContent onCloseAutoFocus={event => event.preventDefault()}><DialogHeader><DialogTitle>Edit this object directly</DialogTitle><DialogDescription>This object has its own layout. Cut and paste its text on the board; labels and styling stay attached.</DialogDescription></DialogHeader><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit text on object</Button></DialogContent></Dialog>;
+  if (node.data.freeCardLayout && embedded) return <div className="space-y-2 p-3"><RemoveAppliedTemplate nodeId={currentId} onRemoved={onClose} /><p className="text-sm">This object uses a free layout. Edit its text directly on the board.</p><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit text on object</Button></div>;
+  if (node.data.freeCardLayout) return <Dialog open modal={false} onOpenChange={open => { if (!open) onClose(); }}><DialogContent onCloseAutoFocus={event => event.preventDefault()}><DialogHeader><DialogTitle>Edit this object directly</DialogTitle><DialogDescription>This object has its own layout. Cut and paste its text on the board; labels and styling stay attached.</DialogDescription></DialogHeader><RemoveAppliedTemplate nodeId={currentId} onRemoved={onClose} /><Button disabled={!!node.data.locked} onClick={() => { onClose(); useCanvasStore.getState().arrangeCard(currentId); }}>Edit text on object</Button></DialogContent></Dialog>;
   return <CardForm embedded={embedded} key={currentId} nodeId={currentId} template={template} sections={cardSections(node.data)} locked={!!node.data.locked} onClose={onClose} onNext={id => { setCurrentId(id); if (useUIStore.getState().fillingCardNodeId) useUIStore.getState().setFillingCardNodeId(id); }} />;
 }
 
@@ -31,21 +32,6 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
   const [focusRow, setFocusRow] = useState<string | null>(null);
   const [copyRepeatContents, setCopyRepeatContents] = useState(true);
-  const removeTemplate = () => {
-    const state = useCanvasStore.getState();
-    const node = state.nodes.find(item => item.id === nodeId);
-    if (!columnId || !cellRowId || !node || locked || node.data.locked || state.board?.accessRole === "viewer"
-      || state.layers.some(layer => layer.id === node.data.layerId && layer.locked)) return;
-    const current = normalizeTable(node.data.table);
-    const table = removeCellTemplate(current, columnId, cellRowId);
-    if (table === current) return;
-    state.pushHistory();
-    state.updateNodeData(nodeId, { table, text: tablePlainText(table) });
-    onClose();
-    toast.success("Template and contents removed from this cell.", {
-      action: { label: "Undo", onClick: () => useCanvasStore.getState().undo() },
-    });
-  };
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
     const state = useCanvasStore.getState();
     const node = state.nodes.find(item => item.id === nodeId);
@@ -127,10 +113,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
       <div className="space-y-1">
         <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={() => setSections(clearTemplateValues)}>Clear template values</Button>
         <p className="text-xs text-muted-foreground">Clears all sections in this {columnId ? "cell" : "object"}. Keeps the template and repeated rows. Undo restores the values.</p>
-        {columnId && <>
-          <Button type="button" size="sm" variant="outline" disabled={locked || savingNext} onClick={removeTemplate}>Remove template and contents</Button>
-          <p className="text-xs text-muted-foreground">Leaves this cell empty. Keeps the cell and saved template design. Undo restores everything.</p>
-        </>}
+        <RemoveAppliedTemplate nodeId={nodeId} cell={columnId && cellRowId ? { columnId, rowId: cellRowId } : undefined} disabled={locked || savingNext} onRemoved={onClose} />
       </div>
       <form className={embedded ? "space-y-4" : "grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4"} onSubmit={event => event.preventDefault()}>
         <div className={embedded ? "space-y-4" : "space-y-4 overflow-y-auto pr-1"}>
