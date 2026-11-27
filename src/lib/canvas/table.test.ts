@@ -352,3 +352,16 @@ test("removing a cell template empties only that cell and preserves design and l
   assert.deepEqual(table, original);
   assert.equal(removeCellTemplate(result, column, row), result);
 });
+
+test("cell vertical alignment survives normalization for labels, headers and body cells", () => {
+  const table = createTable(2, 2);
+  table.showRowLabels = true;
+  const row = table.rows[0].id, column = table.columns[0].id;
+  table.cellVerticalAlign = { [row]: { [TABLE_LABEL]: "middle", [column]: "bottom" }, [TABLE_HEADER]: { [column]: "middle" }, missing: { [column]: "bottom" } };
+  const normalized = normalizeTable(JSON.parse(JSON.stringify(table)));
+  assert.equal(normalized.cellVerticalAlign?.[row]?.[TABLE_LABEL], "middle");
+  assert.equal(normalized.cellVerticalAlign?.[row]?.[column], "bottom");
+  assert.equal(normalized.cellVerticalAlign?.[TABLE_HEADER]?.[column], "middle");
+  assert.equal(normalized.cellVerticalAlign?.missing, undefined);
+  assert.equal(normalized.cellVerticalAlign?.[table.rows[1].id], undefined);
+});

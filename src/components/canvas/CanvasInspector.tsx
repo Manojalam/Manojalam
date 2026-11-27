@@ -2,6 +2,7 @@
 
 import { objectPropertiesLabel, supportsShapePadding } from "@/lib/canvas/property-tabs";
 import { applyMatrixDimensions, copyMatrixDimensions, resetMatrixDimensions, type MatrixDimensions } from "@/lib/canvas/matrix-dimensions";
+import { TextVerticalAlignment } from "./TextVerticalAlignment";
 import { InlineTextControls } from "./InlineTextControls";
 import { objectCapabilities } from "@/lib/canvas/object-capabilities";
 import { normalizeWholeTextFormat } from "@/lib/canvas/whole-text-format";
@@ -5925,6 +5926,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
             visible={singleNodeTab === "text"}
             preserveTextSelection
           >
+            {!isRadialLayoutSector && !isEditableFrame && <TextVerticalAlignment nodeId={selectedNode.id} />}
             {selectedTextEditor ? <><p className="px-2 text-[10px] text-muted-foreground">{selectedTextRange ? "Selected text" : nodeType === "table" ? "Active cell text" : "Text at cursor"}</p><InlineTextControls nodeId={selectedNode.id} /></> : <>
             <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1.5">
               <span className="text-[10px] font-medium text-foreground">
@@ -5980,17 +5982,7 @@ export function CanvasInspector({ compact = false, initialTab = "style", boardOn
                 <IconBtn key={val} active={activeTextAlign === val} onClick={() => setField("textAlign", val)} title={title}>{icon}</IconBtn>
               ))}
             </Row>
-            {!isRadialLayoutSector && !isEditableFrame && (
-              <Row label="Vertical">
-                {([
-                  ["top",    <AlignStartHorizontal  key="t" className="h-3.5 w-3.5" />, "Top"],
-                  ["middle", <AlignCenterHorizontal key="m" className="h-3.5 w-3.5" />, "Middle"],
-                  ["bottom", <AlignEndHorizontal   key="b" className="h-3.5 w-3.5" />, "Bottom"],
-                ] as [string, React.ReactNode, string][]).map(([val, icon, title]) => (
-                  <IconBtn key={val} active={(d.textVerticalAlign ?? "middle") === val} onClick={() => setField("textVerticalAlign", val)} title={title}>{icon}</IconBtn>
-                ))}
-              </Row>
-            )}
+
 
             {/* Bold / Italic */}
             <Row label="Style">

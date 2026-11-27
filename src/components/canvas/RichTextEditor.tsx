@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useId, useRef, useState, useCallback, type 
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Extension, Mark, mergeAttributes, type Editor, type Command } from "@tiptap/core";
-import { ParagraphLayout, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
+import { ParagraphLayout, PARAGRAPH_FIELDS, PARAGRAPH_KEYS, paragraphValue, adjustParagraphIndent } from "@/lib/canvas/paragraph-layout";
 import { TemplateTextRole } from "@/lib/canvas/template-text-role";
 import { templateInputFields } from "@/lib/canvas/card-templates";
 import { TemplateRowCollapse } from "@/lib/canvas/template-row-collapse";
@@ -2499,6 +2499,13 @@ export function RichTextEditor({
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(-1)))} title="Decrease indent (Ctrl/Cmd+[)"><IndentDecrease className="h-4 w-4" /></FormatButton>
           <FormatButton active={false} onAction={() => applySelectionCommand(chain => chain.command(adjustParagraphIndent(1)))} title="Increase indent (Ctrl/Cmd+])"><IndentIncrease className="h-4 w-4" /></FormatButton>
 
+          {dockedToolbar && <div className="grid w-full grid-cols-2 gap-2">{(["paragraphIndent", "firstLineIndent", "tabSize"] as const).map(key => {
+            const spec = PARAGRAPH_FIELDS[key];
+            return <label key={key} className="text-[10px] text-muted-foreground">{spec.label}<Input type="number" aria-label={spec.label} min={spec.min} max={spec.max} step={spec.step}
+              className="mt-1 h-8 text-xs" key={String(paragraphValue(key, editor.state.selection.$from.parent.attrs[key]))} defaultValue={paragraphValue(key, editor.state.selection.$from.parent.attrs[key])}
+              onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }}
+              onBlur={event => { const value = paragraphValue(key, event.currentTarget.value); if (value !== paragraphValue(key, editor.state.selection.$from.parent.attrs[key])) applySelectionCommand(chain => chain.updateAttributes("paragraph", { [key]: value }).updateAttributes("heading", { [key]: value })); }} /></label>;
+          })}</div>}
           </TextToolGroup>
           <TextToolGroup docked={!!dockedToolbar} label="Font & size">
           {/* Font family */}

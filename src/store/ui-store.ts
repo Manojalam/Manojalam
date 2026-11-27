@@ -39,6 +39,7 @@ export interface BoardExportRequest {
 }
 
 interface UIState {
+  tableTextCell: { nodeId: string; rowId: string; columnId: string } | null;
   templateTextTarget: { nodeId: string; sectionId: string; repeatId: string; fieldId: string; columnId?: string; rowId?: string } | null;
   propertiesTab: "style" | "text" | "shape" | "layout" | "data" | "template" | "specific";
   objectToolsHost: { nodeId: string; element: HTMLDivElement } | null;
@@ -212,6 +213,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     relationshipDiagramItemSelection: selection,
   }),
   selectedTableCell: null,
+  tableTextCell: null,
   fillingTableColumn: null,
   templateTextTarget: null,
   fillingCardNodeId: null,

@@ -36,7 +36,8 @@ export function clearTableCells(table: CanvasTable, range: TableMerge): CanvasTa
   }
   return next;
 }
-export interface CanvasTable { columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelHeader?: string; labelHeaderRichText?: string; labelWidth?: number; merges?: TableMerge[] }
+export type CellVerticalAlign = "top" | "middle" | "bottom";
+export interface CanvasTable { cellVerticalAlign?: Record<string, Record<string, CellVerticalAlign>>; columns: TableColumn[]; rows: TableRow[]; showRowLabels?: boolean; labelHeader?: string; labelHeaderRichText?: string; labelWidth?: number; merges?: TableMerge[] }
 export const TABLE_HEADER = "$table-header";
 export const TABLE_LABEL = "$row-label";
 export const MAX_TABLE_COLUMNS = 30;
@@ -102,6 +103,12 @@ export function normalizeTable(value: unknown): CanvasTable {
   const table: CanvasTable = { columns, rows, ...(typeof source?.labelHeader === "string" ? { labelHeader: source.labelHeader } : {}), ...(typeof source?.labelHeaderRichText === "string" ? { labelHeaderRichText: source.labelHeaderRichText } : {}), ...(typeof source?.labelWidth === "number" && Number.isFinite(source.labelWidth) ? { labelWidth: Math.max(60, Math.min(4000, source.labelWidth)) } : {}), ...(source?.showRowLabels === true ? { showRowLabels: true } : {}) };
   const rowOrder = tableRowOrder(table);
   const columnOrder = [...(table.showRowLabels ? [TABLE_LABEL] : []), ...columns.map(column => column.id)];
+  const vertical: NonNullable<CanvasTable["cellVerticalAlign"]> = {};
+  for (const rowId of rowOrder) for (const columnId of columnOrder) {
+    const value = source?.cellVerticalAlign?.[rowId]?.[columnId];
+    if (value === "top" || value === "middle" || value === "bottom") (vertical[rowId] ??= {})[columnId] = value;
+  }
+  if (Object.keys(vertical).length) table.cellVerticalAlign = vertical;
   const merges: TableMerge[] = [];
   for (const merge of Array.isArray(source?.merges) ? source.merges : []) {
     if (!Array.isArray(merge?.rowIds) || !Array.isArray(merge?.columnIds)) continue;

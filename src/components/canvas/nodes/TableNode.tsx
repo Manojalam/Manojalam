@@ -214,7 +214,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     // Keep the form's target in step even when navigating in Text mode or
     // focusing a cell's extra text without opening its template form.
     const hasTemplate = target && current().rows.find(row => row.id === target.rowId)?.templates?.[target.columnId];
-    useUIStore.setState({ selectedTableCell: target, fillingTableColumn: hasTemplate ? target : null });
+    useUIStore.setState({ tableTextCell: { nodeId: id, ...address }, selectedTableCell: target, fillingTableColumn: hasTemplate ? target : null });
     if (openTemplate && !extend && address.rowId !== TABLE_HEADER && address.columnId !== TABLE_LABEL) openCell(address.columnId, address.rowId);
   };
   const updateText = (address: TableAddress, text: string) => {
@@ -243,6 +243,11 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const selectedRange = tableRange(next, selection.start, selection.end);
     if (!selectedRange) return;
     if (event.type === "vidya:clear-table-cells") write(clearTableCells(next, selectedRange));
+    else if (event.type === "vidya:vertical-align-table-cells" && ["top", "middle", "bottom"].includes(detail.value)) {
+      const cellVerticalAlign = { ...next.cellVerticalAlign };
+      for (const rowId of selectedRange.rowIds) cellVerticalAlign[rowId] = { ...cellVerticalAlign[rowId], ...Object.fromEntries(selectedRange.columnIds.map(columnId => [columnId, detail.value])) };
+      write({ ...next, cellVerticalAlign });
+    }
     else if (["left", "center", "right", "justify"].includes(detail.value)) {
       write({ ...next, columns: selectedRange.rowIds.includes(TABLE_HEADER) ? next.columns.map(column => selectedRange.columnIds.includes(column.id) ? { ...column, textAlign: detail.value } : column) : next.columns, rows: next.rows.map(row => !selectedRange.rowIds.includes(row.id) ? row : { ...row, cellAlign: { ...row.cellAlign, ...Object.fromEntries(selectedRange.columnIds.map(columnId => [columnId, detail.value])) } }) });
     }
@@ -251,7 +256,8 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const handle = (event: Event) => handleCellCommand(event);
     window.addEventListener("vidya:clear-table-cells", handle);
     window.addEventListener("vidya:align-table-cells", handle);
-    return () => { window.removeEventListener("vidya:clear-table-cells", handle); window.removeEventListener("vidya:align-table-cells", handle); };
+    window.addEventListener("vidya:vertical-align-table-cells", handle);
+    return () => { window.removeEventListener("vidya:vertical-align-table-cells", handle); window.removeEventListener("vidya:clear-table-cells", handle); window.removeEventListener("vidya:align-table-cells", handle); };
   }, []);
   const renderCell = (rowId: string, columnId: string) => {
     const address = { rowId, columnId };
@@ -267,7 +273,7 @@ function TableNodeComponent({ id, data, selected, width: nodeWidth }: NodeProps)
     const reachesBottom = (merge?.rowIds.at(-1) ?? rowId) === rowOrder.at(-1);
     return <Cell key={columnId} data-cell-row={rowId} data-cell-column={columnId} data-cell-selected={highlighted ? "true" : undefined} scope={header ? rowId === TABLE_HEADER ? "col" : "row" : undefined} rowSpan={merge?.rowIds.length} colSpan={merge?.columnIds.length}
       className={`nodrag nopan relative ${reachesBottom ? "" : "border-b"} border-r align-top text-left last:border-r-0 ${header ? "bg-muted/50 font-semibold" : ""} ${highlighted ? "ring-2 ring-inset ring-primary" : ""}`}
-      style={{ borderColor: color, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", verticalAlign: data.textVerticalAlign === "middle" ? "middle" : data.textVerticalAlign === "bottom" ? "bottom" : "top" }}
+      style={{ borderColor: color, textAlign: (data.textAlign as React.CSSProperties["textAlign"]) || "left", verticalAlign: table.cellVerticalAlign?.[rowId]?.[columnId] ?? (data.textVerticalAlign === "middle" ? "middle" : data.textVerticalAlign === "bottom" ? "bottom" : "top") }}
       onPointerDownCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClickCapture={event => { if (editable && event.shiftKey && !(event.target as HTMLElement).closest("[contenteditable=true]")) { event.preventDefault(); event.stopPropagation(); selectCell(address, true); } }}
       onClick={event => {
