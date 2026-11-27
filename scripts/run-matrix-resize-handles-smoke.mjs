@@ -25,7 +25,8 @@ try {
   async function resize(label,dx,dy) {
     const handle=await page.$(`button[aria-label="${label}"]`); const box=await handle.boundingBox();
     await page.mouse.move(box.x+box.width/2,box.y+box.height/2); await page.mouse.down();
-    await page.mouse.move(box.x+box.width/2+dx,box.y+box.height/2+dy,{steps:10}); await page.mouse.up();
+    await page.mouse.move(box.x+box.width/2+dx,box.y+box.height/2+dy,{steps:10}); await page.waitForSelector('[data-alignment-guide]'); await page.mouse.up();
+    await page.waitForFunction(()=>!document.querySelector('[data-alignment-guide]'));
     await new Promise(resolve=>setTimeout(resolve,600));
   }
   const before=await bounds(); const cellBefore=await sizes('a');
