@@ -78,7 +78,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
   useEffect(() => {
     const revealSelection = () => {
       const selection = window.getSelection();
-      if (!selection?.rangeCount || selection.isCollapsed) return;
+      if (!selection?.rangeCount) return;
       const range = selection.getRangeAt(0);
       const element = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
       const node = element?.closest<HTMLElement>(".react-flow__node[data-id]");
@@ -86,7 +86,8 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       // Most selections start inside a field. Avoid scanning a large table's
       // entire rendered template on every selectionchange while dragging.
       const mark = element?.closest<HTMLElement>("[data-field-instance]")
-        ?? Array.from((element?.closest("p") ?? node).querySelectorAll<HTMLElement>("[data-field-instance]")).find(item => range.intersectsNode(item));
+        ?? Array.from((element?.closest("p") ?? node).querySelectorAll<HTMLElement>("[data-field-instance]")).find(item => range.intersectsNode(item))
+        ?? (selection.isCollapsed ? element?.closest("p")?.querySelector<HTMLElement>("[data-field-instance]") : null);
       if (!mark) { useUIStore.setState({ templateTextTarget: null }); return; }
       try {
         const identity: unknown = JSON.parse(mark.dataset.fieldInstance!);
