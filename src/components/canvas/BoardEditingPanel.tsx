@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { ContentCollapseControls } from "./ContentCollapseControls";
 import { Pin, X, Lock, Unlock, Trash2 } from "lucide-react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useUIStore } from "@/store/ui-store";
@@ -155,6 +156,7 @@ export function BoardEditingPanel({ setToolbarHost }: { setToolbarHost: (host: H
       {candidate?.type === "image" && ui.boardPanel !== "board" && <button type="button" disabled={viewer || anyLocked} className="mx-3 mb-2 rounded border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50" onClick={() => useCanvasStore.getState().createNodeNote(candidate.id)}>{nodes.some(node => node.data.noteForNodeId === candidate.id && typeof node.data.imageNotesFor === "string") ? "Edit linked note" : "Add linked note"}</button>}
       {noteImageId && ui.boardPanel !== "board" && <button type="button" disabled={viewer || anyLocked} className="mx-3 mb-2 rounded border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50" onClick={() => useCanvasStore.getState().createNodeNote(noteImageId, undefined, noteAttachmentId, true)}>Add note column</button>}
       {ui.boardPanel !== "board" && <div role="tablist" aria-label="Properties tabs" className="grid grid-cols-3 gap-1 px-2 pb-2">{tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls={`properties-${tab.id}`} onMouseDown={event => event.preventDefault()} onClick={() => { ui.setBoardPanel("selection"); useUIStore.setState({ propertiesTab: tab.id }); }} className="rounded-md px-1 py-2 text-xs font-medium aria-selected:bg-primary aria-selected:text-primary-foreground">{tab.label}</button>)}</div>}
+      {candidate && editing && <ContentCollapseControls key={candidate.id} nodeId={candidate.id} />}
     </header>
     {auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><LayoutPanel /><CanvasLayersPanel /></div>}
     {ui.boardPanel === "board" && !auxiliary && <div className="min-h-0 flex-1 overflow-y-auto"><CanvasInspector boardOnly /></div>}
