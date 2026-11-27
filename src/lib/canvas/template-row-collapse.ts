@@ -35,6 +35,29 @@ export const TemplateRowCollapse = Extension.create({
   addProseMirrorPlugins() {
     return [new Plugin({
       key: new PluginKey("templateRowCollapse"),
+      view: view => {
+        const bulkToggle = (event: Event) => {
+          const collapsed = (event as CustomEvent<{ collapsed: boolean }>).detail?.collapsed;
+          if (typeof collapsed !== "boolean") return;
+          const tr = view.state.tr;
+          const rows: (CollapsibleRow & { pos: number; size: number })[] = [];
+          view.state.doc.descendants((node, pos) => {
+            if (!node.attrs.templateRow) return;
+            rows.push({ key: node.attrs.templateRow, parent: node.attrs.templateParent, collapsible: node.attrs.templateCollapsible, collapsed: node.attrs.templateCollapsible ? collapsed : node.attrs.templateCollapsed, pos, size: node.nodeSize });
+            if (node.attrs.templateCollapsible && node.attrs.templateCollapsed !== collapsed) tr.setNodeMarkup(pos, undefined, { ...node.attrs, templateCollapsed: collapsed });
+          });
+          if (!tr.docChanged) return;
+          const hidden = hiddenTemplateRows(rows);
+          if (rows.some(row => hidden.has(row.key) && tr.selection.from >= row.pos && tr.selection.from < row.pos + row.size)) {
+            const visible = rows.find(row => !hidden.has(row.key));
+            if (visible) tr.setSelection(TextSelection.near(tr.doc.resolve(visible.pos + 1)));
+          }
+          view.dispatch(tr);
+          view.dom.dispatchEvent(new CustomEvent("template-row-toggled", { bubbles: true }));
+        };
+        view.dom.addEventListener("template-collapse-all", bulkToggle);
+        return { destroy: () => view.dom.removeEventListener("template-collapse-all", bulkToggle) };
+      },
       props: { decorations: state => {
         const rows: (CollapsibleRow & { pos: number; size: number; text: string })[] = [];
         state.doc.descendants((node, pos) => {
