@@ -4,7 +4,7 @@ import { templateInputFields } from "@/lib/canvas/card-templates";
 import { FONT_OPTIONS } from "@/lib/fonts";
 import { ColorPicker } from "./ColorPicker";
 import { TemplateRowPanel } from "./TemplateRowPanel";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { BoardCardTemplate, CardTemplateField, CardTemplateRow } from "@/lib/types";
 import { generateId } from "@/lib/utils";
 import { CardTemplatePreview } from "./CardTemplatePreview";
@@ -26,6 +26,7 @@ function move<T>(items: T[], index: number, delta: number): T[] {
 }
 
 export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: BoardCardTemplate; onClose: () => void; onSaved: (id: string) => void }) {
+  const rowGroupName = useId();
   const [focusRow, setFocusRow] = useState<string | null>(null);
   const [draft, setDraft] = useState(() => structuredClone(initial));
   const [draggedField, setDraggedField] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function CardTemplateDesigner({ initial, onClose, onSaved }: { initial: B
           </div>
           <p className="text-xs text-muted-foreground">Field types: text, long text, link, searchable sūtra, or conditional constant. Labels guide filling and are never printed with the text.</p>
           <p className="text-xs text-muted-foreground">Drag a field by its handle to place it before another field or at the end of a row. Use Move field for precise placement with a keyboard or touch.</p>
-          {draft.rows.map((row, index) => <TemplateRowPanel key={row.id} rowKey={row.id} focusRow={focusRow} label={`Template row ${index + 1}`}>
+          {draft.rows.map((row, index) => <TemplateRowPanel groupName={rowGroupName} key={row.id} rowKey={row.id} focusRow={focusRow} label={`Template row ${index + 1}`}>
             <div className="flex flex-wrap items-center gap-1">
               <strong className="mr-auto text-xs">Row {index + 1}</strong>
               <Button type="button" size="sm" variant="ghost" aria-label={`Move row ${index + 1} up`} disabled={index === 0} onClick={() => setDraft({ ...draft, rows: move(draft.rows, index, -1) })}>↑</Button>

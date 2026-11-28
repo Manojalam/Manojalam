@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUIStore } from "@/store/ui-store";
 
 /** Inspector-only disclosure; never changes the template's rendered row visibility. */
-export function TemplateRowPanel({ rowKey, focusRow, revealField, label, children }: { rowKey: string; focusRow: string | null; revealField?: string; label: string; children: ReactNode }) {
+export function TemplateRowPanel({ groupName, rowKey, focusRow, revealField, label, children }: { groupName: string; rowKey: string; focusRow: string | null; revealField?: string; label: string; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
   const tab = useUIStore(state => state.propertiesTab);
@@ -31,7 +31,7 @@ export function TemplateRowPanel({ rowKey, focusRow, revealField, label, childre
     });
     return () => cancelAnimationFrame(frame);
   }, [open, focusRow, rowKey]);
-  return <details ref={ref} open={open} onToggle={event => setOpen(event.currentTarget.open)} className="rounded-md border p-3" aria-label={label}>
+  return <details ref={ref} name={groupName} open={open} onToggle={event => setOpen(event.currentTarget.open)} className="rounded-md border p-3" aria-label={label}>
     <summary className="cursor-pointer text-sm font-medium">{label}</summary>
     {open && <div className="mt-3 space-y-3">{children}</div>}
   </details>;

@@ -3,7 +3,7 @@ import { RemoveAppliedTemplate } from "./RemoveAppliedTemplate";
 import { TemplateRowPanel } from "./TemplateRowPanel";
 import { appendSutra } from "@/lib/canvas/append-sutra";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useId, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUIStore } from "@/store/ui-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -30,6 +30,7 @@ export function FillCardDialog({ nodeId, onClose, embedded = false }: { nodeId: 
 
 export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, template, sections, locked, onClose, onNext, embedded = false }: { columnId?: string; cellRowId?: string; initialSectionId?: string; embedded?: boolean; nodeId: string; template: BoardCardTemplate; sections: CardSection[]; locked: boolean; onClose: () => void; onNext: (id: string) => void }) {
   const lastEdit = useRef<{ key: string; at: number; sections: unknown } | null>(null);
+  const rowGroupName = useId();
   const [focusRow, setFocusRow] = useState<string | null>(null);
   const [copyRepeatContents, setCopyRepeatContents] = useState(true);
   const setSections = useCallback((change: (current: CardSection[]) => CardSection[], editKey?: string) => {
@@ -135,7 +136,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={copyRepeatContents} onChange={event => setCopyRepeatContents(event.target.checked)} />Copy enabled fields when repeating rows</label>
           <p className="text-xs text-muted-foreground">Choose which values repeat in the template definition. Unchecked fields and parts start blank; constants follow their display rules.</p>
           <p className="text-xs text-muted-foreground">When checked, Repeat before/after copies that row's values, formatting, and links. Otherwise, the new inputs start empty. Both options keep the same design and fixed text rules.</p>
-          {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <TemplateRowPanel key={section.id + (repeatId || row.id)} rowKey={repeatId || row.id} focusRow={focusRow} revealField={reveal?.sectionId === section.id && reveal.repeatId === repeatId && templateInputFields(row.fields).some(field => field.id === reveal.fieldId) ? reveal.fieldId : undefined} label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`}>
+          {expandedCardRows(template, section.values, section.rowRepeats).map(({ row, rowNumber, values, repeatId, copyNumber }) => <TemplateRowPanel groupName={rowGroupName} key={section.id + (repeatId || row.id)} rowKey={repeatId || row.id} focusRow={focusRow} revealField={reveal?.sectionId === section.id && reveal.repeatId === repeatId && templateInputFields(row.fields).some(field => field.id === reveal.fieldId) ? reveal.fieldId : undefined} label={`Row ${rowNumber}${repeatId ? ` repeat ${copyNumber}` : ""}`}>
             <div className="space-y-2"><span className="text-sm font-medium">Row {rowNumber}{repeatId ? ` - Repeat ${copyNumber}` : ""}</span>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id, repeatId, "before")}>Repeat before</Button>
@@ -154,7 +155,7 @@ export function CardForm({ columnId, cellRowId, initialSectionId, nodeId, templa
             </div>)}
             <div className="border-t pt-3"><Button type="button" size="sm" variant="outline" onClick={() => repeatRow(row.id, repeatId, "after")}>Repeat after</Button></div>
           </TemplateRowPanel>)}
-          {extraRows.map((row, index) => <TemplateRowPanel key={section.id + ":extra:" + index} rowKey={section.id + ":extra:" + index} focusRow={focusRow} label={`My row ${index + 1}`}>
+          {extraRows.map((row, index) => <TemplateRowPanel groupName={rowGroupName} key={section.id + ":extra:" + index} rowKey={section.id + ":extra:" + index} focusRow={focusRow} label={`My row ${index + 1}`}>
             <label className="block text-sm">My row {index + 1}<textarea aria-label={"My row " + (index + 1)} className="min-h-20 w-full rounded-md border bg-background p-2" value={row} onChange={event => setExtraRows(current => current.map((value, i) => i === index ? event.target.value : value), section.id + ":extra:" + index)} /></label>
             <Button type="button" size="sm" variant="ghost" onClick={() => setExtraRows(current => current.filter((_, i) => i !== index))}>Remove my row {index + 1}</Button>
           </TemplateRowPanel>)}
