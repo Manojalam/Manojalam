@@ -23,8 +23,8 @@ export function templateValueText(html: string): string {
 }
 
 /** Refresh changed template values without replacing surrounding hand-edited text. */
-export function refreshEditedTemplate(html: string, baseline: string, generated: string): string {
-  if (baseline === generated || typeof DOMParser === "undefined") return html;
+export function refreshEditedTemplate(html: string, baseline: string, generated: string, constantFieldIds: ReadonlySet<string> = new Set()): string {
+  if ((baseline === generated && !constantFieldIds.size) || typeof DOMParser === "undefined") return html;
   const parse = (value: string) => new DOMParser().parseFromString(value, "text/html").body;
   const body = parse(html), before = parse(baseline), after = parse(generated);
   const spans = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>("[data-field-instance]")).filter(span => !span.parentElement?.closest("[data-field-instance]"));
@@ -44,19 +44,22 @@ export function refreshEditedTemplate(html: string, baseline: string, generated:
       if (!current || current === oldParagraph.style.getPropertyValue(property)) target.style.setProperty(property, paragraph.style.getPropertyValue(property));
     }
   }
-  const keys = new Set([...spans(before), ...spans(after)].map(span => span.dataset.fieldInstance!));
+  const keys = new Set([...spans(before), ...spans(after), ...spans(body).filter(span => constantFieldIds.has(span.dataset.fieldLabel || ""))].map(span => span.dataset.fieldInstance!));
   for (const key of keys) {
     const old = spans(before).filter(span => span.dataset.fieldInstance === key);
     const next = spans(after).filter(span => span.dataset.fieldInstance === key);
-    if (old.map(span => span.outerHTML).join("") === next.map(span => span.outerHTML).join("")) continue;
     const targets = spans(body).filter(span => span.dataset.fieldInstance === key);
+    const constant = [...old, ...next, ...targets].some(span => constantFieldIds.has(span.dataset.fieldLabel || ""));
+    // Constants belong to the definition, even when an older edited snapshot omitted them.
+    if (old.map(span => span.outerHTML).join("") === next.map(span => span.outerHTML).join("")
+      && (!constant || targets.map(span => span.textContent).join("") === next.map(span => span.textContent).join(""))) continue;
     if (targets.length) {
       for (const span of next) targets[0].before(span.cloneNode(true));
       for (const target of targets) {
         const parent = target.closest("p"); target.remove();
         if (parent && !parent.textContent?.trim() && !parent.querySelector("[data-field-instance]")) parent.remove();
       }
-    } else if (next.length && !old.length) {
+    } else if (next.length && (!old.length || constant)) {
       // Insert a newly populated field alongside its row; new rows follow the closest preceding row.
       const paragraph = next[0].closest("p");
       const order = paragraph ? spans(paragraph) : [];
@@ -114,4 +117,13 @@ export function valueParagraphStyle(style: string): string {
     if (["line-height", "padding-left", "text-indent", "tab-size"].includes(property) && /^-?\d+(\.\d+)?(em|px)?$/.test(raw) && Math.abs(parseFloat(raw)) <= 100) rules.push(`${property}: ${raw}`);
   }
   return rules.join("; ");
+}
+
+/** Editor-serialized neutral defaults are not user formatting overrides. */
+export function valueParagraphOverrides(style: string, baseline = ""): string {
+  const rules = (value: string) => new Map(valueParagraphStyle(value).split(";").filter(Boolean).map(rule => rule.split(":").map(part => part.trim())) as [string, string][]);
+  const defaults = new Map<string, string>([["text-align", "left"], ["padding-left", "0"], ["text-indent", "0"], ["tab-size", "4"]]);
+  for (const [property, value] of rules(baseline)) defaults.set(property, value);
+  const equivalent = (a: string, b: string) => a === b || (/^0(?:em|px)?$/.test(a) && /^0(?:em|px)?$/.test(b));
+  return [...rules(style)].filter(([property,value]) => !equivalent(value, defaults.get(property) || "")).map(([property,value]) => property + ": " + value).join("; ");
 }

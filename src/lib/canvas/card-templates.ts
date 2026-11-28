@@ -1,4 +1,4 @@
-import { decorateTemplateValue, valueParagraphStyle, inlineValueHtml, refreshEditedTemplate, templateValueText } from "./template-value-html";
+import { decorateTemplateValue, valueParagraphStyle, inlineValueHtml, refreshEditedTemplate, valueParagraphOverrides, templateValueText } from "./template-value-html";
 import type { BoardCardTemplate, CardTemplateRow, CardTemplateField, CardFieldValues, CardRowRepeat, CardSection } from "../types";
 import { normalizeHexColor } from "./custom-colors";
 
@@ -270,7 +270,7 @@ export function renderCardSections(template: BoardCardTemplate, sections: CardSe
   const content = sections.map(section => {
     const generated = renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats, section.id);
     if (!section.editedText) return generated;
-    const richText = templateRowAlignment(refreshEditedTemplate(section.editedText.html, section.editedText.baseline, generated.richText), template);
+    const richText = templateRowAlignment(refreshEditedTemplate(section.editedText.html, section.editedText.baseline, generated.richText, new Set(template.rows.flatMap(row => templateInputFields(row.fields)).filter(field => field.kind === "constant").map(field => field.id))), template);
     return { richText, text: templateValueText(richText) };
   }).filter(section => section.text.trim());
   return {
@@ -307,7 +307,8 @@ export function cardSectionsFromText(template: BoardCardTemplate, sections: Card
   const body = new DOMParser().parseFromString(html, "text/html").body;
   const next = structuredClone(sections);
   const inputFields = template.rows.flatMap(row => templateInputFields(row.fields)).filter(field => field.kind !== "constant");
-  const defaults = new DOMParser().parseFromString(sections.map(section => renderCardTemplate(template, section.values, section.extraRows, section.rowRepeats, section.id).richText).join(""), "text/html").body;
+  const withoutParagraphOverrides = (values: CardFieldValues): CardFieldValues => Object.fromEntries(Object.entries(values).map(([id, value]) => [id, { ...value, paragraphStyle: undefined }]));
+  const defaults = new DOMParser().parseFromString(sections.map(section => renderCardTemplate(template, withoutParagraphOverrides(section.values), section.extraRows, section.rowRepeats?.map(repeat => ({ ...repeat, values: withoutParagraphOverrides(repeat.values) })), section.id).richText).join(""), "text/html").body;
   for (const section of next) for (const entry of [{ id: "", values: section.values }, ...(section.rowRepeats ?? [])]) {
     for (const field of inputFields) {
       const key = JSON.stringify([section.id, entry.id, field.id]);
@@ -319,9 +320,11 @@ export function cardSectionsFromText(template: BoardCardTemplate, sections: Card
       if (!fragments.length && !original) continue;
       const local = fragments.map(fragment => {
         const clone = fragment.cloneNode(true) as HTMLElement;
-        for (const attribute of Array.from(clone.attributes)) if (attribute.name.startsWith("data-field-")) clone.removeAttribute(attribute.name);
-        if (original) for (const property of Array.from(clone.style)) if (clone.style.getPropertyValue(property) === original.style.getPropertyValue(property)) clone.style.removeProperty(property);
-        if (!clone.getAttribute("style")) clone.removeAttribute("style");
+        for (const element of [clone, ...Array.from(clone.querySelectorAll<HTMLElement>("span"))]) {
+          for (const attribute of Array.from(element.attributes)) if (attribute.name.startsWith("data-field-")) element.removeAttribute(attribute.name);
+          if (original) for (const property of Array.from(element.style)) if (element.style.getPropertyValue(property) === original.style.getPropertyValue(property)) element.style.removeProperty(property);
+          if (!element.getAttribute("style")) element.removeAttribute("style");
+        }
         // TipTap moves bold/italic/link marks outside the label span. Keep those local marks.
         // Template marks remain inherited. An explicitly removed mark needs a local normal override.
         for (const [tag, enabled, property, normal] of [["strong", field.bold, "font-weight", "normal"], ["em", field.italic, "font-style", "normal"], ["u", field.underline, "text-decoration", "none"], ["s", field.strike, "text-decoration", "none"], ["sup", field.superscript, "vertical-align", "baseline"], ["sub", field.subscript, "vertical-align", "baseline"]] as const) {
@@ -344,8 +347,8 @@ export function cardSectionsFromText(template: BoardCardTemplate, sections: Card
       });
       const richText = inlineValueHtml(local.map((item, index) => (index && item.paragraph !== local[index - 1].paragraph ? "<br>" : "") + item.html).join(""));
       const paragraph = fragments[0]?.closest("p"), baseParagraph = original?.closest("p");
-      const changedParagraph = paragraph && baseParagraph ? ["text-align", "line-height", "padding-left", "text-indent", "tab-size"].filter(property => paragraph.style.getPropertyValue(property) !== baseParagraph.style.getPropertyValue(property)).map(property => `${property}: ${paragraph.style.getPropertyValue(property)}`).join("; ") : "";
-      entry.values[field.id] = { ...entry.values[field.id], text: templateValueText(richText), richText, ...(valueParagraphStyle(changedParagraph) ? { paragraphStyle: valueParagraphStyle(`${entry.values[field.id]?.paragraphStyle || ""}; ${changedParagraph}`) } : {}) };
+      const paragraphStyle = valueParagraphOverrides(paragraph?.getAttribute("style") || "", baseParagraph?.getAttribute("style") || "");
+      entry.values[field.id] = { ...entry.values[field.id], text: templateValueText(richText), richText, paragraphStyle: paragraphStyle || undefined };
     }
   }
   // New text can inherit the preceding constant's mark when typed at the end of a line.

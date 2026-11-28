@@ -1,3 +1,4 @@
+import { valueParagraphOverrides } from "./template-value-html";
 import { removeAppliedTemplateData } from "./remove-applied-template";
 import { hiddenTemplateRows } from "./template-row-collapse";
 import { placeTemplateField } from "./template-field-order";
@@ -574,4 +575,10 @@ test("removing an object template clears its content and metadata but preserves 
   assert.deepEqual(removed.custom, { keep: true });
   assert.equal(data.cardTemplateId, template.id);
   assert.equal(removeAppliedTemplateData(removed), removed);
+});
+
+test("typing defaults are not paragraph overrides, but intentional formatting is", () => {
+  assert.equal(valueParagraphOverrides("text-align: left; padding-left: 0em; text-indent: 0px; tab-size: 4"), "");
+  assert.equal(valueParagraphOverrides("line-height: 1.5; padding-left: 0em", "line-height: 1.5; padding-left: 0px"), "");
+  assert.equal(valueParagraphOverrides("line-height: 2; padding-left: 3em", "line-height: 1.5"), "line-height: 2; padding-left: 3em");
 });
