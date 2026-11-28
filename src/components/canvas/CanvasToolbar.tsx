@@ -5,7 +5,7 @@ import { IMAGE_FILE_ACCEPT } from "@/lib/canvas/node-media";
 import { addBoardImages } from "@/lib/canvas/add-board-images";
 import { ImportDialog } from "./ImportDialog";
 import { ObjectClipboardMenu } from "@/components/canvas/ObjectClipboardMenu";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PenLine, MousePointer2, SquareDashedMousePointer, Hand, StickyNote, Type, Spline, Frame,
   BookOpen, Scroll, GraduationCap, ChevronRight,
@@ -89,31 +89,39 @@ function ToolBtn({
 function ShapesBtn() {
   const { activeTool, setActiveTool, shapeVariant, setShapeVariant } = useUIStore();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("manojalam-last-shape");
+      const shape = FLOWCHART_SHAPES.find(item => item.variant === saved);
+      if (shape) setShapeVariant(shape.variant);
+    } catch { /* Storage may be unavailable; the in-memory selection still works. */ }
+  }, [setShapeVariant]);
   const isActive = activeTool === "shape";
   const currentShape = FLOWCHART_SHAPES.find((s) => s.variant === shapeVariant) ?? FLOWCHART_SHAPES[1];
   const panelSide = useDeviceProfile().kind === "phone" ? "top" : "right";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "relative flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-100",
-                isActive
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
-              aria-label="Shapes"
-            >
+      <div className="relative h-9 w-9">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button"
+              className={cn("flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-100",
+                isActive ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}
+              aria-label={`Draw ${currentShape.label}`} aria-pressed={isActive}
+              onClick={() => { setOpen(false); setActiveTool("shape"); }}>
               {currentShape.icon}
-              <ChevronRight className="absolute -right-0.5 bottom-0.5 h-2.5 w-2.5 opacity-50" />
             </button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side={panelSide} className="text-xs">Shapes</TooltipContent>
-      </Tooltip>
+          </TooltipTrigger>
+          <TooltipContent side={panelSide} className="text-xs">{currentShape.label} · click to draw</TooltipContent>
+        </Tooltip>
+        <PopoverTrigger asChild>
+          <button type="button" aria-label="Choose shape" title="Choose shape"
+            className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded bg-background text-muted-foreground shadow-sm hover:bg-accent hover:text-accent-foreground">
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </PopoverTrigger>
+      </div>
 
       <PopoverContent side={panelSide} align="center" className="max-h-[70vh] w-auto overflow-y-auto p-2" sideOffset={12}>
         <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Shapes</p>
@@ -130,6 +138,7 @@ function ShapesBtn() {
                   )}
                   onClick={() => {
                     setShapeVariant(s.variant);
+                    try { localStorage.setItem("manojalam-last-shape", s.variant); } catch { /* Keep the selection for this session. */ }
                     setActiveTool("shape");
                     setOpen(false);
                   }}
